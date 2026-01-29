@@ -1,6 +1,6 @@
 <!-- Attention template README maintainers: The content in the portion of this README following the Template Info section roughly parallels that of the paranext-multi-extension-template. When editing one, please consider whether similar changes should also be made in the other.-->
 
-# interlinearizer
+# Interlinearizer
 
 Interlinearizer extension for Platform.Bible
 

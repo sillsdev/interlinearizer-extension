@@ -1,11 +1,11 @@
 {
   "icon": "",
-  "moreInfoUrl": "",
-  "supportUrl": "",
+  "moreInfoUrl": "https://github.com/sillsdev/interlinearizer-extension",
+  "supportUrl": "https://github.com/sillsdev/interlinearizer-extension",
   "localizedDisplayInfo": {
     "en": {
-      "displayName": "Paranext Extension Template",
-      "shortSummary": "Base template for a Platform.Bible Extension",
+      "displayName": "Interlinearizer",
+      "shortSummary": "Interlinearizer extension for Platform.Bible",
       "description": "assets/descriptions/description-en.md"
     }
   }

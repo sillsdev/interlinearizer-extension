@@ -7,7 +7,7 @@
  * fast-xml-parser output internally and returns objects conforming to these types.
  */
 
-declare module 'paranext-extension-template' {
+declare module 'interlinearizer' {
   /** Character range in source text (Index, Length). */
   export interface StringRange {
     /** Start index of the range in the source text (0-based). */

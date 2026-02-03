@@ -8,10 +8,22 @@ import type {
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 
+/**
+ * WebView type identifier for the interlinearizer. Used when registering the provider and when
+ * opening the WebView from the platform.
+ */
 const mainWebViewType = 'paranextExtensionTemplate.interlinearizer';
 
 /** WebView provider that provides the interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
+  /**
+   * Returns the interlinearizer WebView definition (React component + styles) for the given saved
+   * definition. Rejects if the requested webViewType does not match this provider's type.
+   *
+   * @param savedWebView - Platform-provided definition (webViewType, etc.).
+   * @returns WebView definition with title, content, and styles, or undefined.
+   * @throws {Error} When savedWebView.webViewType is not the interlinearizer type.
+   */
   async getWebView(savedWebView: SavedWebViewDefinition): Promise<WebViewDefinition | undefined> {
     if (savedWebView.webViewType !== mainWebViewType) {
       throw new Error(
@@ -27,6 +39,13 @@ const mainWebViewProvider: IWebViewProvider = {
   },
 };
 
+/**
+ * Extension entry point. Registers the interlinearizer WebView provider and opens the WebView.
+ * Called by the platform when the extension is loaded.
+ *
+ * @param context - Activation context; used to register the WebView provider so the platform can
+ *   clean it up on deactivation.
+ */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
 
@@ -35,13 +54,21 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProvider,
   );
 
-  papi.webViews.openWebView(mainWebViewType, undefined, { existingId: '?' });
+  papi.webViews.openWebView(mainWebViewType, undefined, { existingId: '?' }).catch((err) => {
+    logger.error(`Failed to open ${mainWebViewType} WebView: ${err}`);
+  });
 
   context.registrations.add(await mainWebViewProviderPromise);
 
   logger.debug('Interlinearizer extension finished activating!');
 }
 
+/**
+ * Extension teardown. Called by the platform when the extension is unloaded. Registrations added
+ * during activate are disposed by the platform.
+ *
+ * @returns True to indicate successful deactivation; the platform may use this for logging.
+ */
 export async function deactivate(): Promise<boolean> {
   logger.debug('Interlinearizer extension is deactivating!');
   return true;

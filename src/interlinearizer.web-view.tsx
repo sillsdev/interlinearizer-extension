@@ -5,6 +5,7 @@ import { InterlinearXmlParser } from './parsers/interlinearXmlParser';
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
 
+/** Parser instance used to convert the bundled test XML into {@link InterlinearData}. */
 const parser = new InterlinearXmlParser();
 
 /** Result of parsing the bundled test XML: either data or an error message. */
@@ -43,7 +44,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
         </div>
       )}
 
-      {parsed && !parseError && (
+      {parsed && (
         <>
           <p className="tw-text-sm tw-text-muted-foreground">Parsed interlinear data (JSON):</p>
           <pre className="tw-overflow-auto tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-4 tw-text-sm tw-font-mono tw-leading-relaxed">

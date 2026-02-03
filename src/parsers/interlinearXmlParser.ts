@@ -110,6 +110,10 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 /**
  * Maps a parsed VerseData's Punctuation array to {@link PunctuationData} array.
  *
+ * Punctuations without a valid Range (or missing Index/Length) are filtered out rather than causing
+ * a parse error. Punctuations are optional/non-critical to the interlinear display; clusters are
+ * required and validated strictly in {@link extractClustersFromVerse}.
+ *
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Punctuation array or
  *   none).
  * @returns Array of PunctuationData (TextRange from Range Index/Length, BeforeText, AfterText).
@@ -144,7 +148,8 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
  *
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
  * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
- *   Excluded from attribute, LexemesId (slash-joined LexemeIds), Id (LexemesId/Index-Length).
+ *   Excluded from attribute, LexemesId (slash-joined LexemeIds), Id (LexemesId/Index-Length, or
+ *   Index-Length when the cluster has no lexemes so Id never starts with a slash).
  * @throws {Error} If a Cluster is missing its Range element or Range is missing Index or Length.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
@@ -167,7 +172,11 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const excluded = el['@_Excluded'] === true;
 
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
-    const id = `${lexemesId}/${index}-${length}`;
+    /**
+     * Id format: "LexemesId/Index-Length", or "Index-Length" when cluster has no lexemes (avoids
+     * leading slash).
+     */
+    const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
 
     return {
       TextRange: textRange,
@@ -189,6 +198,10 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 export class InterlinearXmlParser {
   private readonly parser: XMLParser;
 
+  /**
+   * Creates a parser configured for interlinear XML: attribute prefix `@_`, numeric attributes
+   * parsed as numbers, and array paths for Verses items, Cluster, Punctuation, and Lexeme.
+   */
   constructor() {
     const options: Partial<X2jOptions> = {
       ignoreAttributes: false,

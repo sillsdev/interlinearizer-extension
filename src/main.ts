@@ -12,7 +12,7 @@ import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
  * WebView type identifier for the interlinearizer. Used when registering the provider and when
  * opening the WebView from the platform.
  */
-const mainWebViewType = 'paranextExtensionTemplate.interlinearizer';
+const mainWebViewType = 'interlinearizer.mainWebView';
 
 /** WebView provider that provides the interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {

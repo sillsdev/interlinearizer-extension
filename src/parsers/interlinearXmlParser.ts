@@ -1,16 +1,16 @@
 import { X2jOptions, XMLParser } from 'fast-xml-parser';
-import type {
-  InterlinearData,
-  VerseData,
-  ClusterData,
+import {
   LexemeData,
   PunctuationData,
+  ClusterData,
   StringRange,
-} from 'paranext-extension-template';
+  InterlinearData,
+  VerseData,
+} from 'interlinearizer';
 
 // ---------------------------------------------------------------------------
 // Internal types: raw shape from fast-xml-parser with attributeNamePrefix: '@_'.
-// Public API types (InterlinearData, VerseData, etc.) live in paranext-extension-template.
+// Public API types (InterlinearData, VerseData, etc.) live in interlinearizer.
 // ---------------------------------------------------------------------------
 
 /**
@@ -192,8 +192,8 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `paranext-extension-template`; no extra conversion is done. Expects
- * the interlinear XML schema described in the project README.
+ * Output matches the types in `interliniearizer`; no extra conversion is done. Expects the
+ * interlinear XML schema described in the project README.
  */
 export class InterlinearXmlParser {
   private readonly parser: XMLParser;

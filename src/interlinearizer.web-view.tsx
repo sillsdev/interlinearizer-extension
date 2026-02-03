@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { InterlinearData } from 'paranext-extension-template';
+import type { InterlinearData } from 'interlinearizer';
 import { InterlinearXmlParser } from './parsers/interlinearXmlParser';
 
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */

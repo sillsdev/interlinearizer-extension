@@ -49,16 +49,18 @@ const mainWebViewProvider: IWebViewProvider = {
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
 
-  const mainWebViewProviderPromise = papi.webViewProviders.registerWebViewProvider(
+  const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
     mainWebViewType,
     mainWebViewProvider,
   );
 
-  papi.webViews.openWebView(mainWebViewType, undefined, { existingId: '?' }).catch((err) => {
-    logger.error(`Failed to open ${mainWebViewType} WebView: ${err}`);
-  });
+  context.registrations.add(mainWebViewProviderRegistration);
 
-  context.registrations.add(await mainWebViewProviderPromise);
+  try {
+    await papi.webViews.openWebView(mainWebViewType, undefined, { existingId: '?' });
+  } catch (err) {
+    logger.error(`Failed to open ${mainWebViewType} WebView: ${err}`);
+  }
 
   logger.debug('Interlinearizer extension finished activating!');
 }

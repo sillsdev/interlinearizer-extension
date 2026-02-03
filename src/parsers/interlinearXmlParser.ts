@@ -1,5 +1,5 @@
 import { X2jOptions, XMLParser } from 'fast-xml-parser';
-import {
+import type {
   LexemeData,
   PunctuationData,
   ClusterData,

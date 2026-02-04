@@ -126,9 +126,9 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
     .filter((el): el is ParsedPunctuation & { Range: ParsedRange } => {
       const rangeElement = el.Range;
       if (!rangeElement) return false;
-      const indexRaw = rangeElement['@_Index'];
-      const lengthRaw = rangeElement['@_Length'];
-      return indexRaw !== undefined && lengthRaw !== undefined;
+      const indexRaw = Number(rangeElement['@_Index']);
+      const lengthRaw = Number(rangeElement['@_Length']);
+      return Number.isFinite(indexRaw) && Number.isFinite(lengthRaw);
     })
     .map((el) => {
       const rangeElement = el.Range;
@@ -161,9 +161,9 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
       throw new Error('Invalid XML: Cluster missing required Range element');
     }
 
-    const index = rangeElement['@_Index'];
-    const length = rangeElement['@_Length'];
-    if (index === undefined || length === undefined) {
+    const index = Number(rangeElement['@_Index']);
+    const length = Number(rangeElement['@_Length']);
+    if (Number.isFinite(index) || Number.isFinite(length)) {
       throw new Error('Invalid XML: Range missing required Index or Length attributes');
     }
 

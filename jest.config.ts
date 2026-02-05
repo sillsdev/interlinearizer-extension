@@ -62,10 +62,7 @@ const config: Config = {
   //   "clover"
   // ],
 
-  /**
-   * Enforce high coverage on parsers, main, and web-view. Branches at 98% to allow err instanceof
-   * Error fallback.
-   */
+  /** Enforce 100% coverage on parsers, main, and web-view. */
   coverageThreshold: {
     global: {
       branches: 100,

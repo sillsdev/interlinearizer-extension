@@ -30,8 +30,6 @@ declare module 'interlinearizer' {
     TextRange: StringRange;
     /** Lexemes in this cluster, in order. */
     Lexemes: LexemeData[];
-    /** When true, this cluster instance is excluded from the interlinear display. */
-    Excluded: boolean;
     /** Slash-joined LexemeIds for this cluster (e.g. "Word:a/Word:b"). */
     LexemesId: string;
     /** Unique cluster id: LexemesId plus TextRange (e.g. "Word:a/Word:b/21-3"). */
@@ -66,7 +64,10 @@ declare module 'interlinearizer' {
     GlossLanguage: string;
     /** Book id (e.g. "RUT", "MAT"). */
     BookId: string;
-    /** Verse data keyed by verse reference (e.g. "RUT 3:1"). */
+    /**
+     * Verse data keyed by verse reference (e.g. "RUT 3:1"). Exactly one entry per reference; the
+     * parser rejects XML that contains duplicate verse references.
+     */
     Verses: Record<string, VerseData>;
   }
 }

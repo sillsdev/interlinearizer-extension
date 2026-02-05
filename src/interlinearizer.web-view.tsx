@@ -5,26 +5,24 @@ import { InterlinearXmlParser } from './parsers/interlinearXmlParser';
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
 
-/** Parser instance used to convert the bundled test XML into {@link InterlinearData}. */
-const parser = new InterlinearXmlParser();
-
 /** Result of parsing the bundled test XML: either data or an error message. */
 type ParseResult = { data: InterlinearData; error: undefined } | { data: undefined; error: string };
 
 /**
  * Main interlinearizer WebView. Parses the bundled test XML into the interlinear model and displays
  * the result as raw JSON. No PAPI commands or file loading—everything is self-contained.
+ *
+ * Parser is created inside useMemo so tests can mock {@link InterlinearXmlParser} and control
+ * behavior per test (e.g. throw on parse) without re-requiring the module.
  */
 globalThis.webViewComponent = function InterlinearizerWebView() {
   const { data: parsed, error: parseError } = useMemo((): ParseResult => {
+    const parser = new InterlinearXmlParser();
     try {
       const data = parser.parse(testXml);
       return { data, error: undefined };
     } catch (err) {
-      return {
-        data: undefined,
-        error: err instanceof Error ? err.message : String(err),
-      };
+      return { data: undefined, error: new Error(String(err)).message };
     }
   }, []);
 

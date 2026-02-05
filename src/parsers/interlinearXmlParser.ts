@@ -38,8 +38,6 @@ interface ParsedCluster {
   Range?: ParsedRange;
   /** Lexeme elements in this cluster. */
   Lexeme?: ParsedLexeme[];
-  /** When true, cluster is excluded from interlinear (FXP attribute Excluded). */
-  ['@_Excluded']?: boolean;
 }
 
 /** Punctuation: optional Range, BeforeText, AfterText. */
@@ -163,13 +161,12 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 
     const index = Number(rangeElement['@_Index']);
     const length = Number(rangeElement['@_Length']);
-    if (Number.isFinite(index) || Number.isFinite(length)) {
+    if (!Number.isFinite(index) || !Number.isFinite(length)) {
       throw new Error('Invalid XML: Range missing required Index or Length attributes');
     }
 
     const textRange: StringRange = { Index: index, Length: length };
     const lexemes = extractLexemesFromCluster(el);
-    const excluded = el['@_Excluded'] === true;
 
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
     /**
@@ -181,7 +178,6 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     return {
       TextRange: textRange,
       Lexemes: lexemes,
-      Excluded: excluded,
       LexemesId: lexemesId,
       Id: id,
     };
@@ -192,7 +188,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `interliniearizer`; no extra conversion is done. Expects the
+ * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
  * interlinear XML schema described in the project README.
  */
 export class InterlinearXmlParser {
@@ -233,8 +229,8 @@ export class InterlinearXmlParser {
    *   entries.
    * @returns Parsed interlinear data: ScrTextName, GlossLanguage, BookId, and Verses (record of
    *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
-   * @throws {Error} If the root element, required attributes (GlossLanguage, BookId), or required
-   *   structure (Verses, Cluster Range, Lexeme Id) are missing.
+   * @throws {Error} If the root element, required attributes (GlossLanguage, BookId), required
+   *   structure (Verses, Cluster Range, Lexeme Id), or duplicate verse reference is present.
    */
   parse(xml: string): InterlinearData {
     const parsed: ParsedInterlinearXml = this.parser.parse(xml);
@@ -260,6 +256,12 @@ export class InterlinearXmlParser {
     const verses = items.reduce<Record<string, VerseData>>((acc, item) => {
       const verseKey = item.string;
       if (!verseKey) return acc;
+
+      if (verseKey in acc) {
+        throw new Error(
+          `Invalid XML: Duplicate verse reference "${verseKey}". At most one VerseData per reference is allowed.`,
+        );
+      }
 
       const verseDataElement = item.VerseData;
       if (!verseDataElement) {

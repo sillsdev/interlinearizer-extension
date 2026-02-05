@@ -155,6 +155,14 @@ module.exports = {
         'import/no-self-import': 'off',
       },
     },
+    {
+      // Jest globals (describe, it, expect, etc.) so ESLint does not report no-undef
+      files: ['**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}'],
+      plugins: ['jest'],
+      env: {
+        'jest/globals': true,
+      },
+    },
   ],
   parserOptions: {
     ecmaVersion: 2022,
@@ -163,7 +171,7 @@ module.exports = {
     tsconfigRootDir: __dirname,
     createDefaultProgram: true,
   },
-  plugins: ['@typescript-eslint', 'no-type-assertion', 'no-null'],
+  plugins: ['@typescript-eslint', 'jest', 'no-type-assertion', 'no-null'],
   settings: {
     'import/resolver': {
       typescript: {

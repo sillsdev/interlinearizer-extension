@@ -3,7 +3,7 @@
  * here (and in papi-shared-types) are available to other extensions.
  *
  * Interlinear types (InterlinearData, VerseData, ClusterData, etc.) are the public API for
- * interlinear data. The XML parser in src/interlinear/interlinearXmlParser.ts consumes raw
+ * interlinear data. The XML parser in src/parsers/interlinearXmlParser.ts consumes raw
  * fast-xml-parser output internally and returns objects conforming to these types.
  */
 

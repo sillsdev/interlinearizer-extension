@@ -11,6 +11,8 @@ import type {
 // ---------------------------------------------------------------------------
 // Internal types: raw shape from fast-xml-parser with attributeNamePrefix: '@_'.
 // Public API types (InterlinearData, VerseData, etc.) live in interlinearizer.
+//
+// Style: prefer undefined and empty defaults over null in this module.
 // ---------------------------------------------------------------------------
 
 /**
@@ -124,16 +126,16 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
     .filter((el): el is ParsedPunctuation & { Range: ParsedRange } => {
       const rangeElement = el.Range;
       if (!rangeElement) return false;
-      const indexRaw = Number(rangeElement['@_Index']);
-      const lengthRaw = Number(rangeElement['@_Length']);
-      return Number.isFinite(indexRaw) && Number.isFinite(lengthRaw);
+      const index = Number(rangeElement['@_Index']);
+      const length = Number(rangeElement['@_Length']);
+      return Number.isFinite(index) && Number.isFinite(length);
     })
     .map((el) => {
       const rangeElement = el.Range;
       return {
         TextRange: {
-          Index: rangeElement['@_Index'],
-          Length: rangeElement['@_Length'],
+          Index: Number(rangeElement['@_Index']),
+          Length: Number(rangeElement['@_Length']),
         },
         BeforeText: el.BeforeText ?? '',
         AfterText: el.AfterText ?? '',

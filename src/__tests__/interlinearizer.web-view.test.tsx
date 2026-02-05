@@ -31,7 +31,13 @@ jest.mock('../parsers/interlinearXmlParser', () => {
   };
 });
 
-/** Load the web-view module; it assigns the component to globalThis.webViewComponent. */
+/**
+ * Load the web-view module; it assigns the component to globalThis.webViewComponent. This pattern
+ * is required by the Platform.Bible web-view framework: the web-view entry is built with a ?inline
+ * query and consumed by main.ts, so the component is not a normal export. Tests that need to render
+ * the component must require() the module and read globalThis. If the web-view export mechanism
+ * changes, update this test accordingly.
+ */
 require('../interlinearizer.web-view');
 
 const InterlinearizerWebView = globalThis.webViewComponent;

@@ -25,7 +25,6 @@ interface PapiBackendTestMock {
 function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
   return (
     typeof m === 'object' &&
-    m !== undefined &&
     m instanceof Object &&
     '__mockRegisterWebViewProvider' in m &&
     '__mockOpenWebView' in m &&

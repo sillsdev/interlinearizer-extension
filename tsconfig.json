@@ -56,6 +56,11 @@
     "sourceMap": true,
     // We need a baseurl for webpack's tsconfig path aliases plugin
     "baseUrl": "./",
+    /** Paths for src-rooted imports (e.g. in src/__tests__ use "parsers/..." or "main" instead of "../../parsers/..."). */
+    "paths": {
+      "main": ["src/main"],
+      "parsers/*": ["src/parsers/*"]
+    },
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noImplicitReturns": true,

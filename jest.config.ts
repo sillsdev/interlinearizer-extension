@@ -32,7 +32,7 @@ const config: Config = {
   collectCoverageFrom: [
     'src/parsers/**/*.ts',
     'src/main.ts',
-    'src/interlinearizer.web-view.tsx',
+    'src/**/*.web-view.tsx',
     '!src/parsers/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
@@ -111,21 +111,27 @@ const config: Config = {
    * for styles, images, and fonts; also covers other common asset types (e.g. mp4, wav).
    */
   moduleNameMapper: {
-    '\\.(sa|sc|c)ss$': '<rootDir>/__mocks__/styleMock.js',
+    /**
+     * Resolve src-rooted imports so tests can use e.g. "parsers/..." or "main" instead of relative
+     * paths.
+     */
+    '^main$': '<rootDir>/src/main',
+    '^parsers/(.*)$': '<rootDir>/src/parsers/$1',
+    '\\.(sa|sc|c)ss$': '<rootDir>/__mocks__/styleMock.ts',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
-      '<rootDir>/__mocks__/fileMock.js',
+      '<rootDir>/__mocks__/fileMock.ts',
     /** Mock Platform API for unit tests; main.ts imports papi and logger. */
-    '^@papi/backend$': '<rootDir>/__mocks__/papi-backend.js',
+    '^@papi/backend$': '<rootDir>/__mocks__/papi-backend.ts',
     /** Mock Platform core types; main.ts imports types only (erased at runtime). */
-    '^@papi/core$': '<rootDir>/__mocks__/papi-core.js',
+    '^@papi/core$': '<rootDir>/__mocks__/papi-core.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
-    '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.js',
+    '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
     /** Resolve webpack ?inline imports: web-view component for main.ts. */
-    '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.js',
+    '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */
-    '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.js',
+    '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
     /** Resolve webpack ?raw import for test XML in web-view. */
-    '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.js',
+    '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
   },
 
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */

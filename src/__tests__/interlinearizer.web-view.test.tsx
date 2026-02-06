@@ -1,30 +1,16 @@
-/**
- * Unit tests for the interlinearizer WebView component (interlinearizer.web-view.tsx).
- *
- * Covers:
- *
- * - Success path: rendering with valid parsed data (heading, JSON output, structure).
- * - Error path (parse throws): displays error when parser throws Error.
- * - Error path (parse throws non-Error): displays error via String(err) when parser throws a
- *   non-Error (e.g. string). The catch uses `new Error(String(err)).message` for both; the
- *   non-Error case verifies String() handles primitives correctly.
- *
- * Parser is mocked at top level and defaults to the real implementation; the parse-error test uses
- * mockImplementationOnce so the component (which creates the parser in useMemo) gets a throwing
- * instance. No isolateModules or require() needed.
- */
+/** Unit tests for interlinearizer.web-view.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
-import { InterlinearXmlParser } from '../parsers/interlinearXmlParser';
+import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
 
 /** Mock parser so we can override constructor behavior per test (e.g. parse-error test). */
-jest.mock('../parsers/interlinearXmlParser', () => {
-  const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
-    '../parsers/interlinearXmlParser',
+jest.mock('parsers/interlinearXmlParser', () => {
+  const actual = jest.requireActual<typeof import('parsers/interlinearXmlParser')>(
+    'parsers/interlinearXmlParser',
   );
   return {
     InterlinearXmlParser: jest.fn().mockImplementation(() => new actual.InterlinearXmlParser()),

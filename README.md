@@ -109,7 +109,7 @@ The general file structure for an extension is as follows:
 - `public/` contains other static files that are copied into the build folder
 - `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests
 - `.github/` contains files to facilitate integration with GitHub
-  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo
+  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)
 - `dist/` is a generated folder containing the built extension files
 - `release/` is a generated folder containing a zip of the built extension files

@@ -13,6 +13,17 @@ import type {
 // Public API types (InterlinearData, VerseData, etc.) live in interlinearizer.
 //
 // Style: prefer undefined and empty defaults over null in this module.
+//
+// ID format (see SLASH.md): This parser reads stored Interlinear_*_*.xml where
+// ClusterData.Id and ClusterData.LexemesId are not serialized—they are computed
+// from Cluster's Range and Lexeme children. Lexeme IDs come from each Lexeme's
+// Id attribute (no composite-ID splitting). Lexeme IDs are not sanitized for "/"
+// (e.g. LexicalForm can contain "/"), so LexemesId is the join of lexeme IDs with
+// "/" and may itself contain slashes. Consumers must not split LexemesId on "/"
+// to recover lexeme IDs; use the Lexemes array (or XML Lexeme elements) instead.
+// Cluster Id format: LexemesId/Index-Length, or Index-Length when no lexemes.
+// When parsing a composite Cluster Id string from elsewhere (e.g. export), parse
+// from the right: the last "/" separates Index-Length from LexemesId.
 // ---------------------------------------------------------------------------
 
 /**
@@ -146,10 +157,13 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
 /**
  * Maps a parsed VerseData's Cluster array to {@link ClusterData} array.
  *
+ * LexemesId is built by joining each Lexeme's Id with "/". Lexeme IDs are not sanitized for "/"
+ * (see SLASH.md), so LexemesId may contain slashes; callers must not split LexemesId on "/" to
+ * recover lexeme IDs—use the Lexemes array instead.
+ *
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
  * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
- *   Excluded from attribute, LexemesId (slash-joined LexemeIds), Id (LexemesId/Index-Length, or
- *   Index-Length when the cluster has no lexemes so Id never starts with a slash).
+ *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
  * @throws {Error} If a Cluster is missing its Range element or Range is missing Index or Length.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
@@ -170,11 +184,9 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const textRange: StringRange = { Index: index, Length: length };
     const lexemes = extractLexemesFromCluster(el);
 
+    // Join with "/"; lexeme IDs may contain "/", so do not split LexemesId elsewhere.
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
-    /**
-     * Id format: "LexemesId/Index-Length", or "Index-Length" when cluster has no lexemes (avoids
-     * leading slash).
-     */
+    /** Id: "LexemesId/Index-Length", or "Index-Length" when no lexemes (avoids leading slash). */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
 
     return {

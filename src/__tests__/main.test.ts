@@ -1,14 +1,9 @@
-/**
- * Unit tests for the extension entry point (main.ts).
- *
- * Covers activate (provider registration, WebView open, error handling), deactivate, and the
- * WebView provider's getWebView (type match returns definition, type mismatch throws).
- */
+/** Unit tests for the extension entry point (main.ts). */
 /// <reference types="jest" />
 
 import type { IWebViewProvider, SavedWebViewDefinition } from '@papi/core';
 import papiBackendMock from '@papi/backend';
-import { activate, deactivate } from '../main';
+import { activate, deactivate } from 'main';
 import { createTestActivationContext } from './test-helpers';
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */

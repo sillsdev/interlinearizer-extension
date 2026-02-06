@@ -1,18 +1,10 @@
-/**
- * Unit tests for {@link InterlinearXmlParser}.
- *
- * Covers valid interlinear XML parsing, optional/required attributes, cluster/lexeme/punctuation
- * extraction, Id and LexemesId formatting, defensive branches (Punctuation BeforeText/AfterText
- * defaults, VerseData.Cluster ?? [], Verses.item ?? []), and all documented parse errors (missing
- * root, GlossLanguage/BookId, Verses, Cluster Range, Range Index/Length, Lexeme Id). Maintains 100%
- * statement, branch, function, and line coverage for the parser.
- */
+/** Unit tests for {@link InterlinearXmlParser}. */
 /// <reference types="jest" />
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { InterlinearXmlParser } from '../../parsers/interlinearXmlParser';
+import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
 
 describe('InterlinearXmlParser', () => {
   let parser: InterlinearXmlParser;
@@ -109,6 +101,58 @@ describe('InterlinearXmlParser', () => {
       ]);
       expect(cluster.LexemesId).toBe('Stem:hello/Suffix:ing');
       expect(cluster.Id).toBe('Stem:hello/Suffix:ing/5-5');
+    });
+
+    it('parses lexeme Id containing slash: LexemesId and Id preserve the slash (slash-safe)', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="12" />
+                  <Lexeme Id="Word:hello/world" GlossId="g1" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      const cluster = result.Verses['MAT 1:1'].Clusters[0];
+      expect(cluster.Lexemes).toEqual([{ LexemeId: 'Word:hello/world', SenseId: 'g1' }]);
+      expect(cluster.LexemesId).toBe('Word:hello/world');
+      expect(cluster.Id).toBe('Word:hello/world/0-12');
+    });
+
+    it('parses multiple lexemes when one Id contains slash: join produces unambiguous LexemesId', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="5" Length="11" />
+                  <Lexeme Id="Stem:foo/bar" GlossId="g1" />
+                  <Lexeme Id="Suffix:ing" GlossId="g2" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      const cluster = result.Verses['MAT 1:1'].Clusters[0];
+      expect(cluster.Lexemes).toEqual([
+        { LexemeId: 'Stem:foo/bar', SenseId: 'g1' },
+        { LexemeId: 'Suffix:ing', SenseId: 'g2' },
+      ]);
+      expect(cluster.LexemesId).toBe('Stem:foo/bar/Suffix:ing');
+      expect(cluster.Id).toBe('Stem:foo/bar/Suffix:ing/5-11');
     });
 
     it('parses cluster with no lexemes: Id is Index-Length only (no leading slash)', () => {

@@ -48,11 +48,11 @@ class UnsubscriberAsyncList {
    * Runs all registered unsubscribers (awaiting any promises) and clears the set.
    * @returns true if every unsubscriber returned a truthy value.
    */
-  async runAllUnsubscribers(): Promise<boolean> {
+    async runAllUnsubscribers(): Promise<boolean> {
     const unsubs = [...this.unsubscribers].map((fn) => fn());
     const results = await Promise.all(unsubs);
     this.unsubscribers.clear();
-    return results.every(Boolean);
+    return results.every((r) => r !== false);
   }
 }
 

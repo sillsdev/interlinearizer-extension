@@ -1,5 +1,7 @@
 // #region shared with https://github.com/paranext/paranext-multi-extension-template/blob/main/.eslintrc.cjs
 
+const path = require('path');
+
 module.exports = {
   extends: [
     // https://github.com/electron-react-boilerplate/eslint-config-erb/blob/main/index.js
@@ -176,7 +178,8 @@ module.exports = {
     'import/resolver': {
       typescript: {
         alwaysTryTypes: true,
-        project: './tsconfig.json',
+        // Absolute path so path aliases (@main, parsers/*) resolve regardless of CWD or file location
+        project: path.join(__dirname, 'tsconfig.json'),
       },
     },
     'import/parsers': {

@@ -270,6 +270,57 @@ describe('InterlinearXmlParser', () => {
       });
     });
 
+    it('omits Punctuation entries when Range Index or Length is not finite (missing or non-numeric)', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="1" />
+                  <Lexeme Id="x" />
+                </Cluster>
+                <Punctuation>
+                  <Range Index="5" Length="1" />
+                  <BeforeText>valid</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Length="2" />
+                  <BeforeText>no Index</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Index="10" />
+                  <BeforeText>no Length</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Index="x" Length="1" />
+                  <BeforeText>non-numeric Index</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Index="0" Length="y" />
+                  <BeforeText>non-numeric Length</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
+      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
+        TextRange: { Index: 5, Length: 1 },
+        BeforeText: 'valid',
+        AfterText: '',
+      });
+    });
+
     it('parses Punctuation with valid Range but missing BeforeText/AfterText as empty strings', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">

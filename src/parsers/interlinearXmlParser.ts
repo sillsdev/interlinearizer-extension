@@ -133,25 +133,20 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): PunctuationData[] {
   const elements = verseDataElement.Punctuation ?? [];
 
-  return elements
-    .filter((el): el is ParsedPunctuation & { Range: ParsedRange } => {
-      const rangeElement = el.Range;
-      if (!rangeElement) return false;
-      const index = Number(rangeElement['@_Index']);
-      const length = Number(rangeElement['@_Length']);
-      return Number.isFinite(index) && Number.isFinite(length);
-    })
-    .map((el) => {
-      const rangeElement = el.Range;
-      return {
-        TextRange: {
-          Index: Number(rangeElement['@_Index']),
-          Length: Number(rangeElement['@_Length']),
-        },
+  return elements.flatMap((el) => {
+    const rangeElement = el.Range;
+    if (!rangeElement) return [];
+    const index = Number(rangeElement['@_Index']);
+    const length = Number(rangeElement['@_Length']);
+    if (!Number.isFinite(index) || !Number.isFinite(length)) return [];
+    return [
+      {
+        TextRange: { Index: index, Length: length },
         BeforeText: el.BeforeText ?? '',
         AfterText: el.AfterText ?? '',
-      };
-    });
+      },
+    ];
+  });
 }
 
 /**
@@ -222,14 +217,12 @@ export class InterlinearXmlParser {
       parseTagValue: false,
       parseAttributeValue: true,
       isArray: (_tagName, jPath) => {
-        const arrayPaths = [
+        return [
           'InterlinearData.Verses.item',
-          'item',
-          'Cluster',
-          'Punctuation',
-          'Lexeme',
-        ];
-        return arrayPaths.some((path) => jPath.endsWith(path));
+          'InterlinearData.Verses.item.VerseData.Cluster',
+          'InterlinearData.Verses.item.VerseData.Punctuation',
+          'InterlinearData.Verses.item.VerseData.Cluster.Lexeme',
+        ].includes(jPath);
       },
     };
     this.parser = new XMLParser(options);

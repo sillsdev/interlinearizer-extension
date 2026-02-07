@@ -112,10 +112,10 @@ const config: Config = {
    */
   moduleNameMapper: {
     /**
-     * Resolve src-rooted imports so tests can use e.g. "parsers/..." or "main" instead of relative
-     * paths.
+     * Resolve src-rooted path aliases so tests can use e.g. "@main" or "parsers/..." instead of
+     * relative paths. Must match tsconfig.json "paths" and webpack resolve.alias.
      */
-    '^main$': '<rootDir>/src/main',
+    '^@main$': '<rootDir>/src/main',
     '^parsers/(.*)$': '<rootDir>/src/parsers/$1',
     '\\.(sa|sc|c)ss$': '<rootDir>/__mocks__/styleMock.ts',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':

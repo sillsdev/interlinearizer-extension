@@ -12,8 +12,7 @@ type ParseResult = { data: InterlinearData; error: undefined } | { data: undefin
  * Main interlinearizer WebView. Parses the bundled test XML into the interlinear model and displays
  * the result as raw JSON. No PAPI commands or file loading—everything is self-contained.
  *
- * Parser is created inside useMemo so tests can mock {@link InterlinearXmlParser} and control
- * behavior per test (e.g. throw on parse) without re-requiring the module.
+ * Parser is created inside useMemo so parsing runs once per mount.
  */
 globalThis.webViewComponent = function InterlinearizerWebView() {
   const { data: parsed, error: parseError } = useMemo((): ParseResult => {

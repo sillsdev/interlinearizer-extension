@@ -39,32 +39,6 @@ function isIWebViewProvider(x: unknown): x is IWebViewProvider {
   return typeof x.getWebView === 'function';
 }
 
-jest.mock('@papi/backend', () => {
-  const mockRegisterWebViewProvider = jest.fn().mockResolvedValue({ dispose: jest.fn() });
-  const mockOpenWebView = jest.fn().mockResolvedValue(undefined);
-  const mockLogger = {
-    debug: jest.fn(),
-    error: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-  };
-  const papi = {
-    webViewProviders: { registerWebViewProvider: mockRegisterWebViewProvider },
-    webViews: { openWebView: mockOpenWebView },
-  };
-  const mockExport = {
-    ...papi,
-    __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
-    __mockOpenWebView: mockOpenWebView,
-    __mockLogger: mockLogger,
-  };
-  return {
-    __esModule: true,
-    default: mockExport,
-    logger: mockLogger,
-  };
-});
-
 if (!isPapiBackendTestMock(papiBackendMock)) throw new Error('Expected mocked @papi/backend');
 const { __mockRegisterWebViewProvider, __mockOpenWebView, __mockLogger } = papiBackendMock;
 

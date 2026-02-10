@@ -7,7 +7,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
 
-/** Mock parser so we can override constructor behavior per test (e.g. parse-error test). */
+/** Mock parser to allow overriding constructor behavior per test. */
 jest.mock('parsers/interlinearXmlParser', () => {
   const actual = jest.requireActual<typeof import('parsers/interlinearXmlParser')>(
     'parsers/interlinearXmlParser',
@@ -18,11 +18,11 @@ jest.mock('parsers/interlinearXmlParser', () => {
 });
 
 /**
- * Load the web-view module; it assigns the component to globalThis.webViewComponent. This pattern
- * is required by the Platform.Bible web-view framework: the web-view entry is built with a ?inline
- * query and consumed by main.ts, so the component is not a normal export. Tests that need to render
- * the component must require() the module and read globalThis. If the web-view export mechanism
- * changes, update this test accordingly.
+ * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
+ * required by the Platform.Bible WebView framework: the WebView entry is built with a ?inline query
+ * and consumed by main.ts, so the component is not a normal export. Tests that need to render the
+ * component must require() the module and read globalThis. If the WebView export mechanism changes,
+ * update this test accordingly.
  */
 require('../interlinearizer.web-view');
 
@@ -100,7 +100,7 @@ describe('InterlinearizerWebView', () => {
 
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    expect(screen.getByRole('heading', { name: /parse error/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
     expect(screen.getByText(/invalid xml structure/i)).toBeInTheDocument();
   });
 });

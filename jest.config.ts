@@ -120,13 +120,17 @@ const config: Config = {
     '\\.(sa|sc|c)ss$': '<rootDir>/__mocks__/styleMock.ts',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/__mocks__/fileMock.ts',
-    /** Mock Platform API for unit tests; main.ts imports papi and logger. */
+    /** Mock Platform API for unit tests. */
     '^@papi/backend$': '<rootDir>/__mocks__/papi-backend.ts',
-    /** Mock Platform core types; main.ts imports types only (erased at runtime). */
+    /** Mock Platform core types. */
     '^@papi/core$': '<rootDir>/__mocks__/papi-core.ts',
+    /** Mock renderer/WebView API for frontend unit tests. */
+    '^@papi/frontend$': '<rootDir>/__mocks__/papi-frontend.ts',
+    /** Mock PAPI React hooks for WebView component tests. */
+    '^@papi/frontend/react$': '<rootDir>/__mocks__/papi-frontend-react.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
-    /** Resolve webpack ?inline imports: web-view component for main.ts. */
+    /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',

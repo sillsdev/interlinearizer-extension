@@ -90,7 +90,7 @@ Note: if you [update this extension from the template](#to-update-this-extension
 
 The general file structure for an extension is as follows:
 
-- `package.json` (and `package-lock.json`) contain information about this extension's npm package and lockfile. They are required for Platform.Bible to use the extension properly. The built extension is copied into the build folder
+- `package.json` (and `package-lock.json`) contain information about this extension's npm package and lockfile. They are required for Platform.Bible to use the extension properly. The lockfile is project-specific and is not synced from the template. The built extension is copied into the build folder
 - `manifest.json` is the manifest file that defines the extension and important properties for Platform.Bible. It is copied into the build folder
 - `src/` contains the source code for the extension
   - `src/main.ts` is the main entry file for the extension (registers commands and wires interlinear XML)
@@ -99,8 +99,8 @@ The general file structure for an extension is as follows:
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
   - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)
-  - `src/__tests__/` contains unit tests (Jest) for the extension, including parser tests (valid/invalid XML, Punctuation with missing or non-finite Range Index/Length, etc.) and web-view tests
-- `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The single `@papi/backend` mock is `__mocks__/papi-backend.js` (Jest's `moduleNameMapper` in `jest.config.ts` points `@papi/backend` here)
+  - `src/__tests__/` contains unit tests (Jest) for the extension, including parser tests (valid and invalid XML, edge cases) and web-view tests
+- `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The `@papi/backend` and `@papi/frontend` mocks are used mutually exclusively (backend for main.ts tests, frontend for WebView tests); each mock file ends with `export {}` so TypeScript treats it as a module.
 - `assets/` contains asset files the extension and its WebViews can retrieve using the `papi-extension:` protocol, as well as textual descriptions in various languages. It is copied into the build folder
   - `assets/displayData.json` contains (optionally) a path to the extension's icon file as well as text for the extension's display name, short summary, and path to the full description file
   - `assets/descriptions/` contains textual descriptions of the extension in various languages

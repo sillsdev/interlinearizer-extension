@@ -152,10 +152,6 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
 /**
  * Maps a parsed VerseData's Cluster array to {@link ClusterData} array.
  *
- * LexemesId is built by joining each Lexeme's Id with "/". Lexeme IDs are not sanitized for "/"
- * (see SLASH.md), so LexemesId may contain slashes; callers must not split LexemesId on "/" to
- * recover lexeme IDs—use the Lexemes array instead.
- *
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
  * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
  *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
@@ -181,7 +177,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 
     // Join with "/"; lexeme IDs may contain "/", so do not split LexemesId elsewhere.
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
-    /** Id: "LexemesId/Index-Length", or "Index-Length" when no lexemes (avoids leading slash). */
+    /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
 
     return {

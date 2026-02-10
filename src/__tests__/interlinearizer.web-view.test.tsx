@@ -87,7 +87,7 @@ describe('InterlinearizerWebView', () => {
     expect(screen.queryByText(/^parse error$/i)).not.toBeInTheDocument();
   });
 
-  it('displays parse error when parser throws', () => {
+  it('displays parse error when parser throws an Error (uses err.message)', () => {
     const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
       '../parsers/interlinearXmlParser',
     );
@@ -102,5 +102,24 @@ describe('InterlinearizerWebView', () => {
 
     expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
     expect(screen.getByText(/invalid xml structure/i)).toBeInTheDocument();
+  });
+
+  it('displays parse error when parser throws non-Error (uses String(err))', () => {
+    const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
+      '../parsers/interlinearXmlParser',
+    );
+    const realInstance = new actual.InterlinearXmlParser();
+    const throwingParse = (): never => {
+      // Intentionally throw a non-Error to test the String(err) branch in the catch block.
+      // eslint-disable-next-line no-throw-literal -- testing non-Error handling
+      throw 'plain string error';
+    };
+    Object.defineProperty(realInstance, 'parse', { value: throwingParse, writable: true });
+    jest.mocked(InterlinearXmlParser).mockImplementationOnce(() => realInstance);
+
+    render(<InterlinearizerWebView {...testWebViewProps} />);
+
+    expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
+    expect(screen.getByText('plain string error')).toBeInTheDocument();
   });
 });

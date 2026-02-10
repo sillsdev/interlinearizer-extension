@@ -11,13 +11,6 @@
  * that use them do not throw; tests can override with mockReturnValue or mockImplementation.
  */
 
-/** Default triple for [value, setValue, isLoading] returned by data hooks. */
-const defaultDataHookReturn: [undefined, ReturnType<typeof jest.fn>, boolean] = [
-  undefined,
-  jest.fn(),
-  false,
-];
-
 /**
  * useData('providerName') returns an object whose keys are data type names and values are hooks.
  * Mock: any property returns a function that returns [undefined, setter, false].
@@ -27,7 +20,7 @@ const createUseDataLikeHook = () =>
     new Proxy(
       {},
       {
-        get: () => () => defaultDataHookReturn,
+        get: () => () => [undefined, jest.fn(), false],
       },
     ),
   );

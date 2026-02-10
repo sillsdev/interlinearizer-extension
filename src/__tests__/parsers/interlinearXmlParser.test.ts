@@ -127,7 +127,7 @@ describe('InterlinearXmlParser', () => {
       expect(cluster.Id).toBe('Word:hello/world/0-12');
     });
 
-    it('parses multiple lexemes when one Id contains slash: join produces unambiguous LexemesId', () => {
+    it('preserves slash when joining Lexeme Ids (multiple lexemes, one Id contains slash)', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>

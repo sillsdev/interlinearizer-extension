@@ -21,7 +21,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
       const data = parser.parse(testXml);
       return { data, error: undefined };
     } catch (err) {
-      return { data: undefined, error: new Error(String(err)).message };
+      return { data: undefined, error: err instanceof Error ? err.message : String(err) };
     }
   }, []);
 

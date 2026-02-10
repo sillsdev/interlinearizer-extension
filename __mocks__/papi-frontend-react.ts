@@ -1,14 +1,6 @@
 /**
- * Jest mock for @papi/frontend/react. Provides stub implementations of all PAPI React hooks so
+ * Jest mock for @papi/frontend/react. Provides stub implementations of various PAPI React hooks so
  * WebView/frontend components can be unit-tested without the real Platform API.
- *
- * Jest's moduleNameMapper in jest.config.ts maps '^@papi/frontend/react$' to this file.
- *
- * Exports match the real module (renderer/hooks/papi-hooks/index): useDataProvider, useData,
- * useScrollGroupScrRef, useSetting, useProjectData, useProjectDataProvider, useProjectSetting,
- * useDialogCallback, useDataProviderMulti, useLocalizedStrings, useWebViewController,
- * useRecentScriptureRefs. Each hook is a jest.fn() with a sensible default return so components
- * that use them do not throw; tests can override with mockReturnValue or mockImplementation.
  */
 
 /**

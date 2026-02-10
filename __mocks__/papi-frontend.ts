@@ -2,13 +2,6 @@
  * Jest mock for @papi/frontend. Provides papi, logger, network, projectDataProviders, and other
  * renderer API stubs so WebView/frontend code can be unit-tested without loading the real
  * Platform API.
- *
- * This is the single mock for @papi/frontend. Jest's moduleNameMapper in jest.config.ts maps
- * '^@papi/frontend$' to this file.
- *
- * Extensions typically use: `import papi, { logger, network } from '@papi/frontend'` and
- * `import { projectDataProviders } from '@papi/frontend'`. The default export is the papi object;
- * named exports match the real module for tests that import them directly.
  */
 
 const mockLogger = {

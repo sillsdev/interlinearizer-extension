@@ -1,5 +1,5 @@
 /**
- * Jest mock for stylesheet imports (CSS, SCSS, SASS). Used so that `import './foo.scss'` and
+ * @file Jest mock for stylesheet imports (CSS, SCSS, SASS). Used so that `import './foo.scss'` and
  * similar do not run real style loaders in tests. Mirrors webpack's handling of .(sa|sc|c)ss in
  * webpack.config.base (we mock instead of compile).
  *

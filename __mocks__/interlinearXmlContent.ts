@@ -1,5 +1,5 @@
 /**
- * Jest mock for webpack ?raw XML import. Exports the contents of test-data/Interlinear_en_MAT.xml
+ * @file Jest mock for webpack ?raw XML import. Exports the contents of test-data/Interlinear_en_MAT.xml
  * so interlinearizer.web-view.tsx can parse it in unit tests without webpack.
  */
 import fs from 'fs';

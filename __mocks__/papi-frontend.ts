@@ -1,5 +1,5 @@
 /**
- * Jest mock for @papi/frontend. Provides papi, logger, network, projectDataProviders, and other
+ * @file Jest mock for @papi/frontend. Provides papi, logger, network, projectDataProviders, and other
  * renderer API stubs so WebView/frontend code can be unit-tested without loading the real
  * Platform API.
  */

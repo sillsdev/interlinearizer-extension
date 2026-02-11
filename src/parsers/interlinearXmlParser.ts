@@ -8,24 +8,6 @@ import type {
   VerseData,
 } from 'interlinearizer';
 
-// ---------------------------------------------------------------------------
-// Internal types: raw shape from fast-xml-parser with attributeNamePrefix: '@_'.
-// Public API types (InterlinearData, VerseData, etc.) live in interlinearizer.
-//
-// Style: prefer undefined and empty defaults over null in this module.
-//
-// ID format (see SLASH.md): This parser reads stored Interlinear_*_*.xml where
-// ClusterData.Id and ClusterData.LexemesId are not serialized—they are computed
-// from Cluster's Range and Lexeme children. Lexeme IDs come from each Lexeme's
-// Id attribute (no composite-ID splitting). Lexeme IDs are not sanitized for "/"
-// (e.g. LexicalForm can contain "/"), so LexemesId is the join of lexeme IDs with
-// "/" and may itself contain slashes. Consumers must not split LexemesId on "/"
-// to recover lexeme IDs; use the Lexemes array (or XML Lexeme elements) instead.
-// Cluster Id format: LexemesId/Index-Length, or Index-Length when no lexemes.
-// When parsing a composite Cluster Id string from elsewhere (e.g. export), parse
-// from the right: the last "/" separates Index-Length from LexemesId.
-// ---------------------------------------------------------------------------
-
 /**
  * Range: Index and Length attributes from fast-xml-parser. We set parseAttributeValue: true so
  * numeric attributes (Index, Length) are parsed as numbers; no manual Number() at use sites.

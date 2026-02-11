@@ -1,5 +1,5 @@
 /**
- * Jest mock for platform-bible-utils. Exposes only UnsubscriberAsyncList so test-helpers can build
+ * @file Jest mock for platform-bible-utils. Exposes only UnsubscriberAsyncList so test-helpers can build
  * ExecutionActivationContext without loading the real package (which pulls in ESM deps).
  */
 

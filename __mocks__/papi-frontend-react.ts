@@ -1,5 +1,5 @@
 /**
- * Jest mock for @papi/frontend/react. Provides stub implementations of various PAPI React hooks so
+ * @file Jest mock for @papi/frontend/react. Provides stub implementations of various PAPI React hooks so
  * WebView/frontend components can be unit-tested without the real Platform API.
  */
 

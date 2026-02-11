@@ -1,4 +1,4 @@
-/** Unit tests for {@link InterlinearXmlParser}. */
+/** @file Unit tests for {@link InterlinearXmlParser}. */
 /// <reference types="jest" />
 
 import * as fs from 'fs';
@@ -284,27 +284,22 @@ describe('InterlinearXmlParser', () => {
                 <Punctuation>
                   <Range Index="5" Length="1" />
                   <BeforeText>valid</BeforeText>
-                  <AfterText></AfterText>
                 </Punctuation>
                 <Punctuation>
                   <Range Length="2" />
                   <BeforeText>no Index</BeforeText>
-                  <AfterText></AfterText>
                 </Punctuation>
                 <Punctuation>
                   <Range Index="10" />
                   <BeforeText>no Length</BeforeText>
-                  <AfterText></AfterText>
                 </Punctuation>
                 <Punctuation>
                   <Range Index="x" Length="1" />
                   <BeforeText>non-numeric Index</BeforeText>
-                  <AfterText></AfterText>
                 </Punctuation>
                 <Punctuation>
                   <Range Index="0" Length="y" />
                   <BeforeText>non-numeric Length</BeforeText>
-                  <AfterText></AfterText>
                 </Punctuation>
               </VerseData>
             </item>

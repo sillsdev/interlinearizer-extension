@@ -1,6 +1,6 @@
 /**
- * Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- * ExecutionActivationContext that satisfies @papi/core types.
+ * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
+ *   ExecutionActivationContext that satisfies @papi/core types.
  */
 import type { ExecutionActivationContext } from '@papi/core';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';

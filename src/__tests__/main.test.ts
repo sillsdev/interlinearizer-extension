@@ -1,4 +1,4 @@
-/** Unit tests for the extension entry point (main.ts). */
+/** @file Unit tests for the extension entry point (main.ts). */
 /// <reference types="jest" />
 
 import type { IWebViewProvider, SavedWebViewDefinition } from '@papi/core';

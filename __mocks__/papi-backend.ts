@@ -1,5 +1,5 @@
 /**
- * Jest mock for @papi/backend. Provides papi and logger so main.ts can be unit-tested without
+ * @file Jest mock for @papi/backend. Provides papi and logger so main.ts can be unit-tested without
  * loading the real Platform API.
  */
 

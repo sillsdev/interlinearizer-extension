@@ -34,6 +34,8 @@ declare module 'interlinearizer' {
     LexemesId: string;
     /** Unique cluster id: LexemesId plus TextRange (e.g. "Word:a/Word:b/21-3"). */
     Id: string;
+    /** Excluded flag. See README for details. */
+    Excluded: boolean;
   }
 
   /** Data on punctuation change. */

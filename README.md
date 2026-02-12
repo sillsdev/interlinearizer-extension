@@ -150,6 +150,7 @@ The extension reads interlinear data from XML files (e.g. `Interlinear_<lang>_<b
       - **Attributes:**
         - `Id` (required): Lexeme id (e.g. from a Lexicon).
         - `GlossId` (optional): Sense/gloss id; omitted or empty is treated as empty string.
+    - **`Excluded`** (optional): Boolean flag indicating this instance of a phrase should be excluded from the interlinear display at this specific location. This is a very niche property that is included because it's possible to be present in the XML, even though it's rarely used. When `true`, the phrase is not displayed at this location but remains available elsewhere. The exclusion is location-specific (applies to this instance at this text range, not globally). Omitted or `false` means the phrase is included.
 
 - **Punctuation**
   - **Children:**
@@ -163,7 +164,7 @@ The parser produces objects conforming to the types in `src/types/interlinearize
 
 - **InterlinearData:** `ScrTextName`, `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
 - **VerseData:** `Hash`, `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
-- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes).
+- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
 - **PunctuationData:** `TextRange`, `BeforeText`, `AfterText`.
 
 ### Example (minimal valid document)

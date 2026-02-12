@@ -33,6 +33,8 @@ interface ParsedCluster {
   Range?: ParsedRange;
   /** Lexeme elements in this cluster. */
   Lexeme?: ParsedLexeme[];
+  /** Excluded flag (optional). See README for details. */
+  Excluded?: string;
 }
 
 /** Punctuation: optional Range, BeforeText, AfterText. */
@@ -161,12 +163,14 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
     /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
+    const excluded = el.Excluded === 'true' || false;
 
     return {
       TextRange: textRange,
       Lexemes: lexemes,
       LexemesId: lexemesId,
       Id: id,
+      Excluded: excluded,
     };
   });
 }

@@ -313,12 +313,12 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      // Parser uses trimValues: true, so tag text is trimmed.
+      // Parser uses trimValues: false, so tag text is not trimmed.
       expect(result.Verses['MAT 1:1'].Punctuations).toEqual([
         {
           TextRange: { Index: 34, Length: 2 },
-          BeforeText: '?',
-          AfterText: '?',
+          BeforeText: '? ',
+          AfterText: '? ',
         },
       ]);
     });

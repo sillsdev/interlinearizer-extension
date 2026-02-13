@@ -30,7 +30,7 @@ interface ParsedCluster {
   Range?: ParsedRange;
   /** Lexeme elements in this cluster. */
   Lexeme?: ParsedLexeme[];
-  /** Excluded flag (optional). See README for details. */
+  /** Excluded flag (optional). See [pt9-xml.md](pt9-xml.md) for details. */
   Excluded?: string;
 }
 
@@ -199,7 +199,7 @@ export class InterlinearXmlParser {
       attributeNamePrefix: '@_',
       ignoreDeclaration: true,
       ignorePiTags: true,
-      trimValues: true,
+      trimValues: false,
       parseTagValue: false,
       parseAttributeValue: false,
       isArray: (_tagName, jPath) => arrayPaths.has(jPath),

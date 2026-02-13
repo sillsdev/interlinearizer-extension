@@ -187,6 +187,13 @@ export class InterlinearXmlParser {
    * Verses items, Cluster, Punctuation, and Lexeme.
    */
   constructor() {
+    const arrayPaths = new Set([
+      'InterlinearData.Verses.item',
+      'InterlinearData.Verses.item.VerseData.Cluster',
+      'InterlinearData.Verses.item.VerseData.Punctuation',
+      'InterlinearData.Verses.item.VerseData.Cluster.Lexeme',
+    ]);
+
     const options: Partial<X2jOptions> = {
       ignoreAttributes: false,
       attributeNamePrefix: '@_',
@@ -195,14 +202,7 @@ export class InterlinearXmlParser {
       trimValues: true,
       parseTagValue: false,
       parseAttributeValue: false,
-      isArray: (_tagName, jPath) => {
-        return [
-          'InterlinearData.Verses.item',
-          'InterlinearData.Verses.item.VerseData.Cluster',
-          'InterlinearData.Verses.item.VerseData.Punctuation',
-          'InterlinearData.Verses.item.VerseData.Cluster.Lexeme',
-        ].includes(jPath);
-      },
+      isArray: (_tagName, jPath) => arrayPaths.has(jPath),
     };
     this.parser = new XMLParser(options);
   }

@@ -8,15 +8,12 @@ import type {
   VerseData,
 } from 'interlinearizer';
 
-/**
- * Range: Index and Length attributes from fast-xml-parser. We set parseAttributeValue: true so
- * numeric attributes (Index, Length) are parsed as numbers; no manual Number() at use sites.
- */
+/** Range: Index and Length attributes. */
 interface ParsedRange {
   /** Start index in source text (FXP attribute Index). */
-  ['@_Index']: number;
+  ['@_Index']: string;
   /** Length of range (FXP attribute Length). */
-  ['@_Length']: number;
+  ['@_Length']: string;
 }
 
 /** Lexeme: Id (required), optional GlossId. */
@@ -186,8 +183,8 @@ export class InterlinearXmlParser {
   private readonly parser: XMLParser;
 
   /**
-   * Creates a parser configured for interlinear XML: attribute prefix `@_`, numeric attributes
-   * parsed as numbers, and array paths for Verses items, Cluster, Punctuation, and Lexeme.
+   * Creates a parser configured for interlinear XML: attribute prefix `@_`, and array paths for
+   * Verses items, Cluster, Punctuation, and Lexeme.
    */
   constructor() {
     const options: Partial<X2jOptions> = {
@@ -197,7 +194,7 @@ export class InterlinearXmlParser {
       ignorePiTags: true,
       trimValues: true,
       parseTagValue: false,
-      parseAttributeValue: true,
+      parseAttributeValue: false,
       isArray: (_tagName, jPath) => {
         return [
           'InterlinearData.Verses.item',

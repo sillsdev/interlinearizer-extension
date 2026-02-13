@@ -76,6 +76,28 @@ describe('InterlinearXmlParser', () => {
       expect(result.Verses['RUT 3:1'].Hash).toBe('ABC123');
     });
 
+    it('parses purely numeric verse Hash', () => {
+      const xml = `
+        <InterlinearData ScrTextName="MyProject" GlossLanguage="en" BookId="RUT">
+          <Verses>
+            <item>
+              <string>RUT 3:1</string>
+              <VerseData Hash="123456">
+                <Cluster>
+                  <Range Index="1" Length="2" />
+                  <Lexeme Id="x" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.ScrTextName).toBe('MyProject');
+      expect(result.Verses['RUT 3:1'].Hash).toBe('123456');
+    });
+
     it('parses cluster with multiple lexemes and builds LexemesId and Id correctly', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">

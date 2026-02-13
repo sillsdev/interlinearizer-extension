@@ -197,7 +197,7 @@ export class InterlinearXmlParser {
       ignorePiTags: true,
       trimValues: true,
       parseTagValue: false,
-      parseAttributeValue: true,
+      parseAttributeValue: false,
       isArray: (_tagName, jPath) => {
         return [
           'InterlinearData.Verses.item',

@@ -177,7 +177,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
  * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
- * interlinear XML schema described in the project README.
+ * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
  */
 export class InterlinearXmlParser {
   private readonly parser: XMLParser;

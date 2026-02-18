@@ -90,21 +90,26 @@ Note: if you [update this extension from the template](#to-update-this-extension
 
 The general file structure for an extension is as follows:
 
-- `package.json` contains information about this extension's npm package. It is required for Platform.Bible to use the extension properly. It is copied into the build folder
+- `package.json` (and `package-lock.json`) contain information about this extension's npm package and lockfile. They are required for Platform.Bible to use the extension properly. The lockfile is project-specific and is not synced from the template. The built extension is copied into the build folder
 - `manifest.json` is the manifest file that defines the extension and important properties for Platform.Bible. It is copied into the build folder
 - `src/` contains the source code for the extension
-  - `src/main.ts` is the main entry file for the extension
+  - `src/main.ts` is the main entry file for the extension (registers commands and wires interlinear XML)
   - `src/types/interlinearizer.d.ts` is this extension's types file that defines how other extensions can use this extension through the `papi`. It is copied into the build folder
+  - `src/parsers/interlinearXmlParser.ts` parses interlinear XML into structured data (uses fast-xml-parser). The PT9 XML schema and parsed output are documented in `src/parsers/pt9-xml.md`
   - `*.web-view.tsx` files will be treated as React WebViews
+  - `*.web-view.scss` files provide styles for WebViews
   - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)
+  - `src/__tests__/` contains unit tests (Jest) for the extension, including parser tests (valid and invalid XML, edge cases) and web-view tests
+- `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The `@papi/backend` and `@papi/frontend` mocks are used mutually exclusively (backend for main.ts tests, frontend for WebView tests); each mock file ends with `export {}` so TypeScript treats it as a module.
 - `assets/` contains asset files the extension and its WebViews can retrieve using the `papi-extension:` protocol, as well as textual descriptions in various languages. It is copied into the build folder
   - `assets/displayData.json` contains (optionally) a path to the extension's icon file as well as text for the extension's display name, short summary, and path to the full description file
   - `assets/descriptions/` contains textual descriptions of the extension in various languages
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
 - `public/` contains other static files that are copied into the build folder
+- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests
 - `.github/` contains files to facilitate integration with GitHub
-  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo
+  - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)
 - `dist/` is a generated folder containing the built extension files
 - `release/` is a generated folder containing a zip of the built extension files
@@ -155,7 +160,6 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 1. Make sure the versions in this repo are on the version number you want to release. If they are not, manually dispatch the [Bump Versions workflow](#bumping-version-without-publishing-a-release) or run the `bump-versions` npm script to set the versions to what you want to release on the branch you want to release from.
 
 2. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
-
    - `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
    - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
    - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.

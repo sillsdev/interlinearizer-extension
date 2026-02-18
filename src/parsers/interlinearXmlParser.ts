@@ -160,7 +160,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
     /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
-    const excluded = el.Excluded === 'true' || false;
+    const excluded = el.Excluded === 'true';
 
     return {
       TextRange: textRange,

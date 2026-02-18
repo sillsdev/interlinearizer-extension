@@ -29,6 +29,10 @@ dist
 release
 temp-build
 
+# Jest
+__mocks__
+coverage
+
 # generated files
 package-lock.json
 

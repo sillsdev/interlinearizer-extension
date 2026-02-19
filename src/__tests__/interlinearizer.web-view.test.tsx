@@ -4,7 +4,7 @@
 
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { InterlinearData } from 'paratext-9-types';
 
 /** Stub InterlinearData returned by the mocked parser. Matches shape the WebView displays. */
@@ -23,7 +23,7 @@ const stubInterlinearization = {
 };
 
 const mockParse = jest.fn().mockReturnValue(stubInterlinearData);
-const mockConvert = jest.fn().mockReturnValue(stubInterlinearization);
+const mockConvert = jest.fn().mockResolvedValue(stubInterlinearization);
 
 /** Stub analyses map for Analyses view (ID → Analysis). */
 const stubAnalysesMap = new Map([
@@ -88,15 +88,31 @@ const testWebViewProps: WebViewProps = {
   updateWebViewDefinition: () => true,
 };
 
+/**
+ * Renders the WebView and waits for the mount effect's async conversion to settle inside act(). The
+ * component calls convertParatext9ToInterlinearization(parsed) in useEffect; when the promise
+ * resolves it calls setInterlinearization. Without waiting, that update runs after the test and
+ * triggers "An update to ... was not wrapped in act(...)". This helper flushes the async work so
+ * all state updates are wrapped.
+ */
+async function renderWebView(): Promise<ReturnType<typeof render>> {
+  return act(async () => {
+    const result = render(<InterlinearizerWebView {...testWebViewProps} />);
+    await Promise.resolve();
+    await Promise.resolve();
+    return result;
+  });
+}
+
 describe('InterlinearizerWebView', () => {
-  it('renders the heading "Interlinearizer"', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('renders the heading "Interlinearizer"', async () => {
+    await renderWebView();
 
     expect(screen.getByRole('heading', { name: /interlinearizer/i })).toBeInTheDocument();
   });
 
-  it('renders the description mentioning test-data XML', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('renders the description mentioning test-data XML', async () => {
+    await renderWebView();
 
     expect(
       screen.getByText(/raw json of the model parsed from/i, { exact: false }),
@@ -104,8 +120,8 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/test-data\/Interlinear_en_MAT\.xml/i)).toBeInTheDocument();
   });
 
-  it('renders the JSON view mode switch (InterlinearData / Interlinearization / Analyses)', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('renders the JSON view mode switch (InterlinearData / Interlinearization / Analyses)', async () => {
+    await renderWebView();
 
     const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
     expect(radiogroup).toBeInTheDocument();
@@ -115,55 +131,58 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/view json as:/i)).toBeInTheDocument();
   });
 
-  it('displays InterlinearData JSON by default when parser returns data', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('displays InterlinearData JSON by default when parser returns data', async () => {
+    await renderWebView();
 
     expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
     expect(screen.getByText(/glossLanguage/i)).toBeInTheDocument();
     expect(screen.getByText(/bookId/i)).toBeInTheDocument();
   });
 
-  it('displays parsed structure including glossLanguage and bookId values', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('displays parsed structure including glossLanguage and bookId values', async () => {
+    await renderWebView();
 
     expect(screen.getByText(/"en"/)).toBeInTheDocument();
     expect(screen.getByText(/"MAT"/)).toBeInTheDocument();
   });
 
-  it('does not show parse error when parser succeeds', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('does not show parse error when parser succeeds', async () => {
+    await renderWebView();
 
     expect(screen.queryByText(/^parse error$/i)).not.toBeInTheDocument();
   });
 
-  it('displays parse error when parser throws an Error (uses err.message)', () => {
+  it('displays parse error when parser throws an Error (uses err.message)', async () => {
     mockParse.mockImplementationOnce(() => {
       throw new Error('Invalid XML structure');
     });
 
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+    await renderWebView();
 
     expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
     expect(screen.getByText(/invalid xml structure/i)).toBeInTheDocument();
   });
 
-  it('switching to Interlinearization shows converted model JSON', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('switching to Interlinearization shows converted model JSON', async () => {
+    await renderWebView();
 
     fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
 
     expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
-    expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
-    expect(screen.getByText(/sourceWritingSystem/i)).toBeInTheDocument();
-    expect(screen.getByText(/segments/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
+      expect(screen.getByText(/sourceWritingSystem/i)).toBeInTheDocument();
+      expect(screen.getByText(/segments/i)).toBeInTheDocument();
+    });
   });
 
-  it('switching back to InterlinearData shows PT9 structure JSON', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('switching back to InterlinearData shows PT9 structure JSON', async () => {
+    await renderWebView();
 
     fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
-    expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
-
+    await waitFor(() => {
+      expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole('radio', { name: /^interlineardata$/i }));
 
     expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
@@ -171,8 +190,8 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/bookId/i)).toBeInTheDocument();
   });
 
-  it('switching to Analyses shows analysis map JSON from test data', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('switching to Analyses shows analysis map JSON from test data', async () => {
+    await renderWebView();
 
     fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
 
@@ -183,11 +202,14 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/paratext-9/i)).toBeInTheDocument();
   });
 
-  it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', () => {
-    mockConvert.mockReturnValueOnce(undefined);
+  it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', async () => {
+    mockConvert.mockResolvedValueOnce(undefined);
 
-    const { container } = render(<InterlinearizerWebView {...testWebViewProps} />);
+    const { container } = await renderWebView();
     fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
+    await waitFor(() => {
+      expect(container.querySelector('pre')).toBeInTheDocument();
+    });
 
     const jsonPre = container.querySelector('pre');
     expect(jsonPre).toBeInTheDocument();
@@ -195,16 +217,30 @@ describe('InterlinearizerWebView', () => {
     expect(jsonPre).not.toHaveTextContent('undefined');
   });
 
-  it('displays parse error when parser throws non-Error (uses String(err))', () => {
+  it('displays parse error when parser throws non-Error (uses String(err))', async () => {
     mockParse.mockImplementationOnce(() => {
       // Intentionally throw a non-Error to test the String(err) branch in the catch block.
       // eslint-disable-next-line no-throw-literal -- testing non-Error handling
       throw 'plain string error';
     });
 
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+    await renderWebView();
 
     expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
     expect(screen.getByText('plain string error')).toBeInTheDocument();
+  });
+
+  it('sets interlinearization to undefined when converter rejects', async () => {
+    mockConvert.mockRejectedValueOnce(new Error('Conversion failed'));
+
+    const { container } = await renderWebView();
+    fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
+    await waitFor(() => {
+      expect(container.querySelector('pre')).toBeInTheDocument();
+    });
+
+    const jsonPre = container.querySelector('pre');
+    expect(jsonPre).toBeInTheDocument();
+    expect(jsonPre).toBeEmptyDOMElement();
   });
 });

@@ -23,6 +23,46 @@ import {
 } from 'types/interlinearizer-enums';
 
 /**
+ * Default SHA-256 hex implementation using the Web Crypto API so the converter can run in WebViews.
+ *
+ * @param input - UTF-8 string to hash.
+ * @returns Promise that resolves to the hex-encoded SHA-256 digest.
+ */
+async function sha256HexWebCrypto(input: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(input);
+  const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Computes a stable book-level text version from verse hashes.
+ *
+ * Collects all non-empty verse hashes, sorts them deterministically, concatenates them, and returns
+ * the SHA-256 digest in hex. Used so that textVersion reflects changes in any verse. Uses the
+ * provided hasher or the default Web Crypto implementation (for WebViews).
+ *
+ * @param verseDataArray - Verse data in deterministic (e.g. sorted by ref) order.
+ * @param hashSha256Hex - Optional hasher; when omitted, uses Web Crypto. In Node contexts pass one
+ *   that matches paranext-core's generateHashFromBuffer('sha256', 'hex', Buffer.from(str,
+ *   'utf8')).
+ * @returns Promise that resolves to the hex SHA-256 digest, or '' if no verse hashes.
+ */
+async function computeBookTextVersion(
+  verseDataArray: VerseData[],
+  hashSha256Hex: (input: string) => Promise<string>,
+): Promise<string> {
+  const nonEmptyHashes = verseDataArray
+    .map((vd) => vd.hash)
+    .filter((h): h is string => h.length > 0);
+  if (nonEmptyHashes.length === 0) return '';
+  const sortedHashes = [...nonEmptyHashes].sort();
+  const concatenated = sortedHashes.join('');
+  return hashSha256Hex(concatenated);
+}
+
+/**
  * Generates a deterministic ID for an interlinearization from Paratext 9 data.
  *
  * @param bookId - Book ID from InterlinearData.
@@ -138,7 +178,6 @@ function convertVerseToSegment(
     const assignments = cluster.lexemes.map((lexeme): AnalysisAssignment => {
       const analysisId = generateAnalysisId(lexeme.lexemeId, lexeme.senseId, glossLanguage);
       const assignmentId = generateAssignmentId(occurrenceId, analysisId);
-
       return {
         id: assignmentId,
         occurrenceId,
@@ -146,7 +185,6 @@ function convertVerseToSegment(
         status: verseData.hash ? AssignmentStatus.Approved : AssignmentStatus.Suggested,
       };
     });
-
     return {
       id: occurrenceId,
       segmentId,
@@ -238,14 +276,22 @@ export function createAnalyses(interlinearData: InterlinearData): Map<string, An
  * them in a separate collection or attach them to a parent structure.
  *
  * @param interlinearData - Paratext 9 interlinear data to convert.
- * @param baselineTexts - Optional map of verse references to baseline text (for extracting
- *   surfaceText). If not provided, surfaceText will be empty strings.
- * @returns Converted Interlinearization object.
+ * @param options - Optional. hashSha256Hex: hasher for book-level text version; when omitted, uses
+ *   Web Crypto (for WebViews). In Node contexts use one that matches paranext-core's
+ *   generateHashFromBuffer('sha256', 'hex', Buffer.from(str, 'utf8')) for consistency.
+ * @returns Promise that resolves to the converted Interlinearization object.
  */
-export function convertParatext9ToInterlinearization(
+export type ConvertParatext9Options = {
+  /** SHA-256 hex hasher for composite book text version. Default: Web Crypto (WebView-safe). */
+  hashSha256Hex?: (input: string) => Promise<string>;
+};
+
+export async function convertParatext9ToInterlinearization(
   interlinearData: InterlinearData,
-): Interlinearization {
+  options?: ConvertParatext9Options,
+): Promise<Interlinearization> {
   const { glossLanguage, bookId, verses } = interlinearData;
+  const hashSha256Hex = options?.hashSha256Hex ?? sha256HexWebCrypto;
 
   const interlinearizationId = generateInterlinearizationId(bookId);
   const analyzedBookId = generateBookId(bookId);
@@ -255,8 +301,8 @@ export function convertParatext9ToInterlinearization(
   });
 
   const sortedVerseRefs = Object.keys(verses).sort();
-  const firstVerseRefWithHash = sortedVerseRefs.find((ref) => verses[ref].hash);
-  const textVersion = firstVerseRefWithHash !== undefined ? verses[firstVerseRefWithHash].hash : '';
+  const verseDataArray = sortedVerseRefs.map((ref) => verses[ref]);
+  const textVersion = await computeBookTextVersion(verseDataArray, hashSha256Hex);
 
   const analyzedBook: AnalyzedBook = {
     id: analyzedBookId,

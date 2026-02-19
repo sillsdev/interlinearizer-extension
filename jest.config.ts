@@ -27,7 +27,7 @@ const config: Config = {
     'src/parsers/**/*.ts',
     'src/main.ts',
     'src/**/*.web-view.tsx',
-    '!src/parsers/**/*.d.ts',
+    '!src/parsers/**/*-types.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
@@ -70,11 +70,12 @@ const config: Config = {
    */
   moduleNameMapper: {
     /**
-     * Resolve src-rooted path aliases so tests can use e.g. "@main" or "parsers/..." instead of
-     * relative paths. Must match tsconfig.json "paths" and webpack resolve.alias.
+     * Resolve src-rooted path aliases so tests can use e.g. "@main", "parsers/...", or "types/..."
+     * instead of relative paths. Must match tsconfig.json "paths" and webpack resolve.alias.
      */
     '^@main$': '<rootDir>/src/main',
     '^parsers/(.*)$': '<rootDir>/src/parsers/$1',
+    '^types/(.*)$': '<rootDir>/src/types/$1',
     '\\.(sa|sc|c)ss$': '<rootDir>/__mocks__/styleMock.ts',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/__mocks__/fileMock.ts',

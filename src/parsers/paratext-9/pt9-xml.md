@@ -8,7 +8,6 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
   - **Attributes:**
     - `GlossLanguage` (required): Language code or name for glosses (e.g. `"en"`).
     - `BookId` (required): Book id (e.g. `"MAT"`, `"RUT"`).
-    - `ScrTextName` (optional): Source text / project name.
   - **Child:** Exactly one `Verses` element.
 
 - **Verses**
@@ -44,7 +43,7 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
 
 The parser produces objects conforming to the types in `src/types/interlinearizer.d.ts`:
 
-- **InterlinearData:** `ScrTextName`, `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
+- **InterlinearData:** `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
 - **VerseData:** `Hash`, `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
 - **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
 - **PunctuationData:** `TextRange`, `BeforeText`, `AfterText`.
@@ -73,7 +72,7 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<InterlinearData ScrTextName="MyProject" GlossLanguage="en" BookId="RUT">
+<InterlinearData GlossLanguage="en" BookId="RUT">
   <Verses>
     <item>
       <string>RUT 1:1</string>

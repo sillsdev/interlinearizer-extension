@@ -212,6 +212,7 @@ describe('convertParatext9ToInterlinearization', () => {
       };
       const result = convertParatext9ToInterlinearization(data);
 
+      expect(result.books[0].textVersion).toBe('H1');
       expect(result.books[0].segments[0].occurrences[0].assignments[0].status).toBe('approved');
     });
   });

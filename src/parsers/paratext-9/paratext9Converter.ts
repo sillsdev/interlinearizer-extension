@@ -134,22 +134,18 @@ function convertVerseToSegment(
   const segmentId = generateSegmentId(verseRef);
 
   const wordOccurrences = verseData.clusters.map((cluster, clusterIndex): Occurrence => {
+    const occurrenceId = generateOccurrenceIdFromCluster(segmentId, cluster.id, clusterIndex);
     const assignments = cluster.lexemes.map((lexeme): AnalysisAssignment => {
       const analysisId = generateAnalysisId(lexeme.lexemeId, lexeme.senseId, glossLanguage);
-      const assignmentId = generateAssignmentId(
-        generateOccurrenceIdFromCluster(segmentId, cluster.id, clusterIndex),
-        analysisId,
-      );
+      const assignmentId = generateAssignmentId(occurrenceId, analysisId);
 
       return {
         id: assignmentId,
-        occurrenceId: generateOccurrenceIdFromCluster(segmentId, cluster.id, clusterIndex),
+        occurrenceId,
         analysisId,
         status: verseData.hash ? AssignmentStatus.Approved : AssignmentStatus.Suggested,
       };
     });
-
-    const occurrenceId = generateOccurrenceIdFromCluster(segmentId, cluster.id, clusterIndex);
 
     return {
       id: occurrenceId,
@@ -258,9 +254,9 @@ export function convertParatext9ToInterlinearization(
     return convertVerseToSegment(verseRef, verseData, glossLanguage);
   });
 
-  const verseDataArray = Object.values(verses);
-  const verseWithHash = verseDataArray.find((verseData) => verseData.hash);
-  const textVersion = verseWithHash?.hash || '';
+  const sortedVerseRefs = Object.keys(verses).sort();
+  const firstVerseRefWithHash = sortedVerseRefs.find((ref) => verses[ref].hash);
+  const textVersion = firstVerseRefWithHash !== undefined ? verses[firstVerseRefWithHash].hash : '';
 
   const analyzedBook: AnalyzedBook = {
     id: analyzedBookId,

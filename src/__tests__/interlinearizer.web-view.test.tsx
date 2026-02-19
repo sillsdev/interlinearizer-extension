@@ -107,11 +107,11 @@ describe('InterlinearizerWebView', () => {
   it('renders the JSON view mode switch (InterlinearData / Interlinearization / Analyses)', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    const group = screen.getByRole('group', { name: /json view mode/i });
-    expect(group).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^interlineardata$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^interlinearization$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^analyses$/i })).toBeInTheDocument();
+    const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+    expect(radiogroup).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^interlineardata$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^interlinearization$/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /^analyses$/i })).toBeInTheDocument();
     expect(screen.getByText(/view json as:/i)).toBeInTheDocument();
   });
 
@@ -150,7 +150,7 @@ describe('InterlinearizerWebView', () => {
   it('switching to Interlinearization shows converted model JSON', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
 
     expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
     expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
@@ -161,10 +161,10 @@ describe('InterlinearizerWebView', () => {
   it('switching back to InterlinearData shows PT9 structure JSON', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
     expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /^interlineardata$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^interlineardata$/i }));
 
     expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
     expect(screen.getByText(/glossLanguage/i)).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe('InterlinearizerWebView', () => {
   it('switching to Analyses shows analysis map JSON from test data', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^analyses$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
 
     expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
     expect(mockCreateAnalyses).toHaveBeenCalledWith(stubInterlinearData);
@@ -187,7 +187,7 @@ describe('InterlinearizerWebView', () => {
     mockConvert.mockReturnValueOnce(undefined);
 
     const { container } = render(<InterlinearizerWebView {...testWebViewProps} />);
-    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+    fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
 
     const jsonPre = container.querySelector('pre');
     expect(jsonPre).toBeInTheDocument();

@@ -4,18 +4,38 @@
 
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen } from '@testing-library/react';
-import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
+import { fireEvent, render, screen } from '@testing-library/react';
+import type { InterlinearData } from 'paratext-9-types';
 
-/** Mock parser to allow overriding constructor behavior per test. */
-jest.mock('parsers/interlinearXmlParser', () => {
-  const actual = jest.requireActual<typeof import('parsers/interlinearXmlParser')>(
-    'parsers/interlinearXmlParser',
-  );
-  return {
-    InterlinearXmlParser: jest.fn().mockImplementation(() => new actual.InterlinearXmlParser()),
-  };
-});
+/** Stub InterlinearData returned by the mocked parser. Matches shape the WebView displays. */
+const stubInterlinearData: InterlinearData = {
+  glossLanguage: 'en',
+  bookId: 'MAT',
+  verses: {},
+};
+
+/** Stub Interlinearization returned by the mocked converter. Matches shape the WebView displays. */
+const stubInterlinearization = {
+  id: 'mock-interlinear-id',
+  sourceWritingSystem: '',
+  analysisLanguages: ['en'],
+  books: [{ id: 'mock-book-id', bookRef: 'MAT', textVersion: '', segments: [] }],
+};
+
+const mockParse = jest.fn().mockReturnValue(stubInterlinearData);
+const mockConvert = jest.fn().mockReturnValue(stubInterlinearization);
+
+/** Mock parser: no real XML parsing; returns stub data. Parser/converter are tested elsewhere. */
+jest.mock('parsers/paratext-9/paratext9Parser', () => ({
+  Paratext9Parser: jest.fn().mockImplementation(() => ({
+    parse: mockParse,
+  })),
+}));
+
+/** Mock converter: no real conversion; returns stub Interlinearization. */
+jest.mock('parsers/paratext-9/paratext9Converter', () => ({
+  convertParatext9ToInterlinearization: mockConvert,
+}));
 
 /**
  * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
@@ -66,37 +86,41 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/test-data\/Interlinear_en_MAT\.xml/i)).toBeInTheDocument();
   });
 
-  it('parses the bundled test XML and displays parsed JSON', () => {
+  it('renders the JSON view mode switch (InterlinearData / Interlinearization)', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
-    expect(screen.getByText(/parsed interlinear data \(json\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/"GlossLanguage"/)).toBeInTheDocument();
-    expect(screen.getByText(/"BookId"/)).toBeInTheDocument();
+    const group = screen.getByRole('group', { name: /json view mode/i });
+    expect(group).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^interlineardata$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^interlinearization$/i })).toBeInTheDocument();
+    expect(screen.getByText(/view json as:/i)).toBeInTheDocument();
   });
 
-  it('displays parsed structure with expected verse data', () => {
+  it('displays InterlinearData JSON by default when parser returns data', () => {
+    render(<InterlinearizerWebView {...testWebViewProps} />);
+
+    expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+    expect(screen.getByText(/glossLanguage/i)).toBeInTheDocument();
+    expect(screen.getByText(/bookId/i)).toBeInTheDocument();
+  });
+
+  it('displays parsed structure including glossLanguage and bookId values', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
     expect(screen.getByText(/"en"/)).toBeInTheDocument();
     expect(screen.getByText(/"MAT"/)).toBeInTheDocument();
   });
 
-  it('does not show parse error when XML is valid', () => {
+  it('does not show parse error when parser succeeds', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
     expect(screen.queryByText(/^parse error$/i)).not.toBeInTheDocument();
   });
 
   it('displays parse error when parser throws an Error (uses err.message)', () => {
-    const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
-      '../parsers/interlinearXmlParser',
-    );
-    const realInstance = new actual.InterlinearXmlParser();
-    const throwingParse = (): never => {
+    mockParse.mockImplementationOnce(() => {
       throw new Error('Invalid XML structure');
-    };
-    Object.defineProperty(realInstance, 'parse', { value: throwingParse, writable: true });
-    jest.mocked(InterlinearXmlParser).mockImplementationOnce(() => realInstance);
+    });
 
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
@@ -104,18 +128,48 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/invalid xml structure/i)).toBeInTheDocument();
   });
 
+  it('switching to Interlinearization shows converted model JSON', () => {
+    render(<InterlinearizerWebView {...testWebViewProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+
+    expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+    expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
+    expect(screen.getByText(/sourceWritingSystem/i)).toBeInTheDocument();
+    expect(screen.getByText(/segments/i)).toBeInTheDocument();
+  });
+
+  it('switching back to InterlinearData shows PT9 structure JSON', () => {
+    render(<InterlinearizerWebView {...testWebViewProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+    expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^interlineardata$/i }));
+
+    expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+    expect(screen.getByText(/glossLanguage/i)).toBeInTheDocument();
+    expect(screen.getByText(/bookId/i)).toBeInTheDocument();
+  });
+
+  it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', () => {
+    mockConvert.mockReturnValueOnce(undefined);
+
+    const { container } = render(<InterlinearizerWebView {...testWebViewProps} />);
+    fireEvent.click(screen.getByRole('button', { name: /^interlinearization$/i }));
+
+    const jsonPre = container.querySelector('pre');
+    expect(jsonPre).toBeInTheDocument();
+    expect(jsonPre).toBeEmptyDOMElement();
+    expect(jsonPre).not.toHaveTextContent('undefined');
+  });
+
   it('displays parse error when parser throws non-Error (uses String(err))', () => {
-    const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
-      '../parsers/interlinearXmlParser',
-    );
-    const realInstance = new actual.InterlinearXmlParser();
-    const throwingParse = (): never => {
+    mockParse.mockImplementationOnce(() => {
       // Intentionally throw a non-Error to test the String(err) branch in the catch block.
       // eslint-disable-next-line no-throw-literal -- testing non-Error handling
       throw 'plain string error';
-    };
-    Object.defineProperty(realInstance, 'parse', { value: throwingParse, writable: true });
-    jest.mocked(InterlinearXmlParser).mockImplementationOnce(() => realInstance);
+    });
 
     render(<InterlinearizerWebView {...testWebViewProps} />);
 

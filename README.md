@@ -95,7 +95,8 @@ The general file structure for an extension is as follows:
 - `src/` contains the source code for the extension
   - `src/main.ts` is the main entry file for the extension (registers commands and wires interlinear XML)
   - `src/types/interlinearizer.d.ts` is this extension's types file that defines how other extensions can use this extension through the `papi`. It is copied into the build folder
-  - `src/parsers/interlinearXmlParser.ts` parses interlinear XML into structured data (uses fast-xml-parser). The PT9 XML schema and parsed output are documented in `src/parsers/pt9-xml.md`
+  - `src/types/` also holds shared enums and type modules (e.g. `interlinearizer-enums.ts`). Use the path alias `types/interlinearizer-enums` in imports instead of relative paths (see `tsconfig.json` paths).
+  - `src/parsers/` contains all parsers and converters used when importing external data models sorted by source (e.g. Paratext 9 XML Files). Use the path alias `parsers/...` in imports instead of relative paths (see `tsconfig.json` paths).
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
   - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)

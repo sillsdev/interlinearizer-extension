@@ -45,7 +45,6 @@ function generateBookId(bookId: string): string {
 /**
  * Generates a deterministic ID for a segment (verse).
  *
- * @param bookId - Book ID.
  * @param verseRef - Verse reference (e.g., "MAT 1:1").
  * @returns A unique ID for the segment.
  */
@@ -124,7 +123,6 @@ function textRangeToAnchor(textRange: StringRange): string {
  *
  * @param verseRef - Verse reference (e.g., "MAT 1:1").
  * @param verseData - Verse data from Paratext 9.
- * @param bookId - Book ID for generating segment ID.
  * @param glossLanguage - Gloss language code.
  * @returns A Segment with occurrences converted from clusters and punctuations.
  */
@@ -198,11 +196,10 @@ function convertVerseToSegment(
  * @param interlinearData - Paratext 9 interlinear data.
  * @returns Map of analysis ID to Analysis object.
  */
-function createAnalyses(interlinearData: InterlinearData): Map<string, Analysis> {
+export function createAnalyses(interlinearData: InterlinearData): Map<string, Analysis> {
   const analyses = new Map<string, Analysis>();
   const { glossLanguage } = interlinearData;
 
-  // Collect all unique lexeme-sense pairs
   Object.values(interlinearData.verses).forEach((verseData) => {
     verseData.clusters.forEach((cluster) => {
       cluster.lexemes.forEach((lexeme) => {
@@ -256,9 +253,6 @@ export function convertParatext9ToInterlinearization(
 
   const interlinearizationId = generateInterlinearizationId(bookId);
   const analyzedBookId = generateBookId(bookId);
-
-  // Note: analyses are created but not returned - they're referenced via analysisId in assignments
-  createAnalyses(interlinearData);
 
   const segments = Object.entries(verses).map(([verseRef, verseData]) => {
     return convertVerseToSegment(verseRef, verseData, glossLanguage);

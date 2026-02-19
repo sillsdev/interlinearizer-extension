@@ -25,7 +25,7 @@ declare module 'paratext-9-types' {
     lexemesId: string;
     /** Unique cluster id: LexemesId plus TextRange (e.g. "Word:a/Word:b/21-3"). */
     id: string;
-    /** Excluded flag. See [pt9-xml.md](../parsers/pt9-xml.md) for details. */
+    /** Excluded flag. See [pt9-xml.md](pt9-xml.md) for details. */
     excluded: boolean;
   }
 

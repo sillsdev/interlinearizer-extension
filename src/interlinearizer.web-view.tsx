@@ -91,42 +91,45 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
             <span className="tw-text-sm tw-font-medium tw-text-foreground">View JSON as:</span>
             <div
               className="tw-inline-flex tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-0.5"
-              role="group"
+              role="radiogroup"
               aria-label="JSON view mode"
             >
               <button
                 type="button"
+                role="radio"
                 onClick={() => setJsonViewMode('interlinear-data')}
                 className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
                   jsonViewMode === 'interlinear-data'
                     ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
                     : 'tw-text-muted-foreground hover:tw-text-foreground'
                 }`}
-                aria-pressed={jsonViewMode === 'interlinear-data'}
+                aria-checked={jsonViewMode === 'interlinear-data'}
               >
                 InterlinearData
               </button>
               <button
                 type="button"
+                role="radio"
                 onClick={() => setJsonViewMode('interlinearization')}
                 className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
                   jsonViewMode === 'interlinearization'
                     ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
                     : 'tw-text-muted-foreground hover:tw-text-foreground'
                 }`}
-                aria-pressed={jsonViewMode === 'interlinearization'}
+                aria-checked={jsonViewMode === 'interlinearization'}
               >
                 Interlinearization
               </button>
               <button
                 type="button"
+                role="radio"
                 onClick={() => setJsonViewMode('analyses')}
                 className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
                   jsonViewMode === 'analyses'
                     ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
                     : 'tw-text-muted-foreground hover:tw-text-foreground'
                 }`}
-                aria-pressed={jsonViewMode === 'analyses'}
+                aria-checked={jsonViewMode === 'analyses'}
               >
                 Analyses
               </button>

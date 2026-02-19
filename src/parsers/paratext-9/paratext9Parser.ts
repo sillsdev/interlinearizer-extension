@@ -6,7 +6,7 @@ import type {
   StringRange,
   InterlinearData,
   VerseData,
-} from 'interlinearizer';
+} from 'paratext-9-types';
 
 /** Range: Index and Length attributes. */
 interface ParsedRange {
@@ -62,10 +62,8 @@ interface ParsedVersesItem {
   VerseData?: ParsedVerseData;
 }
 
-/** Root element: ScrTextName, GlossLanguage, BookId, Verses (with item[]). */
+/** Root element: GlossLanguage, BookId, Verses (with item[]). */
 interface ParsedInterlinearDataRoot {
-  /** Source text name (FXP attribute ScrTextName). */
-  ['@_ScrTextName']?: string;
   /** Gloss language (FXP attribute GlossLanguage). */
   ['@_GlossLanguage']?: string;
   /** Book id (FXP attribute BookId). */
@@ -95,7 +93,7 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
     if (!lexemeId) {
       throw new Error('Invalid XML: Lexeme missing required Id attribute');
     }
-    return { LexemeId: lexemeId, SenseId: el['@_GlossId'] ?? '' };
+    return { lexemeId, senseId: el['@_GlossId'] ?? '' };
   });
 }
 
@@ -122,9 +120,9 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
     if (!Number.isFinite(index) || !Number.isFinite(length)) return [];
     return [
       {
-        TextRange: { Index: index, Length: length },
-        BeforeText: el.BeforeText ?? '',
-        AfterText: el.AfterText ?? '',
+        textRange: { index, length },
+        beforeText: el.BeforeText ?? '',
+        afterText: el.AfterText ?? '',
       },
     ];
   });
@@ -153,21 +151,21 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
       throw new Error('Invalid XML: Range missing required Index or Length attributes');
     }
 
-    const textRange: StringRange = { Index: index, Length: length };
+    const textRange: StringRange = { index, length };
     const lexemes = extractLexemesFromCluster(el);
 
     // Join with "/"; lexeme IDs may contain "/", so do not split LexemesId elsewhere.
-    const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
+    const lexemesId = lexemes.map((l) => l.lexemeId).join('/');
     /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
     const excluded = el.Excluded === 'true';
 
     return {
-      TextRange: textRange,
-      Lexemes: lexemes,
-      LexemesId: lexemesId,
-      Id: id,
-      Excluded: excluded,
+      textRange,
+      lexemes,
+      lexemesId,
+      id,
+      excluded,
     };
   });
 }
@@ -179,7 +177,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
  * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
  */
-export class InterlinearXmlParser {
+export class Paratext9Parser {
   private readonly parser: XMLParser;
 
   /**
@@ -213,8 +211,8 @@ export class InterlinearXmlParser {
    * @param xml - Raw XML string (e.g. file contents). Must be valid interlinear XML with
    *   InterlinearData root, GlossLanguage and BookId attributes, and Verses containing item
    *   entries.
-   * @returns Parsed interlinear data: ScrTextName, GlossLanguage, BookId, and Verses (record of
-   *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
+   * @returns Parsed interlinear data: GlossLanguage, BookId, and Verses (record of verse key to
+   *   {@link VerseData} with Hash, Clusters, Punctuations).
    * @throws {Error} If the root element, required attributes (GlossLanguage, BookId), required
    *   structure (Verses, Cluster Range, Lexeme Id), or duplicate verse reference is present.
    */
@@ -225,7 +223,6 @@ export class InterlinearXmlParser {
       throw new Error('Invalid XML: Missing InterlinearData root element');
     }
 
-    const scrTextName = root['@_ScrTextName'] ?? '';
     const glossLanguage = root['@_GlossLanguage'] ?? '';
     const bookId = root['@_BookId'] ?? '';
     if (!glossLanguage || !bookId) {
@@ -251,23 +248,22 @@ export class InterlinearXmlParser {
 
       const verseDataElement = item.VerseData;
       if (!verseDataElement) {
-        acc[verseKey] = { Hash: '', Clusters: [], Punctuations: [] };
+        acc[verseKey] = { hash: '', clusters: [], punctuations: [] };
         return acc;
       }
 
       acc[verseKey] = {
-        Hash: verseDataElement['@_Hash'] ?? '',
-        Clusters: extractClustersFromVerse(verseDataElement),
-        Punctuations: extractPunctuationsFromVerse(verseDataElement),
+        hash: verseDataElement['@_Hash'] ?? '',
+        clusters: extractClustersFromVerse(verseDataElement),
+        punctuations: extractPunctuationsFromVerse(verseDataElement),
       };
       return acc;
     }, {});
 
     return {
-      ScrTextName: scrTextName,
-      GlossLanguage: glossLanguage,
-      BookId: bookId,
-      Verses: verses,
+      glossLanguage,
+      bookId,
+      verses,
     };
   }
 }

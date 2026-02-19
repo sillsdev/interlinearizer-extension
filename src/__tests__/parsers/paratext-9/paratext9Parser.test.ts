@@ -1,16 +1,16 @@
-/** @file Unit tests for {@link InterlinearXmlParser}. */
+/** @file Unit tests for {@link Paratext9Parser}. */
 /// <reference types="jest" />
 
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
+import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
 
-describe('InterlinearXmlParser', () => {
-  let parser: InterlinearXmlParser;
+describe('Paratext9Parser', () => {
+  let parser: Paratext9Parser;
 
   beforeEach(() => {
-    parser = new InterlinearXmlParser();
+    parser = new Paratext9Parser();
   });
 
   describe('parse() - valid XML', () => {
@@ -33,30 +33,29 @@ describe('InterlinearXmlParser', () => {
       const result = parser.parse(xml);
 
       expect(result).toEqual({
-        ScrTextName: '',
-        GlossLanguage: 'en',
-        BookId: 'MAT',
-        Verses: {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
           'MAT 1:1': {
-            Hash: '',
-            Clusters: [
+            hash: '',
+            clusters: [
               {
-                TextRange: { Index: 0, Length: 4 },
-                Lexemes: [{ LexemeId: 'Word:word', SenseId: 'sense1' }],
-                LexemesId: 'Word:word',
-                Id: 'Word:word/0-4',
-                Excluded: false,
+                textRange: { index: 0, length: 4 },
+                lexemes: [{ lexemeId: 'Word:word', senseId: 'sense1' }],
+                lexemesId: 'Word:word',
+                id: 'Word:word/0-4',
+                excluded: false,
               },
             ],
-            Punctuations: [],
+            punctuations: [],
           },
         },
       });
     });
 
-    it('parses optional ScrTextName and verse Hash', () => {
+    it('parses verse Hash', () => {
       const xml = `
-        <InterlinearData ScrTextName="MyProject" GlossLanguage="en" BookId="RUT">
+        <InterlinearData GlossLanguage="en" BookId="RUT">
           <Verses>
             <item>
               <string>RUT 3:1</string>
@@ -72,13 +71,12 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.ScrTextName).toBe('MyProject');
-      expect(result.Verses['RUT 3:1'].Hash).toBe('ABC123');
+      expect(result.verses['RUT 3:1'].hash).toBe('ABC123');
     });
 
     it('parses purely numeric verse Hash', () => {
       const xml = `
-        <InterlinearData ScrTextName="MyProject" GlossLanguage="en" BookId="RUT">
+        <InterlinearData GlossLanguage="en" BookId="RUT">
           <Verses>
             <item>
               <string>RUT 3:1</string>
@@ -94,8 +92,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.ScrTextName).toBe('MyProject');
-      expect(result.Verses['RUT 3:1'].Hash).toBe('123456');
+      expect(result.verses['RUT 3:1'].hash).toBe('123456');
     });
 
     it('parses cluster with multiple lexemes and builds LexemesId and Id correctly', () => {
@@ -117,13 +114,13 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.Verses['MAT 1:1'].Clusters[0];
-      expect(cluster.Lexemes).toEqual([
-        { LexemeId: 'Stem:hello', SenseId: 'g1' },
-        { LexemeId: 'Suffix:ing', SenseId: 'g2' },
+      const cluster = result.verses['MAT 1:1'].clusters[0];
+      expect(cluster.lexemes).toEqual([
+        { lexemeId: 'Stem:hello', senseId: 'g1' },
+        { lexemeId: 'Suffix:ing', senseId: 'g2' },
       ]);
-      expect(cluster.LexemesId).toBe('Stem:hello/Suffix:ing');
-      expect(cluster.Id).toBe('Stem:hello/Suffix:ing/5-5');
+      expect(cluster.lexemesId).toBe('Stem:hello/Suffix:ing');
+      expect(cluster.id).toBe('Stem:hello/Suffix:ing/5-5');
     });
 
     it('parses lexeme Id containing slash: LexemesId and Id preserve the slash (slash-safe)', () => {
@@ -144,10 +141,10 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.Verses['MAT 1:1'].Clusters[0];
-      expect(cluster.Lexemes).toEqual([{ LexemeId: 'Word:hello/world', SenseId: 'g1' }]);
-      expect(cluster.LexemesId).toBe('Word:hello/world');
-      expect(cluster.Id).toBe('Word:hello/world/0-12');
+      const cluster = result.verses['MAT 1:1'].clusters[0];
+      expect(cluster.lexemes).toEqual([{ lexemeId: 'Word:hello/world', senseId: 'g1' }]);
+      expect(cluster.lexemesId).toBe('Word:hello/world');
+      expect(cluster.id).toBe('Word:hello/world/0-12');
     });
 
     it('preserves slash when joining Lexeme Ids (multiple lexemes, one Id contains slash)', () => {
@@ -169,13 +166,13 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.Verses['MAT 1:1'].Clusters[0];
-      expect(cluster.Lexemes).toEqual([
-        { LexemeId: 'Stem:foo/bar', SenseId: 'g1' },
-        { LexemeId: 'Suffix:ing', SenseId: 'g2' },
+      const cluster = result.verses['MAT 1:1'].clusters[0];
+      expect(cluster.lexemes).toEqual([
+        { lexemeId: 'Stem:foo/bar', senseId: 'g1' },
+        { lexemeId: 'Suffix:ing', senseId: 'g2' },
       ]);
-      expect(cluster.LexemesId).toBe('Stem:foo/bar/Suffix:ing');
-      expect(cluster.Id).toBe('Stem:foo/bar/Suffix:ing/5-11');
+      expect(cluster.lexemesId).toBe('Stem:foo/bar/Suffix:ing');
+      expect(cluster.id).toBe('Stem:foo/bar/Suffix:ing/5-11');
     });
 
     it('parses cluster with no lexemes: Id is Index-Length only (no leading slash)', () => {
@@ -195,10 +192,10 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.Verses['MAT 1:1'].Clusters[0];
-      expect(cluster.Lexemes).toEqual([]);
-      expect(cluster.LexemesId).toBe('');
-      expect(cluster.Id).toBe('10-3');
+      const cluster = result.verses['MAT 1:1'].clusters[0];
+      expect(cluster.lexemes).toEqual([]);
+      expect(cluster.lexemesId).toBe('');
+      expect(cluster.id).toBe('10-3');
     });
 
     it('parses Lexeme without GlossId as empty SenseId', () => {
@@ -219,9 +216,9 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0]).toEqual({
-        LexemeId: 'Word:a',
-        SenseId: '',
+      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0]).toEqual({
+        lexemeId: 'Word:a',
+        senseId: '',
       });
     });
 
@@ -244,7 +241,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(true);
+      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(true);
     });
 
     it('parses Cluster with Excluded=false', () => {
@@ -266,7 +263,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(false);
+      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(false);
     });
 
     it('parses Cluster without Excluded as Excluded=false', () => {
@@ -287,7 +284,7 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(false);
+      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(false);
     });
 
     it('parses Punctuation with Range, BeforeText, AfterText', () => {
@@ -314,11 +311,11 @@ describe('InterlinearXmlParser', () => {
       const result = parser.parse(xml);
 
       // Parser uses trimValues: false, so tag text is not trimmed.
-      expect(result.Verses['MAT 1:1'].Punctuations).toEqual([
+      expect(result.verses['MAT 1:1'].punctuations).toEqual([
         {
-          TextRange: { Index: 34, Length: 2 },
-          BeforeText: '? ',
-          AfterText: '? ',
+          textRange: { index: 34, length: 2 },
+          beforeText: '? ',
+          afterText: '? ',
         },
       ]);
     });
@@ -350,11 +347,11 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 1, Length: 2 },
-        BeforeText: 'c',
-        AfterText: 'd',
+      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+        textRange: { index: 1, length: 2 },
+        beforeText: 'c',
+        afterText: 'd',
       });
     });
 
@@ -396,11 +393,11 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 5, Length: 1 },
-        BeforeText: 'valid',
-        AfterText: '',
+      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+        textRange: { index: 5, length: 1 },
+        beforeText: 'valid',
+        afterText: '',
       });
     });
 
@@ -425,11 +422,11 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 10, Length: 1 },
-        BeforeText: '',
-        AfterText: '',
+      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+        textRange: { index: 10, length: 1 },
+        beforeText: '',
+        afterText: '',
       });
     });
 
@@ -460,9 +457,9 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(Object.keys(result.Verses)).toEqual(['MAT 1:1', 'MAT 1:2']);
-      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0].LexemeId).toBe('a');
-      expect(result.Verses['MAT 1:2'].Clusters[0].Lexemes[0].LexemeId).toBe('b');
+      expect(Object.keys(result.verses)).toEqual(['MAT 1:1', 'MAT 1:2']);
+      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0].lexemeId).toBe('a');
+      expect(result.verses['MAT 1:2'].clusters[0].lexemes[0].lexemeId).toBe('b');
     });
 
     it('parses item with missing VerseData as empty Hash, Clusters, Punctuations', () => {
@@ -477,10 +474,10 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1']).toEqual({
-        Hash: '',
-        Clusters: [],
-        Punctuations: [],
+      expect(result.verses['MAT 1:1']).toEqual({
+        hash: '',
+        clusters: [],
+        punctuations: [],
       });
     });
 
@@ -497,10 +494,10 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:11']).toEqual({
-        Hash: '',
-        Clusters: [],
-        Punctuations: [],
+      expect(result.verses['MAT 1:11']).toEqual({
+        hash: '',
+        clusters: [],
+        punctuations: [],
       });
     });
 
@@ -523,12 +520,12 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses['MAT 1:1'].Clusters).toEqual([]);
-      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(1);
-      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
-        TextRange: { Index: 0, Length: 1 },
-        BeforeText: ',',
-        AfterText: ',',
+      expect(result.verses['MAT 1:1'].clusters).toEqual([]);
+      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+        textRange: { index: 0, length: 1 },
+        beforeText: ',',
+        afterText: ',',
       });
     });
 
@@ -542,9 +539,9 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.Verses).toEqual({});
-      expect(result.GlossLanguage).toBe('en');
-      expect(result.BookId).toBe('MAT');
+      expect(result.verses).toEqual({});
+      expect(result.glossLanguage).toBe('en');
+      expect(result.bookId).toBe('MAT');
     });
 
     it('skips items with missing string (verse key)', () => {
@@ -573,40 +570,47 @@ describe('InterlinearXmlParser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(Object.keys(result.Verses)).toEqual(['MAT 1:1']);
-      expect(result.Verses['MAT 1:1'].Clusters[0].Lexemes[0].LexemeId).toBe('y');
+      expect(Object.keys(result.verses)).toEqual(['MAT 1:1']);
+      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0].lexemeId).toBe('y');
     });
 
     it('parses real test-data file without throwing', () => {
-      const xmlPath = path.join(__dirname, '..', '..', '..', 'test-data', 'Interlinear_en_MAT.xml');
+      const xmlPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        'test-data',
+        'Interlinear_en_MAT.xml',
+      );
       const xml = fs.readFileSync(xmlPath, 'utf-8');
       const result = parser.parse(xml);
 
-      expect(result.GlossLanguage).toBe('en');
-      expect(result.BookId).toBe('MAT');
-      expect(result.ScrTextName).toBe('');
-      expect(Object.keys(result.Verses).length).toBeGreaterThan(0);
+      expect(result.glossLanguage).toBe('en');
+      expect(result.bookId).toBe('MAT');
+      expect(Object.keys(result.verses).length).toBeGreaterThan(0);
 
-      const mat11 = result.Verses['MAT 1:1'];
+      const mat11 = result.verses['MAT 1:1'];
       expect(mat11).toBeDefined();
-      expect(mat11.Hash).toBe('C8D38188');
-      expect(mat11.Clusters.length).toBeGreaterThan(0);
-      const firstCluster = mat11.Clusters[0];
-      expect(firstCluster.TextRange).toEqual({ Index: 5, Length: 5 });
-      expect(firstCluster.Lexemes[0]).toEqual({
-        LexemeId: 'Word:hello',
-        SenseId: 'WvbPwa9D',
+      expect(mat11.hash).toBe('C8D38188');
+      expect(mat11.clusters.length).toBeGreaterThan(0);
+      const firstCluster = mat11.clusters[0];
+      expect(firstCluster.textRange).toEqual({ index: 5, length: 5 });
+      expect(firstCluster.lexemes[0]).toEqual({
+        lexemeId: 'Word:hello',
+        senseId: 'WvbPwa9D',
       });
-      expect(firstCluster.Id).toMatch(/^Word:hello\/5-5$/);
+      expect(firstCluster.id).toMatch(/^Word:hello\/5-5$/);
 
-      const versesWithPunctuation = Object.values(result.Verses).filter(
-        (v) => v.Punctuations.length > 0,
+      const versesWithPunctuation = Object.values(result.verses).filter(
+        (v) => v.punctuations.length > 0,
       );
       expect(versesWithPunctuation.length).toBeGreaterThan(0);
       const [firstWithPunctuation] = versesWithPunctuation;
-      expect(firstWithPunctuation.Punctuations[0]).toHaveProperty('TextRange');
-      expect(firstWithPunctuation.Punctuations[0]).toHaveProperty('BeforeText');
-      expect(firstWithPunctuation.Punctuations[0]).toHaveProperty('AfterText');
+      expect(firstWithPunctuation.punctuations[0]).toHaveProperty('textRange');
+      expect(firstWithPunctuation.punctuations[0]).toHaveProperty('beforeText');
+      expect(firstWithPunctuation.punctuations[0]).toHaveProperty('afterText');
     });
   });
 
@@ -802,8 +806,8 @@ describe('InterlinearXmlParser', () => {
 
   describe('constructor and instance', () => {
     it('can be instantiated multiple times', () => {
-      const p1 = new InterlinearXmlParser();
-      const p2 = new InterlinearXmlParser();
+      const p1 = new Paratext9Parser();
+      const p2 = new Paratext9Parser();
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>

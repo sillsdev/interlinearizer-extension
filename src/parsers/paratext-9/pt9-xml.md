@@ -41,12 +41,12 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
 
 ## Parsed output (in-memory)
 
-The parser produces objects conforming to the types in `src/types/interlinearizer.d.ts`:
+The parser produces objects conforming to the types in `src/parsers/paratext-9/paratext-9-types.ts`:
 
-- **InterlinearData:** `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
-- **VerseData:** `Hash`, `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
-- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
-- **PunctuationData:** `TextRange`, `BeforeText`, `AfterText`.
+- **InterlinearData:** `glossLanguage`, `bookId`, `verses` (record of verse key → **VerseData**).
+- **VerseData:** `hash`, `clusters` (array of **ClusterData**), `punctuations` (array of **PunctuationData**).
+- **ClusterData:** `textRange` (`index`, `length`), `lexemes` (array of **LexemeData** `{ lexemeId, senseId }`), `lexemesId` (slash-joined lexeme IDs), `id` (cluster id: `lexemesId/index-length` or `index-length` when there are no lexemes), `excluded` (boolean flag for location-specific exclusion).
+- **PunctuationData:** `textRange`, `beforeText`, `afterText`.
 
 ## Example (minimal valid document)
 

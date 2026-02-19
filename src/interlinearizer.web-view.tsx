@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { InterlinearData } from 'paratext-9-types';
 import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
 import {
@@ -50,24 +50,38 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
     }
   }, []);
 
-  const interlinearization = useMemo(
-    () => (parsed ? convertParatext9ToInterlinearization(parsed) : undefined),
-    [parsed],
-  );
+  const [interlinearization, setInterlinearization] = useState<
+    Awaited<ReturnType<typeof convertParatext9ToInterlinearization>> | undefined
+  >(undefined);
+
+  useEffect(() => {
+    if (!parsed) {
+      setInterlinearization(undefined);
+      return;
+    }
+    let cancelled = false;
+    convertParatext9ToInterlinearization(parsed)
+      .then((result) => {
+        if (!cancelled) setInterlinearization(result);
+        return result;
+      })
+      .catch(() => {
+        if (!cancelled) setInterlinearization(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [parsed]);
 
   /** Analyses map derived from parsed data (ID → Analysis); only defined when parsed exists. */
   const analysesMap = useMemo(() => (parsed ? createAnalyses(parsed) : undefined), [parsed]);
 
   /** Data to show as JSON: depends on selected view mode. */
-  const jsonToShow = (():
-    | typeof parsed
-    | ReturnType<typeof convertParatext9ToInterlinearization>
-    | Record<string, unknown>
-    | undefined => {
+  const jsonToShow = useMemo(() => {
     if (jsonViewMode === 'interlinearization') return interlinearization;
     if (jsonViewMode === 'analyses' && analysesMap) return Object.fromEntries(analysesMap);
     return parsed;
-  })();
+  }, [jsonViewMode, parsed, interlinearization, analysesMap]);
 
   return (
     <div className="tw-flex tw-flex-col tw-gap-4 tw-p-6">
@@ -94,45 +108,26 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
               role="radiogroup"
               aria-label="JSON view mode"
             >
-              <button
-                type="button"
-                role="radio"
-                onClick={() => setJsonViewMode('interlinear-data')}
-                className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
-                  jsonViewMode === 'interlinear-data'
-                    ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
-                    : 'tw-text-muted-foreground hover:tw-text-foreground'
-                }`}
-                aria-checked={jsonViewMode === 'interlinear-data'}
-              >
-                InterlinearData
-              </button>
-              <button
-                type="button"
-                role="radio"
-                onClick={() => setJsonViewMode('interlinearization')}
-                className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
-                  jsonViewMode === 'interlinearization'
-                    ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
-                    : 'tw-text-muted-foreground hover:tw-text-foreground'
-                }`}
-                aria-checked={jsonViewMode === 'interlinearization'}
-              >
-                Interlinearization
-              </button>
-              <button
-                type="button"
-                role="radio"
-                onClick={() => setJsonViewMode('analyses')}
-                className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
-                  jsonViewMode === 'analyses'
-                    ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
-                    : 'tw-text-muted-foreground hover:tw-text-foreground'
-                }`}
-                aria-checked={jsonViewMode === 'analyses'}
-              >
-                Analyses
-              </button>
+              {[
+                { key: 'interlinear-data' as const, label: 'InterlinearData' },
+                { key: 'interlinearization' as const, label: 'Interlinearization' },
+                { key: 'analyses' as const, label: 'Analyses' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="radio"
+                  onClick={() => setJsonViewMode(key)}
+                  className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
+                    jsonViewMode === key
+                      ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
+                      : 'tw-text-muted-foreground hover:tw-text-foreground'
+                  }`}
+                  aria-checked={jsonViewMode === key}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <p className="tw-text-xs tw-text-muted-foreground">
               {getViewModeDescription(jsonViewMode)}

@@ -1,8 +1,11 @@
-/** @file Unit tests for {@link convertParatext9ToInterlinearization}. */
+/** @file Unit tests for {@link convertParatext9ToInterlinearization} and {@link createAnalyses}. */
 /// <reference types="jest" />
 
 import type { InterlinearData } from 'paratext-9-types';
-import { convertParatext9ToInterlinearization } from 'parsers/paratext-9/paratext9Converter';
+import {
+  convertParatext9ToInterlinearization,
+  createAnalyses,
+} from 'parsers/paratext-9/paratext9Converter';
 
 describe('convertParatext9ToInterlinearization', () => {
   describe('top-level structure', () => {
@@ -426,6 +429,217 @@ describe('convertParatext9ToInterlinearization', () => {
 
       const segId = result.books[0].segments[0].id;
       expect(result.books[0].segments[0].occurrences[0].id).toBe(`${segId}-occ-0-Word:word/0-4`);
+    });
+  });
+
+  describe('createAnalyses', () => {
+    it('returns empty Map when verses is empty', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {},
+      };
+      const result = createAnalyses(data);
+
+      expect(result).toBeInstanceOf(Map);
+      expect(result.size).toBe(0);
+    });
+
+    it('returns one Analysis for one verse with one cluster and one lexeme', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 4 },
+                lexemes: [{ lexemeId: 'Word:hello', senseId: 'g1' }],
+                lexemesId: 'Word:hello',
+                id: 'Word:hello/0-4',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-en-Word:hello-g1');
+      expect(analysis).toBeDefined();
+      expect(analysis?.id).toBe('analysis-en-Word:hello-g1');
+      expect(analysis?.analysisLanguage).toBe('en');
+      expect(analysis?.analysisType).toBe('gloss');
+      expect(analysis?.confidence).toBe('medium');
+      expect(analysis?.sourceSystem).toBe('paratext-9');
+      expect(analysis?.sourceUser).toBe('paratext-9-parser');
+      expect(analysis?.glossText).toBe('g1');
+    });
+
+    it('deduplicates: same lexeme in multiple clusters yields one analysis', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 3 },
+                lexemes: [{ lexemeId: 'Word:the', senseId: 'def' }],
+                lexemesId: 'Word:the',
+                id: 'c1',
+                excluded: false,
+              },
+              {
+                textRange: { index: 4, length: 3 },
+                lexemes: [{ lexemeId: 'Word:the', senseId: 'def' }],
+                lexemesId: 'Word:the',
+                id: 'c2',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(1);
+      expect(result.has('analysis-en-Word:the-def')).toBe(true);
+    });
+
+    it('returns multiple analyses for different lexemes (lexemeId or senseId)', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 4 },
+                lexemes: [
+                  { lexemeId: 'Stem:run', senseId: 'g1' },
+                  { lexemeId: 'Suffix:ing', senseId: 'g2' },
+                ],
+                lexemesId: 'Stem:run',
+                id: 'cluster1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(2);
+      expect(result.has('analysis-en-Stem:run-g1')).toBe(true);
+      expect(result.has('analysis-en-Suffix:ing-g2')).toBe(true);
+      expect(result.get('analysis-en-Stem:run-g1')?.glossText).toBe('g1');
+      expect(result.get('analysis-en-Suffix:ing-g2')?.glossText).toBe('g2');
+    });
+
+    it('sets glossText to undefined when senseId is empty', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 1 },
+                lexemes: [{ lexemeId: 'Word:a', senseId: '' }],
+                lexemesId: 'Word:a',
+                id: 'Word:a/0-1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-en-Word:a');
+      expect(analysis).toBeDefined();
+      expect(analysis?.glossText).toBeUndefined();
+      expect(analysis?.id).toBe('analysis-en-Word:a');
+    });
+
+    it('uses glossLanguage from interlinearData for analysisLanguage and id prefix', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'fr',
+        bookId: 'GEN',
+        verses: {
+          'GEN 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 2 },
+                lexemes: [{ lexemeId: 'Word:au', senseId: 'sens1' }],
+                lexemesId: 'Word:au',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-fr-Word:au-sens1');
+      expect(analysis).toBeDefined();
+      expect(analysis?.analysisLanguage).toBe('fr');
+      expect(analysis?.id).toBe('analysis-fr-Word:au-sens1');
+    });
+
+    it('includes analyses from all verses', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 3 },
+                lexemes: [{ lexemeId: 'Word:one', senseId: 's1' }],
+                lexemesId: 'Word:one',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+          'MAT 1:2': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 3 },
+                lexemes: [{ lexemeId: 'Word:two', senseId: 's2' }],
+                lexemesId: 'Word:two',
+                id: 'c2',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const result = createAnalyses(data);
+
+      expect(result.size).toBe(2);
+      expect(result.has('analysis-en-Word:one-s1')).toBe(true);
+      expect(result.has('analysis-en-Word:two-s2')).toBe(true);
     });
   });
 });

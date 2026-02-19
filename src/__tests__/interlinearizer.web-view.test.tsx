@@ -25,6 +25,23 @@ const stubInterlinearization = {
 const mockParse = jest.fn().mockReturnValue(stubInterlinearData);
 const mockConvert = jest.fn().mockReturnValue(stubInterlinearization);
 
+/** Stub analyses map for Analyses view (ID → Analysis). */
+const stubAnalysesMap = new Map([
+  [
+    'analysis-en-lex1-s1',
+    {
+      id: 'analysis-en-lex1-s1',
+      analysisLanguage: 'en',
+      analysisType: 'gloss',
+      confidence: 'medium',
+      sourceSystem: 'paratext-9',
+      sourceUser: 'paratext-9-parser',
+      glossText: 'sense1',
+    },
+  ],
+]);
+const mockCreateAnalyses = jest.fn().mockReturnValue(stubAnalysesMap);
+
 /** Mock parser: no real XML parsing; returns stub data. Parser/converter are tested elsewhere. */
 jest.mock('parsers/paratext-9/paratext9Parser', () => ({
   Paratext9Parser: jest.fn().mockImplementation(() => ({
@@ -32,9 +49,10 @@ jest.mock('parsers/paratext-9/paratext9Parser', () => ({
   })),
 }));
 
-/** Mock converter: no real conversion; returns stub Interlinearization. */
+/** Mock converter: no real conversion; returns stub Interlinearization and stub analyses map. */
 jest.mock('parsers/paratext-9/paratext9Converter', () => ({
   convertParatext9ToInterlinearization: mockConvert,
+  createAnalyses: mockCreateAnalyses,
 }));
 
 /**
@@ -86,13 +104,14 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/test-data\/Interlinear_en_MAT\.xml/i)).toBeInTheDocument();
   });
 
-  it('renders the JSON view mode switch (InterlinearData / Interlinearization)', () => {
+  it('renders the JSON view mode switch (InterlinearData / Interlinearization / Analyses)', () => {
     render(<InterlinearizerWebView {...testWebViewProps} />);
 
     const group = screen.getByRole('group', { name: /json view mode/i });
     expect(group).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^interlineardata$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^interlinearization$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^analyses$/i })).toBeInTheDocument();
     expect(screen.getByText(/view json as:/i)).toBeInTheDocument();
   });
 
@@ -150,6 +169,18 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
     expect(screen.getByText(/glossLanguage/i)).toBeInTheDocument();
     expect(screen.getByText(/bookId/i)).toBeInTheDocument();
+  });
+
+  it('switching to Analyses shows analysis map JSON from test data', () => {
+    render(<InterlinearizerWebView {...testWebViewProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^analyses$/i }));
+
+    expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+    expect(mockCreateAnalyses).toHaveBeenCalledWith(stubInterlinearData);
+    expect(screen.getByText(/analysis-en-lex1-s1/)).toBeInTheDocument();
+    expect(screen.getByText(/glossText/i)).toBeInTheDocument();
+    expect(screen.getByText(/paratext-9/i)).toBeInTheDocument();
   });
 
   it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', () => {

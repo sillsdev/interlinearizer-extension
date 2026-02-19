@@ -1,7 +1,10 @@
 import { useMemo, useState } from 'react';
 import type { InterlinearData } from 'paratext-9-types';
-import { Paratext9Parser } from './parsers/paratext-9/paratext9Parser';
-import { convertParatext9ToInterlinearization } from './parsers/paratext-9/paratext9Converter';
+import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
+import {
+  convertParatext9ToInterlinearization,
+  createAnalyses,
+} from 'parsers/paratext-9/paratext9Converter';
 
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
@@ -9,16 +12,30 @@ import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
 /** Result of parsing the bundled test XML: either data or an error message. */
 type ParseResult = { data: InterlinearData; error: undefined } | { data: undefined; error: string };
 
-/** View mode for the JSON display: raw PT9 structure or converted interlinearizer model. */
-type JsonViewMode = 'interlinear-data' | 'interlinearization';
+/** View mode for the JSON display: raw PT9, converted model, or analyses map. */
+type JsonViewMode = 'interlinear-data' | 'interlinearization' | 'analyses';
+
+function getViewModeDescription(mode: JsonViewMode): string {
+  if (mode === 'interlinear-data') return 'Paratext 9 book/verse/cluster structure.';
+  if (mode === 'interlinearization')
+    return 'Converted interlinearizer book/segment/occurrence model.';
+  return 'Analysis objects (ID → gloss, confidence, source) from test data.';
+}
+
+function getViewModeLabel(mode: JsonViewMode): string {
+  if (mode === 'interlinear-data') return 'InterlinearData (JSON):';
+  if (mode === 'interlinearization') return 'Interlinearization (JSON):';
+  return 'Analyses (JSON):';
+}
 
 /**
  * Main interlinearizer WebView. Parses the bundled test XML into the interlinear model and displays
  * the result as raw JSON. No PAPI commands or file loading—everything is self-contained.
  *
- * A switch lets the user choose between viewing {@link InterlinearData} (Paratext 9 format) or
- * {@link Interlinearization} (converted interlinearizer model). Parser is created inside useMemo so
- * parsing runs once per mount.
+ * A switch lets the user choose between: {@link InterlinearData} (Paratext 9 format),
+ * {@link Interlinearization} (converted interlinearizer model), or Analyses (ID → Analysis map
+ * derived from test data: gloss, confidence, source). Parser is created inside useMemo so parsing
+ * runs once per mount.
  */
 globalThis.webViewComponent = function InterlinearizerWebView() {
   const [jsonViewMode, setJsonViewMode] = useState<JsonViewMode>('interlinear-data');
@@ -38,8 +55,19 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
     [parsed],
   );
 
-  /** In Interlinearization mode use converted data (may be undefined); otherwise use parsed. */
-  const jsonToShow = jsonViewMode === 'interlinearization' ? interlinearization : parsed;
+  /** Analyses map derived from parsed data (ID → Analysis); only defined when parsed exists. */
+  const analysesMap = useMemo(() => (parsed ? createAnalyses(parsed) : undefined), [parsed]);
+
+  /** Data to show as JSON: depends on selected view mode. */
+  const jsonToShow = (():
+    | typeof parsed
+    | ReturnType<typeof convertParatext9ToInterlinearization>
+    | Record<string, unknown>
+    | undefined => {
+    if (jsonViewMode === 'interlinearization') return interlinearization;
+    if (jsonViewMode === 'analyses' && analysesMap) return Object.fromEntries(analysesMap);
+    return parsed;
+  })();
 
   return (
     <div className="tw-flex tw-flex-col tw-gap-4 tw-p-6">
@@ -90,18 +118,24 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
               >
                 Interlinearization
               </button>
+              <button
+                type="button"
+                onClick={() => setJsonViewMode('analyses')}
+                className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
+                  jsonViewMode === 'analyses'
+                    ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
+                    : 'tw-text-muted-foreground hover:tw-text-foreground'
+                }`}
+                aria-pressed={jsonViewMode === 'analyses'}
+              >
+                Analyses
+              </button>
             </div>
             <p className="tw-text-xs tw-text-muted-foreground">
-              {jsonViewMode === 'interlinear-data'
-                ? 'Paratext 9 book/verse/cluster structure.'
-                : 'Converted interlinearizer book/segment/occurrence model.'}
+              {getViewModeDescription(jsonViewMode)}
             </p>
           </div>
-          <p className="tw-text-sm tw-text-muted-foreground">
-            {jsonViewMode === 'interlinear-data'
-              ? 'InterlinearData (JSON):'
-              : 'Interlinearization (JSON):'}
-          </p>
+          <p className="tw-text-sm tw-text-muted-foreground">{getViewModeLabel(jsonViewMode)}</p>
           <pre className="tw-overflow-auto tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-4 tw-text-sm tw-font-mono tw-leading-relaxed">
             {jsonToShow ? JSON.stringify(jsonToShow, undefined, 2) : ''}
           </pre>

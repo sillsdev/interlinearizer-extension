@@ -14,7 +14,13 @@ import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
 type ParseResult = { data: InterlinearData; error: undefined } | { data: undefined; error: string };
 
 /** View mode for the JSON display: raw PT9, converted model, or analyses map. */
-type JsonViewMode = 'interlinear-data' | 'interlinearization' | 'analyses';
+export type JsonViewMode = 'interlinear-data' | 'interlinearization' | 'analyses';
+
+/**
+ * Sentinel returned by jsonToShow when interlinearization mode is selected but conversion is still
+ * in progress.
+ */
+export const JSON_SHOW_CONVERTING = Symbol('JSON_SHOW_CONVERTING');
 
 /** Ordered list of JSON view modes for rendering and arrow-key navigation. */
 const JSON_VIEW_MODES: { key: JsonViewMode; label: string }[] = [
@@ -36,6 +42,49 @@ function getViewModeLabel(mode: JsonViewMode): string {
   return 'Analyses (JSON):';
 }
 
+/** Renders jsonToShow for the <pre>: "Converting…" for sentinel, stringified JSON, or empty string. */
+function formatJsonPreContent(jsonToShow: unknown): string {
+  if (jsonToShow === JSON_SHOW_CONVERTING) return 'Converting...';
+  if (jsonToShow !== undefined) return JSON.stringify(jsonToShow, undefined, 2);
+  return '';
+}
+
+/**
+ * Pure handler for arrow-key navigation on the JSON view mode radiogroup. Left/Up select previous,
+ * Right/Down select next. Exported for unit testing.
+ *
+ * @param currentMode - Current JSON view mode as string (must be in {@link JSON_VIEW_MODES} or
+ *   no-op).
+ * @param eventKey - KeyboardEvent.key (e.g. 'ArrowRight', 'ArrowLeft').
+ * @param setJsonViewMode - State setter for view mode.
+ * @param focusRadio - Callback to focus the radio for a given mode (e.g.
+ *   refs.current[key]?.focus()).
+ * @returns True if the key was handled (caller should call event.preventDefault()).
+ */
+export function handleJsonViewModeKeyDown(
+  currentMode: string,
+  eventKey: string,
+  setJsonViewMode: (mode: JsonViewMode) => void,
+  focusRadio: (mode: JsonViewMode) => void,
+): boolean {
+  const idx = JSON_VIEW_MODES.findIndex((m) => m.key === currentMode);
+  if (idx === -1) return false;
+  if (eventKey === 'ArrowRight' || eventKey === 'ArrowDown') {
+    const nextKey = JSON_VIEW_MODES[(idx + 1) % JSON_VIEW_MODES.length].key;
+    setJsonViewMode(nextKey);
+    focusRadio(nextKey);
+    return true;
+  }
+  if (eventKey === 'ArrowLeft' || eventKey === 'ArrowUp') {
+    const nextKey =
+      JSON_VIEW_MODES[(idx - 1 + JSON_VIEW_MODES.length) % JSON_VIEW_MODES.length].key;
+    setJsonViewMode(nextKey);
+    focusRadio(nextKey);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Main interlinearizer WebView. Parses the bundled test XML into the interlinear model and displays
  * the result as raw JSON. No PAPI commands or file loading—everything is self-contained.
@@ -55,24 +104,14 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
     analyses: undefined,
   });
 
-  /**
-   * Handles arrow keys on the JSON view mode radiogroup: Left/Up select previous, Right/Down select
-   * next; updates selection and moves focus to the new radio.
-   */
-  const handleJsonViewModeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const idx = JSON_VIEW_MODES.findIndex((m) => m.key === jsonViewMode);
-    if (idx === -1) return;
-    let nextKey: JsonViewMode | undefined;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+  /** Wires arrow-key events to the pure handler and prevents default when handled. */
+  const onJsonViewModeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (
+      handleJsonViewModeKeyDown(jsonViewMode, e.key, setJsonViewMode, (key) =>
+        radioRefs.current[key]?.focus(),
+      )
+    ) {
       e.preventDefault();
-      nextKey = JSON_VIEW_MODES[(idx + 1) % JSON_VIEW_MODES.length].key;
-      setJsonViewMode(nextKey);
-      radioRefs.current[nextKey]?.focus();
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      nextKey = JSON_VIEW_MODES[(idx - 1 + JSON_VIEW_MODES.length) % JSON_VIEW_MODES.length].key;
-      setJsonViewMode(nextKey);
-      radioRefs.current[nextKey]?.focus();
     }
   };
 
@@ -87,20 +126,33 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
   }, []);
 
   const [interlinearization, setInterlinearization] = useState<Interlinearization | undefined>();
+  /**
+   * True once the convert promise has resolved or rejected; used to show "Converting…" only while
+   * in flight.
+   */
+  const [conversionSettled, setConversionSettled] = useState(false);
 
   useEffect(() => {
     if (!parsed) {
       setInterlinearization(undefined);
+      setConversionSettled(false);
       return;
     }
+    setConversionSettled(false);
     let cancelled = false;
     convertParatext9ToInterlinearization(parsed)
       .then((result) => {
-        if (!cancelled) setInterlinearization(result);
+        if (!cancelled) {
+          setInterlinearization(result);
+          setConversionSettled(true);
+        }
         return result;
       })
       .catch(() => {
-        if (!cancelled) setInterlinearization(undefined);
+        if (!cancelled) {
+          setInterlinearization(undefined);
+          setConversionSettled(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -110,13 +162,19 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
   /** Analyses map derived from parsed data (ID → Analysis); only defined when parsed exists. */
   const analysesMap = useMemo(() => (parsed ? createAnalyses(parsed) : undefined), [parsed]);
 
-  /** Data to show as JSON: depends on selected view mode. */
-  const jsonToShow = useMemo(() => {
-    if (jsonViewMode === 'interlinearization') return interlinearization;
+  /**
+   * Data to show as JSON: depends on selected view mode. Shows converting sentinel when in
+   * interlinearization mode and conversion has not yet settled (promise still in flight).
+   */
+  const jsonToShow = useMemo((): unknown => {
+    if (jsonViewMode === 'interlinearization') {
+      if (interlinearization === undefined && !conversionSettled) return JSON_SHOW_CONVERTING;
+      return interlinearization;
+    }
     if (jsonViewMode === 'analyses')
       return analysesMap ? Object.fromEntries(analysesMap) : undefined;
     return parsed;
-  }, [jsonViewMode, parsed, interlinearization, analysesMap]);
+  }, [jsonViewMode, parsed, interlinearization, conversionSettled, analysesMap]);
 
   return (
     <div className="tw-flex tw-flex-col tw-gap-4 tw-p-6">
@@ -143,7 +201,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
               role="radiogroup"
               aria-label="JSON view mode"
               tabIndex={-1}
-              onKeyDown={handleJsonViewModeKeyDown}
+              onKeyDown={onJsonViewModeKeyDown}
             >
               {JSON_VIEW_MODES.map(({ key, label }) => (
                 <button
@@ -172,7 +230,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
           </div>
           <p className="tw-text-sm tw-text-muted-foreground">{getViewModeLabel(jsonViewMode)}</p>
           <pre className="tw-overflow-auto tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-4 tw-text-sm tw-font-mono tw-leading-relaxed">
-            {jsonToShow ? JSON.stringify(jsonToShow, undefined, 2) : ''}
+            {formatJsonPreContent(jsonToShow)}
           </pre>
         </>
       )}

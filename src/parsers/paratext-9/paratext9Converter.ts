@@ -297,10 +297,9 @@ export async function convertParatext9ToInterlinearization(
   const analyzedBookId = generateBookId(bookId);
   const sortedVerseRefs = Object.keys(verses).sort();
   const verseDataArray = sortedVerseRefs.map((ref) => verses[ref]);
-
-  const segments = Object.entries(verses).map(([verseRef, verseData]) => {
-    return convertVerseToSegment(verseRef, verseData, glossLanguage);
-  });
+  const segments = sortedVerseRefs.map((ref) =>
+    convertVerseToSegment(ref, verses[ref], glossLanguage),
+  );
 
   const textVersion = await computeBookTextVersion(verseDataArray, hashSha256Hex);
 

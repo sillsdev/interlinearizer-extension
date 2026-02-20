@@ -5,7 +5,6 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import React from 'react';
 import type { InterlinearData } from 'parsers/paratext-9/paratext-9-types';
 
 /** Stub InterlinearData returned by the mocked parser. Matches shape the WebView displays. */
@@ -56,6 +55,9 @@ jest.mock('parsers/paratext-9/paratext9Converter', () => ({
   createAnalyses: mockCreateAnalyses,
 }));
 
+// eslint-disable-next-line import/first -- import order required for Jest mock initialization
+import * as interlinearizerWebViewModule from '../interlinearizer.web-view';
+
 /**
  * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
  * required by the Platform.Bible WebView framework: the WebView entry is built with a ?inline query
@@ -63,9 +65,9 @@ jest.mock('parsers/paratext-9/paratext9Converter', () => ({
  * component must require() the module and read globalThis. If the WebView export mechanism changes,
  * update this test accordingly.
  */
-require('../interlinearizer.web-view');
 
 const InterlinearizerWebView = globalThis.webViewComponent;
+const { handleJsonViewModeKeyDown } = interlinearizerWebViewModule;
 if (!InterlinearizerWebView) throw new Error('webViewComponent not loaded');
 
 /** Minimal SerializedVerseRef for hook mock return. */
@@ -106,6 +108,10 @@ async function renderWebView(): Promise<ReturnType<typeof render>> {
 }
 
 describe('InterlinearizerWebView', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('renders the heading "Interlinearizer"', async () => {
     await renderWebView();
 
@@ -170,11 +176,9 @@ describe('InterlinearizerWebView', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
 
     expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
-      expect(screen.getByText(/sourceWritingSystem/i)).toBeInTheDocument();
-      expect(screen.getByText(/segments/i)).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/sourceWritingSystem/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/segments/i)).toBeInTheDocument());
   });
 
   it('switching back to InterlinearData shows PT9 structure JSON', async () => {
@@ -231,6 +235,36 @@ describe('InterlinearizerWebView', () => {
     expect(jsonPre).toBeInTheDocument();
     expect(jsonPre).toBeEmptyDOMElement();
     expect(jsonPre).not.toHaveTextContent('undefined');
+  });
+
+  it('shows "Converting..." in Interlinearization view while conversion is in flight', async () => {
+    let resolveConvert: ((value: typeof stubInterlinearization) => void) | undefined;
+    const convertPromise = new Promise<typeof stubInterlinearization>((resolve) => {
+      resolveConvert = resolve;
+    });
+    mockConvert.mockReturnValueOnce(convertPromise);
+
+    const { container } = await act(async () => {
+      const result = render(<InterlinearizerWebView {...testWebViewProps} />);
+      await Promise.resolve();
+      return result;
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
+
+    await waitFor(() => {
+      const jsonPre = container.querySelector('pre');
+      expect(jsonPre).toHaveTextContent('Converting...');
+    });
+
+    await act(async () => {
+      if (resolveConvert) resolveConvert(stubInterlinearization);
+      await convertPromise;
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/analysisLanguages/i)).toBeInTheDocument();
+    });
   });
 
   it('displays parse error when parser throws non-Error (uses String(err))', async () => {
@@ -386,26 +420,14 @@ describe('InterlinearizerWebView', () => {
       expect(document.activeElement).toBe(interlinearizationRadio);
     });
 
-    it('does nothing when current view mode is not in JSON_VIEW_MODES (idx === -1)', async () => {
+    it('does nothing when current view mode is not in JSON_VIEW_MODES (idx === -1)', () => {
       const setJsonViewMode = jest.fn();
-      let useStateCallCount = 0;
-      const useStateSpy = jest.spyOn(React, 'useState').mockImplementation(() => {
-        useStateCallCount += 1;
-        return useStateCallCount === 1 ? ['invalid', setJsonViewMode] : [undefined, jest.fn()];
-      });
+      const focusRadio = jest.fn();
+      // Pass a value not in JSON_VIEW_MODES so findIndex returns -1; handler takes string for testability.
+      handleJsonViewModeKeyDown('invalid', 'ArrowRight', setJsonViewMode, focusRadio);
 
-      try {
-        await renderWebView();
-        const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
-
-        await act(async () => {
-          fireEvent.keyDown(radiogroup, { key: 'ArrowRight' });
-        });
-
-        expect(setJsonViewMode).not.toHaveBeenCalled();
-      } finally {
-        useStateSpy.mockRestore();
-      }
+      expect(setJsonViewMode).not.toHaveBeenCalled();
+      expect(focusRadio).not.toHaveBeenCalled();
     });
   });
 });

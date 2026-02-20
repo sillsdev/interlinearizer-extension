@@ -1,0 +1,269 @@
+/**
+ * @file Unit tests for {@link parseLexiconAndBuildGlossLookup}, {@link toArray}, and
+ *   {@link normalizeGloss}.
+ */
+
+import {
+  parseLexiconAndBuildGlossLookup,
+  toArray,
+  normalizeGloss,
+} from 'parsers/paratext-9/lexiconParser';
+import fs from 'fs';
+import { getTestDataPath } from '../../test-helpers';
+
+describe('normalizeGloss', () => {
+  it('returns default language and text when Gloss object has no @_Language (covers ?? branch)', () => {
+    const result = normalizeGloss({ '#text': 'gloss without lang key' });
+    expect(result.lang).toBe('*');
+    expect(result.text).toBe('gloss without lang key');
+  });
+
+  it('returns language and text when Gloss object has @_Language', () => {
+    const result = normalizeGloss({ '@_Language': 'en', '#text': 'hello' });
+    expect(result.lang).toBe('en');
+    expect(result.text).toBe('hello');
+  });
+
+  it('returns default language when Gloss is string', () => {
+    const result = normalizeGloss('plain string gloss');
+    expect(result.lang).toBe('*');
+    expect(result.text).toBe('plain string gloss');
+  });
+});
+
+describe('toArray', () => {
+  it('returns empty array for undefined (branch: undefined)', () => {
+    expect(toArray(undefined)).toEqual([]);
+  });
+
+  it('returns same array when value is already an array (branch: array)', () => {
+    const arr = [{ id: 'a' }];
+    expect(toArray(arr)).toBe(arr);
+    expect(toArray(arr)).toEqual([{ id: 'a' }]);
+  });
+
+  it('wraps single object in array when value is not an array (branch: single object)', () => {
+    const single = { id: 'single' };
+    expect(toArray(single)).toEqual([single]);
+  });
+});
+
+describe('parseLexiconAndBuildGlossLookup', () => {
+  it('throws when root element is not Lexicon', () => {
+    const xml = '<?xml version="1.0"?><InterlinearData></InterlinearData>';
+    expect(() => parseLexiconAndBuildGlossLookup(xml)).toThrow(
+      'Invalid XML: Missing Lexicon root element',
+    );
+  });
+
+  it('returns lookup that yields undefined for empty Lexicon', () => {
+    const xml = '<?xml version="1.0"?><Lexicon><Entries /></Lexicon>';
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('anyId', 'en')).toBeUndefined();
+  });
+
+  it('returns lookup that yields undefined for senseId with no Gloss', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="x" Homograph="1" />
+      <Entry>
+        <Sense Id="senseNoGloss" />
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('senseNoGloss', 'en')).toBeUndefined();
+  });
+
+  it('returns gloss text for matching senseId and language', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Stem" Form="hello" Homograph="1" />
+      <Entry>
+        <Sense Id="Fz1CNXo3">
+          <Gloss Language="en">good</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('Fz1CNXo3', 'en')).toBe('good');
+  });
+
+  it('returns empty string when Gloss element has no text for that language', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="in" Homograph="1" />
+      <Entry>
+        <Sense Id="6wa5ZOr2">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('6wa5ZOr2', 'grc')).toBe('');
+  });
+
+  it('returns undefined for wrong language when Sense has only other languages', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="d" Homograph="1" />
+      <Entry>
+        <Sense Id="wq/iyJMV">
+          <Gloss Language="hbo">בֹּקֶר</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('wq/iyJMV', 'hbo')).toBe('בֹּקֶר');
+    expect(lookup('wq/iyJMV', 'en')).toBeUndefined();
+  });
+
+  it('returns undefined for empty senseId', () => {
+    const xml = '<?xml version="1.0"?><Lexicon><Entries /></Lexicon>';
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('', 'en')).toBeUndefined();
+  });
+
+  it('adds no pairs for Sense with empty Id', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="x" Homograph="1" />
+      <Entry>
+        <Sense Id="">
+          <Gloss Language="en">ignored</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('', 'en')).toBeUndefined();
+    expect(lookup('any', 'en')).toBeUndefined();
+  });
+
+  it('adds no pairs for Sense with missing Id attribute', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="z" Homograph="1" />
+      <Entry>
+        <Sense>
+          <Gloss Language="en">no id sense</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('any', 'en')).toBeUndefined();
+  });
+
+  it('uses default language when Gloss has empty Language attribute', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="x" Homograph="1" />
+      <Entry>
+        <Sense Id="noLangSense">
+          <Gloss Language="">default gloss</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('noLangSense', '*')).toBe('default gloss');
+    expect(lookup('noLangSense', 'en')).toBe('default gloss');
+  });
+
+  it('uses default language when Gloss has no Language attribute (FXP returns string)', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="y" Homograph="1" />
+      <Entry>
+        <Sense Id="omitLangSense">
+          <Gloss>no lang attribute</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('omitLangSense', '*')).toBe('no lang attribute');
+    expect(lookup('omitLangSense', 'en')).toBe('no lang attribute');
+  });
+
+  it('uses default language when Gloss is object with missing Language attribute (covers ?? branch)', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="z" Homograph="1" />
+      <Entry>
+        <Sense Id="mixedLangSense">
+          <Gloss Language="en">en only</Gloss>
+          <Gloss>no lang key</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('mixedLangSense', 'en')).toBe('en only');
+    expect(lookup('mixedLangSense', '*')).toBe('no lang key');
+  });
+
+  it('handles Entry with no Sense', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="x" Homograph="1" />
+      <Entry />
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('any', 'en')).toBeUndefined();
+  });
+
+  it('parses test-data/Lexicon.xml and resolves known sense IDs', () => {
+    const xmlPath = getTestDataPath('Lexicon.xml');
+    const xml = fs.readFileSync(xmlPath, 'utf-8');
+    const lookup = parseLexiconAndBuildGlossLookup(xml);
+    expect(lookup('Fz1CNXo3', 'en')).toBe('good');
+    expect(lookup('OMK1KkbQ', 'pt')).toBe('World');
+    expect(lookup('0DCSOYfT', 'grc')).toBe('ωορλδ');
+  });
+});

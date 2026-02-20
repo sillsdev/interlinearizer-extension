@@ -95,6 +95,8 @@ const config: Config = {
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
     /** Resolve webpack ?raw import for test XML in web-view. */
     '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
+    /** Resolve webpack ?raw import for Lexicon XML in web-view. */
+    '^(.+)/Lexicon\\.xml\\?raw$': '<rootDir>/__mocks__/lexiconXmlContent.ts',
   },
 
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */

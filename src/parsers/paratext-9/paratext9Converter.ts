@@ -20,7 +20,14 @@ import {
   AssignmentStatus,
   Confidence,
 } from 'types/interlinearizer-enums';
-import type { InterlinearData, VerseData, StringRange } from './paratext-9-types';
+import type {
+  InterlinearData,
+  VerseData,
+  StringRange,
+  ClusterData,
+  PunctuationData,
+} from './paratext-9-types';
+import type { LexiconGlossLookup } from './lexiconParser';
 
 /**
  * Default SHA-256 hex implementation using the Web Crypto API so the converter can run in WebViews.
@@ -164,8 +171,14 @@ function textRangeToAnchor(textRange: StringRange): string {
  * @param verseRef - Verse reference (e.g., "MAT 1:1").
  * @param verseData - Verse data from Paratext 9.
  * @param glossLanguage - Gloss language code.
- * @returns A Segment with occurrences converted from clusters and punctuations.
+ * @returns A Segment with occurrences in text order (clusters and punctuations merged and sorted by
+ *   textRange.index, then mapped to occurrences with sequential index).
  */
+/** Item in the merged list of clusters and punctuations for reading-order sort. */
+type ClusterOrPunctuation =
+  | { kind: 'cluster'; textRange: StringRange; cluster: ClusterData }
+  | { kind: 'punctuation'; textRange: StringRange; punctuation: PunctuationData };
+
 function convertVerseToSegment(
   verseRef: string,
   verseData: VerseData,
@@ -173,48 +186,60 @@ function convertVerseToSegment(
 ): Segment {
   const segmentId = generateSegmentId(verseRef);
 
-  const wordOccurrences = verseData.clusters.map((cluster, clusterIndex): Occurrence => {
-    const occurrenceId = generateOccurrenceIdFromCluster(segmentId, cluster.id, clusterIndex);
-    const assignments = cluster.lexemes.map((lexeme): AnalysisAssignment => {
-      const analysisId = generateAnalysisId(lexeme.lexemeId, lexeme.senseId, glossLanguage);
-      const assignmentId = generateAssignmentId(occurrenceId, analysisId);
-      return {
-        id: assignmentId,
-        occurrenceId,
-        analysisId,
-        status: verseData.hash ? AssignmentStatus.Approved : AssignmentStatus.Suggested,
-      };
-    });
-    return {
-      id: occurrenceId,
-      segmentId,
-      index: clusterIndex,
-      anchor: textRangeToAnchor(cluster.textRange),
-      surfaceText: '', // Paratext 9 doesn't specify surface text per cluster
-      writingSystem: '', // Paratext 9 doesn't specify writing system per cluster
-      type: OccurrenceType.Word,
-      assignments,
-    };
-  });
+  const items: ClusterOrPunctuation[] = [
+    ...verseData.clusters.map(
+      (cluster): ClusterOrPunctuation => ({
+        kind: 'cluster',
+        textRange: cluster.textRange,
+        cluster,
+      }),
+    ),
+    ...verseData.punctuations.map(
+      (punctuation): ClusterOrPunctuation => ({
+        kind: 'punctuation',
+        textRange: punctuation.textRange,
+        punctuation,
+      }),
+    ),
+  ].sort((a, b) => a.textRange.index - b.textRange.index);
 
-  const punctuationOccurrences: Occurrence[] = verseData.punctuations.map(
-    (punctuation, puncIndex): Occurrence => {
-      const occurrenceIndex = wordOccurrences.length + puncIndex;
-
+  const occurrences: Occurrence[] = items.map((item, occurrenceIndex): Occurrence => {
+    if (item.kind === 'cluster') {
+      const { cluster } = item;
+      const occurrenceId = generateOccurrenceIdFromCluster(segmentId, cluster.id, occurrenceIndex);
+      const assignments = cluster.lexemes.map((lexeme): AnalysisAssignment => {
+        const analysisId = generateAnalysisId(lexeme.lexemeId, lexeme.senseId, glossLanguage);
+        const assignmentId = generateAssignmentId(occurrenceId, analysisId);
+        return {
+          id: assignmentId,
+          occurrenceId,
+          analysisId,
+          status: verseData.hash ? AssignmentStatus.Approved : AssignmentStatus.Suggested,
+        };
+      });
       return {
-        id: generateOccurrenceIdFromPunctuation(segmentId, punctuation.textRange, occurrenceIndex),
+        id: occurrenceId,
         segmentId,
         index: occurrenceIndex,
-        anchor: textRangeToAnchor(punctuation.textRange),
-        surfaceText: punctuation.afterText || punctuation.beforeText || '',
-        writingSystem: '',
-        type: OccurrenceType.Punctuation,
-        assignments: [],
+        anchor: textRangeToAnchor(cluster.textRange),
+        surfaceText: '', // Paratext 9 doesn't specify surface text per cluster
+        writingSystem: '', // Paratext 9 doesn't specify writing system per cluster
+        type: OccurrenceType.Word,
+        assignments,
       };
-    },
-  );
-
-  const occurrences = [...wordOccurrences, ...punctuationOccurrences];
+    }
+    const { punctuation } = item;
+    return {
+      id: generateOccurrenceIdFromPunctuation(segmentId, punctuation.textRange, occurrenceIndex),
+      segmentId,
+      index: occurrenceIndex,
+      anchor: textRangeToAnchor(punctuation.textRange),
+      surfaceText: punctuation.afterText || punctuation.beforeText || '',
+      writingSystem: '',
+      type: OccurrenceType.Punctuation,
+      assignments: [],
+    };
+  });
 
   return {
     id: segmentId,
@@ -225,14 +250,36 @@ function convertVerseToSegment(
 }
 
 /**
- * Creates Analysis objects for all unique lexemes across all verses.
+ * Options for {@link createAnalyses}. When a Lexicon is available, pass a gloss lookup so glossText
+ * is populated from the Lexicon instead of using senseId as a placeholder.
+ */
+export type CreateAnalysesOptions = {
+  /**
+   * Lookup (senseId, language) → gloss text. When provided and returns a string (including empty
+   * string), that value is used for Analysis.glossText; otherwise glossText falls back to senseId
+   * when present (placeholder behaviour). Built from Lexicon XML via
+   * {@link parseLexiconAndBuildGlossLookup}.
+   */
+  glossLookup?: LexiconGlossLookup;
+};
+
+/**
+ * Creates Analysis objects for all unique lexemes across all verses. When
+ * {@link CreateAnalysesOptions.glossLookup} is provided, gloss text is resolved from the Lexicon
+ * (senseId + glossLanguage); otherwise glossText uses senseId as a placeholder when Interlinear XML
+ * does not store gloss strings.
  *
  * @param interlinearData - Paratext 9 interlinear data.
+ * @param options - Optional. glossLookup: (senseId, language) → gloss text from Lexicon.
  * @returns Map of analysis ID to Analysis object.
  */
-export function createAnalyses(interlinearData: InterlinearData): Map<string, Analysis> {
+export function createAnalyses(
+  interlinearData: InterlinearData,
+  options?: CreateAnalysesOptions,
+): Map<string, Analysis> {
   const analyses = new Map<string, Analysis>();
   const { glossLanguage } = interlinearData;
+  const glossLookup = options?.glossLookup;
 
   Object.values(interlinearData.verses).forEach((verseData) => {
     verseData.clusters.forEach((cluster) => {
@@ -240,6 +287,14 @@ export function createAnalyses(interlinearData: InterlinearData): Map<string, An
         const analysisId = generateAnalysisId(lexeme.lexemeId, lexeme.senseId, glossLanguage);
 
         if (!analyses.has(analysisId)) {
+          let glossText: string | undefined;
+          if (glossLookup && lexeme.senseId) {
+            const fromLexicon = glossLookup(lexeme.senseId, glossLanguage);
+            glossText = fromLexicon !== undefined ? fromLexicon : lexeme.senseId;
+          } else {
+            glossText = lexeme.senseId || undefined;
+          }
+
           const analysis: Analysis = {
             id: analysisId,
             analysisLanguage: glossLanguage,
@@ -247,7 +302,7 @@ export function createAnalyses(interlinearData: InterlinearData): Map<string, An
             confidence: Confidence.Medium, // Default confidence level
             sourceSystem: 'paratext-9',
             sourceUser: 'paratext-9-parser',
-            glossText: lexeme.senseId || undefined, // Use senseId as gloss text placeholder
+            glossText,
             // Note: Paratext 9 doesn't provide POS, features, or morpheme bundles in the XML
           };
 

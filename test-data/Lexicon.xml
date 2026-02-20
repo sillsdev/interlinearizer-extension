@@ -1,0 +1,4232 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>Scheherazade New</FontName>
+  <FontSize>12</FontSize>
+  <Analyses />
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="rubapiita" Homograph="1" />
+      <Entry>
+        <Sense Id="55zI9AwZ">
+          <Gloss Language="hbo">סדטsdט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="opaitabaaro" Homograph="1" />
+      <Entry>
+        <Sense Id="z+zpTHM6">
+          <Gloss Language="hbo">סדט</Gloss>
+        </Sense>
+        <Sense Id="Bz64CuI5">
+          <Gloss Language="hbo">סדטסדטsדט</Gloss>
+        </Sense>
+        <Sense Id="S3mtFTi3">
+          <Gloss Language="hbo">ססדטסדטsדטדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="rubapiitasfd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="rubapiitasfdsdfsf" Homograph="1" />
+      <Entry>
+        <Sense Id="fZdErF4a">
+          <Gloss Language="hbo">סdט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="in" Homograph="1" />
+      <Entry>
+        <Sense Id="E3SS4Dgy">
+          <Gloss Language="hbo">סדט</Gloss>
+        </Sense>
+        <Sense Id="6wa5ZOr2">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="33PpaKka">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="FfZtnD4s">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="gghhelloho" Homograph="1" />
+      <Entry>
+        <Sense Id="n7zX5f5m">
+          <Gloss Language="hbo">ֶר</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="d" Homograph="1" />
+      <Entry>
+        <Sense Id="wq/iyJMV">
+          <Gloss Language="hbo">בֹּקֶר</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="goqqhhwww" Homograph="1" />
+      <Entry>
+        <Sense Id="uWid1Bn7">
+          <Gloss Language="hbo">סדטסדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="gg goqqhhwww" Homograph="1" />
+      <Entry>
+        <Sense Id="3IOE0NZ+">
+          <Gloss Language="hbo">דסט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="goqqhhwww" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sdfsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="cLTlxkSJ">
+          <Gloss Language="hbo">סdטסדט סד</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sdf" Homograph="1" />
+      <Entry>
+        <Sense Id="F8PjZhmN">
+          <Gloss Language="hbo">סדטסדטסדט</Gloss>
+        </Sense>
+        <Sense Id="WlYqAsmr">
+          <Gloss Language="grc">σδφαααα</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ll" Homograph="1" />
+      <Entry>
+        <Sense Id="jgsvwbIO">
+          <Gloss Language="hbo">sדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="hhgo" Homograph="1" />
+      <Entry>
+        <Sense Id="cTxHdMXp">
+          <Gloss Language="hbo">sדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="fffff" Homograph="1" />
+      <Entry>
+        <Sense Id="jWgg6DU+">
+          <Gloss Language="hbo">סדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="hh" Homograph="1" />
+      <Entry>
+        <Sense Id="SJmoeaIb">
+          <Gloss Language="hbo">סדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="hello" Homograph="1" />
+      <Entry>
+        <Sense Id="+U+lJu98">
+          <Gloss Language="hbo">ֶרת</Gloss>
+        </Sense>
+        <Sense Id="DTavUCfw">
+          <Gloss Language="hbo">סdטסדט</Gloss>
+        </Sense>
+        <Sense Id="/UGIBbU1">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="MpCKiZlt">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+        <Sense Id="OMK1KkbQ">
+          <Gloss Language="pt">World</Gloss>
+        </Sense>
+        <Sense Id="Fz1CNXo3">
+          <Gloss Language="en">good</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="world" Homograph="1" />
+      <Entry>
+        <Sense Id="cBIv5UJA">
+          <Gloss Language="hbo">ֶרת</Gloss>
+        </Sense>
+        <Sense Id="1jnPtTqK">
+          <Gloss Language="hbo">סדטsדט</Gloss>
+        </Sense>
+        <Sense Id="oTmOINVw">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="0DCSOYfT">
+          <Gloss Language="grc">ωορλδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="qw" Homograph="1" />
+      <Entry>
+        <Sense Id="8vVAZ2Ui">
+          <Gloss Language="hbo">sדטסדטסדט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="d hh" Homograph="1" />
+      <Entry>
+        <Sense Id="ak9gXOif">
+          <Gloss Language="hbo">סדטסdט</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="for" Homograph="1" />
+      <Entry>
+        <Sense Id="NLW8C/qT">
+          <Gloss Language="grc">φορεεεε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="for" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ed" Homograph="1" />
+      <Entry>
+        <Sense Id="B41hG9en">
+          <Gloss Language="grc">παστ τενσε</Gloss>
+        </Sense>
+        <Sense Id="BfOsfYxE">
+          <Gloss Language="grc">φφ</Gloss>
+        </Sense>
+        <Sense Id="KxYzuPMI">
+          <Gloss Language="grc">φφεφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="cat" Homograph="1" />
+      <Entry>
+        <Sense Id="xLmKVgjE">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="uNORhen/">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="lFS0/D1+">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="TXie+cvK">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="aNKcZBBF">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+        <Sense Id="7nhAfNuP">
+          <Gloss Language="grc">ρρ</Gloss>
+        </Sense>
+        <Sense Id="UcIGGczB">
+          <Gloss Language="grc">ρρδφγ</Gloss>
+        </Sense>
+        <Sense Id="sj0iqezv">
+          <Gloss Language="en">sdfdf</Gloss>
+        </Sense>
+        <Sense Id="TAmkxCzy">
+          <Gloss Language="en">sdf</Gloss>
+        </Sense>
+        <Sense Id="qDDFOdgV">
+          <Gloss Language="en">sdfs fsdf sfd</Gloss>
+        </Sense>
+        <Sense Id="KyKXxe8e">
+          <Gloss Language="en">sdfs fsdf sfd sdf sdfsdf sdf sdf sdf sdfs dfsdf</Gloss>
+        </Sense>
+        <Sense Id="mJ6vUl64">
+          <Gloss Language="en">
+          dfs fsdf sfd sdf sdfsdf sdf sdf sdf sdfs dfsdf sdfs fsdf sfd sdf sdfsdf sdf sdf sdf sdfs dfsdf
+          </Gloss>
+        </Sense>
+        <Sense Id="PvdY5dRK">
+          <Gloss Language="en">a</Gloss>
+        </Sense>
+        <Sense Id="AsFJq9BR">
+          <Gloss Language="en">a sdf sdfsd fs df</Gloss>
+        </Sense>
+        <Sense Id="m5cAlYVp">
+          <Gloss Language="en">dog</Gloss>
+        </Sense>
+        <Sense Id="vb6Wfa1z">
+          <Gloss Language="en">cat</Gloss>
+        </Sense>
+        <Sense Id="EjLQuOgr">
+          <Gloss Language="en">Cat</Gloss>
+        </Sense>
+        <Sense Id="EcTXwVYE">
+          <Gloss Language="en">cat</Gloss>
+        </Sense>
+        <Sense Id="etw1UVV0">
+          <Gloss Language="en">kat</Gloss>
+        </Sense>
+        <Sense Id="QoOLu3hf">
+          <Gloss Language="en">Kat</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="the" Homograph="1" />
+      <Entry>
+        <Sense Id="5jZ2QRcg">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Cs+NMSAa">
+          <Gloss Language="grc">τηεεζζζζζaαααεεεεεεεεεε</Gloss>
+        </Sense>
+        <Sense Id="/zF8FW1/">
+          <Gloss Language="grc">τηεεεζζζζζζζζζζζζζ</Gloss>
+        </Sense>
+        <Sense Id="QAffMqUy">
+          <Gloss Language="grc">τηεεεεθθαθζ</Gloss>
+        </Sense>
+        <Sense Id="cQXUT7Sp">
+          <Gloss Language="grc">τῇαζζζζζζζζζζζζζ</Gloss>
+        </Sense>
+        <Sense Id="gImZPfvd">
+          <Gloss Language="grc">τηεεεεσδφ ]ζζζζζζζζζζζζζ</Gloss>
+        </Sense>
+        <Sense Id="h9vqoD7M">
+          <Gloss Language="grc">τηεεεεσδφ ζζζζζζζζζζζζζ</Gloss>
+        </Sense>
+        <Sense Id="p1C4vDLM">
+          <Gloss Language="grc">τηεεεεσδφ σδφ σδφ</Gloss>
+        </Sense>
+        <Sense Id="eAl0npqx">
+          <Gloss Language="grc">τηεεεεσδφ σδφ σδφσδφ σδφ</Gloss>
+        </Sense>
+        <Sense Id="9g1MwCd0">
+          <Gloss Language="grc">τηεεεεσδφ σδφ σδφσδφ σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="2h5SnBbQ">
+          <Gloss Language="grc">τηεεεεσδφ σδφ σδφσδφ σδφσδφσφ σδφ</Gloss>
+        </Sense>
+        <Sense Id="ikOgjrx4">
+          <Gloss Language="grc">τηεεεεσδφ σδφ σδφσδφ σδφσδφσφ σδφσdφ σδ φ</Gloss>
+        </Sense>
+        <Sense Id="fWnE8mjG">
+          <Gloss Language="grc">σδεεεεεεεεεεεεε</Gloss>
+        </Sense>
+        <Sense Id="eAMiWRpt">
+          <Gloss Language="en">the</Gloss>
+        </Sense>
+        <Sense Id="xLXVnXcK">
+          <Gloss Language="grc">εεε</Gloss>
+        </Sense>
+        <Sense Id="lZPLJkLV">
+          <Gloss Language="grc">jj</Gloss>
+        </Sense>
+        <Sense Id="SBzkOZMe">
+          <Gloss Language="grc">υυ\</Gloss>
+        </Sense>
+        <Sense Id="GtW2fxCM">
+          <Gloss Language="grc">υυ</Gloss>
+        </Sense>
+        <Sense Id="YzBzmzAs">
+          <Gloss Language="en">EHT</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="sdf sdfsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="Etnr12fQ">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+        <Sense Id="feIINnwW">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="is" Homograph="1" />
+      <Entry>
+        <Sense Id="0597YKnS">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="XPUKetAm">
+          <Gloss Language="grc">ισφφωωωωωωωωωω</Gloss>
+        </Sense>
+        <Sense Id="CSBZ/7Hf">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="0EoBUj9C">
+          <Gloss Language="pt">Hello</Gloss>
+        </Sense>
+        <Sense Id="oLsTdKko">
+          <Gloss Language="en">huss</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="this is" Homograph="1" />
+      <Entry>
+        <Sense Id="o9+dqkiP">
+          <Gloss Language="grc">τηισ ισ α τεστ</Gloss>
+        </Sense>
+        <Sense Id="QZ6OSjQe">
+          <Gloss Language="grc">τηε ρεδ δονκεψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="this" Homograph="1" />
+      <Entry>
+        <Sense Id="mFIhTQbF">
+          <Gloss Language="grc">τηισ</Gloss>
+        </Sense>
+        <Sense Id="h7M+WoYA">
+          <Gloss Language="grc">τηισ</Gloss>
+        </Sense>
+        <Sense Id="HjO9AEIv">
+          <Gloss Language="en">dis</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="sd" Homograph="1" />
+      <Entry>
+        <Sense Id="j7ERAznM">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="WekF5Iii">
+          <Gloss Language="en">-ed</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="conflict" Homograph="1" />
+      <Entry>
+        <Sense Id="yGcbWrEs">
+          <Gloss Language="grc">σφδ</Gloss>
+        </Sense>
+        <Sense Id="mjOvRd1J">
+          <Gloss Language="grc">χονφλιχτ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="on lenovo" Homograph="1" />
+      <Entry>
+        <Sense Id="0PVbRQmz">
+          <Gloss Language="grc">ασδαδσ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="on" Homograph="1" />
+      <Entry>
+        <Sense Id="3hDCc/fg">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="WwENTlXE">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="xqX/mZJ+">
+          <Gloss Language="grc">υυ</Gloss>
+        </Sense>
+        <Sense Id="Eu5AaoXX">
+          <Gloss Language="en">sfd</Gloss>
+        </Sense>
+        <Sense Id="AzKtJT4u">
+          <Gloss Language="en">on</Gloss>
+        </Sense>
+        <Sense Id="a3UhIzTr">
+          <Gloss Language="en">on</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="lenovo" Homograph="1" />
+      <Entry>
+        <Sense Id="/+P2Ybts">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="a" Homograph="1" />
+      <Entry>
+        <Sense Id="Hp6uhqe1">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="vU7z9MLd">
+          <Gloss Language="grc">ααα</Gloss>
+        </Sense>
+        <Sense Id="eE/T8ILH">
+          <Gloss Language="pt">Test</Gloss>
+        </Sense>
+        <Sense Id="yp9hjBeA">
+          <Gloss Language="en">e</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="bb" Homograph="1" />
+      <Entry>
+        <Sense Id="fcAfMpQy">
+          <Gloss Language="grc">ββ</Gloss>
+        </Sense>
+        <Sense Id="Bmfktr8X">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ccc" Homograph="1" />
+      <Entry>
+        <Sense Id="WI+gbsrg">
+          <Gloss Language="grc">χχχ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dddd" Homograph="1" />
+      <Entry>
+        <Sense Id="kPZbzjZ0">
+          <Gloss Language="grc">δδδδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="after" Homograph="1" />
+      <Entry>
+        <Sense Id="mE2qhqIb">
+          <Gloss Language="grc">αφτερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="foornote" Homograph="1" />
+      <Entry>
+        <Sense Id="O5QUTPUf">
+          <Gloss Language="grc">φοοτνοτε</Gloss>
+        </Sense>
+        <Sense Id="xeJfBZVI">
+          <Gloss Language="grc">φοοτνοτε2</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="now" Homograph="1" />
+      <Entry>
+        <Sense Id="nLBBcxHR">
+          <Gloss Language="grc">νοω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="we" Homograph="1" />
+      <Entry>
+        <Sense Id="iKtGJ2TQ">
+          <Gloss Language="grc">ωε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="have" Homograph="1" />
+      <Entry>
+        <Sense Id="3M0lqpzp">
+          <Gloss Language="grc">ηαςε</Gloss>
+        </Sense>
+        <Sense Id="bDnAdt14">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="bigger" Homograph="1" />
+      <Entry>
+        <Sense Id="8uHB6JAT">
+          <Gloss Language="grc">βιγγερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="e" Homograph="1" />
+      <Entry>
+        <Sense Id="LYd86QIz">
+          <Gloss Language="grc">ε</Gloss>
+        </Sense>
+        <Sense Id="Wpp5Op9P">
+          <Gloss Language="grc">εε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="footnote" Homograph="1" />
+      <Entry>
+        <Sense Id="fc2O9ppm">
+          <Gloss Language="grc">φοοτνοτε</Gloss>
+        </Sense>
+        <Sense Id="7/3968id">
+          <Gloss Language="grc">φοοτνοτεε</Gloss>
+        </Sense>
+        <Sense Id="MkkdFznP">
+          <Gloss Language="en">pnot</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="i am using it to test interlinearization layout" Homograph="1" />
+      <Entry>
+        <Sense Id="CfCwSXkn">
+          <Gloss Language="grc">ρρ</Gloss>
+        </Sense>
+        <Sense Id="0cLFuJXj">
+          <Gloss Language="grc">ρρω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdfsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="fpmT+N0Y">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="4pLJKbZn">
+          <Gloss Language="en">sdfbv</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdf" Homograph="1" />
+      <Entry>
+        <Sense Id="IrFQcqbc">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="T8idKSvM">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="IdWss2P+">
+          <Gloss Language="grc">σδφ dσφ</Gloss>
+        </Sense>
+        <Sense Id="EC0UxUVs">
+          <Gloss Language="grc">σδφ dσφdσφ σδφ σδφ σδφ σδφ σδφ σδφφ sδsδφ</Gloss>
+        </Sense>
+        <Sense Id="nsT0pdqL">
+          <Gloss Language="grc">Σαλτ</Gloss>
+        </Sense>
+        <Sense Id="uTUso/yJ">
+          <Gloss Language="grc">σαλτ</Gloss>
+        </Sense>
+        <Sense Id="zFa3Ka9F">
+          <Gloss Language="grc">Salt</Gloss>
+        </Sense>
+        <Sense Id="TdiAoND6">
+          <Gloss Language="en">sday</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="hello world" Homograph="1" />
+      <Entry>
+        <Sense Id="FmFx4PO8">
+          <Gloss Language="grc">ηελλο ωορλδ</Gloss>
+        </Sense>
+        <Sense Id="qMGT5dwV">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="xyz" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="abc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="-def" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="abc" Homograph="1" />
+      <Entry>
+        <Sense Id="u97xeVou">
+          <Gloss Language="grc">θ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="fds" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="def" Homograph="1" />
+      <Entry>
+        <Sense Id="NRFkD96Z">
+          <Gloss Language="grc">ω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="s" Homograph="1" />
+      <Entry>
+        <Sense Id="IM5BBaRl">
+          <Gloss Language="grc">ε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="hij" Homograph="1" />
+      <Entry>
+        <Sense Id="i82AMpIW">
+          <Gloss Language="grc">ρ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="klm" Homograph="1" />
+      <Entry>
+        <Sense Id="iy9eUXYy">
+          <Gloss Language="grc">τ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="a" Homograph="1" />
+      <Entry>
+        <Sense Id="hrEP17RI">
+          <Gloss Language="grc">α</Gloss>
+        </Sense>
+        <Sense Id="I2zXrFUn">
+          <Gloss Language="grc">δφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="bc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="aaaa" Homograph="1" />
+      <Entry>
+        <Sense Id="wm5VNwsv">
+          <Gloss Language="en">e</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="xyd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="word" Homograph="1" />
+      <Entry>
+        <Sense Id="JkDJLXtr">
+          <Gloss Language="grc">ωορδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="xyz" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="word" Homograph="1" />
+      <Entry>
+        <Sense Id="NIRgQ4a9">
+          <Gloss Language="grc">ἕκτος</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="he said" Homograph="1" />
+      <Entry>
+        <Sense Id="//UsWFVa">
+          <Gloss Language="grc">σαιδ εη</Gloss>
+        </Sense>
+        <Sense Id="yFtvBF+w">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="GAzFkHet">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="xP8R5Xaq">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="HxqmsJSP">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="ocfwtoUo">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="8W+FabMl">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="he was" Homograph="1" />
+      <Entry>
+        <Sense Id="xte+wj0o">
+          <Gloss Language="grc">he was</Gloss>
+        </Sense>
+        <Sense Id="+U47XsPA">
+          <Gloss Language="grc">was he</Gloss>
+        </Sense>
+        <Sense Id="rjspyzyM">
+          <Gloss Language="grc">la la</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sky" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="on the mat" Homograph="1" />
+      <Entry>
+        <Sense Id="uTqlSQpY">
+          <Gloss Language="grc">ταμ εητ νο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="blue" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="long" Homograph="1" />
+      <Entry>
+        <Sense Id="hGN6nY5Z">
+          <Gloss Language="grc">λονγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="some" Homograph="1" />
+      <Entry>
+        <Sense Id="0j4n4llV">
+          <Gloss Language="grc">σομε</Gloss>
+        </Sense>
+        <Sense Id="0CxApO8D">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="also" Homograph="1" />
+      <Entry>
+        <Sense Id="sEfMjLId">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="i" Homograph="1" />
+      <Entry>
+        <Sense Id="UtKSIZ4G">
+          <Gloss Language="grc">Ι</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="another" Homograph="1" />
+      <Entry>
+        <Sense Id="bS4FdvVw">
+          <Gloss Language="grc">ανοτηερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="hi" Homograph="1" />
+      <Entry>
+        <Sense Id="CTB7LqDC">
+          <Gloss Language="grc">ηι</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ho" Homograph="1" />
+      <Entry>
+        <Sense Id="jOEP/J/w">
+          <Gloss Language="grc">ηο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="abc ho hi" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="e ho hi" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="hello" Homograph="1" />
+      <Entry>
+        <Sense Id="HoPTZa5Z">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Ol9DCeLd">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="NdWt6l81">
+          <Gloss Language="grc">ηηηηη</Gloss>
+        </Sense>
+        <Sense Id="JSt5NtLi">
+          <Gloss Language="grc">ηηηηηη</Gloss>
+        </Sense>
+        <Sense Id="vU9M1/fQ">
+          <Gloss Language="grc">ηηηηηηη</Gloss>
+        </Sense>
+        <Sense Id="/Rbh6XQD">
+          <Gloss Language="tpi">sdf</Gloss>
+        </Sense>
+        <Sense Id="EG8QCpWU">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+        <Sense Id="ZBSRu9GP">
+          <Gloss Language="pt">Hekli</Gloss>
+        </Sense>
+        <Sense Id="myzmQpkS">
+          <Gloss Language="pt">🤗</Gloss>
+        </Sense>
+        <Sense Id="JssW5c35">
+          <Gloss Language="en">g'day</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="world" Homograph="1" />
+      <Entry>
+        <Sense Id="FA0AX46w">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="lDQpzoCO">
+          <Gloss Language="grc">ΩΟΡΔ</Gloss>
+        </Sense>
+        <Sense Id="D2gG/hyU">
+          <Gloss Language="grc">ωορλδ</Gloss>
+        </Sense>
+        <Sense Id="yaC0qDLJ">
+          <Gloss Language="pt">🌎</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="this" Homograph="1" />
+      <Entry>
+        <Sense Id="zkePVjkK">
+          <Gloss Language="grc">τηισ</Gloss>
+        </Sense>
+        <Sense Id="5SJRtyPd">
+          <Gloss Language="pt">Hi</Gloss>
+        </Sense>
+        <Sense Id="YlAzyGzv">
+          <Gloss Language="en">dissed</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="test" Homograph="1" />
+      <Entry>
+        <Sense Id="ZoW/QTE/">
+          <Gloss Language="grc">τεστ</Gloss>
+        </Sense>
+        <Sense Id="O5ff5Ajk">
+          <Gloss Language="grc">Τεστινγ</Gloss>
+        </Sense>
+        <Sense Id="I6FbHzN+">
+          <Gloss Language="pt">World</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="aa" Homograph="1" />
+      <Entry>
+        <Sense Id="qQIUL4xq">
+          <Gloss Language="grc">αα</Gloss>
+        </Sense>
+        <Sense Id="2UMLnjO5">
+          <Gloss Language="grc">ααα</Gloss>
+        </Sense>
+        <Sense Id="R31UTexf">
+          <Gloss Language="grc">sdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="on the mat" Homograph="1" />
+      <Entry>
+        <Sense Id="+8YC5+8V">
+          <Gloss Language="grc">ταμ εητ νο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="he said" Homograph="1" />
+      <Entry>
+        <Sense Id="r+3J1i7I">
+          <Gloss Language="grc">σαιδ εη</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="he was" Homograph="1" />
+      <Entry>
+        <Sense Id="Pu5MtGS8">
+          <Gloss Language="grc">eh saw</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="was" Homograph="1" />
+      <Entry>
+        <Sense Id="nX1ELDWe">
+          <Gloss Language="grc">ωασ</Gloss>
+        </Sense>
+        <Sense Id="xz4ENtlX">
+          <Gloss Language="grc">σφσφ</Gloss>
+        </Sense>
+        <Sense Id="W99MaNG6">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="he" Homograph="1" />
+      <Entry>
+        <Sense Id="PYgfwTDw">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="undefined" Homograph="1" />
+      <Entry>
+        <Sense Id="FcpK4N7t">
+          <Gloss Language="grc">sdf</Gloss>
+        </Sense>
+        <Sense Id="W+DL32F3">
+          <Gloss Language="grc">sdfsdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="said" Homograph="1" />
+      <Entry>
+        <Sense Id="eZhBRNIp">
+          <Gloss Language="grc">sdf</Gloss>
+        </Sense>
+        <Sense Id="vgn7A9HT">
+          <Gloss Language="grc">sdfsf</Gloss>
+        </Sense>
+        <Sense Id="a9vUt+Av">
+          <Gloss Language="en">spoke</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="well" Homograph="1" />
+      <Entry>
+        <Sense Id="CiCu9J2s">
+          <Gloss Language="grc">dfg</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="happy" Homograph="1" />
+      <Entry>
+        <Sense Id="pNUPnj0s">
+          <Gloss Language="grc">dfg</Gloss>
+        </Sense>
+        <Sense Id="STyOUB5B">
+          <Gloss Language="grc">σδφσfδ</Gloss>
+        </Sense>
+        <Sense Id="MYJfNaHi">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sat" Homograph="1" />
+      <Entry>
+        <Sense Id="tzWSbjVs">
+          <Gloss Language="grc">dfg</Gloss>
+        </Sense>
+        <Sense Id="kapunTo6">
+          <Gloss Language="grc">δδ</Gloss>
+        </Sense>
+        <Sense Id="ImYY1dpD">
+          <Gloss Language="en">tas</Gloss>
+        </Sense>
+        <Sense Id="eJhuE/p7">
+          <Gloss Language="en">SAT</Gloss>
+        </Sense>
+        <Sense Id="bzJ5nKra">
+          <Gloss Language="en">sat</Gloss>
+        </Sense>
+        <Sense Id="iPwPxSPY">
+          <Gloss Language="en">wer</Gloss>
+        </Sense>
+        <Sense Id="rdeoOZl3">
+          <Gloss Language="en">abc</Gloss>
+        </Sense>
+        <Sense Id="SzGzTfWQ">
+          <Gloss Language="en">sat</Gloss>
+        </Sense>
+        <Sense Id="Lk0fhVCU">
+          <Gloss Language="en">aST</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="The" Homograph="1" />
+      <Entry>
+        <Sense Id="4Q6+FxF6">
+          <Gloss Language="grc">dfg</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="the mat" Homograph="1" />
+      <Entry>
+        <Sense Id="Dl3EC2mH">
+          <Gloss Language="grc">σδφσδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="v2mvukUt">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="tklbC1PF">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Tpw5i6TF">
+          <Gloss Language="grc">δφγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="was happy" Homograph="1" />
+      <Entry>
+        <Sense Id="4WNuxULB">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="the cat" Homograph="1" />
+      <Entry>
+        <Sense Id="0IanqLxN">
+          <Gloss Language="grc">σδφσδφ σδφ σδφ</Gloss>
+        </Sense>
+        <Sense Id="9VvyFvnj">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="PxnfSgGn">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="gEwI84UK">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="eJNRHRSm">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="very long" Homograph="1" />
+      <Entry>
+        <Sense Id="aKTkGqze">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="and he was very happy" Homograph="1" />
+      <Entry>
+        <Sense Id="tzuSYGo2">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="gLqJ0p8v">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Unvae3/1">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="gwkIZQb6">
+          <Gloss Language="grc">φσγδφγ δφγ δφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="sat on" Homograph="1" />
+      <Entry>
+        <Sense Id="he63Z1X3">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="QfXIhn2X">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="and" Homograph="1" />
+      <Entry>
+        <Sense Id="SW1k/JV0">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="OcqcyG5E">
+          <Gloss Language="grc">ανδ</Gloss>
+        </Sense>
+        <Sense Id="SjBgXQaJ">
+          <Gloss Language="en">and</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="mat" Homograph="1" />
+      <Entry>
+        <Sense Id="ajBN3HhZ">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="nBpamNy1">
+          <Gloss Language="en">fat</Gloss>
+        </Sense>
+        <Sense Id="dxnWwuho">
+          <Gloss Language="en">FAT</Gloss>
+        </Sense>
+        <Sense Id="LgvJH5g0">
+          <Gloss Language="en">mat</Gloss>
+        </Sense>
+        <Sense Id="echBnoex">
+          <Gloss Language="en">mat</Gloss>
+        </Sense>
+        <Sense Id="TJcXHNLR">
+          <Gloss Language="en">sfd</Gloss>
+        </Sense>
+        <Sense Id="4yXbOln5">
+          <Gloss Language="en">MAT</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="aa hello world" Homograph="1" />
+      <Entry>
+        <Sense Id="90/jBL2z">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="01aArLX0">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="jBd06AKJ">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="voice" Homograph="1" />
+      <Entry>
+        <Sense Id="GQmb3qoc">
+          <Gloss Language="grc">φωνή</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="calling" Homograph="1" />
+      <Entry>
+        <Sense Id="H0IiJz6Q">
+          <Gloss Language="grc">bo-ah'-o </Gloss>
+        </Sense>
+        <Sense Id="TKSMrp0m">
+          <Gloss Language="grc">bo-ah'-o</Gloss>
+        </Sense>
+        <Sense Id="2MlRazxM">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="rFL17c9x">
+          <Gloss Language="grc">βοῶντος</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="wilderness" Homograph="1" />
+      <Entry>
+        <Sense Id="uoGHKDKq">
+          <Gloss Language="grc">w</Gloss>
+        </Sense>
+        <Sense Id="m7ZTnuW4">
+          <Gloss Language="grc">weagee</Gloss>
+        </Sense>
+        <Sense Id="09ZVXgqA">
+          <Gloss Language="grc">αβα</Gloss>
+        </Sense>
+        <Sense Id="wqYMT2k0">
+          <Gloss Language="grc">ἔρημος</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="paths" Homograph="1" />
+      <Entry>
+        <Sense Id="jdoggPt+">
+          <Gloss Language="grc">πατησ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="Lord" Homograph="1" />
+      <Entry>
+        <Sense Id="K3Eta9iu">
+          <Gloss Language="grc">καιροσ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="straight" Homograph="1" />
+      <Entry>
+        <Sense Id="ckQwrqnM">
+          <Gloss Language="grc">σ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="of one" Homograph="1" />
+      <Entry>
+        <Sense Id="jFWNrtuT">
+          <Gloss Language="grc">ονε</Gloss>
+        </Sense>
+        <Sense Id="f6pGsnGe">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="hs4KLIJE">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="h67cFTlj">
+          <Gloss Language="grc">οφ ονε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="very" Homograph="1" />
+      <Entry>
+        <Sense Id="GoUTha/2">
+          <Gloss Language="grc">ςερψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="verse" Homograph="1" />
+      <Entry>
+        <Sense Id="e1ForEMV">
+          <Gloss Language="grc">ςeρsε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="to to to" Homograph="1" />
+      <Entry>
+        <Sense Id="fn03D46y">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="z96UBjSo">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="0DriER8j">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="rBWfe5bX">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+        <Sense Id="YmZByw6l">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="NX/7jXKx">
+          <Gloss Language="grc">σδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="to" Homograph="1" />
+      <Entry>
+        <Sense Id="XtJLqq0/">
+          <Gloss Language="grc">το</Gloss>
+        </Sense>
+        <Sense Id="PhJqz2+o">
+          <Gloss Language="grc">τοτο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="c" Homograph="1" />
+      <Entry>
+        <Sense Id="orq17Dyo">
+          <Gloss Language="grc">χ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="b" Homograph="1" />
+      <Entry>
+        <Sense Id="/jAhyGg+">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="ySaoeRNU">
+          <Gloss Language="grc">ββΒΒββ</Gloss>
+        </Sense>
+        <Sense Id="EPfGRfgj">
+          <Gloss Language="grc">β</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="abc" Homograph="1" />
+      <Entry>
+        <Sense Id="W4nHE2N+">
+          <Gloss Language="grc">a b χ</Gloss>
+        </Sense>
+        <Sense Id="igUFw9xK">
+          <Gloss Language="en">abc</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="cc" Homograph="1" />
+      <Entry>
+        <Sense Id="Hqkjgh0U">
+          <Gloss Language="grc">δφγ</Gloss>
+        </Sense>
+        <Sense Id="TnU1LqCV">
+          <Gloss Language="grc">δδφδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="eee" Homograph="1" />
+      <Entry>
+        <Sense Id="twJyuiDa">
+          <Gloss Language="grc">εεεε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="rrr" Homograph="1" />
+      <Entry>
+        <Sense Id="vAKqTts6">
+          <Gloss Language="grc">ρρρρ</Gloss>
+        </Sense>
+        <Sense Id="iIbWwAM1">
+          <Gloss Language="grc">ρρρρδδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ttt" Homograph="1" />
+      <Entry>
+        <Sense Id="DCIsxjZt">
+          <Gloss Language="grc">τττ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="do" Homograph="1" />
+      <Entry>
+        <Sense Id="13K3qv7g">
+          <Gloss Language="grc">δο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="how" Homograph="1" />
+      <Entry>
+        <Sense Id="JrIDezha">
+          <Gloss Language="grc">ηοοω</Gloss>
+        </Sense>
+        <Sense Id="uZNu5ni2">
+          <Gloss Language="en">how</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="qwe" Homograph="1" />
+      <Entry>
+        <Sense Id="eZcW1J/t">
+          <Gloss Language="grc">θωε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdfjlks" Homograph="1" />
+      <Entry>
+        <Sense Id="D1VwCf2x">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Uor9A641">
+          <Gloss Language="grc">δρεδτ ετ </Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="jk" Homograph="1" />
+      <Entry>
+        <Sense Id="M1LMVoKD">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="QXOCdwVb">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="Q3HIl1PP">
+          <Gloss Language="grc">σδ φ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="jhello" Homograph="1" />
+      <Entry>
+        <Sense Id="d9vzl91b">
+          <Gloss Language="grc">ηελλο  φ</Gloss>
+        </Sense>
+        <Sense Id="Eo+RrzOc">
+          <Gloss Language="grc">ηελλο  φ  φ</Gloss>
+        </Sense>
+        <Sense Id="85Wcu1LJ">
+          <Gloss Language="grc">ηελλο  φ  φσδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="jhello hello" Homograph="1" />
+      <Entry>
+        <Sense Id="S2AR3nyB">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="q4FnXAJa">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="/oW/sAbv">
+          <Gloss Language="grc">σδφ σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dflkj" Homograph="1" />
+      <Entry>
+        <Sense Id="aYo6qvyl">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="Prepare" Homograph="1" />
+      <Entry>
+        <Sense Id="jqWKRW8v">
+          <Gloss Language="grc">αβερε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="way" Homograph="1" />
+      <Entry>
+        <Sense Id="gJL8s1EA">
+          <Gloss Language="grc">ωαψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="john appeared" Homograph="1" />
+      <Entry>
+        <Sense Id="oPan9Jih">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="preaching" Homograph="1" />
+      <Entry>
+        <Sense Id="XNkPUC1e">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="sdf world" Homograph="1" />
+      <Entry>
+        <Sense Id="EoUkEyKm">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="for the" Homograph="1" />
+      <Entry>
+        <Sense Id="FlAFI5Ov">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="for the the" Homograph="1" />
+      <Entry>
+        <Sense Id="hDAxScxc">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="xJhqj9CS">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="bT3roDpG">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="JpTBAXBw">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="q+8Pds9B">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="7tEfuB6T">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="EDWZtyY8">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="7eLuOfSm">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="UFX+2+yh">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="CFgv34J/">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="RcAr1VAE">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="YHiXb70S">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="KCJ54GEg">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="PDKbD3gd">
+          <Gloss Language="grc">σομε πηρασε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="footnote the" Homograph="1" />
+      <Entry>
+        <Sense Id="nib5/eG7">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="e41SeFq5">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="yexLjUIj">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="zD5t4R7+">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="I3oeGk7F">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="W3SK75sC">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="pkX6suC3">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="2Vy1qx49">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="fvG6atip">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="J0riXCDg">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="3QASPLRq">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="footnote the cat" Homograph="1" />
+      <Entry>
+        <Sense Id="sgZp/Mu+">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdff" Homograph="1" />
+      <Entry>
+        <Sense Id="rU22UgVo">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="A" Homograph="1" />
+      <Entry>
+        <Sense Id="s6xCApGV">
+          <Gloss Language="grc">α</Gloss>
+        </Sense>
+        <Sense Id="OI0Jw+WF">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="YL8pAdmI">
+          <Gloss Language="grc">ω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="man" Homograph="1" />
+      <Entry>
+        <Sense Id="AYI/xQIG">
+          <Gloss Language="grc">μαν</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="by" Homograph="1" />
+      <Entry>
+        <Sense Id="IO88fYyj">
+          <Gloss Language="grc">βψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="see" Homograph="1" />
+      <Entry>
+        <Sense Id="tDOdrM7C">
+          <Gloss Language="grc">ηελλο ωορλδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="z" Homograph="1" />
+      <Entry>
+        <Sense Id="YImWPpb2">
+          <Gloss Language="grc">ΞΖΞ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="S" Homograph="1" />
+      <Entry>
+        <Sense Id="tqAP3WPs">
+          <Gloss Language="grc">Σ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="Hello" Homograph="1" />
+      <Entry>
+        <Sense Id="RC7xjWo4">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ww" Homograph="1" />
+      <Entry>
+        <Sense Id="IrTBTZXU">
+          <Gloss Language="grc">ωω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="qq" Homograph="1" />
+      <Entry>
+        <Sense Id="2vayYg/h">
+          <Gloss Language="grc">θθ</Gloss>
+        </Sense>
+        <Sense Id="kf6P/L3F">
+          <Gloss Language="hbo">סדט</Gloss>
+        </Sense>
+        <Sense Id="wU3eapK3">
+          <Gloss Language="hbo">בבב</Gloss>
+        </Sense>
+        <Sense Id="hiBUrp+c">
+          <Gloss Language="grc">ΘΘ</Gloss>
+        </Sense>
+        <Sense Id="lxQ2CdVQ">
+          <Gloss Language="grc">ΩΩ</Gloss>
+        </Sense>
+        <Sense Id="n47XMir1">
+          <Gloss Language="grc">ερτερτ εrτ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ee" Homograph="1" />
+      <Entry>
+        <Sense Id="Pm6Z4fCE">
+          <Gloss Language="grc">ωω</Gloss>
+        </Sense>
+        <Sense Id="57nqzQbX">
+          <Gloss Language="grc">παραλυτικός</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="gg" Homograph="1" />
+      <Entry>
+        <Sense Id="1ep13u6i">
+          <Gloss Language="grc">α</Gloss>
+        </Sense>
+        <Sense Id="RJiYWar6">
+          <Gloss Language="grc">αβ</Gloss>
+        </Sense>
+        <Sense Id="lAZk+nlU">
+          <Gloss Language="grc">αβς</Gloss>
+        </Sense>
+        <Sense Id="NRsjdzZi">
+          <Gloss Language="grc">αβςδ</Gloss>
+        </Sense>
+        <Sense Id="iOaDciIF">
+          <Gloss Language="grc">αβςδε</Gloss>
+        </Sense>
+        <Sense Id="ycpSkOzI">
+          <Gloss Language="grc">αβςδεφ</Gloss>
+        </Sense>
+        <Sense Id="6W69p3lX">
+          <Gloss Language="grc">αβςδεφγ</Gloss>
+        </Sense>
+        <Sense Id="bGskvcaq">
+          <Gloss Language="grc">αβςδεφγη</Gloss>
+        </Sense>
+        <Sense Id="s2kI2vrk">
+          <Gloss Language="grc">αβςδεφγηι</Gloss>
+        </Sense>
+        <Sense Id="9u99mU8A">
+          <Gloss Language="grc">αβςδεφγηιj</Gloss>
+        </Sense>
+        <Sense Id="UEzia6j8">
+          <Gloss Language="grc">αβςδεφγηιjκ</Gloss>
+        </Sense>
+        <Sense Id="3FUAXlGm">
+          <Gloss Language="grc">αβςδεφγηιjκλ</Gloss>
+        </Sense>
+        <Sense Id="PaJyRIBz">
+          <Gloss Language="grc">αβςδεφγηιjκλμ</Gloss>
+        </Sense>
+        <Sense Id="J0LXpD9V">
+          <Gloss Language="grc">αβςδεφγηιjκλμν</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="gg gg" Homograph="1" />
+      <Entry>
+        <Sense Id="ZoPEXFKt">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="uQ6CVWVt">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="SAOAb6tN">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="gg gg goqqhhwww" Homograph="1" />
+      <Entry>
+        <Sense Id="d5q8fKTb">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="7x9oX/5v">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="qqqqdddd gg gg goqqhhwww" Homograph="1" />
+      <Entry>
+        <Sense Id="qUKPJE8a">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="act" Homograph="1" />
+      <Entry>
+        <Sense Id="xxkozIAa">
+          <Gloss Language="en">this</Gloss>
+        </Sense>
+        <Sense Id="pA7Z/Jb4">
+          <Gloss Language="grc">σdφ</Gloss>
+        </Sense>
+        <Sense Id="Ompa6IuM">
+          <Gloss Language="pt">Hello</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="text" Homograph="1" />
+      <Entry>
+        <Sense Id="5PZ3iP28">
+          <Gloss Language="en">that</Gloss>
+        </Sense>
+        <Sense Id="eMmL4aRJ">
+          <Gloss Language="en">this and that</Gloss>
+        </Sense>
+        <Sense Id="fWg6591z">
+          <Gloss Language="grc">τεξτ</Gloss>
+        </Sense>
+        <Sense Id="2UYXTkuO">
+          <Gloss Language="grc">σfδ</Gloss>
+        </Sense>
+        <Sense Id="kaQcvWx1">
+          <Gloss Language="pt">World</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="jesus" Homograph="1" />
+      <Entry>
+        <Sense Id="RWTTueOb">
+          <Gloss Language="en">Jesus</Gloss>
+        </Sense>
+        <Sense Id="IZ3pFgHs">
+          <Gloss Language="grc">JΕσυσ</Gloss>
+        </Sense>
+        <Sense Id="Ty+BAZ9z">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="RXbO4IQg">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="XvqJVocE">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="Lt/3lfIV">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="VrW2SkXi">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="7PNdzGSj">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="xfEEOFuC">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="4uEb+Wnh">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="K1clwYLC">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="8ChRUfVI">
+          <Gloss Language="pt">This</Gloss>
+        </Sense>
+        <Sense Id="b68hdc2X">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="oj" Homograph="1" />
+      <Entry>
+        <Sense Id="QKZUjplH">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="xWX4Oc5x">
+          <Gloss Language="pt">Is</Gloss>
+        </Sense>
+        <Sense Id="cUT+yjRK">
+          <Gloss Language="en">fff</Gloss>
+        </Sense>
+        <Sense Id="0kxgRN9J">
+          <Gloss Language="en">fffcc</Gloss>
+        </Sense>
+        <Sense Id="PcnyA1jA">
+          <Gloss Language="en">fffccgg</Gloss>
+        </Sense>
+        <Sense Id="4icWQ3pK">
+          <Gloss Language="en">aw</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="sdf" Homograph="1" />
+      <Entry>
+        <Sense Id="xjgALyJM">
+          <Gloss Language="grc">θηρίον</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="bb" Homograph="1" />
+      <Entry>
+        <Sense Id="UBilUkcl">
+          <Gloss Language="grc">ββ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="middle" Homograph="1" />
+      <Entry>
+        <Sense Id="aMNv3sxm">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ert" Homograph="1" />
+      <Entry>
+        <Sense Id="2+PEC0MG">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ggg" Homograph="1" />
+      <Entry>
+        <Sense Id="l0cBMD4S">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="aaaaaaaaaaaaaa" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ttt" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="www" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="first" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="second" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="A" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="B" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="C" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="sdsdf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="before" Homograph="1" />
+      <Entry>
+        <Sense Id="mSVtka15">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="iAZwDrI+">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="zzz" Homograph="1" />
+      <Entry>
+        <Sense Id="S4vZyIw0">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="DB+DY1hD">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="b aa b" Homograph="1" />
+      <Entry>
+        <Sense Id="CLPrqkb0">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="b b b b b b" Homograph="1" />
+      <Entry>
+        <Sense Id="qNFK2Jek">
+          <Gloss Language="grc">δφγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sfsd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="f" Homograph="1" />
+      <Entry>
+        <Sense Id="5u9FbHIL">
+          <Gloss Language="grc">σδφδσφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tt" Homograph="1" />
+      <Entry>
+        <Sense Id="TixTuiCi">
+          <Gloss Language="grc">θωερτψυιοπ</Gloss>
+        </Sense>
+        <Sense Id="A5Y0Rg+j">
+          <Gloss Language="grc">ασδφγῃκλ</Gloss>
+        </Sense>
+        <Sense Id="IAsm9ThU">
+          <Gloss Language="grc">ζξχςβνμ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="rr" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dd" Homograph="1" />
+      <Entry>
+        <Sense Id="FqlEVpe2">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ff" Homograph="1" />
+      <Entry>
+        <Sense Id="vhHQMiMl">
+          <Gloss Language="grc">υἱός</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="a b" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="ww ee" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="ww ee rr" Homograph="1" />
+      <Entry>
+        <Sense Id="DtiBA0QY">
+          <Gloss Language="grc">φφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="eesfd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="eesfdsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="neiv4Hhn">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wwee" Homograph="1" />
+      <Entry>
+        <Sense Id="EcGakHfQ">
+          <Gloss Language="grc">ερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ww" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ee" Homograph="1" />
+      <Entry>
+        <Sense Id="uYpD+7tJ">
+          <Gloss Language="grc">σφδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wweesf" Homograph="1" />
+      <Entry>
+        <Sense Id="dmkjKXWI">
+          <Gloss Language="grc">σφδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wweee" Homograph="1" />
+      <Entry>
+        <Sense Id="VDKGRw+E">
+          <Gloss Language="grc">αα</Gloss>
+        </Sense>
+        <Sense Id="BCrDNp3P">
+          <Gloss Language="grc">σσσ</Gloss>
+        </Sense>
+        <Sense Id="WFVKudT6">
+          <Gloss Language="grc">δδδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="e" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ee" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="e" Homograph="1" />
+      <Entry>
+        <Sense Id="O2I9U7I+">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="oWVC4Z9w">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+        <Sense Id="hfa5f0+E">
+          <Gloss Language="en">-e</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="ww ee rr ww" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="rr" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="-ed" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="-ing" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="rraa" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="rraabb" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="b" Homograph="1" />
+      <Entry>
+        <Sense Id="X0ohoBS3">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="JkylXA9j">
+          <Gloss Language="grc">δσ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="b" Homograph="1" />
+      <Entry>
+        <Sense Id="al6aeGlg">
+          <Gloss Language="grc">εεερε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ttsf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ttsfdfg" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ef" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="-ef" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="f" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ttsfe" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="start" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="infix" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="stemendstem" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="suffix" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="fsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="miCmxjBP">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="y5yNmdtQ">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="+WSVZ5in">
+          <Gloss Language="en">ffff</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="the heavens" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="in the beginning" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="aa bb cc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="bb cc" Homograph="1" />
+      <Entry>
+        <Sense Id="5jUN5ara">
+          <Gloss Language="grc">ηι</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="bb cc dd" Homograph="1" />
+      <Entry>
+        <Sense Id="Zt/AN/2F">
+          <Gloss Language="grc">αβχδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="qqq www" Homograph="1" />
+      <Entry>
+        <Sense Id="Xuzlqfde">
+          <Gloss Language="grc">θω</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="qqq www eee" Homograph="1" />
+      <Entry>
+        <Sense Id="i1irVOlf">
+          <Gloss Language="grc">θωε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="yyy uuu" Homograph="1" />
+      <Entry>
+        <Sense Id="jDTdJ/jA">
+          <Gloss Language="grc">σ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="yyy uuu iii" Homograph="1" />
+      <Entry>
+        <Sense Id="Fe9x/Jpe">
+          <Gloss Language="grc">δδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="ddd fff" Homograph="1" />
+      <Entry>
+        <Sense Id="w2Xtjq9h">
+          <Gloss Language="grc">δδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dog" Homograph="1" />
+      <Entry>
+        <Sense Id="p5Zpxtr2">
+          <Gloss Language="grc">δογ</Gloss>
+        </Sense>
+        <Sense Id="3yOBPF6M">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="mouse rabbit" Homograph="1" />
+      <Entry>
+        <Sense Id="BfF1WA8R">
+          <Gloss Language="grc">μουσε ραββιτ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="dog mouse rabbit" Homograph="1" />
+      <Entry>
+        <Sense Id="j26F/WY7">
+          <Gloss Language="grc">δογ μουσε ραββιτ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="a donkey" Homograph="1" />
+      <Entry>
+        <Sense Id="FaSZ0EUQ">
+          <Gloss Language="grc">α δονκεψ</Gloss>
+        </Sense>
+        <Sense Id="N/cQ38oC">
+          <Gloss Language="grc">α φιση</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="big green house" Homograph="1" />
+      <Entry>
+        <Sense Id="zObBbJ2D">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="very big" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="mouse" Homograph="1" />
+      <Entry>
+        <Sense Id="yB1p/t8k">
+          <Gloss Language="grc">μουσε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="rabbit" Homograph="1" />
+      <Entry>
+        <Sense Id="88dpZmiM">
+          <Gloss Language="grc">ραββιτ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="small dog" Homograph="1" />
+      <Entry>
+        <Sense Id="r4nj9A8z">
+          <Gloss Language="grc">σμαλλ δογγψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="asdf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ghjkl" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="a" Homograph="1" />
+      <Entry>
+        <Sense Id="m2z9yYHN">
+          <Gloss Language="en">-e</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="aaa" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="bbb" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ccc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="vvv" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="aa" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="cc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="aabbcc aabbcc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ff" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="zz" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="qq" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tttt" Homograph="1" />
+      <Entry>
+        <Sense Id="shfRgRe0">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="c" Homograph="1" />
+      <Entry>
+        <Sense Id="mPCvDkeU">
+          <Gloss Language="grc">χ</Gloss>
+        </Sense>
+        <Sense Id="LJO2Q8+4">
+          <Gloss Language="grc">δφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="cccc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ing" Homograph="1" />
+      <Entry>
+        <Sense Id="23cGqVX2">
+          <Gloss Language="grc">ινγ</Gloss>
+        </Sense>
+        <Sense Id="5LXAYmJQ">
+          <Gloss Language="grc">φφ</Gloss>
+        </Sense>
+        <Sense Id="tm8gEgHH">
+          <Gloss Language="grc">φφφφ</Gloss>
+        </Sense>
+        <Sense Id="vhAOjRLM">
+          <Gloss Language="pt">Hello</Gloss>
+        </Sense>
+        <Sense Id="iF7p009J">
+          <Gloss Language="en">day</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="third" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="last" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="pp" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="hello" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="helloing" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ten" Homograph="1" />
+      <Entry>
+        <Sense Id="tPMdSB+q">
+          <Gloss Language="en">Nine</Gloss>
+        </Sense>
+        <Sense Id="lPgwzIsG">
+          <Gloss Language="grc">Νινε</Gloss>
+        </Sense>
+        <Sense Id="tbuRMVij">
+          <Gloss Language="en">Nine</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="test this" Homograph="1" />
+      <Entry>
+        <Sense Id="sM6iAKBw">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdfsd" Homograph="1" />
+      <Entry>
+        <Sense Id="4F5z34ds">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dfdj" Homograph="1" />
+      <Entry>
+        <Sense Id="48l69Cvc">
+          <Gloss Language="grc">gφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dfgdfg" Homograph="1" />
+      <Entry>
+        <Sense Id="JtBoi6vo">
+          <Gloss Language="grc">δφγδφγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="q" Homograph="1" />
+      <Entry>
+        <Sense Id="jROBErTd">
+          <Gloss Language="en">q</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="alpha" Homograph="1" />
+      <Entry>
+        <Sense Id="LblFO1D1">
+          <Gloss Language="grc">αλπηα</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dearly" Homograph="1" />
+      <Entry>
+        <Sense Id="eDwbL8iD">
+          <Gloss Language="en">Dearly</Gloss>
+        </Sense>
+        <Sense Id="dxPLN1mp">
+          <Gloss Language="pt">Test</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="more" Homograph="1" />
+      <Entry>
+        <Sense Id="0Sg6lDsC">
+          <Gloss Language="en">less</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="changes" Homograph="1" />
+      <Entry>
+        <Sense Id="nhfR2jzO">
+          <Gloss Language="en">no change</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="a b c d" Homograph="1" />
+      <Entry>
+        <Sense Id="d1zUXit2">
+          <Gloss Language="grc">τηισ τηινγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="the cat sat" Homograph="1" />
+      <Entry>
+        <Sense Id="0VgECDNY">
+          <Gloss Language="grc">τρυλψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="red squirrel" Homograph="1" />
+      <Entry>
+        <Sense Id="LI/hmNmB">
+          <Gloss Language="grc">ρεδ σθυιρρελ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="red" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="squirrel" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="en" Homograph="1" />
+      <Entry>
+        <Sense Id="Gcaksnsu">
+          <Gloss Language="grc">ιν</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="trust" Homograph="1" />
+      <Entry>
+        <Sense Id="0mmqmfOd">
+          <Gloss Language="grc">το βελιεςε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dfdfddf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dfdf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ddf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dfd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="fddf" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dfdfddf" Homograph="1" />
+      <Entry>
+        <Sense Id="pQI/xU+0">
+          <Gloss Language="grc">Biγ</Gloss>
+        </Sense>
+        <Sense Id="KOc7QlmN">
+          <Gloss Language="grc">Biγ &amp;hhhhhbbbb</Gloss>
+        </Sense>
+        <Sense Id="8QTEAge6">
+          <Gloss Language="grc">Biγ &amp;hhhhhbbbb yhhhgg</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="d" Homograph="1" />
+      <Entry>
+        <Sense Id="S8asx9yv">
+          <Gloss Language="en">b-</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="fd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="sdfsdfsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="inYlYaNs">
+          <Gloss Language="grc">Huγ</Gloss>
+        </Sense>
+        <Sense Id="NU0JdsyD">
+          <Gloss Language="grc">Huγhhh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="asd" Homograph="1" />
+      <Entry>
+        <Sense Id="iKtywJLD">
+          <Gloss Language="grc">Hgy</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="try" Homograph="1" />
+      <Entry>
+        <Sense Id="eYF8Heyt">
+          <Gloss Language="grc">ΤΡΨ</Gloss>
+        </Sense>
+        <Sense Id="QHf7gLOF">
+          <Gloss Language="tpi">sdfs</Gloss>
+        </Sense>
+        <Sense Id="kZ39GbVL">
+          <Gloss Language="tpi">sdfssfd</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dis" Homograph="1" />
+      <Entry>
+        <Sense Id="leT5JTXJ">
+          <Gloss Language="grc">ΔΙΣ</Gloss>
+        </Sense>
+        <Sense Id="D0StDpIs">
+          <Gloss Language="tpi">sdfsdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="dfsdf tomas" Homograph="1" />
+      <Entry>
+        <Sense Id="VR4hXibS">
+          <Gloss Language="grc">πηρασε</Gloss>
+        </Sense>
+        <Sense Id="ARGTcvDu">
+          <Gloss Language="grc">Father</Gloss>
+        </Sense>
+        <Sense Id="njeuOoJd">
+          <Gloss Language="grc">father</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="windows" Homograph="1" />
+      <Entry>
+        <Sense Id="YfpIeI2C">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="oTr4IG5B">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="9ua3wYig">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="fSeD8Qp6">
+          <Gloss Language="grc"></Gloss>
+        </Sense>
+        <Sense Id="oM28OsSn">
+          <Gloss Language="grc">δδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="left" Homograph="1" />
+      <Entry>
+        <Sense Id="8NERYCpm">
+          <Gloss Language="grc">sdfδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="new" Homograph="1" />
+      <Entry>
+        <Sense Id="zVP4TKtK">
+          <Gloss Language="tpi">sfd</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sdfsd" Homograph="1" />
+      <Entry>
+        <Sense Id="zdWeXws1">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="nHMvaHCu">
+          <Gloss Language="grc">Αβχ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="fdsf" Homograph="1" />
+      <Entry>
+        <Sense Id="3uspVu2j">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="+w1QD+yu">
+          <Gloss Language="grc">αβχ</Gloss>
+        </Sense>
+        <Sense Id="r1MOcQ/K">
+          <Gloss Language="en">fdsdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ct" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="a-c" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="t" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="te" Homograph="1" />
+      <Entry>
+        <Sense Id="kBBBqmYT">
+          <Gloss Language="en">be</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="xt" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="t-ext" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="t-e" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="Dea" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="rly" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="Dearly" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="De" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="arly" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="Dearl" Homograph="1" />
+      <Entry>
+        <Sense Id="giYjyUr7">
+          <Gloss Language="en">dear</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="y" Homograph="1" />
+      <Entry>
+        <Sense Id="z+TVrr/P">
+          <Gloss Language="en">-i</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="Dear" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ly" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="De" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="a-r" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="st" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="test" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="t" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="es" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="est" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="text" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="tex" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ac" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="Jes-us" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="o" Homograph="1" />
+      <Entry>
+        <Sense Id="GvJ28aQS">
+          <Gloss Language="grc">σφ</Gloss>
+        </Sense>
+        <Sense Id="KEWTZb1A">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+        <Sense Id="ceRCYAvD">
+          <Gloss Language="en">a</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="j" Homograph="1" />
+      <Entry>
+        <Sense Id="TKqdnOs4">
+          <Gloss Language="en">-w</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sdfs" Homograph="1" />
+      <Entry>
+        <Sense Id="93TZzQ/i">
+          <Gloss Language="en">sdfs</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="df" Homograph="1" />
+      <Entry>
+        <Sense Id="prYQcJEY">
+          <Gloss Language="en">-bv</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="s-d-f" Homograph="1" />
+      <Entry>
+        <Sense Id="8CNbqoRc">
+          <Gloss Language="en">sdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="abc" Homograph="1" />
+      <Entry>
+        <Sense Id="jtoPryEQ">
+          <Gloss Language="en">abc</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="abcabc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ab" Homograph="1" />
+      <Entry>
+        <Sense Id="zYttwqJ8">
+          <Gloss Language="en">ba</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="c" Homograph="1" />
+      <Entry>
+        <Sense Id="CH3+BvR+">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+        <Sense Id="l7arrJ1L">
+          <Gloss Language="grc">ε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="abab" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="C" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="cc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="iho" Homograph="1" />
+      <Entry>
+        <Sense Id="pl03hM3U">
+          <Gloss Language="grc">α</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="upa" Homograph="1" />
+      <Entry>
+        <Sense Id="YnPyBMy2">
+          <Gloss Language="grc">β</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="th" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="the" Homograph="1" />
+      <Entry>
+        <Sense Id="cSnYzy10">
+          <Gloss Language="grc">σφ</Gloss>
+        </Sense>
+        <Sense Id="MI/tKfE+">
+          <Gloss Language="en">the</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="t" Homograph="1" />
+      <Entry>
+        <Sense Id="trLoldOu">
+          <Gloss Language="grc">τ</Gloss>
+        </Sense>
+        <Sense Id="htsyXk1N">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+        <Sense Id="T2Z3ZA5p">
+          <Gloss Language="grc">σδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="a+tqrlCK">
+          <Gloss Language="grc">σδφσδφδφ</Gloss>
+        </Sense>
+        <Sense Id="IjTqO+UT">
+          <Gloss Language="grc">σδφσδφδφδδ</Gloss>
+        </Sense>
+        <Sense Id="smgIryGd">
+          <Gloss Language="grc">σδφσδφδφδδφ</Gloss>
+        </Sense>
+        <Sense Id="OoCoOLmf">
+          <Gloss Language="grc">σδφσδφδφδδφσδφ</Gloss>
+        </Sense>
+        <Sense Id="Sfgrnx2l">
+          <Gloss Language="grc">σδφσδφδφδδφσδφδδ</Gloss>
+        </Sense>
+        <Sense Id="gLTGWzqe">
+          <Gloss Language="grc">σδφσδφδφδδφσδφδδδφ</Gloss>
+        </Sense>
+        <Sense Id="6RN0tMEq">
+          <Gloss Language="grc">σδφσδφδφδδφσδφδδδφφφ</Gloss>
+        </Sense>
+        <Sense Id="KnCC+5Qg">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφ</Gloss>
+        </Sense>
+        <Sense Id="66gLCVss">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδδ</Gloss>
+        </Sense>
+        <Sense Id="InwNHd/A">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδ</Gloss>
+        </Sense>
+        <Sense Id="/n2RP0yP">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεε</Gloss>
+        </Sense>
+        <Sense Id="5SSgonRE">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεεσδφ</Gloss>
+        </Sense>
+        <Sense Id="sZBsSKeY">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεεσδφδδ</Gloss>
+        </Sense>
+        <Sense Id="L/rJIybX">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεεσδeφδδ</Gloss>
+        </Sense>
+        <Sense Id="nRtEznjx">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεεσδeφδδφφ</Gloss>
+        </Sense>
+        <Sense Id="6xtaqc8e">
+          <Gloss Language="grc">σδφσδφδφδδφσδφdddδδδφφφδddδδεεσδeφδδφφγγγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="eff" Homograph="1" />
+      <Entry>
+        <Sense Id="IrWfr0Q+">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dsf" Homograph="1" />
+      <Entry>
+        <Sense Id="8I+ikODp">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="is" Homograph="1" />
+      <Entry>
+        <Sense Id="q7T8J2HX">
+          <Gloss Language="grc">ισ</Gloss>
+        </Sense>
+        <Sense Id="4ir1SX+t">
+          <Gloss Language="en">huss</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="my" Homograph="1" />
+      <Entry>
+        <Sense Id="bg5wmxG+">
+          <Gloss Language="grc">μψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="thisismyword" Homograph="1" />
+      <Entry>
+        <Sense Id="MITArJVW">
+          <Gloss Language="grc">τηισισμψωορδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="sat" Homograph="1" />
+      <Entry>
+        <Sense Id="d/Eyc+0D">
+          <Gloss Language="grc">σfδ</Gloss>
+        </Sense>
+        <Sense Id="l6vZTxP9">
+          <Gloss Language="en">sdf</Gloss>
+        </Sense>
+        <Sense Id="ww+NgeWe">
+          <Gloss Language="en">SAT</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="ung" Homograph="1" />
+      <Entry>
+        <Sense Id="cubpvgTy">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="o" Homograph="1" />
+      <Entry>
+        <Sense Id="W+VUUDev">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="n" Homograph="1" />
+      <Entry>
+        <Sense Id="fcBUmj2C">
+          <Gloss Language="grc">σφδ</Gloss>
+        </Sense>
+        <Sense Id="1uMftnnz">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="on the" Homograph="1" />
+      <Entry>
+        <Sense Id="ZO5HXIa2">
+          <Gloss Language="grc">σδφsδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="mat" Homograph="1" />
+      <Entry>
+        <Sense Id="zwtbnL7A">
+          <Gloss Language="en">fat</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="and" Homograph="1" />
+      <Entry>
+        <Sense Id="z0oArKvx">
+          <Gloss Language="en">and</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="we" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="very" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="edrr" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ababc" Homograph="1" />
+      <Entry>
+        <Sense Id="ZSdhAq8S">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="the cat sat on the" Homograph="1" />
+      <Entry>
+        <Sense Id="jUOsm/YV">
+          <Gloss Language="grc">σφδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="f" Homograph="1" />
+      <Entry>
+        <Sense Id="eFrRDfP3">
+          <Gloss Language="en">f</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="r" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="g" Homograph="1" />
+      <Entry>
+        <Sense Id="7/FwHcyv">
+          <Gloss Language="grc">γγγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="po" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="lar" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="pop" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="E" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="pic" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="car" Homograph="1" />
+      <Entry>
+        <Sense Id="SffqEAOr">
+          <Gloss Language="grc">ςαρ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="bike" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="bike" Homograph="1" />
+      <Entry>
+        <Sense Id="NRbQvyxD">
+          <Gloss Language="grc">μψβικινγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="so" Homograph="1" />
+      <Entry>
+        <Sense Id="4EDXP/0f">
+          <Gloss Language="grc">σοσο</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="frog" Homograph="1" />
+      <Entry>
+        <Sense Id="cA9QaErJ">
+          <Gloss Language="grc">φρομγ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="van" Homograph="1" />
+      <Entry>
+        <Sense Id="HkLaI2WB">
+          <Gloss Language="grc">ςαν</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="qqqq" Homograph="1" />
+      <Entry>
+        <Sense Id="ph+r9Pwv">
+          <Gloss Language="grc">θθ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="qw" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="kk" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ll" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="fffsds" Homograph="1" />
+      <Entry>
+        <Sense Id="IAml8wqL">
+          <Gloss Language="grc">φ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="kkkk" Homograph="1" />
+      <Entry>
+        <Sense Id="6H+75q12">
+          <Gloss Language="grc">σfδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="gg" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ss" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="d" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dddd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ddd" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wer" Homograph="1" />
+      <Entry>
+        <Sense Id="OBuzcFeh">
+          <Gloss Language="grc">ωερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="werwer" Homograph="1" />
+      <Entry>
+        <Sense Id="9Kue/Zpl">
+          <Gloss Language="grc">ωερωερ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="wer" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="werwering" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="werwerwer" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ly" Homograph="1" />
+      <Entry>
+        <Sense Id="Ygy6BpZR">
+          <Gloss Language="grc">λψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="lastlyyyyyyyyyying" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="abctoma" Homograph="1" />
+      <Entry>
+        <Sense Id="CIGzTiA1">
+          <Gloss Language="grc">σομεγλοσσ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="tom" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="B" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="lap" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="top" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="mini" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="computer" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="minicomputer" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="fri" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dge" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="-less" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="obe" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="dia" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="per" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="none" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ok" Homograph="1" />
+      <Entry>
+        <Sense Id="4HerhP/k">
+          <Gloss Language="en">uk</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="microc" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="omputer" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ve" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ry" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Prefix" Form="the" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="before" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="a" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ct" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="after" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="sat" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="world" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="hellocat" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="worldi" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="cat" Homograph="1" />
+      <Entry>
+        <Sense Id="GSPv9aRP">
+          <Gloss Language="en">Cat</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="happy" Homograph="1" />
+      <Entry>
+        <Sense Id="EtAHF/eH">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="ing" Homograph="1" />
+      <Entry>
+        <Sense Id="ZZkKRa/4">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="h" Homograph="1" />
+      <Entry>
+        <Sense Id="bmuy2kIj">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="wa" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="frogg" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="froggy" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="g" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="frog" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="froggyy" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Suffix" Form="yy" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="hous" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="house house" Homograph="1" />
+      <Entry>
+        <Sense Id="+C/zpo8h">
+          <Gloss Language="grc">sδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="house" Homograph="1" />
+      <Entry>
+        <Sense Id="gZ83eA5G">
+          <Gloss Language="grc">σδφ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="house house house" Homograph="1" />
+      <Entry>
+        <Sense Id="h49dgtoV">
+          <Gloss Language="grc">δδδ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Infix" Form="ho" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="hh" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="go to" Homograph="1" />
+      <Entry>
+        <Sense Id="dkjw6nvP">
+          <Gloss Language="grc">γο το</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="go" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Stem" Form="you" Homograph="1" />
+      <Entry />
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="stuff" Homograph="1" />
+      <Entry>
+        <Sense Id="9FinUnBF">
+          <Gloss Language="grc">ηελλο</Gloss>
+        </Sense>
+        <Sense Id="dyke5/hD">
+          <Gloss Language="en">stuff</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tomas" Homograph="1" />
+      <Entry>
+        <Sense Id="Ui6qogLT">
+          <Gloss Language="grc">Thε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="faadd stuff sdf dfsdf tomas کراݩو چاہویں" Homograph="1" />
+      <Entry>
+        <Sense Id="Su5+fKf7">
+          <Gloss Language="grc">Thε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="کراݩو چاہویں" Homograph="1" />
+      <Entry>
+        <Sense Id="aX9SsgFl">
+          <Gloss Language="grc">Thε</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="add" Homograph="1" />
+      <Entry>
+        <Sense Id="IVhf3w9A">
+          <Gloss Language="en">Gh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="content" Homograph="1" />
+      <Entry>
+        <Sense Id="MU5nUbHx">
+          <Gloss Language="en">Yf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Phrase" Form="qwe qwe qwe" Homograph="1" />
+      <Entry>
+        <Sense Id="288tKc7j">
+          <Gloss Language="grc">τεμποραραψ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="entered" Homograph="1" />
+      <Entry>
+        <Sense Id="yAtlhIvQ">
+          <Gloss Language="grc">εντερεδ</Gloss>
+        </Sense>
+        <Sense Id="IgMbpf6/">
+          <Gloss Language="grc">εντερεδaabb</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="there" Homograph="1" />
+      <Entry>
+        <Sense Id="NSTnhBMt">
+          <Gloss Language="grc">this</Gloss>
+        </Sense>
+        <Sense Id="kUkFb3FQ">
+          <Gloss Language="grc">τηατ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="synagogue" Homograph="1" />
+      <Entry>
+        <Sense Id="NdqGM3hQ">
+          <Gloss Language="grc">σνερτετ</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="with" Homograph="1" />
+      <Entry>
+        <Sense Id="HAXQJ0BB">
+          <Gloss Language="grc">ωιτη</Gloss>
+        </Sense>
+        <Sense Id="mm9EzY7G">
+          <Gloss Language="en">wit</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="you" Homograph="1" />
+      <Entry>
+        <Sense Id="PqP2zdpp">
+          <Gloss Language="en">You</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="stupid" Homograph="1" />
+      <Entry>
+        <Sense Id="9UEpE9rB">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="galatians" Homograph="1" />
+      <Entry>
+        <Sense Id="Mw6DGqYs">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="must" Homograph="1" />
+      <Entry>
+        <Sense Id="XMu3xzmO">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="been" Homograph="1" />
+      <Entry>
+        <Sense Id="oPdGTyN4">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="bweitched" Homograph="1" />
+      <Entry>
+        <Sense Id="pcPBpyvD">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="whose" Homograph="1" />
+      <Entry>
+        <Sense Id="A7umoQHt">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="eyse" Homograph="1" />
+      <Entry>
+        <Sense Id="98h5rubM">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="christ" Homograph="1" />
+      <Entry>
+        <Sense Id="3K/u1wcJ">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="openly" Homograph="1" />
+      <Entry>
+        <Sense Id="cQawYkmt">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="displayed" Homograph="1" />
+      <Entry>
+        <Sense Id="OYyeAhwm">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="upon" Homograph="1" />
+      <Entry>
+        <Sense Id="d/3EUv57">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="his" Homograph="1" />
+      <Entry>
+        <Sense Id="wBdTB39j">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="cross" Homograph="1" />
+      <Entry>
+        <Sense Id="qWkExufg">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="not" Homograph="1" />
+      <Entry>
+        <Sense Id="gYzmLvL1">
+          <Gloss Language="en"></Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="n" Homograph="1" />
+      <Entry>
+        <Sense Id="goFz6zdC">
+          <Gloss Language="en">NNN</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ze" Homograph="1" />
+      <Entry>
+        <Sense Id="Xq5gr7zF">
+          <Gloss Language="en">the</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="kat" Homograph="1" />
+      <Entry>
+        <Sense Id="waj140Di">
+          <Gloss Language="en">cat</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="la" Homograph="1" />
+      <Entry>
+        <Sense Id="A7eJxbo7">
+          <Gloss Language="en">la</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="lal" Homograph="1" />
+      <Entry>
+        <Sense Id="IDocAcQg">
+          <Gloss Language="en">oo</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ala" Homograph="1" />
+      <Entry>
+        <Sense Id="sWxMUTFi">
+          <Gloss Language="en">qqq</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="zokay" Homograph="1" />
+      <Entry>
+        <Sense Id="hlxVk5A7">
+          <Gloss Language="en">OkaY</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="mam" Homograph="1" />
+      <Entry>
+        <Sense Id="PX7DgOdZ">
+          <Gloss Language="en">ddd</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ok" Homograph="1" />
+      <Entry>
+        <Sense Id="BPhh8pk6">
+          <Gloss Language="en">OK</Gloss>
+        </Sense>
+        <Sense Id="c+tP8+/N">
+          <Gloss Language="en">we</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="cdc" Homograph="1" />
+      <Entry>
+        <Sense Id="PfMzFp0e">
+          <Gloss Language="en">sdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="aokaybe" Homograph="1" />
+      <Entry>
+        <Sense Id="aP/nj3xB">
+          <Gloss Language="pt">qqqqqqqqqqqqqqqqqq</Gloss>
+        </Sense>
+        <Sense Id="MrxUQ/f7">
+          <Gloss Language="en">huh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="huh" Homograph="1" />
+      <Entry>
+        <Sense Id="bFqI5h9h">
+          <Gloss Language="en">huh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="can" Homograph="1" />
+      <Entry>
+        <Sense Id="C3gU9RhU">
+          <Gloss Language="en">can</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="speak" Homograph="1" />
+      <Entry>
+        <Sense Id="AAWXwQV7">
+          <Gloss Language="en">make sound</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="what" Homograph="1" />
+      <Entry>
+        <Sense Id="TM417MV+">
+          <Gloss Language="en">huh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="cause" Homograph="1" />
+      <Entry>
+        <Sense Id="7mZYV8JL">
+          <Gloss Language="en">er</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="of" Homograph="1" />
+      <Entry>
+        <Sense Id="/WVJJYBH">
+          <Gloss Language="en">sdf</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="abe" Homograph="1" />
+      <Entry>
+        <Sense Id="tvoFh4l5">
+          <Gloss Language="en">t</Gloss>
+        </Sense>
+        <Sense Id="4OhxMqdn">
+          <Gloss Language="en">baa</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="تمان" Homograph="1" />
+      <Entry>
+        <Sense Id="JA1+30zD">
+          <Gloss Language="en">hhj</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tomas𝔓" Homograph="1" />
+      <Entry>
+        <Sense Id="JaAp8ppA">
+          <Gloss Language="en">yy</Gloss>
+        </Sense>
+        <Sense Id="mJqjbL4I">
+          <Gloss Language="en">hg</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="okay" Homograph="1" />
+      <Entry>
+        <Sense Id="m/dJp1PU">
+          <Gloss Language="en">ukei</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="x" Homograph="1" />
+      <Entry>
+        <Sense Id="guH28APY">
+          <Gloss Language="en">ech</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="note" Homograph="1" />
+      <Entry>
+        <Sense Id="ddMG/pnJ">
+          <Gloss Language="en">not</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="faadd" Homograph="1" />
+      <Entry>
+        <Sense Id="4GryK1BC">
+          <Gloss Language="en">fad</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dfsdf" Homograph="1" />
+      <Entry>
+        <Sense Id="owZ41UQ6">
+          <Gloss Language="en">beef</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="tookaymas𝔓" Homograph="1" />
+      <Entry>
+        <Sense Id="fTVcq9yO">
+          <Gloss Language="en">hmm</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="کراݩو" Homograph="1" />
+      <Entry>
+        <Sense Id="cKejZSAA">
+          <Gloss Language="en">huh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="چاہویں" Homograph="1" />
+      <Entry>
+        <Sense Id="+3crR6Y/">
+          <Gloss Language="en">huh</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="ffffffffffff" Homograph="1" />
+      <Entry>
+        <Sense Id="zcDFxEid">
+          <Gloss Language="en">f</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="df" Homograph="1" />
+      <Entry>
+        <Sense Id="6AsBnMQ5">
+          <Gloss Language="en">beef</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="dfdsf" Homograph="1" />
+      <Entry>
+        <Sense Id="xLL/Th1K">
+          <Gloss Language="en">beffeded</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="unjjiverse" Homograph="1" />
+      <Entry>
+        <Sense Id="FE33NkYk">
+          <Gloss Language="en">universidad</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>

@@ -1,6 +1,8 @@
 # Paratext 9 XML schema
 
-The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang>_<book>.xml` in project data). The parser in `src/parsers/interlinearXmlParser.ts` expects the following structure. Sample files live in `test-data/` (e.g. `Interlinear_en_MAT.xml`).
+The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang>_<book>.xml` in project data). The parser in `src/parsers/paratext-9/paratext9Parser.ts` expects the following structure. Sample files live in `test-data/` (e.g. `Interlinear_en_MAT.xml`).
+
+Interlinear XML does **not** store gloss strings; it only references senses by `GlossId` (which corresponds to Sense Id in the Lexicon). To populate `glossText` on the interlinearizer model, the extension can load a Paratext 9 **Lexicon** XML file (`Lexicon.xml`). The Lexicon parser (`src/parsers/paratext-9/lexiconParser.ts`) builds a (senseId, language) → gloss text lookup; `createAnalyses` in `paratext9Converter` accepts an optional `glossLookup` so analyses get real gloss text when the Lexicon is available.
 
 ## Document structure
 
@@ -115,3 +117,21 @@ This example shows optional root attributes, verse `Hash`, multiple verses and c
   </Verses>
 </InterlinearData>
 ```
+
+## Lexicon XML (gloss text lookup)
+
+The Lexicon file (`Lexicon.xml`) provides gloss text per Sense and language. Structure:
+
+- **Root element:** `Lexicon`
+  - **Child:** `Entries` containing `item` elements (one per lexicon entry).
+- **`item`**
+  - **`Lexeme`** (optional): Attributes `Type`, `Form`, `Homograph` (for reference; not used for lookup).
+  - **`Entry`**: Contains **`Sense`** elements.
+- **`Sense`**
+  - **Attribute:** `Id` (required). This Id is the same as `GlossId` in Interlinear XML.
+  - **Children:** One or more **`Gloss`** elements.
+- **`Gloss`**
+  - **Attribute:** `Language` (e.g. `"en"`, `"hbo"`, `"grc"`). The gloss language in InterlinearData should match when resolving word-level glosses.
+  - **Text content:** The gloss string (may be empty).
+
+The converter uses `parseLexiconAndBuildGlossLookup(xml)` to build a function `(senseId, language) => glossText`. Pass that function as `createAnalyses(interlinearData, { glossLookup })` so `Analysis.glossText` is set from the Lexicon instead of the senseId placeholder.

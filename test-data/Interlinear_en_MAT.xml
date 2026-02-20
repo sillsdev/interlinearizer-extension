@@ -6,91 +6,91 @@
       <VerseData Hash="C8D38188">
         <Cluster>
           <Range Index="5" Length="5" />
-          <Lexeme Id="Word:hello" GlossId="WvbPwa9D" />
+          <Lexeme Id="Word:hello" GlossId="JssW5c35" />
         </Cluster>
         <Cluster>
           <Range Index="19" Length="3" />
-          <Lexeme Id="Word:abe" GlossId="Tb8zZwRA" />
+          <Lexeme Id="Word:abe" GlossId="4OhxMqdn" />
         </Cluster>
         <Cluster>
           <Range Index="83" Length="2" />
-          <Lexeme Id="Word:oj" GlossId="U1UrGv3+" />
+          <Lexeme Id="Word:oj" GlossId="4icWQ3pK" />
         </Cluster>
         <Cluster>
           <Range Index="5" Length="5" />
-          <Lexeme Id="Stem:hello" GlossId="F2N3/zBr" />
-          <Lexeme Id="Suffix:ing" GlossId="xk9pREWs" />
+          <Lexeme Id="Stem:hello" GlossId="Fz1CNXo3" />
+          <Lexeme Id="Suffix:ing" GlossId="iF7p009J" />
         </Cluster>
         <Cluster>
           <Range Index="11" Length="7" />
-          <Lexeme Id="Word:aokaybe" GlossId="4Pe8BpyK" />
+          <Lexeme Id="Word:aokaybe" GlossId="MrxUQ/f7" />
         </Cluster>
         <Cluster>
           <Range Index="19" Length="3" />
-          <Lexeme Id="Stem:ab" GlossId="EsD21Y1W" />
-          <Lexeme Id="Suffix:e" GlossId="IIAUh20h" />
+          <Lexeme Id="Stem:ab" GlossId="zYttwqJ8" />
+          <Lexeme Id="Suffix:e" GlossId="hfa5f0+E" />
         </Cluster>
         <Cluster>
           <Range Index="23" Length="3" />
-          <Lexeme Id="Stem:abc" GlossId="tnuwKEq5" />
+          <Lexeme Id="Stem:abc" GlossId="jtoPryEQ" />
         </Cluster>
         <Cluster>
           <Range Index="23" Length="3" />
-          <Lexeme Id="Word:abc" GlossId="ZDzsb3Te" />
+          <Lexeme Id="Word:abc" GlossId="igUFw9xK" />
         </Cluster>
         <Cluster>
           <Range Index="41" Length="4" />
-          <Lexeme Id="Stem:this" GlossId="h/+ljGCH" />
-          <Lexeme Id="Suffix:sd" GlossId="7S6gLi8t" />
+          <Lexeme Id="Stem:this" GlossId="HjO9AEIv" />
+          <Lexeme Id="Suffix:sd" GlossId="WekF5Iii" />
         </Cluster>
         <Cluster>
           <Range Index="41" Length="4" />
-          <Lexeme Id="Word:this" GlossId="CxS53FaX" />
+          <Lexeme Id="Word:this" GlossId="YlAzyGzv" />
         </Cluster>
         <Cluster>
           <Range Index="46" Length="2" />
-          <Lexeme Id="Word:is" GlossId="2H3/ch0V" />
+          <Lexeme Id="Stem:is" GlossId="4ir1SX+t" />
+        </Cluster>
+        <Cluster>
+          <Range Index="46" Length="2" />
+          <Lexeme Id="Word:is" GlossId="oLsTdKko" />
         </Cluster>
         <Cluster>
           <Range Index="49" Length="1" />
-          <Lexeme Id="Stem:aaaa" GlossId="8T8fEabg" />
+          <Lexeme Id="Stem:aaaa" GlossId="wm5VNwsv" />
         </Cluster>
         <Cluster>
           <Range Index="49" Length="1" />
-          <Lexeme Id="Word:a" GlossId="oYgiMTR8" />
+          <Lexeme Id="Word:a" GlossId="yp9hjBeA" />
+        </Cluster>
+        <Cluster>
+          <Range Index="65" Length="1" />
+          <Lexeme Id="Word:a" GlossId="yp9hjBeA" />
         </Cluster>
         <Cluster>
           <Range Index="51" Length="8" />
-          <Lexeme Id="Word:footnote" GlossId="qDB51qCg" />
+          <Lexeme Id="Word:footnote" GlossId="MkkdFznP" />
         </Cluster>
         <Cluster>
           <Range Index="60" Length="4" />
-          <Lexeme Id="Word:with" GlossId="7fAcNv8C" />
-        </Cluster>
-        <Cluster>
-          <Range Index="65" Length="1" />
-          <Lexeme Id="Word:a" GlossId="oYgiMTR8" />
+          <Lexeme Id="Word:with" GlossId="mm9EzY7G" />
         </Cluster>
         <Cluster>
           <Range Index="67" Length="4" />
-          <Lexeme Id="Word:note" GlossId="BRp+Nb8F" />
+          <Lexeme Id="Word:note" GlossId="ddMG/pnJ" />
         </Cluster>
         <Cluster>
           <Range Index="75" Length="4" />
-          <Lexeme Id="Word:تمان" GlossId="1ziNpgpc" />
+          <Lexeme Id="Word:تمان" GlossId="JA1+30zD" />
         </Cluster>
         <Cluster>
           <Range Index="83" Length="2" />
-          <Lexeme Id="Prefix:o" GlossId="4Eo0Jh1g" />
-          <Lexeme Id="Stem:j" GlossId="uJUjtcMg" />
-        </Cluster>
-        <Cluster>
-          <Range Index="46" Length="2" />
-          <Lexeme Id="Stem:is" GlossId="QEYHInCl" />
+          <Lexeme Id="Prefix:o" GlossId="ceRCYAvD" />
+          <Lexeme Id="Stem:j" GlossId="TKqdnOs4" />
         </Cluster>
         <Cluster>
           <Range Index="65" Length="1" />
-          <Lexeme Id="Stem:aaaa" GlossId="8T8fEabg" />
+          <Lexeme Id="Stem:aaaa" GlossId="wm5VNwsv" />
         </Cluster>
       </VerseData>
     </item>
@@ -99,12 +99,12 @@
       <VerseData Hash="5873E7B7">
         <Cluster>
           <Range Index="5" Length="6" />
-          <Lexeme Id="Stem:Dearl" GlossId="dMqiq7uQ" />
-          <Lexeme Id="Suffix:y" GlossId="QyybcQB0" />
+          <Lexeme Id="Word:dearly" GlossId="eDwbL8iD" />
         </Cluster>
         <Cluster>
           <Range Index="5" Length="6" />
-          <Lexeme Id="Word:dearly" GlossId="BGgpOBGL" />
+          <Lexeme Id="Stem:Dearl" GlossId="giYjyUr7" />
+          <Lexeme Id="Suffix:y" GlossId="z+TVrr/P" />
         </Cluster>
       </VerseData>
     </item>
@@ -174,81 +174,81 @@
     </item>
     <item>
       <string>MAT 1:3</string>
-      <VerseData Hash="0E1567F7">
+      <VerseData>
         <Cluster>
           <Range Index="5" Length="4" />
-          <Lexeme Id="Stem:ok" GlossId="8U81VqPJ" />
-          <Lexeme Id="Suffix:a" GlossId="x4cYluTO" />
-          <Lexeme Id="Suffix:y" GlossId="QQS7ePhM" />
+          <Lexeme Id="Word:okay" GlossId="m/dJp1PU" />
         </Cluster>
         <Cluster>
           <Range Index="5" Length="4" />
-          <Lexeme Id="Word:okay" GlossId="Skw2n0L/" />
+          <Lexeme Id="Stem:ok" GlossId="4HerhP/k" />
+          <Lexeme Id="Suffix:a" GlossId="m2z9yYHN" />
+          <Lexeme Id="Suffix:y" GlossId="z+TVrr/P" />
         </Cluster>
         <Cluster>
           <Range Index="10" Length="1" />
-          <Lexeme Id="Word:x" GlossId="1l25a1tM" />
+          <Lexeme Id="Word:x" GlossId="guH28APY" />
         </Cluster>
       </VerseData>
     </item>
     <item>
       <string>MAT 1:4</string>
-      <VerseData Hash="AF1A38D5">
+      <VerseData>
         <Cluster>
           <Range Index="11" Length="5" />
           <Lexeme Id="Word:stuff" GlossId="dyke5/hD" />
         </Cluster>
         <Cluster>
           <Range Index="5" Length="5" />
-          <Lexeme Id="Word:faadd" GlossId="WoCpeFuq" />
+          <Lexeme Id="Word:faadd" GlossId="4GryK1BC" />
         </Cluster>
         <Cluster>
           <Range Index="17" Length="3" />
-          <Lexeme Id="Stem:s-d-f" GlossId="4mZT2YvC" />
-          <Lexeme Id="Suffix:ing" GlossId="xk9pREWs" />
+          <Lexeme Id="Stem:s-d-f" GlossId="8CNbqoRc" />
+          <Lexeme Id="Suffix:ing" GlossId="iF7p009J" />
         </Cluster>
         <Cluster>
           <Range Index="17" Length="3" />
-          <Lexeme Id="Word:sdf" GlossId="ykAsdbgI" />
+          <Lexeme Id="Word:sdf" GlossId="TdiAoND6" />
+        </Cluster>
+        <Cluster>
+          <Range Index="62" Length="3" />
+          <Lexeme Id="Stem:s-d-f" />
+          <Lexeme Id="Suffix:ing" GlossId="iF7p009J" />
+        </Cluster>
+        <Cluster>
+          <Range Index="62" Length="3" />
+          <Lexeme Id="Word:sdf" GlossId="TdiAoND6" />
         </Cluster>
         <Cluster>
           <Range Index="21" Length="5" />
-          <Lexeme Id="Prefix:d" GlossId="jHH2DM97" />
-          <Lexeme Id="Stem:fsdf" GlossId="K2oLV5Iy" />
+          <Lexeme Id="Prefix:d" GlossId="S8asx9yv" />
+          <Lexeme Id="Stem:fsdf" GlossId="+WSVZ5in" />
         </Cluster>
         <Cluster>
           <Range Index="21" Length="5" />
-          <Lexeme Id="Word:dfsdf" GlossId="ey+/hxRw" />
+          <Lexeme Id="Word:dfsdf" GlossId="owZ41UQ6" />
         </Cluster>
         <Cluster>
           <Range Index="27" Length="11" />
-          <Lexeme Id="Word:tookaymas𝔓" GlossId="qEEdeKKs" />
+          <Lexeme Id="Word:tookaymas𝔓" GlossId="fTVcq9yO" />
         </Cluster>
         <Cluster>
           <Range Index="39" Length="5" />
-          <Lexeme Id="Word:کراݩو" GlossId="3wET0Qj/" />
+          <Lexeme Id="Word:کراݩو" GlossId="cKejZSAA" />
         </Cluster>
         <Cluster>
           <Range Index="45" Length="6" />
-          <Lexeme Id="Word:چاہویں" GlossId="EBU/8UEE" />
+          <Lexeme Id="Word:چاہویں" GlossId="+3crR6Y/" />
         </Cluster>
         <Cluster>
           <Range Index="55" Length="6" />
-          <Lexeme Id="Stem:sdfs" GlossId="qOH8K+vk" />
-          <Lexeme Id="Suffix:df" GlossId="FAFjjl3U" />
+          <Lexeme Id="Stem:sdfs" GlossId="93TZzQ/i" />
+          <Lexeme Id="Suffix:df" GlossId="prYQcJEY" />
         </Cluster>
         <Cluster>
           <Range Index="55" Length="6" />
-          <Lexeme Id="Word:sdfsdf" GlossId="+mt3kR8H" />
-        </Cluster>
-        <Cluster>
-          <Range Index="62" Length="3" />
-          <Lexeme Id="Stem:s-d-f" GlossId="4mZT2YvC" />
-          <Lexeme Id="Suffix:ing" GlossId="xk9pREWs" />
-        </Cluster>
-        <Cluster>
-          <Range Index="62" Length="3" />
-          <Lexeme Id="Word:sdf" GlossId="ykAsdbgI" />
+          <Lexeme Id="Word:sdfsdf" GlossId="4pLJKbZn" />
         </Cluster>
       </VerseData>
     </item>
@@ -308,115 +308,63 @@
       <VerseData>
         <Cluster>
           <Range Index="5" Length="3" />
-          <Lexeme Id="Stem:s-d-f" GlossId="4mZT2YvC" />
-          <Lexeme Id="Suffix:ing" GlossId="xk9pREWs" />
-        </Cluster>
-        <Cluster>
-          <Range Index="5" Length="3" />
-          <Lexeme Id="Word:sdf" GlossId="ykAsdbgI" />
+          <Lexeme Id="Word:sdf" GlossId="TdiAoND6" />
         </Cluster>
         <Cluster>
           <Range Index="9" Length="12" />
-          <Lexeme Id="Word:ffffffffffff" GlossId="M/5hfFkv" />
-        </Cluster>
-        <Cluster>
-          <Range Index="27" Length="2" />
-          <Lexeme Id="Stem:is" GlossId="QEYHInCl" />
-        </Cluster>
-        <Cluster>
-          <Range Index="27" Length="2" />
-          <Lexeme Id="Word:is" GlossId="2H3/ch0V" />
+          <Lexeme Id="Word:ffffffffffff" GlossId="zcDFxEid" />
         </Cluster>
         <Cluster>
           <Range Index="22" Length="4" />
-          <Lexeme Id="Word:what" GlossId="2a50dOFA" />
+          <Lexeme Id="Word:what" GlossId="TM417MV+" />
         </Cluster>
         <Cluster>
-          <Range Index="30" Length="4" />
-          <Lexeme Id="Stem:this" GlossId="h/+ljGCH" />
-          <Lexeme Id="Suffix:sd" GlossId="SeQE/qST" />
+          <Range Index="36" Length="2" />
+          <Lexeme Id="Prefix:d" />
+          <Lexeme Id="Stem:f" GlossId="eFrRDfP3" />
         </Cluster>
         <Cluster>
-          <Range Index="30" Length="4" />
-          <Lexeme Id="Word:this" GlossId="P4udOghs" />
+          <Range Index="36" Length="2" />
+          <Lexeme Id="Word:df" GlossId="6AsBnMQ5" />
         </Cluster>
-        <Punctuation>
-          <Range Index="34" Length="2" />
-          <BeforeText>? </BeforeText>
-          <AfterText>? </AfterText>
-        </Punctuation>
+        <Cluster>
+          <Range Index="39" Length="5" />
+          <Lexeme Id="Prefix:d" />
+          <Lexeme Id="Stem:fdsf" GlossId="r1MOcQ/K" />
+        </Cluster>
+        <Cluster>
+          <Range Index="39" Length="5" />
+          <Lexeme Id="Word:dfdsf" GlossId="xLL/Th1K" />
+        </Cluster>
+        <Cluster>
+          <Range Index="45" Length="5" />
+          <Lexeme Id="Word:hello" GlossId="JssW5c35" />
+        </Cluster>
+        <Cluster>
+          <Range Index="51" Length="10" />
+          <Lexeme Id="Word:unjjiverse" GlossId="FE33NkYk" />
+        </Cluster>
+        <Cluster>
+          <Range Index="62" Length="4" />
+          <Lexeme Id="Word:this" GlossId="YlAzyGzv" />
+        </Cluster>
+        <Cluster>
+          <Range Index="67" Length="2" />
+          <Lexeme Id="Word:is" GlossId="oLsTdKko" />
+        </Cluster>
+        <Cluster>
+          <Range Index="70" Length="1" />
+          <Lexeme Id="Word:a" GlossId="yp9hjBeA" />
+        </Cluster>
+        <Cluster>
+          <Range Index="72" Length="4" />
+          <Lexeme Id="Stem:te" GlossId="kBBBqmYT" />
+          <Lexeme Id="Suffix:st" />
+        </Cluster>
       </VerseData>
     </item>
     <item>
-      <string>MAT 1:0</string>
-      <VerseData />
-    </item>
-    <item>
       <string>MAT 1:7kadh</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:8-hEdllo</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:10T</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:11fff</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:12qqqqqqqqqqffffffff</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:13Jeff</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:13JEff</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:14Why</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:19amwhEn</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:15C2</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:18</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:19</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:20</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:21</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:22</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:23</string>
-      <VerseData />
-    </item>
-    <item>
-      <string>MAT 1:24</string>
       <VerseData />
     </item>
   </Verses>

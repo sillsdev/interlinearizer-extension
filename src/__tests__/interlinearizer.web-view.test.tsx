@@ -5,58 +5,44 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { InterlinearData } from 'parsers/paratext-9/paratext-9-types';
-
-/** Stub InterlinearData returned by the mocked parser. Matches shape the WebView displays. */
-const stubInterlinearData: InterlinearData = {
-  glossLanguage: 'en',
-  bookId: 'MAT',
-  verses: {},
-};
-
-/** Stub Interlinearization returned by the mocked converter. Matches shape the WebView displays. */
-const stubInterlinearization = {
-  id: 'mock-interlinear-id',
-  sourceWritingSystem: '',
-  analysisLanguages: ['en'],
-  books: [{ id: 'mock-book-id', bookRef: 'MAT', textVersion: '', segments: [] }],
-};
-
-const mockParse = jest.fn().mockReturnValue(stubInterlinearData);
-const mockConvert = jest.fn().mockResolvedValue(stubInterlinearization);
-
-/** Stub analyses map for Analyses view (ID → Analysis). */
-const stubAnalysesMap = new Map([
-  [
-    'analysis-en-lex1-s1',
-    {
-      id: 'analysis-en-lex1-s1',
-      analysisLanguage: 'en',
-      analysisType: 'gloss',
-      confidence: 'medium',
-      sourceSystem: 'paratext-9',
-      sourceUser: 'paratext-9-parser',
-      glossText: 'sense1',
-    },
-  ],
-]);
-const mockCreateAnalyses = jest.fn().mockReturnValue(stubAnalysesMap);
-
-/** Mock parser: no real XML parsing; returns stub data. Parser/converter are tested elsewhere. */
-jest.mock('parsers/paratext-9/paratext9Parser', () => ({
-  Paratext9Parser: jest.fn().mockImplementation(() => ({
-    parse: mockParse,
-  })),
-}));
-
-/** Mock converter: no real conversion; returns stub Interlinearization and stub analyses map. */
-jest.mock('parsers/paratext-9/paratext9Converter', () => ({
-  convertParatext9ToInterlinearization: mockConvert,
-  createAnalyses: mockCreateAnalyses,
-}));
-
-// eslint-disable-next-line import/first -- import order required for Jest mock initialization
+import * as lexiconParser from 'parsers/paratext-9/lexiconParser';
+import * as paratext9Parser from 'parsers/paratext-9/paratext9Parser';
+import * as paratext9Converter from 'parsers/paratext-9/paratext9Converter';
 import * as interlinearizerWebViewModule from '../interlinearizer.web-view';
+
+jest.mock('parsers/paratext-9/paratext9Parser');
+jest.mock('parsers/paratext-9/paratext9Converter');
+jest.mock('parsers/paratext-9/lexiconParser');
+
+type ParserMock = typeof paratext9Parser & {
+  mockParse: jest.Mock;
+  stubInterlinearData: import('parsers/paratext-9/paratext-9-types').InterlinearData;
+};
+type ConverterMock = typeof paratext9Converter & {
+  mockConvert: jest.Mock;
+  mockCreateAnalyses: jest.Mock;
+  stubInterlinearization: Record<string, unknown>;
+  stubAnalysesMap: Map<string, unknown>;
+};
+
+function isParserMock(m: typeof paratext9Parser): m is ParserMock {
+  return 'mockParse' in m && 'stubInterlinearData' in m;
+}
+function isConverterMock(m: typeof paratext9Converter): m is ConverterMock {
+  return 'mockConvert' in m && 'stubInterlinearization' in m;
+}
+
+function getParserMock(): ParserMock {
+  if (!isParserMock(paratext9Parser)) throw new Error('Expected parser mock');
+  return paratext9Parser;
+}
+function getConverterMock(): ConverterMock {
+  if (!isConverterMock(paratext9Converter)) throw new Error('Expected converter mock');
+  return paratext9Converter;
+}
+
+const { stubInterlinearData, mockParse } = getParserMock();
+const { stubInterlinearization, mockConvert, mockCreateAnalyses } = getConverterMock();
 
 /**
  * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
@@ -130,7 +116,7 @@ describe('InterlinearizerWebView', () => {
   it('renders the JSON view mode switch (InterlinearData / Interlinearization / Analyses)', async () => {
     await renderWebView();
 
-    const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+    const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
     expect(radiogroup).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /^interlineardata$/i })).toBeInTheDocument();
     expect(screen.getByRole('radio', { name: /^interlinearization$/i })).toBeInTheDocument();
@@ -201,7 +187,9 @@ describe('InterlinearizerWebView', () => {
     fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
 
     expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
-    expect(mockCreateAnalyses).toHaveBeenCalledWith(stubInterlinearData);
+    expect(mockCreateAnalyses).toHaveBeenCalledWith(stubInterlinearData, {
+      glossLookup: expect.any(Function),
+    });
     expect(screen.getByText(/analysis-en-lex1-s1/)).toBeInTheDocument();
     expect(screen.getByText(/glossText/i)).toBeInTheDocument();
     expect(screen.getByText(/paratext-9/i)).toBeInTheDocument();
@@ -220,6 +208,21 @@ describe('InterlinearizerWebView', () => {
     expect(jsonPre).toBeInTheDocument();
     expect(jsonPre).toBeEmptyDOMElement();
     expect(jsonPre).not.toHaveTextContent('undefined');
+  });
+
+  it('uses no glossary when Lexicon parse throws (glossLookup undefined)', async () => {
+    jest.mocked(lexiconParser.parseLexiconAndBuildGlossLookup).mockImplementationOnce(() => {
+      throw new Error('Invalid Lexicon XML');
+    });
+
+    await renderWebView();
+    fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateAnalyses).toHaveBeenCalledWith(stubInterlinearData, {
+        glossLookup: undefined,
+      });
+    });
   });
 
   it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', async () => {
@@ -297,7 +300,7 @@ describe('InterlinearizerWebView', () => {
   describe('handleJsonViewModeKeyDown', () => {
     it('ArrowRight moves to next mode and updates selection', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
 
       await act(async () => {
@@ -313,7 +316,7 @@ describe('InterlinearizerWebView', () => {
 
     it('ArrowDown moves to next mode', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
 
       await act(async () => {
         fireEvent.keyDown(radiogroup, { key: 'ArrowDown' });
@@ -328,7 +331,7 @@ describe('InterlinearizerWebView', () => {
 
     it('ArrowRight from last mode (Analyses) wraps to first (InterlinearData)', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
       expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
 
@@ -345,7 +348,7 @@ describe('InterlinearizerWebView', () => {
 
     it('ArrowLeft moves to previous mode', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
       expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
 
@@ -362,7 +365,7 @@ describe('InterlinearizerWebView', () => {
 
     it('ArrowUp moves to previous mode', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
 
       await act(async () => {
@@ -378,7 +381,7 @@ describe('InterlinearizerWebView', () => {
 
     it('ArrowLeft from first mode (InterlinearData) wraps to last (Analyses)', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
 
       await act(async () => {
@@ -394,7 +397,7 @@ describe('InterlinearizerWebView', () => {
 
     it('non-arrow key does not change mode', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
 
       fireEvent.keyDown(radiogroup, { key: 'a' });
@@ -408,7 +411,7 @@ describe('InterlinearizerWebView', () => {
 
     it('moves focus to the newly selected radio on arrow key', async () => {
       await renderWebView();
-      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const radiogroup = screen.getByRole('radiogroup', { name: /view json as:/i });
       const interlinearizationRadio = screen.getByRole('radio', {
         name: /^interlinearization$/i,
       });

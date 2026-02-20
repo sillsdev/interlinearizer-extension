@@ -733,5 +733,155 @@ describe('convertParatext9ToInterlinearization', () => {
       expect(result.has('analysis-en-Word:one-s1')).toBe(true);
       expect(result.has('analysis-en-Word:two-s2')).toBe(true);
     });
+
+    it('uses glossLookup when provided and returns gloss text instead of senseId placeholder', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 5 },
+                lexemes: [{ lexemeId: 'Word:hello', senseId: 'Fz1CNXo3' }],
+                lexemesId: 'Word:hello',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const glossLookup = (senseId: string, lang: string): string | undefined =>
+        senseId === 'Fz1CNXo3' && lang === 'en' ? 'good' : undefined;
+      const result = createAnalyses(data, { glossLookup });
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-en-Word:hello-Fz1CNXo3');
+      expect(analysis).toBeDefined();
+      expect(analysis?.glossText).toBe('good');
+    });
+
+    it('falls back to senseId when glossLookup returns undefined for that sense', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 3 },
+                lexemes: [{ lexemeId: 'Word:xyz', senseId: 'unknownSense' }],
+                lexemesId: 'Word:xyz',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const glossLookup = (): string | undefined => undefined;
+      const result = createAnalyses(data, { glossLookup });
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-en-Word:xyz-unknownSense');
+      expect(analysis).toBeDefined();
+      expect(analysis?.glossText).toBe('unknownSense');
+    });
+
+    it('uses empty string from glossLookup when Lexicon has blank gloss for sense+language', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'grc',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 2 },
+                lexemes: [{ lexemeId: 'Word:in', senseId: '6wa5ZOr2' }],
+                lexemesId: 'Word:in',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const glossLookup = (senseId: string, lang: string): string | undefined =>
+        senseId === '6wa5ZOr2' && lang === 'grc' ? '' : undefined;
+      const result = createAnalyses(data, { glossLookup });
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-grc-Word:in-6wa5ZOr2');
+      expect(analysis).toBeDefined();
+      expect(analysis?.glossText).toBe('');
+    });
+
+    it('uses senseId fallback when glossLookup is provided but lexeme.senseId is empty (else branch)', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 1 },
+                lexemes: [{ lexemeId: 'Word:a', senseId: '' }],
+                lexemesId: 'Word:a',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const glossLookup = (): string | undefined => 'from-lexicon';
+      const result = createAnalyses(data, { glossLookup });
+
+      expect(result.size).toBe(1);
+      const analysis = result.get('analysis-en-Word:a');
+      expect(analysis).toBeDefined();
+      expect(analysis?.glossText).toBeUndefined();
+    });
+
+    it('uses lexicon gloss when lookup returns value and senseId when lookup returns undefined', () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 5 },
+                lexemes: [
+                  { lexemeId: 'Word:known', senseId: 'knownSense' },
+                  { lexemeId: 'Word:unknown', senseId: 'unknownSense' },
+                ],
+                lexemesId: 'Word:known/Word:unknown',
+                id: 'c1',
+                excluded: false,
+              },
+            ],
+            punctuations: [],
+          },
+        },
+      };
+      const glossLookup = (senseId: string): string | undefined =>
+        senseId === 'knownSense' ? 'from-lexicon' : undefined;
+      const result = createAnalyses(data, { glossLookup });
+
+      expect(result.size).toBe(2);
+      expect(result.get('analysis-en-Word:known-knownSense')?.glossText).toBe('from-lexicon');
+      expect(result.get('analysis-en-Word:unknown-unknownSense')?.glossText).toBe('unknownSense');
+    });
   });
 });

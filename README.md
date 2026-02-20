@@ -101,14 +101,14 @@ The general file structure for an extension is as follows:
   - `*.web-view.scss` files provide styles for WebViews
   - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)
   - `src/__tests__/` contains unit tests (Jest) for the extension, including parser tests (valid and invalid XML, edge cases) and web-view tests
-- `__mocks__/` contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. The `@papi/backend` and `@papi/frontend` mocks are used mutually exclusively (backend for main.ts tests, frontend for WebView tests); each mock file ends with `export {}` so TypeScript treats it as a module.
+- `__mocks__/` (project root) contains Jest mocks for the PAPI, file modules, and test fixtures used by tests in `src/__tests__/`. Manual mocks for the Paratext 9 parser, converter, and lexicon used by `interlinearizer.web-view.test.tsx` live in `src/parsers/paratext-9/__mocks__/` (adjacent to the modules) so that `jest.mock('parsers/paratext-9/...')` picks them up.
 - `assets/` contains asset files the extension and its WebViews can retrieve using the `papi-extension:` protocol, as well as textual descriptions in various languages. It is copied into the build folder
   - `assets/displayData.json` contains (optionally) a path to the extension's icon file as well as text for the extension's display name, short summary, and path to the full description file
   - `assets/descriptions/` contains textual descriptions of the extension in various languages
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
 - `public/` contains other static files that are copied into the build folder
-- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests. In tests, resolve paths via `getTestDataPath('Interlinear_en_MAT.xml')` from `src/__tests__/test-helpers` rather than building paths with `..` segments.
+- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests. In tests, resolve paths via `getTestDataPath('Interlinear_en_MAT.xml')` from `src/__tests__/test-helpers`.
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)

@@ -5,10 +5,16 @@ import {
   convertParatext9ToInterlinearization,
   createAnalyses,
 } from 'parsers/paratext-9/paratext9Converter';
+import { parseLexiconAndBuildGlossLookup } from 'parsers/paratext-9/lexiconParser';
 
 import type { Interlinearization } from 'interlinearizer';
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
+/**
+ * Lexicon XML for gloss text lookup (test-data/Lexicon.xml). Parsed once; on failure we use no
+ * glossary.
+ */
+import lexiconXml from '../test-data/Lexicon.xml?raw';
 
 /** Result of parsing the bundled test XML: either data or an error message. */
 type ParseResult = { data: InterlinearData; error: undefined } | { data: undefined; error: string };
@@ -159,8 +165,20 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
     };
   }, [parsed]);
 
+  /** Gloss lookup from Lexicon (senseId, language) → text. Built once; invalid Lexicon is ignored. */
+  const glossLookup = useMemo(() => {
+    try {
+      return parseLexiconAndBuildGlossLookup(lexiconXml);
+    } catch {
+      return undefined;
+    }
+  }, []);
+
   /** Analyses map derived from parsed data (ID → Analysis); only defined when parsed exists. */
-  const analysesMap = useMemo(() => (parsed ? createAnalyses(parsed) : undefined), [parsed]);
+  const analysesMap = useMemo(
+    () => (parsed ? createAnalyses(parsed, { glossLookup: glossLookup ?? undefined }) : undefined),
+    [parsed, glossLookup],
+  );
 
   /**
    * Data to show as JSON: depends on selected view mode. Shows converting sentinel when in
@@ -195,11 +213,16 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
       {parsed && (
         <>
           <div className="tw-flex tw-flex-wrap tw-items-center tw-gap-2">
-            <span className="tw-text-sm tw-font-medium tw-text-foreground">View JSON as:</span>
+            <span
+              id="interlinearizer-json-view-mode-label"
+              className="tw-text-sm tw-font-medium tw-text-foreground"
+            >
+              View JSON as:
+            </span>
             <div
               className="tw-inline-flex tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-0.5"
               role="radiogroup"
-              aria-label="JSON view mode"
+              aria-labelledby="interlinearizer-json-view-mode-label"
               tabIndex={-1}
               onKeyDown={onJsonViewModeKeyDown}
             >

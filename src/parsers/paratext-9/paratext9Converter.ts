@@ -6,7 +6,6 @@
  *   interlinearizer's book/segment/occurrence/analysis structure.
  */
 
-import type { InterlinearData, VerseData, StringRange } from 'paratext-9-types';
 import type {
   Interlinearization,
   AnalyzedBook,
@@ -21,6 +20,7 @@ import {
   AssignmentStatus,
   Confidence,
 } from 'types/interlinearizer-enums';
+import type { InterlinearData, VerseData, StringRange } from './paratext-9-types';
 
 /**
  * Default SHA-256 hex implementation using the Web Crypto API so the converter can run in WebViews.
@@ -295,13 +295,13 @@ export async function convertParatext9ToInterlinearization(
 
   const interlinearizationId = generateInterlinearizationId(bookId);
   const analyzedBookId = generateBookId(bookId);
+  const sortedVerseRefs = Object.keys(verses).sort();
+  const verseDataArray = sortedVerseRefs.map((ref) => verses[ref]);
 
   const segments = Object.entries(verses).map(([verseRef, verseData]) => {
     return convertVerseToSegment(verseRef, verseData, glossLanguage);
   });
 
-  const sortedVerseRefs = Object.keys(verses).sort();
-  const verseDataArray = sortedVerseRefs.map((ref) => verses[ref]);
   const textVersion = await computeBookTextVersion(verseDataArray, hashSha256Hex);
 
   const analyzedBook: AnalyzedBook = {

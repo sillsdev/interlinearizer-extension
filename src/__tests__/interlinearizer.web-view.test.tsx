@@ -5,7 +5,8 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { InterlinearData } from 'paratext-9-types';
+import React from 'react';
+import type { InterlinearData } from 'parsers/paratext-9/paratext-9-types';
 
 /** Stub InterlinearData returned by the mocked parser. Matches shape the WebView displays. */
 const stubInterlinearData: InterlinearData = {
@@ -202,6 +203,21 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText(/paratext-9/i)).toBeInTheDocument();
   });
 
+  it('Analyses view shows empty JSON pre when createAnalyses returns undefined', async () => {
+    mockCreateAnalyses.mockReturnValueOnce(undefined);
+
+    const { container } = await renderWebView();
+    fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+    });
+
+    const jsonPre = container.querySelector('pre');
+    expect(jsonPre).toBeInTheDocument();
+    expect(jsonPre).toBeEmptyDOMElement();
+    expect(jsonPre).not.toHaveTextContent('undefined');
+  });
+
   it('renders empty JSON pre when jsonToShow is undefined (converter returns undefined)', async () => {
     mockConvert.mockResolvedValueOnce(undefined);
 
@@ -242,5 +258,154 @@ describe('InterlinearizerWebView', () => {
     const jsonPre = container.querySelector('pre');
     expect(jsonPre).toBeInTheDocument();
     expect(jsonPre).toBeEmptyDOMElement();
+  });
+
+  describe('handleJsonViewModeKeyDown', () => {
+    it('ArrowRight moves to next mode and updates selection', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowRight' });
+      });
+
+      expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^interlinearization$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('ArrowDown moves to next mode', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowDown' });
+      });
+      expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowDown' });
+      });
+      expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+    });
+
+    it('ArrowRight from last mode (Analyses) wraps to first (InterlinearData)', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
+      expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowRight' });
+      });
+
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^interlineardata$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('ArrowLeft moves to previous mode', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      fireEvent.click(screen.getByRole('radio', { name: /^analyses$/i }));
+      expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowLeft' });
+      });
+
+      expect(screen.getByText(/^Interlinearization \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^interlinearization$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('ArrowUp moves to previous mode', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      fireEvent.click(screen.getByRole('radio', { name: /^interlinearization$/i }));
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowUp' });
+      });
+
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^interlineardata$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('ArrowLeft from first mode (InterlinearData) wraps to last (Analyses)', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowLeft' });
+      });
+
+      expect(screen.getByText(/^Analyses \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^analyses$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('non-arrow key does not change mode', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+
+      fireEvent.keyDown(radiogroup, { key: 'a' });
+      fireEvent.keyDown(radiogroup, { key: 'Enter' });
+      expect(screen.getByText(/^InterlinearData \(JSON\):$/)).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /^interlineardata$/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    it('moves focus to the newly selected radio on arrow key', async () => {
+      await renderWebView();
+      const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+      const interlinearizationRadio = screen.getByRole('radio', {
+        name: /^interlinearization$/i,
+      });
+
+      await act(async () => {
+        fireEvent.keyDown(radiogroup, { key: 'ArrowRight' });
+      });
+
+      expect(document.activeElement).toBe(interlinearizationRadio);
+    });
+
+    it('does nothing when current view mode is not in JSON_VIEW_MODES (idx === -1)', async () => {
+      const setJsonViewMode = jest.fn();
+      let useStateCallCount = 0;
+      const useStateSpy = jest.spyOn(React, 'useState').mockImplementation(() => {
+        useStateCallCount += 1;
+        return useStateCallCount === 1 ? ['invalid', setJsonViewMode] : [undefined, jest.fn()];
+      });
+
+      try {
+        await renderWebView();
+        const radiogroup = screen.getByRole('radiogroup', { name: /json view mode/i });
+
+        await act(async () => {
+          fireEvent.keyDown(radiogroup, { key: 'ArrowRight' });
+        });
+
+        expect(setJsonViewMode).not.toHaveBeenCalled();
+      } finally {
+        useStateSpy.mockRestore();
+      }
+    });
   });
 });

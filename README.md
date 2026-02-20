@@ -108,7 +108,7 @@ The general file structure for an extension is as follows:
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
 - `public/` contains other static files that are copied into the build folder
-- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests
+- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests. In tests, resolve paths via `getTestDataPath('Interlinear_en_MAT.xml')` from `src/__tests__/test-helpers` rather than building paths with `..` segments.
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)
@@ -118,6 +118,10 @@ The general file structure for an extension is as follows:
 > See the [Extension Anatomy wiki page](https://github.com/paranext/paranext-extension-template/wiki/Extension-Anatomy) for more information about the various files that comprise an extension and their relationships to each other.
 
 ## To install
+
+### Requirements
+
+- **Node.js >= 18** is required. The test suite uses the Web Crypto API (`globalThis.crypto.subtle`) for hashing in `paratext9Converter` tests (e.g. the `sha256HexWebCrypto` path in `src/__tests__/parsers/paratext-9/paratext9Converter.test.ts` when `convertParatext9ToInterlinearization` is called without the `hashSha256Hex` option). Node 18+ provides this API; older versions will cause those tests to fail. The same requirement is enforced in `package.json` via `engines.node` and is used by CI.
 
 ### Install dependencies:
 

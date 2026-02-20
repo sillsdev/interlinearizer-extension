@@ -30,10 +30,10 @@ export enum AnalysisType {
 /**
  * How the analysis was produced.
  *
- * - `high`
- * - `medium`
- * - `low`
  * - `guess`
+ * - `low`
+ * - `medium`
+ * - `high`
  */
 export enum Confidence {
   Guess = 'guess',

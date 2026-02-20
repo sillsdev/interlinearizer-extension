@@ -6,6 +6,9 @@
   "types": "src/types/interlinearizer.d.ts",
   "author": "SIL Global",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build:web-view": "webpack --config ./webpack/webpack.config.web-view.ts",
     "build:main": "webpack --config ./webpack/webpack.config.main.ts",

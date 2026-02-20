@@ -5,11 +5,11 @@
 /// <reference types="jest" />
 
 import { createHash } from 'crypto';
-import type { InterlinearData } from 'paratext-9-types';
 import {
   convertParatext9ToInterlinearization,
   createAnalyses,
 } from 'parsers/paratext-9/paratext9Converter';
+import type { InterlinearData } from 'parsers/paratext-9/paratext-9-types';
 
 /** SHA-256 hex hasher using Node crypto. */
 function nodeSha256Hex(str: string): Promise<string> {

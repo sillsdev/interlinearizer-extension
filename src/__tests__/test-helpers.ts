@@ -1,9 +1,22 @@
 /**
  * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- *   ExecutionActivationContext that satisfies @papi/core types.
+ *   ExecutionActivationContext that satisfies @papi/core types, and a stable path resolver for the
+ *   test-data directory.
  */
+import * as path from 'path';
+
 import type { ExecutionActivationContext } from '@papi/core';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
+
+/**
+ * Resolves a path to a file under the project's test-data directory.
+ *
+ * @param relativePath - Filename or path relative to test-data (e.g. 'Interlinear_en_MAT.xml').
+ * @returns Absolute path to the file under test-data.
+ */
+export function getTestDataPath(relativePath: string): string {
+  return path.resolve(__dirname, '..', '..', 'test-data', relativePath);
+}
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {

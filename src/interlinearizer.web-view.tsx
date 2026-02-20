@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { InterlinearData } from 'paratext-9-types';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { InterlinearData } from 'parsers/paratext-9/paratext-9-types';
 import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
 import {
   convertParatext9ToInterlinearization,
   createAnalyses,
 } from 'parsers/paratext-9/paratext9Converter';
 
+import type { Interlinearization } from 'interlinearizer';
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';
 
@@ -14,6 +15,13 @@ type ParseResult = { data: InterlinearData; error: undefined } | { data: undefin
 
 /** View mode for the JSON display: raw PT9, converted model, or analyses map. */
 type JsonViewMode = 'interlinear-data' | 'interlinearization' | 'analyses';
+
+/** Ordered list of JSON view modes for rendering and arrow-key navigation. */
+const JSON_VIEW_MODES: { key: JsonViewMode; label: string }[] = [
+  { key: 'interlinear-data', label: 'InterlinearData' },
+  { key: 'interlinearization', label: 'Interlinearization' },
+  { key: 'analyses', label: 'Analyses' },
+];
 
 function getViewModeDescription(mode: JsonViewMode): string {
   if (mode === 'interlinear-data') return 'Paratext 9 book/verse/cluster structure.';
@@ -40,6 +48,34 @@ function getViewModeLabel(mode: JsonViewMode): string {
 globalThis.webViewComponent = function InterlinearizerWebView() {
   const [jsonViewMode, setJsonViewMode] = useState<JsonViewMode>('interlinear-data');
 
+  /** Refs to each radio button for moving focus on arrow-key navigation. */
+  const radioRefs = useRef<Record<JsonViewMode, HTMLButtonElement | undefined>>({
+    'interlinear-data': undefined,
+    interlinearization: undefined,
+    analyses: undefined,
+  });
+
+  /**
+   * Handles arrow keys on the JSON view mode radiogroup: Left/Up select previous, Right/Down select
+   * next; updates selection and moves focus to the new radio.
+   */
+  const handleJsonViewModeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const idx = JSON_VIEW_MODES.findIndex((m) => m.key === jsonViewMode);
+    if (idx === -1) return;
+    let nextKey: JsonViewMode | undefined;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      nextKey = JSON_VIEW_MODES[(idx + 1) % JSON_VIEW_MODES.length].key;
+      setJsonViewMode(nextKey);
+      radioRefs.current[nextKey]?.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      nextKey = JSON_VIEW_MODES[(idx - 1 + JSON_VIEW_MODES.length) % JSON_VIEW_MODES.length].key;
+      setJsonViewMode(nextKey);
+      radioRefs.current[nextKey]?.focus();
+    }
+  };
+
   const { data: parsed, error: parseError } = useMemo((): ParseResult => {
     const parser = new Paratext9Parser();
     try {
@@ -50,9 +86,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
     }
   }, []);
 
-  const [interlinearization, setInterlinearization] = useState<
-    Awaited<ReturnType<typeof convertParatext9ToInterlinearization>> | undefined
-  >(undefined);
+  const [interlinearization, setInterlinearization] = useState<Interlinearization | undefined>();
 
   useEffect(() => {
     if (!parsed) {
@@ -79,7 +113,8 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
   /** Data to show as JSON: depends on selected view mode. */
   const jsonToShow = useMemo(() => {
     if (jsonViewMode === 'interlinearization') return interlinearization;
-    if (jsonViewMode === 'analyses' && analysesMap) return Object.fromEntries(analysesMap);
+    if (jsonViewMode === 'analyses')
+      return analysesMap ? Object.fromEntries(analysesMap) : undefined;
     return parsed;
   }, [jsonViewMode, parsed, interlinearization, analysesMap]);
 
@@ -107,23 +142,25 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
               className="tw-inline-flex tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-0.5"
               role="radiogroup"
               aria-label="JSON view mode"
+              tabIndex={-1}
+              onKeyDown={handleJsonViewModeKeyDown}
             >
-              {[
-                { key: 'interlinear-data' as const, label: 'InterlinearData' },
-                { key: 'interlinearization' as const, label: 'Interlinearization' },
-                { key: 'analyses' as const, label: 'Analyses' },
-              ].map(({ key, label }) => (
+              {JSON_VIEW_MODES.map(({ key, label }) => (
                 <button
                   key={key}
+                  ref={(el) => {
+                    radioRefs.current[key] = el ?? undefined;
+                  }}
                   type="button"
                   role="radio"
+                  tabIndex={jsonViewMode === key ? 0 : -1}
+                  aria-checked={jsonViewMode === key}
                   onClick={() => setJsonViewMode(key)}
                   className={`tw-rounded tw-px-3 tw-py-1.5 tw-text-sm tw-font-medium tw-transition-colors ${
                     jsonViewMode === key
                       ? 'tw-bg-background tw-text-foreground tw-shadow-sm'
                       : 'tw-text-muted-foreground hover:tw-text-foreground'
                   }`}
-                  aria-checked={jsonViewMode === key}
                 >
                   {label}
                 </button>

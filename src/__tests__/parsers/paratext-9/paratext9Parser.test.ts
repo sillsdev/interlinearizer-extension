@@ -2,9 +2,9 @@
 /// <reference types="jest" />
 
 import * as fs from 'fs';
-import * as path from 'path';
 
 import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
+import { getTestDataPath } from '../../test-helpers';
 
 describe('Paratext9Parser', () => {
   let parser: Paratext9Parser;
@@ -575,15 +575,7 @@ describe('Paratext9Parser', () => {
     });
 
     it('parses real test-data file without throwing', () => {
-      const xmlPath = path.join(
-        __dirname,
-        '..',
-        '..',
-        '..',
-        '..',
-        'test-data',
-        'Interlinear_en_MAT.xml',
-      );
+      const xmlPath = getTestDataPath('Interlinear_en_MAT.xml');
       const xml = fs.readFileSync(xmlPath, 'utf-8');
       const result = parser.parse(xml);
 

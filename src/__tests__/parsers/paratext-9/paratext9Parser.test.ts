@@ -690,7 +690,7 @@ describe('Paratext9Parser', () => {
       );
     });
 
-    it('throws when Range is missing Index or Length', () => {
+    it('throws when Range is missing Index', () => {
       const xmlNoIndex = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -709,7 +709,9 @@ describe('Paratext9Parser', () => {
       expect(() => parser.parse(xmlNoIndex)).toThrow(
         'Invalid XML: Range missing required Index or Length attributes',
       );
+    });
 
+    it('throws when Range is missing Length', () => {
       const xmlNoLength = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>

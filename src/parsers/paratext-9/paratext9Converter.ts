@@ -201,7 +201,13 @@ function convertVerseToSegment(
         punctuation,
       }),
     ),
-  ].sort((a, b) => a.textRange.index - b.textRange.index);
+  ].sort((a, b) => {
+    const byIndex = a.textRange.index - b.textRange.index;
+    if (byIndex !== 0) return byIndex;
+    const byLength = a.textRange.length - b.textRange.length;
+    if (byLength !== 0) return byLength;
+    return a.kind.localeCompare(b.kind);
+  });
 
   const occurrences: Occurrence[] = items.map((item, occurrenceIndex): Occurrence => {
     if (item.kind === 'cluster') {

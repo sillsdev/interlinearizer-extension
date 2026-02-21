@@ -253,6 +253,45 @@ describe('convertParatext9ToInterlinearization', () => {
       expect(result.books[0].textVersion).toBe(expectedTextVersionForSingleHash('ABC123'));
       expect(result.books[0].segments[0].occurrences[0].assignments[0].status).toBe('approved');
     });
+
+    it('sorts items with same index by length then by kind (deterministic tie-break)', async () => {
+      const data: InterlinearData = {
+        glossLanguage: 'en',
+        bookId: 'MAT',
+        verses: {
+          'MAT 1:1': {
+            hash: '',
+            clusters: [
+              {
+                textRange: { index: 0, length: 2 },
+                lexemes: [{ lexemeId: 'Word:ab', senseId: '' }],
+                lexemesId: 'Word:ab',
+                id: 'Word:ab/0-2',
+                excluded: false,
+              },
+              {
+                textRange: { index: 0, length: 1 },
+                lexemes: [{ lexemeId: 'Word:a', senseId: '' }],
+                lexemesId: 'Word:a',
+                id: 'Word:a/0-1',
+                excluded: false,
+              },
+            ],
+            punctuations: [{ textRange: { index: 0, length: 1 }, beforeText: ',', afterText: ',' }],
+          },
+        },
+      };
+      const result = await convertParatext9ToInterlinearization(data, nodeHashOptions);
+
+      const { occurrences } = result.books[0].segments[0];
+      expect(occurrences).toHaveLength(3);
+      expect(occurrences[0].anchor).toBe('0-1');
+      expect(occurrences[0].type).toBe('word');
+      expect(occurrences[1].anchor).toBe('0-1');
+      expect(occurrences[1].type).toBe('punctuation');
+      expect(occurrences[2].anchor).toBe('0-2');
+      expect(occurrences[2].type).toBe('word');
+    });
   });
 
   describe('assignment status from verse hash', () => {

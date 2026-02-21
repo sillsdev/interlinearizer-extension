@@ -152,7 +152,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
           setInterlinearization(result);
           setConversionSettled(true);
         }
-        return result;
+        return undefined;
       })
       .catch(() => {
         if (!cancelled) {
@@ -176,7 +176,7 @@ globalThis.webViewComponent = function InterlinearizerWebView() {
 
   /** Analyses map derived from parsed data (ID → Analysis); only defined when parsed exists. */
   const analysesMap = useMemo(
-    () => (parsed ? createAnalyses(parsed, { glossLookup: glossLookup ?? undefined }) : undefined),
+    () => (parsed ? createAnalyses(parsed, { glossLookup }) : undefined),
     [parsed, glossLookup],
   );
 

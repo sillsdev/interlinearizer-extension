@@ -15,9 +15,9 @@ const GLOSS_KEY_SEP = '\t';
 const DEFAULT_LANGUAGE = '*';
 
 /**
- * Lookup function: (senseId, language) → gloss text when present in the Lexicon. Return value is
- * trimmed; empty string is returned for missing or blank glosses when the sense exists, so callers
- * can distinguish "no entry" (undefined) from "entry with no text" ("").
+ * Lookup function: (senseId, language) → gloss text when present in the Lexicon. Empty string is
+ * returned for missing or blank glosses when the sense exists, so callers can distinguish "no
+ * entry" (undefined) from "entry with no text" ("").
  */
 export type LexiconGlossLookup = (senseId: string, language: string) => string | undefined;
 
@@ -40,7 +40,11 @@ interface ParsedEntry {
 
 /** Parsed Lexicon item: Lexeme and Entry. */
 interface ParsedLexiconItem {
-  Lexeme?: { ['@_Type']?: string; ['@_Form']?: string; ['@_Homograph']?: string };
+  Lexeme?: {
+    ['@_Type']?: string;
+    ['@_Form']?: string;
+    ['@_Homograph']?: string;
+  };
   Entry?: ParsedEntry;
 }
 
@@ -84,7 +88,7 @@ function glossKey(senseId: string, language: string): string {
  * Normalizes a single Gloss item from the parser into language and text.
  *
  * @param gloss - Single Gloss from ParsedSense.Gloss (object or string).
- * @returns Trimmed language (or {@link DEFAULT_LANGUAGE} when missing) and trimmed text.
+ * @returns Language (or {@link DEFAULT_LANGUAGE} when missing) and text.
  * @internal Exported so tests can cover the object branch when @_Language is undefined (parser
  *   may return a string for single Gloss with no attributes, so that branch is not reachable via XML).
  */
@@ -133,7 +137,7 @@ function glossPairsFromItem(item: ParsedLexiconItem): Array<{ key: string; text:
  * key.
  *
  * @param root - Parsed Lexicon root (Lexicon element).
- * @returns Map keyed by glossKey(senseId, language) to trimmed gloss text (empty string allowed).
+ * @returns Map keyed by glossKey(senseId, language) to gloss text (empty string allowed).
  */
 function buildGlossMap(root: ParsedLexiconRoot): Map<string, string> {
   const items = toArray(root.Entries?.item);
@@ -148,7 +152,7 @@ function buildGlossMap(root: ParsedLexiconRoot): Map<string, string> {
  * glosses.
  *
  * @param xml - Raw Lexicon XML string (e.g. file contents).
- * @returns A {@link LexiconGlossLookup} that returns the trimmed gloss string when the Lexicon has a
+ * @returns A {@link LexiconGlossLookup} that returns the gloss string when the Lexicon has a
  *   matching Sense and Gloss for that language, or undefined when no such entry exists. Returns the
  *   empty string when the Lexicon has a Sense+Language entry but the gloss text is blank.
  * @throws {Error} If the root element is not Lexicon.

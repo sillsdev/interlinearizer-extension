@@ -174,8 +174,8 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `types`; no extra conversion is done. Expects the Paratext
- * 9 Interlinear XML schema described in [xml-schema.md](xml-schema.md).
+ * Output matches the types in `types`; no extra conversion is done. Expects the Paratext 9
+ * Interlinear XML schema described in [xml-schema.md](xml-schema.md).
  */
 export class Paratext9Parser {
   private readonly parser: XMLParser;

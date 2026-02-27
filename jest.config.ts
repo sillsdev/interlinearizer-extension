@@ -27,7 +27,7 @@ const config: Config = {
     'src/parsers/**/*.ts',
     'src/main.ts',
     'src/**/*.web-view.tsx',
-    '!src/parsers/**/*-types.ts',
+    '!src/parsers/**/types.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
@@ -94,7 +94,7 @@ const config: Config = {
     /** Resolve webpack ?inline imports: SCSS content. */
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
     /** Resolve webpack ?raw import for test XML in web-view. */
-    '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
+    '^(.+)/Interlinear_en_JHN\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
     /** Resolve webpack ?raw import for Lexicon XML in web-view. */
     '^(.+)/Lexicon\\.xml\\?raw$': '<rootDir>/__mocks__/lexiconXmlContent.ts',
   },

@@ -3,7 +3,7 @@
 
 import * as fs from 'fs';
 
-import { Paratext9Parser } from 'parsers/paratext-9/paratext9Parser';
+import { Paratext9Parser } from 'parsers/paratext-9/interlinearParser';
 import { getTestDataPath } from '../../test-helpers';
 
 describe('Paratext9Parser', () => {
@@ -16,10 +16,10 @@ describe('Paratext9Parser', () => {
   describe('parse() - valid XML', () => {
     it('parses minimal valid XML with one verse and one cluster', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="4" />
@@ -34,9 +34,9 @@ describe('Paratext9Parser', () => {
 
       expect(result).toEqual({
         glossLanguage: 'en',
-        bookId: 'MAT',
+        bookId: 'JHN',
         verses: {
-          'MAT 1:1': {
+          'JHN 1:1': {
             hash: '',
             clusters: [
               {
@@ -97,10 +97,10 @@ describe('Paratext9Parser', () => {
 
     it('parses cluster with multiple lexemes and builds LexemesId and Id correctly', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="5" Length="5" />
@@ -114,7 +114,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.verses['MAT 1:1'].clusters[0];
+      const cluster = result.verses['JHN 1:1'].clusters[0];
       expect(cluster.lexemes).toEqual([
         { lexemeId: 'Stem:hello', senseId: 'g1' },
         { lexemeId: 'Suffix:ing', senseId: 'g2' },
@@ -125,10 +125,10 @@ describe('Paratext9Parser', () => {
 
     it('parses lexeme Id containing slash: LexemesId and Id preserve the slash (slash-safe)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="12" />
@@ -141,7 +141,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.verses['MAT 1:1'].clusters[0];
+      const cluster = result.verses['JHN 1:1'].clusters[0];
       expect(cluster.lexemes).toEqual([{ lexemeId: 'Word:hello/world', senseId: 'g1' }]);
       expect(cluster.lexemesId).toBe('Word:hello/world');
       expect(cluster.id).toBe('Word:hello/world/0-12');
@@ -149,10 +149,10 @@ describe('Paratext9Parser', () => {
 
     it('preserves slash when joining Lexeme Ids (multiple lexemes, one Id contains slash)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="5" Length="11" />
@@ -166,7 +166,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.verses['MAT 1:1'].clusters[0];
+      const cluster = result.verses['JHN 1:1'].clusters[0];
       expect(cluster.lexemes).toEqual([
         { lexemeId: 'Stem:foo/bar', senseId: 'g1' },
         { lexemeId: 'Suffix:ing', senseId: 'g2' },
@@ -177,10 +177,10 @@ describe('Paratext9Parser', () => {
 
     it('parses cluster with no lexemes: Id is Index-Length only (no leading slash)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="10" Length="3" />
@@ -192,7 +192,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      const cluster = result.verses['MAT 1:1'].clusters[0];
+      const cluster = result.verses['JHN 1:1'].clusters[0];
       expect(cluster.lexemes).toEqual([]);
       expect(cluster.lexemesId).toBe('');
       expect(cluster.id).toBe('10-3');
@@ -200,10 +200,10 @@ describe('Paratext9Parser', () => {
 
     it('parses Lexeme without GlossId as empty SenseId', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -216,7 +216,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0]).toEqual({
+      expect(result.verses['JHN 1:1'].clusters[0].lexemes[0]).toEqual({
         lexemeId: 'Word:a',
         senseId: '',
       });
@@ -224,10 +224,10 @@ describe('Paratext9Parser', () => {
 
     it('parses Cluster with Excluded=true', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="4" />
@@ -241,15 +241,15 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(true);
+      expect(result.verses['JHN 1:1'].clusters[0].excluded).toBe(true);
     });
 
     it('parses Cluster with Excluded=false', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="4" />
@@ -263,15 +263,15 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(false);
+      expect(result.verses['JHN 1:1'].clusters[0].excluded).toBe(false);
     });
 
     it('parses Cluster without Excluded as Excluded=false', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="4" />
@@ -284,15 +284,15 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].clusters[0].excluded).toBe(false);
+      expect(result.verses['JHN 1:1'].clusters[0].excluded).toBe(false);
     });
 
     it('parses Punctuation with Range, BeforeText, AfterText', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -311,7 +311,7 @@ describe('Paratext9Parser', () => {
       const result = parser.parse(xml);
 
       // Parser uses trimValues: false, so tag text is not trimmed.
-      expect(result.verses['MAT 1:1'].punctuations).toEqual([
+      expect(result.verses['JHN 1:1'].punctuations).toEqual([
         {
           textRange: { index: 34, length: 2 },
           beforeText: '? ',
@@ -322,10 +322,10 @@ describe('Paratext9Parser', () => {
 
     it('omits Punctuation entries without valid Range', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -347,8 +347,8 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
-      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+      expect(result.verses['JHN 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['JHN 1:1'].punctuations[0]).toEqual({
         textRange: { index: 1, length: 2 },
         beforeText: 'c',
         afterText: 'd',
@@ -357,10 +357,10 @@ describe('Paratext9Parser', () => {
 
     it('omits Punctuation entries when Range Index or Length is not finite (missing or non-numeric)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -393,8 +393,8 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
-      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+      expect(result.verses['JHN 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['JHN 1:1'].punctuations[0]).toEqual({
         textRange: { index: 5, length: 1 },
         beforeText: 'valid',
         afterText: '',
@@ -403,10 +403,10 @@ describe('Paratext9Parser', () => {
 
     it('parses Punctuation with valid Range but missing BeforeText/AfterText as empty strings', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -422,8 +422,8 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
-      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+      expect(result.verses['JHN 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['JHN 1:1'].punctuations[0]).toEqual({
         textRange: { index: 10, length: 1 },
         beforeText: '',
         afterText: '',
@@ -432,10 +432,10 @@ describe('Paratext9Parser', () => {
 
     it('parses multiple verses and preserves verse keys', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -444,7 +444,7 @@ describe('Paratext9Parser', () => {
               </VerseData>
             </item>
             <item>
-              <string>MAT 1:2</string>
+              <string>JHN 1:2</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -457,24 +457,24 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(Object.keys(result.verses)).toEqual(['MAT 1:1', 'MAT 1:2']);
-      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0].lexemeId).toBe('a');
-      expect(result.verses['MAT 1:2'].clusters[0].lexemes[0].lexemeId).toBe('b');
+      expect(Object.keys(result.verses)).toEqual(['JHN 1:1', 'JHN 1:2']);
+      expect(result.verses['JHN 1:1'].clusters[0].lexemes[0].lexemeId).toBe('a');
+      expect(result.verses['JHN 1:2'].clusters[0].lexemes[0].lexemeId).toBe('b');
     });
 
     it('parses item with missing VerseData as empty Hash, Clusters, Punctuations', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
             </item>
           </Verses>
         </InterlinearData>
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1']).toEqual({
+      expect(result.verses['JHN 1:1']).toEqual({
         hash: '',
         clusters: [],
         punctuations: [],
@@ -483,10 +483,10 @@ describe('Paratext9Parser', () => {
 
     it('parses VerseData with no Cluster or Punctuation as empty arrays', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:11</string>
+              <string>JHN 1:11</string>
               <VerseData />
             </item>
           </Verses>
@@ -494,7 +494,7 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:11']).toEqual({
+      expect(result.verses['JHN 1:11']).toEqual({
         hash: '',
         clusters: [],
         punctuations: [],
@@ -503,10 +503,10 @@ describe('Paratext9Parser', () => {
 
     it('parses VerseData with Punctuation but no Cluster (Cluster ?? [] branch)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Punctuation>
                   <Range Index="0" Length="1" />
@@ -520,9 +520,9 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(result.verses['MAT 1:1'].clusters).toEqual([]);
-      expect(result.verses['MAT 1:1'].punctuations).toHaveLength(1);
-      expect(result.verses['MAT 1:1'].punctuations[0]).toEqual({
+      expect(result.verses['JHN 1:1'].clusters).toEqual([]);
+      expect(result.verses['JHN 1:1'].punctuations).toHaveLength(1);
+      expect(result.verses['JHN 1:1'].punctuations[0]).toEqual({
         textRange: { index: 0, length: 1 },
         beforeText: ',',
         afterText: ',',
@@ -531,7 +531,7 @@ describe('Paratext9Parser', () => {
 
     it('parses Verses with no item array (item ?? [] branch) as empty verses record', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <dummy />
           </Verses>
@@ -541,12 +541,12 @@ describe('Paratext9Parser', () => {
 
       expect(result.verses).toEqual({});
       expect(result.glossLanguage).toBe('en');
-      expect(result.bookId).toBe('MAT');
+      expect(result.bookId).toBe('JHN');
     });
 
     it('skips items with missing string (verse key)', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
               <VerseData>
@@ -557,7 +557,7 @@ describe('Paratext9Parser', () => {
               </VerseData>
             </item>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -570,30 +570,30 @@ describe('Paratext9Parser', () => {
       `;
       const result = parser.parse(xml);
 
-      expect(Object.keys(result.verses)).toEqual(['MAT 1:1']);
-      expect(result.verses['MAT 1:1'].clusters[0].lexemes[0].lexemeId).toBe('y');
+      expect(Object.keys(result.verses)).toEqual(['JHN 1:1']);
+      expect(result.verses['JHN 1:1'].clusters[0].lexemes[0].lexemeId).toBe('y');
     });
 
     it('parses real test-data file without throwing', () => {
-      const xmlPath = getTestDataPath('Interlinear_en_MAT.xml');
+      const xmlPath = getTestDataPath('Interlinear_en_JHN.xml');
       const xml = fs.readFileSync(xmlPath, 'utf-8');
       const result = parser.parse(xml);
 
       expect(result.glossLanguage).toBe('en');
-      expect(result.bookId).toBe('MAT');
+      expect(result.bookId).toBe('JHN');
       expect(Object.keys(result.verses).length).toBeGreaterThan(0);
 
-      const mat11 = result.verses['MAT 1:1'];
-      expect(mat11).toBeDefined();
-      expect(mat11.hash).toBe('C8D38188');
-      expect(mat11.clusters.length).toBeGreaterThan(0);
-      const firstCluster = mat11.clusters[0];
-      expect(firstCluster.textRange).toEqual({ index: 5, length: 5 });
+      const jhn11 = result.verses['JHN 1:1'];
+      expect(jhn11).toBeDefined();
+      expect(jhn11.hash).toBe('');
+      expect(jhn11.clusters.length).toBeGreaterThan(0);
+      const firstCluster = jhn11.clusters[0];
+      expect(firstCluster.textRange).toEqual({ index: 0, length: 2 });
       expect(firstCluster.lexemes[0]).toEqual({
-        lexemeId: 'Word:hello',
-        senseId: 'JssW5c35',
+        lexemeId: 'Word:In',
+        senseId: 'aef10f32',
       });
-      expect(firstCluster.id).toMatch(/^Word:hello\/5-5$/);
+      expect(firstCluster.id).toMatch(/^Word:In\/0-2$/);
 
       expect(Object.values(result.verses).every((v) => Array.isArray(v.punctuations))).toBe(true);
     });
@@ -602,10 +602,10 @@ describe('Paratext9Parser', () => {
   describe('parse() - invalid XML / errors', () => {
     it('throws when root element is not InterlinearData', () => {
       const xml = `
-        <OtherRoot GlossLanguage="en" BookId="MAT">
+        <OtherRoot GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData />
             </item>
           </Verses>
@@ -616,10 +616,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when GlossLanguage is missing', () => {
       const xml = `
-        <InterlinearData BookId="MAT">
+        <InterlinearData BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData />
             </item>
           </Verses>
@@ -635,7 +635,7 @@ describe('Paratext9Parser', () => {
         <InterlinearData GlossLanguage="en">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData />
             </item>
           </Verses>
@@ -648,10 +648,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when GlossLanguage is empty string', () => {
       const xml = `
-        <InterlinearData GlossLanguage="" BookId="MAT">
+        <InterlinearData GlossLanguage="" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData />
             </item>
           </Verses>
@@ -664,7 +664,7 @@ describe('Paratext9Parser', () => {
 
     it('throws when Verses element is missing', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow('Invalid XML: Missing Verses element');
@@ -672,10 +672,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when Cluster is missing Range element', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Lexeme Id="x" />
@@ -692,10 +692,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when Range is missing Index', () => {
       const xmlNoIndex = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Length="2" />
@@ -713,10 +713,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when Range is missing Length', () => {
       const xmlNoLength = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" />
@@ -734,10 +734,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when Lexeme is missing Id attribute', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -753,10 +753,10 @@ describe('Paratext9Parser', () => {
 
     it('throws when the same verse reference appears in more than one item', () => {
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -765,7 +765,7 @@ describe('Paratext9Parser', () => {
               </VerseData>
             </item>
             <item>
-              <string>MAT 1:2</string>
+              <string>JHN 1:2</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -774,7 +774,7 @@ describe('Paratext9Parser', () => {
               </VerseData>
             </item>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData>
                 <Cluster>
                   <Range Index="0" Length="1" />
@@ -786,7 +786,7 @@ describe('Paratext9Parser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Duplicate verse reference "MAT 1:1". At most one VerseData per reference is allowed.',
+        'Invalid XML: Duplicate verse reference "JHN 1:1". At most one VerseData per reference is allowed.',
       );
     });
   });
@@ -796,10 +796,10 @@ describe('Paratext9Parser', () => {
       const p1 = new Paratext9Parser();
       const p2 = new Paratext9Parser();
       const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
+        <InterlinearData GlossLanguage="en" BookId="JHN">
           <Verses>
             <item>
-              <string>MAT 1:1</string>
+              <string>JHN 1:1</string>
               <VerseData />
             </item>
           </Verses>

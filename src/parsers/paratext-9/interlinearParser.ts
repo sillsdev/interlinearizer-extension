@@ -6,7 +6,7 @@ import type {
   StringRange,
   InterlinearData,
   VerseData,
-} from './paratext-9-types';
+} from './types';
 
 /** Range: Index and Length attributes. */
 interface ParsedRange {
@@ -30,7 +30,7 @@ interface ParsedCluster {
   Range?: ParsedRange;
   /** Lexeme elements in this cluster. */
   Lexeme?: ParsedLexeme[];
-  /** Excluded flag (optional). See [pt9-xml.md](pt9-xml.md) for details. */
+  /** Excluded flag (optional). See [xml-schema.md](xml-schema.md) for details. */
   Excluded?: string;
 }
 
@@ -174,8 +174,8 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `paratext-9-types`; no extra conversion is done. Expects the Paratext
- * 9 Interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
+ * Output matches the types in `types`; no extra conversion is done. Expects the Paratext
+ * 9 Interlinear XML schema described in [xml-schema.md](xml-schema.md).
  */
 export class Paratext9Parser {
   private readonly parser: XMLParser;

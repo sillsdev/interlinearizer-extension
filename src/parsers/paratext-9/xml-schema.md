@@ -1,8 +1,8 @@
 # Paratext 9 XML schema
 
-The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang>_<book>.xml` in project data). The parser in `src/parsers/paratext-9/paratext9Parser.ts` expects the following structure. Sample files live in `test-data/` (e.g. `Interlinear_en_MAT.xml`).
+The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang>_<book>.xml` in project data). The parser in `src/parsers/paratext-9/interlinearParser.ts` expects the following structure. Sample files live in `test-data/` (e.g. `Interlinear_en_JHN.xml`).
 
-Interlinear XML does **not** store gloss strings; it only references senses by `GlossId` (which corresponds to Sense Id in the Lexicon). To populate `glossText` on the interlinearizer model, the extension can load a Paratext 9 **Lexicon** XML file (`Lexicon.xml`). The Lexicon parser (`src/parsers/paratext-9/lexiconParser.ts`) builds a (senseId, language) → gloss text lookup; `createAnalyses` in `paratext9Converter` accepts an optional `glossLookup` so analyses get real gloss text when the Lexicon is available.
+Interlinear XML does **not** store gloss strings; it only references senses by `GlossId` (which corresponds to Sense Id in the Lexicon). To populate `glossText` on the interlinearizer model, the extension can load a Paratext 9 **Lexicon** XML file (`Lexicon.xml`). The Lexicon parser (`src/parsers/paratext-9/lexiconParser.ts`) builds a (senseId, language) → gloss text lookup; `createAnalyses` in `converter` accepts an optional `glossLookup` so analyses get real gloss text when the Lexicon is available.
 
 ## Document structure
 
@@ -43,7 +43,7 @@ Interlinear XML does **not** store gloss strings; it only references senses by `
 
 ## Parsed output (in-memory)
 
-The parser produces objects conforming to the types in `src/parsers/paratext-9/paratext-9-types.ts`:
+The parser produces objects conforming to the types in `src/parsers/paratext-9/types.ts`:
 
 - **InterlinearData:** `glossLanguage`, `bookId`, `verses` (record of verse key → **VerseData**).
 - **VerseData:** `hash`, `clusters` (array of **ClusterData**), `punctuations` (array of **PunctuationData**).

@@ -5,6 +5,11 @@
 
 import {
   parseLexiconAndBuildGlossLookup,
+  parseLexicon,
+  lexemeKeyId,
+  getWordLevelGlossForForm,
+  buildGlossLookupFromLexicon,
+  buildWordLevelGlossLookup,
   toArray,
   normalizeGloss,
 } from 'parsers/paratext-9/lexiconParser';
@@ -28,6 +33,18 @@ describe('normalizeGloss', () => {
     const result = normalizeGloss('plain string gloss');
     expect(result.lang).toBe('*');
     expect(result.text).toBe('plain string gloss');
+  });
+});
+
+describe('lexemeKeyId', () => {
+  it('returns "Type:LexicalForm" when homograph <= 1', () => {
+    expect(lexemeKeyId({ type: 'Word', lexicalForm: 'x', homograph: 1 })).toBe('Word:x');
+    expect(lexemeKeyId({ type: 'Stem', lexicalForm: 'run', homograph: 0 })).toBe('Stem:run');
+  });
+
+  it('returns "Type:LexicalForm:Homograph" when homograph > 1', () => {
+    expect(lexemeKeyId({ type: 'Word', lexicalForm: 'bank', homograph: 2 })).toBe('Word:bank:2');
+    expect(lexemeKeyId({ type: 'Stem', lexicalForm: 'run', homograph: 3 })).toBe('Stem:run:3');
   });
 });
 
@@ -262,8 +279,137 @@ describe('parseLexiconAndBuildGlossLookup', () => {
     const xmlPath = getTestDataPath('Lexicon.xml');
     const xml = fs.readFileSync(xmlPath, 'utf-8');
     const lookup = parseLexiconAndBuildGlossLookup(xml);
-    expect(lookup('Fz1CNXo3', 'en')).toBe('good');
-    expect(lookup('OMK1KkbQ', 'pt')).toBe('World');
-    expect(lookup('0DCSOYfT', 'grc')).toBe('ωορλδ');
+    expect(lookup('aef10f32', 'en')).toBe('in');
+    expect(lookup('69eeb5e0', 'en')).toBe('the');
+    expect(lookup('69f3b5c7', 'en')).toBe('begin');
+  });
+});
+
+describe('parseLexicon and word-level gloss', () => {
+  it('parses Lexicon XML into LexiconData with entries keyed by lexeme Id', () => {
+    const xml = fs.readFileSync(getTestDataPath('Lexicon.xml'), 'utf-8');
+    const lexicon = parseLexicon(xml);
+    expect(lexicon.language).toBe('en');
+    expect(lexicon.entries['Word:beginning']).toBeDefined();
+    expect(lexicon.entries['Word:beginning'].senses[0].id).toBe('a2598f23');
+    expect(lexicon.entries['Stem:begin']).toBeDefined();
+    expect(getWordLevelGlossForForm(lexicon, 'beginning', 'en')).toBe('beginning');
+    expect(getWordLevelGlossForForm(lexicon, 'begin', 'en')).toBeUndefined();
+  });
+
+  it('buildGlossLookupFromLexicon and buildWordLevelGlossLookup match parseLexiconAndBuildGlossLookup behaviour', () => {
+    const xml = fs.readFileSync(getTestDataPath('Lexicon.xml'), 'utf-8');
+    const lexicon = parseLexicon(xml);
+    const glossLookup = buildGlossLookupFromLexicon(lexicon);
+    const wordLevelLookup = buildWordLevelGlossLookup(lexicon);
+    expect(glossLookup('aef10f32', 'en')).toBe('in');
+    expect(wordLevelLookup('beginning', 'en')).toBe('beginning');
+  });
+
+  it('getWordLevelGlossForForm returns fallback gloss when requested language has no exact match', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="Word" Form="onlyDefault" Homograph="1" />
+      <Entry>
+        <Sense Id="senseDefault">
+          <Gloss>default gloss text</Gloss>
+        </Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lexicon = parseLexicon(xml);
+    expect(getWordLevelGlossForForm(lexicon, 'onlyDefault', 'fr')).toBe('default gloss text');
+    expect(getWordLevelGlossForForm(lexicon, 'onlyDefault', 'en')).toBe('default gloss text');
+  });
+});
+
+describe('parseLexicon edge cases (branch coverage)', () => {
+  it('falls back to Word for unknown Lexeme Type and default type/homograph when attributes missing or invalid', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries>
+    <item>
+      <Lexeme Type="UnknownType" Form="x" Homograph="1" />
+      <Entry>
+        <Sense Id="s1"><Gloss Language="en">one</Gloss></Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="   " Form="whitespaceType" Homograph="1" />
+      <Entry>
+        <Sense Id="s1b"><Gloss Language="en">oneb</Gloss></Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Homograph="2" />
+      <Entry>
+        <Sense Id="s2"><Gloss Language="en">two</Gloss></Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="y" Homograph="abc" />
+      <Entry>
+        <Sense Id="s3"><Gloss Language="en">three</Gloss></Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Type="Word" Form="noHomograph" />
+      <Entry>
+        <Sense Id="s4"><Gloss Language="en">four</Gloss></Sense>
+      </Entry>
+    </item>
+    <item>
+      <Lexeme Form="noType" Homograph="1" />
+      <Entry>
+        <Sense Id="s5"><Gloss Language="en">five</Gloss></Sense>
+      </Entry>
+    </item>
+  </Entries>
+</Lexicon>`;
+    const lexicon = parseLexicon(xml);
+    expect(lexicon.entries['Word:x']).toBeDefined();
+    expect(lexicon.entries['Word:x'].key.type).toBe('Word');
+    expect(lexicon.entries['Word:whitespaceType']).toBeDefined();
+    expect(lexicon.entries['Word:whitespaceType'].key.type).toBe('Word');
+    expect(lexicon.entries['Word::2']).toBeDefined();
+    expect(lexicon.entries['Word::2'].key.lexicalForm).toBe('');
+    expect(lexicon.entries['Word:y']).toBeDefined();
+    expect(lexicon.entries['Word:y'].key.homograph).toBe(1);
+    expect(lexicon.entries['Word:noHomograph']).toBeDefined();
+    expect(lexicon.entries['Word:noHomograph'].key.homograph).toBe(1);
+    expect(lexicon.entries['Word:noType']).toBeDefined();
+    expect(lexicon.entries['Word:noType'].key.type).toBe('Word');
+  });
+
+  it('uses default Language, FontName, and FontSize when root attributes missing or invalid', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Entries />
+</Lexicon>`;
+    const lexicon = parseLexicon(xml);
+    expect(lexicon.language).toBe('');
+    expect(lexicon.fontName).toBe('Arial');
+    expect(lexicon.fontSize).toBe(10);
+  });
+
+  it('uses default FontName when root FontName is whitespace-only and FontSize when invalid', () => {
+    const xml = `
+<?xml version="1.0"?>
+<Lexicon>
+  <Language>en</Language>
+  <FontName>   </FontName>
+  <FontSize>nope</FontSize>
+  <Entries />
+</Lexicon>`;
+    const lexicon = parseLexicon(xml);
+    expect(lexicon.language).toBe('en');
+    expect(lexicon.fontName).toBe('Arial');
+    expect(lexicon.fontSize).toBe(10);
   });
 });

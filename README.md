@@ -96,7 +96,7 @@ The general file structure for an extension is as follows:
   - `src/main.ts` is the main entry file for the extension (registers commands and wires interlinear XML)
   - `src/types/interlinearizer.d.ts` is this extension's types file that defines how other extensions can use this extension through the `papi`. It is copied into the build folder
   - `src/types/` also holds shared enums and type modules (e.g. `interlinearizer-enums.ts`). Use the path alias `types/interlinearizer-enums` in imports instead of relative paths (see `tsconfig.json` paths).
-  - `src/parsers/` contains all parsers and converters used when importing external data models sorted by source (e.g. Paratext 9 XML Files). Use the path alias `parsers/...` in imports instead of relative paths (see `tsconfig.json` paths).
+  - `src/parsers/` contains all parsers and converters used when importing external data models, one directory per source (e.g. `paratext-9/`). Use the path alias `parsers/...` in imports instead of relative paths (see `tsconfig.json` paths). **Naming:** the program/source is identified only by the directory name (full name, kebab-case). Files inside each directory use generic names (e.g. `converter.ts`, `interlinearParser.ts`, `types.ts`, `lexiconParser.ts`); exported symbols use the full program name (e.g. `Paratext9Parser`, `convertParatext9ToInterlinearization`).
   - `*.web-view.tsx` files will be treated as React WebViews
   - `*.web-view.scss` files provide styles for WebViews
   - `*.web-view.html` files are a conventional way to provide HTML WebViews (no special functionality)
@@ -108,7 +108,7 @@ The general file structure for an extension is as follows:
     - `assets/descriptions/description-<locale>.md` contains a brief description of the extension in the language specified by `<locale>`
 - `contributions/` contains JSON files the platform uses to extend data structures for things like menus and settings. The JSON files are referenced from the manifest
 - `public/` contains other static files that are copied into the build folder
-- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_MAT.xml`) for development and tests. In tests, resolve paths via `getTestDataPath('Interlinear_en_MAT.xml')` from `src/__tests__/test-helpers`.
+- `test-data/` contains sample interlinear XML (e.g. `Interlinear_en_JHN.xml`) and Lexicon XML (e.g. `Lexicon.xml`) for development and tests. In tests, resolve paths via `getTestDataPath('Interlinear_en_JHN.xml')` (or `getTestDataPath('Lexicon.xml')`) from `src/__tests__/test-helpers`. Interlinear XML aligns **source** words/WordParses; Lexicon XML is the **target** (gloss) language. Word-level gloss is resolved in the **converter** from Lexicon entries (e.g. `Word:surfaceForm`); the webview Gloss row displays only that data (no surfaceText fallback).
 - `.github/` contains files to facilitate integration with GitHub
   - `.github/workflows` contains [GitHub Actions](https://github.com/features/actions) workflows for automating various processes in this repo (e.g. **Test** and **Lint** on push/PR to main, release-prep, hotfix-\*; **Publish** and **Bump Versions** manual dispatch; **CodeQL** for security)
   - `.github/assets/release-body.md` combined with a generated changelog becomes the body of [releases published using GitHub Actions](#publishing)
@@ -121,7 +121,7 @@ The general file structure for an extension is as follows:
 
 ### Requirements
 
-- **Node.js >= 18** is required. The test suite uses the Web Crypto API (`globalThis.crypto.subtle`) for hashing in `paratext9Converter` tests (e.g. the `sha256HexWebCrypto` path in `src/__tests__/parsers/paratext-9/paratext9Converter.test.ts` when `convertParatext9ToInterlinearization` is called without the `hashSha256Hex` option). Node 18+ provides this API; older versions will cause those tests to fail. The same requirement is enforced in `package.json` via `engines.node` and is used by CI.
+- **Node.js >= 18** is required. The test suite uses the Web Crypto API (`globalThis.crypto.subtle`) for hashing in the paratext-9 converter tests (e.g. the `sha256HexWebCrypto` path in `src/__tests__/parsers/paratext-9/converter.test.ts` when `convertParatext9ToInterlinearization` is called without the `hashSha256Hex` option). Node 18+ provides this API; older versions will cause those tests to fail. The same requirement is enforced in `package.json` via `engines.node` and is used by CI.
 
 ### Install dependencies:
 

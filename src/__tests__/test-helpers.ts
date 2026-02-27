@@ -11,7 +11,7 @@ import { UnsubscriberAsyncList } from 'platform-bible-utils';
 /**
  * Resolves a path to a file under the project's test-data directory.
  *
- * @param relativePath - Filename or path relative to test-data (e.g. 'Interlinear_en_MAT.xml').
+ * @param relativePath - Filename or path relative to test-data (e.g. 'Interlinear_en_JHN.xml').
  * @returns Absolute path to the file under test-data.
  */
 export function getTestDataPath(relativePath: string): string {

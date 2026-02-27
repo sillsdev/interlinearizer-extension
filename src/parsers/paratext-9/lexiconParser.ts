@@ -1,44 +1,59 @@
 /**
- * @file Parses Paratext 9 Lexicon XML and builds a gloss lookup for use in PT9 → interlinearizer
- *   conversion. Interlinear XML references senses by GlossId (Sense Id); the Lexicon stores gloss
- *   text per Sense and language in <Gloss Language="...">. This module provides a (senseId,
- *   language) → glossText lookup so {@link createAnalyses} can fill in glossText instead of
- *   placeholders.
+ * @file Parses Paratext 9 Lexicon XML into a structure aligned with Paratext LexiconData
+ *   (LexiconData.cs). Provides (senseId, language) → gloss lookup and word-level gloss lookup for a
+ *   word form (from Word entries) for use in PT9 → interlinearizer conversion.
  */
 
 import { X2jOptions, XMLParser } from 'fast-xml-parser';
+import type {
+  LexiconData,
+  LexiconEntry,
+  LexiconGloss,
+  LexiconSense,
+  LexemeKey,
+  LexemeType,
+} from './types';
 
-/** Separator used in the internal map key (senseId + language). */
+/** Separator used in the internal gloss map key (senseId + language). */
 const GLOSS_KEY_SEP = '\t';
 
-/** Language used in Lexicon when no Language attribute is set; used as fallback in lookup. */
+/** Language used when no Language attribute is set; fallback in lookup. */
 const DEFAULT_LANGUAGE = '*';
 
-/**
- * Lookup function: (senseId, language) → gloss text when present in the Lexicon. Empty string is
- * returned for missing or blank glosses when the sense exists, so callers can distinguish "no
- * entry" (undefined) from "entry with no text" ("").
- */
+/** Lexeme Id from key. Matches Paratext LexemeKey.Id: "Type:LexicalForm" or "Type:LexicalForm:H". */
+export function lexemeKeyId(key: LexemeKey): string {
+  if (key.homograph <= 1) return `${key.type}:${key.lexicalForm}`;
+  return `${key.type}:${key.lexicalForm}:${key.homograph}`;
+}
+
+/** Lookup: (senseId, language) → gloss text. Empty string when sense exists but gloss blank. */
 export type LexiconGlossLookup = (senseId: string, language: string) => string | undefined;
 
-/** Parsed Gloss element: Language attribute and text content. */
+/**
+ * Lookup: (wordForm, language) → word-level gloss when Lexicon has a Word entry for that form. Used
+ * for WordParse-only occurrences so the Gloss row shows the surface word gloss from the Lexicon
+ * instead of leaving it blank.
+ */
+export type WordLevelGlossLookup = (wordForm: string, language: string) => string | undefined;
+
+/** Parsed Gloss element. */
 interface ParsedGloss {
   ['@_Language']?: string;
   ['#text']?: string;
 }
 
-/** Parsed Sense element: Id attribute and zero or more Gloss children. */
+/** Parsed Sense element. */
 interface ParsedSense {
   ['@_Id']?: string;
   Gloss?: ParsedGloss | string | (ParsedGloss | string)[];
 }
 
-/** Parsed Entry: zero or more Sense children. */
+/** Parsed Entry. */
 interface ParsedEntry {
   Sense?: ParsedSense | ParsedSense[];
 }
 
-/** Parsed Lexicon item: Lexeme and Entry. */
+/** Parsed Entries.item (Lexeme + Entry). */
 interface ParsedLexiconItem {
   Lexeme?: {
     ['@_Type']?: string;
@@ -48,50 +63,28 @@ interface ParsedLexiconItem {
   Entry?: ParsedEntry;
 }
 
-/** Root Lexicon element. */
+/** Parsed root. */
 interface ParsedLexiconRoot {
   Language?: string;
+  FontName?: string;
+  FontSize?: number;
   Entries?: { item?: ParsedLexiconItem | ParsedLexiconItem[] };
+  Analyses?: unknown;
 }
 
-/** Full document: Lexicon root. */
 interface ParsedLexiconXml {
   Lexicon?: ParsedLexiconRoot;
 }
 
-/**
- * Normalizes a possibly-array, possibly-undefined value to an array. Used for parser output where a
- * single child is an object and multiple children are an array.
- *
- * @param value - Single item, array of items, or undefined.
- * @returns Empty array if undefined, otherwise the array (or single item wrapped in an array).
- * @internal Exported for unit-test coverage of the single-object branch (FXP with isArray always returns arrays).
- */
 export function toArray<T>(value: T | T[] | undefined): T[] {
   if (value === undefined) return [];
   return Array.isArray(value) ? value : [value];
 }
 
-/**
- * Builds the internal map key for a (senseId, language) pair. Must match the key used when
- * populating the gloss map.
- *
- * @param senseId - Sense Id (GlossId from Interlinear XML).
- * @param language - Gloss language code.
- * @returns Opaque key string.
- */
 function glossKey(senseId: string, language: string): string {
   return `${senseId}${GLOSS_KEY_SEP}${language}`;
 }
 
-/**
- * Normalizes a single Gloss item from the parser into language and text.
- *
- * @param gloss - Single Gloss from ParsedSense.Gloss (object or string).
- * @returns Language (or {@link DEFAULT_LANGUAGE} when missing) and text.
- * @internal Exported so tests can cover the object branch when @_Language is undefined (parser
- *   may return a string for single Gloss with no attributes, so that branch is not reachable via XML).
- */
 export function normalizeGloss(gloss: ParsedGloss | string): { lang: string; text: string } {
   if (typeof gloss === 'string') {
     return { lang: DEFAULT_LANGUAGE, text: gloss };
@@ -101,63 +94,55 @@ export function normalizeGloss(gloss: ParsedGloss | string): { lang: string; tex
   return { lang, text };
 }
 
-/**
- * Extracts (key, text) pairs from a single Sense: one pair per Gloss child.
- *
- * @param sense - Parsed Sense element.
- * @returns Zero or more { key, text } objects; senseId comes from Sense Id, language from Gloss.
- */
-function glossPairsFromSense(sense: ParsedSense): Array<{ key: string; text: string }> {
-  const senseId = sense['@_Id'] ?? '';
-  if (!senseId) return [];
-
-  const glosses = toArray(sense.Gloss);
-  return glosses.map((g) => {
+function parseSense(sense: ParsedSense): LexiconSense | undefined {
+  const id = sense['@_Id'] ?? '';
+  if (!id) return undefined;
+  const glosses: LexiconGloss[] = toArray(sense.Gloss).map((g) => {
     const { lang, text } = normalizeGloss(g);
-    return { key: glossKey(senseId, lang), text };
+    return { language: lang, text };
   });
+  return { id, glosses };
 }
 
-/**
- * Extracts (key, text) pairs from a single Lexicon item (one Entry with zero or more Senses).
- *
- * @param item - Parsed Entries.item element.
- * @returns Zero or more { key, text } objects.
- */
-function glossPairsFromItem(item: ParsedLexiconItem): Array<{ key: string; text: string }> {
+const VALID_LEXEME_TYPES: readonly LexemeType[] = [
+  'Word',
+  'Stem',
+  'Suffix',
+  'Prefix',
+  'Infix',
+  'Lemma',
+  'Phrase',
+];
+
+function parseLexemeType(s: string): LexemeType {
+  const i = VALID_LEXEME_TYPES.findIndex((t) => t === s);
+  return i >= 0 ? VALID_LEXEME_TYPES[i] : 'Word';
+}
+
+function parseItem(item: ParsedLexiconItem): LexiconEntry | undefined {
+  const lex = item.Lexeme;
   const entry = item.Entry;
-  if (!entry) return [];
-
-  return toArray(entry.Sense).flatMap(glossPairsFromSense);
+  if (!lex || !entry) return undefined;
+  const typeStr = String(lex['@_Type'] ?? 'Word').trim() || 'Word';
+  const type = parseLexemeType(typeStr);
+  const lexicalForm = String(lex['@_Form'] ?? '').trim();
+  const homograph = Math.max(1, parseInt(String(lex['@_Homograph'] ?? '1'), 10) || 1);
+  const key: LexemeKey = { type, lexicalForm, homograph };
+  const senses: LexiconSense[] = toArray(entry.Sense)
+    .map(parseSense)
+    .filter((s): s is LexiconSense => s !== undefined);
+  return { key, senses };
 }
 
 /**
- * Builds a gloss lookup map from parsed Lexicon entries. Iterates all Entries.item → Entry → Sense
- * → Gloss and indexes by (senseId, language). Later entries overwrite earlier ones for the same
- * key.
+ * Parses Lexicon XML into LexiconData (PT9-aligned). Entries are keyed by lexeme Id (e.g.
+ * "Word:beginning", "Stem:begin").
  *
- * @param root - Parsed Lexicon root (Lexicon element).
- * @returns Map keyed by glossKey(senseId, language) to gloss text (empty string allowed).
+ * @param xml - Raw Lexicon XML string.
+ * @returns LexiconData with entries keyed by lexeme Id.
+ * @throws {Error} If root element is not Lexicon.
  */
-function buildGlossMap(root: ParsedLexiconRoot): Map<string, string> {
-  const items = toArray(root.Entries?.item);
-  const pairs = items.flatMap(glossPairsFromItem);
-  return new Map(pairs.map(({ key, text }) => [key, text]));
-}
-
-/**
- * Parses a Paratext 9 Lexicon XML string and returns a lookup function that returns gloss text for
- * a given (senseId, language). The Sense Id in the Lexicon matches the GlossId used in Interlinear
- * XML; the language should match the interlinear's GlossLanguage when resolving word-level
- * glosses.
- *
- * @param xml - Raw Lexicon XML string (e.g. file contents).
- * @returns A {@link LexiconGlossLookup} that returns the gloss string when the Lexicon has a
- *   matching Sense and Gloss for that language, or undefined when no such entry exists. Returns the
- *   empty string when the Lexicon has a Sense+Language entry but the gloss text is blank.
- * @throws {Error} If the root element is not Lexicon.
- */
-export function parseLexiconAndBuildGlossLookup(xml: string): LexiconGlossLookup {
+export function parseLexicon(xml: string): LexiconData {
   const arrayPaths = new Set([
     'Lexicon.Entries.item',
     'Lexicon.Entries.item.Entry.Sense',
@@ -178,11 +163,91 @@ export function parseLexiconAndBuildGlossLookup(xml: string): LexiconGlossLookup
   if (!root) {
     throw new Error('Invalid XML: Missing Lexicon root element');
   }
-  const map = buildGlossMap(root);
+
+  const entries: Record<string, LexiconEntry> = {};
+  toArray(root.Entries?.item).forEach((item) => {
+    const lexiconEntry = parseItem(item);
+    if (!lexiconEntry) return;
+    const id = lexemeKeyId(lexiconEntry.key);
+    entries[id] = lexiconEntry;
+  });
+
+  return {
+    language: String(root.Language ?? '').trim(),
+    fontName: String(root.FontName ?? 'Arial').trim() || 'Arial',
+    fontSize: Math.max(0, parseInt(String(root.FontSize ?? '10'), 10) || 10),
+    entries,
+  };
+}
+
+/**
+ * Returns word-level gloss for a word form when the Lexicon has a Word entry for that form. Uses
+ * first sense and requested language (or default). Used for WordParse-only occurrences.
+ *
+ * @param lexicon - Parsed LexiconData.
+ * @param wordForm - Surface word form (e.g. "beginning").
+ * @param language - Gloss language code.
+ * @returns Gloss text or undefined if no Word entry or no gloss for that language.
+ */
+export function getWordLevelGlossForForm(
+  lexicon: LexiconData,
+  wordForm: string,
+  language: string,
+): string | undefined {
+  const id = `Word:${wordForm}`;
+  const entry = lexicon.entries[id];
+  if (!entry?.senses?.length) return undefined;
+  const sense = entry.senses[0];
+  const exact = sense.glosses.find((g) => g.language === language);
+  if (exact !== undefined) return exact.text;
+  const fallback = sense.glosses.find((g) => !g.language || g.language === DEFAULT_LANGUAGE);
+  return fallback?.text;
+}
+
+/**
+ * Builds a (senseId, language) → gloss lookup from parsed LexiconData. Preserves existing behaviour
+ * for createAnalyses.
+ *
+ * @param lexicon - Parsed LexiconData (from parseLexicon).
+ * @returns LexiconGlossLookup.
+ */
+export function buildGlossLookupFromLexicon(lexicon: LexiconData): LexiconGlossLookup {
+  const glossMap = new Map<string, string>();
+  Object.values(lexicon.entries).forEach((entry) => {
+    entry.senses.forEach((sense) => {
+      sense.glosses.forEach((g) => {
+        glossMap.set(glossKey(sense.id, g.language), g.text);
+      });
+    });
+  });
   return (senseId: string, language: string): string | undefined => {
     if (!senseId) return undefined;
-    const exact = map.get(glossKey(senseId, language));
+    const exact = glossMap.get(glossKey(senseId, language));
     if (exact !== undefined) return exact;
-    return map.get(glossKey(senseId, DEFAULT_LANGUAGE));
+    return glossMap.get(glossKey(senseId, DEFAULT_LANGUAGE));
   };
+}
+
+/**
+ * Builds (wordForm, language) → word-level gloss lookup from parsed LexiconData.
+ *
+ * @param lexicon - Parsed LexiconData.
+ * @returns WordLevelGlossLookup.
+ */
+export function buildWordLevelGlossLookup(lexicon: LexiconData): WordLevelGlossLookup {
+  return (wordForm: string, language: string) =>
+    getWordLevelGlossForForm(lexicon, wordForm, language);
+}
+
+/**
+ * Parses Lexicon XML and returns a (senseId, language) → gloss lookup. Kept for backward
+ * compatibility; prefer parseLexicon + buildGlossLookupFromLexicon when you also need word-level
+ * gloss or LexiconData.
+ *
+ * @param xml - Raw Lexicon XML string.
+ * @returns LexiconGlossLookup.
+ */
+export function parseLexiconAndBuildGlossLookup(xml: string): LexiconGlossLookup {
+  const lexicon = parseLexicon(xml);
+  return buildGlossLookupFromLexicon(lexicon);
 }

@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
-import type { InterlinearData } from 'interlinearizer';
-import { InterlinearXmlParser } from './parsers/interlinearXmlParser';
+import { InterlinearXmlParser, type InterlinearData } from './parsers/interlinearXmlParser';
 
 /** Test interlinear XML bundled at build time (from test-data/Interlinear_en_MAT.xml). */
 import testXml from '../test-data/Interlinear_en_MAT.xml?raw';

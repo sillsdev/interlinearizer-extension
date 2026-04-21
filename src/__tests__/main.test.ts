@@ -4,12 +4,15 @@
 import type { IWebViewProvider, SavedWebViewDefinition } from '@papi/core';
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
+import type { InterlinearizerOpenOptions } from '@main';
 import { createTestActivationContext } from './test-helpers';
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */
 interface PapiBackendTestMock {
   __mockRegisterWebViewProvider: jest.Mock;
+  __mockRegisterCommand: jest.Mock;
   __mockOpenWebView: jest.Mock;
+  __mockSelectProject: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -19,11 +22,12 @@ interface PapiBackendTestMock {
  */
 function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
   return (
+    !!m &&
     typeof m === 'object' &&
-    m !== undefined &&
-    m instanceof Object &&
     '__mockRegisterWebViewProvider' in m &&
+    '__mockRegisterCommand' in m &&
     '__mockOpenWebView' in m &&
+    '__mockSelectProject' in m &&
     '__mockLogger' in m
   );
 }
@@ -33,20 +37,26 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
  * typed provider from the mock without type assertions.
  */
 function isIWebViewProvider(x: unknown): x is IWebViewProvider {
-  if (x === undefined || (typeof x === 'object' && !(x instanceof Object))) return false;
-  if (typeof x !== 'object') return false;
-  if (!('getWebView' in x)) return false;
-  return typeof x.getWebView === 'function';
+  return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
 }
 
 if (!isPapiBackendTestMock(papiBackendMock)) throw new Error('Expected mocked @papi/backend');
-const { __mockRegisterWebViewProvider, __mockOpenWebView, __mockLogger } = papiBackendMock;
+const {
+  __mockRegisterWebViewProvider,
+  __mockRegisterCommand,
+  __mockOpenWebView,
+  __mockSelectProject,
+  __mockLogger,
+} = papiBackendMock;
 
 describe('main', () => {
   const mainWebViewType = 'interlinearizer.mainWebView';
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    __mockRegisterWebViewProvider.mockResolvedValue({ dispose: jest.fn() });
+    __mockRegisterCommand.mockResolvedValue({ dispose: jest.fn() });
+    __mockOpenWebView.mockResolvedValue('mock-webview-id');
+    __mockSelectProject.mockResolvedValue(undefined);
   });
 
   describe('activate', () => {
@@ -64,36 +74,25 @@ describe('main', () => {
       );
     });
 
-    it('adds the registration to the activation context', async () => {
-      const mockRegistration = { dispose: jest.fn() };
-      jest.mocked(__mockRegisterWebViewProvider).mockResolvedValue(mockRegistration);
+    it('registers the interlinearizer.open command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(1);
-    });
-
-    it('opens the WebView after registration', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockOpenWebView).toHaveBeenCalledWith(mainWebViewType, undefined, {
-        existingId: '?',
-      });
-    });
-
-    it('catches and logs when openWebView throws', async () => {
-      const openError = new Error('WebView open failed');
-      __mockOpenWebView.mockRejectedValue(openError);
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        `Failed to open ${mainWebViewType} WebView: ${openError}`,
+      expect(__mockRegisterCommand).toHaveBeenCalledTimes(1);
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.open',
+        expect.any(Function),
+        expect.any(Object),
       );
+    });
+
+    it('adds both registrations to the activation context', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(context.registrations.unsubscribers.size).toBe(2);
     });
 
     it('logs activation start and finish', async () => {
@@ -132,6 +131,40 @@ describe('main', () => {
       });
     });
 
+    it('propagates projectId from options into the WebView definition', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+
+      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const savedWebView: SavedWebViewDefinition = {
+        id: 'test-webview-id',
+        webViewType: mainWebViewType,
+      };
+
+      const options: InterlinearizerOpenOptions = { projectId: 'my-project' };
+      const result = await rawProvider.getWebView(savedWebView, options, 'test-nonce');
+
+      expect(result).toMatchObject({ projectId: 'my-project' });
+    });
+
+    it('falls back to savedWebView.projectId when options has no projectId', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+
+      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const savedWebView: SavedWebViewDefinition = {
+        id: 'test-webview-id',
+        webViewType: mainWebViewType,
+        projectId: 'saved-project',
+      };
+
+      const result = await rawProvider.getWebView(savedWebView, {}, 'test-nonce');
+
+      expect(result).toMatchObject({ projectId: 'saved-project' });
+    });
+
     it('throws when webViewType does not match', async () => {
       const context = createTestActivationContext();
 
@@ -148,6 +181,110 @@ describe('main', () => {
       await expect(rawProvider.getWebView(savedWebView, {}, 'test-nonce')).rejects.toThrow(
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
+    });
+  });
+
+  describe('interlinearizer.open command', () => {
+    /** Extracts the registered command handler from the mock after activate(). */
+    async function getOpenHandler(): Promise<(projectId?: string) => Promise<string | undefined>> {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler: unknown = jest.mocked(__mockRegisterCommand).mock.calls[0]?.[1];
+      if (typeof rawHandler !== 'function') throw new Error('Expected command handler');
+      return (projectId?: string): Promise<string | undefined> => {
+        const result: unknown = rawHandler(projectId);
+        if (!(result instanceof Promise)) return Promise.resolve(undefined);
+        return result.then((v: unknown) => (typeof v === 'string' ? v : undefined));
+      };
+    }
+
+    it('opens a new tab with the given projectId on the first open', async () => {
+      const open = await getOpenHandler();
+
+      await open('project-first-open');
+
+      expect(__mockSelectProject).not.toHaveBeenCalled();
+      expect(__mockOpenWebView).toHaveBeenCalledWith(mainWebViewType, undefined, {
+        projectId: 'project-first-open',
+        existingId: undefined,
+      });
+    });
+
+    it('reuses the webview ID on subsequent opens of the same project', async () => {
+      __mockOpenWebView.mockResolvedValue('saved-webview-id');
+      const open = await getOpenHandler();
+
+      await open('project-reuse');
+      await open('project-reuse');
+
+      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ existingId: 'saved-webview-id', projectId: 'project-reuse' }),
+      );
+    });
+
+    it('opens a new tab for a different project', async () => {
+      __mockOpenWebView
+        .mockResolvedValueOnce('project-c-webview-id')
+        .mockResolvedValueOnce('project-d-webview-id');
+      const open = await getOpenHandler();
+
+      await open('project-c');
+      await open('project-d');
+
+      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ existingId: undefined, projectId: 'project-d' }),
+      );
+    });
+
+    it('shows a project picker when no projectId is provided', async () => {
+      __mockSelectProject.mockResolvedValue('project-picked');
+      const open = await getOpenHandler();
+
+      await open();
+
+      expect(__mockSelectProject).toHaveBeenCalledTimes(1);
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ projectId: 'project-picked' }),
+      );
+    });
+
+    it('returns undefined when the user cancels the project picker', async () => {
+      __mockSelectProject.mockResolvedValue(undefined);
+      const open = await getOpenHandler();
+
+      const result = await open();
+
+      expect(result).toBeUndefined();
+      expect(__mockOpenWebView).not.toHaveBeenCalled();
+    });
+
+    it('does not store a mapping when openWebView returns undefined', async () => {
+      __mockOpenWebView.mockResolvedValueOnce(undefined).mockResolvedValueOnce('later-id');
+      const open = await getOpenHandler();
+
+      await open('project-failed-open');
+      await open('project-failed-open');
+
+      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ existingId: undefined, projectId: 'project-failed-open' }),
+      );
+    });
+
+    it('returns the webview ID when the webview opens successfully', async () => {
+      __mockOpenWebView.mockResolvedValue('new-webview-id');
+      const open = await getOpenHandler();
+
+      const result = await open('project-return-id');
+
+      expect(result).toBe('new-webview-id');
     });
   });
 

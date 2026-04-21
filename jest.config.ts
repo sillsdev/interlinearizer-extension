@@ -10,8 +10,12 @@
 import type { Config } from 'jest';
 
 const config: Config = {
-  /** Automatically clear mock calls, instances, contexts and results before every test. */
-  clearMocks: true,
+  /**
+   * Reset mock implementations before every test (superset of clearMocks: also removes
+   * mockReturnValue/mockImplementation so implementations never leak between tests). Each test must
+   * set up the implementations it needs, typically in beforeEach.
+   */
+  resetMocks: true,
 
   /**
    * Coverage only when run with --coverage (see npm run test:coverage). Omit for faster default

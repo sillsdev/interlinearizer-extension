@@ -1,8 +1,29 @@
 {
   "mainMenu": {
     "columns": {},
-    "groups": {},
-    "items": []
+    "groups": {
+      "interlinearizer.interlinearizerProjects": {
+        "order": 1.5,
+        "isExtensible": true,
+        "menuItem": "interlinearizer.projectSubmenu"
+      }
+    },
+    "items": [
+      {
+        "id": "interlinearizer.projectSubmenu",
+        "label": "%mainMenu_interlinearizerSubmenu%",
+        "localizeNotes": "Application main menu > Project > Interlinearizer",
+        "group": "platform.projectProjects",
+        "order": 1000.1
+      },
+      {
+        "label": "%mainMenu_openInterlinearizer%",
+        "localizeNotes": "Application main menu > Project > Interlinearizer > Open Interlinearizer",
+        "group": "interlinearizer.interlinearizerProjects",
+        "order": 1,
+        "command": "interlinearizer.open"
+      }
+    ]
   },
   "defaultWebViewTopMenu": {
     "columns": {},

@@ -17,9 +17,10 @@
   },
   "files.eol": "\n",
 
-  "javascript.validate.enable": false,
-  "javascript.format.enable": false,
-  "typescript.format.enable": false,
+  "[javascript][javascriptreact]": {
+    "js/ts.validate.enabled": false
+  },
+  "js/ts.format.enabled": false,
 
   "search.exclude": {
     ".git": true,

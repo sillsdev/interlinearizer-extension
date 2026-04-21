@@ -4,7 +4,9 @@
  */
 
 const mockRegisterWebViewProvider = jest.fn().mockResolvedValue({ dispose: jest.fn() });
-const mockOpenWebView = jest.fn().mockResolvedValue(undefined);
+const mockRegisterCommand = jest.fn().mockResolvedValue({ dispose: jest.fn() });
+const mockOpenWebView = jest.fn().mockResolvedValue('mock-webview-id');
+const mockSelectProject = jest.fn().mockResolvedValue(undefined);
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -13,6 +15,12 @@ const mockLogger = {
 };
 
 const papi = {
+  commands: {
+    registerCommand: mockRegisterCommand,
+  },
+  dialogs: {
+    selectProject: mockSelectProject,
+  },
   webViewProviders: {
     registerWebViewProvider: mockRegisterWebViewProvider,
   },
@@ -24,7 +32,9 @@ const papi = {
 const defaultExport = {
   ...papi,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
+  __mockRegisterCommand: mockRegisterCommand,
   __mockOpenWebView: mockOpenWebView,
+  __mockSelectProject: mockSelectProject,
   __mockLogger: mockLogger,
 };
 
@@ -33,7 +43,9 @@ module.exports = {
   default: defaultExport,
   logger: mockLogger,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
+  __mockRegisterCommand: mockRegisterCommand,
   __mockOpenWebView: mockOpenWebView,
+  __mockSelectProject: mockSelectProject,
   __mockLogger: mockLogger,
 };
 

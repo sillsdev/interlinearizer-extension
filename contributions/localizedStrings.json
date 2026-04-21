@@ -1,6 +1,11 @@
 {
   "metadata": {},
   "localizedStrings": {
-    "en": {}
+    "en": {
+      "%interlinearizer_dialog_open_title%": "Open Interlinearizer",
+      "%interlinearizer_dialog_open_prompt%": "Choose a project to open in the Interlinearizer:",
+      "%mainMenu_interlinearizerSubmenu%": "Interlinearizer",
+      "%mainMenu_openInterlinearizer%": "Open Interlinearizer"
+    }
   }
 }

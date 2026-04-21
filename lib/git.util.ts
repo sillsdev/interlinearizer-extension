@@ -30,23 +30,15 @@ export async function execCommand(
   if (!quiet) console.log(`\n>${execOptions.cwd ? ` cd ${execOptions.cwd};` : ''} ${command}`);
   try {
     const result = await execAsync(command, {
-<<<<<<< HEAD
-      cwd: path.resolve(path.join(__dirname, '..')),
-=======
       cwd: repoRoot,
->>>>>>> template/main
       ...execOptions,
     });
     if (!quiet && result.stdout) console.log(result.stdout);
     if (!quiet && result.stderr) console.log(result.stderr);
-<<<<<<< HEAD
-    return result;
-=======
     return {
       stdout: result.stdout.toString(),
       stderr: result.stderr.toString(),
     };
->>>>>>> template/main
   } catch (error: unknown) {
     if (error instanceof Error) {
       // Use the more specific type for `exec`.

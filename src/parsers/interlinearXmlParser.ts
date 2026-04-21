@@ -202,7 +202,7 @@ export class InterlinearXmlParser {
       trimValues: false,
       parseTagValue: false,
       parseAttributeValue: false,
-      isArray: (_tagName, jPath) => arrayPaths.has(jPath),
+      isArray: (_tagName, jPath) => arrayPaths.has(`${jPath}`),
     };
     this.parser = new XMLParser(options);
   }

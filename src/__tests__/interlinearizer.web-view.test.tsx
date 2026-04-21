@@ -5,17 +5,7 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
-import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
-
-/** Mock parser to allow overriding constructor behavior per test. */
-jest.mock('parsers/interlinearXmlParser', () => {
-  const actual = jest.requireActual<typeof import('parsers/interlinearXmlParser')>(
-    'parsers/interlinearXmlParser',
-  );
-  return {
-    InterlinearXmlParser: jest.fn().mockImplementation(() => new actual.InterlinearXmlParser()),
-  };
-});
+import { useProjectData } from '@papi/frontend/react';
 
 /**
  * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
@@ -32,94 +22,86 @@ if (!InterlinearizerWebView) throw new Error('webViewComponent not loaded');
 /** Minimal SerializedVerseRef for hook mock return. */
 const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
-/** Full WebViewProps for tests; interlinearizer component ignores hooks/update. */
-const testWebViewProps: WebViewProps = {
-  id: 'test-id',
-  webViewType: 'interlinearizer.mainWebView',
-  useWebViewState: <T,>(_key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
-    defaultValue,
-    () => {},
-    () => {},
-  ],
-  useWebViewScrollGroupScrRef: (): [
-    SerializedVerseRef,
-    (r: SerializedVerseRef) => void,
-    number | undefined,
-    (id: number | undefined) => void,
-  ] => [defaultScrRef, () => {}, undefined, () => {}],
-  updateWebViewDefinition: () => true,
-};
+/** Builds a minimal WebViewProps for tests. */
+function makeProps(projectId?: string): WebViewProps {
+  return {
+    id: 'test-id',
+    webViewType: 'interlinearizer.mainWebView',
+    projectId,
+    useWebViewState: <T,>(_key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
+      defaultValue,
+      () => {},
+      () => {},
+    ],
+    useWebViewScrollGroupScrRef: (): [
+      SerializedVerseRef,
+      (r: SerializedVerseRef) => void,
+      number | undefined,
+      (id: number | undefined) => void,
+    ] => [defaultScrRef, () => {}, undefined, () => {}],
+    updateWebViewDefinition: () => true,
+  };
+}
+
+/** Configures useProjectData to return the given BookUSJ value this render. */
+function mockBookData(value: unknown): void {
+  jest.mocked(useProjectData).mockImplementation(() => ({
+    BookUSJ: () => [value, jest.fn(), false],
+  }));
+}
 
 describe('InterlinearizerWebView', () => {
+  beforeEach(() => {
+    mockBookData(undefined);
+  });
+
   it('renders the heading "Interlinearizer"', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+    render(<InterlinearizerWebView {...makeProps()} />);
 
     expect(screen.getByRole('heading', { name: /interlinearizer/i })).toBeInTheDocument();
   });
 
-  it('renders the description mentioning test-data XML', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('shows a prompt to open from a project when no projectId is provided', () => {
+    render(<InterlinearizerWebView {...makeProps()} />);
 
-    expect(
-      screen.getByText(/raw json of the model parsed from/i, { exact: false }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/test-data\/Interlinear_en_MAT\.xml/i)).toBeInTheDocument();
+    expect(screen.getByText(/open this webview from a paratext project/i)).toBeInTheDocument();
   });
 
-  it('parses the bundled test XML and displays parsed JSON', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('shows the book and projectId when a project is linked', () => {
+    mockBookData({
+      type: 'USJ',
+      version: '3.1',
+      content: [{ type: 'book', marker: 'id', code: 'GEN' }],
+    });
+    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
-    expect(screen.getByText(/parsed interlinear data \(json\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/"GlossLanguage"/)).toBeInTheDocument();
-    expect(screen.getByText(/"BookId"/)).toBeInTheDocument();
+    expect(screen.getByText(/test-project-id/)).toBeInTheDocument();
+    expect(screen.getByText(/GEN · project/)).toBeInTheDocument();
   });
 
-  it('displays parsed structure with expected verse data', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('shows Loading when projectId is set but book data has not arrived', () => {
+    mockBookData(undefined);
+    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
-    expect(screen.getByText(/"en"/)).toBeInTheDocument();
-    expect(screen.getByText(/"MAT"/)).toBeInTheDocument();
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
-  it('does not show parse error when XML is valid', () => {
-    render(<InterlinearizerWebView {...testWebViewProps} />);
+  it('shows the raw USFM when book data arrives', () => {
+    mockBookData({
+      type: 'USJ',
+      version: '3.1',
+      content: [{ type: 'book', marker: 'id', code: 'GEN' }],
+    });
+    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
-    expect(screen.queryByText(/^parse error$/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/"code": "GEN"/)).toBeInTheDocument();
   });
 
-  it('displays parse error when parser throws an Error (uses err.message)', () => {
-    const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
-      '../parsers/interlinearXmlParser',
-    );
-    const realInstance = new actual.InterlinearXmlParser();
-    const throwingParse = (): never => {
-      throw new Error('Invalid XML structure');
-    };
-    Object.defineProperty(realInstance, 'parse', { value: throwingParse, writable: true });
-    jest.mocked(InterlinearXmlParser).mockImplementationOnce(() => realInstance);
+  it('shows an error heading and message when book data is a PlatformError', () => {
+    mockBookData({ isPlatformError: true, message: 'Project not found' });
+    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
-    render(<InterlinearizerWebView {...testWebViewProps} />);
-
-    expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
-    expect(screen.getByText(/invalid xml structure/i)).toBeInTheDocument();
-  });
-
-  it('displays parse error when parser throws non-Error (uses String(err))', () => {
-    const actual = jest.requireActual<typeof import('../parsers/interlinearXmlParser')>(
-      '../parsers/interlinearXmlParser',
-    );
-    const realInstance = new actual.InterlinearXmlParser();
-    const throwingParse = (): never => {
-      // Intentionally throw a non-Error to test the String(err) branch in the catch block.
-      // eslint-disable-next-line no-throw-literal -- testing non-Error handling
-      throw 'plain string error';
-    };
-    Object.defineProperty(realInstance, 'parse', { value: throwingParse, writable: true });
-    jest.mocked(InterlinearXmlParser).mockImplementationOnce(() => realInstance);
-
-    render(<InterlinearizerWebView {...testWebViewProps} />);
-
-    expect(screen.getByRole('heading', { name: /^parse error$/i })).toBeInTheDocument();
-    expect(screen.getByText('plain string error')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
+    expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 });

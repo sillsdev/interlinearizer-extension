@@ -53,4 +53,13 @@ class UnsubscriberAsyncList {
   }
 }
 
-export { UnsubscriberAsyncList };
+/** Minimal PlatformError shape matching the real platform-bible-utils type. */
+interface PlatformError {
+  message: string;
+  isPlatformError: true;
+}
+
+const isPlatformError = (value: unknown): value is PlatformError =>
+  typeof value === 'object' && value !== null && (value as PlatformError).isPlatformError === true;
+
+export { UnsubscriberAsyncList, isPlatformError };

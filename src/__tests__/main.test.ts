@@ -40,6 +40,7 @@ function isIWebViewProvider(x: unknown): x is IWebViewProvider {
 }
 
 if (!isPapiBackendTestMock(papiBackendMock)) throw new Error('Expected mocked @papi/backend');
+// eslint-disable-next-line @typescript-eslint/naming-convention
 const { __mockRegisterWebViewProvider, __mockOpenWebView, __mockLogger } = papiBackendMock;
 
 describe('main', () => {

@@ -55,6 +55,8 @@ const {
 describe('main', () => {
   const mainWebViewType = 'interlinearizer.mainWebView';
 
+  afterEach(() => deactivate());
+
   beforeEach(() => {
     __mockRegisterWebViewProvider.mockResolvedValue({ dispose: jest.fn() });
     __mockRegisterCommand.mockResolvedValue({ dispose: jest.fn() });

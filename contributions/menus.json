@@ -28,11 +28,32 @@
   "defaultWebViewTopMenu": {
     "columns": {},
     "groups": {},
-    "items": []
+    "items": [
+      {
+        "label": "%interlinearizer_openForProject%",
+        "localizeNotes": "WebView top menu > Project > Open Interlinearizer for this project",
+        "group": "platform.projectTop",
+        "order": 1000,
+        "command": "interlinearizer.openForWebView"
+      }
+    ]
   },
   "defaultWebViewContextMenu": {
-    "groups": {},
-    "items": []
+    "groups": {
+      "interlinearizer.contextMenuGroup": {
+        "order": 100,
+        "isExtensible": false
+      }
+    },
+    "items": [
+      {
+        "label": "%interlinearizer_openForProject%",
+        "localizeNotes": "WebView context menu > Open Interlinearizer for this project",
+        "group": "interlinearizer.contextMenuGroup",
+        "order": 1,
+        "command": "interlinearizer.openForWebView"
+      }
+    ]
   },
   "webViewMenus": {}
 }

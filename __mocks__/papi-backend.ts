@@ -3,11 +3,11 @@
  * loading the real Platform API.
  */
 
-const mockRegisterWebViewProvider = jest.fn().mockResolvedValue({ dispose: jest.fn() });
-const mockRegisterCommand = jest.fn().mockResolvedValue({ dispose: jest.fn() });
-const mockOpenWebView = jest.fn().mockResolvedValue('mock-webview-id');
-const mockSelectProject = jest.fn().mockResolvedValue(undefined);
-const mockGetOpenWebViewDefinition = jest.fn().mockResolvedValue(undefined);
+const mockRegisterWebViewProvider = jest.fn();
+const mockRegisterCommand = jest.fn();
+const mockOpenWebView = jest.fn();
+const mockSelectProject = jest.fn();
+const mockGetOpenWebViewDefinition = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),

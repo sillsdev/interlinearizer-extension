@@ -529,8 +529,8 @@ declare module 'interlinearizer' {
      */
     confidence?: Confidence;
 
-    /** Review status. */
-    status?: AssignmentStatus;
+    /** Required review status. */
+    status: AssignmentStatus;
 
     /**
      * Free-form tag identifying what produced this analysis — e.g. `"human"`, `"bt-draft"`, or a
@@ -555,7 +555,7 @@ declare module 'interlinearizer' {
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
    * `glossSenseRef` alternatively resolves the gloss through a specific `ISense` in the Lexicon
    * extension — when set, the rendered gloss is the sense's gloss text and may be refreshed
-   * automatically if the lexicon is edited.
+   * automatically if the lexicon is edited. Setting both is a type error: use one or the other.
    *
    * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
    * `entryRef` / `senseRef`.
@@ -581,17 +581,11 @@ declare module 'interlinearizer' {
    *   inferred from status. No morpheme decomposition — `morphemes` is either empty or a single
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
-  export interface TokenAnalysis {
+  export type TokenAnalysis = {
     id: string;
 
     /** Reference to the `Token.id` being analyzed. */
     tokenId: string;
-
-    /** Free-form word-level gloss text, keyed by analysis-language tag. */
-    gloss?: MultiString;
-
-    /** Lexicon-backed gloss: resolves through an `ISense`. */
-    glossSenseRef?: SenseRef;
 
     /** Ordered morpheme breakdown. Omitted for whole-word analyses. */
     morphemes?: Morpheme[];
@@ -611,8 +605,8 @@ declare module 'interlinearizer' {
      */
     confidence?: Confidence;
 
-    /** Review status. */
-    status?: AssignmentStatus;
+    /** Required review status. */
+    status: AssignmentStatus;
 
     /**
      * Free-form tag identifying what produced this analysis — e.g. `"human"`, `"parser"`,
@@ -636,7 +630,11 @@ declare module 'interlinearizer' {
      * becomes a concern (token text is typically short, so the literal string is usually fine).
      */
     tokenSnapshot?: string;
-  }
+  } & (
+    | { gloss: MultiString; glossSenseRef?: never }
+    | { glossSenseRef: SenseRef; gloss?: never }
+    | { gloss?: never; glossSenseRef?: never }
+  );
 
   /**
    * An ordered morpheme within a token's parse.
@@ -715,7 +713,8 @@ declare module 'interlinearizer' {
    *
    * `gloss` is a free-form phrase gloss. `senseRef` alternatively points at a lexicon sense when
    * the phrase is a multi-word lexical entry — the Lexicon extension supports both kinds via
-   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas").
+   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Setting
+   * both is a type error: use one or the other.
    *
    * Provenance fields (`producer`, `sourceUser`, `confidence`, `status`) let a suggestion engine
    * record proposed phrases that a user can then approve or reject, enabling automated recognition
@@ -731,20 +730,14 @@ declare module 'interlinearizer' {
    * - BT Extension: not natively tracked. Must be synthesized during migration when adjacent tokens
    *   share the same gloss / sense.
    */
-  export interface Phrase {
+  export type Phrase = {
     id: string;
 
     /** Ordered `Token.id` values that compose this phrase. */
     tokenIds: string[];
 
-    /** Free-form phrase gloss, keyed by analysis-language tag. */
-    gloss?: MultiString;
-
-    /** Lexicon-backed phrase gloss: resolves through an `ISense`. */
-    senseRef?: SenseRef;
-
-    /** Review status. */
-    status?: AssignmentStatus;
+    /** Required review status. */
+    status: AssignmentStatus;
 
     /**
      * How much to trust this phrase. Independent of who produced it — see `producer` / `sourceUser`
@@ -768,9 +761,17 @@ declare module 'interlinearizer' {
      * Surface text of each token at creation time, parallel to `tokenIds`. Enables drift detection
      * for phrases — if any index's snapshot no longer matches the current `Token.surfaceText`, the
      * phrase is flagged `Stale`.
+     *
+     * **Invariant:** when present, `tokenSnapshots` must have the same length as `tokenIds` and
+     * each index `i` corresponds to the `Token.surfaceText` for `tokenIds[i]`. Consumers must
+     * maintain this alignment when filtering or transforming tokens.
      */
     tokenSnapshots?: string[];
-  }
+  } & (
+    | { gloss: MultiString; senseRef?: never }
+    | { senseRef: SenseRef; gloss?: never }
+    | { gloss?: never; senseRef?: never }
+  );
 
   // ---------------------------------------------------------------------------
   // §7 AlignmentLink, AlignmentEndpoint

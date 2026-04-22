@@ -56,10 +56,7 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
 
   /** Whether a token holds a word or punctuation. */
-  export const enum TokenType {
-    Word = 'word',
-    Punctuation = 'punctuation',
-  }
+  export type TokenType = 'word' | 'punctuation';
 
   /**
    * How an analysis was produced.
@@ -69,12 +66,7 @@ declare module 'interlinearizer' {
    * - `low` — tool-assisted, low certainty
    * - `guess` — unreviewed machine suggestion
    */
-  export const enum Confidence {
-    Guess = 'guess',
-    Low = 'low',
-    Medium = 'medium',
-    High = 'high',
-  }
+  export type Confidence = 'high' | 'medium' | 'low' | 'guess';
 
   /**
    * Lifecycle status of a token analysis, phrase, or alignment link.
@@ -87,13 +79,7 @@ declare module 'interlinearizer' {
    *   human review. Set by drift-detection logic comparing `tokenSnapshot` against the current
    *   `Token.surfaceText`.
    */
-  export const enum AssignmentStatus {
-    Approved = 'approved',
-    Suggested = 'suggested',
-    Candidate = 'candidate',
-    Rejected = 'rejected',
-    Stale = 'stale',
-  }
+  export type AssignmentStatus = 'approved' | 'suggested' | 'candidate' | 'rejected' | 'stale';
 
   // ---------------------------------------------------------------------------
   // Shared primitives

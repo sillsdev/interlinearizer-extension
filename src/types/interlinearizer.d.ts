@@ -10,13 +10,18 @@
  *
  * Shape at a glance:
  *
- * InterlinearAlignment ├─ source : InterlinearText — the input being analyzed ├─ target :
- * InterlinearText — the analysis / output side └─ links : AlignmentLink[]
+ *     InterlinearAlignment
+ *     ├─ source : InterlinearText    — the input being analyzed
+ *     ├─ target : InterlinearText    — the analysis / output side
+ *     └─ links  : AlignmentLink[]
  *
- * InterlinearText ├─ books : Book[] — text layer (baseline) │ └─ Segment[] → Token[] └─ analysis :
- * TextAnalysis — analysis layer (flat) ├─ segmentAnalyses : SegmentAnalysis[] (per-segment
- * translations) ├─ tokenAnalyses : TokenAnalysis[] (parse + 1:1 gloss) └─ phrases : Phrase[]
- * (multi-token gloss)
+ *     InterlinearText
+ *     ├─ books    : Book[]           — text layer (baseline)
+ *     │    └─ Segment[] → Token[]
+ *     └─ analysis : TextAnalysis     — analysis layer (flat)
+ *          ├─ segmentAnalyses : SegmentAnalysis[]    (per-segment translations)
+ *          ├─ tokenAnalyses   : TokenAnalysis[]      (parse + 1:1 gloss)
+ *          └─ phrases         : Phrase[]             (multi-token gloss)
  *
  * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting. Every
  * analysis record carries an id reference back to its text-layer counterpart (`segmentId` /
@@ -51,7 +56,7 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
 
   /** Whether a token holds a word or punctuation. */
-  export enum TokenType {
+  export const enum TokenType {
     Word = 'word',
     Punctuation = 'punctuation',
   }
@@ -64,7 +69,7 @@ declare module 'interlinearizer' {
    * - `low` — tool-assisted, low certainty
    * - `guess` — unreviewed machine suggestion
    */
-  export enum Confidence {
+  export const enum Confidence {
     Guess = 'guess',
     Low = 'low',
     Medium = 'medium',
@@ -82,7 +87,7 @@ declare module 'interlinearizer' {
    *   human review. Set by drift-detection logic comparing `tokenSnapshot` against the current
    *   `Token.surfaceText`.
    */
-  export enum AssignmentStatus {
+  export const enum AssignmentStatus {
     Approved = 'approved',
     Suggested = 'suggested',
     Candidate = 'candidate',

@@ -20,7 +20,7 @@ function ProjectBookFetcher({
   if (isPlatformError(bookResult)) {
     bookError = bookResult.message;
   } else if (!isLoading && bookResult === undefined) {
-    bookError = `Project ${projectId} does not support the USJ book interface`;
+    bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   } else {
     bookUsj = bookResult;
   }

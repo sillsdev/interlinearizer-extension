@@ -43,10 +43,10 @@ function makeProps(projectId?: string): WebViewProps {
   };
 }
 
-/** Configures useProjectData to return the given BookUSJ value this render. */
-function mockBookData(value: unknown): void {
+/** Configures useProjectData to return the given BookUSJ value and loading state this render. */
+function mockBookData(value: unknown, isLoading = false): void {
   jest.mocked(useProjectData).mockImplementation(() => ({
-    BookUSJ: () => [value, jest.fn(), false],
+    BookUSJ: () => [value, jest.fn(), isLoading],
   }));
 }
 
@@ -80,10 +80,18 @@ describe('InterlinearizerWebView', () => {
   });
 
   it('shows Loading when projectId is set but book data has not arrived', () => {
-    mockBookData(undefined);
+    mockBookData(undefined, true);
     render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
     expect(screen.getByText('Loading…')).toBeInTheDocument();
+  });
+
+  it('shows an error when the project does not support the USJ book interface', () => {
+    mockBookData(undefined, false);
+    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+
+    expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
+    expect(screen.getByText(/does not support the USJ book interface/i)).toBeInTheDocument();
   });
 
   it('shows the raw USFM when book data arrives', () => {

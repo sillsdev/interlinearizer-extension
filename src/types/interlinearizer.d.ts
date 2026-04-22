@@ -141,19 +141,14 @@ declare module 'interlinearizer' {
   /**
    * Reference to an `ISense` in the Lexicon extension.
    *
-   * `entryId` is included so the owning `IEntry` can be looked up without first fetching the sense
-   * — this mirrors `ISense.entryId` in the Lexicon extension's generated types.
-   *
-   * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. Consumers resolve a
-   * `SenseRef` by fetching the owning entry (via `EntryRef`) and walking `entry.senses[]` for a
-   * matching `senseId`. A `getSense(projectId, entryId, senseId)` method would close the gap.
+   * **Current Lexicon gap:** `IEntryService` exposes no sense-level methods. A `getSense(projectId,
+   * senseId)` method on the service is needed to resolve this ref. Without it, consumers must
+   * enumerate entries to find the matching sense — which is fragile and does not handle the edge
+   * case where a sense is moved to a different entry.
    */
   export interface SenseRef {
     /** `ISense.id` (GUID). */
     senseId: string;
-
-    /** `ISense.entryId` — the owning `IEntry`. */
-    entryId: string;
 
     /** Lexicon project identifier (FwData / Harmony code). */
     projectId?: string;
@@ -163,7 +158,6 @@ declare module 'interlinearizer' {
    * Reference to a specific allomorph (`IMoForm`) on an `IEntry` in the Lexicon extension.
    *
    * Allomorphs are surface variants of a lexical form (e.g. the English plural `-es` vs. `-s`).
-   * `allomorphId` identifies the variant used in this analysis; `entryId` is the owning `IEntry`.
    *
    * **Current Lexicon gaps:**
    *
@@ -172,15 +166,12 @@ declare module 'interlinearizer' {
    *   `IEntry.components`.
    * - `IEntryService` exposes no allomorph methods.
    *
-   * The extension is expected to surface `IMoForm` and add a `getAllomorph(projectId, entryId,
-   * allomorphId)` method (or equivalent) so `AllomorphRef` can be resolved directly.
+   * The extension is expected to surface `IMoForm` and add a `getAllomorph(projectId, allomorphId)`
+   * method (or equivalent) so `AllomorphRef` can be resolved directly.
    */
   export interface AllomorphRef {
     /** `IMoForm.id` (GUID). */
     allomorphId: string;
-
-    /** Owning `IEntry.id`. */
-    entryId: string;
 
     /** Lexicon project identifier (FwData / Harmony code). */
     projectId?: string;
@@ -199,15 +190,12 @@ declare module 'interlinearizer' {
    * - `IEntryService` exposes no MSA methods.
    *
    * The interlinear model is the standard that requires this surface; the extension is expected to
-   * add `IMoMorphSynAnalysis` and a `getMsa(projectId, entryId, msaId)` method (or equivalent) so
+   * add `IMoMorphSynAnalysis` and a `getMsa(projectId, msaId)` method (or equivalent) so
    * `GrammarRef` can be resolved.
    */
   export interface GrammarRef {
     /** `IMoMorphSynAnalysis.id` (GUID). */
     msaId: string;
-
-    /** Owning `IEntry.id`. */
-    entryId: string;
 
     /** Lexicon project identifier (FwData / Harmony code). */
     projectId?: string;
@@ -665,21 +653,20 @@ declare module 'interlinearizer' {
    *
    * - LCM: `IWfiMorphBundle` (1:1). `form` = `IWfiMorphBundle.Form`. `entryRef` = GUID of the
    *   `ILexEntry` that owns `IWfiMorphBundle.MorphRA` (an `IMoForm`, via `LexemeFormOA` or
-   *   `AlternateFormsOS`). `senseRef` = GUID of `IWfiMorphBundle.SenseRA` plus its owning
-   *   `ILexEntry`. `allomorphRef` = GUID of `IWfiMorphBundle.MorphRA` (the specific `IMoForm`) plus
-   *   its owning `ILexEntry`. `grammarRef` = GUID of `IWfiMorphBundle.MsaRA`
-   *   (`IMoMorphSynAnalysis`) plus its owning `ILexEntry`.
+   *   `AlternateFormsOS`). `senseRef` = GUID of `IWfiMorphBundle.SenseRA`. `allomorphRef` = GUID of
+   *   `IWfiMorphBundle.MorphRA` (the specific `IMoForm`). `grammarRef` = GUID of
+   *   `IWfiMorphBundle.MsaRA` (`IMoMorphSynAnalysis`).
    * - Paratext: each `Lexeme` within a `WordAnalysis`. `form` = `Lexeme.LexicalForm`. `entryRef` =
-   *   `Lexeme.Id` (LexemeKey-derived). `senseRef` = the selected `SenseId` from `LexemeData` paired
-   *   with `entryRef`. Paratext's built-in XML lexicon has no separate allomorph or MSA concepts;
-   *   `allomorphRef` / `grammarRef` are populated only when an integrated provider (e.g. FLEx via
+   *   `Lexeme.Id` (LexemeKey-derived). `senseRef` = the selected `SenseId` from `LexemeData`.
+   *   Paratext's built-in XML lexicon has no separate allomorph or MSA concepts; `allomorphRef` /
+   *   `grammarRef` are populated only when an integrated provider (e.g. FLEx via
    *   `IntegratedLexicalProvider`) is active.
    * - BT Extension: not natively modeled as morphemes. A whole-word morpheme can be synthesized:
    *   `form` = `Token.text`, `entryRef` = `headwordId` (BT Extension's HeadWord lemma corresponds
-   *   to the FieldWorks LexemeForm / elsewhere allomorph), `senseRef` = `{ entryId: headwordId,
-   *   senseId: senseIds[0] }`. Macula TSV `morph` / `stem` fields can supply the specific
-   *   allomorphic form when it differs from the lemma. `allomorphRef` / `grammarRef` are left unset
-   *   — BT Extension does not carry these.
+   *   to the FieldWorks LexemeForm / elsewhere allomorph), `senseRef` = `{ senseId: senseIds[0] }`.
+   *   Macula TSV `morph` / `stem` fields can supply the specific allomorphic form when it differs
+   *   from the lemma. `allomorphRef` / `grammarRef` are left unset — BT Extension does not carry
+   *   these.
    */
   export interface Morpheme {
     id: string;

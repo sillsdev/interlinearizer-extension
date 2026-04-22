@@ -82,6 +82,16 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 }
 
 /**
+ * Opens the Interlinearizer for the project associated with the given WebView. Called from the
+ * webview context menu, which passes the tab's webView ID as the argument.
+ */
+async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
+  if (!webViewId) return openInterlinearizer();
+  const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
+  return openInterlinearizer(webViewDefinition?.projectId);
+}
+
+/**
  * Extension entry point. Registers the interlinearizer WebView provider and the open command.
  * Called by the platform when the extension is loaded.
  *
@@ -118,16 +128,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
       },
     },
   );
-
-  /**
-   * Opens the Interlinearizer for the project associated with the given WebView. Called from the
-   * webview context menu, which passes the tab's webView ID as the argument.
-   */
-  async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
-    if (!webViewId) return openInterlinearizer();
-    const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
-    return openInterlinearizer(webViewDefinition?.projectId);
-  }
 
   const openForWebViewCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openForWebView',

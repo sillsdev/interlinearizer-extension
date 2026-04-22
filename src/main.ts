@@ -119,7 +119,44 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  context.registrations.add(mainWebViewProviderRegistration, openCommandRegistration);
+  /**
+   * Opens the Interlinearizer for the project associated with the given WebView. Called from the
+   * webview context menu, which passes the tab's webView ID as the argument.
+   */
+  async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
+    if (!webViewId) return openInterlinearizer();
+    const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
+    return openInterlinearizer(webViewDefinition?.projectId);
+  }
+
+  const openForWebViewCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openForWebView',
+    openInterlinearizerForWebView,
+    {
+      method: {
+        summary: 'Open the Interlinearizer for the project associated with a WebView',
+        params: [
+          {
+            name: 'webViewId',
+            required: false,
+            summary: 'The WebView ID whose project to open; if omitted a picker dialog is shown',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'The ID of the opened WebView, or undefined if cancelled',
+          schema: { type: ['string', 'null'] },
+        },
+      },
+    },
+  );
+
+  context.registrations.add(
+    mainWebViewProviderRegistration,
+    openCommandRegistration,
+    openForWebViewCommandRegistration,
+  );
 
   logger.debug('Interlinearizer extension finished activating!');
 }

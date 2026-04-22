@@ -13,6 +13,7 @@ interface PapiBackendTestMock {
   __mockRegisterCommand: jest.Mock;
   __mockOpenWebView: jest.Mock;
   __mockSelectProject: jest.Mock;
+  __mockGetOpenWebViewDefinition: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -28,6 +29,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockRegisterCommand' in m &&
     '__mockOpenWebView' in m &&
     '__mockSelectProject' in m &&
+    '__mockGetOpenWebViewDefinition' in m &&
     '__mockLogger' in m
   );
 }
@@ -46,6 +48,7 @@ const {
   __mockRegisterCommand,
   __mockOpenWebView,
   __mockSelectProject,
+  __mockGetOpenWebViewDefinition,
   __mockLogger,
 } = papiBackendMock;
 
@@ -57,6 +60,7 @@ describe('main', () => {
     __mockRegisterCommand.mockResolvedValue({ dispose: jest.fn() });
     __mockOpenWebView.mockResolvedValue('mock-webview-id');
     __mockSelectProject.mockResolvedValue(undefined);
+    __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
   });
 
   describe('activate', () => {
@@ -79,7 +83,6 @@ describe('main', () => {
 
       await activate(context);
 
-      expect(__mockRegisterCommand).toHaveBeenCalledTimes(1);
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
         'interlinearizer.open',
         expect.any(Function),
@@ -87,12 +90,24 @@ describe('main', () => {
       );
     });
 
-    it('adds both registrations to the activation context', async () => {
+    it('registers the interlinearizer.openForWebView command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(2);
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.openForWebView',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('adds all three registrations to the activation context', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(context.registrations.unsubscribers.size).toBe(3);
     });
 
     it('logs activation start and finish', async () => {
@@ -184,13 +199,24 @@ describe('main', () => {
     });
   });
 
+  function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
+    return typeof f === 'function';
+  }
+
+  function findRegisteredHandler(
+    commandName: string,
+  ): ((...args: unknown[]) => unknown) | undefined {
+    const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
+    const rawHandler: unknown = call?.[1];
+    return isCallable(rawHandler) ? rawHandler : undefined;
+  }
+
   describe('interlinearizer.open command', () => {
-    /** Extracts the registered command handler from the mock after activate(). */
     async function getOpenHandler(): Promise<(projectId?: string) => Promise<string | undefined>> {
       const context = createTestActivationContext();
       await activate(context);
-      const rawHandler: unknown = jest.mocked(__mockRegisterCommand).mock.calls[0]?.[1];
-      if (typeof rawHandler !== 'function') throw new Error('Expected command handler');
+      const rawHandler = findRegisteredHandler('interlinearizer.open');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.open');
       return (projectId?: string): Promise<string | undefined> => {
         const result: unknown = rawHandler(projectId);
         if (!(result instanceof Promise)) return Promise.resolve(undefined);
@@ -285,6 +311,108 @@ describe('main', () => {
       const result = await open('project-return-id');
 
       expect(result).toBe('new-webview-id');
+    });
+  });
+
+  describe('interlinearizer.openForWebView command', () => {
+    async function getOpenForWebViewHandler(): Promise<
+      (webViewId?: string) => Promise<string | undefined>
+    > {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.openForWebView');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.openForWebView');
+      return async (webViewId?: string): Promise<string | undefined> => {
+        const result: unknown = await rawHandler(webViewId);
+        return typeof result === 'string' ? result : undefined;
+      };
+    }
+
+    it('looks up the projectId from the given webview and opens the interlinearizer', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'project-from-webview',
+      });
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('some-webview');
+
+      expect(__mockGetOpenWebViewDefinition).toHaveBeenCalledWith('some-webview');
+      expect(__mockSelectProject).not.toHaveBeenCalled();
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ projectId: 'project-from-webview' }),
+      );
+    });
+
+    it('shows a project picker when the webview has no projectId', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'some-webview',
+        webViewType: 'someExtension.view',
+      });
+      __mockSelectProject.mockResolvedValue('picker-project');
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('some-webview');
+
+      expect(__mockSelectProject).toHaveBeenCalledTimes(1);
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ projectId: 'picker-project' }),
+      );
+    });
+
+    it('shows a project picker when the webview definition is not found', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
+      __mockSelectProject.mockResolvedValue('picker-project');
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView('nonexistent-webview');
+
+      expect(__mockSelectProject).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows a project picker when no webViewId is provided', async () => {
+      __mockSelectProject.mockResolvedValue('picker-project');
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await openForWebView();
+
+      expect(__mockGetOpenWebViewDefinition).not.toHaveBeenCalled();
+      expect(__mockSelectProject).toHaveBeenCalledTimes(1);
+      expect(__mockOpenWebView).toHaveBeenCalledWith(
+        mainWebViewType,
+        undefined,
+        expect.objectContaining({ projectId: 'picker-project' }),
+      );
+    });
+
+    it('returns undefined when the user cancels the project picker', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
+      __mockSelectProject.mockResolvedValue(undefined);
+      const openForWebView = await getOpenForWebViewHandler();
+
+      const result = await openForWebView('some-webview');
+
+      expect(result).toBeUndefined();
+      expect(__mockOpenWebView).not.toHaveBeenCalled();
+    });
+
+    it('returns the webview ID when the interlinearizer opens successfully', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue({
+        id: 'src-webview',
+        webViewType: 'someExtension.view',
+        projectId: 'my-project',
+      });
+      __mockOpenWebView.mockResolvedValue('interlinearizer-webview-id');
+      const openForWebView = await getOpenForWebViewHandler();
+
+      const result = await openForWebView('src-webview');
+
+      expect(result).toBe('interlinearizer-webview-id');
     });
   });
 

@@ -168,6 +168,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
  * @returns True to indicate successful deactivation; the platform may use this for logging.
  */
 export async function deactivate(): Promise<boolean> {
+  openWebViewsByProject.clear();
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }

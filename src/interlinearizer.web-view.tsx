@@ -8,13 +8,21 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 }: WebViewProps) {
   const [scrRef] = useWebViewScrollGroupScrRef();
 
-  const [bookResult] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
+  const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
     scrRef,
     undefined,
   );
 
-  const bookUsj = isPlatformError(bookResult) ? undefined : bookResult;
-  const bookError = isPlatformError(bookResult) ? bookResult.message : undefined;
+  let bookUsj: typeof bookResult | undefined;
+  let bookError: string | undefined;
+
+  if (isPlatformError(bookResult)) {
+    bookError = bookResult.message;
+  } else if (!isLoading && bookResult === undefined) {
+    bookError = `Project ${projectId} does not support the USJ book interface`;
+  } else {
+    bookUsj = bookResult;
+  }
 
   return (
     <div className="tw-flex tw-flex-col tw-gap-4 tw-p-6">

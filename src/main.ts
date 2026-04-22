@@ -33,7 +33,9 @@ const mainWebViewProvider: IWebViewProvider = {
    */
   async getWebView(
     savedWebView: SavedWebViewDefinition,
-    openWebViewOptions: InterlinearizerOpenOptions,
+    openWebViewOptions?: InterlinearizerOpenOptions,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _webViewNonce?: string,
   ): Promise<WebViewDefinition | undefined> {
     if (savedWebView.webViewType !== mainWebViewType) {
       throw new Error(
@@ -42,7 +44,7 @@ const mainWebViewProvider: IWebViewProvider = {
     }
     return {
       ...savedWebView,
-      projectId: openWebViewOptions.projectId ?? savedWebView.projectId,
+      projectId: openWebViewOptions?.projectId ?? savedWebView.projectId,
       title: 'Interlinearizer',
       content: interlinearizerReact,
       styles: interlinearizerStyles,
@@ -52,8 +54,8 @@ const mainWebViewProvider: IWebViewProvider = {
 
 /**
  * Tracks the WebView ID opened for each project so subsequent opens of the same project bring that
- * tab to front instead of opening a duplicate. Stale IDs (closed tabs) are handled automatically:
- * the platform creates a new webview when the stored ID is not found.
+ * tab to front instead of opening a duplicate. Populated and pruned via `onDidOpenWebView` and
+ * `onDidCloseWebView` subscriptions registered during activation.
  */
 const openWebViewsByProject = new Map<string, string>();
 
@@ -152,10 +154,23 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    openWebViewsByProject.set(webView.projectId, webView.id);
+  });
+
+  const webViewCloseUnsubscriber = papi.webViews.onDidCloseWebView(({ webView }) => {
+    if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
+    if (openWebViewsByProject.get(webView.projectId) === webView.id)
+      openWebViewsByProject.delete(webView.projectId);
+  });
+
   context.registrations.add(
     mainWebViewProviderRegistration,
     openCommandRegistration,
     openForWebViewCommandRegistration,
+    webViewOpenUnsubscriber,
+    webViewCloseUnsubscriber,
   );
 
   logger.debug('Interlinearizer extension finished activating!');

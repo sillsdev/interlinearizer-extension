@@ -367,8 +367,13 @@ declare module 'interlinearizer' {
     /** Inclusive end of the text range, anchored to a character position within its verse. */
     endRef: ScriptureRef;
 
-    /** Raw text of the segment, for validation and convenience. */
-    baselineText?: string;
+    /**
+     * Raw text of the segment. Required — token character offsets (`Token.charStart` /
+     * `Token.charEnd`) are expressed relative to this string, so it must be present for the text
+     * layer to be interpretable, particularly for scriptio continua scripts where token boundaries
+     * are not derivable from whitespace.
+     */
+    baselineText: string;
 
     /**
      * Ordered tokens in this segment — both words **and** punctuation. Punctuation tokens are
@@ -383,17 +388,30 @@ declare module 'interlinearizer' {
    * A single word or punctuation unit at a specific position in the baseline text. Tokens carry no
    * linguistic analysis — that lives in the parallel `TokenAnalysis` within the analysis layer.
    *
+   * `charStart` and `charEnd` express the token's position as zero-based character offsets within
+   * the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last character). These
+   * fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao, Burmese, …)
+   * where word boundaries are not marked by whitespace and the tokenization decision is itself a
+   * linguistic artifact that must be preserved. For whitespace-delimited scripts the fields are
+   * still required: they allow faithful reconstruction and precise drift detection when the
+   * baseline changes without relying on surface-text scanning.
+   *
+   * Invariant: `Segment.baselineText.slice(charStart, charEnd) === surfaceText`.
+   *
    * Source-system mapping:
    *
    * - LCM: the `ITsString` span at an `ISegment.AnalysesRS` index. `type` = `word` when the analysis
    *   references `IWfiWordform` / `IWfiAnalysis` / `IWfiGloss`, `punctuation` when it references
-   *   `IPunctuationForm`.
+   *   `IPunctuationForm`. `charStart` / `charEnd` derived from the run boundaries of the
+   *   `ITsString` within `ISegment.BaselineText`.
    * - Paratext: a `ClusterData` entry (`type = word`) or a `PunctuationData` entry (`type =
    *   punctuation`) within `VerseData`. `surfaceText` = the text span identified by
-   *   `ClusterData.TextRange` / `PunctuationData.TextRange`.
+   *   `ClusterData.TextRange` / `PunctuationData.TextRange`. `charStart` / `charEnd` derived from
+   *   `TextRange`, offset by the segment's start position within the verse baseline.
    * - BT Extension: a `Token` (API) / `Instance` (DB). `surfaceText` = `Token.text` /
    *   `Instance.instanceText`. `type` is always `word` — BT Extension does not model punctuation
-   *   tokens.
+   *   tokens. `charStart` / `charEnd` reconstructed from the cumulative lengths of preceding
+   *   tokens' `before` + `text` + `after` spans; not natively stored as a character offset.
    */
   export interface Token {
     id: string;
@@ -406,6 +424,18 @@ declare module 'interlinearizer' {
 
     /** Whether this token is a word or punctuation. */
     type: TokenType;
+
+    /**
+     * Zero-based start offset of this token within the owning `Segment.baselineText`. Together with
+     * `charEnd`, uniquely locates the token in the baseline regardless of script type.
+     */
+    charStart: number;
+
+    /**
+     * Exclusive end offset of this token within the owning `Segment.baselineText` — one past the
+     * last character. `baselineText.slice(charStart, charEnd)` must equal `surfaceText`.
+     */
+    charEnd: number;
   }
 
   // ---------------------------------------------------------------------------

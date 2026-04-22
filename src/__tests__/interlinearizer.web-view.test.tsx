@@ -86,12 +86,14 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
-  it('shows an error when the project does not support the USJ book interface', () => {
+  it('shows an error when no USJ book is available for the project', () => {
     mockBookData(undefined, false);
     render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
     expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
-    expect(screen.getByText(/does not support the USJ book interface/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/no usj book available for gen in project test-project-id/i),
+    ).toBeInTheDocument();
   });
 
   it('shows the raw USFM when book data arrives', () => {

@@ -1,59 +1,38 @@
 {
   "mainMenu": {
     "columns": {},
-    "groups": {
-      "interlinearizer.interlinearizerProjects": {
-        "order": 1.5,
-        "isExtensible": true,
-        "menuItem": "interlinearizer.projectSubmenu"
-      }
-    },
-    "items": [
-      {
-        "id": "interlinearizer.projectSubmenu",
-        "label": "%mainMenu_interlinearizerSubmenu%",
-        "localizeNotes": "Application main menu > Project > Interlinearizer",
-        "group": "platform.projectProjects",
-        "order": 1000.1
-      },
-      {
-        "label": "%mainMenu_openInterlinearizer%",
-        "localizeNotes": "Application main menu > Project > Interlinearizer > Open Interlinearizer",
-        "group": "interlinearizer.interlinearizerProjects",
-        "order": 1,
-        "command": "interlinearizer.open"
-      }
-    ]
+    "groups": {},
+    "items": []
   },
   "defaultWebViewTopMenu": {
     "columns": {},
     "groups": {},
-    "items": [
-      {
-        "label": "%interlinearizer_openForProject%",
-        "localizeNotes": "WebView top menu > Project > Open Interlinearizer for this project",
-        "group": "platform.projectTop",
-        "order": 1000,
-        "command": "interlinearizer.openForWebView"
-      }
-    ]
+    "items": []
   },
   "defaultWebViewContextMenu": {
-    "groups": {
-      "interlinearizer.contextMenuGroup": {
-        "order": 100,
-        "isExtensible": false
-      }
-    },
-    "items": [
-      {
-        "label": "%interlinearizer_openForProject%",
-        "localizeNotes": "WebView context menu > Open Interlinearizer for this project",
-        "group": "interlinearizer.contextMenuGroup",
-        "order": 1,
-        "command": "interlinearizer.openForWebView"
-      }
-    ]
+    "groups": {},
+    "items": []
   },
-  "webViewMenus": {}
+  "webViewMenus": {
+    "platformScriptureEditor.react": {
+      "topMenu": {
+        "columns": {},
+        "groups": {
+          "interlinearizer.editor": {
+            "column": "platformScriptureEditor.edit",
+            "order": 12
+          }
+        },
+        "items": [
+          {
+            "label": "%interlinearizer_openForProject%",
+            "localizeNotes": "Scripture Editor top menu > Open Interlinearizer for this project",
+            "group": "interlinearizer.editor",
+            "order": 1,
+            "command": "interlinearizer.openForWebView"
+          }
+        ]
+      }
+    }
+  }
 }

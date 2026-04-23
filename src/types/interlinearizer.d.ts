@@ -96,7 +96,7 @@ declare module 'interlinearizer' {
     book: string;
     chapter: number;
     verse: number;
-    /** Zero-based UTF-16 code unit offset within the verse's baseline text. */
+    /** Zero-based character offset within the verse's baseline text. */
     charIndex?: number;
   }
 
@@ -366,13 +366,13 @@ declare module 'interlinearizer' {
    * A single word or punctuation unit at a specific position in the baseline text. Tokens carry no
    * linguistic analysis — that lives in the parallel `TokenAnalysis` within the analysis layer.
    *
-   * `charStart` and `charEnd` express the token's position as zero-based UTF-16 code unit offsets
-   * within the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last code
-   * unit). These fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao,
-   * Burmese, …) where word boundaries are not marked by whitespace and the tokenization decision is
-   * itself a linguistic artifact that must be preserved. For whitespace-delimited scripts the
-   * fields are still required: they allow faithful reconstruction and precise drift detection when
-   * the baseline changes without relying on surface-text scanning.
+   * `charStart` and `charEnd` express the token's position as zero-based character offsets within
+   * the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last code unit). These
+   * fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao, Burmese, …)
+   * where word boundaries are not marked by whitespace and the tokenization decision is itself a
+   * linguistic artifact that must be preserved. For whitespace-delimited scripts the fields are
+   * still required: they allow faithful reconstruction and precise drift detection when the
+   * baseline changes without relying on surface-text scanning.
    *
    * Invariant: `Segment.baselineText.slice(charStart, charEnd) === surfaceText`.
    *
@@ -408,16 +408,15 @@ declare module 'interlinearizer' {
     type: TokenType;
 
     /**
-     * Zero-based UTF-16 code unit start offset of this token within the owning
-     * `Segment.baselineText`. Together with `charEnd`, uniquely locates the token in the baseline
-     * regardless of script type.
+     * Zero-based character start offset of this token within the owning `Segment.baselineText`.
+     * Together with `charEnd`, uniquely locates the token in the baseline regardless of script
+     * type.
      */
     charStart: number;
 
     /**
-     * Exclusive UTF-16 code unit end offset of this token within the owning `Segment.baselineText`
-     * — one past the last code unit. `baselineText.slice(charStart, charEnd)` must equal
-     * `surfaceText`.
+     * Exclusive character end offset of this token within the owning `Segment.baselineText` — one
+     * past the last code unit. `baselineText.slice(charStart, charEnd)` must equal `surfaceText`.
      */
     charEnd: number;
   }

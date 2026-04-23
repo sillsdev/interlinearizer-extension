@@ -3,8 +3,13 @@
  * loading the real Platform API.
  */
 
-const mockRegisterWebViewProvider = jest.fn().mockResolvedValue({ dispose: jest.fn() });
-const mockOpenWebView = jest.fn().mockResolvedValue(undefined);
+const mockRegisterWebViewProvider = jest.fn();
+const mockRegisterCommand = jest.fn();
+const mockOpenWebView = jest.fn();
+const mockSelectProject = jest.fn();
+const mockGetOpenWebViewDefinition = jest.fn();
+const mockOnDidOpenWebView = jest.fn();
+const mockOnDidCloseWebView = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -13,18 +18,32 @@ const mockLogger = {
 };
 
 const papi = {
+  commands: {
+    registerCommand: mockRegisterCommand,
+  },
+  dialogs: {
+    selectProject: mockSelectProject,
+  },
   webViewProviders: {
     registerWebViewProvider: mockRegisterWebViewProvider,
   },
   webViews: {
     openWebView: mockOpenWebView,
+    getOpenWebViewDefinition: mockGetOpenWebViewDefinition,
+    onDidOpenWebView: mockOnDidOpenWebView,
+    onDidCloseWebView: mockOnDidCloseWebView,
   },
 };
 
 const defaultExport = {
   ...papi,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
+  __mockRegisterCommand: mockRegisterCommand,
   __mockOpenWebView: mockOpenWebView,
+  __mockSelectProject: mockSelectProject,
+  __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
+  __mockOnDidOpenWebView: mockOnDidOpenWebView,
+  __mockOnDidCloseWebView: mockOnDidCloseWebView,
   __mockLogger: mockLogger,
 };
 
@@ -33,7 +52,12 @@ module.exports = {
   default: defaultExport,
   logger: mockLogger,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
+  __mockRegisterCommand: mockRegisterCommand,
   __mockOpenWebView: mockOpenWebView,
+  __mockSelectProject: mockSelectProject,
+  __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
+  __mockOnDidOpenWebView: mockOnDidOpenWebView,
+  __mockOnDidCloseWebView: mockOnDidCloseWebView,
   __mockLogger: mockLogger,
 };
 

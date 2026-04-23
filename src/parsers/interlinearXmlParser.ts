@@ -26,7 +26,7 @@ export interface ClusterData {
   LexemesId: string;
   /** Unique cluster id: LexemesId plus TextRange (e.g. "Word:a/Word:b/21-3"). */
   Id: string;
-  /** Excluded flag. See [pt9-xml.md](../parsers/pt9-xml.md) for details. */
+  /** Excluded flag. See [pt9-xml.md](./pt9-xml.md) for details. */
   Excluded: boolean;
 }
 

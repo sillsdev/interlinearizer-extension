@@ -341,14 +341,14 @@ describe('main', () => {
 
     function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
       const cb: unknown = __mockOnDidOpenWebView.mock.calls[0]?.[0];
-      if (typeof cb !== 'function') throw new Error('onDidOpenWebView callback not found');
-      return cb as (event: { webView: SavedWebViewDefinition }) => void;
+      if (!isCallable(cb)) throw new Error('onDidOpenWebView callback not found');
+      return (event) => cb(event);
     }
 
     function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
       const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
-      if (typeof cb !== 'function') throw new Error('onDidCloseWebView callback not found');
-      return cb as (event: { webView: SavedWebViewDefinition }) => void;
+      if (!isCallable(cb)) throw new Error('onDidCloseWebView callback not found');
+      return (event) => cb(event);
     }
 
     describe('onDidOpenWebView callback', () => {

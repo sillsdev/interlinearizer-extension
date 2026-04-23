@@ -2,6 +2,11 @@ import type { WebViewProps } from '@papi/core';
 import { useProjectData } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
 
+/**
+ * Fetches and displays the USJ book data for the given project and scripture reference. Shows a
+ * loading indicator while data is in flight, an error message if the fetch fails or returns no
+ * data, and the raw JSON of the book otherwise.
+ */
 function ProjectBookFetcher({
   projectId,
   scrRef,
@@ -49,6 +54,11 @@ function ProjectBookFetcher({
   );
 }
 
+/**
+ * Root WebView component for the Interlinearizer. Reads the scroll-group scripture reference and
+ * delegates book fetching to {@link ProjectBookFetcher}. Shows a placeholder when no projectId is
+ * provided (i.e. the WebView was opened without a project).
+ */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
   useWebViewScrollGroupScrRef,

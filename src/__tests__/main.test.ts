@@ -1,7 +1,7 @@
 /** @file Unit tests for the extension entry point (main.ts). */
 /// <reference types="jest" />
 
-import type { IWebViewProvider, SavedWebViewDefinition } from '@papi/core';
+import type { SavedWebViewDefinition } from '@papi/core';
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
@@ -36,14 +36,6 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockOnDidCloseWebView' in m &&
     '__mockLogger' in m
   );
-}
-
-/**
- * Type guard for the WebView provider passed to registerWebViewProvider. Used to obtain a properly
- * typed provider from the mock without type assertions.
- */
-function isIWebViewProvider(x: unknown): x is IWebViewProvider {
-  return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
 }
 
 if (!isPapiBackendTestMock(papiBackendMock)) throw new Error('Expected mocked @papi/backend');
@@ -121,20 +113,35 @@ describe('main', () => {
   });
 
   describe('mainWebViewProvider.getWebView', () => {
+    type WebViewProvider = {
+      getWebView(saved: SavedWebViewDefinition, opts?: object): Promise<unknown>;
+    };
+
+    function isWebViewProvider(x: unknown): x is WebViewProvider {
+      return (
+        !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function'
+      );
+    }
+
+    /** Retrieves the provider registered with the platform and asserts it exists. */
+    function getRegisteredProvider(): WebViewProvider {
+      const raw = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+      if (!isWebViewProvider(raw)) throw new Error('Expected registered provider');
+      return raw;
+    }
+
     it('returns WebView definition when webViewType matches', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      expect(rawProvider).toBeDefined();
-      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const provider = getRegisteredProvider();
       const savedWebView: SavedWebViewDefinition = {
         id: 'test-webview-id',
         webViewType: mainWebViewType,
       };
 
-      const result = await rawProvider.getWebView(savedWebView, {}, 'test-nonce');
+      const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({
         ...savedWebView,
@@ -148,15 +155,14 @@ describe('main', () => {
       const context = createTestActivationContext();
       await activate(context);
 
-      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const provider = getRegisteredProvider();
       const savedWebView: SavedWebViewDefinition = {
         id: 'test-webview-id',
         webViewType: mainWebViewType,
       };
 
       const options: InterlinearizerOpenOptions = { projectId: 'my-project' };
-      const result = await rawProvider.getWebView(savedWebView, options, 'test-nonce');
+      const result = await provider.getWebView(savedWebView, options);
 
       expect(result).toMatchObject({ projectId: 'my-project' });
     });
@@ -165,15 +171,14 @@ describe('main', () => {
       const context = createTestActivationContext();
       await activate(context);
 
-      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const provider = getRegisteredProvider();
       const savedWebView: SavedWebViewDefinition = {
         id: 'test-webview-id',
         webViewType: mainWebViewType,
         projectId: 'saved-project',
       };
 
-      const result = await rawProvider.getWebView(savedWebView, {}, 'test-nonce');
+      const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });
@@ -183,15 +188,13 @@ describe('main', () => {
 
       await activate(context);
 
-      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      expect(rawProvider).toBeDefined();
-      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const provider = getRegisteredProvider();
       const savedWebView: SavedWebViewDefinition = {
         id: 'other-id',
         webViewType: 'other.webView',
       };
 
-      await expect(rawProvider.getWebView(savedWebView, {}, 'test-nonce')).rejects.toThrow(
+      await expect(provider.getWebView(savedWebView, {})).rejects.toThrow(
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
     });
@@ -200,16 +203,14 @@ describe('main', () => {
       const context = createTestActivationContext();
       await activate(context);
 
-      const rawProvider = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      if (!isIWebViewProvider(rawProvider)) throw new Error('Expected registered provider');
+      const provider = getRegisteredProvider();
       const savedWebView: SavedWebViewDefinition = {
         id: 'test-webview-id',
         webViewType: mainWebViewType,
         projectId: 'saved-project',
       };
 
-      // @ts-expect-error -- intentionally passing undefined to test the defensive fallback path
-      const result = await rawProvider.getWebView(savedWebView, undefined, 'test-nonce');
+      const result = await provider.getWebView(savedWebView, undefined);
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });

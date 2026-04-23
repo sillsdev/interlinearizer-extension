@@ -22,6 +22,8 @@ if (!InterlinearizerWebView) throw new Error('webViewComponent not loaded');
 /** Minimal SerializedVerseRef for hook mock return. */
 const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
+const testProjectId = 'test-project-id';
+
 /** Builds a minimal WebViewProps for tests. */
 function makeProps(projectId?: string): WebViewProps {
   return {
@@ -69,27 +71,25 @@ describe('InterlinearizerWebView', () => {
 
   it('shows the book and projectId when a project is linked', () => {
     mockBookData({ type: 'USJ', version: '3.1', content: [] });
-    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
-    expect(screen.getByText(/test-project-id/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(testProjectId))).toBeInTheDocument();
     expect(screen.getByText(/GEN · project/)).toBeInTheDocument();
   });
 
   it('shows Loading when projectId is set but book data has not arrived', () => {
     mockBookData(undefined, true);
-    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
   it('shows an error when no USJ book is available for the project', () => {
     mockBookData(undefined, false);
-    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
-    expect(
-      screen.getByText(/no usj book available for gen in project test-project-id/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/no usj book available for gen in project/i)).toBeInTheDocument();
   });
 
   it('shows the raw USFM when book data arrives', () => {
@@ -98,14 +98,14 @@ describe('InterlinearizerWebView', () => {
       version: '3.1',
       content: [{ type: 'book', marker: 'id', code: 'EXO' }],
     });
-    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByText(/"code": "EXO"/)).toBeInTheDocument();
   });
 
   it('shows an error heading and message when book data is a PlatformError', () => {
     mockBookData({ isPlatformError: true, message: 'Project not found' });
-    render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();

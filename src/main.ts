@@ -34,8 +34,6 @@ const mainWebViewProvider: IWebViewProvider = {
   async getWebView(
     savedWebView: SavedWebViewDefinition,
     openWebViewOptions?: InterlinearizerOpenOptions,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _webViewNonce?: string,
   ): Promise<WebViewDefinition | undefined> {
     if (savedWebView.webViewType !== mainWebViewType) {
       throw new Error(

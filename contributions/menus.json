@@ -13,5 +13,26 @@
     "groups": {},
     "items": []
   },
-  "webViewMenus": {}
+  "webViewMenus": {
+    "platformScriptureEditor.react": {
+      "topMenu": {
+        "columns": {},
+        "groups": {
+          "interlinearizer.editor": {
+            "column": "platformScriptureEditor.edit",
+            "order": 12
+          }
+        },
+        "items": [
+          {
+            "label": "%interlinearizer_openForProject%",
+            "localizeNotes": "Scripture Editor top menu > Open Interlinearizer for this project",
+            "group": "interlinearizer.editor",
+            "order": 1,
+            "command": "interlinearizer.openForWebView"
+          }
+        ]
+      }
+    }
+  }
 }

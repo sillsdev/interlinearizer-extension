@@ -138,7 +138,7 @@ module.exports = {
 
     // #region Overrides to rules from paranext-core
 
-    'import/no-unresolved': ['error', { ignore: ['@papi'] }],
+    'import/no-unresolved': ['error', { ignore: ['@papi', 'lexicon'] }],
 
     // #endregion
   },

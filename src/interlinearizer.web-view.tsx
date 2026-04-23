@@ -1,6 +1,9 @@
-import type { WebViewProps } from '@papi/core';
+import type { NetworkObject, WebViewProps } from '@papi/core';
+import { logger, networkObjects } from '@papi/frontend';
 import { useProjectData } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
+import { useEffect, useState } from 'react';
+import { IEntryService } from 'lexicon';
 
 /**
  * Fetches and displays the USJ book data for the given project and scripture reference. Shows a
@@ -29,6 +32,28 @@ function ProjectBookFetcher({
   } else {
     bookUsj = bookResult;
   }
+
+  const [lexiconService, setLexiconService] = useState<NetworkObject<IEntryService> | undefined>();
+
+  useEffect(() => {
+    networkObjects
+      .get<IEntryService>('lexicon.entryService')
+      // eslint-disable-next-line promise/always-return
+      .then(setLexiconService)
+      .catch((e) => logger.error('Error loading Lexicon network object', e));
+  }, []);
+
+  useEffect(() => {
+    if (lexiconService) {
+      // eslint-disable-next-line promise/catch-or-return
+      lexiconService
+        .getEntries('32664DC3288A28DF2E2BB75DED887FC8F17A15FB', { surfaceForm: 'apple' })
+        // eslint-disable-next-line promise/always-return
+        .then((entries) => {
+          logger.info('Got lexicon entries for "apple":', entries);
+        });
+    }
+  }, [lexiconService]);
 
   return (
     <>

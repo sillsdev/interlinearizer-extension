@@ -391,7 +391,9 @@ describe('main', () => {
         const context = createTestActivationContext();
         await activate(context);
 
-        getOpenWebViewCallback()({ webView: { id: 'no-project-tab', webViewType: mainWebViewType } });
+        getOpenWebViewCallback()({
+          webView: { id: 'no-project-tab', webViewType: mainWebViewType },
+        });
 
         await findRegisteredHandler('interlinearizer.openForWebView')?.();
         expect(__mockOpenWebView).toHaveBeenCalledWith(

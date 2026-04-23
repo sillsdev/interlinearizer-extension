@@ -88,18 +88,6 @@ describe('main', () => {
       );
     });
 
-    it('registers the interlinearizer.open command', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.open',
-        expect.any(Function),
-        expect.any(Object),
-      );
-    });
-
     it('registers the interlinearizer.openForWebView command', async () => {
       const context = createTestActivationContext();
 
@@ -112,12 +100,12 @@ describe('main', () => {
       );
     });
 
-    it('adds all five registrations to the activation context', async () => {
+    it('adds all fours registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(5);
+      expect(context.registrations.unsubscribers.size).toBe(4);
     });
 
     it('logs activation start and finish', async () => {
@@ -239,109 +227,6 @@ describe('main', () => {
     return isCallable(rawHandler) ? rawHandler : undefined;
   }
 
-  describe('interlinearizer.open command', () => {
-    async function getOpenHandler(): Promise<(projectId?: string) => Promise<string | undefined>> {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.open');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.open');
-      return (projectId?: string): Promise<string | undefined> => {
-        const result: unknown = rawHandler(projectId);
-        if (!(result instanceof Promise)) return Promise.resolve(undefined);
-        return result.then((v: unknown) => (typeof v === 'string' ? v : undefined));
-      };
-    }
-
-    it('opens a new tab with the given projectId on the first open', async () => {
-      const open = await getOpenHandler();
-
-      await open('project-first-open');
-
-      expect(__mockSelectProject).not.toHaveBeenCalled();
-      expect(__mockOpenWebView).toHaveBeenCalledWith(mainWebViewType, undefined, {
-        projectId: 'project-first-open',
-        existingId: undefined,
-      });
-    });
-
-    it('reuses the WebView ID on subsequent opens of the same project', async () => {
-      __mockOpenWebView.mockResolvedValue('saved-webview-id');
-      const open = await getOpenHandler();
-
-      await open('project-reuse');
-      await open('project-reuse');
-
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: 'saved-webview-id', projectId: 'project-reuse' }),
-      );
-    });
-
-    it('opens a new tab for a different project', async () => {
-      __mockOpenWebView
-        .mockResolvedValueOnce('project-c-webview-id')
-        .mockResolvedValueOnce('project-d-webview-id');
-      const open = await getOpenHandler();
-
-      await open('project-c');
-      await open('project-d');
-
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: undefined, projectId: 'project-d' }),
-      );
-    });
-
-    it('shows a project picker when no projectId is provided', async () => {
-      __mockSelectProject.mockResolvedValue('project-picked');
-      const open = await getOpenHandler();
-
-      await open();
-
-      expect(__mockSelectProject).toHaveBeenCalledTimes(1);
-      expect(__mockOpenWebView).toHaveBeenCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ projectId: 'project-picked' }),
-      );
-    });
-
-    it('returns undefined when the user cancels the project picker', async () => {
-      __mockSelectProject.mockResolvedValue(undefined);
-      const open = await getOpenHandler();
-
-      const result = await open();
-
-      expect(result).toBeUndefined();
-      expect(__mockOpenWebView).not.toHaveBeenCalled();
-    });
-
-    it('does not store a mapping when openWebView returns undefined', async () => {
-      __mockOpenWebView.mockResolvedValueOnce(undefined).mockResolvedValueOnce('later-id');
-      const open = await getOpenHandler();
-
-      await open('project-failed-open');
-      await open('project-failed-open');
-
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: undefined, projectId: 'project-failed-open' }),
-      );
-    });
-
-    it('returns the WebView ID when the WebView opens successfully', async () => {
-      __mockOpenWebView.mockResolvedValue('new-webview-id');
-      const open = await getOpenHandler();
-
-      const result = await open('project-return-id');
-
-      expect(result).toBe('new-webview-id');
-    });
-  });
-
   describe('interlinearizer.openForWebView command', () => {
     async function getOpenForWebViewHandler(): Promise<
       (webViewId?: string) => Promise<string | undefined>
@@ -445,10 +330,6 @@ describe('main', () => {
   });
 
   describe('WebView lifecycle event subscriptions', () => {
-    type WebViewEvent = (event: {
-      webView: { webViewType: string; id: string; projectId?: string };
-    }) => void;
-
     it('subscribes to onDidOpenWebView and onDidCloseWebView during activation', async () => {
       const context = createTestActivationContext();
 
@@ -458,132 +339,147 @@ describe('main', () => {
       expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
     });
 
-    it('populates openWebViewsByProject when a matching WebView opens', async () => {
-      const context = createTestActivationContext();
-      await activate(context);
-      const onOpen: WebViewEvent = __mockOnDidOpenWebView.mock.calls[0][0];
+    function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+      const cb: unknown = __mockOnDidOpenWebView.mock.calls[0]?.[0];
+      if (typeof cb !== 'function') throw new Error('onDidOpenWebView callback not found');
+      return cb as (event: { webView: SavedWebViewDefinition }) => void;
+    }
 
-      onOpen({ webView: { webViewType: mainWebViewType, id: 'wv-1', projectId: 'proj-a' } });
+    function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+      const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
+      if (typeof cb !== 'function') throw new Error('onDidCloseWebView callback not found');
+      return cb as (event: { webView: SavedWebViewDefinition }) => void;
+    }
 
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-a');
+    describe('onDidOpenWebView callback', () => {
+      it('adds the webView to the project map so subsequent opens reuse the existing tab', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
 
-      expect(__mockOpenWebView).toHaveBeenCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: 'wv-1', projectId: 'proj-a' }),
-      );
-    });
+        getOpenWebViewCallback()({
+          webView: { id: 'tab-from-event', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
 
-    it('ignores onDidOpenWebView events for other WebView types', async () => {
-      const context = createTestActivationContext();
-      await activate(context);
-      const onOpen: WebViewEvent = __mockOnDidOpenWebView.mock.calls[0][0];
-
-      onOpen({ webView: { webViewType: 'other.webView', id: 'wv-x', projectId: 'proj-x' } });
-
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-x');
-
-      expect(__mockOpenWebView).toHaveBeenCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: undefined }),
-      );
-    });
-
-    it('ignores onDidOpenWebView events with no projectId', async () => {
-      const context = createTestActivationContext();
-      await activate(context);
-      const onOpen: WebViewEvent = __mockOnDidOpenWebView.mock.calls[0][0];
-
-      onOpen({ webView: { webViewType: mainWebViewType, id: 'wv-no-project' } });
-
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-no-project');
-
-      expect(__mockOpenWebView).toHaveBeenCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: undefined }),
-      );
-    });
-
-    it('removes the entry from the map when the matching WebView closes', async () => {
-      __mockOpenWebView.mockResolvedValue('wv-close');
-      const context = createTestActivationContext();
-      await activate(context);
-
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-close');
-
-      const onClose: WebViewEvent = __mockOnDidCloseWebView.mock.calls[0][0];
-      onClose({
-        webView: { webViewType: mainWebViewType, id: 'wv-close', projectId: 'proj-close' },
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'tab-from-event', projectId: 'my-project' }),
+        );
       });
 
-      __mockOpenWebView.mockResolvedValue('wv-new');
-      await open('proj-close');
+      it('ignores webViews with a non-matching webViewType', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
 
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: undefined, projectId: 'proj-close' }),
-      );
-    });
+        getOpenWebViewCallback()({
+          webView: { id: 'other-tab', webViewType: 'other.webView', projectId: 'my-project' },
+        });
 
-    it('does not remove the entry when a different WebView ID closes for the same project', async () => {
-      __mockOpenWebView.mockResolvedValue('wv-current');
-      const context = createTestActivationContext();
-      await activate(context);
-
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-stale');
-
-      const onClose: WebViewEvent = __mockOnDidCloseWebView.mock.calls[0][0];
-      onClose({
-        webView: { webViewType: mainWebViewType, id: 'wv-old', projectId: 'proj-stale' },
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.not.objectContaining({ existingId: expect.any(String) }),
+        );
       });
 
-      await open('proj-stale');
+      it('ignores webViews with no projectId', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
 
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: 'wv-current', projectId: 'proj-stale' }),
-      );
+        getOpenWebViewCallback()({ webView: { id: 'no-project-tab', webViewType: mainWebViewType } });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.not.objectContaining({ existingId: expect.any(String) }),
+        );
+      });
     });
 
-    it('ignores onDidCloseWebView events for other WebView types', async () => {
-      __mockOpenWebView.mockResolvedValue('wv-other-type');
-      const context = createTestActivationContext();
-      await activate(context);
+    describe('onDidCloseWebView callback', () => {
+      it('removes the project map entry so the next open creates a new tab', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
 
-      const open = findRegisteredHandler('interlinearizer.open');
-      if (!open) throw new Error('Handler not found');
-      await open('proj-other-type');
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
 
-      const onClose: WebViewEvent = __mockOnDidCloseWebView.mock.calls[0][0];
-      onClose({
-        webView: {
-          webViewType: 'other.webView',
-          id: 'wv-other-type',
-          projectId: 'proj-other-type',
-        },
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.not.objectContaining({ existingId: expect.any(String) }),
+        );
       });
 
-      await open('proj-other-type');
+      it('does not remove the project map entry when a different webView closes', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
 
-      expect(__mockOpenWebView).toHaveBeenLastCalledWith(
-        mainWebViewType,
-        undefined,
-        expect.objectContaining({ existingId: 'wv-other-type', projectId: 'proj-other-type' }),
-      );
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'other-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'my-tab' }),
+        );
+      });
+
+      it('ignores close events for webViews with a non-matching webViewType', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: 'other.webView', projectId: 'my-project' },
+        });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'my-tab' }),
+        );
+      });
+
+      it('ignores close events for webViews with no projectId', async () => {
+        __mockSelectProject.mockResolvedValue('my-project');
+        const context = createTestActivationContext();
+        await activate(context);
+
+        getOpenWebViewCallback()({
+          webView: { id: 'my-tab', webViewType: mainWebViewType, projectId: 'my-project' },
+        });
+        getCloseWebViewCallback()({ webView: { id: 'my-tab', webViewType: mainWebViewType } });
+
+        await findRegisteredHandler('interlinearizer.openForWebView')?.();
+        expect(__mockOpenWebView).toHaveBeenCalledWith(
+          mainWebViewType,
+          undefined,
+          expect.objectContaining({ existingId: 'my-tab' }),
+        );
+      });
     });
   });
 

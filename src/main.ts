@@ -108,29 +108,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProvider,
   );
 
-  const openCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.open',
-    openInterlinearizer,
-    {
-      method: {
-        summary: 'Open the Interlinearizer for a project',
-        params: [
-          {
-            name: 'projectId',
-            required: false,
-            summary: 'The project ID to open; if omitted a picker dialog is shown',
-            schema: { type: 'string' },
-          },
-        ],
-        result: {
-          name: 'return value',
-          summary: 'The ID of the opened WebView, or undefined if cancelled',
-          schema: { type: ['string', 'null'] },
-        },
-      },
-    },
-  );
-
   const openForWebViewCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openForWebView',
     openInterlinearizerForWebView,
@@ -167,7 +144,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   context.registrations.add(
     mainWebViewProviderRegistration,
-    openCommandRegistration,
     openForWebViewCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,

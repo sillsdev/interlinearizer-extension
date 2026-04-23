@@ -53,13 +53,16 @@ class UnsubscriberAsyncList {
   }
 }
 
-/** Minimal PlatformError shape matching the real platform-bible-utils type. */
+/**
+ * Minimal PlatformError shape matching the real platform-bible-utils type. Uses `platformErrorVersion`
+ * as the discriminant — the same field the real `isPlatformError` checks.
+ */
 interface PlatformError {
   message: string;
-  isPlatformError: true;
+  platformErrorVersion: number;
 }
 
 const isPlatformError = (value: unknown): value is PlatformError =>
-  typeof value === 'object' && value !== null && (value as PlatformError).isPlatformError === true;
+  typeof value === 'object' && value !== null && 'platformErrorVersion' in (value as object);
 
 export { UnsubscriberAsyncList, isPlatformError };

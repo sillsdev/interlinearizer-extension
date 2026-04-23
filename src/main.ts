@@ -10,7 +10,7 @@ import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 
 /**
- * WebView type identifier for the interlinearizer. Used when registering the provider and when
+ * WebView type identifier for the Interlinearizer. Used when registering the provider and when
  * opening the WebView from the platform.
  */
 const mainWebViewType = 'interlinearizer.mainWebView';
@@ -20,16 +20,16 @@ export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   projectId?: string;
 }
 
-/** WebView provider that provides the interlinearizer React WebView when Platform.Bible requests it. */
+/** WebView provider that provides the Interlinearizer React WebView when Platform.Bible requests it. */
 const mainWebViewProvider: IWebViewProvider = {
   /**
-   * Returns the interlinearizer WebView definition (React component + styles) for the given saved
+   * Returns the Interlinearizer WebView definition (React component + styles) for the given saved
    * definition. Rejects if the requested webViewType does not match this provider's type.
    *
    * @param savedWebView - Platform-provided definition (webViewType, etc.).
    * @param openWebViewOptions - Options passed by the caller; may include a projectId to link.
    * @returns WebView definition with title, content, and styles, or undefined.
-   * @throws {Error} When savedWebView.webViewType is not the interlinearizer type.
+   * @throws {Error} When savedWebView.webViewType is not the Interlinearizer type.
    */
   async getWebView(
     savedWebView: SavedWebViewDefinition,
@@ -85,7 +85,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 
 /**
  * Opens the Interlinearizer for the project associated with the given WebView. Called from the
- * webview context menu, which passes the tab's webView ID as the argument.
+ * WebView context menu, which passes the tab's WebView ID as the argument.
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
@@ -94,7 +94,7 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
- * Extension entry point. Registers the interlinearizer WebView provider and the open command.
+ * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
  * Called by the platform when the extension is loaded.
  *
  * @param context - Activation context; used to register disposables so the platform can clean them

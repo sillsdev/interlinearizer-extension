@@ -63,7 +63,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         <ProjectBookFetcher projectId={projectId} scrRef={scrRef} />
       ) : (
         <p className="tw-text-sm tw-text-muted-foreground">
-          Open this webview from a Paratext project to load its source book.
+          Open this WebView from a Paratext project to load its source book.
         </p>
       )}
     </div>

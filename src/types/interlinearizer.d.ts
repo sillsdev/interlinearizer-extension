@@ -12,8 +12,8 @@ declare module 'papi-shared-types' {
     'interlinearizer.open': (projectId?: string) => Promise<string | undefined>;
     /**
      * Opens the Interlinearizer for the project associated with the given WebView ID. Called from
-     * webview context menus, which pass the tab's webView ID as the argument. Falls back to a
-     * project picker dialog if the webView has no project or no ID is given.
+     * WebView context menus, which pass the tab's WebView ID as the argument. Falls back to a
+     * project picker dialog if the WebView has no project or no ID is given.
      */
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
   }

@@ -264,7 +264,7 @@ describe('main', () => {
       });
     });
 
-    it('reuses the webview ID on subsequent opens of the same project', async () => {
+    it('reuses the WebView ID on subsequent opens of the same project', async () => {
       __mockOpenWebView.mockResolvedValue('saved-webview-id');
       const open = await getOpenHandler();
 
@@ -332,7 +332,7 @@ describe('main', () => {
       );
     });
 
-    it('returns the webview ID when the webview opens successfully', async () => {
+    it('returns the WebView ID when the WebView opens successfully', async () => {
       __mockOpenWebView.mockResolvedValue('new-webview-id');
       const open = await getOpenHandler();
 
@@ -356,7 +356,7 @@ describe('main', () => {
       };
     }
 
-    it('looks up the projectId from the given webview and opens the interlinearizer', async () => {
+    it('looks up the projectId from the given WebView and opens the Interlinearizer', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'some-webview',
         webViewType: 'someExtension.view',
@@ -375,7 +375,7 @@ describe('main', () => {
       );
     });
 
-    it('shows a project picker when the webview has no projectId', async () => {
+    it('shows a project picker when the WebView has no projectId', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'some-webview',
         webViewType: 'someExtension.view',
@@ -393,7 +393,7 @@ describe('main', () => {
       );
     });
 
-    it('shows a project picker when the webview definition is not found', async () => {
+    it('shows a project picker when the WebView definition is not found', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
       __mockSelectProject.mockResolvedValue('picker-project');
       const openForWebView = await getOpenForWebViewHandler();
@@ -429,7 +429,7 @@ describe('main', () => {
       expect(__mockOpenWebView).not.toHaveBeenCalled();
     });
 
-    it('returns the webview ID when the interlinearizer opens successfully', async () => {
+    it('returns the WebView ID when the Interlinearizer opens successfully', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'src-webview',
         webViewType: 'someExtension.view',
@@ -444,7 +444,7 @@ describe('main', () => {
     });
   });
 
-  describe('webview lifecycle event subscriptions', () => {
+  describe('WebView lifecycle event subscriptions', () => {
     type WebViewEvent = (event: {
       webView: { webViewType: string; id: string; projectId?: string };
     }) => void;
@@ -458,7 +458,7 @@ describe('main', () => {
       expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
     });
 
-    it('populates openWebViewsByProject when a matching webview opens', async () => {
+    it('populates openWebViewsByProject when a matching WebView opens', async () => {
       const context = createTestActivationContext();
       await activate(context);
       const onOpen: WebViewEvent = __mockOnDidOpenWebView.mock.calls[0][0];
@@ -476,7 +476,7 @@ describe('main', () => {
       );
     });
 
-    it('ignores onDidOpenWebView events for other webview types', async () => {
+    it('ignores onDidOpenWebView events for other WebView types', async () => {
       const context = createTestActivationContext();
       await activate(context);
       const onOpen: WebViewEvent = __mockOnDidOpenWebView.mock.calls[0][0];
@@ -512,7 +512,7 @@ describe('main', () => {
       );
     });
 
-    it('removes the entry from the map when the matching webview closes', async () => {
+    it('removes the entry from the map when the matching WebView closes', async () => {
       __mockOpenWebView.mockResolvedValue('wv-close');
       const context = createTestActivationContext();
       await activate(context);
@@ -536,7 +536,7 @@ describe('main', () => {
       );
     });
 
-    it('does not remove the entry when a different webview ID closes for the same project', async () => {
+    it('does not remove the entry when a different WebView ID closes for the same project', async () => {
       __mockOpenWebView.mockResolvedValue('wv-current');
       const context = createTestActivationContext();
       await activate(context);
@@ -559,7 +559,7 @@ describe('main', () => {
       );
     });
 
-    it('ignores onDidCloseWebView events for other webview types', async () => {
+    it('ignores onDidCloseWebView events for other WebView types', async () => {
       __mockOpenWebView.mockResolvedValue('wv-other-type');
       const context = createTestActivationContext();
       await activate(context);

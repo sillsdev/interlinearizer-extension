@@ -68,11 +68,7 @@ describe('InterlinearizerWebView', () => {
   });
 
   it('shows the book and projectId when a project is linked', () => {
-    mockBookData({
-      type: 'USJ',
-      version: '3.1',
-      content: [{ type: 'book', marker: 'id', code: 'GEN' }],
-    });
+    mockBookData({ type: 'USJ', version: '3.1', content: [] });
     render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
     expect(screen.getByText(/test-project-id/)).toBeInTheDocument();
@@ -100,11 +96,11 @@ describe('InterlinearizerWebView', () => {
     mockBookData({
       type: 'USJ',
       version: '3.1',
-      content: [{ type: 'book', marker: 'id', code: 'GEN' }],
+      content: [{ type: 'book', marker: 'id', code: 'EXO' }],
     });
     render(<InterlinearizerWebView {...makeProps('test-project-id')} />);
 
-    expect(screen.getByText(/"code": "GEN"/)).toBeInTheDocument();
+    expect(screen.getByText(/"code": "EXO"/)).toBeInTheDocument();
   });
 
   it('shows an error heading and message when book data is a PlatformError', () => {

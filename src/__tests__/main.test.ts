@@ -92,7 +92,7 @@ describe('main', () => {
       );
     });
 
-    it('adds all fours registrations to the activation context', async () => {
+    it('adds all four registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);

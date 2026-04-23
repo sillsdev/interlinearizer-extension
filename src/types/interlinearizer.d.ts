@@ -47,7 +47,7 @@
  *
  * Staleness detection: analysis records and alignment endpoints carry a `tokenSnapshot` of the
  * token's surface text at analysis time. When the baseline changes, consumers compare the snapshot
- * against the current `Token.surfaceText` and flip `status` to `Stale` on mismatch to prompt
+ * against the current `Token.surfaceText` and flip `status` to `'stale'` on mismatch to prompt
  * re-review.
  */
 declare module 'interlinearizer' {
@@ -96,7 +96,7 @@ declare module 'interlinearizer' {
     book: string;
     chapter: number;
     verse: number;
-    /** Zero-based character offset within the verse's baseline text. */
+    /** Zero-based UTF-16 code unit offset within the verse's baseline text. */
     charIndex?: number;
   }
 
@@ -333,6 +333,10 @@ declare module 'interlinearizer' {
    *   `Token.text` + `Token.after`.
    */
   export interface Segment {
+    /**
+     * Unique within the owning `InterlinearText` — used as the cross-reference key by
+     * `SegmentAnalysis.segmentId`.
+     */
     id: string;
 
     /** Inclusive start of the text range, anchored to a character position within its verse. */
@@ -362,13 +366,13 @@ declare module 'interlinearizer' {
    * A single word or punctuation unit at a specific position in the baseline text. Tokens carry no
    * linguistic analysis — that lives in the parallel `TokenAnalysis` within the analysis layer.
    *
-   * `charStart` and `charEnd` express the token's position as zero-based character offsets within
-   * the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last character). These
-   * fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao, Burmese, …)
-   * where word boundaries are not marked by whitespace and the tokenization decision is itself a
-   * linguistic artifact that must be preserved. For whitespace-delimited scripts the fields are
-   * still required: they allow faithful reconstruction and precise drift detection when the
-   * baseline changes without relying on surface-text scanning.
+   * `charStart` and `charEnd` express the token's position as zero-based UTF-16 code unit offsets
+   * within the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last code
+   * unit). These fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao,
+   * Burmese, …) where word boundaries are not marked by whitespace and the tokenization decision is
+   * itself a linguistic artifact that must be preserved. For whitespace-delimited scripts the
+   * fields are still required: they allow faithful reconstruction and precise drift detection when
+   * the baseline changes without relying on surface-text scanning.
    *
    * Invariant: `Segment.baselineText.slice(charStart, charEnd) === surfaceText`.
    *
@@ -388,6 +392,10 @@ declare module 'interlinearizer' {
    *   tokens' `before` + `text` + `after` spans; not natively stored as a character offset.
    */
   export interface Token {
+    /**
+     * Unique within the owning `InterlinearText` — used as the cross-reference key by
+     * `TokenAnalysis.tokenId`, `Phrase.tokenIds`, and `AlignmentEndpoint.tokenId`.
+     */
     id: string;
 
     /** The token's text as it appears in the baseline. */
@@ -400,14 +408,16 @@ declare module 'interlinearizer' {
     type: TokenType;
 
     /**
-     * Zero-based start offset of this token within the owning `Segment.baselineText`. Together with
-     * `charEnd`, uniquely locates the token in the baseline regardless of script type.
+     * Zero-based UTF-16 code unit start offset of this token within the owning
+     * `Segment.baselineText`. Together with `charEnd`, uniquely locates the token in the baseline
+     * regardless of script type.
      */
     charStart: number;
 
     /**
-     * Exclusive end offset of this token within the owning `Segment.baselineText` — one past the
-     * last character. `baselineText.slice(charStart, charEnd)` must equal `surfaceText`.
+     * Exclusive UTF-16 code unit end offset of this token within the owning `Segment.baselineText`
+     * — one past the last code unit. `baselineText.slice(charStart, charEnd)` must equal
+     * `surfaceText`.
      */
     charEnd: number;
   }
@@ -444,7 +454,7 @@ declare module 'interlinearizer' {
      * entries (e.g. an AI-drafted back translation alongside a human-edited one), distinguished by
      * `status` / `confidence` / `producer`.
      *
-     * **Invariant:** at most one `SegmentAnalysis` per `segmentId` has `status: Approved`. That
+     * **Invariant:** at most one `SegmentAnalysis` per `segmentId` has `status: 'approved'`. That
      * entry is the canonical segment-level analysis for rendering; alternates are available to
      * review workflows via the other statuses.
      */
@@ -460,9 +470,9 @@ declare module 'interlinearizer' {
      * entries (e.g. a parser's suggestion alongside a human's choice), distinguished by `status` /
      * `confidence` / `producer`.
      *
-     * **Invariant:** at most one `TokenAnalysis` per `tokenId` has `status: Approved`. That entry
+     * **Invariant:** at most one `TokenAnalysis` per `tokenId` has `status: 'approved'`. That entry
      * is the canonical analysis for rendering; alternates are available to review workflows via the
-     * other statuses (`Suggested`, `Candidate`, `Rejected`, `Stale`).
+     * other statuses (`'suggested'`, `'candidate'`, `'rejected'`, `'stale'`).
      */
     tokenAnalyses: TokenAnalysis[];
 
@@ -500,7 +510,10 @@ declare module 'interlinearizer' {
   export interface SegmentAnalysis {
     id: string;
 
-    /** Reference to the corresponding `Segment.id` in the text layer. */
+    /**
+     * Reference to the corresponding `Segment.id` in the text layer (unique within the owning
+     * `InterlinearText`).
+     */
     segmentId: string;
 
     /** Idiomatic translation of the segment. */
@@ -568,9 +581,13 @@ declare module 'interlinearizer' {
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
   export type TokenAnalysis = {
+    /**
+     * Unique within the owning `TextAnalysis` — used as the cross-reference key by
+     * `AlignmentEndpoint.tokenAnalysisId` for morpheme-level alignment links.
+     */
     id: string;
 
-    /** Reference to the `Token.id` being analyzed. */
+    /** Reference to the `Token.id` being analyzed (unique within the owning `InterlinearText`). */
     tokenId: string;
 
     /** Ordered morpheme breakdown. Omitted for whole-word analyses. */
@@ -609,7 +626,7 @@ declare module 'interlinearizer' {
 
     /**
      * Surface text of the token at analysis time — used for drift detection. Consumers compare this
-     * against the current `Token.surfaceText`; on mismatch, flip `status` to `Stale` to prompt
+     * against the current `Token.surfaceText`; on mismatch, flip `status` to `'stale'` to prompt
      * re-review.
      *
      * Holds the raw surface text for debuggability; can be swapped for a hash if storage cost
@@ -653,6 +670,10 @@ declare module 'interlinearizer' {
    *   these.
    */
   export interface Morpheme {
+    /**
+     * Unique within the owning `TokenAnalysis.morphemes` array — used as the cross-reference key by
+     * `AlignmentEndpoint.morphemeId`.
+     */
     id: string;
 
     /** The morpheme form as it appears in this analysis (surface text). */
@@ -720,7 +741,7 @@ declare module 'interlinearizer' {
     id: string;
 
     /** Ordered `Token.id` values that compose this phrase. */
-    tokenIds: string[];
+    tokenIds: [string, ...string[]];
 
     /** Required review status. */
     status: AssignmentStatus;
@@ -752,7 +773,7 @@ declare module 'interlinearizer' {
      * each index `i` corresponds to the `Token.surfaceText` for `tokenIds[i]`. Consumers must
      * maintain this alignment when filtering or transforming tokens.
      */
-    tokenSnapshots?: string[];
+    tokenSnapshots?: [string, ...string[]];
   } & (
     | { gloss: MultiString; senseRef?: never }
     | { senseRef: SenseRef; gloss?: never }
@@ -807,13 +828,14 @@ declare module 'interlinearizer' {
   /**
    * One side of an alignment link.
    *
-   * When `morphemeId` is set the link connects at the morpheme level (the referenced morpheme lives
-   * inside the `TokenAnalysis` whose `tokenId` matches this endpoint). When absent the link
-   * connects to the whole token.
+   * When `morphemeId` is set the link connects at the morpheme level. Because a single token may
+   * have multiple competing `TokenAnalysis` entries, `tokenAnalysisId` is **required** alongside
+   * `morphemeId` to identify the specific `TokenAnalysis` that owns the referenced morpheme. When
+   * `morphemeId` is absent the link connects to the whole token.
    *
    * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `tokenId`) → TokenAnalysis
-   * (same `tokenId` in the analysis layer) → Morpheme (via `morphemeId`) → EntryRef → `IEntry`
-   * (Lexicon extension) → SenseRef → `ISense` (Lexicon extension)
+   * (via `tokenAnalysisId`) → Morpheme (via `morphemeId`) → EntryRef → `IEntry` (Lexicon extension)
+   * → SenseRef → `ISense` (Lexicon extension)
    *
    * Resolution chain (token-level): AlignmentEndpoint → Token (surface text only)
    *
@@ -822,21 +844,29 @@ declare module 'interlinearizer' {
    * - LCM / Paratext: endpoints produced only through external tools or parallel-project inference
    *   (see `AlignmentLink`).
    * - BT Extension: one endpoint per `Instance` in an `Alignment`'s `sourceInstances` /
-   *   `targetInstances`. `morphemeId` is set when the token has a morpheme-level parse; otherwise
-   *   the endpoint targets the whole token.
+   *   `targetInstances`. `morphemeId` and `tokenAnalysisId` are set when the token has a
+   *   morpheme-level parse; otherwise the endpoint targets the whole token.
    */
-  export interface AlignmentEndpoint {
+  export type AlignmentEndpoint = {
     /** The `Token.id` this endpoint targets. */
     tokenId: string;
-
-    /** Specific `Morpheme.id` within the token's parse, when applicable. */
-    morphemeId?: string;
 
     /**
      * Surface text of the token at link-creation time — used for drift detection. A link whose
      * endpoint snapshot no longer matches the current `Token.surfaceText` is stale; consumers flip
-     * the link's `status` to `Stale` to prompt re-review.
+     * the link's `status` to `'stale'` to prompt re-review.
      */
     tokenSnapshot?: string;
-  }
+  } & (
+    | { morphemeId?: never; tokenAnalysisId?: never }
+    | {
+        /**
+         * The `TokenAnalysis.id` that owns the referenced morpheme. Required when `morphemeId` is
+         * set.
+         */
+        tokenAnalysisId: string;
+        /** Specific `Morpheme.id` within the identified `TokenAnalysis.morphemes`. */
+        morphemeId: string;
+      }
+  );
 }

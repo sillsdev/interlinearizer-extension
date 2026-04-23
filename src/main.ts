@@ -76,9 +76,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
     existingId: openWebViewsByProject.get(resolvedProjectId),
     projectId: resolvedProjectId,
   };
-  const webViewId = await papi.webViews.openWebView(mainWebViewType, undefined, options);
-  if (webViewId) openWebViewsByProject.set(resolvedProjectId, webViewId);
-  return webViewId;
+  return papi.webViews.openWebView(mainWebViewType, undefined, options);
 }
 
 /**

@@ -42,7 +42,7 @@ function ProjectBookFetcher({
 
       {!bookError && (
         <pre className="tw-overflow-auto tw-rounded-md tw-border tw-border-border tw-bg-muted tw-p-4 tw-text-sm tw-font-mono tw-leading-relaxed">
-          {bookUsj ? JSON.stringify(bookUsj, undefined, 2) : 'Loading…'}
+          {isLoading ? 'Loading…' : JSON.stringify(bookUsj, undefined, 2)}
         </pre>
       )}
     </>

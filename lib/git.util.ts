@@ -2,7 +2,14 @@ import { exec, ExecException, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 
+// #region shared with https://github.com/paranext/paranext-multi-extension-template/blob/main/lib/git.util.ts
+
 const execAsync = promisify(exec);
+
+/** Absolute path to the repo root directory */
+const repoRoot = path.resolve(path.join(__dirname, '..'));
+
+// #endregion
 
 // #region shared with https://github.com/paranext/paranext-multi-extension-template/blob/main/lib/git.util.ts
 
@@ -23,12 +30,15 @@ export async function execCommand(
   if (!quiet) console.log(`\n>${execOptions.cwd ? ` cd ${execOptions.cwd};` : ''} ${command}`);
   try {
     const result = await execAsync(command, {
-      cwd: path.resolve(path.join(__dirname, '..')),
+      cwd: repoRoot,
       ...execOptions,
     });
     if (!quiet && result.stdout) console.log(result.stdout);
     if (!quiet && result.stderr) console.log(result.stderr);
-    return result;
+    return {
+      stdout: result.stdout.toString(),
+      stderr: result.stderr.toString(),
+    };
   } catch (error: unknown) {
     if (error instanceof Error) {
       // Use the more specific type for `exec`.

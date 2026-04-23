@@ -160,39 +160,40 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 1. Make sure the versions in this repo are on the version number you want to release. If they are not, manually dispatch the [Bump Versions workflow](#bumping-version-without-publishing-a-release) or run the `bump-versions` npm script to set the versions to what you want to release on the branch you want to release from.
 
 2. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
-   - `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
-   - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
-   - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
+
+- `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
+- `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
+- `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
 
     <details>
         <summary>[Optional] Create a new pre-release and bump versions branch manually </summary>
 
-   #### Manually create a new pre-release and bump versions branch
+  #### Manually create a new pre-release and bump versions branch
 
-   Alternatively, you can create a new pre-release manually:
+  Alternatively, you can create a new pre-release manually:
 
-   ```bash
-   npm run package
-   # Create a new pre-release in GitHub on tag `v<version>`
-   # Copy `.github/assets/release-body.md` into the release body
-   # Press the "Generate release notes" button in the release creation page to generate a changelog
-   # Attach contents of `release` folder to the release
-   ```
+  ```bash
+  npm run package
+  # Create a new pre-release in GitHub on tag `v<version>`
+  # Copy `.github/assets/release-body.md` into the release body
+  # Press the "Generate release notes" button in the release creation page to generate a changelog
+  # Attach contents of `release` folder to the release
+  ```
 
-   Then bump versions by running the following:
+  Then bump versions by running the following:
 
-   ```bash
-   npm run bump-versions <next_version>
-   ```
+  ```bash
+  npm run bump-versions <next_version>
+  ```
 
-   Or bump versions manually:
+  Or bump versions manually:
 
-   ```bash
-   git checkout -b bump-versions-<next_version>
-   npm version <next_version> --git-tag-version false
-   # Change version in the extension's `manifest.json`
-   git commit -a -m "Bumped versions to <next_version>"; git push -u origin HEAD
-   ```
+  ```bash
+  git checkout -b bump-versions-<next_version>
+  npm version <next_version> --git-tag-version false
+  # Change version in the extension's `manifest.json`
+  git commit -a -m "Bumped versions to <next_version>"; git push -u origin HEAD
+  ```
 
     </details>
 

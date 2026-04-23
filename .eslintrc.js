@@ -4,11 +4,9 @@ const path = require('path');
 
 module.exports = {
   extends: [
-    // https://github.com/airbnb/javascript/tree/master/packages/eslint-config-airbnb
-    'airbnb',
-    'airbnb/hooks',
-    'plugin:promise/recommended',
-    'plugin:compat/recommended',
+    // https://github.com/electron-react-boilerplate/eslint-config-erb/blob/main/index.js
+    // airbnb rules are embedded in erb https://github.com/airbnb/javascript/tree/master/packages/eslint-config-airbnb
+    'erb',
     // https://github.com/import-js/eslint-plugin-import?tab=readme-ov-file#typescript
     'plugin:import/recommended',
     'plugin:import/typescript',
@@ -16,10 +14,6 @@ module.exports = {
     // See https://github.com/prettier/eslint-config-prettier and https://github.com/prettier/eslint-plugin-prettier
     'plugin:prettier/recommended',
   ],
-  env: {
-    browser: true,
-    node: true,
-  },
 
   rules: {
     // Some rules in this following shared region are not applied since they are overridden in subsequent regions
@@ -36,7 +30,6 @@ module.exports = {
     'import/no-import-module-exports': 'off',
     'import/no-unresolved': 'error',
     'import/prefer-default-export': 'off',
-    'no-param-reassign': ['error', { props: false }],
     'react/jsx-filename-extension': 'off',
     'react/react-in-jsx-scope': 'off',
 
@@ -54,32 +47,12 @@ module.exports = {
     ],
     '@typescript-eslint/explicit-member-accessibility': ['error', { accessibility: 'no-public' }],
     'lines-between-class-members': 'off',
-    '@stylistic/ts/lines-between-class-members': [
+    '@typescript-eslint/lines-between-class-members': [
       'error',
       'always',
       { exceptAfterSingleLine: true, exceptAfterOverload: true },
     ],
     '@typescript-eslint/member-ordering': 'error',
-    '@typescript-eslint/naming-convention': [
-      'error',
-      {
-        selector: 'variableLike',
-        format: ['camelCase', 'PascalCase', 'UPPER_CASE'],
-        leadingUnderscore: 'allowSingleOrDouble',
-      },
-      {
-        selector: 'enumMember',
-        format: ['PascalCase'],
-      },
-      {
-        selector: 'function',
-        format: ['camelCase', 'PascalCase'],
-      },
-      {
-        selector: 'typeLike',
-        format: ['PascalCase'],
-      },
-    ],
     'no-empty-function': 'off',
     '@typescript-eslint/no-empty-function': [
       'error',
@@ -193,14 +166,14 @@ module.exports = {
       },
     },
   ],
-  parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 2022,
     sourceType: 'module',
     project: './tsconfig.lint.json',
     tsconfigRootDir: __dirname,
+    createDefaultProgram: true,
   },
-  plugins: ['@typescript-eslint', '@stylistic/ts', 'jest', 'no-type-assertion', 'no-null'],
+  plugins: ['@typescript-eslint', 'jest', 'no-type-assertion', 'no-null'],
   settings: {
     'import/resolver': {
       typescript: {

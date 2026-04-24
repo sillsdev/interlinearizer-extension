@@ -116,4 +116,15 @@ describe('tokenizeBook', () => {
       'Invalid verse SID',
     );
   });
+
+  it('classifies astral-plane letters (surrogate pairs) as word tokens', () => {
+    // Gothic letters U+10330–U+1034F are outside the BMP; each code point is two UTF-16 code
+    // units. Testing surfaceText[0] (a lone surrogate) against WORD_START_RE would fail — the
+    // fix is to test the full surfaceText string.
+    const text = '𐌰𐌱𐌲';
+    const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+    expect(segments[0].tokens).toHaveLength(1);
+    expect(segments[0].tokens[0].type).toBe('word');
+    expect(segments[0].tokens[0].surfaceText).toBe(text);
+  });
 });

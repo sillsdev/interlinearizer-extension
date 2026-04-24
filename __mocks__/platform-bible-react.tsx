@@ -6,11 +6,17 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
-export const cn = (...args: unknown[]): string =>
-  args
-    .flat()
-    .filter((v) => typeof v === 'string' && v.length > 0)
-    .join(' ');
+function flattenCn(arg: unknown): string[] {
+  if (typeof arg === 'string') return arg.length > 0 ? [arg] : [];
+  if (Array.isArray(arg)) return arg.flatMap(flattenCn);
+  if (arg !== null && typeof arg === 'object')
+    return Object.entries(arg as Record<string, unknown>)
+      .filter(([, v]) => Boolean(v))
+      .map(([k]) => k);
+  return [];
+}
+
+export const cn = (...args: unknown[]): string => args.flatMap(flattenCn).join(' ');
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: string;
@@ -39,7 +45,6 @@ export function BookChapterControl({
   handleSubmit: (ref: ScriptureRef) => void;
   localizedStrings?: Record<string, string>;
   recentSearches?: ScriptureRef[];
-  onAddRecentSearch?: (ref: ScriptureRef) => void;
 }) {
   return (
     <div data-testid="book-chapter-control">

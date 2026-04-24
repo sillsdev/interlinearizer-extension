@@ -251,9 +251,7 @@ describe('InterlinearizerWebView', () => {
     // defaultScrRef is GEN 1:1, so verse 1 is active
     const { container } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
-    const activeSegments = Array.from(container.querySelectorAll('button')).filter((el) =>
-      el.className.includes('tw-bg-muted/50'),
-    );
+    const activeSegments = container.querySelectorAll('button[aria-current="true"]');
     expect(activeSegments).toHaveLength(1);
   });
 
@@ -340,11 +338,14 @@ describe('InterlinearizerWebView', () => {
   it('passes a book-stable ref to BookUSJ so verse changes do not re-fetch the book', () => {
     const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
     jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));
-    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
-
-    expect(mockBookUSJ).toHaveBeenCalledWith(
-      { book: 'GEN', chapterNum: 1, verseNum: 1 },
-      undefined,
+    const { rerender } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+    rerender(
+      <InterlinearizerWebView
+        {...makeProps(testProjectId, { book: 'GEN', chapterNum: 1, verseNum: 5 })}
+      />,
     );
+
+    const refsPassed = mockBookUSJ.mock.calls.map((c) => c[0]);
+    refsPassed.forEach((ref) => expect(ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
   });
 });

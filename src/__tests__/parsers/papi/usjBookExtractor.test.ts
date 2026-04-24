@@ -103,7 +103,7 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(1);
-    expect(verses[0].text).toBe('Blessed is the manwho walks not in the counsel of the wicked.');
+    expect(verses[0].text).toBe('Blessed is the man who walks not in the counsel of the wicked.');
   });
 
   it('includes text inside inline char nodes', () => {
@@ -168,6 +168,22 @@ describe('extractBookFromUsj', () => {
     expect(verses[1]).toEqual({ sid: 'GEN 1:2', text: 'Some text.' });
   });
 
+  it('captures text nested directly inside a verse node', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:1', content: ['Inline verse content.'] }],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(1);
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'Inline verse content.' });
+  });
+
   it('throws when a verse marker is missing its sid attribute', () => {
     const usj: UsjDocument = {
       content: [
@@ -183,5 +199,51 @@ describe('extractBookFromUsj', () => {
   it('throws when no book marker with a code attribute is found', () => {
     const usj: UsjDocument = { content: [{ type: 'para', content: ['Some text.'] }] };
     expect(() => extractBookFromUsj(usj, WS)).toThrow('no book marker');
+  });
+
+  it('flushes an open verse when a chapter boundary is crossed', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:31' }, 'Last verse of chapter one.'],
+        },
+        { type: 'chapter', number: '2', sid: 'GEN 2' },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 2:1' }, 'First verse of chapter two.'],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(2);
+    expect(verses[0]).toEqual({ sid: 'GEN 1:31', text: 'Last verse of chapter one.' });
+    expect(verses[1]).toEqual({ sid: 'GEN 2:1', text: 'First verse of chapter two.' });
+  });
+
+  it('traverses content nested directly inside a chapter node', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'chapter',
+          number: '1',
+          sid: 'GEN 1',
+          content: [
+            {
+              type: 'para',
+              marker: 'p',
+              content: [{ type: 'verse', sid: 'GEN 1:1' }, 'In the beginning.'],
+            },
+          ],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(1);
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'In the beginning.' });
   });
 });

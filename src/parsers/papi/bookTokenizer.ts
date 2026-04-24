@@ -37,7 +37,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
     const surfaceText = match[0];
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
-    const type: TokenType = WORD_START_RE.test(surfaceText[0]) ? 'word' : 'punctuation';
+    const type: TokenType = WORD_START_RE.test(surfaceText) ? 'word' : 'punctuation';
     return { id: `${sid}:${charStart}`, surfaceText, writingSystem, type, charStart, charEnd };
   });
 }

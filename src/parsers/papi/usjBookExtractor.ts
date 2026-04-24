@@ -75,16 +75,37 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
     } else if (node.type === 'book') {
       if (node.code) state.bookCode = node.code;
       if (node.content) traverse(node.content, state);
+    } else if (node.type === 'chapter') {
+      if (state.currentVerse !== undefined) {
+        state.verses.push(state.currentVerse);
+        state.currentVerse = undefined;
+      }
+      if (node.content) traverse(node.content, state);
     } else if (node.type === 'verse') {
       if (state.currentVerse !== undefined) state.verses.push(state.currentVerse);
       if (!node.sid) throw new Error('Invalid USJ: verse marker missing required sid attribute');
       state.currentVerse = { sid: node.sid, text: '' };
+      if (node.content) traverse(node.content, state);
     } else if (node.type === 'note') {
       // Skip note and footnote content — not part of the baseline text.
+    } else if (node.type === 'para') {
+      if (state.currentVerse !== undefined && state.currentVerse.text.length > 0)
+        state.currentVerse.text += ' ';
+      if (node.content) traverse(node.content, state);
     } else if (node.content) {
       traverse(node.content, state);
     }
   });
+}
+
+/** Deterministic JSON serialization with sorted object keys for stable hashing. */
+function stableStringify(value: unknown): string {
+  if (!(value instanceof Object)) return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  const sorted = Object.entries(value)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
+  return `{${sorted.join(',')}}`;
 }
 
 /** FNV-1a 32-bit hash — sufficient for one-way internal content versioning. */
@@ -110,7 +131,7 @@ function fnv1a32(s: string): string {
  * @throws {Error} If no `book` marker with a `code` attribute is found in the document.
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
-  const contentHash = fnv1a32(JSON.stringify(usj.content));
+  const contentHash = fnv1a32(stableStringify(usj.content));
   const state: TraversalState = { bookCode: '', currentVerse: undefined, verses: [] };
 
   traverse(usj.content, state);

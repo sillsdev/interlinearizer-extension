@@ -25,6 +25,7 @@ function SegmentView({
   return (
     <button
       type="button"
+      aria-current={isActive ? 'true' : undefined}
       className={
         isActive
           ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
@@ -97,7 +98,7 @@ function ProjectBookFetcher({
       book?.segments.filter(
         (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
       ) ?? [],
-    [book, scrRef],
+    [book, scrRef.book, scrRef.chapterNum],
   );
 
   let bookError: string | undefined;

@@ -25,9 +25,11 @@ const useProjectData = createUseDataLikeHook();
 const useProjectDataProvider = jest.fn().mockReturnValue(undefined);
 const useProjectSetting = jest
   .fn()
-  .mockImplementation((_projectInterface: string, _projectIdOrPdp: unknown, _key: string, defaultState: unknown) => [
+  .mockImplementation((_projectDataProviderSource: unknown, _key: string, defaultState: unknown) => [
     defaultState,
     jest.fn(),
+    jest.fn(),
+    false,
   ]);
 const useDialogCallback = jest.fn().mockReturnValue(jest.fn());
 const useDataProviderMulti = jest.fn().mockReturnValue([]);

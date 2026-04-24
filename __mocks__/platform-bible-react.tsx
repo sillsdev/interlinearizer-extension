@@ -43,8 +43,11 @@ export function BookChapterControl({
 }: {
   scrRef: ScriptureRef;
   handleSubmit: (ref: ScriptureRef) => void;
+  className?: string;
   localizedStrings?: Record<string, string>;
   recentSearches?: ScriptureRef[];
+  onAddRecentSearch?: (scrRef: ScriptureRef) => void;
+  id?: string;
 }) {
   return (
     <div data-testid="book-chapter-control">

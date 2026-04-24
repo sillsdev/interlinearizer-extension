@@ -92,9 +92,6 @@ const config: Config = {
     '^@papi/frontend/react$': '<rootDir>/__mocks__/papi-frontend-react.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
-    /** Mock platform-bible-react and lucide-react — both ship ESM that Jest cannot parse. */
-    '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
-    '^lucide-react$': '<rootDir>/__mocks__/lucide-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */
@@ -128,6 +125,9 @@ const config: Config = {
   transform: {
     '\\.[jt]sx?$': 'ts-jest',
   },
+
+  /** Transform dependencies with ESM that Jest cannot parse. */
+  transformIgnorePatterns: ['node_modules/(?!(platform-bible-react|lucide-react)/)'],
 };
 
 export default config;

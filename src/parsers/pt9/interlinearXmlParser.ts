@@ -142,7 +142,7 @@ interface ParsedInterlinearXml {
  *
  * @param clusterElement - Parsed Cluster from fast-xml-parser (may have Lexeme array or none).
  * @returns Array of LexemeData with LexemeId (from Id) and SenseId (from GlossId, or '').
- * @throws {Error} If any Lexeme element is missing the required Id attribute.
+ * @throws {SyntaxError} If any Lexeme element is missing the required Id attribute.
  */
 function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] {
   const elements = clusterElement.Lexeme ?? [];
@@ -150,7 +150,7 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
   return elements.map((el) => {
     const lexemeId = el['@_Id'];
     if (!lexemeId) {
-      throw new Error('Invalid XML: Lexeme missing required Id attribute');
+      throw new SyntaxError('Invalid XML: Lexeme missing required Id attribute');
     }
     return { LexemeId: lexemeId, SenseId: el['@_GlossId'] ?? '' };
   });
@@ -193,7 +193,8 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
  * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
  *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
- * @throws {Error} If a Cluster is missing its Range element or Range is missing Index or Length.
+ * @throws {SyntaxError} If a Cluster is missing its Range element or Range is missing Index or
+ *   Length.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
   const clusterElements = verseDataElement.Cluster ?? [];
@@ -201,13 +202,13 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
   return clusterElements.map((el) => {
     const rangeElement = el.Range;
     if (!rangeElement) {
-      throw new Error('Invalid XML: Cluster missing required Range element');
+      throw new SyntaxError('Invalid XML: Cluster missing required Range element');
     }
 
     const index = Number(rangeElement['@_Index']);
     const length = Number(rangeElement['@_Length']);
     if (!Number.isFinite(index) || !Number.isFinite(length)) {
-      throw new Error('Invalid XML: Range missing required Index or Length attributes');
+      throw new SyntaxError('Invalid XML: Range missing required Index or Length attributes');
     }
 
     const textRange: StringRange = { Index: index, Length: length };
@@ -272,26 +273,27 @@ export class InterlinearXmlParser {
    *   entries.
    * @returns Parsed interlinear data: ScrTextName, GlossLanguage, BookId, and Verses (record of
    *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
-   * @throws {Error} If the root element, required attributes (GlossLanguage, BookId), required
-   *   structure (Verses, Cluster Range, Lexeme Id), or duplicate verse reference is present.
+   * @throws {SyntaxError} If the root element, required attributes (GlossLanguage, BookId), or
+   *   required structure (Verses, Cluster Range, Lexeme Id) is missing.
+   * @throws {SyntaxError} If a verse reference appears more than once.
    */
   parse(xml: string): InterlinearData {
     const parsed: ParsedInterlinearXml = this.parser.parse(xml);
     const root = parsed.InterlinearData;
     if (!root) {
-      throw new Error('Invalid XML: Missing InterlinearData root element');
+      throw new SyntaxError('Invalid XML: Missing InterlinearData root element');
     }
 
     const scrTextName = root['@_ScrTextName'] ?? '';
     const glossLanguage = root['@_GlossLanguage'] ?? '';
     const bookId = root['@_BookId'] ?? '';
     if (!glossLanguage || !bookId) {
-      throw new Error('Invalid XML: Missing required attributes GlossLanguage or BookId');
+      throw new SyntaxError('Invalid XML: Missing required attributes GlossLanguage or BookId');
     }
 
     const versesElement = root.Verses;
     if (!versesElement) {
-      throw new Error('Invalid XML: Missing Verses element');
+      throw new SyntaxError('Invalid XML: Missing Verses element');
     }
 
     const items = versesElement.item ?? [];
@@ -301,7 +303,7 @@ export class InterlinearXmlParser {
       if (!verseKey) return acc;
 
       if (verseKey in acc) {
-        throw new Error(
+        throw new SyntaxError(
           `Invalid XML: Duplicate verse reference "${verseKey}". At most one VerseData per reference is allowed.`,
         );
       }

@@ -1,10 +1,10 @@
 /** @file Unit tests for {@link InterlinearXmlParser}. */
 /// <reference types="jest" />
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
-import { InterlinearXmlParser } from 'parsers/interlinearXmlParser';
+import { InterlinearXmlParser } from 'parsers/pt9/interlinearXmlParser';
 
 describe('InterlinearXmlParser', () => {
   let parser: InterlinearXmlParser;
@@ -578,7 +578,15 @@ describe('InterlinearXmlParser', () => {
     });
 
     it('parses real test-data file without throwing', () => {
-      const xmlPath = path.join(__dirname, '..', '..', '..', 'test-data', 'Interlinear_en_MAT.xml');
+      const xmlPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        '..',
+        'test-data',
+        'Interlinear_en_MAT.xml',
+      );
       const xml = fs.readFileSync(xmlPath, 'utf-8');
       const result = parser.parse(xml);
 

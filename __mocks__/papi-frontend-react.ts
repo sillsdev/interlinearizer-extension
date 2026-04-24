@@ -25,18 +25,24 @@ const useProjectData = createUseDataLikeHook();
 const useProjectDataProvider = jest.fn().mockReturnValue(undefined);
 const useProjectSetting = jest
   .fn()
-  .mockImplementation((_projectInterface: string, _projectIdOrPdp: unknown, _key: string, defaultState: unknown) => [
+  .mockImplementation((_projectDataProviderSource: unknown, _key: string, defaultState: unknown) => [
     defaultState,
     jest.fn(),
+    jest.fn(),
+    false,
   ]);
 const useDialogCallback = jest.fn().mockReturnValue(jest.fn());
 const useDataProviderMulti = jest.fn().mockReturnValue([]);
-/** Returns a map of localization key -> key (so tests get a string for each key). */
-const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) =>
+/** Returns [record, isLoading] tuple; maps each key to itself so tests get a predictable string. */
+const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
   Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}) : {},
-);
+  false,
+]);
 const useWebViewController = jest.fn().mockReturnValue(undefined);
-const useRecentScriptureRefs = jest.fn().mockReturnValue([]);
+/** Returns { recentScriptureRefs, addRecentScriptureRef } matching the real hook signature. */
+const useRecentScriptureRefs = jest
+  .fn()
+  .mockReturnValue({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() });
 
 module.exports = {
   __esModule: true,

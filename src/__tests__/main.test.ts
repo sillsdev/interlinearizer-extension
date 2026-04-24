@@ -50,6 +50,41 @@ const {
   __mockLogger,
 } = papiBackendMock;
 
+function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
+  return typeof f === 'function';
+}
+
+function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
+  const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
+  const rawHandler: unknown = call?.[1];
+  return isCallable(rawHandler) ? rawHandler : undefined;
+}
+
+async function getOpenForWebViewHandler(): Promise<
+  (webViewId?: string) => Promise<string | undefined>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.openForWebView');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.openForWebView');
+  return async (webViewId?: string): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(webViewId);
+    return typeof result === 'string' ? result : undefined;
+  };
+}
+
+function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+  const cb: unknown = __mockOnDidOpenWebView.mock.calls[0]?.[0];
+  if (!isCallable(cb)) throw new Error('onDidOpenWebView callback not found');
+  return (event) => cb(event);
+}
+
+function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
+  const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
+  if (!isCallable(cb)) throw new Error('onDidCloseWebView callback not found');
+  return (event) => cb(event);
+}
+
 describe('main', () => {
   const mainWebViewType = 'interlinearizer.mainWebView';
 
@@ -216,32 +251,7 @@ describe('main', () => {
     });
   });
 
-  function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
-    return typeof f === 'function';
-  }
-
-  function findRegisteredHandler(
-    commandName: string,
-  ): ((...args: unknown[]) => unknown) | undefined {
-    const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
-    const rawHandler: unknown = call?.[1];
-    return isCallable(rawHandler) ? rawHandler : undefined;
-  }
-
   describe('interlinearizer.openForWebView command', () => {
-    async function getOpenForWebViewHandler(): Promise<
-      (webViewId?: string) => Promise<string | undefined>
-    > {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.openForWebView');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.openForWebView');
-      return async (webViewId?: string): Promise<string | undefined> => {
-        const result: unknown = await rawHandler(webViewId);
-        return typeof result === 'string' ? result : undefined;
-      };
-    }
-
     it('looks up the projectId from the given WebView and opens the Interlinearizer', async () => {
       __mockGetOpenWebViewDefinition.mockResolvedValue({
         id: 'some-webview',
@@ -339,18 +349,6 @@ describe('main', () => {
       expect(__mockOnDidOpenWebView).toHaveBeenCalledTimes(1);
       expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
     });
-
-    function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
-      const cb: unknown = __mockOnDidOpenWebView.mock.calls[0]?.[0];
-      if (!isCallable(cb)) throw new Error('onDidOpenWebView callback not found');
-      return (event) => cb(event);
-    }
-
-    function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
-      const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
-      if (!isCallable(cb)) throw new Error('onDidCloseWebView callback not found');
-      return (event) => cb(event);
-    }
 
     describe('onDidOpenWebView callback', () => {
       it('adds the webView to the project map so subsequent opens reuse the existing tab', async () => {

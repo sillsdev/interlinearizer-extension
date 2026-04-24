@@ -63,6 +63,47 @@ const GEN_1_1_BOOK: Book = {
 /** Pre-built Book with no segments — used by the no-verse-data test. */
 const EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
+/** Book with two segments in GEN 1 — used by chapter-display tests. */
+const GEN_1_MULTI_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          id: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+      ],
+    },
+    {
+      id: 'GEN 1:2',
+      startRef: { book: 'GEN', chapter: 1, verse: 2 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2 },
+      baselineText: 'And the earth.',
+      tokens: [
+        {
+          id: 'GEN 1:2:0',
+          surfaceText: 'And',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 3,
+        },
+      ],
+    },
+  ],
+};
+
 /** Book with a non-word (punctuation) token — exercises the non-word chip branch. */
 const GEN_1_1_PUNCTUATION_BOOK: Book = {
   id: 'GEN',
@@ -145,10 +186,10 @@ describe('InterlinearizerWebView', () => {
     jest.mocked(tokenizeBook).mockReturnValue(GEN_1_1_BOOK);
   });
 
-  it('renders the heading "Interlinearizer"', () => {
+  it('shows the book chapter control regardless of whether a project is linked', () => {
     render(<InterlinearizerWebView {...makeProps()} />);
 
-    expect(screen.getByRole('heading', { name: /interlinearizer/i })).toBeInTheDocument();
+    expect(screen.getByTestId('book-chapter-control')).toBeInTheDocument();
   });
 
   it('shows a prompt to open from a project when no projectId is provided', () => {
@@ -192,15 +233,38 @@ describe('InterlinearizerWebView', () => {
     jest.mocked(tokenizeBook).mockReturnValue(EMPTY_BOOK);
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
-    expect(screen.getByText(/no verse data for gen 1:1/i)).toBeInTheDocument();
+    expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
   });
 
-  it('falls back to the first segment when the current reference has no exact match (e.g. verse 0)', () => {
+  it('renders all segments in the current chapter', () => {
     mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByText('And')).toBeInTheDocument();
+  });
+
+  it('highlights only the segment matching the current verse', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    // defaultScrRef is GEN 1:1, so verse 1 is active
+    const { container } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    const activeSegments = Array.from(container.querySelectorAll('button')).filter((el) =>
+      el.className.includes('tw-bg-muted/50'),
+    );
+    expect(activeSegments).toHaveLength(1);
+  });
+
+  it('shows all chapter segments when navigating to a title reference (verse 0)', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
     const titleRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 0 };
     render(<InterlinearizerWebView {...makeProps(testProjectId, titleRef)} />);
 
     expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByText('And')).toBeInTheDocument();
   });
 
   it('shows an error heading and message when book data is a PlatformError', () => {
@@ -234,7 +298,7 @@ describe('InterlinearizerWebView', () => {
     });
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
-    expect(screen.getByText(/no verse data for gen 1:1/i)).toBeInTheDocument();
+    expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
   });
 
   it('renders non-word tokens as muted chips', () => {
@@ -259,5 +323,28 @@ describe('InterlinearizerWebView', () => {
 
     expect(mockSetScrRef).toHaveBeenCalledWith(defaultScrRef);
     expect(mockAddRecentRef).toHaveBeenCalledWith(defaultScrRef);
+  });
+
+  it('calls setScrRef with the segment ref when a verse box is clicked', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    const mockSetScrRef = jest.fn();
+    // Start at verse 1; click verse 2's token to select it
+    render(<InterlinearizerWebView {...makeProps(testProjectId, defaultScrRef, mockSetScrRef)} />);
+
+    fireEvent.click(screen.getByText('And'));
+
+    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+  });
+
+  it('passes a book-stable ref to BookUSJ so verse changes do not re-fetch the book', () => {
+    const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
+    jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(mockBookUSJ).toHaveBeenCalledWith(
+      { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      undefined,
+    );
   });
 });

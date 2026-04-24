@@ -13,11 +13,27 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Segment } from 'interlinearizer';
 
 /** Renders the tokens of a single segment as inline chips. */
-function SegmentView({ segment }: { segment: Segment }) {
+function SegmentView({
+  segment,
+  isActive,
+  onClick,
+}: {
+  segment: Segment;
+  isActive?: boolean;
+  onClick?: () => void;
+}) {
   return (
-    <div>
+    <button
+      type="button"
+      className={
+        isActive
+          ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
+          : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
+      }
+      onClick={onClick}
+    >
       <p className="tw-mb-2 tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
-        {segment.id}
+        {segment.startRef.verse}
       </p>
       <div className="tw-flex tw-flex-wrap tw-gap-1">
         {segment.tokens.map((token) =>
@@ -38,14 +54,13 @@ function SegmentView({ segment }: { segment: Segment }) {
           ),
         )}
       </div>
-    </div>
+    </button>
   );
 }
 
 /**
- * Fetches the USJ book for the given project, tokenizes it, finds the segment matching `scrRef`,
- * and renders a {@link SegmentView} for that verse. Shows loading / error states while data is in
- * flight or unavailable.
+ * Fetches the USJ book for the given project, tokenizes it, and renders all segments in the current
+ * chapter. Shows loading / error states while data is in flight or unavailable.
  */
 function ProjectBookFetcher({
   projectId,
@@ -56,18 +71,16 @@ function ProjectBookFetcher({
   scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
   setScrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[1];
 }) {
+  const bookScrRef = useMemo(
+    () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
+    [scrRef.book],
+  );
   const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
-    scrRef,
+    bookScrRef,
     undefined,
   );
 
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
-
-  const [localizedStrings] = useLocalizedStrings(
-    useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
-  );
-  const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
-    useRecentScriptureRefs();
 
   const book = useMemo(() => {
     if (!bookResult || isPlatformError(bookResult)) return undefined;
@@ -79,17 +92,13 @@ function ProjectBookFetcher({
     }
   }, [bookResult, writingSystem]);
 
-  const currentSegment = useMemo(() => {
-    if (!book) return undefined;
-    return (
-      book.segments.find(
-        (seg) =>
-          seg.startRef.book === scrRef.book &&
-          seg.startRef.chapter === scrRef.chapterNum &&
-          seg.startRef.verse === scrRef.verseNum,
-      ) ?? book.segments[0]
-    );
-  }, [book, scrRef]);
+  const chapterSegments = useMemo(
+    () =>
+      book?.segments.filter(
+        (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
+      ) ?? [],
+    [book, scrRef],
+  );
 
   let bookError: string | undefined;
   if (isPlatformError(bookResult)) {
@@ -100,17 +109,6 @@ function ProjectBookFetcher({
 
   return (
     <div className="tw-flex tw-flex-col tw-gap-4">
-      <BookChapterControl
-        scrRef={scrRef}
-        handleSubmit={(ref) => {
-          setScrRef(ref);
-          onAddRecentRef(ref);
-        }}
-        localizedStrings={localizedStrings}
-        recentSearches={recentRefs}
-        onAddRecentSearch={onAddRecentRef}
-      />
-
       {bookError && (
         <div className="tw-flex tw-flex-col tw-gap-2">
           <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error loading book</h2>
@@ -122,21 +120,37 @@ function ProjectBookFetcher({
 
       {!bookError && isLoading && <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>}
 
-      {!bookError && !isLoading && !currentSegment && (
+      {!bookError && !isLoading && chapterSegments.length === 0 && (
         <p className="tw-text-sm tw-text-muted-foreground">
-          No verse data for {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}.
+          No verse data for {scrRef.book} {scrRef.chapterNum}.
         </p>
       )}
 
-      {!bookError && !isLoading && currentSegment && <SegmentView segment={currentSegment} />}
+      {!bookError && !isLoading && chapterSegments.length > 0 && (
+        <div className="tw-flex tw-flex-col tw-gap-2">
+          {chapterSegments.map((seg) => (
+            <SegmentView
+              key={seg.id}
+              segment={seg}
+              isActive={seg.startRef.verse === scrRef.verseNum}
+              onClick={() =>
+                setScrRef({
+                  book: seg.startRef.book,
+                  chapterNum: seg.startRef.chapter,
+                  verseNum: seg.startRef.verse,
+                })
+              }
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * Root WebView component for the Interlinearizer. Reads the scroll-group scripture reference and
- * delegates book fetching to {@link ProjectBookFetcher}. Shows a placeholder when no projectId is
- * provided (i.e. the WebView was opened without a project).
+ * Root WebView component for the Interlinearizer. Renders a sticky reference picker at the top and
+ * delegates book fetching to {@link ProjectBookFetcher} in the scrollable content area below.
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
@@ -144,17 +158,36 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 }: WebViewProps) {
   const [scrRef, setScrRef] = useWebViewScrollGroupScrRef();
 
-  return (
-    <div className="tw-flex tw-flex-col tw-gap-4 tw-p-4">
-      <h1 className="tw-text-xl tw-font-semibold tw-tracking-tight">Interlinearizer</h1>
+  const [localizedStrings] = useLocalizedStrings(
+    useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
+  );
+  const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
+    useRecentScriptureRefs();
 
-      {projectId ? (
-        <ProjectBookFetcher projectId={projectId} scrRef={scrRef} setScrRef={setScrRef} />
-      ) : (
-        <p className="tw-text-sm tw-text-muted-foreground">
-          Open this WebView from a Paratext project to load its source book.
-        </p>
-      )}
+  return (
+    <div className="tw-flex tw-flex-col">
+      <div className="tw-sticky tw-top-0 tw-z-10 tw-border-b tw-border-border tw-bg-background tw-p-4">
+        <BookChapterControl
+          scrRef={scrRef}
+          handleSubmit={(ref) => {
+            setScrRef(ref);
+            onAddRecentRef(ref);
+          }}
+          localizedStrings={localizedStrings}
+          recentSearches={recentRefs}
+          onAddRecentSearch={onAddRecentRef}
+        />
+      </div>
+
+      <div className="tw-p-4">
+        {projectId ? (
+          <ProjectBookFetcher projectId={projectId} scrRef={scrRef} setScrRef={setScrRef} />
+        ) : (
+          <p className="tw-text-sm tw-text-muted-foreground">
+            Open this WebView from a Paratext project to load its source book.
+          </p>
+        )}
+      </div>
     </div>
   );
 };

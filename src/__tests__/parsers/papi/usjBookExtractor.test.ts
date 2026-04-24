@@ -263,4 +263,12 @@ describe('extractBookFromUsj', () => {
     expect(verses).toHaveLength(1);
     expect(verses[0].text).toBe('I have gone astray');
   });
+
+  it('produces a stable contentHash when a node has an optional property explicitly set to undefined', () => {
+    const usj: UsjDocument = {
+      content: [{ type: 'book', code: 'GEN', marker: undefined, content: [] }],
+    };
+    const hash = extractBookFromUsj(usj, WS).contentHash;
+    expect(hash).toBe(extractBookFromUsj(usj, WS).contentHash);
+  });
 });

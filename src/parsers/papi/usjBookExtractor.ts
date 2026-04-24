@@ -172,10 +172,9 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
  * @returns A stable JSON string with object keys in UTF-16 code-unit order.
  */
 function stableStringify(value: unknown): string {
+  if (value === undefined) return 'null';
   if (!(value instanceof Object)) return JSON.stringify(value);
-  if (Array.isArray(value))
-    /* v8 ignore next -- stableStringify(elem) is undefined only when elem is undefined, which USJ arrays never contain */
-    return `[${value.map((elem) => stableStringify(elem) ?? 'null').join(',')}]`;
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const sorted = Object.entries(value)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);

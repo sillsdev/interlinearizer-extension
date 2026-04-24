@@ -85,8 +85,12 @@ describe('tokenizeBook', () => {
       { sid: 'GEN 1:1', text: 'Word.' },
       { sid: 'GEN 1:2', text: 'Word.' },
     ]);
-    const allIds = tokenizeBook(raw).segments.flatMap((s) => s.tokens.map((t) => t.id));
-    expect(new Set(allIds).size).toBe(allIds.length);
+    // IDs are `${sid}:${charStart}`, so every token's id must start with its segment's id (the SID).
+    tokenizeBook(raw).segments.forEach((s) => {
+      s.tokens.forEach((t) => {
+        expect(t.id.startsWith(s.id)).toBe(true);
+      });
+    });
   });
 
   it('assigns writingSystem to every token', () => {
@@ -120,6 +124,7 @@ describe('tokenizeBook', () => {
     // The \p{M} branch of TOKEN_RE must match the combining mark so the whole
     // sequence is captured as one token rather than split.
     const text = 'ñ';
+    expect(text.length).toBe(2); // n (U+006E) + combining tilde (U+0303)
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
     expect(segments[0].tokens).toHaveLength(1);
     expect(segments[0].tokens[0].type).toBe('word');

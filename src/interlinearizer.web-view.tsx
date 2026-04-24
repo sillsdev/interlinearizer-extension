@@ -90,10 +90,15 @@ function ProjectBookFetcher({
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       return tokenizeBook(extractBookFromUsj(bookResult, ws));
     } catch (err) {
-      logger.error('Failed to parse/tokenize USJ book', { err, bookResult, writingSystem });
+      logger.error('Failed to parse/tokenize USJ book', {
+        err,
+        writingSystem,
+        projectId,
+        book: scrRef.book,
+      });
       return undefined;
     }
-  }, [bookResult, writingSystem]);
+  }, [bookResult, writingSystem, projectId, scrRef.book]);
 
   const chapterSegments = useMemo(
     () =>

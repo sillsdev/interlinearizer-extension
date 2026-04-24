@@ -103,13 +103,13 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
 }
 
 /**
- * Deterministic JSON serialization with keys sorted by code-point order.
+ * Deterministic JSON serialization with keys sorted by UTF-16 code-unit order.
  *
  * Produces the same output regardless of engine locale, making the result safe to feed into a hash
  * function. Arrays preserve their original order; only object keys are sorted.
  *
  * @param value - Any JSON-serializable value.
- * @returns A stable JSON string with object keys in code-point order.
+ * @returns A stable JSON string with object keys in UTF-16 code-unit order.
  */
 function stableStringify(value: unknown): string {
   if (!(value instanceof Object)) return JSON.stringify(value);

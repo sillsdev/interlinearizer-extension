@@ -107,6 +107,7 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
 
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   if (state.currentVerse !== undefined) {
+    state.currentVerse.text = state.currentVerse.text.trimEnd();
     state.verses.push(state.currentVerse);
     state.currentVerse = undefined;
   }
@@ -114,7 +115,10 @@ function handleChapterNode(node: UsjNode, state: TraversalState): void {
 }
 
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
-  if (state.currentVerse !== undefined) state.verses.push(state.currentVerse);
+  if (state.currentVerse !== undefined) {
+    state.currentVerse.text = state.currentVerse.text.trimEnd();
+    state.verses.push(state.currentVerse);
+  }
   if (!node.sid) throw new Error('Invalid USJ: verse marker missing required sid attribute');
   state.currentVerse = { sid: node.sid, text: '' };
   if (node.content) traverse(node.content, state);
@@ -152,7 +156,7 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
       if (state.currentVerse !== undefined) state.currentVerse.text += node;
       return;
     }
-    const handler = NODE_HANDLERS[node.type];
+    const handler = Object.hasOwn(NODE_HANDLERS, node.type) ? NODE_HANDLERS[node.type] : undefined;
     if (handler) handler(node, state);
     else if (node.content) traverse(node.content, state);
   });
@@ -169,7 +173,9 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
  */
 function stableStringify(value: unknown): string {
   if (!(value instanceof Object)) return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (Array.isArray(value))
+    /* v8 ignore next -- stableStringify(elem) is undefined only when elem is undefined, which USJ arrays never contain */
+    return `[${value.map((elem) => stableStringify(elem) ?? 'null').join(',')}]`;
   const sorted = Object.entries(value)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
@@ -184,13 +190,13 @@ function stableStringify(value: unknown): string {
  */
 function fnv1a32(s: string): string {
   const h = [...s].reduce<number>(
-    /* v8 ignore next -- codePointAt(0) on a spread char is always defined */
+    /* v8 ignore next 2 -- codePointAt(0) on a spread char is always defined */
     // eslint-disable-next-line no-bitwise
     (acc, char) => Math.imul(acc ^ (char.codePointAt(0) ?? 0), 16777619),
     2166136261,
   );
   // eslint-disable-next-line no-bitwise
-  return (h >>> 0).toString(16);
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 /**
@@ -210,7 +216,10 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
 
   traverse(usj.content, state);
 
-  if (state.currentVerse !== undefined) state.verses.push(state.currentVerse);
+  if (state.currentVerse !== undefined) {
+    state.currentVerse.text = state.currentVerse.text.trimEnd();
+    state.verses.push(state.currentVerse);
+  }
 
   if (!state.bookCode) throw new Error('Invalid USJ: no book marker with a code attribute found');
 

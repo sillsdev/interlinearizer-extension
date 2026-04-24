@@ -54,12 +54,16 @@ describe('tokenizeBook', () => {
 
   it('labels word tokens as word', () => {
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'Hello world' }]));
-    expect(segments[0].tokens.every((t) => t.type === 'word')).toBe(true);
+    const { tokens } = segments[0];
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens.every((t) => t.type === 'word')).toBe(true);
   });
 
   it('labels punctuation tokens as punctuation', () => {
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: '., ;!' }]));
-    expect(segments[0].tokens.every((t) => t.type === 'punctuation')).toBe(true);
+    const { tokens } = segments[0];
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens.every((t) => t.type === 'punctuation')).toBe(true);
   });
 
   it('produces mixed word and punctuation tokens in the correct order', () => {
@@ -85,12 +89,16 @@ describe('tokenizeBook', () => {
       { sid: 'GEN 1:1', text: 'Word.' },
       { sid: 'GEN 1:2', text: 'Word.' },
     ]);
-    // IDs are `${sid}:${charStart}`, so every token's id must start with its segment's id (the SID).
-    tokenizeBook(raw).segments.forEach((s) => {
+    const book = tokenizeBook(raw);
+    // Each token id must start with its segment's id (the SID).
+    book.segments.forEach((s) => {
       s.tokens.forEach((t) => {
         expect(t.id.startsWith(s.id)).toBe(true);
       });
     });
+    // All token ids across all segments must be globally unique.
+    const ids = book.segments.flatMap((s) => s.tokens.map((t) => t.id));
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   it('assigns writingSystem to every token', () => {
@@ -99,7 +107,9 @@ describe('tokenizeBook', () => {
       writingSystem: 'kmr',
     };
     const { segments } = tokenizeBook(raw);
-    expect(segments[0].tokens.every((t) => t.writingSystem === 'kmr')).toBe(true);
+    const { tokens } = segments[0];
+    expect(tokens.length).toBeGreaterThan(0);
+    expect(tokens.every((t) => t.writingSystem === 'kmr')).toBe(true);
   });
 
   it('produces an empty token list for an empty verse', () => {

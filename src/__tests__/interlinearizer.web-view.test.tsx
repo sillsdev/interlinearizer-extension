@@ -360,5 +360,7 @@ describe('InterlinearizerWebView', () => {
 
     const refsPassed = mockBookUSJ.mock.calls.map((c) => c[0]);
     refsPassed.forEach((ref) => expect(ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
+    expect(mockBookUSJ.mock.calls.length).toBeGreaterThanOrEqual(1);
+    refsPassed.slice(1).forEach((ref) => expect(ref).toBe(refsPassed[0]));
   });
 });

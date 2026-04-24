@@ -6,7 +6,7 @@ import {
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { BookChapterControl, BOOK_CHAPTER_CONTROL_STRING_KEYS } from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -34,9 +34,9 @@ function SegmentView({
       }
       onClick={onClick}
     >
-      <p className="tw-mb-2 tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
+      <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
         {segment.startRef.verse}
-      </p>
+      </span>
       <div className="tw-flex tw-flex-wrap tw-gap-1">
         {segment.tokens.map((token) =>
           token.type === 'word' ? (
@@ -90,15 +90,19 @@ function ProjectBookFetcher({
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
     } catch (err) {
+      return [undefined, err instanceof Error ? err.message : String(err)];
+    }
+  }, [bookResult, writingSystem]);
+
+  useEffect(() => {
+    if (tokenizeError)
       logger.error('Failed to parse/tokenize USJ book', {
-        err,
+        err: tokenizeError,
         writingSystem,
         projectId,
         book: scrRef.book,
       });
-      return [undefined, err instanceof Error ? err.message : String(err)];
-    }
-  }, [bookResult, writingSystem, projectId, scrRef.book]);
+  }, [tokenizeError, writingSystem, projectId, scrRef.book]);
 
   const chapterSegments = useMemo(
     () =>

@@ -275,7 +275,7 @@ export class InterlinearXmlParser {
    *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
    * @throws {SyntaxError} If the root element, required attributes (GlossLanguage, BookId), or
    *   required structure (Verses, Cluster Range, Lexeme Id) is missing.
-   * @throws {RangeError} If a verse reference appears more than once.
+   * @throws {SyntaxError} If a verse reference appears more than once.
    */
   parse(xml: string): InterlinearData {
     const parsed: ParsedInterlinearXml = this.parser.parse(xml);
@@ -303,7 +303,7 @@ export class InterlinearXmlParser {
       if (!verseKey) return acc;
 
       if (verseKey in acc) {
-        throw new RangeError(
+        throw new SyntaxError(
           `Invalid XML: Duplicate verse reference "${verseKey}". At most one VerseData per reference is allowed.`,
         );
       }

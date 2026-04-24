@@ -17,6 +17,7 @@ const mainWebViewType = 'interlinearizer.mainWebView';
 
 /** Options passed to `openWebView` when opening the Interlinearizer. */
 export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
+  /** Paratext project ID to load in the Interlinearizer WebView. */
   projectId?: string;
 }
 
@@ -28,15 +29,15 @@ const mainWebViewProvider: IWebViewProvider = {
    *
    * @param savedWebView - Platform-provided definition (webViewType, etc.).
    * @param openWebViewOptions - Options passed by the caller; may include a projectId to link.
-   * @returns WebView definition with title, content, and styles, or undefined.
-   * @throws {Error} When savedWebView.webViewType is not the Interlinearizer type.
+   * @returns WebView definition with title, content, and styles.
+   * @throws {TypeError} When savedWebView.webViewType is not the Interlinearizer type.
    */
   async getWebView(
     savedWebView: SavedWebViewDefinition,
     openWebViewOptions?: InterlinearizerOpenOptions,
   ): Promise<WebViewDefinition | undefined> {
     if (savedWebView.webViewType !== mainWebViewType) {
-      throw new Error(
+      throw new TypeError(
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
     }
@@ -60,7 +61,10 @@ const openWebViewsByProject = new Map<string, string>();
 /**
  * Opens the Interlinearizer WebView for the given project. If no projectId is provided, shows a
  * project picker dialog. Each project gets its own tab; reopening an already-open project brings
- * that tab to front. Returns the WebView ID, or undefined if the user cancels.
+ * that tab to front.
+ *
+ * @param projectId - Project to open; if omitted a picker dialog is shown.
+ * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  */
 async function openInterlinearizer(projectId?: string): Promise<string | undefined> {
   const resolvedProjectId =
@@ -82,6 +86,9 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 /**
  * Opens the Interlinearizer for the project associated with the given WebView. Called from the
  * WebView context menu, which passes the tab's WebView ID as the argument.
+ *
+ * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
+ * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
@@ -95,6 +102,7 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  *
  * @param context - Activation context; used to register disposables so the platform can clean them
  *   up on deactivation.
+ * @returns A promise that resolves when all registrations are complete.
  */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');

@@ -71,7 +71,7 @@ declare module 'interlinearizer' {
   export type TokenType = 'word' | 'punctuation';
 
   /**
-   * How an analysis was produced.
+   * Confidence level of an analysis.
    *
    * - `high` — human-created or human-confirmed
    * - `medium` — tool-assisted, reasonably confident
@@ -105,8 +105,11 @@ declare module 'interlinearizer' {
    * text. When `charIndex` is absent the reference is verse-level only.
    */
   export interface ScriptureRef {
+    /** 3-letter SIL book code (e.g. `"GEN"`). */
     book: string;
+    /** 1-based chapter number. */
     chapter: number;
+    /** 1-based verse number. */
     verse: number;
     /** Zero-based character offset within the verse's baseline text. */
     charIndex?: number;
@@ -232,6 +235,7 @@ declare module 'interlinearizer' {
    *   `InterlinearText`. `Alignment` records become `AlignmentLink`s.
    */
   export interface InterlinearAlignment {
+    /** Unique identifier for this alignment pair. */
     id: string;
 
     /**
@@ -280,6 +284,7 @@ declare module 'interlinearizer' {
    *   `senseIds`. Analysis is typically in a single language.
    */
   export interface InterlinearText {
+    /** Unique identifier for this interlinear text. */
     id: string;
 
     /** Writing system of the baseline text. */
@@ -318,6 +323,7 @@ declare module 'interlinearizer' {
    *   from token checksums at import time.
    */
   export interface Book {
+    /** Unique identifier for this book; typically equal to `bookRef`. */
     id: string;
 
     /** Book identifier (e.g. `"GEN"`, `"MAT"`). */
@@ -519,6 +525,10 @@ declare module 'interlinearizer' {
    *   synthesized.
    */
   export interface SegmentAnalysis {
+    /**
+     * Unique within the owning `TextAnalysis` — used as a stable reference for this analysis
+     * record.
+     */
     id: string;
 
     /**
@@ -749,6 +759,7 @@ declare module 'interlinearizer' {
    *   share the same gloss / sense.
    */
   export type Phrase = {
+    /** Unique within the owning `TextAnalysis` — used as a stable reference for this phrase record. */
     id: string;
 
     /** Ordered `Token.id` values that compose this phrase. */
@@ -813,6 +824,7 @@ declare module 'interlinearizer' {
    *   Eflomal-generated alignments leave `originNum` and `statusNum` unset (default 0, CREATED).
    */
   export interface AlignmentLink {
+    /** Unique within the owning `InterlinearAlignment` — stable reference for this link. */
     id: string;
 
     /** Source-side endpoints (one or more tokens / morphemes). */
@@ -821,6 +833,7 @@ declare module 'interlinearizer' {
     /** Target-side endpoints (one or more tokens / morphemes). */
     targetEndpoints: AlignmentEndpoint[];
 
+    /** Review status of this alignment link. */
     status: AssignmentStatus;
 
     /** How the alignment was created (manual, automatic tool, etc.). */

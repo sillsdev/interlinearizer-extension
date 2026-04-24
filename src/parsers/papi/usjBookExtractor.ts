@@ -37,11 +37,20 @@ type MarkerContent = string | UsjNode;
 
 /** A USJ marker node. Only the fields used during extraction are declared. */
 interface UsjNode {
+  /** Node type string (e.g. `"book"`, `"chapter"`, `"verse"`, `"para"`, `"note"`). */
   type: string;
+  /** USFM marker (e.g. `"p"`, `"s1"`, `"q"`). Present on `para` and `note` nodes. */
   marker?: string;
+  /** Chapter or verse number string. Present on `chapter` nodes. */
   number?: string;
+  /** 3-letter book code. Present on `book` nodes. */
   code?: string;
+  /**
+   * Verse or chapter SID. Present on `verse` nodes (e.g. `"GEN 1:1"`) and `chapter` nodes (e.g.
+   * `"GEN 1"`).
+   */
   sid?: string;
+  /** Child content items (strings or nested nodes). */
   content?: MarkerContent[];
 }
 
@@ -95,16 +104,32 @@ const HEADING_PARA_MARKERS = new Set([
 
 /** Mutable state threaded through the recursive USJ traversal. */
 interface TraversalState {
+  /** 3-letter book code captured from the `book` marker (e.g. `"GEN"`). */
   bookCode: string;
+  /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: { sid: string; text: string } | undefined;
+  /** Completed verses in document order. */
   verses: RawVerse[];
 }
 
+/**
+ * Captures the book code from a `book` node, then recurses into its content.
+ *
+ * @param node - The `book` USJ node; `node.code` is the 3-letter book code.
+ * @param state - Shared traversal state updated in place.
+ */
 function handleBookNode(node: UsjNode, state: TraversalState): void {
   if (node.code) state.bookCode = node.code;
   if (node.content) traverse(node.content, state);
 }
 
+/**
+ * Closes the current open verse (if any) when a `chapter` node is encountered, then recurses into
+ * the chapter's content to pick up verses inside it.
+ *
+ * @param node - The `chapter` USJ node.
+ * @param state - Shared traversal state updated in place.
+ */
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   if (state.currentVerse !== undefined) {
     state.currentVerse.text = state.currentVerse.text.trimEnd();
@@ -114,16 +139,31 @@ function handleChapterNode(node: UsjNode, state: TraversalState): void {
   if (node.content) traverse(node.content, state);
 }
 
+/**
+ * Closes the previous open verse (if any) and opens a new one for a `verse` node.
+ *
+ * @param node - The `verse` USJ node; must carry a `sid` attribute (e.g. `"GEN 1:1"`).
+ * @param state - Shared traversal state updated in place.
+ * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
+ */
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
   if (state.currentVerse !== undefined) {
     state.currentVerse.text = state.currentVerse.text.trimEnd();
     state.verses.push(state.currentVerse);
   }
-  if (!node.sid) throw new Error('Invalid USJ: verse marker missing required sid attribute');
+  if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
   state.currentVerse = { sid: node.sid, text: '' };
   if (node.content) traverse(node.content, state);
 }
 
+/**
+ * Recurses into a `para` node's content, appending a space between adjacent para nodes when needed.
+ * Heading-class paragraphs (see {@link HEADING_PARA_MARKERS}) are skipped entirely so their text is
+ * not included in the verse baseline.
+ *
+ * @param node - The `para` USJ node; `node.marker` determines whether to skip or recurse.
+ * @param state - Shared traversal state updated in place.
+ */
 function handleParaNode(node: UsjNode, state: TraversalState): void {
   if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) return;
   if (
@@ -135,6 +175,7 @@ function handleParaNode(node: UsjNode, state: TraversalState): void {
   if (node.content) traverse(node.content, state);
 }
 
+/** Dispatch table mapping USJ node `type` strings to their traversal handlers. */
 const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalState) => void>> = {
   book: handleBookNode,
   chapter: handleChapterNode,
@@ -148,7 +189,6 @@ const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalStat
  *
  * @param nodes - Content items to walk (`string` or {@link UsjNode}).
  * @param state - Shared mutable state updated in place during traversal.
- * @throws {Error} If a `verse` node is missing its `sid` attribute.
  */
 function traverse(nodes: MarkerContent[], state: TraversalState): void {
   nodes.forEach((node) => {
@@ -207,7 +247,8 @@ function fnv1a32(s: string): string {
  *
  * @param usj - USJ document returned by `useProjectData('platformScripture.USJ_Book', ...)`.
  * @param writingSystem - BCP 47 tag for the baseline, from `platform.languageTag`.
- * @throws {Error} If no `book` marker with a `code` attribute is found in the document.
+ * @returns A `RawBook` with `bookCode`, `writingSystem`, `contentHash`, and `verses` populated.
+ * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
   const contentHash = fnv1a32(stableStringify(usj.content));
@@ -220,7 +261,8 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     state.verses.push(state.currentVerse);
   }
 
-  if (!state.bookCode) throw new Error('Invalid USJ: no book marker with a code attribute found');
+  if (!state.bookCode)
+    throw new SyntaxError('Invalid USJ: no book marker with a code attribute found');
 
   return {
     bookCode: state.bookCode,

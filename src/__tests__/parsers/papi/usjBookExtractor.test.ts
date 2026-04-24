@@ -103,9 +103,7 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(1);
-    expect(verses[0].text).toBe(
-      'Blessed is the man' + 'who walks not in the counsel of the wicked.',
-    );
+    expect(verses[0].text).toBe('Blessed is the manwho walks not in the counsel of the wicked.');
   });
 
   it('includes text inside inline char nodes', () => {
@@ -177,7 +175,9 @@ describe('extractBookFromUsj', () => {
         { type: 'para', marker: 'p', content: [{ type: 'verse' }] },
       ],
     };
-    expect(() => extractBookFromUsj(usj, WS)).toThrow('verse marker missing required sid attribute');
+    expect(() => extractBookFromUsj(usj, WS)).toThrow(
+      'verse marker missing required sid attribute',
+    );
   });
 
   it('throws when no book marker with a code attribute is found', () => {

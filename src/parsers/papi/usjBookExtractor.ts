@@ -89,7 +89,11 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
     } else if (node.type === 'note') {
       // Skip note and footnote content — not part of the baseline text.
     } else if (node.type === 'para') {
-      if (state.currentVerse !== undefined && state.currentVerse.text.length > 0)
+      if (
+        state.currentVerse !== undefined &&
+        state.currentVerse.text.length > 0 &&
+        !state.currentVerse.text.endsWith(' ')
+      )
         state.currentVerse.text += ' ';
       if (node.content) traverse(node.content, state);
     } else if (node.content) {
@@ -98,17 +102,34 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
   });
 }
 
-/** Deterministic JSON serialization with sorted object keys for stable hashing. */
+/**
+ * Deterministic JSON serialization with keys sorted by code-point order.
+ *
+ * Produces the same output regardless of engine locale, making the result safe to feed into a hash
+ * function. Arrays preserve their original order; only object keys are sorted.
+ *
+ * @param value - Any JSON-serializable value.
+ * @returns A stable JSON string with object keys in code-point order.
+ */
 function stableStringify(value: unknown): string {
   if (!(value instanceof Object)) return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const sorted = Object.entries(value)
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
   return `{${sorted.join(',')}}`;
 }
 
-/** FNV-1a 32-bit hash — sufficient for one-way internal content versioning. */
+/**
+ * FNV-1a 32-bit hash — sufficient for one-way internal content versioning.
+ *
+ * Iterates over UTF-16 code units (matching `String.prototype.charCodeAt`) rather than Unicode code
+ * points. This is intentional: the hash only needs to be stable within a single JS runtime, not
+ * portable across languages.
+ *
+ * @param s - String to hash.
+ * @returns Lowercase hex string of the unsigned 32-bit FNV-1a digest.
+ */
 function fnv1a32(s: string): string {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {

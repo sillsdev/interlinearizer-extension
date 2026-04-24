@@ -11,6 +11,7 @@ import { BookChapterControl, BOOK_CHAPTER_CONTROL_STRING_KEYS } from 'platform-b
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Segment } from 'interlinearizer';
+import { logger } from '@papi/frontend';
 
 /** Renders the tokens of a single segment as inline chips. */
 function SegmentView({
@@ -88,7 +89,8 @@ function ProjectBookFetcher({
     try {
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       return tokenizeBook(extractBookFromUsj(bookResult, ws));
-    } catch {
+    } catch (err) {
+      logger.error('Failed to parse/tokenize USJ book', { err, bookResult, writingSystem });
       return undefined;
     }
   }, [bookResult, writingSystem]);

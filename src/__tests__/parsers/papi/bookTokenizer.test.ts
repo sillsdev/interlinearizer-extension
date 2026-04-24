@@ -107,8 +107,23 @@ describe('tokenizeBook', () => {
     const text = 'Ελληνικά.';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
     const wordTokens = segments[0].tokens.filter((t) => t.type === 'word');
+    const punctTokens = segments[0].tokens.filter((t) => t.type === 'punctuation');
     expect(wordTokens).toHaveLength(1);
     expect(wordTokens[0].surfaceText).toBe('Ελληνικά');
+    expect(punctTokens).toHaveLength(1);
+    expect(punctTokens[0].surfaceText).toBe('.');
+    expect(punctTokens[0].type).toBe('punctuation');
+  });
+
+  it('treats a combining-mark sequence as a single word token', () => {
+    // 'ñ' is the letter n followed by a combining tilde (U+0303).
+    // The \p{M} branch of TOKEN_RE must match the combining mark so the whole
+    // sequence is captured as one token rather than split.
+    const text = 'ñ';
+    const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+    expect(segments[0].tokens).toHaveLength(1);
+    expect(segments[0].tokens[0].type).toBe('word');
+    expect(segments[0].tokens[0].surfaceText).toBe('ñ');
   });
 
   it('throws on an invalid verse SID', () => {

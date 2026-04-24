@@ -54,12 +54,90 @@ export interface UsjDocument {
 // Implementation
 // ---------------------------------------------------------------------------
 
+/**
+ * Para markers whose content is not part of the verse baseline text (headings, titles, spacing,
+ * speaker IDs, acrostic headings, etc.). Verse-content para markers (p, m, pi, q*, etc.) are absent
+ * from this set and have their text accumulated as usual.
+ */
+const HEADING_PARA_MARKERS = new Set([
+  // Major section headings and reference ranges
+  'ms',
+  'ms1',
+  'ms2',
+  'ms3',
+  'mr',
+  // Section headings, reference ranges, and descriptive titles
+  's',
+  's1',
+  's2',
+  's3',
+  's4',
+  'sr',
+  'r',
+  'd',
+  // Speaker, acrostic heading, blank lines
+  'sp',
+  'qa',
+  'b',
+  'ib',
+  // Introduction headings
+  'imt',
+  'imt1',
+  'imt2',
+  'imt3',
+  'imte',
+  'imte1',
+  'imte2',
+  'is',
+  'is1',
+  'is2',
+]);
+
 /** Mutable state threaded through the recursive USJ traversal. */
 interface TraversalState {
   bookCode: string;
   currentVerse: { sid: string; text: string } | undefined;
   verses: RawVerse[];
 }
+
+function handleBookNode(node: UsjNode, state: TraversalState): void {
+  if (node.code) state.bookCode = node.code;
+  if (node.content) traverse(node.content, state);
+}
+
+function handleChapterNode(node: UsjNode, state: TraversalState): void {
+  if (state.currentVerse !== undefined) {
+    state.verses.push(state.currentVerse);
+    state.currentVerse = undefined;
+  }
+  if (node.content) traverse(node.content, state);
+}
+
+function handleVerseNode(node: UsjNode, state: TraversalState): void {
+  if (state.currentVerse !== undefined) state.verses.push(state.currentVerse);
+  if (!node.sid) throw new Error('Invalid USJ: verse marker missing required sid attribute');
+  state.currentVerse = { sid: node.sid, text: '' };
+  if (node.content) traverse(node.content, state);
+}
+
+function handleParaNode(node: UsjNode, state: TraversalState): void {
+  if (node.marker && HEADING_PARA_MARKERS.has(node.marker)) return;
+  if (
+    state.currentVerse !== undefined &&
+    state.currentVerse.text.length > 0 &&
+    !state.currentVerse.text.endsWith(' ')
+  )
+    state.currentVerse.text += ' ';
+  if (node.content) traverse(node.content, state);
+}
+
+const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalState) => void>> = {
+  book: handleBookNode,
+  chapter: handleChapterNode,
+  verse: handleVerseNode,
+  note: () => {}, // skip note/footnote content — not part of the baseline text
+  para: handleParaNode,
+};
 
 /**
  * Recursively walks a USJ content array, accumulating verse text into `state`.
@@ -72,33 +150,11 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
   nodes.forEach((node) => {
     if (typeof node === 'string') {
       if (state.currentVerse !== undefined) state.currentVerse.text += node;
-    } else if (node.type === 'book') {
-      if (node.code) state.bookCode = node.code;
-      if (node.content) traverse(node.content, state);
-    } else if (node.type === 'chapter') {
-      if (state.currentVerse !== undefined) {
-        state.verses.push(state.currentVerse);
-        state.currentVerse = undefined;
-      }
-      if (node.content) traverse(node.content, state);
-    } else if (node.type === 'verse') {
-      if (state.currentVerse !== undefined) state.verses.push(state.currentVerse);
-      if (!node.sid) throw new Error('Invalid USJ: verse marker missing required sid attribute');
-      state.currentVerse = { sid: node.sid, text: '' };
-      if (node.content) traverse(node.content, state);
-    } else if (node.type === 'note') {
-      // Skip note and footnote content — not part of the baseline text.
-    } else if (node.type === 'para') {
-      if (
-        state.currentVerse !== undefined &&
-        state.currentVerse.text.length > 0 &&
-        !state.currentVerse.text.endsWith(' ')
-      )
-        state.currentVerse.text += ' ';
-      if (node.content) traverse(node.content, state);
-    } else if (node.content) {
-      traverse(node.content, state);
+      return;
     }
+    const handler = NODE_HANDLERS[node.type];
+    if (handler) handler(node, state);
+    else if (node.content) traverse(node.content, state);
   });
 }
 
@@ -123,19 +179,16 @@ function stableStringify(value: unknown): string {
 /**
  * FNV-1a 32-bit hash — sufficient for one-way internal content versioning.
  *
- * Iterates over UTF-16 code units (matching `String.prototype.charCodeAt`) rather than Unicode code
- * points. This is intentional: the hash only needs to be stable within a single JS runtime, not
- * portable across languages.
- *
  * @param s - String to hash.
  * @returns Lowercase hex string of the unsigned 32-bit FNV-1a digest.
  */
 function fnv1a32(s: string): string {
-  let h = 2166136261;
-  for (let i = 0; i < s.length; i++) {
+  const h = [...s].reduce<number>(
+    /* v8 ignore next -- codePointAt(0) on a spread char is always defined */
     // eslint-disable-next-line no-bitwise
-    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
-  }
+    (acc, char) => Math.imul(acc ^ (char.codePointAt(0) ?? 0), 16777619),
+    2166136261,
+  );
   // eslint-disable-next-line no-bitwise
   return (h >>> 0).toString(16);
 }

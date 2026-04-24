@@ -246,4 +246,21 @@ describe('extractBookFromUsj', () => {
     expect(verses).toHaveLength(1);
     expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'In the beginning.' });
   });
+
+  it('skips content of heading para markers encountered inside a verse', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'PSA 119:176' }, 'I have gone astray'],
+        },
+        { type: 'para', marker: 's1', content: ['A section heading'] },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(1);
+    expect(verses[0].text).toBe('I have gone astray');
+  });
 });

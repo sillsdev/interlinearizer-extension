@@ -289,14 +289,27 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText('In')).toBeInTheDocument();
   });
 
-  it('shows a no-verse message when tokenization throws', () => {
+  it('shows an error heading and message when tokenization throws an Error', () => {
     mockBookData({});
     jest.mocked(tokenizeBook).mockImplementation(() => {
       throw new Error('parse failure');
     });
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
-    expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(screen.getByText('parse failure')).toBeInTheDocument();
+  });
+
+  it('shows an error message when tokenization throws a non-Error value', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockImplementation(() => {
+      // eslint-disable-next-line no-throw-literal
+      throw 'unexpected string error';
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
   it('renders non-word tokens as muted chips', () => {

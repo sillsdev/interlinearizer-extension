@@ -36,7 +36,7 @@ class UnsubscriberAsyncList {
           (unsubscriber as { dispose: UnsubscriberFn }).dispose.bind(unsubscriber)
         );
       } else if (typeof unsubscriber === 'function') {
-        this.unsubscribers.add(unsubscriber as UnsubscriberFn);
+        this.unsubscribers.add(unsubscriber);
       }
     });
   }
@@ -63,6 +63,6 @@ interface PlatformError {
 }
 
 const isPlatformError = (value: unknown): value is PlatformError =>
-  typeof value === 'object' && value !== null && 'platformErrorVersion' in (value as object);
+  typeof value === 'object' && value !== null && 'platformErrorVersion' in (value);
 
 export { UnsubscriberAsyncList, isPlatformError };

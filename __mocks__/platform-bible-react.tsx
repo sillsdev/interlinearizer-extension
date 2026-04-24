@@ -25,7 +25,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   asChild?: boolean;
 }
 
-export function Button({ children, variant: _v, size: _s, asChild: _a, ...rest }: ButtonProps) {
+export function Button({ children, variant: _v, size: _s, asChild: _a, ...rest }: Readonly<ButtonProps>) {
   return <button type="button" {...rest}>{children}</button>;
 }
 
@@ -40,7 +40,7 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS: string[] = [];
 export function BookChapterControl({
   scrRef,
   handleSubmit,
-}: {
+}: Readonly<{
   scrRef: ScriptureRef;
   handleSubmit: (ref: ScriptureRef) => void;
   className?: string;
@@ -48,7 +48,7 @@ export function BookChapterControl({
   recentSearches?: ScriptureRef[];
   onAddRecentSearch?: (scrRef: ScriptureRef) => void;
   id?: string;
-}) {
+}>) {
   return (
     <div data-testid="book-chapter-control">
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}

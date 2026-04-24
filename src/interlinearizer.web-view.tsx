@@ -10,7 +10,7 @@ import { useMemo } from 'react';
 import { BookChapterControl, BOOK_CHAPTER_CONTROL_STRING_KEYS } from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { Segment } from 'interlinearizer';
+import type { Book, Segment } from 'interlinearizer';
 import { logger } from '@papi/frontend';
 
 /** Renders the tokens of a single segment as inline chips. */
@@ -18,11 +18,11 @@ function SegmentView({
   segment,
   isActive,
   onClick,
-}: {
+}: Readonly<{
   segment: Segment;
   isActive?: boolean;
   onClick?: () => void;
-}) {
+}>) {
   return (
     <button
       type="button"
@@ -68,11 +68,11 @@ function ProjectBookFetcher({
   projectId,
   scrRef,
   setScrRef,
-}: {
+}: Readonly<{
   projectId: string;
   scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
   setScrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[1];
-}) {
+}>) {
   const bookScrRef = useMemo(
     () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
     [scrRef.book],
@@ -84,11 +84,11 @@ function ProjectBookFetcher({
 
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
 
-  const book = useMemo(() => {
-    if (!bookResult || isPlatformError(bookResult)) return undefined;
+  const [book, tokenizeError] = useMemo((): [Book | undefined, string | undefined] => {
+    if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
     try {
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      return tokenizeBook(extractBookFromUsj(bookResult, ws));
+      return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
     } catch (err) {
       logger.error('Failed to parse/tokenize USJ book', {
         err,
@@ -96,7 +96,7 @@ function ProjectBookFetcher({
         projectId,
         book: scrRef.book,
       });
-      return undefined;
+      return [undefined, err instanceof Error ? err.message : String(err)];
     }
   }, [bookResult, writingSystem, projectId, scrRef.book]);
 
@@ -126,15 +126,26 @@ function ProjectBookFetcher({
         </div>
       )}
 
-      {!bookError && isLoading && <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>}
+      {tokenizeError && (
+        <div className="tw-flex tw-flex-col tw-gap-2">
+          <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error processing book</h2>
+          <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
+            {tokenizeError}
+          </pre>
+        </div>
+      )}
 
-      {!bookError && !isLoading && chapterSegments.length === 0 && (
+      {!bookError && !tokenizeError && isLoading && (
+        <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
+      )}
+
+      {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (
         <p className="tw-text-sm tw-text-muted-foreground">
           No verse data for {scrRef.book} {scrRef.chapterNum}.
         </p>
       )}
 
-      {!bookError && !isLoading && chapterSegments.length > 0 && (
+      {!bookError && !tokenizeError && !isLoading && chapterSegments.length > 0 && (
         <div className="tw-flex tw-flex-col tw-gap-2">
           {chapterSegments.map((seg) => (
             <SegmentView

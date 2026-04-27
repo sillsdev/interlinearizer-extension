@@ -159,7 +159,7 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 const parseStrictNumber = (raw: string): number | undefined => {
   if (raw === undefined || raw.trim() === '') return undefined;
   const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
 };
 
 /**

@@ -630,7 +630,12 @@ describe('InterlinearXmlParser', () => {
           </Verses>
         </OtherRoot>
       `;
-      expect(() => parser.parse(xml)).toThrow('Invalid XML: Missing InterlinearData root element');
+      expect(() => parser.parse(xml)).toThrow(
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining('Invalid XML: Missing InterlinearData root element'),
+        }),
+      );
     });
 
     it('throws when GlossLanguage is missing', () => {
@@ -645,7 +650,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Missing required attributes GlossLanguage or BookId',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Missing required attributes GlossLanguage or BookId',
+          ),
+        }),
       );
     });
 
@@ -661,7 +671,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Missing required attributes GlossLanguage or BookId',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Missing required attributes GlossLanguage or BookId',
+          ),
+        }),
       );
     });
 
@@ -677,7 +692,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Missing required attributes GlossLanguage or BookId',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Missing required attributes GlossLanguage or BookId',
+          ),
+        }),
       );
     });
 
@@ -686,7 +706,12 @@ describe('InterlinearXmlParser', () => {
         <InterlinearData GlossLanguage="en" BookId="MAT">
         </InterlinearData>
       `;
-      expect(() => parser.parse(xml)).toThrow('Invalid XML: Missing Verses element');
+      expect(() => parser.parse(xml)).toThrow(
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining('Invalid XML: Missing Verses element'),
+        }),
+      );
     });
 
     it('throws when Cluster is missing Range element', () => {
@@ -705,7 +730,10 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Cluster missing required Range element',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining('Invalid XML: Cluster missing required Range element'),
+        }),
       );
     });
 
@@ -726,7 +754,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xmlNoIndex)).toThrow(
-        'Invalid XML: Range missing required Index or Length attributes',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Range missing required Index or Length attributes',
+          ),
+        }),
       );
 
       const xmlNoLength = `
@@ -745,7 +778,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xmlNoLength)).toThrow(
-        'Invalid XML: Range missing required Index or Length attributes',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Range missing required Index or Length attributes',
+          ),
+        }),
       );
     });
 
@@ -765,7 +803,12 @@ describe('InterlinearXmlParser', () => {
           </Verses>
         </InterlinearData>
       `;
-      expect(() => parser.parse(xml)).toThrow('Invalid XML: Lexeme missing required Id attribute');
+      expect(() => parser.parse(xml)).toThrow(
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining('Invalid XML: Lexeme missing required Id attribute'),
+        }),
+      );
     });
 
     it('throws when the same verse reference appears in more than one item', () => {
@@ -803,7 +846,12 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       expect(() => parser.parse(xml)).toThrow(
-        'Invalid XML: Duplicate verse reference "MAT 1:1". At most one VerseData per reference is allowed.',
+        expect.objectContaining({
+          name: 'SyntaxError',
+          message: expect.stringContaining(
+            'Invalid XML: Duplicate verse reference "MAT 1:1". At most one VerseData per reference is allowed.',
+          ),
+        }),
       );
     });
   });

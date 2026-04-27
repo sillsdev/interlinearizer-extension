@@ -298,15 +298,17 @@ export class InterlinearXmlParser {
 
     const items = versesElement.item ?? [];
 
+    const seen = new Set<string>();
     const verses = items.reduce<Record<string, VerseData>>((acc, item) => {
       const verseKey = item.string;
       if (!verseKey) return acc;
 
-      if (Object.prototype.hasOwnProperty.call(acc, verseKey)) {
+      if (seen.has(verseKey)) {
         throw new SyntaxError(
           `Invalid XML: Duplicate verse reference "${verseKey}". At most one VerseData per reference is allowed.`,
         );
       }
+      seen.add(verseKey);
 
       const verseDataElement = item.VerseData;
       if (!verseDataElement) {

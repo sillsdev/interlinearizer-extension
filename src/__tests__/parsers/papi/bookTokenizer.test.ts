@@ -143,7 +143,10 @@ describe('tokenizeBook', () => {
 
   it('throws on an invalid verse SID', () => {
     expect(() => tokenizeBook(makeRawBook([{ sid: 'not-a-ref', text: 'text' }]))).toThrow(
-      'Invalid verse SID',
+      expect.objectContaining({
+        name: 'SyntaxError',
+        message: expect.stringContaining('Invalid verse SID'),
+      }),
     );
   });
 

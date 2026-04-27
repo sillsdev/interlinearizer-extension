@@ -13,7 +13,15 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Book, Segment } from 'interlinearizer';
 import { logger } from '@papi/frontend';
 
-/** Renders the tokens of a single segment as inline chips. */
+/**
+ * Renders the tokens of a single segment as inline chips.
+ *
+ * @param props - Component props
+ * @param props.segment - The segment whose tokens to render
+ * @param props.isActive - Whether this segment is the currently selected verse
+ * @param props.onClick - Callback invoked when the segment button is clicked
+ * @returns A button containing the segment's verse label and token chips
+ */
 function SegmentView({
   segment,
   isActive,
@@ -63,6 +71,13 @@ function SegmentView({
 /**
  * Fetches the USJ book for the given project, tokenizes it, and renders all segments in the current
  * chapter. Shows loading / error states while data is in flight or unavailable.
+ *
+ * @param props - Component props
+ * @param props.projectId - PAPI project ID whose USJ book to fetch and tokenize
+ * @param props.scrRef - Current scripture reference shared via the scroll group
+ * @param props.setScrRef - Setter to update the scroll-group scripture reference when a segment is
+ *   clicked
+ * @returns A column of {@link SegmentView} chips, or an appropriate loading / error message
  */
 function ProjectBookFetcher({
   projectId,
@@ -174,6 +189,13 @@ function ProjectBookFetcher({
 /**
  * Root WebView component for the Interlinearizer. Renders a sticky reference picker at the top and
  * delegates book fetching to {@link ProjectBookFetcher} in the scrollable content area below.
+ *
+ * @param props - WebView props injected by the PAPI host
+ * @param props.projectId - PAPI project ID passed from the host; undefined when the WebView is
+ *   opened outside a project context
+ * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
+ *   reference and its setter
+ * @returns The full interlinearizer WebView layout
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,

@@ -1,13 +1,13 @@
 import type { WebViewProps } from '@papi/core';
 import {
+  useLocalizedStrings,
   useProjectData,
   useProjectSetting,
-  useLocalizedStrings,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
-import { BookChapterControl, BOOK_CHAPTER_CONTROL_STRING_KEYS } from 'platform-bible-react';
+import { BOOK_CHAPTER_CONTROL_STRING_KEYS, BookChapterControl } from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Book, Segment } from 'interlinearizer';
@@ -45,7 +45,7 @@ function SegmentView({
       <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
         {segment.startRef.verse}
       </span>
-      <div className="tw-flex tw-flex-wrap tw-gap-1">
+      <span className="tw-flex tw-flex-wrap tw-gap-1">
         {segment.tokens.map((token) =>
           token.type === 'word' ? (
             <span
@@ -63,7 +63,7 @@ function SegmentView({
             </span>
           ),
         )}
-      </div>
+      </span>
     </button>
   );
 }
@@ -110,13 +110,15 @@ function ProjectBookFetcher({
   }, [bookResult, writingSystem]);
 
   useEffect(() => {
-    if (tokenizeError)
+    if (tokenizeError) {
+      const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       logger.error('Failed to parse/tokenize USJ book', {
         err: tokenizeError,
-        writingSystem,
+        writingSystem: ws,
         projectId,
         book: scrRef.book,
       });
+    }
   }, [tokenizeError, writingSystem, projectId, scrRef.book]);
 
   const chapterSegments = useMemo(

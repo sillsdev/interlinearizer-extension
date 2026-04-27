@@ -265,10 +265,14 @@ describe('extractBookFromUsj', () => {
   });
 
   it('produces a stable contentHash when a node has an optional property explicitly set to undefined', () => {
-    const usj: UsjDocument = {
+    const withUndefined: UsjDocument = {
       content: [{ type: 'book', code: 'GEN', marker: undefined, content: [] }],
     };
-    const hash = extractBookFromUsj(usj, WS).contentHash;
-    expect(hash).toBe(extractBookFromUsj(usj, WS).contentHash);
+    const withoutUndefined: UsjDocument = {
+      content: [{ type: 'book', code: 'GEN', content: [] }],
+    };
+
+    const hash = extractBookFromUsj(withUndefined, WS).contentHash;
+    expect(hash).toBe(extractBookFromUsj(withoutUndefined, WS).contentHash);
   });
 });

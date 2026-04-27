@@ -218,6 +218,7 @@ function stableStringify(value: unknown): string {
   if (!(value instanceof Object)) return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const sorted = Object.entries(value)
+    .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => (a < b ? -1 : 1))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
   return `{${sorted.join(',')}}`;

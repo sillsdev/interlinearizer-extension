@@ -92,15 +92,12 @@ const config: Config = {
     '^@papi/frontend/react$': '<rootDir>/__mocks__/papi-frontend-react.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
-    /** Mock platform-bible-react and lucide-react — both ship ESM that Jest cannot parse. */
+    /** Mock ESM deps that Jest cannot parse. */
     '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
-    '^lucide-react$': '<rootDir>/__mocks__/lucide-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
-    /** Resolve webpack ?raw import for test XML in web-view. */
-    '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
   },
 
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */

@@ -106,6 +106,8 @@ const HEADING_PARA_MARKERS = new Set([
 interface TraversalState {
   /** 3-letter book code captured from the `book` marker (e.g. `"GEN"`). */
   bookCode: string;
+  /** Verse SIDs seen so far; used to reject duplicates. */
+  seenVerseIds: Set<string>;
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: { sid: string; text: string } | undefined;
   /** Completed verses in document order. */
@@ -152,6 +154,9 @@ function handleVerseNode(node: UsjNode, state: TraversalState): void {
     state.verses.push(state.currentVerse);
   }
   if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
+  if (state.seenVerseIds.has(node.sid))
+    throw new SyntaxError(`Invalid USJ: duplicate verse SID "${node.sid}"`);
+  state.seenVerseIds.add(node.sid);
   state.currentVerse = { sid: node.sid, text: '' };
   if (node.content) traverse(node.content, state);
 }
@@ -255,7 +260,12 @@ function fnv1a32(s: string): string {
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
   const contentHash = fnv1a32(stableStringify(usj.content));
-  const state: TraversalState = { bookCode: '', currentVerse: undefined, verses: [] };
+  const state: TraversalState = {
+    bookCode: '',
+    seenVerseIds: new Set<string>(),
+    currentVerse: undefined,
+    verses: [],
+  };
 
   traverse(usj.content, state);
 

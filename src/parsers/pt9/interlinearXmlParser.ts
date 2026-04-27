@@ -156,6 +156,12 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
   });
 }
 
+const parseStrictNumber = (raw: string): number | undefined => {
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
+};
+
 /**
  * Maps a parsed VerseData's Punctuation array to {@link PunctuationData} array.
  *
@@ -174,9 +180,9 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
   return elements.flatMap((el) => {
     const rangeElement = el.Range;
     if (!rangeElement) return [];
-    const index = Number(rangeElement['@_Index']);
-    const length = Number(rangeElement['@_Length']);
-    if (!Number.isFinite(index) || !Number.isFinite(length)) return [];
+    const index = parseStrictNumber(rangeElement['@_Index']);
+    const length = parseStrictNumber(rangeElement['@_Length']);
+    if (index === undefined || length === undefined) return [];
     return [
       {
         TextRange: { Index: index, Length: length },
@@ -205,9 +211,9 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
       throw new SyntaxError('Invalid XML: Cluster missing required Range element');
     }
 
-    const index = Number(rangeElement['@_Index']);
-    const length = Number(rangeElement['@_Length']);
-    if (!Number.isFinite(index) || !Number.isFinite(length)) {
+    const index = parseStrictNumber(rangeElement['@_Index']);
+    const length = parseStrictNumber(rangeElement['@_Length']);
+    if (index === undefined || length === undefined) {
       throw new SyntaxError('Invalid XML: Range missing required Index or Length attributes');
     }
 

@@ -302,7 +302,7 @@ export class InterlinearXmlParser {
       const verseKey = item.string;
       if (!verseKey) return acc;
 
-      if (verseKey in acc) {
+      if (Object.prototype.hasOwnProperty.call(acc, verseKey)) {
         throw new SyntaxError(
           `Invalid XML: Duplicate verse reference "${verseKey}". At most one VerseData per reference is allowed.`,
         );

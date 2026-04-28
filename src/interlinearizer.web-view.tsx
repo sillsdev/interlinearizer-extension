@@ -7,11 +7,18 @@ import {
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
-import { BOOK_CHAPTER_CONTROL_STRING_KEYS, BookChapterControl } from 'platform-bible-react';
+import {
+  BOOK_CHAPTER_CONTROL_STRING_KEYS,
+  BookChapterControl,
+  ScrollGroupSelector,
+  TabToolbar,
+} from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Book, Segment } from 'interlinearizer';
 import { logger } from '@papi/frontend';
+
+const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 
 /**
  * Renders the tokens of a single segment as inline chips.
@@ -203,7 +210,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
-  const [scrRef, setScrRef] = useWebViewScrollGroupScrRef();
+  const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
@@ -213,18 +220,30 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 
   return (
     <div className="tw-flex tw-flex-col">
-      <div className="tw-sticky tw-top-0 tw-z-10 tw-border-b tw-border-border tw-bg-background tw-p-4">
-        <BookChapterControl
-          scrRef={scrRef}
-          handleSubmit={(ref) => {
-            setScrRef(ref);
-            onAddRecentRef(ref);
-          }}
-          localizedStrings={localizedStrings}
-          recentSearches={recentRefs}
-          onAddRecentSearch={onAddRecentRef}
-        />
-      </div>
+      <TabToolbar
+        className="tw-z-10"
+        startAreaChildren={
+          <BookChapterControl
+            scrRef={scrRef}
+            handleSubmit={(ref) => {
+              setScrRef(ref);
+              onAddRecentRef(ref);
+            }}
+            localizedStrings={localizedStrings}
+            recentSearches={recentRefs}
+            onAddRecentSearch={onAddRecentRef}
+          />
+        }
+        endAreaChildren={
+          <ScrollGroupSelector
+            availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
+            scrollGroupId={scrollGroupId}
+            onChangeScrollGroupId={setScrollGroupId}
+          />
+        }
+        onSelectProjectMenuItem={() => {}}
+        onSelectViewInfoMenuItem={() => {}}
+      />
 
       <div className="tw-p-4">
         {projectId ? (

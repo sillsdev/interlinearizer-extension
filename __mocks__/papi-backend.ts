@@ -51,14 +51,6 @@ module.exports = {
   __esModule: true,
   default: defaultExport,
   logger: mockLogger,
-  __mockRegisterWebViewProvider: mockRegisterWebViewProvider,
-  __mockRegisterCommand: mockRegisterCommand,
-  __mockOpenWebView: mockOpenWebView,
-  __mockSelectProject: mockSelectProject,
-  __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
-  __mockOnDidOpenWebView: mockOnDidOpenWebView,
-  __mockOnDidCloseWebView: mockOnDidCloseWebView,
-  __mockLogger: mockLogger,
 };
 
 /** Marks this file as a module so top-level const/let are module-scoped; avoids TS "redeclare" when both papi-backend and papi-frontend mocks are in the project (they are used mutually exclusively by Jest). */

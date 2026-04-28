@@ -1,33 +1,11 @@
 /**
  * @file Jest mock for platform-bible-react. The real package ships ESM which Jest cannot parse
  * without extra transform configuration. This stub provides the subset used by extension
- * components: `cn`, `Button`, `BookChapterControl`, and `BOOK_CHAPTER_CONTROL_STRING_KEYS`.
+ * components: `BookChapterControl`, `BOOK_CHAPTER_CONTROL_STRING_KEYS`, `TabToolbar`, and
+ * `ScrollGroupSelector`.
  */
 
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
-
-function flattenCn(arg: unknown): string[] {
-  if (typeof arg === 'string') return arg.length > 0 ? [arg] : [];
-  if (Array.isArray(arg)) return arg.flatMap(flattenCn);
-  if (arg !== null && typeof arg === 'object')
-    return Object.entries(arg as Record<string, unknown>)
-      .filter(([, v]) => Boolean(v))
-      .map(([k]) => k);
-  return [];
-}
-
-export const cn = (...args: unknown[]): string => args.flatMap(flattenCn).join(' ');
-
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: string;
-  size?: string;
-  children?: ReactNode;
-  asChild?: boolean;
-}
-
-export function Button({ children, variant: _v, size: _s, asChild: _a, ...rest }: Readonly<ButtonProps>) {
-  return <button type="button" {...rest}>{children}</button>;
-}
+import type { ReactNode, ReactElement } from 'react';
 
 interface ScriptureRef {
   book: string;
@@ -36,6 +14,41 @@ interface ScriptureRef {
 }
 
 export const BOOK_CHAPTER_CONTROL_STRING_KEYS: string[] = [];
+
+export function TabToolbar({
+  startAreaChildren,
+  endAreaChildren,
+}: Readonly<{
+  className?: string;
+  startAreaChildren?: ReactNode;
+  endAreaChildren?: ReactNode;
+  onSelectProjectMenuItem?: () => void;
+  onSelectViewInfoMenuItem?: () => void;
+}>): ReactElement {
+  return (
+    <div data-testid="tab-toolbar">
+      <div data-testid="tab-toolbar-start">{startAreaChildren}</div>
+      <div data-testid="tab-toolbar-end">{endAreaChildren}</div>
+    </div>
+  );
+}
+
+export function ScrollGroupSelector({
+  scrollGroupId,
+  onChangeScrollGroupId,
+}: Readonly<{
+  availableScrollGroupIds?: (number | undefined)[];
+  scrollGroupId?: number;
+  onChangeScrollGroupId?: (id: number | undefined) => void;
+}>): ReactElement {
+  return (
+    <select
+      data-testid="scroll-group-selector"
+      value={scrollGroupId ?? ''}
+      onChange={(e) => onChangeScrollGroupId?.(e.target.value === '' ? undefined : Number(e.target.value))}
+    />
+  );
+}
 
 export function BookChapterControl({
   scrRef,
@@ -48,7 +61,7 @@ export function BookChapterControl({
   recentSearches?: ScriptureRef[];
   onAddRecentSearch?: (scrRef: ScriptureRef) => void;
   id?: string;
-}>) {
+}>): ReactElement {
   return (
     <div data-testid="book-chapter-control">
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}

@@ -106,21 +106,24 @@ function ProjectBookFetcher({
 
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
 
-  const [book, tokenizeError] = useMemo((): [Book | undefined, string | undefined] => {
+  const [book, tokenizeError] = useMemo((): [
+    Book | undefined,
+    { message: string; raw: unknown } | undefined,
+  ] => {
     if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
     try {
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
     } catch (err) {
-      return [undefined, err instanceof Error ? err.message : String(err)];
+      return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
     }
   }, [bookResult, writingSystem]);
 
   useEffect(() => {
     if (tokenizeError) {
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      logger.error('Failed to parse/tokenize USJ book', {
-        err: tokenizeError,
+      logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
+        message: tokenizeError.message,
         writingSystem: ws,
         projectId,
         book: scrRef.book,
@@ -158,7 +161,7 @@ function ProjectBookFetcher({
         <div className="tw-flex tw-flex-col tw-gap-2">
           <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error processing book</h2>
           <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
-            {tokenizeError}
+            {tokenizeError.message}
           </pre>
         </div>
       )}

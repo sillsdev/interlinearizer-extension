@@ -5,7 +5,7 @@
  * `ScrollGroupSelector`.
  */
 
-import type { ReactNode, ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 interface ScriptureRef {
   book: string;
@@ -53,6 +53,7 @@ export function ScrollGroupSelector({
 export function BookChapterControl({
   scrRef,
   handleSubmit,
+  onAddRecentSearch,
 }: Readonly<{
   scrRef: ScriptureRef;
   handleSubmit: (ref: ScriptureRef) => void;
@@ -65,7 +66,7 @@ export function BookChapterControl({
   return (
     <div data-testid="book-chapter-control">
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}
-      <button type="button" onClick={() => handleSubmit(scrRef)}>
+      <button type="button" onClick={() => {handleSubmit(scrRef); onAddRecentSearch?.(scrRef);}}>
         Submit reference
       </button>
     </div>

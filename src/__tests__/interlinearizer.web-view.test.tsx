@@ -283,6 +283,7 @@ describe('InterlinearizerWebView', () => {
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByText('In')).toBeInTheDocument();
+    expect(extractBookFromUsj).toHaveBeenCalledWith(expect.anything(), 'und');
   });
 
   it('falls back to "und" writing system when useProjectSetting returns an empty string', () => {
@@ -291,6 +292,7 @@ describe('InterlinearizerWebView', () => {
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByText('In')).toBeInTheDocument();
+    expect(extractBookFromUsj).toHaveBeenCalledWith(expect.anything(), 'und');
   });
 
   it('shows an error heading and message when tokenization throws an Error', () => {

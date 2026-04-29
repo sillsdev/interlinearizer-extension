@@ -19,6 +19,16 @@ declare module 'papi-shared-types' {
      * project picker dialog if the WebView has no project or no ID is given.
      */
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
+
+    /**
+     * Creates a new interlinearizer project. Prompts the user to select source and target
+     * Platform.Bible projects via picker dialogs. Returns the new project's UUID, or undefined if
+     * the user cancels either picker.
+     *
+     * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations
+     *   (e.g. `'en'`).
+     */
+    'interlinearizer.createProject': (analysisWritingSystem: string) => Promise<string | undefined>;
   }
 }
 
@@ -901,4 +911,54 @@ declare module 'interlinearizer' {
         morphemeId: string;
       }
   );
+
+  // ---------------------------------------------------------------------------
+  // §8 InterlinearProject — persisted project envelope
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The storage envelope for one interlinearizer project. Multiple projects may exist for the same
+   * pair of Platform.Bible projects (e.g. different analysis languages).
+   *
+   * The token hierarchy (`Book` / `Segment` / `Token`) is **not** stored here — it is rebuilt from
+   * Platform.Bible's USJ on each load. Only the analysis data and alignment links are persisted.
+   * Token-level drift is detected via `tokenSnapshot` fields on `TokenAnalysis` and
+   * `AlignmentEndpoint` records.
+   *
+   * Projects are stored via `papi.storage` (extension-host only) under two keys:
+   *
+   * - `'projectIds'` — ordered `string[]` of all project UUIDs.
+   * - `'project:{id}'` — JSON-serialized `InterlinearProject` for each project.
+   */
+  export interface InterlinearProject {
+    /** UUID v4 generated at creation time. */
+    id: string;
+
+    /** ISO 8601 creation timestamp. */
+    createdAt: string;
+
+    /** Platform.Bible project ID for the source text (the side being analyzed). */
+    sourceProjectId: string;
+
+    /** Platform.Bible project ID for the target text (the analysis / output side). */
+    targetProjectId: string;
+
+    /**
+     * BCP 47 tag for the language used in glosses and annotations (e.g. `'en'`). Populates
+     * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `Phrase` records.
+     */
+    analysisWritingSystem: string;
+
+    /** Source-side analysis layer. Empty at creation; populated as the user annotates tokens. */
+    sourceAnalysis: TextAnalysis;
+
+    /** Target-side analysis layer. Empty at creation; populated as the user annotates tokens. */
+    targetAnalysis: TextAnalysis;
+
+    /**
+     * Token- or morpheme-level alignment links. Empty at creation; populated as the user aligns
+     * source and target tokens.
+     */
+    links: AlignmentLink[];
+  }
 }

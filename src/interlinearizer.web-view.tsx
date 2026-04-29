@@ -230,7 +230,6 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             scrRef={scrRef}
             handleSubmit={(ref) => {
               setScrRef(ref);
-              onAddRecentRef(ref);
             }}
             localizedStrings={localizedStrings}
             recentSearches={recentRefs}

@@ -224,7 +224,7 @@ function stableStringify(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const sorted = Object.entries(value)
     .filter(([, v]) => v !== undefined)
-    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .sort(([a], [b]) => +(a > b) - +(a < b))
     .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`);
   return `{${sorted.join(',')}}`;
 }

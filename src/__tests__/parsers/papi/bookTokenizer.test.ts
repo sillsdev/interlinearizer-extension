@@ -150,6 +150,118 @@ describe('tokenizeBook', () => {
     );
   });
 
+  describe('word-internal joiners', () => {
+    it("tokenizes don't (ASCII apostrophe) as a single word token", () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "don't" }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe("don't");
+    });
+
+    it('tokenizes don’t (U+2019 right single quote) as a single word token', () => {
+      const text = 'don’t';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it("tokenizes l'homme as a single word token", () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "l'homme" }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe("l'homme");
+    });
+
+    it('tokenizes well-known as a single word token', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'well-known' }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe('well-known');
+    });
+
+    it('tokenizes "it\'s well-known" as two word tokens', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "it's well-known" }]));
+      const wordTokens = segments[0].tokens.filter((t) => t.type === 'word');
+      expect(wordTokens).toHaveLength(2);
+      expect(wordTokens[0].surfaceText).toBe("it's");
+      expect(wordTokens[1].surfaceText).toBe('well-known');
+    });
+
+    it("tokenizes 'hello' as word then punctuation (leading apostrophe absorbed into word)", () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "'hello'" }]));
+      const types = segments[0].tokens.map((t) => t.type);
+      expect(types).toEqual(['word', 'punctuation']);
+      expect(segments[0].tokens[0].surfaceText).toBe("'hello");
+      expect(segments[0].tokens[1].surfaceText).toBe("'");
+    });
+
+    it('tokenizes a standalone apostrophe as punctuation (no following word character)', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "'" }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('punctuation');
+    });
+
+    it("tokenizes word-initial U+0027 as part of the word (e.g. Hebrew aleph romanisation 'Elohim)", () => {
+      const text = "'Elohim";
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes word-initial U+2019 as part of the word', () => {
+      const text = '’Elohim';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes U+02BC (modifier letter apostrophe) as a word character regardless of position', () => {
+      // U+02BC is \p{L} so it is inherently a word character — no special handling needed.
+      const text = 'ʼelohim';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes end- as word then punctuation (trailing joiner is not absorbed)', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'end-' }]));
+      expect(segments[0].tokens).toHaveLength(2);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe('end');
+      expect(segments[0].tokens[1].type).toBe('punctuation');
+      expect(segments[0].tokens[1].surfaceText).toBe('-');
+    });
+
+    it('tokenizes -start as punctuation then word (leading joiner is not absorbed)', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: '-start' }]));
+      expect(segments[0].tokens).toHaveLength(2);
+      expect(segments[0].tokens[0].type).toBe('punctuation');
+      expect(segments[0].tokens[0].surfaceText).toBe('-');
+      expect(segments[0].tokens[1].type).toBe('word');
+      expect(segments[0].tokens[1].surfaceText).toBe('start');
+    });
+
+    // Double joiners between word chars are absorbed greedily: a--b → one token "a--b".
+    it('tokenizes a--b as a single word token (greedy double-joiner absorption)', () => {
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'a--b' }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe('a--b');
+    });
+
+    it('upholds the charStart/charEnd invariant for joiner-containing tokens', () => {
+      const text = "it's well-known, don’t you think?";
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      segments[0].tokens.forEach((token) =>
+        expect(text.slice(token.charStart, token.charEnd)).toBe(token.surfaceText),
+      );
+    });
+  });
+
   it('classifies astral-plane letters (surrogate pairs) as word tokens', () => {
     // Gothic letters U+10330–U+1034F are outside the BMP; each code point is two UTF-16 code
     // units. Testing surfaceText[0] (a lone surrogate) against WORD_START_RE would fail — the

@@ -10,6 +10,10 @@ const mockSelectProject = jest.fn();
 const mockGetOpenWebViewDefinition = jest.fn();
 const mockOnDidOpenWebView = jest.fn();
 const mockOnDidCloseWebView = jest.fn();
+const mockReadUserData = jest.fn();
+const mockWriteUserData = jest.fn();
+const mockDeleteUserData = jest.fn();
+const mockNotificationsSend = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -23,6 +27,14 @@ const papi = {
   },
   dialogs: {
     selectProject: mockSelectProject,
+  },
+  notifications: {
+    send: mockNotificationsSend,
+  },
+  storage: {
+    readUserData: mockReadUserData,
+    writeUserData: mockWriteUserData,
+    deleteUserData: mockDeleteUserData,
   },
   webViewProviders: {
     registerWebViewProvider: mockRegisterWebViewProvider,
@@ -44,6 +56,10 @@ const defaultExport = {
   __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView: mockOnDidOpenWebView,
   __mockOnDidCloseWebView: mockOnDidCloseWebView,
+  __mockReadUserData: mockReadUserData,
+  __mockWriteUserData: mockWriteUserData,
+  __mockDeleteUserData: mockDeleteUserData,
+  __mockNotificationsSend: mockNotificationsSend,
   __mockLogger: mockLogger,
 };
 

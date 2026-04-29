@@ -224,7 +224,9 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const index = parseStrictNumber(rangeElement['@_Index']);
     const length = parseStrictNumber(rangeElement['@_Length']);
     if (index === undefined || length === undefined) {
-      throw new SyntaxError('Invalid XML: Range missing required Index or Length attributes');
+      throw new SyntaxError(
+        'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
+      );
     }
 
     const textRange: StringRange = { Index: index, Length: length };

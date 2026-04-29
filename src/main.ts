@@ -93,7 +93,13 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
   const webViewDefinition = await papi.webViews.getOpenWebViewDefinition(webViewId);
-  return openInterlinearizer(webViewDefinition?.projectId);
+  if (!webViewDefinition?.projectId) {
+    logger.warn(
+      `Could not resolve projectId from webViewId "${webViewId}" while opening Interlinearizer`,
+    );
+    return undefined;
+  }
+  return openInterlinearizer(webViewDefinition.projectId);
 }
 
 /**

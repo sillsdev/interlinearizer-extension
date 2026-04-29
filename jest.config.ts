@@ -23,15 +23,10 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /**
-   * Collect coverage from parsers, main entry (main.ts), and WebView UI
-   * (interlinearizer.web-view.tsx). Excludes test files, type declarations, and build artifacts.
-   */
+  /** Collect coverage from all source files. Excludes type declarations and test files. */
   collectCoverageFrom: [
-    'src/parsers/**/*.ts',
-    'src/main.ts',
-    'src/**/*.web-view.tsx',
-    '!src/parsers/**/*.d.ts',
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',

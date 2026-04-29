@@ -21,8 +21,9 @@ describe('extractBookFromUsj', () => {
   });
 
   it('produces a stable contentHash for identical content', () => {
-    const usj: UsjDocument = { content: [{ type: 'book', code: 'GEN', content: [] }] };
-    expect(extractBookFromUsj(usj, WS).contentHash).toBe(extractBookFromUsj(usj, WS).contentHash);
+    const a: UsjDocument = { content: [{ type: 'book', code: 'GEN', content: [] }] };
+    const b: UsjDocument = { content: [...a.content] };
+    expect(extractBookFromUsj(a, 'en').contentHash).toBe(extractBookFromUsj(b, 'es').contentHash);
   });
 
   it('produces different contentHashes for different content', () => {

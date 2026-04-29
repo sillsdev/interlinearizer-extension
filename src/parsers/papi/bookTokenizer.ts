@@ -71,8 +71,8 @@ export function tokenizeBook(rawBook: RawBook): Book {
     const ref = parseSid(sid);
     return {
       id: sid,
-      startRef: ref,
-      endRef: ref,
+      startRef: { ...ref },
+      endRef: { ...ref },
       baselineText: text,
       tokens: tokenizeVerse(text, sid, rawBook.writingSystem),
     };

@@ -7,10 +7,12 @@
 
 import type { ReactElement, ReactNode } from 'react';
 
-interface ScriptureRef {
+interface SerializedVerseRef {
   book: string;
   chapterNum: number;
   verseNum: number;
+  verse?: string;
+  versificationStr?: string;
 }
 
 export const BOOK_CHAPTER_CONTROL_STRING_KEYS: string[] = [];
@@ -55,12 +57,12 @@ export function BookChapterControl({
   handleSubmit,
   onAddRecentSearch,
 }: Readonly<{
-  scrRef: ScriptureRef;
-  handleSubmit: (ref: ScriptureRef) => void;
+  scrRef: SerializedVerseRef;
+  handleSubmit: (ref: SerializedVerseRef) => void;
   className?: string;
   localizedStrings?: Record<string, string>;
-  recentSearches?: ScriptureRef[];
-  onAddRecentSearch?: (scrRef: ScriptureRef) => void;
+  recentSearches?: SerializedVerseRef[];
+  onAddRecentSearch?: (scrRef: SerializedVerseRef) => void;
   id?: string;
 }>): ReactElement {
   return (

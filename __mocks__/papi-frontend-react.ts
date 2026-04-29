@@ -3,6 +3,11 @@
  * WebView/frontend components can be unit-tested without the real Platform API.
  */
 
+/**
+ * Mock for `useProjectData`. Returns a `Proxy` whose property accesses each yield a function
+ * returning `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]`
+ * tuple without requiring a live data provider.
+ */
 const useProjectData = jest.fn(() =>
   new Proxy(
     {},
@@ -12,6 +17,15 @@ const useProjectData = jest.fn(() =>
   ),
 );
 
+/**
+ * Mock for `useProjectSetting`. Returns `[defaultState, setSetting, resetSetting, isLoading]`,
+ * passing `defaultState` through unchanged so callers receive a predictable initial value.
+ *
+ * @param _projectDataProviderSource - Ignored project data provider source.
+ * @param _key - Ignored setting key.
+ * @param defaultState - Value surfaced as the current setting state.
+ * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ */
 const useProjectSetting = jest
   .fn()
   .mockImplementation((_projectDataProviderSource: unknown, _key: string, defaultState: unknown) => [
@@ -21,13 +35,25 @@ const useProjectSetting = jest
     false,
   ]);
 
-/** Returns [record, isLoading] tuple; maps each key to itself so tests get a predictable string. */
+/**
+ * Mock for `useLocalizedStrings`. Maps each requested key to itself so tests receive a
+ * predictable `Record<string, string>` without a real localization service.
+ *
+ * @param keys - BCP47-style string keys to resolve.
+ * @returns Tuple of `[record, isLoading]` where every key maps to itself and `isLoading` is
+ *   `false`.
+ */
 const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
   Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}) : {},
   false,
 ]);
 
-/** Returns { recentScriptureRefs, addRecentScriptureRef } matching the real hook signature. */
+/**
+ * Mock for `useRecentScriptureRefs`. Returns an empty history and a no-op `addRecentScriptureRef`
+ * so components that display recent references render without errors.
+ *
+ * @returns Object with `recentScriptureRefs` (empty array) and `addRecentScriptureRef` (jest spy).
+ */
 const useRecentScriptureRefs = jest
   .fn()
   .mockReturnValue({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() });

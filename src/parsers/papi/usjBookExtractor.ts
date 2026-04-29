@@ -236,12 +236,13 @@ function stableStringify(value: unknown): string {
  * @returns Lowercase hex string of the unsigned 32-bit FNV-1a digest.
  */
 function fnv1a32(s: string): string {
-  const h = [...s].reduce<number>(
+  let h = 2166136261;
+  // eslint-disable-next-line no-restricted-syntax -- iterating over string, not array
+  for (const char of s) {
     /* v8 ignore next 2 -- codePointAt(0) on a spread char is always defined */
     // eslint-disable-next-line no-bitwise
-    (acc, char) => Math.imul(acc ^ (char.codePointAt(0) ?? 0), 16777619),
-    2166136261,
-  );
+    h = Math.imul(h ^ (char.codePointAt(0) ?? 0), 16777619);
+  }
   // eslint-disable-next-line no-bitwise
   return (h >>> 0).toString(16).padStart(8, '0');
 }

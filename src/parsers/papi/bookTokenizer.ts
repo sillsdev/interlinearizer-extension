@@ -17,13 +17,13 @@ import type { RawBook } from './usjBookExtractor';
 const CHAR_SET = String.raw`\p{L}\p{N}\p{M}\p{Join_Control}`;
 
 /**
- * Includes U+0027 and U+2019 at word-initial position (before the first word character) to handle
- * languages where these characters represent a phonemic glottal stop or similar feature (e.g.
- * Hebrew aleph in romanization, various indigenous-language orthographies).
+ * Includes U+0027 and U+2019 at word-initial and word-final positions to handle languages where
+ * these characters represent a phonemic glottal stop or similar feature (e.g. Hebrew aleph in
+ * romanization, various indigenous-language orthographies).
  *
  * Doesn't include hyphens/dashes.
  */
-const LEAD_SET = String.raw`\u0027\u2019`;
+const GLOTTAL_SET = String.raw`\u0027\u2019`;
 
 /**
  * Word-internal joiners:
@@ -41,18 +41,19 @@ const JOIN_SET = String.raw`\u0027\u002D\u2010-\u2015\u2019`;
 /**
  * Matches word tokens and punctuation tokens. Whitespace is not tokenized.
  *
- * A word token is a run of word characters, optionally extended through some leading characters and
- * word-internal joiners (e.g., apostrophes and hyphens). A joiner is absorbed into the surrounding
- * word only when it is both preceded and followed by word characters. Trailing joiners are left as
- * standalone punctuation tokens.
+ * A word token is a run of word characters, optionally extended through some leading/trailing
+ * glottal characters and word-internal joiners (e.g., apostrophes and hyphens). A joiner is
+ * absorbed into the surrounding word only when it is both preceded and followed by word characters.
+ * Trailing joiners that are not in GLOTTAL_SET are left as standalone punctuation tokens.
  *
- * Multiple leading apostrophes are absorbed greedily. Leading hyphens/dashes are NOT absorbed.
+ * Multiple leading or trailing glottal characters are absorbed greedily. Leading hyphens/dashes are
+ * NOT absorbed.
  *
  * Multiple consecutive word-internal joiners between word characters are absorbed greedily (e.g.
  * `a--b` → one token `a--b`).
  */
 const TOKEN_RE = new RegExp(
-  String.raw`(?:[${LEAD_SET}]+(?=[${CHAR_SET}]))?[${CHAR_SET}]+(?:[${JOIN_SET}]+(?=[${CHAR_SET}])[${CHAR_SET}]+)*|[^${CHAR_SET}\s]`,
+  String.raw`(?:[${GLOTTAL_SET}]+(?=[${CHAR_SET}]))?[${CHAR_SET}]+(?:[${JOIN_SET}]+(?=[${CHAR_SET}])[${CHAR_SET}]+)*[${GLOTTAL_SET}]*|[^${CHAR_SET}\s]`,
   'gv',
 );
 

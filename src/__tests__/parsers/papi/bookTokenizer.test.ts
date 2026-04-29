@@ -198,12 +198,11 @@ describe('tokenizeBook', () => {
       expect(wordTokens[1].surfaceText).toBe('well-known');
     });
 
-    it("tokenizes 'hello' as word then punctuation (leading apostrophe absorbed into word)", () => {
+    it("tokenizes 'hello' as a single word token (both leading and trailing apostrophes absorbed)", () => {
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: "'hello'" }]));
-      const types = segments[0].tokens.map((t) => t.type);
-      expect(types).toEqual(['word', 'punctuation']);
-      expect(segments[0].tokens[0].surfaceText).toBe("'hello");
-      expect(segments[0].tokens[1].surfaceText).toBe("'");
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe("'hello'");
     });
 
     it('tokenizes a standalone apostrophe as punctuation (no following word character)', () => {
@@ -228,6 +227,21 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[0].surfaceText).toBe(text);
     });
 
+    it("tokenizes word-final U+0027 as part of the word (e.g. Hebrew aleph romanisation bara')", () => {
+      const text = "bara'";
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
+
+    it('tokenizes word-final U+2019 as part of the word (e.g. Hebrew aleph romanisation bara’)', () => {
+      const text = 'bara’';
+      const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
+      expect(segments[0].tokens).toHaveLength(1);
+      expect(segments[0].tokens[0].type).toBe('word');
+      expect(segments[0].tokens[0].surfaceText).toBe(text);
+    });
     it('tokenizes U+02BC (modifier letter apostrophe) as a word character regardless of position', () => {
       // U+02BC is \p{L} so it is inherently a word character — no special handling needed.
       const text = 'ʼelohim';

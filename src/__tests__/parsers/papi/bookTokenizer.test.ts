@@ -9,7 +9,7 @@ function makeRawBook(verses: { sid: string; text: string }[]): RawBook {
 }
 
 describe('tokenizeBook', () => {
-  it('maps bookCode, contentHash, and writingSystem onto the Book', () => {
+  it('maps bookCode and contentHash onto the Book', () => {
     const raw = makeRawBook([]);
     const book = tokenizeBook(raw);
     expect(book.bookRef).toBe('GEN');

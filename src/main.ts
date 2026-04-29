@@ -128,7 +128,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: {
           name: 'return value',
-          summary: 'The ID of the opened WebView',
+          summary: 'The ID of the opened WebView, if opened; omitted when the user cancels',
           schema: { type: 'string' },
         },
       },

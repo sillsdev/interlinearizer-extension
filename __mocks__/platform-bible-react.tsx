@@ -36,6 +36,7 @@ export function TabToolbar({
 }
 
 export function ScrollGroupSelector({
+  availableScrollGroupIds,
   scrollGroupId,
   onChangeScrollGroupId,
 }: Readonly<{
@@ -48,7 +49,14 @@ export function ScrollGroupSelector({
       data-testid="scroll-group-selector"
       value={scrollGroupId ?? ''}
       onChange={(e) => onChangeScrollGroupId?.(e.target.value === '' ? undefined : Number(e.target.value))}
-    />
+    >
+      <option value="">—</option>
+      {availableScrollGroupIds?.map((id) => (
+        <option key={id ?? 'undefined'} value={id ?? ''}>
+          {id ?? '—'}
+        </option>
+      ))}
+    </select>
   );
 }
 

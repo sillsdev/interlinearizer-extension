@@ -44,7 +44,7 @@ const useProjectSetting = jest
  *   `false`.
  */
 const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
-  Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}) : {},
+  Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => { acc[k] = k; return acc; }, {}) : {},
   false,
 ]);
 

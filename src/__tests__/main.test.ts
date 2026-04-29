@@ -17,6 +17,9 @@ interface PapiBackendTestMock {
   __mockOnDidOpenWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
   __mockRegisterValidator: jest.Mock;
+  __mockReadUserData: jest.Mock;
+  __mockWriteUserData: jest.Mock;
+  __mockNotificationsSend: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -36,6 +39,9 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockOnDidOpenWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
     '__mockRegisterValidator' in m &&
+    '__mockReadUserData' in m &&
+    '__mockWriteUserData' in m &&
+    '__mockNotificationsSend' in m &&
     '__mockLogger' in m
   );
 }
@@ -50,6 +56,9 @@ const {
   __mockOnDidOpenWebView,
   __mockOnDidCloseWebView,
   __mockRegisterValidator,
+  __mockReadUserData,
+  __mockWriteUserData,
+  __mockNotificationsSend,
   __mockLogger,
 } = papiBackendMock;
 
@@ -126,6 +135,12 @@ describe('main', () => {
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
+    __mockReadUserData.mockRejectedValue(
+      Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' }),
+    );
+    __mockWriteUserData.mockResolvedValue(undefined);
+    __mockNotificationsSend.mockResolvedValue('mock-notification-id');
+    jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000000');
   });
 
   describe('activate', () => {
@@ -155,12 +170,12 @@ describe('main', () => {
       );
     });
 
-    it('adds all five registrations to the activation context', async () => {
+    it('adds all six registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(5);
+      expect(context.registrations.unsubscribers.size).toBe(6);
     });
 
     it('logs activation start and finish', async () => {
@@ -365,6 +380,84 @@ describe('main', () => {
       const result = await openForWebView('src-webview');
 
       expect(result).toBe('interlinearizer-webview-id');
+    });
+  });
+
+  describe('interlinearizer.createProject command', () => {
+    async function getCreateProjectHandler(): Promise<
+      (analysisWritingSystem: string) => Promise<string | undefined>
+    > {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.createProject');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
+      return async (ws: string): Promise<string | undefined> => {
+        const result: unknown = await rawHandler(ws);
+        return typeof result === 'string' ? result : undefined;
+      };
+    }
+
+    it('registers the interlinearizer.createProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('creates and returns the new project ID when both pickers are confirmed', async () => {
+      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce('tgt-project');
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBe('00000000-0000-0000-0000-000000000000');
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        expect.anything(),
+        'project:00000000-0000-0000-0000-000000000000',
+        expect.stringContaining('"sourceProjectId":"src-project"'),
+      );
+    });
+
+    it('returns undefined when the source picker is cancelled', async () => {
+      __mockSelectProject.mockResolvedValue(undefined);
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBeUndefined();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('returns undefined when the target picker is cancelled', async () => {
+      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce(undefined);
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBeUndefined();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('logs the error, sends an error notification, and returns undefined when storage fails', async () => {
+      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce('tgt-project');
+      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBeUndefined();
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to create project',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
     });
   });
 

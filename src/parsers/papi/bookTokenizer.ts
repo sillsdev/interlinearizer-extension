@@ -60,7 +60,7 @@ const TOKEN_RE = new RegExp(
  * Tests whether a matched token string contains a word character, to classify it as `word` vs
  * `punctuation`.
  */
-const WORD_START_RE = new RegExp(`[${CHAR_SET}]`, 'v');
+const WORD_CONTAIN_RE = new RegExp(`[${CHAR_SET}]`, 'v');
 
 /**
  * Parses a USJ verse SID (e.g. `"GEN 1:1"`) into a {@link ScriptureRef}.
@@ -93,7 +93,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
     const surfaceText = match[0];
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
-    const type: TokenType = WORD_START_RE.test(surfaceText) ? 'word' : 'punctuation';
+    const type: TokenType = WORD_CONTAIN_RE.test(surfaceText) ? 'word' : 'punctuation';
     return { id: `${sid}:${charStart}`, surfaceText, writingSystem, type, charStart, charEnd };
   });
 }

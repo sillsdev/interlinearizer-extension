@@ -1,6 +1,7 @@
 import papi, { logger } from '@papi/backend';
 import type {
   ExecutionActivationContext,
+  ExecutionToken,
   IWebViewProvider,
   OpenWebViewOptions,
   SavedWebViewDefinition,
@@ -8,6 +9,7 @@ import type {
 } from '@papi/core';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import * as projectStorage from './projectStorage';
 
 /**
  * WebView type identifier for the Interlinearizer. Used when registering the provider and when
@@ -51,6 +53,12 @@ const mainWebViewProvider: IWebViewProvider = {
 };
 
 /**
+ * Execution token stored during activation for use in command handlers that call `papi.storage`.
+ * Set in `activate()` before any command can be invoked.
+ */
+let executionToken: ExecutionToken;
+
+/**
  * Tracks the WebView ID opened for each project so subsequent opens of the same project bring that
  * tab to front instead of opening a duplicate. Populated and pruned via `onDidOpenWebView` and
  * `onDidCloseWebView` subscriptions registered during activation.
@@ -90,6 +98,45 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
+ * Creates a new interlinearizer project. Prompts the user to select source and target
+ * Platform.Bible projects via picker dialogs. Returns the new project's ID, or undefined if the
+ * user cancels either picker or if storage fails (failure is also logged and shown as a
+ * notification).
+ */
+async function createInterlinearProject(
+  analysisWritingSystem: string,
+): Promise<string | undefined> {
+  const sourceProjectId = await papi.dialogs.selectProject({
+    title: '%interlinearizer_dialog_create_source_title%',
+    prompt: '%interlinearizer_dialog_create_source_prompt%',
+  });
+  if (!sourceProjectId) return undefined;
+
+  const targetProjectId = await papi.dialogs.selectProject({
+    title: '%interlinearizer_dialog_create_target_title%',
+    prompt: '%interlinearizer_dialog_create_target_prompt%',
+  });
+  if (!targetProjectId) return undefined;
+
+  try {
+    const project = await projectStorage.createProject(
+      executionToken,
+      sourceProjectId,
+      targetProjectId,
+      analysisWritingSystem,
+    );
+    return project.id;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to create project', e);
+    await papi.notifications.send({
+      message: '%interlinearizer_error_create_project_failed%',
+      severity: 'error',
+    });
+    return undefined;
+  }
+}
+
+/**
  * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
  * Called by the platform when the extension is loaded.
  *
@@ -98,6 +145,8 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
+
+  executionToken = context.executionToken;
 
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
     mainWebViewType,
@@ -127,6 +176,29 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const createProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.createProject',
+    createInterlinearProject,
+    {
+      method: {
+        summary: 'Create a new interlinearizer project',
+        params: [
+          {
+            name: 'analysisWritingSystem',
+            required: true,
+            summary: 'BCP 47 tag for the gloss / annotation language (e.g. "en")',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'The UUID of the new project, or undefined if the user cancelled',
+          schema: { type: ['string', 'null'] },
+        },
+      },
+    },
+  );
+
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
@@ -141,6 +213,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   context.registrations.add(
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
+    createProjectCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

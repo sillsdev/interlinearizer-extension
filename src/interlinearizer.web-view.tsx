@@ -6,14 +6,18 @@ import { isPlatformError } from 'platform-bible-utils';
  * Fetches and displays the USJ book data for the given project and scripture reference. Shows a
  * loading indicator while data is in flight, an error message if the fetch fails or returns no
  * data, and the raw JSON of the book otherwise.
+ *
+ * @param projectId - The Platform.Bible project ID whose USJ book data is fetched.
+ * @param scrRef - The current scripture reference from the scroll group, used to select the book.
+ * @returns A JSX element displaying the book data, a loading state, or an error message.
  */
 function ProjectBookFetcher({
   projectId,
   scrRef,
-}: {
+}: Readonly<{
   projectId: string;
   scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
-}) {
+}>) {
   const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
     scrRef,
     undefined,
@@ -58,6 +62,12 @@ function ProjectBookFetcher({
  * Root WebView component for the Interlinearizer. Reads the scroll-group scripture reference and
  * delegates book fetching to {@link ProjectBookFetcher}. Shows a placeholder when no projectId is
  * provided (i.e. the WebView was opened without a project).
+ *
+ * @param projectId - The Platform.Bible project ID passed via WebView props; `undefined` when the
+ *   WebView was opened without a project context.
+ * @param useWebViewScrollGroupScrRef - PAPI hook that provides the current scroll-group scripture
+ *   reference.
+ * @returns A JSX element for the Interlinearizer root view.
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,

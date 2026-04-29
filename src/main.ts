@@ -126,6 +126,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
         ],
+        // `undefined` (returned on cancel) is not a JSON type and cannot appear in a JSON-RPC
+        // response, so the schema only describes the shape when a value is present. All other
+        // WebView-opening commands in paranext-core use `{ type: 'string' }` for this same pattern
+        // (e.g. platform-scripture-editor openScriptureEditor, platform-get-resources).
         result: {
           name: 'return value',
           summary: 'The ID of the opened WebView, if opened; omitted when the user cancels',

@@ -56,7 +56,7 @@ const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
  */
 const useRecentScriptureRefs = jest
   .fn()
-  .mockReturnValue({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() });
+  .mockImplementation(() => ({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() }));
 
 module.exports = {
   __esModule: true,

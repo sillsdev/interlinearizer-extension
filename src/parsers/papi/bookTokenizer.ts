@@ -89,7 +89,7 @@ function parseSid(sid: string): ScriptureRef {
  *   characters.
  */
 function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[] {
-  return Array.from(text.matchAll(TOKEN_RE)).map((match) => {
+  return Array.from(text.matchAll(TOKEN_RE), (match) => {
     const surfaceText = match[0];
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
@@ -115,6 +115,9 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
 export function tokenizeBook(rawBook: RawBook): Book {
   const segments: Segment[] = rawBook.verses.map(({ sid, text }) => {
     const ref = parseSid(sid);
+    if (ref.book !== rawBook.bookCode) {
+      throw new SyntaxError(`Verse SID "${sid}" does not match book code "${rawBook.bookCode}"`);
+    }
     return {
       id: sid,
       startRef: { ...ref },

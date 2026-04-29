@@ -141,6 +141,16 @@ describe('tokenizeBook', () => {
     expect(segments[0].tokens[0].surfaceText).toBe('ñ');
   });
 
+  it('throws when a verse SID book code does not match rawBook.bookCode', () => {
+    const raw: RawBook = { ...makeRawBook([{ sid: 'EXO 1:1', text: 'text' }]), bookCode: 'GEN' };
+    expect(() => tokenizeBook(raw)).toThrow(
+      expect.objectContaining({
+        name: 'SyntaxError',
+        message: expect.stringContaining('does not match book code'),
+      }),
+    );
+  });
+
   it('throws on an invalid verse SID', () => {
     expect(() => tokenizeBook(makeRawBook([{ sid: 'not-a-ref', text: 'text' }]))).toThrow(
       expect.objectContaining({

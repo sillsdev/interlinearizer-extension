@@ -757,7 +757,7 @@ describe('InterlinearXmlParser', () => {
         expect.objectContaining({
           name: 'SyntaxError',
           message: expect.stringContaining(
-            'Invalid XML: Range missing required Index or Length attributes',
+            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
           ),
         }),
       );
@@ -781,7 +781,7 @@ describe('InterlinearXmlParser', () => {
         expect.objectContaining({
           name: 'SyntaxError',
           message: expect.stringContaining(
-            'Invalid XML: Range missing required Index or Length attributes',
+            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
           ),
         }),
       );

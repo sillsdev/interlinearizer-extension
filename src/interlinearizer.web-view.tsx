@@ -228,9 +228,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         startAreaChildren={
           <BookChapterControl
             scrRef={scrRef}
-            handleSubmit={(ref) => {
-              setScrRef(ref);
-            }}
+            handleSubmit={setScrRef}
             localizedStrings={localizedStrings}
             recentSearches={recentRefs}
             onAddRecentSearch={onAddRecentRef}

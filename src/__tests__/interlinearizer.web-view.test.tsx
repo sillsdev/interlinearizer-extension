@@ -4,7 +4,8 @@
 
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import {
   useProjectData,
   useProjectSetting,
@@ -326,7 +327,7 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('calls setScrRef and addRecentScriptureRef when the verse picker submits', () => {
+  it('calls setScrRef and addRecentScriptureRef when the verse picker submits', async () => {
     mockBookData({});
     const mockSetScrRef = jest.fn();
     const mockAddRecentRef = jest.fn();
@@ -336,20 +337,20 @@ describe('InterlinearizerWebView', () => {
     });
     render(<InterlinearizerWebView {...makeProps(testProjectId, defaultScrRef, mockSetScrRef)} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /submit reference/i }));
+    await userEvent.click(screen.getByRole('button', { name: /submit reference/i }));
 
     expect(mockSetScrRef).toHaveBeenCalledWith(defaultScrRef);
     expect(mockAddRecentRef).toHaveBeenCalledWith(defaultScrRef);
   });
 
-  it('calls setScrRef with the segment ref when a verse box is clicked', () => {
+  it('calls setScrRef with the segment ref when a verse box is clicked', async () => {
     mockBookData({});
     jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
     const mockSetScrRef = jest.fn();
     // Start at verse 1; click verse 2's token to select it
     render(<InterlinearizerWebView {...makeProps(testProjectId, defaultScrRef, mockSetScrRef)} />);
 
-    fireEvent.click(screen.getByText('And'));
+    await userEvent.click(screen.getByText('And'));
 
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });

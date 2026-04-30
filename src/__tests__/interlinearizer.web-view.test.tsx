@@ -7,17 +7,17 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  useLocalizedStrings,
   useProjectData,
   useProjectSetting,
-  useLocalizedStrings,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 
-jest.mock('parsers/papi/usjBookExtractor');
 jest.mock('parsers/papi/bookTokenizer');
+jest.mock('parsers/papi/usjBookExtractor');
 
 /**
  * Matches the PlatformError shape from platform-bible-utils (discriminated by
@@ -68,7 +68,7 @@ const GEN_1_1_BOOK: Book = {
 };
 
 /** Pre-built Book with no segments — used by the no-verse-data test. */
-const EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
+const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
 /** Book with two segments in GEN 1 — used by chapter-display tests. */
 const GEN_1_MULTI_BOOK: Book = {
@@ -235,7 +235,7 @@ describe('InterlinearizerWebView', () => {
 
   it('shows a no-verse message when the tokenized book has no segments at all', () => {
     mockBookData({});
-    jest.mocked(tokenizeBook).mockReturnValue(EMPTY_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_EMPTY_BOOK);
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
@@ -355,13 +355,13 @@ describe('InterlinearizerWebView', () => {
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
-  it('passes a book-stable ref to BookUSJ so verse changes do not re-fetch the book', () => {
+  it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
     const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
     jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));
     const { rerender } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
     rerender(
       <InterlinearizerWebView
-        {...makeProps(testProjectId, { book: 'GEN', chapterNum: 1, verseNum: 5 })}
+        {...makeProps(testProjectId, { book: 'GEN', chapterNum: 2, verseNum: 5 })}
       />,
     );
 

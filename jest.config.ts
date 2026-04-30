@@ -23,15 +23,10 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /**
-   * Collect coverage from parsers, main entry (main.ts), and WebView UI
-   * (interlinearizer.web-view.tsx). Excludes test files, type declarations, and build artifacts.
-   */
+  /** Collect coverage from all source files. Excludes type declarations and test files. */
   collectCoverageFrom: [
-    'src/parsers/**/*.ts',
-    'src/main.ts',
-    'src/**/*.web-view.tsx',
-    '!src/parsers/**/*.d.ts',
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
@@ -92,12 +87,12 @@ const config: Config = {
     '^@papi/frontend/react$': '<rootDir>/__mocks__/papi-frontend-react.ts',
     /** Mock so test-helpers get UnsubscriberAsyncList without loading ESM deps. */
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
+    /** Mock ESM deps that Jest cannot parse. */
+    '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
-    /** Resolve webpack ?raw import for test XML in web-view. */
-    '^(.+)/Interlinear_en_MAT\\.xml\\?raw$': '<rootDir>/__mocks__/interlinearXmlContent.ts',
   },
 
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */

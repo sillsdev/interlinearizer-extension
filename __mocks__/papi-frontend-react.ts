@@ -1,63 +1,70 @@
 /**
- * @file Jest mock for @papi/frontend/react. Provides stub implementations of various PAPI React hooks so
+ * @file Jest mock for @papi/frontend/react. Provides stub implementations of PAPI React hooks so
  * WebView/frontend components can be unit-tested without the real Platform API.
  */
 
 /**
- * useData('providerName') returns an object whose keys are data type names and values are hooks.
- * Mock: any property returns a function that returns [undefined, setter, false].
+ * Mock for `useProjectData`. Returns a `Proxy` whose property accesses each yield a function
+ * returning `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]`
+ * tuple without requiring a live data provider.
  */
-const createUseDataLikeHook = () =>
-  jest.fn(() =>
-    new Proxy(
-      {},
-      {
-        get: () => () => [undefined, jest.fn(), false],
-      },
-    ),
-  );
+const useProjectData = jest.fn(() =>
+  new Proxy(
+    {},
+    {
+      get: () => () => [undefined, jest.fn(), false],
+    },
+  ),
+);
 
-const useDataProvider = jest.fn().mockReturnValue(undefined);
-const useData = createUseDataLikeHook();
-const useScrollGroupScrRef = jest.fn().mockReturnValue([undefined, jest.fn()]);
-const useSetting = jest.fn().mockImplementation((_key: string, defaultState: unknown) => [defaultState, jest.fn()]);
-const useProjectData = createUseDataLikeHook();
-const useProjectDataProvider = jest.fn().mockReturnValue(undefined);
+/**
+ * Mock for `useProjectSetting`. Returns `[defaultState, setSetting, resetSetting, isLoading]`,
+ * passing `defaultState` through unchanged so callers receive a predictable initial value.
+ *
+ * @param _projectDataProviderSource - Ignored project data provider source.
+ * @param _key - Ignored setting key.
+ * @param defaultState - Value surfaced as the current setting state.
+ * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ */
 const useProjectSetting = jest
   .fn()
-  .mockImplementation((_projectInterface: string, _projectIdOrPdp: unknown, _key: string, defaultState: unknown) => [
+  .mockImplementation((_projectDataProviderSource: unknown, _key: string, defaultState: unknown) => [
     defaultState,
     jest.fn(),
+    jest.fn(),
+    false,
   ]);
-const useDialogCallback = jest.fn().mockReturnValue(jest.fn());
-const useDataProviderMulti = jest.fn().mockReturnValue([]);
-/** Returns a map of localization key -> key (so tests get a string for each key). */
-const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) =>
-  Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}) : {},
-);
-const useWebViewController = jest.fn().mockReturnValue(undefined);
-const useRecentScriptureRefs = jest.fn().mockReturnValue([]);
+
+/**
+ * Mock for `useLocalizedStrings`. Maps each requested key to itself so tests receive a
+ * predictable `Record<string, string>` without a real localization service.
+ *
+ * @param keys - BCP47-style string keys to resolve.
+ * @returns Tuple of `[record, isLoading]` where every key maps to itself and `isLoading` is
+ *   `false`.
+ */
+const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
+  Array.isArray(keys) ? keys.reduce<Record<string, string>>((acc, k) => { acc[k] = k; return acc; }, {}) : {},
+  false,
+]);
+
+/**
+ * Mock for `useRecentScriptureRefs`. Returns an empty history and a no-op `addRecentScriptureRef`
+ * so components that display recent references render without errors.
+ *
+ * @returns Object with `recentScriptureRefs` (empty array) and `addRecentScriptureRef` (jest spy).
+ */
+const useRecentScriptureRefs = jest
+  .fn()
+  .mockImplementation(() => ({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() }));
 
 module.exports = {
   __esModule: true,
-  useDataProvider,
-  useData,
-  useScrollGroupScrRef,
-  useSetting,
   useProjectData,
-  useProjectDataProvider,
   useProjectSetting,
-  useDialogCallback,
-  useDataProviderMulti,
   useLocalizedStrings,
-  useWebViewController,
   useRecentScriptureRefs,
-  __mockUseDataProvider: useDataProvider,
-  __mockUseData: useData,
-  __mockUseLocalizedStrings: useLocalizedStrings,
-  __mockUseSetting: useSetting,
-  __mockUseProjectData: useProjectData,
-  __mockUseProjectDataProvider: useProjectDataProvider,
-  __mockUseProjectSetting: useProjectSetting,
-  __mockUseWebViewController: useWebViewController,
 };
+
+/** Marks this file as a module so top-level const/let are module-scoped. */
+export {};

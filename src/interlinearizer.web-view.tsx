@@ -17,6 +17,7 @@ import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Book, Segment } from 'interlinearizer';
 import { logger } from '@papi/frontend';
+import ContinuousScrollToggle from './components/ContinuousScrollToggle';
 
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 
@@ -223,27 +224,34 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 
   return (
     <div className="tw-flex tw-flex-col">
-      <TabToolbar
-        className="tw-z-10"
-        startAreaChildren={
-          <BookChapterControl
-            scrRef={scrRef}
-            handleSubmit={setScrRef}
-            localizedStrings={localizedStrings}
-            recentSearches={recentRefs}
-            onAddRecentSearch={onAddRecentRef}
-          />
-        }
-        endAreaChildren={
-          <ScrollGroupSelector
-            availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
-            scrollGroupId={scrollGroupId}
-            onChangeScrollGroupId={setScrollGroupId}
-          />
-        }
-        onSelectProjectMenuItem={() => {}}
-        onSelectViewInfoMenuItem={() => {}}
-      />
+      <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-background">
+        <TabToolbar
+          className="tw-z-10"
+          startAreaChildren={
+            <BookChapterControl
+              scrRef={scrRef}
+              handleSubmit={setScrRef}
+              localizedStrings={localizedStrings}
+              recentSearches={recentRefs}
+              onAddRecentSearch={onAddRecentRef}
+            />
+          }
+          endAreaChildren={
+            <ScrollGroupSelector
+              availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
+              scrollGroupId={scrollGroupId}
+              onChangeScrollGroupId={setScrollGroupId}
+            />
+          }
+          onSelectProjectMenuItem={() => {}}
+          onSelectViewInfoMenuItem={() => {}}
+        />
+        {projectId && (
+          <div className="tw-border-b tw-px-4 tw-py-2">
+            <ContinuousScrollToggle projectId={projectId} />
+          </div>
+        )}
+      </div>
 
       <div className="tw-p-4">
         {projectId ? (

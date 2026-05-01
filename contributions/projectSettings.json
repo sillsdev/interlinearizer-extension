@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "label": "%interlinearizer_projectSettings_title%",
+    "properties": {
+      "interlinearizer.continuousScroll": {
+        "label": "%interlinearizer_projectSettings_continuousScroll%",
+        "description": "%interlinearizer_projectSettings_continuousScrollDescription%",
+        "default": true
+      }
+    }
+  }
+]

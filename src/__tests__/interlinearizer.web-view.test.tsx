@@ -168,9 +168,18 @@ function mockBookData(value: unknown, isLoading = false): void {
   }));
 }
 
-/** Configures useProjectSetting to return the given writing system tag. */
+/**
+ * Configures useProjectSetting to return the given writing system tag for the languageTag key; all
+ * other keys receive their defaultState so the continuousScroll setting gets its default (true).
+ */
 function mockWritingSystem(tag: string | PlatformError = 'en'): void {
-  jest.mocked(useProjectSetting).mockReturnValue([tag, jest.fn(), jest.fn(), false]);
+  jest
+    .mocked(useProjectSetting)
+    .mockImplementation((_projectId, key, defaultState) =>
+      key === 'platform.languageTag'
+        ? [tag, jest.fn(), jest.fn(), false]
+        : [defaultState, jest.fn(), jest.fn(), false],
+    );
 }
 
 describe('InterlinearizerWebView', () => {
@@ -369,5 +378,53 @@ describe('InterlinearizerWebView', () => {
     refsPassed.forEach((ref) => expect(ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
     expect(mockBookUSJ.mock.calls.length).toBeGreaterThanOrEqual(2);
     refsPassed.slice(1).forEach((ref) => expect(ref).toBe(refsPassed[0]));
+  });
+
+  it('renders the continuous scroll toggle when a project is linked', () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+  });
+
+  it('does not render the continuous scroll toggle when no project is linked', () => {
+    render(<InterlinearizerWebView {...makeProps()} />);
+
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
+  it('continuous scroll toggle is checked when the setting is true', () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('checkbox')).toBeChecked();
+  });
+
+  it('continuous scroll toggle is unchecked when the setting is false', () => {
+    mockBookData({});
+    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
+      if (key === 'interlinearizer.continuousScroll') return [false, jest.fn(), jest.fn(), false];
+      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
+      return [d, jest.fn(), jest.fn(), false];
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('clicking the continuous scroll toggle calls setContinuousScroll with the new value', async () => {
+    mockBookData({});
+    const mockSetContinuousScroll = jest.fn();
+    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
+      if (key === 'interlinearizer.continuousScroll')
+        return [true, mockSetContinuousScroll, jest.fn(), false];
+      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
+      return [d, jest.fn(), jest.fn(), false];
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByRole('checkbox'));
+
+    expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
   });
 });

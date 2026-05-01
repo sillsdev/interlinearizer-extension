@@ -82,3 +82,38 @@ export function BookChapterControl({
     </div>
   );
 }
+
+export function Switch({
+  checked,
+  id,
+  onCheckedChange,
+}: Readonly<{
+  checked?: boolean;
+  id?: string;
+  onCheckedChange?: (checked: boolean) => void;
+}>): ReactElement {
+  return (
+    <input
+      checked={checked ?? false}
+      id={id}
+      onChange={(e) => onCheckedChange?.(e.target.checked)}
+      type="checkbox"
+    />
+  );
+}
+
+export function Label({
+  children,
+  className,
+  htmlFor,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  htmlFor?: string;
+}>): ReactElement {
+  return (
+    <label className={className} htmlFor={htmlFor}>
+      {children}
+    </label>
+  );
+}

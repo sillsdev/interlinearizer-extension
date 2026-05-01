@@ -169,17 +169,20 @@ function mockBookData(value: unknown, isLoading = false): void {
 }
 
 /**
- * Configures useProjectSetting to return the given writing system tag for the languageTag key; all
- * other keys receive their defaultState so the continuousScroll setting gets its default (true).
+ * Configures useProjectSetting for the languageTag and continuousScroll keys. All other keys
+ * receive their defaultState.
+ *
+ * @param tag - Writing system tag returned for `platform.languageTag`
+ * @param continuousScroll - Value returned for `interlinearizer.continuousScroll`; defaults to
+ *   `false` so existing token-chip rendering tests are unaffected
  */
-function mockWritingSystem(tag: string | PlatformError = 'en'): void {
-  jest
-    .mocked(useProjectSetting)
-    .mockImplementation((_projectId, key, defaultState) =>
-      key === 'platform.languageTag'
-        ? [tag, jest.fn(), jest.fn(), false]
-        : [defaultState, jest.fn(), jest.fn(), false],
-    );
+function mockWritingSystem(tag: string | PlatformError = 'en', continuousScroll = false): void {
+  jest.mocked(useProjectSetting).mockImplementation((_projectId, key, defaultState) => {
+    if (key === 'platform.languageTag') return [tag, jest.fn(), jest.fn(), false];
+    if (key === 'interlinearizer.continuousScroll')
+      return [continuousScroll, jest.fn(), jest.fn(), false];
+    return [defaultState, jest.fn(), jest.fn(), false];
+  });
 }
 
 describe('InterlinearizerWebView', () => {
@@ -395,6 +398,7 @@ describe('InterlinearizerWebView', () => {
 
   it('continuous scroll toggle is checked when the setting is true', () => {
     mockBookData({});
+    mockWritingSystem('en', true);
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('checkbox')).toBeChecked();
@@ -410,6 +414,25 @@ describe('InterlinearizerWebView', () => {
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('renders segments in baseline-text mode when continuousScroll is true', () => {
+    mockBookData({});
+    mockWritingSystem('en', true);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+    expect(screen.queryByText('In')).not.toBeInTheDocument();
+  });
+
+  it('renders all chapter segments in baseline-text mode when continuousScroll is true', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    mockWritingSystem('en', true);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+    expect(screen.getByText('And the earth.')).toBeInTheDocument();
   });
 
   it('clicking the continuous scroll toggle calls setContinuousScroll with the new value', async () => {

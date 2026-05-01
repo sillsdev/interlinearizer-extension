@@ -15,66 +15,12 @@ import {
 } from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { Book, Segment } from 'interlinearizer';
+import type { Book } from 'interlinearizer';
 import { logger } from '@papi/frontend';
 import ContinuousScrollToggle from './components/ContinuousScrollToggle';
+import SegmentView from './components/SegmentView';
 
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
-
-/**
- * Renders the tokens of a single segment as inline chips.
- *
- * @param props - Component props
- * @param props.segment - The segment whose tokens to render
- * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onClick - Callback invoked when the segment button is clicked
- * @returns A button containing the segment's verse label and token chips
- */
-function SegmentView({
-  segment,
-  isActive,
-  onClick,
-}: Readonly<{
-  segment: Segment;
-  isActive?: boolean;
-  onClick?: () => void;
-}>) {
-  return (
-    <button
-      type="button"
-      aria-current={isActive ? 'true' : undefined}
-      className={
-        isActive
-          ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
-          : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
-      }
-      onClick={onClick}
-    >
-      <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
-        {segment.startRef.verse}
-      </span>
-      <span className="tw-flex tw-flex-wrap tw-gap-1">
-        {segment.tokens.map((token) =>
-          token.type === 'word' ? (
-            <span
-              key={token.id}
-              className="tw-inline-block tw-rounded tw-border tw-border-border tw-bg-muted tw-px-1.5 tw-py-0.5 tw-font-mono tw-text-sm tw-text-foreground"
-            >
-              {token.surfaceText}
-            </span>
-          ) : (
-            <span
-              key={token.id}
-              className="tw-inline-block tw-font-mono tw-text-sm tw-text-muted-foreground"
-            >
-              {token.surfaceText}
-            </span>
-          ),
-        )}
-      </span>
-    </button>
-  );
-}
 
 /**
  * Fetches the USJ book for the given project, tokenizes it, and renders all segments in the current
@@ -106,6 +52,7 @@ function ProjectBookFetcher({
   );
 
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
+  const [continuousScroll] = useProjectSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,
@@ -184,6 +131,7 @@ function ProjectBookFetcher({
               key={seg.id}
               segment={seg}
               isActive={seg.startRef.verse === scrRef.verseNum}
+              displayMode={continuousScroll === true ? 'baseline-text' : 'token-chip'}
               onClick={() =>
                 setScrRef({
                   book: seg.startRef.book,

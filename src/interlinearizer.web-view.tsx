@@ -18,6 +18,7 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { Book } from 'interlinearizer';
 import { logger } from '@papi/frontend';
 import ContinuousScrollToggle from './components/ContinuousScrollToggle';
+import ContinuousView from './components/ContinuousView';
 import SegmentView from './components/SegmentView';
 
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
@@ -116,6 +117,10 @@ function ProjectBookFetcher({
 
       {!bookError && !tokenizeError && isLoading && (
         <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
+      )}
+
+      {!bookError && !tokenizeError && !isLoading && book && continuousScroll === true && (
+        <ContinuousView book={book} />
       )}
 
       {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (

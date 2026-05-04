@@ -18,6 +18,10 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
+jest.mock('../components/ContinuousView', () => ({
+  __esModule: true,
+  default: () => <div data-testid="continuous-view" />,
+}));
 
 /**
  * Matches the PlatformError shape from platform-bible-utils (discriminated by
@@ -449,5 +453,51 @@ describe('InterlinearizerWebView', () => {
     await userEvent.click(screen.getByRole('checkbox'));
 
     expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
+  });
+
+  it('renders ContinuousView when continuousScroll is true and book is loaded', () => {
+    mockBookData({});
+    mockWritingSystem('en', true);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
+  });
+
+  it('does not render ContinuousView when continuousScroll is false', () => {
+    mockBookData({});
+    mockWritingSystem('en', false);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
+  });
+
+  it('does not render ContinuousView when continuousScroll defaults to true but book is still loading', () => {
+    mockBookData(undefined, true);
+    mockWritingSystem('en', true);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
+  });
+
+  it('does not render ContinuousView when there is a book error', () => {
+    mockBookData({ platformErrorVersion: 1, message: 'Project not found' });
+    mockWritingSystem('en', true);
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
+  });
+
+  it('renders ContinuousView above the chapter segment rows when both are present', () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    mockWritingSystem('en', true);
+    const { container } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    const continuousView = screen.getByTestId('continuous-view');
+    // All interactive elements in DOM order; ContinuousView's div must precede the segment buttons
+    const allElements = Array.from(
+      container.querySelectorAll('[data-testid="continuous-view"], button[aria-current]'),
+    );
+    expect(allElements[0]).toBe(continuousView);
   });
 });

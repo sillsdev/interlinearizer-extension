@@ -88,8 +88,8 @@ export default function ContinuousView({ book }: Readonly<{ book: Book }>) {
           />
         )}
 
-        {/* Inner flex row — overflow-x scroll */}
-        <div className="tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2">
+        {/* Inner flex row */}
+        <div className="no-scrollbar tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2">
           {allTokens.map((token, index) => (
             <span
               key={token.id}

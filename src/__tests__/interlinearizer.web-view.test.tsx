@@ -455,6 +455,31 @@ describe('InterlinearizerWebView', () => {
     expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
   });
 
+  it('switches rendering immediately using optimistic local state while setting is still pending', async () => {
+    mockBookData({});
+    const mockSetContinuousScroll = jest.fn();
+    // Setting source remains true during the test (simulates delayed persistence confirmation).
+    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
+      if (key === 'interlinearizer.continuousScroll')
+        return [true, mockSetContinuousScroll, jest.fn(), false];
+      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
+      return [d, jest.fn(), jest.fn(), false];
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    // Initially in continuous mode.
+    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
+    expect(screen.queryByText('In')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('checkbox'));
+
+    // Before setting confirms, UI should already switch to token-chip mode.
+    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
+    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
+    expect(screen.getByRole('checkbox')).toBeDisabled();
+  });
+
   it('renders ContinuousView when continuousScroll is true and book is loaded', () => {
     mockBookData({});
     mockWritingSystem('en', true);

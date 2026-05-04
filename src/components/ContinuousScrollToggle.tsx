@@ -1,23 +1,27 @@
-import { useLocalizedStrings, useProjectSetting } from '@papi/frontend/react';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { Label, Switch } from 'platform-bible-react';
 import { useId, useMemo } from 'react';
 
 const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
 
 /**
- * Checkbox toggle that reads and writes the `interlinearizer.continuousScroll` project setting.
+ * Checkbox toggle UI for the `interlinearizer.continuousScroll` setting.
  *
  * @param props - Component props
- * @param props.projectId - PAPI project ID whose setting to bind
- * @returns A labeled checkbox bound to the continuous-scroll project setting
+ * @param props.checked - Current UI value for continuous scroll
+ * @param props.disabled - Whether the control is temporarily disabled
+ * @param props.onCheckedChange - Callback invoked when user toggles the switch
+ * @returns A labeled checkbox for continuous-scroll mode
  */
-export default function ContinuousScrollToggle({ projectId }: Readonly<{ projectId: string }>) {
-  const [continuousScroll, setContinuousScroll] = useProjectSetting(
-    projectId,
-    'interlinearizer.continuousScroll',
-    true,
-  );
-
+export default function ContinuousScrollToggle({
+  checked,
+  disabled,
+  onCheckedChange,
+}: Readonly<{
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}>) {
   const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
   const switchId = useId();
 
@@ -25,8 +29,9 @@ export default function ContinuousScrollToggle({ projectId }: Readonly<{ project
     <div className="tw-flex tw-items-center tw-gap-2 tw-text-sm">
       <Switch
         id={switchId}
-        checked={continuousScroll === true}
-        onCheckedChange={(checked) => setContinuousScroll?.(checked)}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
       />
       <Label className="tw-cursor-pointer" htmlFor={switchId}>
         {localizedStrings['%interlinearizer_continuousScrollToggle%']}

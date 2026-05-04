@@ -6,7 +6,7 @@ import {
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -38,10 +38,12 @@ function ProjectBookFetcher({
   projectId,
   scrRef,
   setScrRef,
+  continuousScroll,
 }: Readonly<{
   projectId: string;
   scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
   setScrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[1];
+  continuousScroll: boolean;
 }>) {
   const bookScrRef = useMemo(
     () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
@@ -53,7 +55,6 @@ function ProjectBookFetcher({
   );
 
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
-  const [continuousScroll] = useProjectSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,
@@ -174,6 +175,28 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+  const [continuousScrollSetting, setContinuousScrollSetting] = useProjectSetting(
+    projectId ?? '',
+    'interlinearizer.continuousScroll',
+    true,
+  );
+  const settingValue = continuousScrollSetting === true;
+  const [continuousScroll, setContinuousScroll] = useState(settingValue);
+  const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>(
+    undefined,
+  );
+
+  // Drive UI from optimistic local state and clear pending once the setting confirms.
+  useEffect(() => {
+    if (pendingContinuousScroll === undefined) {
+      setContinuousScroll(settingValue);
+      return;
+    }
+    if (settingValue === pendingContinuousScroll) {
+      setPendingContinuousScroll(undefined);
+      setContinuousScroll(settingValue);
+    }
+  }, [settingValue, pendingContinuousScroll]);
 
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
@@ -188,18 +211,18 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           className="tw-z-10"
           startAreaChildren={
             <BookChapterControl
-              scrRef={scrRef}
               handleSubmit={setScrRef}
               localizedStrings={localizedStrings}
-              recentSearches={recentRefs}
               onAddRecentSearch={onAddRecentRef}
+              recentSearches={recentRefs}
+              scrRef={scrRef}
             />
           }
           endAreaChildren={
             <ScrollGroupSelector
               availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
-              scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}
+              scrollGroupId={scrollGroupId}
             />
           }
           onSelectProjectMenuItem={() => {}}
@@ -207,14 +230,28 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         />
         {projectId && (
           <div className="tw-border-b tw-px-4 tw-py-2">
-            <ContinuousScrollToggle projectId={projectId} />
+            <ContinuousScrollToggle
+              checked={continuousScroll}
+              disabled={pendingContinuousScroll !== undefined}
+              onCheckedChange={(checked) => {
+                if (pendingContinuousScroll !== undefined) return;
+                setContinuousScroll(checked);
+                setPendingContinuousScroll(checked);
+                setContinuousScrollSetting?.(checked);
+              }}
+            />
           </div>
         )}
       </div>
 
       <div className="tw-p-4">
         {projectId ? (
-          <ProjectBookFetcher projectId={projectId} scrRef={scrRef} setScrRef={setScrRef} />
+          <ProjectBookFetcher
+            continuousScroll={continuousScroll}
+            projectId={projectId}
+            scrRef={scrRef}
+            setScrRef={setScrRef}
+          />
         ) : (
           <p className="tw-text-sm tw-text-muted-foreground">
             Open this WebView from a Paratext project to load its source book.

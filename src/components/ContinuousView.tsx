@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book, Token } from 'interlinearizer';
 import TokenChip from './TokenChip';
+import PhraseBox from './PhraseBox';
 
 /** A verse coordinate used to drive the strip's scroll position. */
 export interface VerseCoordinate {
@@ -25,19 +26,19 @@ export interface VerseCoordinate {
  * navigation crosses a verse boundary `onVerseChange` is called with the new verse coordinate.
  *
  * @param props - Component props
- * @param props.book - The full tokenized book whose tokens should be streamed
  * @param props.activeVerse - Optional verse coordinate; when it changes the strip scrolls to the
  *   first token of the matching segment
+ * @param props.book - The full tokenized book whose tokens should be streamed
  * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
  * @returns A horizontal token strip with left/right navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
-  book,
   activeVerse,
+  book,
   onVerseChange,
 }: Readonly<{
-  book: Book;
   activeVerse?: VerseCoordinate;
+  book: Book;
   onVerseChange?: (verse: VerseCoordinate) => void;
 }>) {
   const allTokens: Token[] = useMemo(
@@ -45,11 +46,12 @@ export default function ContinuousView({
     [book.segments],
   );
 
-  /** Maps each segment id to the index of its first token in `allTokens`. */
+  /** Maps each segment id to the index of its first word token in `allTokens`. */
   const segmentStartIndex = useMemo(() => {
     const { map } = book.segments.reduce(
       (acc, seg) => {
-        acc.map.set(seg.id, acc.offset);
+        const firstWordIndex = seg.tokens.findIndex((t) => t.type === 'word');
+        if (firstWordIndex >= 0) acc.map.set(seg.id, acc.offset + firstWordIndex);
         return { map: acc.map, offset: acc.offset + seg.tokens.length };
       },
       { map: new Map<string, number>(), offset: 0 },
@@ -57,25 +59,48 @@ export default function ContinuousView({
     return map;
   }, [book.segments]);
 
-  /**
-   * Maps a flat token index to the segment that owns it. Stored in a ref so that a new book object
-   * reference (same content) does not cause the verse-change effect to re-fire.
-   */
+  /** The navigable phrase entries (currently one per word token). */
+  const phraseEntries = useMemo(
+    () =>
+      allTokens
+        .map((token, tokenIndex) => ({ token, tokenIndex }))
+        .filter((entry) => entry.token.type === 'word'),
+    [allTokens],
+  );
+  const phraseEntriesRef = useRef(phraseEntries);
+  phraseEntriesRef.current = phraseEntries;
+
+  /** Flat token index -> phrase index lookup for focused rendering. */
+  const phraseIndexByTokenIndex = useMemo(
+    () =>
+      phraseEntries.reduce((acc, entry, phraseIndex) => {
+        acc.set(entry.tokenIndex, phraseIndex);
+        return acc;
+      }, new Map<number, number>()),
+    [phraseEntries],
+  );
+
+  /** Flat token index -> owning segment lookup. */
   const tokenSegment = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens.map(() => seg)),
     [book.segments],
   );
+
+  /**
+   * Maps a flat token index to the segment that owns it. Stored in a ref so that a new book object
+   * reference (same content) does not cause the verse-change effect to re-fire.
+   */
   const tokenSegmentRef = useRef(tokenSegment);
   tokenSegmentRef.current = tokenSegment;
 
-  const [focusIndex, setFocusIndex] = useState(0);
+  const [focusPhraseIndex, setFocusPhraseIndex] = useState(0);
 
   // Reset strip position whenever the book identity changes.
   const prevBookIdRef = useRef(book.id);
   useEffect(() => {
     if (prevBookIdRef.current !== book.id) {
       prevBookIdRef.current = book.id;
-      setFocusIndex(0);
+      setFocusPhraseIndex(0);
     }
   }, [book.id]);
 
@@ -99,8 +124,11 @@ export default function ContinuousView({
     if (!seg) return;
     const idx = segmentStartIndex.get(seg.id);
     if (idx !== undefined) {
-      jumpTargetRef.current = idx;
-      setFocusIndex(idx);
+      const phraseIndex = phraseIndexByTokenIndex.get(idx);
+      if (phraseIndex === undefined) return;
+
+      jumpTargetRef.current = phraseIndex;
+      setFocusPhraseIndex(phraseIndex);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse]);
@@ -108,16 +136,18 @@ export default function ContinuousView({
   // Fire onVerseChange when arrow navigation crosses into a new verse.
   // Initialise to the first segment so the initial render does not trigger the callback.
   const lastReportedSegIdRef = useRef<string | undefined>(
-    book.segments.length > 0 ? book.segments[0].id : undefined,
+    phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined,
   );
   useEffect(() => {
     // Suppress echo-back when the change was driven by an incoming activeVerse prop.
-    if (jumpTargetRef.current === focusIndex) {
+    if (jumpTargetRef.current === focusPhraseIndex) {
       jumpTargetRef.current = undefined;
       return;
     }
     jumpTargetRef.current = undefined;
-    const seg = tokenSegmentRef.current[focusIndex];
+    const focusedPhrase = phraseEntriesRef.current[focusPhraseIndex];
+    if (!focusedPhrase) return;
+    const seg = tokenSegmentRef.current[focusedPhrase.tokenIndex];
     if (!seg || seg.id === lastReportedSegIdRef.current) return;
     lastReportedSegIdRef.current = seg.id;
     onVerseChange?.({
@@ -128,39 +158,39 @@ export default function ContinuousView({
     // onVerseChange and tokenSegmentRef are intentionally excluded — callers must stabilize the
     // reference (useCallback) and tokenSegmentRef is a ref so changes are always current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusIndex]);
+  }, [focusPhraseIndex]);
 
-  // One ref slot per token so we can call scrollIntoView on the focused one.
-  const tokenRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  // One ref slot per phrase so we can call scrollIntoView on the focused one.
+  const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-  const atStart = focusIndex === 0;
-  const atEnd = allTokens.length === 0 || focusIndex >= allTokens.length - 1;
+  const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
+  const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
 
   const goLeft = useCallback(() => {
-    if (!atStart) setFocusIndex((i) => i - 1);
+    if (!atStart) setFocusPhraseIndex((i) => i - 1);
   }, [atStart]);
 
   const goRight = useCallback(() => {
-    if (!atEnd) setFocusIndex((i) => i + 1);
+    if (!atEnd) setFocusPhraseIndex((i) => i + 1);
   }, [atEnd]);
 
   useEffect(() => {
-    tokenRefs.current[focusIndex]?.scrollIntoView({
+    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
       behavior: 'smooth',
-      inline: 'center',
       block: 'nearest',
+      inline: 'center',
     });
-  }, [focusIndex]);
+  }, [focusPhraseIndex]);
 
   return (
     <div className="tw-relative tw-flex tw-items-center tw-gap-1">
       {/* Left navigation arrow */}
       <button
-        type="button"
         aria-label="Previous token"
+        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
         disabled={atStart}
         onClick={goLeft}
-        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
+        type="button"
       >
         &#8592;
       </button>
@@ -185,26 +215,40 @@ export default function ContinuousView({
 
         {/* Inner flex row */}
         <div className="no-scrollbar tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2">
-          {allTokens.map((token, index) => (
-            <span
-              key={token.id}
-              ref={(el) => {
-                tokenRefs.current[index] = el;
-              }}
-            >
-              <TokenChip token={token} />
-            </span>
-          ))}
+          {allTokens.map((token, tokenIndex) => {
+            if (token.type !== 'word') return <TokenChip key={token.id} token={token} />;
+
+            const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
+            const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
+            return (
+              <span
+                key={token.id}
+                ref={(el) => {
+                  if (phraseIndex !== undefined) phraseRefs.current[phraseIndex] = el;
+                }}
+              >
+                <PhraseBox
+                  isFocused={isFocusedPhrase}
+                  onClick={() => {
+                    if (phraseIndex !== undefined && phraseIndex !== focusPhraseIndex) {
+                      setFocusPhraseIndex(phraseIndex);
+                    }
+                  }}
+                  tokens={[token]}
+                />
+              </span>
+            );
+          })}
         </div>
       </div>
 
       {/* Right navigation arrow */}
       <button
-        type="button"
         aria-label="Next token"
+        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
         disabled={atEnd}
         onClick={goRight}
-        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
+        type="button"
       >
         &#8594;
       </button>

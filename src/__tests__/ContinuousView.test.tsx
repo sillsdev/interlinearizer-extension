@@ -193,6 +193,20 @@ describe('ContinuousView rendering', () => {
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
   });
+
+  it('clicking an out-of-focus phrase box brings it into focus', async () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    const clickedToken = screen.getByText('beginning');
+    const clickedPhraseBox = clickedToken.closest('[data-phrase-box="true"]');
+    if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
+    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'default');
+
+    await userEvent.click(clickedPhraseBox);
+
+    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+  });
 });
 
 // ---------------------------------------------------------------------------

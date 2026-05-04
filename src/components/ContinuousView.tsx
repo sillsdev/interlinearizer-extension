@@ -115,6 +115,21 @@ export default function ContinuousView({
   // Jump to the first token of the matching segment when the active verse changes.
   useEffect(() => {
     if (!activeVerse) return;
+
+    // Preserve current phrase focus when it is already inside the target verse.
+    const currentlyFocusedPhrase = phraseEntriesRef.current[focusPhraseIndex];
+    if (currentlyFocusedPhrase) {
+      const focusedSeg = tokenSegmentRef.current[currentlyFocusedPhrase.tokenIndex];
+      if (
+        focusedSeg &&
+        focusedSeg.startRef.book === activeVerse.book &&
+        focusedSeg.startRef.chapter === activeVerse.chapter &&
+        focusedSeg.startRef.verse === activeVerse.verse
+      ) {
+        return;
+      }
+    }
+
     const seg = book.segments.find(
       (s) =>
         s.startRef.book === activeVerse.book &&
@@ -135,20 +150,29 @@ export default function ContinuousView({
 
   // Fire onVerseChange when arrow navigation crosses into a new verse.
   // Initialise to the first segment so the initial render does not trigger the callback.
-  const lastReportedSegIdRef = useRef<string | undefined>(
-    phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined,
-  );
+  const firstVisibleSegId =
+    phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined;
+  const lastReportedSegIdRef = useRef<string | undefined>(firstVisibleSegId);
+
+  // Keep the reported-segment baseline in sync when switching to a different book.
+  useEffect(() => {
+    lastReportedSegIdRef.current = firstVisibleSegId;
+  }, [book.id, firstVisibleSegId]);
+
   useEffect(() => {
     // Suppress echo-back when the change was driven by an incoming activeVerse prop.
     if (jumpTargetRef.current === focusPhraseIndex) {
       jumpTargetRef.current = undefined;
       return;
     }
+
     jumpTargetRef.current = undefined;
     const focusedPhrase = phraseEntriesRef.current[focusPhraseIndex];
     if (!focusedPhrase) return;
+
     const seg = tokenSegmentRef.current[focusedPhrase.tokenIndex];
     if (!seg || seg.id === lastReportedSegIdRef.current) return;
+
     lastReportedSegIdRef.current = seg.id;
     onVerseChange?.({
       book: seg.startRef.book,
@@ -167,12 +191,13 @@ export default function ContinuousView({
   const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
 
   const goLeft = useCallback(() => {
-    if (!atStart) setFocusPhraseIndex((i) => i - 1);
-  }, [atStart]);
+    setFocusPhraseIndex((i) => (i > 0 ? i - 1 : i));
+  }, []);
 
   const goRight = useCallback(() => {
-    if (!atEnd) setFocusPhraseIndex((i) => i + 1);
-  }, [atEnd]);
+    const max = phraseEntriesRef.current.length - 1;
+    setFocusPhraseIndex((i) => (i < max ? i + 1 : i));
+  }, []);
 
   useEffect(() => {
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({

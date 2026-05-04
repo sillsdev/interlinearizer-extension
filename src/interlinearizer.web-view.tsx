@@ -6,7 +6,7 @@ import {
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -96,6 +96,13 @@ function ProjectBookFetcher({
     bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   }
 
+  const handleContinuousVerseChange = useCallback(
+    (v: { book: string; chapter: number; verse: number }) => {
+      setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });
+    },
+    [setScrRef],
+  );
+
   return (
     <div className="tw-flex tw-flex-col tw-gap-4">
       {bookError && (
@@ -124,9 +131,7 @@ function ProjectBookFetcher({
         <ContinuousView
           book={book}
           activeVerse={{ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }}
-          onVerseChange={(v) =>
-            setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse })
-          }
+          onVerseChange={handleContinuousVerseChange}
         />
       )}
 

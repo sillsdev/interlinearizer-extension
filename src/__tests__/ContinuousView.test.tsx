@@ -535,6 +535,38 @@ describe('ContinuousView onVerseChange propagation', () => {
     expect(handleVerseChange).not.toHaveBeenCalled();
   });
 
+  it('keeps clicked phrase focus when activeVerse updates to that same verse', async () => {
+    const onVerseChange = jest.fn();
+    const { rerender } = render(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+        onVerseChange={onVerseChange}
+      />,
+    );
+
+    // Click the second phrase in GEN 1:2 ("God", index 3 in the full strip).
+    const godToken = screen.getByText('God');
+    const godPhraseBox = godToken.closest('[data-phrase-box="true"]');
+    if (!godPhraseBox) throw new Error('Expected phrase box wrapper for token');
+    await userEvent.click(godPhraseBox);
+
+    // Parent receives verse change and updates activeVerse to GEN 1:2.
+    expect(onVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
+    rerender(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+        onVerseChange={onVerseChange}
+      />,
+    );
+
+    // If focus was incorrectly reset to the first phrase of the verse ("beginning"), the right
+    // arrow would be enabled. Staying on "God" keeps us at strip end, so it remains disabled.
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    expect(godPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+  });
+
   it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
     const handleVerseChange = jest.fn();
     render(<ContinuousView book={makeTwoChapterBook()} onVerseChange={handleVerseChange} />);
@@ -544,5 +576,31 @@ describe('ContinuousView onVerseChange propagation', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
     expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 2, verse: 1 });
+  });
+
+  it('does not call onVerseChange when book changes and focus resets to the first phrase', async () => {
+    const handleVerseChange = jest.fn();
+    const { rerender } = render(
+      <ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />,
+    );
+
+    // Move focus away from index 0 so book-switch reset path is exercised.
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    handleVerseChange.mockClear();
+
+    const exoBook: Book = {
+      ...makeBook(),
+      id: 'EXO',
+      bookRef: 'EXO',
+      segments: makeBook().segments.map((seg) => ({
+        ...seg,
+        startRef: { ...seg.startRef, book: 'EXO' },
+        endRef: { ...seg.endRef, book: 'EXO' },
+      })),
+    };
+
+    rerender(<ContinuousView book={exoBook} onVerseChange={handleVerseChange} />);
+
+    expect(handleVerseChange).not.toHaveBeenCalled();
   });
 });

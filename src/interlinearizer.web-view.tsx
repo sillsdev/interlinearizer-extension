@@ -120,7 +120,13 @@ function ProjectBookFetcher({
       )}
 
       {!bookError && !tokenizeError && !isLoading && book && continuousScroll === true && (
-        <ContinuousView book={book} />
+        <ContinuousView
+          book={book}
+          activeVerse={{ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }}
+          onVerseChange={(v) =>
+            setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse })
+          }
+        />
       )}
 
       {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (

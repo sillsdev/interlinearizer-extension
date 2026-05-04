@@ -373,3 +373,162 @@ describe('ContinuousView smooth-scroll intent', () => {
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// activeVerse / verse-jump behaviour
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView activeVerse verse-jump', () => {
+  it('positions at focusIndex 0 when activeVerse matches the first segment', () => {
+    render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+
+    // At index 0 the left arrow should be disabled
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+
+  it('jumps to the first token of the second segment when activeVerse points there', () => {
+    // makeBook() has 4 tokens: index 0,1 in segment GEN 1:1 and index 2,3 in GEN 1:2
+    const { rerender } = render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+
+    rerender(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+    );
+
+    // focusIndex is now 2 (first token of segment 2), so left arrow should be enabled
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+  });
+
+  it('jumps across a chapter boundary to the second chapter segment', () => {
+    const { rerender } = render(
+      <ContinuousView
+        book={makeTwoChapterBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
+    );
+
+    rerender(
+      <ContinuousView
+        book={makeTwoChapterBook()}
+        activeVerse={{ book: 'GEN', chapter: 2, verse: 1 }}
+      />,
+    );
+
+    // Chapter 2 starts at index 1 (the last token), so right arrow should be disabled
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+  });
+
+  it('calls scrollIntoView when activeVerse changes', () => {
+    const { rerender } = render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+    scrollIntoViewMock.mockClear();
+
+    rerender(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'smooth' }),
+    );
+  });
+
+  it('does not jump when activeVerse is undefined', () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    // Without activeVerse the strip stays at focusIndex 0
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+
+  it('does not jump when activeVerse does not match any segment', () => {
+    render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 99, verse: 99 }} />,
+    );
+
+    // No matching segment — strip stays at focusIndex 0
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onVerseChange outbound propagation
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView onVerseChange propagation', () => {
+  it('calls onVerseChange when the right arrow crosses into a new verse', async () => {
+    // makeBook(): segment GEN 1:1 has tokens at index 0,1; GEN 1:2 starts at index 2
+    const handleVerseChange = jest.fn();
+    render(<ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />);
+
+    // Advance twice to reach index 2 (first token of GEN 1:2)
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
+  });
+
+  it('calls onVerseChange when the left arrow crosses back into a prior verse', async () => {
+    const handleVerseChange = jest.fn();
+    render(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+        onVerseChange={handleVerseChange}
+      />,
+    );
+    handleVerseChange.mockClear();
+
+    // focusIndex is at 2 (first token of GEN 1:2); go left to cross back to GEN 1:1
+    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+
+    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 });
+  });
+
+  it('does not call onVerseChange for multiple arrow clicks within the same verse', async () => {
+    const handleVerseChange = jest.fn();
+    render(<ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />);
+    handleVerseChange.mockClear();
+
+    // index 0 → index 1: both are in GEN 1:1, no verse change
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+
+  it('does not call onVerseChange when activeVerse prop drives the jump', () => {
+    const handleVerseChange = jest.fn();
+    const { rerender } = render(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+        onVerseChange={handleVerseChange}
+      />,
+    );
+    handleVerseChange.mockClear();
+
+    rerender(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+        onVerseChange={handleVerseChange}
+      />,
+    );
+
+    expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+
+  it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
+    const handleVerseChange = jest.fn();
+    render(<ContinuousView book={makeTwoChapterBook()} onVerseChange={handleVerseChange} />);
+    handleVerseChange.mockClear();
+
+    // ch1 has 1 token (index 0), ch2 starts at index 1 — one click crosses the boundary
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 2, verse: 1 });
+  });
+});

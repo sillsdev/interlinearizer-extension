@@ -129,7 +129,11 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
-  await papi.storage.deleteUserData(token, projectKey(id));
+  try {
+    await papi.storage.deleteUserData(token, projectKey(id));
+  } catch (e) {
+    if (!isNotFound(e)) throw e;
+  }
   const ids = await readIds(token);
   const updated = ids.filter((i) => i !== id);
   await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));

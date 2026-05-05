@@ -217,6 +217,19 @@ describe('projectStorage', () => {
       );
     });
 
+    it('completes index cleanup when the project file is already missing', async () => {
+      __mockDeleteUserData.mockRejectedValue(enoentError());
+      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete', 'other']));
+
+      await deleteProject(token, 'to-delete');
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'projectIds',
+        JSON.stringify(['other']),
+      );
+    });
+
     it('propagates unexpected errors from deleteUserData', async () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
       __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete']));

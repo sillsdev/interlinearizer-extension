@@ -18,9 +18,16 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
+
+// Store captured props so tests can simulate callbacks
+let capturedContinuousViewProps: Record<string, unknown> = {};
+
 jest.mock('../components/ContinuousView', () => ({
   __esModule: true,
-  default: () => <div data-testid="continuous-view" />,
+  default: (props: Record<string, unknown>) => {
+    capturedContinuousViewProps = props;
+    return <div data-testid="continuous-view" />;
+  },
 }));
 
 /**
@@ -524,5 +531,49 @@ describe('InterlinearizerWebView', () => {
       container.querySelectorAll('[data-testid="continuous-view"], button[aria-current]'),
     );
     expect(allElements[0]).toBe(continuousView);
+  });
+
+  it('toggles continuous scroll setting back to true after being false', async () => {
+    mockBookData({});
+    const mockSetContinuousScroll = jest.fn();
+    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
+      if (key === 'interlinearizer.continuousScroll')
+        return [false, mockSetContinuousScroll, jest.fn(), false];
+      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
+      return [d, jest.fn(), jest.fn(), false];
+    });
+
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    // Initially in token-chip mode
+    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
+
+    // Click toggle to turn on continuous mode
+    await userEvent.click(screen.getByRole('checkbox'));
+    expect(mockSetContinuousScroll).toHaveBeenCalledWith(true);
+  });
+
+  it('calls setScrRef when ContinuousView emits onVerseChange', async () => {
+    mockBookData({});
+    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_MULTI_BOOK);
+    mockWritingSystem('en', true);
+
+    const mockSetScrRef = jest.fn();
+    render(<InterlinearizerWebView {...makeProps(testProjectId, defaultScrRef, mockSetScrRef)} />);
+
+    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
+
+    // Simulate ContinuousView calling onVerseChange
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-type-assertion/no-type-assertion
+    const onVerseChange = capturedContinuousViewProps.onVerseChange as any;
+    expect(onVerseChange).toBeDefined();
+
+    onVerseChange({ book: 'GEN', chapter: 2, verse: 3 });
+
+    expect(mockSetScrRef).toHaveBeenCalledWith({
+      book: 'GEN',
+      chapterNum: 2,
+      verseNum: 3,
+    });
   });
 });

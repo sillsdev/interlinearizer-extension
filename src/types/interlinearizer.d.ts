@@ -15,7 +15,8 @@ declare module 'papi-shared-types' {
     /**
      * Creates a new interlinearizer project. Prompts the user to select source and target
      * Platform.Bible projects via picker dialogs. Returns the new project's UUID, or undefined if
-     * the user cancels either picker.
+     * the user cancels either picker or if project creation fails (failure is logged and surfaced
+     * as an error notification).
      *
      * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations
      *   (e.g. `'en'`).

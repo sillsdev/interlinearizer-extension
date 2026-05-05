@@ -109,6 +109,10 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  * Platform.Bible projects via picker dialogs. Returns the new project's ID, or undefined if the
  * user cancels either picker or if storage fails (failure is also logged and shown as a
  * notification).
+ *
+ * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
+ *   `'en'`).
+ * @returns The UUID of the new project, or `undefined` if the user cancels or storage fails.
  */
 async function createInterlinearProject(
   analysisWritingSystem: string,

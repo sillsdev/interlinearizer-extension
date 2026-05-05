@@ -355,6 +355,28 @@ describe('InterlinearizerWebView', () => {
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
+  it('logs with "und" writing system when tokenization fails and writing system is a PlatformError', () => {
+    mockBookData({});
+    mockWritingSystem({ platformErrorVersion: 1, message: 'Setting unavailable' });
+    jest.mocked(tokenizeBook).mockImplementation(() => {
+      throw new Error('parse failure');
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+  });
+
+  it('logs with "und" writing system when tokenization fails and writing system is an empty string', () => {
+    mockBookData({});
+    mockWritingSystem('');
+    jest.mocked(tokenizeBook).mockImplementation(() => {
+      throw new Error('parse failure');
+    });
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+  });
+
   it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
     const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
     jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));

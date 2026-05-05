@@ -19,6 +19,8 @@ interface PapiBackendTestMock {
   __mockGetOpenWebViewDefinition: jest.Mock;
   __mockOnDidOpenWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
+  __mockReadUserData: jest.Mock;
+  __mockWriteUserData: jest.Mock;
   __mockNotificationsSend: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
@@ -38,6 +40,8 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockGetOpenWebViewDefinition' in m &&
     '__mockOnDidOpenWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
+    '__mockReadUserData' in m &&
+    '__mockWriteUserData' in m &&
     '__mockNotificationsSend' in m &&
     '__mockLogger' in m
   );
@@ -52,6 +56,8 @@ const {
   __mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView,
   __mockOnDidCloseWebView,
+  __mockReadUserData,
+  __mockWriteUserData,
   __mockNotificationsSend,
   __mockLogger,
 } = papiBackendMock;
@@ -182,12 +188,18 @@ describe('main', () => {
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
+    __mockReadUserData.mockRejectedValue(
+      Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' }),
+    );
+    __mockWriteUserData.mockResolvedValue(undefined);
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
+    jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000000');
   });
 
   describe('activate', () => {
     it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
+
       await activate(context);
 
       const raw: unknown = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
@@ -196,6 +208,7 @@ describe('main', () => {
 
     it('registers the interlinearizer.openForWebView command with a callable handler', async () => {
       const context = createTestActivationContext();
+
       await activate(context);
 
       const handler = findRegisteredHandler('interlinearizer.openForWebView');
@@ -241,6 +254,23 @@ describe('main', () => {
   });
 
   describe('mainWebViewProvider.getWebView', () => {
+    type WebViewProvider = {
+      getWebView(saved: SavedWebViewDefinition, opts?: object): Promise<unknown>;
+    };
+
+    function isWebViewProvider(x: unknown): x is WebViewProvider {
+      return (
+        !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function'
+      );
+    }
+
+    /** Retrieves the provider registered with the platform and asserts it exists. */
+    function getRegisteredProvider(): WebViewProvider {
+      const raw = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+      if (!isWebViewProvider(raw)) throw new Error('Expected registered provider');
+      return raw;
+    }
+
     it('returns WebView definition when webViewType matches', async () => {
       const context = createTestActivationContext();
 

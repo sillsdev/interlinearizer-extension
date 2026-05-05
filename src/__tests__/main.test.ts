@@ -121,6 +121,19 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
   return (event) => cb(event);
 }
 
+async function getCreateProjectHandler(): Promise<
+  (analysisWritingSystem: string) => Promise<string | undefined>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.createProject');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
+  return async (ws: string): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(ws);
+    return typeof result === 'string' ? result : undefined;
+  };
+}
+
 describe('main', () => {
   const mainWebViewType = 'interlinearizer.mainWebView';
 
@@ -384,19 +397,6 @@ describe('main', () => {
   });
 
   describe('interlinearizer.createProject command', () => {
-    async function getCreateProjectHandler(): Promise<
-      (analysisWritingSystem: string) => Promise<string | undefined>
-    > {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.createProject');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-      return async (ws: string): Promise<string | undefined> => {
-        const result: unknown = await rawHandler(ws);
-        return typeof result === 'string' ? result : undefined;
-      };
-    }
-
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
 
@@ -440,6 +440,38 @@ describe('main', () => {
       const result = await handler('en');
 
       expect(result).toBeUndefined();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('sends a warning notification and re-prompts when target equals source', async () => {
+      __mockSelectProject
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('tgt-project');
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBe('00000000-0000-0000-0000-000000000000');
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'warning' }),
+      );
+      expect(__mockSelectProject).toHaveBeenCalledTimes(3);
+    });
+
+    it('returns undefined when the user cancels the target picker after a same-project warning', async () => {
+      __mockSelectProject
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce(undefined);
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBeUndefined();
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'warning' }),
+      );
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 

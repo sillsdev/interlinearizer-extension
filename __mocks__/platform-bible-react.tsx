@@ -13,22 +13,54 @@ interface SerializedVerseRef {
   versificationStr?: string;
 }
 
-export const BOOK_CHAPTER_CONTROL_STRING_KEYS: string[] = [];
+export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
+  '%scripture_section_ot_long%',
+  '%scripture_section_nt_long%',
+  '%scripture_section_dc_long%',
+  '%scripture_section_extra_long%',
+  '%history_recent%',
+  '%history_recentSearches_ariaLabel%',
+] as const;
 
 export function TabToolbar({
   startAreaChildren,
   endAreaChildren,
+  onSelectProjectMenuItem,
+  onSelectViewInfoMenuItem,
 }: Readonly<{
   className?: string;
   startAreaChildren?: ReactNode;
+  centerAreaChildren?: ReactNode;
   endAreaChildren?: ReactNode;
-  onSelectProjectMenuItem?: () => void;
-  onSelectViewInfoMenuItem?: () => void;
+  onSelectProjectMenuItem: (selectedMenuItem: unknown) => void;
+  onSelectViewInfoMenuItem: (selectedMenuItem: unknown) => void;
+  projectMenuData?: unknown;
+  tabViewMenuData?: unknown;
+  id?: string;
+  menuButtonIcon?: ReactNode;
 }>): ReactElement {
   return (
     <div data-testid="tab-toolbar">
       <div data-testid="tab-toolbar-start">{startAreaChildren}</div>
       <div data-testid="tab-toolbar-end">{endAreaChildren}</div>
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-project-menu"
+          onClick={() => onSelectProjectMenuItem(undefined)}
+        >
+          Project menu
+        </button>
+      )}
+      {onSelectViewInfoMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-view-info-menu"
+          onClick={() => onSelectViewInfoMenuItem(undefined)}
+        >
+          View info menu
+        </button>
+      )}
     </div>
   );
 }
@@ -38,15 +70,19 @@ export function ScrollGroupSelector({
   scrollGroupId,
   onChangeScrollGroupId,
 }: Readonly<{
-  availableScrollGroupIds?: (number | undefined)[];
-  scrollGroupId?: number;
-  onChangeScrollGroupId?: (id: number | undefined) => void;
+  availableScrollGroupIds: (number | undefined)[];
+  scrollGroupId: number | undefined;
+  onChangeScrollGroupId: (id: number | undefined) => void;
+  localizedStrings?: Record<string, string>;
+  size?: 'default' | 'sm' | 'lg' | 'icon';
+  className?: string;
+  id?: string;
 }>): ReactElement {
   return (
     <select
       data-testid="scroll-group-selector"
       value={scrollGroupId ?? ''}
-      onChange={(e) => onChangeScrollGroupId?.(e.target.value === '' ? undefined : Number(e.target.value))}
+      onChange={(e) => onChangeScrollGroupId(e.target.value === '' ? undefined : Number(e.target.value))}
     >
       <option value="">—</option>
       {availableScrollGroupIds?.map((id) => (
@@ -66,6 +102,8 @@ export function BookChapterControl({
   scrRef: SerializedVerseRef;
   handleSubmit: (ref: SerializedVerseRef) => void;
   className?: string;
+  getActiveBookIds?: () => string[];
+  localizedBookNames?: Map<string, { localizedId: string; localizedName: string }>;
   localizedStrings?: Record<string, string>;
   recentSearches?: SerializedVerseRef[];
   onAddRecentSearch?: (scrRef: SerializedVerseRef) => void;
@@ -74,7 +112,7 @@ export function BookChapterControl({
   return (
     <div data-testid="book-chapter-control">
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}
-      <button type="button" onClick={() => {handleSubmit(scrRef); onAddRecentSearch?.(scrRef);}}>
+      <button type="button" onClick={() => { handleSubmit(scrRef); onAddRecentSearch?.(scrRef); }}>
         Submit reference
       </button>
     </div>

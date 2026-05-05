@@ -256,6 +256,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
  */
 export class InterlinearXmlParser {
+  /** Shared XMLParser instance, pre-configured in the constructor and reused across `parse()` calls. */
   private readonly parser: XMLParser;
 
   /**

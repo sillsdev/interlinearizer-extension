@@ -18,6 +18,12 @@ const config: Config = {
   resetMocks: true,
 
   /**
+   * Restore spied-on methods to their original implementations before every test so that jest.spyOn
+   * calls never accumulate across tests.
+   */
+  restoreMocks: true,
+
+  /**
    * Coverage only when run with --coverage (see npm run test:coverage). Omit for faster default
    * test runs.
    */

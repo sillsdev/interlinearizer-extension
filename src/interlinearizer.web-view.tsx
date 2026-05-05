@@ -6,7 +6,7 @@ import {
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -39,11 +39,13 @@ function ProjectBookFetcher({
   scrRef,
   setScrRef,
   continuousScroll,
+  stickyTopOffset,
 }: Readonly<{
   projectId: string;
   scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
   setScrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[1];
   continuousScroll: boolean;
+  stickyTopOffset: number;
 }>) {
   const bookScrRef = useMemo(
     () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
@@ -127,12 +129,17 @@ function ProjectBookFetcher({
         <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
       )}
 
-      {!bookError && !tokenizeError && !isLoading && book && continuousScroll === true && (
-        <ContinuousView
-          book={book}
-          activeVerse={{ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }}
-          onVerseChange={handleContinuousVerseChange}
-        />
+      {!bookError && !tokenizeError && !isLoading && book && continuousScroll && (
+        <div
+          className="tw-sticky tw-z-10 tw-bg-background tw-py-2"
+          style={{ top: stickyTopOffset }}
+        >
+          <ContinuousView
+            book={book}
+            activeVerse={{ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }}
+            onVerseChange={handleContinuousVerseChange}
+          />
+        </div>
       )}
 
       {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (
@@ -148,7 +155,7 @@ function ProjectBookFetcher({
               key={seg.id}
               segment={seg}
               isActive={seg.startRef.verse === scrRef.verseNum}
-              displayMode={continuousScroll === true ? 'baseline-text' : 'token-chip'}
+              displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
               onClick={() =>
                 setScrRef({
                   book: seg.startRef.book,
@@ -180,6 +187,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+  const toolbarRef = useRef<HTMLDivElement | undefined>(undefined);
   const [continuousScrollSetting, setContinuousScrollSetting] = useProjectSetting(
     projectId ?? '',
     'interlinearizer.continuousScroll',
@@ -190,6 +198,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>(
     undefined,
   );
+  const [stickyTopOffset, setStickyTopOffset] = useState(0);
 
   // Drive UI from optimistic local state and clear pending once the setting confirms.
   useEffect(() => {
@@ -203,6 +212,18 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     }
   }, [settingValue, pendingContinuousScroll]);
 
+  useEffect(() => {
+    const element = toolbarRef.current;
+    if (!element) return undefined;
+
+    const updateOffset = () => setStickyTopOffset(element.getBoundingClientRect().height);
+    updateOffset();
+
+    const observer = new ResizeObserver(updateOffset);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
   );
@@ -211,42 +232,47 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 
   return (
     <div className="tw-flex tw-flex-col">
-      <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-background">
+      <div
+        ref={(element) => {
+          toolbarRef.current = element ?? undefined;
+        }}
+        className="tw-sticky tw-top-0 tw-z-10 tw-bg-background"
+      >
         <TabToolbar
           className="tw-z-10"
           startAreaChildren={
-            <BookChapterControl
-              handleSubmit={setScrRef}
-              localizedStrings={localizedStrings}
-              onAddRecentSearch={onAddRecentRef}
-              recentSearches={recentRefs}
-              scrRef={scrRef}
-            />
+            <div className="tw-flex tw-flex-row tw-items-center tw-gap-2">
+              <BookChapterControl
+                handleSubmit={setScrRef}
+                localizedStrings={localizedStrings}
+                onAddRecentSearch={onAddRecentRef}
+                recentSearches={recentRefs}
+                scrRef={scrRef}
+              />
+              <ScrollGroupSelector
+                availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
+                onChangeScrollGroupId={setScrollGroupId}
+                scrollGroupId={scrollGroupId}
+              />
+            </div>
           }
           endAreaChildren={
-            <ScrollGroupSelector
-              availableScrollGroupIds={AVAILABLE_SCROLL_GROUPS}
-              onChangeScrollGroupId={setScrollGroupId}
-              scrollGroupId={scrollGroupId}
-            />
+            projectId && (
+              <ContinuousScrollToggle
+                checked={continuousScroll}
+                disabled={pendingContinuousScroll !== undefined}
+                onCheckedChange={(checked) => {
+                  if (pendingContinuousScroll !== undefined) return;
+                  setContinuousScroll(checked);
+                  setPendingContinuousScroll(checked);
+                  setContinuousScrollSetting?.(checked);
+                }}
+              />
+            )
           }
           onSelectProjectMenuItem={() => {}}
           onSelectViewInfoMenuItem={() => {}}
         />
-        {projectId && (
-          <div className="tw-border-b tw-px-4 tw-py-2">
-            <ContinuousScrollToggle
-              checked={continuousScroll}
-              disabled={pendingContinuousScroll !== undefined}
-              onCheckedChange={(checked) => {
-                if (pendingContinuousScroll !== undefined) return;
-                setContinuousScroll(checked);
-                setPendingContinuousScroll(checked);
-                setContinuousScrollSetting?.(checked);
-              }}
-            />
-          </div>
-        )}
       </div>
 
       <div className="tw-p-4">
@@ -256,6 +282,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             projectId={projectId}
             scrRef={scrRef}
             setScrRef={setScrRef}
+            stickyTopOffset={stickyTopOffset}
           />
         ) : (
           <p className="tw-text-sm tw-text-muted-foreground">

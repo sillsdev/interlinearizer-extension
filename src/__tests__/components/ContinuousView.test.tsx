@@ -2,10 +2,10 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book } from 'interlinearizer';
-import ContinuousView from '../components/ContinuousView';
+import ContinuousView from '../../components/ContinuousView';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -393,6 +393,14 @@ describe('ContinuousView smooth-scroll intent', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView activeVerse verse-jump', () => {
+  // These tests rely on the 500 ms fade-out timer that delays the focus jump.
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('positions at focusIndex 0 when activeVerse matches the first segment', () => {
     render(
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
@@ -411,6 +419,10 @@ describe('ContinuousView activeVerse verse-jump', () => {
     rerender(
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
     );
+    // Advance past the fade-out delay so the pending focus jump fires.
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
 
     // focusIndex is now 2 (first token of segment 2), so left arrow should be enabled
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
@@ -430,13 +442,18 @@ describe('ContinuousView activeVerse verse-jump', () => {
         activeVerse={{ book: 'GEN', chapter: 2, verse: 1 }}
       />,
     );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
 
     // Chapter 2 starts at index 1 (the last token), so right arrow should be disabled
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 
-  it('calls scrollIntoView when activeVerse changes', () => {
+  it('calls scrollIntoView with instant behaviour when activeVerse changes', () => {
+    // External jumps use behavior:'auto' (not 'smooth') to avoid double-animation with the
+    // strip opacity fade that already plays during the jump.
     const { rerender } = render(
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
     );
@@ -445,10 +462,23 @@ describe('ContinuousView activeVerse verse-jump', () => {
     rerender(
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
     );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
 
-    expect(scrollIntoViewMock).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'smooth' }),
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+  });
+
+  it('initializes at the target verse position when activeVerse is provided at mount', () => {
+    // makeBook(): GEN 1:1 at index 0-1, GEN 1:2 at index 2-3. Mounting with verse 2 should
+    // start the strip focused at index 2 immediately (lazy useState initializer, no effect wait).
+    render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
     );
+
+    // Index 2 is not the start (left enabled) and not the end (right enabled).
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
   });
 
   it('does not jump when activeVerse is undefined', () => {
@@ -514,6 +544,8 @@ describe('ContinuousView onVerseChange propagation', () => {
   });
 
   it('does not call onVerseChange when activeVerse prop drives the jump', () => {
+    // Must advance timers so the jump actually completes and the echo-back guard is exercised.
+    jest.useFakeTimers();
     const handleVerseChange = jest.fn();
     const { rerender } = render(
       <ContinuousView
@@ -531,8 +563,43 @@ describe('ContinuousView onVerseChange propagation', () => {
         onVerseChange={handleVerseChange}
       />,
     );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    jest.useRealTimers();
 
     expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+
+  it('does not jump back when arrow navigation crosses a verse and the parent echoes activeVerse', async () => {
+    // Regression: focusPhraseIndex was in the activeVerse effect's dep array, causing it to
+    // re-run on every arrow press. When crossing a verse, onVerseChange fired, the parent
+    // updated activeVerse, and the effect jumped back to the old verse — a loop.
+    const handleVerseChange = jest.fn();
+    const { rerender } = render(
+      <ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />,
+    );
+
+    // Advance twice from index 0 to index 2 (first token of GEN 1:2).
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
+
+    // Parent echoes activeVerse = GEN 1:2. The strip is already there — no jump should fire.
+    rerender(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+        onVerseChange={handleVerseChange}
+      />,
+    );
+
+    // Focus stays at index 2: left arrow enabled, right arrow enabled (not at start or end).
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
+    // onVerseChange must not have been called a second time (no loop).
+    expect(handleVerseChange).toHaveBeenCalledTimes(1);
   });
 
   it('keeps clicked phrase focus when activeVerse updates to that same verse', async () => {

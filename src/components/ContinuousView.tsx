@@ -41,6 +41,9 @@ export default function ContinuousView({
   book: Book;
   onVerseChange?: (verse: VerseCoordinate) => void;
 }>) {
+  const STRIP_FADE_MS = 500;
+  const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+
   const allTokens: Token[] = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens),
     [book.segments],
@@ -70,6 +73,8 @@ export default function ContinuousView({
   const phraseEntriesRef = useRef(phraseEntries);
   phraseEntriesRef.current = phraseEntries;
 
+  const focusPhraseIndexRef = useRef(0);
+
   /** Flat token index -> phrase index lookup for focused rendering. */
   const phraseIndexByTokenIndex = useMemo(
     () =>
@@ -93,16 +98,41 @@ export default function ContinuousView({
   const tokenSegmentRef = useRef(tokenSegment);
   tokenSegmentRef.current = tokenSegment;
 
-  const [focusPhraseIndex, setFocusPhraseIndex] = useState(0);
+  const getPhraseIndexForVerse = useCallback(
+    (verse: VerseCoordinate | undefined): number | undefined => {
+      if (!verse) return undefined;
 
-  // Reset strip position whenever the book identity changes.
-  const prevBookIdRef = useRef(book.id);
-  useEffect(() => {
-    if (prevBookIdRef.current !== book.id) {
-      prevBookIdRef.current = book.id;
-      setFocusPhraseIndex(0);
-    }
-  }, [book.id]);
+      const seg = book.segments.find(
+        (s) =>
+          s.startRef.book === verse.book &&
+          s.startRef.chapter === verse.chapter &&
+          s.startRef.verse === verse.verse,
+      );
+      if (!seg) return undefined;
+
+      const tokenIndex = segmentStartIndex.get(seg.id);
+      if (tokenIndex === undefined) return undefined;
+
+      return phraseIndexByTokenIndex.get(tokenIndex);
+    },
+    [book.segments, segmentStartIndex, phraseIndexByTokenIndex],
+  );
+
+  // Lazy-initialize to the target verse so on first render the strip is already positioned
+  // correctly before the initial-load fade-in fires.
+  const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
+    if (!activeVerse) return 0;
+    const seg = book.segments.find(
+      (s) =>
+        s.startRef.book === activeVerse.book &&
+        s.startRef.chapter === activeVerse.chapter &&
+        s.startRef.verse === activeVerse.verse,
+    );
+    if (!seg) return 0;
+    const tokenIdx = segmentStartIndex.get(seg.id);
+    if (tokenIdx === undefined) return 0;
+    return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
+  });
 
   /**
    * When activeVerse triggers a programmatic jump we record the target index here. The verse-change
@@ -110,19 +140,26 @@ export default function ContinuousView({
    * target index (rather than a boolean) avoids a race where the flag gets consumed by an unrelated
    * tokenSegment reference change before the focusIndex state update arrives.
    */
+  focusPhraseIndexRef.current = focusPhraseIndex;
+
   const jumpTargetRef = useRef<number | undefined>(undefined);
+  const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
+    number | undefined
+  >(undefined);
+  const [stripOpacity, setStripOpacity] = useState<0 | 1>(0);
+  const isExternalJumpInProgressRef = useRef(false);
+  const isInitialLoadInProgressRef = useRef(true);
 
   // Jump to the first token of the matching segment when the active verse changes.
   useEffect(() => {
     if (!activeVerse) return;
 
     // Preserve current phrase focus when it is already inside the target verse.
-    const currentlyFocusedPhrase = phraseEntriesRef.current[focusPhraseIndex];
+    const currentlyFocusedPhrase = phraseEntriesRef.current[focusPhraseIndexRef.current];
     if (currentlyFocusedPhrase) {
       const focusedSeg = tokenSegmentRef.current[currentlyFocusedPhrase.tokenIndex];
       if (
-        focusedSeg &&
-        focusedSeg.startRef.book === activeVerse.book &&
+        focusedSeg?.startRef.book === activeVerse.book &&
         focusedSeg.startRef.chapter === activeVerse.chapter &&
         focusedSeg.startRef.verse === activeVerse.verse
       ) {
@@ -130,23 +167,30 @@ export default function ContinuousView({
       }
     }
 
-    const seg = book.segments.find(
-      (s) =>
-        s.startRef.book === activeVerse.book &&
-        s.startRef.chapter === activeVerse.chapter &&
-        s.startRef.verse === activeVerse.verse,
-    );
-    if (!seg) return;
-    const idx = segmentStartIndex.get(seg.id);
-    if (idx !== undefined) {
-      const phraseIndex = phraseIndexByTokenIndex.get(idx);
-      if (phraseIndex === undefined) return;
+    const phraseIndex = getPhraseIndexForVerse(activeVerse);
+    if (phraseIndex === undefined) return;
 
-      jumpTargetRef.current = phraseIndex;
-      setFocusPhraseIndex(phraseIndex);
-    }
+    jumpTargetRef.current = phraseIndex;
+    isExternalJumpInProgressRef.current = true;
+    setStripOpacity(0);
+    setPendingExternalJumpPhraseIndex(phraseIndex);
+    // focusPhraseIndexRef is a ref so it is always current without being a dependency.
+    // Listing focusPhraseIndex here would re-run the effect on every arrow press, causing the
+    // strip to jump back to the old verse before activeVerse has been updated by the parent.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse]);
+  }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse, getPhraseIndexForVerse]);
+
+  // Let the fade-out complete before triggering the focus jump scroll.
+  useEffect(() => {
+    if (pendingExternalJumpPhraseIndex === undefined) return undefined;
+
+    const timeout = setTimeout(() => {
+      setFocusPhraseIndex(pendingExternalJumpPhraseIndex);
+      setPendingExternalJumpPhraseIndex(undefined);
+    }, STRIP_FADE_MS);
+
+    return () => clearTimeout(timeout);
+  }, [pendingExternalJumpPhraseIndex, STRIP_FADE_MS]);
 
   // Fire onVerseChange when arrow navigation crosses into a new verse.
   // Initialise to the first segment so the initial render does not trigger the callback.
@@ -189,6 +233,7 @@ export default function ContinuousView({
 
   const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
   const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
+  const stripOpacityClass = stripOpacity === 1 ? 'tw-opacity-100' : 'tw-opacity-0';
 
   const goLeft = useCallback(() => {
     setFocusPhraseIndex((i) => (i > 0 ? i - 1 : i));
@@ -200,11 +245,32 @@ export default function ContinuousView({
   }, []);
 
   useEffect(() => {
+    const isExternalJump = isExternalJumpInProgressRef.current;
+    const isInitialLoad = isInitialLoadInProgressRef.current;
+    const shouldJumpInstantly = isExternalJump || isInitialLoad;
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: 'smooth',
+      behavior: shouldJumpInstantly ? 'auto' : 'smooth',
       block: 'nearest',
       inline: 'center',
     });
+
+    if (!isExternalJump && !isInitialLoad) return undefined;
+
+    // Clear the flags now — scrollIntoView has already been called above.  Clearing here
+    // (rather than inside the RAF callback) keeps subsequent scroll behavior deterministic
+    // regardless of whether the RAF fires before the next focusPhraseIndex change.
+    if (isExternalJump) isExternalJumpInProgressRef.current = false;
+    if (isInitialLoad) isInitialLoadInProgressRef.current = false;
+
+    // Defer the fade-in until after the browser applies the instant scroll position.
+    const rafId = requestAnimationFrame(() => setStripOpacity(1));
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      // If the RAF was cancelled (another focus change fired before the first frame),
+      // still reveal the strip so it is not left invisible.
+      setStripOpacity(1);
+    };
   }, [focusPhraseIndex]);
 
   return (
@@ -239,7 +305,13 @@ export default function ContinuousView({
         )}
 
         {/* Inner flex row */}
-        <div className="no-scrollbar tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2">
+        <div
+          className={`no-scrollbar tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2 tw-transition-opacity ${stripOpacityClass}`}
+          style={{
+            transitionDuration: `${STRIP_FADE_MS}ms`,
+            transitionTimingFunction: STRIP_FADE_EASING,
+          }}
+        >
           {allTokens.map((token, tokenIndex) => {
             if (token.type !== 'word') return <TokenChip key={token.id} token={token} />;
 

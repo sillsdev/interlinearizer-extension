@@ -265,6 +265,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * `parse()` calls rather than constructing a new instance per file.
  */
 export class InterlinearXmlParser {
+  /** Shared XMLParser instance, pre-configured in the constructor and reused across `parse()` calls. */
   private readonly parser: XMLParser;
 
   /**

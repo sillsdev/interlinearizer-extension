@@ -141,10 +141,12 @@ async function createInterlinearProject(
     return project.id;
   } catch (e) {
     logger.error('Interlinearizer: failed to create project', e);
-    await papi.notifications.send({
-      message: '%interlinearizer_error_create_project_failed%',
-      severity: 'error',
-    });
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_create_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
     return undefined;
   }
 }

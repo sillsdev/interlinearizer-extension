@@ -1,179 +1,26 @@
 import type { WebViewProps } from '@papi/core';
 import {
   useLocalizedStrings,
-  useProjectData,
   useProjectSetting,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
-import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
   ScrollGroupSelector,
   TabToolbar,
 } from 'platform-bible-react';
-import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { Book } from 'interlinearizer';
-import { logger } from '@papi/frontend';
 import ContinuousScrollToggle from './components/ContinuousScrollToggle';
 import ContinuousView from './components/ContinuousView';
 import SegmentView from './components/SegmentView';
+import useInterlinearizerBookData from './hooks/useInterlinearizerBookData';
 
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 
 /**
- * Fetches the USJ book for the given project, tokenizes it, and renders all segments in the current
- * chapter. Shows loading / error states while data is in flight or unavailable.
- *
- * @param props - Component props
- * @param props.projectId - PAPI project ID whose USJ book to fetch and tokenize
- * @param props.scrRef - Current scripture reference shared via the scroll group
- * @param props.setScrRef - Setter to update the scroll-group scripture reference when a segment is
- *   clicked
- * @returns A column of {@link SegmentView} chips, or an appropriate loading / error message
- */
-function ProjectBookFetcher({
-  projectId,
-  scrRef,
-  setScrRef,
-  continuousScroll,
-  stickyTopOffset,
-}: Readonly<{
-  projectId: string;
-  scrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
-  setScrRef: ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[1];
-  continuousScroll: boolean;
-  stickyTopOffset: number;
-}>) {
-  const bookScrRef = useMemo(
-    () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
-    [scrRef.book],
-  );
-  const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
-    bookScrRef,
-    undefined,
-  );
-
-  const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
-
-  const [book, tokenizeError] = useMemo((): [
-    Book | undefined,
-    { message: string; raw: unknown } | undefined,
-  ] => {
-    if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
-    try {
-      const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
-    } catch (err) {
-      return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
-    }
-  }, [bookResult, writingSystem]);
-
-  useEffect(() => {
-    if (tokenizeError) {
-      const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
-        message: tokenizeError.message,
-        writingSystem: ws,
-        projectId,
-        book: scrRef.book,
-      });
-    }
-  }, [tokenizeError, writingSystem, projectId, scrRef.book]);
-
-  const chapterSegments = useMemo(
-    () =>
-      book?.segments.filter(
-        (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
-      ) ?? [],
-    [book, scrRef.book, scrRef.chapterNum],
-  );
-
-  let bookError: string | undefined;
-  if (isPlatformError(bookResult)) {
-    bookError = bookResult.message;
-  } else if (!isLoading && bookResult === undefined) {
-    bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
-  }
-
-  const handleContinuousVerseChange = useCallback(
-    (v: { book: string; chapter: number; verse: number }) => {
-      setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });
-    },
-    [setScrRef],
-  );
-
-  return (
-    <div className="tw-flex tw-flex-col tw-gap-4">
-      {bookError && (
-        <div className="tw-flex tw-flex-col tw-gap-2">
-          <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error loading book</h2>
-          <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
-            {bookError}
-          </pre>
-        </div>
-      )}
-
-      {tokenizeError && (
-        <div className="tw-flex tw-flex-col tw-gap-2">
-          <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error processing book</h2>
-          <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
-            {tokenizeError.message}
-          </pre>
-        </div>
-      )}
-
-      {!bookError && !tokenizeError && isLoading && (
-        <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
-      )}
-
-      {!bookError && !tokenizeError && !isLoading && book && continuousScroll && (
-        <div
-          className="tw-sticky tw-z-10 tw-bg-background tw-py-2"
-          style={{ top: stickyTopOffset }}
-        >
-          <ContinuousView
-            book={book}
-            activeVerse={{ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }}
-            onVerseChange={handleContinuousVerseChange}
-          />
-        </div>
-      )}
-
-      {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (
-        <p className="tw-text-sm tw-text-muted-foreground">
-          No verse data for {scrRef.book} {scrRef.chapterNum}.
-        </p>
-      )}
-
-      {!bookError && !tokenizeError && !isLoading && chapterSegments.length > 0 && (
-        <div className="tw-flex tw-flex-col tw-gap-2">
-          {chapterSegments.map((seg) => (
-            <SegmentView
-              key={seg.id}
-              segment={seg}
-              isActive={seg.startRef.verse === scrRef.verseNum}
-              displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-              onClick={() =>
-                setScrRef({
-                  book: seg.startRef.book,
-                  chapterNum: seg.startRef.chapter,
-                  verseNum: seg.startRef.verse,
-                })
-              }
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
  * Root WebView component for the Interlinearizer. Renders a sticky reference picker at the top and
- * delegates book fetching to {@link ProjectBookFetcher} in the scrollable content area below.
+ * uses hook-backed book state to render continuous and segmented views.
  *
  * @param props - WebView props injected by the PAPI host
  * @param props.projectId - PAPI project ID passed from the host; undefined when the WebView is
@@ -187,7 +34,6 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
-  const toolbarRef = useRef<HTMLDivElement | undefined>(undefined);
   const [continuousScrollSetting, setContinuousScrollSetting] = useProjectSetting(
     projectId ?? '',
     'interlinearizer.continuousScroll',
@@ -198,7 +44,12 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>(
     undefined,
   );
-  const [stickyTopOffset, setStickyTopOffset] = useState(0);
+  const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
+    {
+      projectId,
+      scrRef,
+    },
+  );
 
   // Drive UI from optimistic local state and clear pending once the setting confirms.
   useEffect(() => {
@@ -212,32 +63,21 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     }
   }, [settingValue, pendingContinuousScroll]);
 
-  useEffect(() => {
-    const element = toolbarRef.current;
-    if (!element) return undefined;
-
-    const updateOffset = () => setStickyTopOffset(element.getBoundingClientRect().height);
-    updateOffset();
-
-    const observer = new ResizeObserver(updateOffset);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
   );
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
+  const handleContinuousVerseChange = useCallback(
+    (v: { book: string; chapter: number; verse: number }) => {
+      setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });
+    },
+    [setScrRef],
+  );
 
   return (
     <div className="tw-flex tw-flex-col">
-      <div
-        ref={(element) => {
-          toolbarRef.current = element ?? undefined;
-        }}
-        className="tw-sticky tw-top-0 tw-z-10 tw-bg-background"
-      >
+      <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-background">
         <TabToolbar
           className="tw-z-10"
           startAreaChildren={
@@ -273,17 +113,76 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           onSelectProjectMenuItem={() => {}}
           onSelectViewInfoMenuItem={() => {}}
         />
+        {projectId && !bookError && !tokenizeError && !isLoading && book && continuousScroll && (
+          <div className="tw-bg-background tw-py-2">
+            <ContinuousView
+              book={book}
+              activeVerse={{
+                book: scrRef.book,
+                chapter: scrRef.chapterNum,
+                verse: scrRef.verseNum,
+              }}
+              onVerseChange={handleContinuousVerseChange}
+            />
+          </div>
+        )}
       </div>
 
       <div className="tw-p-4">
         {projectId ? (
-          <ProjectBookFetcher
-            continuousScroll={continuousScroll}
-            projectId={projectId}
-            scrRef={scrRef}
-            setScrRef={setScrRef}
-            stickyTopOffset={stickyTopOffset}
-          />
+          <div className="tw-flex tw-flex-col tw-gap-4">
+            {bookError && (
+              <div className="tw-flex tw-flex-col tw-gap-2">
+                <h2 className="tw-text-lg tw-font-medium tw-text-destructive">
+                  Error loading book
+                </h2>
+                <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
+                  {bookError}
+                </pre>
+              </div>
+            )}
+
+            {tokenizeError && (
+              <div className="tw-flex tw-flex-col tw-gap-2">
+                <h2 className="tw-text-lg tw-font-medium tw-text-destructive">
+                  Error processing book
+                </h2>
+                <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
+                  {tokenizeError.message}
+                </pre>
+              </div>
+            )}
+
+            {!bookError && !tokenizeError && isLoading && (
+              <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
+            )}
+
+            {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (
+              <p className="tw-text-sm tw-text-muted-foreground">
+                No verse data for {scrRef.book} {scrRef.chapterNum}.
+              </p>
+            )}
+
+            {!bookError && !tokenizeError && !isLoading && chapterSegments.length > 0 && (
+              <div className="tw-flex tw-flex-col tw-gap-2">
+                {chapterSegments.map((seg) => (
+                  <SegmentView
+                    key={seg.id}
+                    segment={seg}
+                    isActive={seg.startRef.verse === scrRef.verseNum}
+                    displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
+                    onClick={() =>
+                      setScrRef({
+                        book: seg.startRef.book,
+                        chapterNum: seg.startRef.chapter,
+                        verseNum: seg.startRef.verse,
+                      })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
           <p className="tw-text-sm tw-text-muted-foreground">
             Open this WebView from a Paratext project to load its source book.

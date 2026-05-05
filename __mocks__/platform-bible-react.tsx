@@ -29,7 +29,6 @@ interface SerializedVerseRef {
   versificationStr?: string;
 }
 
-/** Localization keys required by {@link BookChapterControl}. */
 export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
   '%scripture_section_ot_long%',
   '%scripture_section_nt_long%',
@@ -90,8 +89,8 @@ export function TabToolbar({
   startAreaChildren?: ReactNode;
   centerAreaChildren?: ReactNode;
   endAreaChildren?: ReactNode;
-  onSelectProjectMenuItem: SelectMenuItemHandler;
-  onSelectViewInfoMenuItem: SelectMenuItemHandler;
+  onSelectProjectMenuItem: (selectedMenuItem: unknown) => void;
+  onSelectViewInfoMenuItem: (selectedMenuItem: unknown) => void;
   projectMenuData?: unknown;
   tabViewMenuData?: unknown;
   id?: string;
@@ -105,42 +104,16 @@ export function TabToolbar({
         <button
           type="button"
           data-testid="tab-toolbar-project-menu"
-          onClick={() => onSelectProjectMenuItem(MOCK_SELECT_PROJECT_MENU_ITEM)}
+          onClick={() => onSelectProjectMenuItem(undefined)}
         >
           Project menu
-        </button>
-      )}
-      {onSelectProjectMenuItem && (
-        <button
-          type="button"
-          data-testid="tab-toolbar-new-project"
-          onClick={() => onSelectProjectMenuItem(MOCK_NEW_PROJECT_MENU_ITEM)}
-        >
-          New project
-        </button>
-      )}
-      {onSelectProjectMenuItem && (
-        <button
-          type="button"
-          data-testid="tab-toolbar-view-project-info"
-          onClick={() => onSelectProjectMenuItem(MOCK_VIEW_PROJECT_INFO_MENU_ITEM)}
-        >
-          View project info
         </button>
       )}
       {onSelectViewInfoMenuItem && (
         <button
           type="button"
           data-testid="tab-toolbar-view-info-menu"
-          onClick={() =>
-            onSelectViewInfoMenuItem({
-              label: '%mock.viewInfo%',
-              command: 'mock.viewInfo',
-              group: 'mock.group',
-              order: 0,
-              localizeNotes: '',
-            })
-          }
+          onClick={() => onSelectViewInfoMenuItem(undefined)}
         >
           View info menu
         </button>

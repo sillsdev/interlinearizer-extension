@@ -129,60 +129,14 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (sourceProjectId: string, analysisWritingSystem: string) => Promise<string | undefined>
+  (analysisWritingSystem: string) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (sourceProjectId: string, ws: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(sourceProjectId, ws);
-    return typeof result === 'string' ? result : undefined;
-  };
-}
-
-async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.deleteProject');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.deleteProject');
-  return async (id: string): Promise<void> => {
-    await rawHandler(id);
-  };
-}
-
-async function getProjectsForSourceHandler(): Promise<
-  (sourceProjectId: string) => Promise<string>
-> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.getProjectsForSource');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProjectsForSource');
-  return async (sourceProjectId: string): Promise<string> => {
-    const result: unknown = await rawHandler(sourceProjectId);
-    return typeof result === 'string' ? result : '[]';
-  };
-}
-
-async function getUpdateProjectMetadataHandler(): Promise<
-  (
-    id: string,
-    name: string | undefined,
-    description: string | undefined,
-    analysisWritingSystem?: string,
-  ) => Promise<string | undefined>
-> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.updateProjectMetadata');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.updateProjectMetadata');
-  return async (
-    id: string,
-    name: string | undefined,
-    description: string | undefined,
-    analysisWritingSystem?: string,
-  ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(id, name, description, analysisWritingSystem);
+  return async (ws: string): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(ws);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -524,18 +478,6 @@ describe('main', () => {
   });
 
   describe('interlinearizer.createProject command', () => {
-    const mockCreateProject = jest.mocked(projectStorage.createProject);
-    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
-    const stubProject = {
-      id: 'new-project-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
-      links: [],
-    };
-
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
 
@@ -571,6 +513,38 @@ describe('main', () => {
       await handler('src-project', 'en');
 
       expect(__mockSelectProject).not.toHaveBeenCalled();
+    });
+
+    it('sends a warning notification and re-prompts when target equals source', async () => {
+      __mockSelectProject
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('tgt-project');
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBe('00000000-0000-0000-0000-000000000000');
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'warning' }),
+      );
+      expect(__mockSelectProject).toHaveBeenCalledTimes(3);
+    });
+
+    it('returns undefined when the user cancels the target picker after a same-project warning', async () => {
+      __mockSelectProject
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce('src-project')
+        .mockResolvedValueOnce(undefined);
+      const handler = await getCreateProjectHandler();
+
+      const result = await handler('en');
+
+      expect(result).toBeUndefined();
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'warning' }),
+      );
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
     it('logs the error, sends an error notification, and returns undefined when storage fails', async () => {

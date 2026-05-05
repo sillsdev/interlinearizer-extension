@@ -16,9 +16,6 @@ class UnsubscriberAsyncList {
   /** Set of callables to run on teardown. */
   readonly unsubscribers: Set<Unsubscriber | UnsubscriberAsync>;
 
-  /**
-   * @param _name - Optional label used only for diagnostics; has no runtime effect in this stub.
-   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_name = 'Anonymous') {
     this.unsubscribers = new Set<Unsubscriber | UnsubscriberAsync>();
@@ -27,8 +24,6 @@ class UnsubscriberAsyncList {
   /**
    * Registers one or more unsubscribers. Accepts either a sync/async function returning boolean or
    * an object with a dispose() method; in the latter case the bound dispose is stored.
-   *
-   * @param unsubscribers - One or more unsubscribers or disposable objects to register.
    */
   add(...unsubscribers: (Unsubscriber | UnsubscriberAsync | Dispose)[]): void {
     unsubscribers.forEach((unsubscriber) => {
@@ -69,18 +64,7 @@ interface PlatformError {
   stack?: string;
 }
 
-/**
- * Returns `true` when `error` is a {@link PlatformError}, identified by the presence of the
- * `platformErrorVersion` discriminant field.
- *
- * @param error - Value to test.
- * @returns `true` if `error` is a {@link PlatformError}, `false` otherwise.
- */
 const isPlatformError = (error: unknown): error is PlatformError =>
-  typeof error === 'object' &&
-  error !== null &&
-  'platformErrorVersion' in error &&
-  typeof (error as Record<string, unknown>).platformErrorVersion === 'number' &&
-  !Number.isNaN((error as Record<string, unknown>).platformErrorVersion);
+  typeof error === 'object' && error !== null && 'platformErrorVersion' in error;
 
 export { UnsubscriberAsyncList, isPlatformError };

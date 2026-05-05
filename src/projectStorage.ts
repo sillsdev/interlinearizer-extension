@@ -38,8 +38,8 @@ function emptyAnalysis(): TextAnalysis {
  * Reads the stored list of project IDs.
  *
  * @param token - The execution token for storage access.
- * @returns The stored project ID array, or an empty array if the key is absent or the stored value
- *   cannot be parsed.
+ * @returns The stored project ID array, or an empty array if `projectIds` has never been written.
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  */
 async function readIds(token: ExecutionToken): Promise<string[]> {
   try {
@@ -59,6 +59,7 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  * @param targetProjectId - The Platform.Bible project ID of the target text.
  * @param analysisWritingSystem - The BCP 47 writing-system code used for analysis strings.
  * @returns The newly created project record.
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  */
 export async function createProject(
   token: ExecutionToken,
@@ -91,6 +92,7 @@ export async function createProject(
  * @param token - The execution token for storage access.
  * @param id - The project UUID.
  * @returns The project record, or `undefined` if it does not exist in storage.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  */
 export async function getProject(
   token: ExecutionToken,
@@ -110,6 +112,7 @@ export async function getProject(
  *
  * @param token - The execution token for storage access.
  * @returns All stored projects, ordered by creation time.
+ * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
   const ids = await readIds(token);
@@ -123,6 +126,7 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  *
  * @param token - The execution token for storage access.
  * @param id - The project UUID to delete.
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   await papi.storage.deleteUserData(token, projectKey(id));

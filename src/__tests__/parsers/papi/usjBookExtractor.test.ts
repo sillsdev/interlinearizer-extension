@@ -276,4 +276,42 @@ describe('extractBookFromUsj', () => {
     const hash = extractBookFromUsj(withUndefined, WS).contentHash;
     expect(hash).toBe(extractBookFromUsj(withoutUndefined, WS).contentHash);
   });
+
+  it('treats undefined array elements the same as null when computing contentHash', () => {
+    // stableStringify recurses into all object properties; traverse only follows .content.
+    // Putting undefined inside an extra non-content array lets us exercise the
+    // `if (value === undefined) return 'null'` path without crashing traverse.
+    // eslint-disable-next-line no-type-assertion/no-type-assertion
+    const withUndefined = {
+      content: [{ type: 'book', code: 'GEN', content: [], extra: [undefined] }],
+    } as unknown as UsjDocument;
+    // eslint-disable-next-line no-type-assertion/no-type-assertion
+    const withNull = {
+      // eslint-disable-next-line no-null/no-null
+      content: [{ type: 'book', code: 'GEN', content: [], extra: [null] }],
+    } as unknown as UsjDocument;
+
+    expect(extractBookFromUsj(withUndefined, WS).contentHash).toBe(
+      extractBookFromUsj(withNull, WS).contentHash,
+    );
+  });
+
+  it('throws on a duplicate verse SID', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', sid: 'GEN 1:1' },
+            'First occurrence.',
+            { type: 'verse', sid: 'GEN 1:1' },
+            'Duplicate.',
+          ],
+        },
+      ],
+    };
+    expect(() => extractBookFromUsj(usj, WS)).toThrow('duplicate verse SID "GEN 1:1"');
+  });
 });

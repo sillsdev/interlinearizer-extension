@@ -1,4 +1,5 @@
-import type { Segment } from 'interlinearizer';
+import { memo } from 'react';
+import type { ScriptureRef, Segment } from 'interlinearizer';
 import TokenChip from './TokenChip';
 import PhraseBox from './PhraseBox';
 
@@ -11,19 +12,19 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  * @param props - Component props
  * @param props.displayMode - Controls how segment content is rendered; defaults to `'token-chip'`
  * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onClick - Callback invoked when the segment button is clicked
+ * @param props.onSelect - Callback invoked with the segment's start reference when clicked
  * @param props.segment - The segment to render
  * @returns A button containing the segment's verse label and content
  */
-export default function SegmentView({
+function SegmentView({
   displayMode = 'token-chip',
   isActive,
-  onClick,
+  onSelect,
   segment,
 }: Readonly<{
   displayMode?: SegmentDisplayMode;
   isActive?: boolean;
-  onClick?: () => void;
+  onSelect?: (ref: ScriptureRef) => void;
   segment: Segment;
 }>) {
   return (
@@ -34,7 +35,7 @@ export default function SegmentView({
           ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
           : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
       }
-      onClick={onClick}
+      onClick={() => onSelect?.(segment.startRef)}
       type="button"
     >
       <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
@@ -56,3 +57,6 @@ export default function SegmentView({
     </button>
   );
 }
+
+const MemoizedSegmentView = memo(SegmentView);
+export default MemoizedSegmentView;

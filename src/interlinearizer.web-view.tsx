@@ -74,6 +74,12 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     },
     [setScrRef],
   );
+  const handleSegmentSelect = useCallback(
+    (ref: { book: string; chapter: number; verse: number }) => {
+      setScrRef({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse });
+    },
+    [setScrRef],
+  );
 
   return (
     <div className="tw-flex tw-flex-col">
@@ -171,13 +177,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
                     segment={seg}
                     isActive={seg.startRef.verse === scrRef.verseNum}
                     displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-                    onClick={() =>
-                      setScrRef({
-                        book: seg.startRef.book,
-                        chapterNum: seg.startRef.chapter,
-                        verseNum: seg.startRef.verse,
-                      })
-                    }
+                    onSelect={handleSegmentSelect}
                   />
                 ))}
               </div>

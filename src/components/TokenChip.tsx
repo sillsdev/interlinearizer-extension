@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Token } from 'interlinearizer';
 
 /**
@@ -8,7 +9,7 @@ import type { Token } from 'interlinearizer';
  * @param props.token - The token to render
  * @returns A styled inline span
  */
-export default function TokenChip({ token }: Readonly<{ token: Token }>) {
+function TokenChip({ token }: Readonly<{ token: Token }>) {
   return token.type === 'word' ? (
     <span className="tw-inline-block tw-rounded tw-border tw-border-border tw-bg-muted tw-px-1.5 tw-py-0.5 tw-font-mono tw-text-sm tw-text-foreground">
       {token.surfaceText}
@@ -19,3 +20,6 @@ export default function TokenChip({ token }: Readonly<{ token: Token }>) {
     </span>
   );
 }
+
+const MemoizedTokenChip = memo(TokenChip);
+export default MemoizedTokenChip;

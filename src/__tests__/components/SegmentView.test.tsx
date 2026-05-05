@@ -101,16 +101,17 @@ describe('SegmentView', () => {
     expect(screen.getByRole('button')).not.toHaveAttribute('aria-current');
   });
 
-  it('calls onClick when the button is clicked', async () => {
-    const handleClick = jest.fn();
-    render(<SegmentView segment={WORD_SEGMENT} onClick={handleClick} />);
+  it('calls onSelect with the segment startRef when the button is clicked', async () => {
+    const handleSelect = jest.fn();
+    render(<SegmentView segment={WORD_SEGMENT} onSelect={handleSelect} />);
 
     await userEvent.click(screen.getByRole('button'));
 
-    expect(handleClick).toHaveBeenCalledTimes(1);
+    expect(handleSelect).toHaveBeenCalledTimes(1);
+    expect(handleSelect).toHaveBeenCalledWith(WORD_SEGMENT.startRef);
   });
 
-  it('does not throw when onClick is omitted and button is clicked', async () => {
+  it('does not throw when onSelect is omitted and button is clicked', async () => {
     render(<SegmentView segment={WORD_SEGMENT} />);
 
     await userEvent.click(screen.getByRole('button'));

@@ -107,10 +107,33 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
+ * Prompts the user to pick a target project that is different from `sourceProjectId`. If the user
+ * picks the same project, a warning notification is shown and the picker re-opens. Returns the
+ * chosen target project ID, or `undefined` if the user cancels.
+ *
+ * @param sourceProjectId - The already-chosen source project ID to guard against.
+ * @returns A project ID distinct from `sourceProjectId`, or `undefined` if the user cancels.
+ */
+async function promptForDistinctTargetProject(
+  sourceProjectId: string,
+): Promise<string | undefined> {
+  const targetProjectId = await papi.dialogs.selectProject({
+    title: '%interlinearizer_dialog_create_target_title%',
+    prompt: '%interlinearizer_dialog_create_target_prompt%',
+  });
+  if (!targetProjectId || targetProjectId !== sourceProjectId) return targetProjectId;
+  await papi.notifications
+    .send({ message: '%interlinearizer_error_same_project%', severity: 'warning' })
+    .catch(() => {});
+  return promptForDistinctTargetProject(sourceProjectId);
+}
+
+/**
  * Creates a new interlinearizer project. Prompts the user to select source and target
- * Platform.Bible projects via picker dialogs. Returns the new project's ID, or undefined if the
- * user cancels either picker or if storage fails (failure is also logged and shown as a
- * notification).
+ * Platform.Bible projects via picker dialogs. If the user picks the same project for both roles a
+ * warning notification is shown and the target picker re-opens until distinct projects are chosen
+ * or the picker is cancelled. Returns the new project's ID, or undefined if the user cancels either
+ * picker or if storage fails (failure is also logged and shown as a notification).
  *
  * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
  *   `'en'`).
@@ -125,10 +148,7 @@ async function createInterlinearProject(
   });
   if (!sourceProjectId) return undefined;
 
-  const targetProjectId = await papi.dialogs.selectProject({
-    title: '%interlinearizer_dialog_create_target_title%',
-    prompt: '%interlinearizer_dialog_create_target_prompt%',
-  });
+  const targetProjectId = await promptForDistinctTargetProject(sourceProjectId);
   if (!targetProjectId) return undefined;
 
   try {
@@ -212,7 +232,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: {
           name: 'return value',
-          summary: 'The UUID of the new project, or undefined if the user cancelled',
+          summary:
+            'The UUID of the new project, or undefined if the user cancelled or if projectStorage.createProject failed',
           schema: { type: 'string' },
         },
       },

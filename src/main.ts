@@ -209,7 +209,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary: 'The UUID of the new project, or undefined if the user cancelled',
-          schema: { type: ['string', 'null'] },
+          schema: { type: 'string' },
         },
       },
     },

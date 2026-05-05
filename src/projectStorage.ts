@@ -80,8 +80,8 @@ export async function createProject(
   };
 
   const ids = await readIds(token);
-  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
   await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
+  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
 
   return project;
 }

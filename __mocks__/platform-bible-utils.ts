@@ -3,47 +3,46 @@
  * ExecutionActivationContext without loading the real package (which pulls in ESM deps).
  */
 
-/** Unsubscriber callback: sync or async function run on teardown. */
-type UnsubscriberFn = () => void | Promise<unknown>;
+/** Sync unsubscriber: returns true on success. */
+type Unsubscriber = () => boolean;
 
-/** Either a callable unsubscriber or an object with a dispose method. */
-type UnsubscriberInput = UnsubscriberFn | { dispose: UnsubscriberFn };
+/** Async unsubscriber: resolves to true on success. */
+type UnsubscriberAsync = () => Promise<boolean>;
+
+/** Object that can be disposed synchronously or asynchronously. */
+type Dispose = { dispose: Unsubscriber | UnsubscriberAsync };
 
 class UnsubscriberAsyncList {
-  name: string;
+  /** Set of callables to run on teardown. */
+  readonly unsubscribers: Set<Unsubscriber | UnsubscriberAsync>;
 
-  /** Set of callables to run on teardown (bound dispose() or raw functions). */
-  unsubscribers: Set<UnsubscriberFn>;
-
-  constructor(name = 'Anonymous') {
-    this.name = name;
-    this.unsubscribers = new Set<UnsubscriberFn>();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_name = 'Anonymous') {
+    this.unsubscribers = new Set<Unsubscriber | UnsubscriberAsync>();
   }
 
   /**
-   * Registers one or more unsubscribers. Accepts either a no-arg function (sync or async) or an
-   * object with a dispose() method; in the latter case the bound dispose is stored.
+   * Registers one or more unsubscribers. Accepts either a sync/async function returning boolean or
+   * an object with a dispose() method; in the latter case the bound dispose is stored.
    */
-  add(...unsubscribers: UnsubscriberInput[]): void {
+  add(...unsubscribers: (Unsubscriber | UnsubscriberAsync | Dispose)[]): void {
     unsubscribers.forEach((unsubscriber) => {
-      if (
+      if (typeof unsubscriber === 'function') {
+        this.unsubscribers.add(unsubscriber);
+      } else if (
         typeof unsubscriber === 'object' &&
         unsubscriber !== null &&
         'dispose' in unsubscriber &&
-        typeof (unsubscriber as { dispose: UnsubscriberFn }).dispose === 'function'
+        typeof unsubscriber.dispose === 'function'
       ) {
-        this.unsubscribers.add(
-          (unsubscriber as { dispose: UnsubscriberFn }).dispose.bind(unsubscriber)
-        );
-      } else if (typeof unsubscriber === 'function') {
-        this.unsubscribers.add(unsubscriber);
+        this.unsubscribers.add(unsubscriber.dispose.bind(unsubscriber));
       }
     });
   }
 
   /**
    * Runs all registered unsubscribers (awaiting any promises) and clears the set.
-   * @returns true if every unsubscriber returned a truthy value.
+   * @returns true if every unsubscriber returned true.
    */
   async runAllUnsubscribers(): Promise<boolean> {
     const unsubs = [...this.unsubscribers].map((fn) => fn());
@@ -58,11 +57,14 @@ class UnsubscriberAsyncList {
  * as the discriminant — the same field the real `isPlatformError` checks.
  */
 interface PlatformError {
+  cause?: unknown;
+  code?: string;
   message: string;
   platformErrorVersion: number;
+  stack?: string;
 }
 
-const isPlatformError = (value: unknown): value is PlatformError =>
-  typeof value === 'object' && value !== null && 'platformErrorVersion' in (value);
+const isPlatformError = (error: unknown): error is PlatformError =>
+  typeof error === 'object' && error !== null && 'platformErrorVersion' in error;
 
 export { UnsubscriberAsyncList, isPlatformError };

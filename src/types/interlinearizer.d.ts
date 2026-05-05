@@ -21,10 +21,10 @@ declare module 'papi-shared-types' {
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
 
     /**
-     * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the persisted project serialized as
-     * a JSON string, or undefined if project creation fails (failure is logged and surfaced as an
-     * error notification).
+     * Creates a new interlinearizer project. Prompts the user to select source and target
+     * Platform.Bible projects via picker dialogs. Returns the new project's UUID, or undefined if
+     * the user cancels either picker or if project creation fails (failure is logged and surfaced
+     * as an error notification).
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
      * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations

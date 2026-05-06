@@ -1,1 +1,12 @@
 @use 'tailwind';
+
+// Phrase focus is applied imperatively via data-focused on the wrapper span so the style change
+// is immediate, masking the ~167ms Electron WebView render latency.
+[data-focused='true'] [data-phrase-box] {
+  @apply tw-border-border tw-bg-muted/30;
+  transition: border-color 100ms, background-color 100ms;
+}
+
+[data-phrase-box] {
+  transition: border-color 100ms, background-color 100ms;
+}

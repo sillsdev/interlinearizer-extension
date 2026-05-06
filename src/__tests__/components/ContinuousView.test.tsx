@@ -141,6 +141,78 @@ function makeSingleTokenBook(): Book {
   };
 }
 
+/** A book with no segments (empty book edge case). */
+function makeEmptyBook(): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: [],
+  };
+}
+
+/** A book whose first segment has only a punctuation token (no word tokens). */
+function makePunctuationOnlyBook(): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: [
+      {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: '.',
+        tokens: [
+          {
+            id: 'tok-punct',
+            surfaceText: '.',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 0,
+            charEnd: 1,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** A book whose first segment has a punctuation token followed by a word token. */
+function makeMixedTokenBook(): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: [
+      {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: '. Word',
+        tokens: [
+          {
+            id: 'tok-punct',
+            surfaceText: '.',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 0,
+            charEnd: 1,
+          },
+          {
+            id: 'tok-word',
+            surfaceText: 'Word',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 2,
+            charEnd: 6,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // scrollIntoView mock
 // ---------------------------------------------------------------------------
@@ -198,13 +270,15 @@ describe('ContinuousView rendering', () => {
     render(<ContinuousView book={makeBook()} />);
 
     const clickedToken = screen.getByText('beginning');
-    const clickedPhraseBox = clickedToken.closest('[data-phrase-box="true"]');
-    if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
-    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'default');
+    const clickedSpan = clickedToken.closest('[data-phrase-box="true"]')?.parentElement;
+    if (!clickedSpan) throw new Error('Expected span wrapper for phrase box');
+    expect(clickedSpan).not.toHaveAttribute('data-focused');
 
-    await userEvent.click(clickedPhraseBox);
+    const phraseBox = clickedToken.closest('[data-phrase-box="true"]');
+    if (!phraseBox) throw new Error('Expected phrase box wrapper for token');
+    await userEvent.click(phraseBox);
 
-    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+    expect(clickedSpan).toHaveAttribute('data-focused', 'true');
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 });
@@ -607,7 +681,7 @@ describe('ContinuousView onVerseChange propagation', () => {
     // If focus was incorrectly reset to the first phrase of the verse ("beginning"), the right
     // arrow would be enabled. Staying on "God" keeps us at strip end, so it remains disabled.
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    expect(godPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+    expect(godPhraseBox?.parentElement).toHaveAttribute('data-focused', 'true');
   });
 
   it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
@@ -645,5 +719,96 @@ describe('ContinuousView onVerseChange propagation', () => {
     rerender(<ContinuousView book={exoBook} onVerseChange={handleVerseChange} />);
 
     expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Empty / punctuation-only book edge cases
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView empty and punctuation-only books', () => {
+  it('disables both arrows and renders no tokens when the book has no segments', () => {
+    render(<ContinuousView book={makeEmptyBook()} />);
+
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+
+  it('does not render left or right fade overlays when the book has no segments', () => {
+    const { container } = render(<ContinuousView book={makeEmptyBook()} />);
+
+    const gradients = container.querySelectorAll('[aria-hidden="true"]');
+    expect(gradients).toHaveLength(0);
+  });
+
+  it('renders a non-word token as a TokenChip when it appears in the strip', () => {
+    render(<ContinuousView book={makePunctuationOnlyBook()} />);
+
+    expect(screen.getByText('.')).toBeInTheDocument();
+    // With only punctuation there are no navigable phrases — both arrows are disabled.
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+
+  it('renders a non-word token as TokenChip alongside a word token', () => {
+    render(<ContinuousView book={makeMixedTokenBook()} />);
+
+    expect(screen.getByText('.')).toBeInTheDocument();
+    expect(screen.getByText('Word')).toBeInTheDocument();
+  });
+
+  it('does not jump when activeVerse targets a segment that has no word tokens', () => {
+    // A segment with only punctuation is excluded from segmentStartIndex, so
+    // getPhraseIndexForVerse returns undefined and focusPhraseIndex stays at 0.
+    render(
+      <ContinuousView
+        book={makePunctuationOnlyBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
+    );
+
+    // phraseEntries is empty → both arrows disabled.
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+
+  it('does not jump on activeVerse change when the target segment has no word tokens', () => {
+    const { rerender } = render(
+      <ContinuousView
+        book={makePunctuationOnlyBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
+    );
+
+    // Re-render with a different verse coordinate — still no word tokens so no jump.
+    rerender(
+      <ContinuousView
+        book={makePunctuationOnlyBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handlePhraseClick — already-focused phrase
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView handlePhraseClick idempotency', () => {
+  it('does not scroll when the already-focused phrase is clicked again', async () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    // The first phrase ("In") is focused by default.
+    const inToken = screen.getByText('In');
+    const phraseBox = inToken.closest('[data-phrase-box="true"]');
+    if (!phraseBox) throw new Error('Expected phrase box wrapper');
+
+    scrollIntoViewMock.mockClear();
+    await userEvent.click(phraseBox);
+
+    // Clicking the already-focused phrase must be a no-op — no scroll.
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 });

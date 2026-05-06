@@ -111,7 +111,7 @@ describe('SegmentView', () => {
     expect(handleSelect).toHaveBeenCalledWith(WORD_SEGMENT.startRef);
   });
 
-  it('does not throw when onSelect is omitted and button is clicked', async () => {
+  it('does not throw when onClick is omitted and button is clicked', async () => {
     render(<SegmentView segment={WORD_SEGMENT} />);
 
     await userEvent.click(screen.getByRole('button'));

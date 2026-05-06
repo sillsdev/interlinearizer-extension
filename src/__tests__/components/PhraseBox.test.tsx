@@ -68,44 +68,22 @@ describe('PhraseBox', () => {
     expect(mockOnClick).toHaveBeenCalledTimes(1);
   });
 
-  it('applies focused styling when isFocused is true', () => {
-    render(<PhraseBox tokens={[TEST_TOKEN]} isFocused />);
+  it('applies base border and background classes to the span variant', () => {
+    render(<PhraseBox tokens={[TEST_TOKEN]} />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).toHaveAttribute('data-focus-state', 'focused');
     expect(phraseBox).toHaveClass('tw-border-2');
+    expect(phraseBox).toHaveClass('tw-border-border/40');
+    expect(phraseBox).toHaveClass('tw-bg-muted/20');
   });
 
-  it('applies default styling when isFocused is false', () => {
-    render(<PhraseBox tokens={[TEST_TOKEN]} />);
-
-    const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
-    expect(phraseBox).not.toHaveClass('tw-border-2');
-  });
-
-  it('applies default styling when isFocused is not provided', () => {
-    render(<PhraseBox tokens={[TEST_TOKEN]} />);
-
-    const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
-  });
-
-  it('button has correct focused styling and cursor', () => {
-    const mockOnClick = jest.fn();
-    render(<PhraseBox tokens={[TEST_TOKEN]} onClick={mockOnClick} isFocused />);
-
-    const button = screen.getByRole('button');
-    expect(button).toHaveAttribute('data-focus-state', 'focused');
-    expect(button).toHaveClass('tw-cursor-pointer');
-    expect(button).toHaveClass('tw-text-left');
-  });
-
-  it('button has hover styling', () => {
+  it('applies cursor and hover styling to the button variant', () => {
     const mockOnClick = jest.fn();
     render(<PhraseBox tokens={[TEST_TOKEN]} onClick={mockOnClick} />);
 
     const button = screen.getByRole('button');
+    expect(button).toHaveClass('tw-cursor-pointer');
+    expect(button).toHaveClass('tw-text-left');
     expect(button).toHaveClass('hover:tw-bg-muted/30');
   });
 

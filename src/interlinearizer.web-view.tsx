@@ -74,6 +74,10 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     },
     [setScrRef],
   );
+  const activeVerse = useMemo(
+    () => ({ book: scrRef.book, chapter: scrRef.chapterNum, verse: scrRef.verseNum }),
+    [scrRef.book, scrRef.chapterNum, scrRef.verseNum],
+  );
   const handleSegmentSelect = useCallback(
     (ref: { book: string; chapter: number; verse: number }) => {
       setScrRef({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse });
@@ -108,7 +112,6 @@ globalThis.webViewComponent = function InterlinearizerWebView({
                 checked={continuousScroll}
                 disabled={pendingContinuousScroll !== undefined}
                 onCheckedChange={(checked) => {
-                  if (pendingContinuousScroll !== undefined) return;
                   setContinuousScroll(checked);
                   setPendingContinuousScroll(checked);
                   setContinuousScrollSetting?.(checked);
@@ -123,11 +126,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           <div className="tw-bg-background tw-py-2">
             <ContinuousView
               book={book}
-              activeVerse={{
-                book: scrRef.book,
-                chapter: scrRef.chapterNum,
-                verse: scrRef.verseNum,
-              }}
+              activeVerse={activeVerse}
               onVerseChange={handleContinuousVerseChange}
             />
           </div>

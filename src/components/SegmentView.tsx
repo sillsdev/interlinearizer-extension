@@ -30,11 +30,9 @@ function SegmentView({
   return (
     <button
       aria-current={isActive ? 'true' : undefined}
-      className={
-        isActive
-          ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
-          : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
-      }
+      className={`tw-w-full tw-rounded tw-border tw-p-2 tw-text-left tw-transition-colors ${
+        isActive ? 'tw-border-border tw-bg-muted/50' : 'tw-border-transparent hover:tw-bg-muted/30'
+      }`}
       onClick={() => onSelect?.(segment.startRef)}
       type="button"
     >

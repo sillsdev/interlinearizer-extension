@@ -1,33 +1,31 @@
 /** @file Continuous horizontal token-strip viewer for a full book. */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Book, Token } from 'interlinearizer';
 import TokenChip from './TokenChip';
 import PhraseBox from './PhraseBox';
 
 /**
- * Memoized phrase-level wrapper that isolates each word token's focus state and click handler.
- * Avoids re-rendering the entire token strip when only one or two tokens change focus.
+ * Memoized phrase-level wrapper that isolates each word token's click handler. Avoids re-rendering
+ * the entire token strip on navigation. Focus styling is applied imperatively via a `data-focused`
+ * attribute on the parent span so it updates synchronously without triggering a React re-render.
  *
  * @param props - Component props
- * @param props.isFocused - Whether this phrase is the navigation focus
  * @param props.onPhraseClick - Stable callback invoked with this phrase's index when clicked
  * @param props.phraseIndex - Zero-based index of this phrase in the navigable phrase list
  * @param props.token - The word token to render inside the phrase box
  * @returns A memoized {@link PhraseBox} with a stable click handler
  */
 const FocusablePhrase = memo(function FocusablePhrase({
-  isFocused,
   onPhraseClick,
   phraseIndex,
   token,
 }: Readonly<{
-  isFocused: boolean;
   onPhraseClick: (index: number) => void;
   phraseIndex: number;
   token: Token;
 }>) {
   const handleClick = useCallback(() => onPhraseClick(phraseIndex), [onPhraseClick, phraseIndex]);
-  return <PhraseBox isFocused={isFocused} onClick={handleClick} tokens={[token]} />;
+  return <PhraseBox onClick={handleClick} tokens={[token]} />;
 });
 
 /** A verse coordinate used to drive the strip's scroll position. */
@@ -123,9 +121,7 @@ export default function ContinuousView({
   tokenSegmentRef.current = tokenSegment;
 
   const getPhraseIndexForVerse = useCallback(
-    (verse: VerseCoordinate | undefined): number | undefined => {
-      if (!verse) return undefined;
-
+    (verse: VerseCoordinate): number | undefined => {
       const seg = book.segments.find(
         (s) =>
           s.startRef.book === verse.book &&
@@ -146,16 +142,7 @@ export default function ContinuousView({
   // render, before the initial scroll effect fires.
   const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
     if (!activeVerse) return 0;
-    const seg = book.segments.find(
-      (s) =>
-        s.startRef.book === activeVerse.book &&
-        s.startRef.chapter === activeVerse.chapter &&
-        s.startRef.verse === activeVerse.verse,
-    );
-    if (!seg) return 0;
-    const tokenIdx = segmentStartIndex.get(seg.id);
-    if (tokenIdx === undefined) return 0;
-    return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
+    return getPhraseIndexForVerse(activeVerse) ?? 0;
   });
 
   /**
@@ -239,21 +226,47 @@ export default function ContinuousView({
   const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
   const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
 
-  const goLeft = useCallback(() => {
-    setFocusPhraseIndex((i) => (i > 0 ? i - 1 : i));
+  /**
+   * Imperatively transfers the focused visual state and scroll position to the given phrase index.
+   * Runs synchronously so the style update is visible before React re-renders, masking the ~167ms
+   * platform render latency in the Electron WebView.
+   */
+  const moveFocus = useCallback((next: number, behavior: ScrollBehavior) => {
+    phraseRefs.current[focusPhraseIndexRef.current]?.removeAttribute('data-focused');
+    const el = phraseRefs.current[next];
+    el?.setAttribute('data-focused', 'true');
+    el?.scrollIntoView({ behavior, block: 'nearest', inline: 'center' });
   }, []);
+
+  const goLeft = useCallback(() => {
+    setFocusPhraseIndex((i) => {
+      const next = i - 1;
+      moveFocus(next, 'smooth');
+      return next;
+    });
+  }, [moveFocus]);
 
   const goRight = useCallback(() => {
-    const max = phraseEntriesRef.current.length - 1;
-    setFocusPhraseIndex((i) => (i < max ? i + 1 : i));
-  }, []);
+    setFocusPhraseIndex((i) => {
+      const next = i + 1;
+      moveFocus(next, 'smooth');
+      return next;
+    });
+  }, [moveFocus]);
 
-  const handlePhraseClick = useCallback((index: number) => {
-    if (index !== focusPhraseIndexRef.current) setFocusPhraseIndex(index);
-  }, []);
+  const handlePhraseClick = useCallback(
+    (index: number) => {
+      if (index === focusPhraseIndexRef.current) return;
+      moveFocus(index, 'smooth');
+      setFocusPhraseIndex(index);
+    },
+    [moveFocus],
+  );
 
-  useEffect(() => {
+  // For activeVerse-driven jumps the scroll and data-focused update happen here after React renders.
+  useLayoutEffect(() => {
     const isInitialLoad = isInitialLoadRef.current;
+    phraseRefs.current[focusPhraseIndex]?.setAttribute('data-focused', 'true');
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
       behavior: isInitialLoad ? 'auto' : 'smooth',
       block: 'nearest',
@@ -299,7 +312,6 @@ export default function ContinuousView({
             if (token.type !== 'word') return <TokenChip key={token.id} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
-            const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
             return (
               <span
                 key={token.id}
@@ -309,7 +321,6 @@ export default function ContinuousView({
               >
                 {phraseIndex !== undefined && (
                   <FocusablePhrase
-                    isFocused={isFocusedPhrase}
                     onPhraseClick={handlePhraseClick}
                     phraseIndex={phraseIndex}
                     token={token}

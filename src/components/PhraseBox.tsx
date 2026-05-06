@@ -3,25 +3,25 @@ import type { Token } from 'interlinearizer';
 import TokenChip from './TokenChip';
 
 /**
- * Wraps one or more tokens in a phrase-level visual container.
+ * Wraps one or more tokens in a phrase-level visual container. When used inside
+ * {@link ContinuousView}, focus styling is applied via a `data-focused` attribute on the parent span
+ * rather than through this component, so that the visual update is synchronous and independent of
+ * React's render cycle.
  *
  * @param props - Component props
- * @param props.isFocused - Whether this phrase is the current navigation focus
+ * @param props.onClick - Optional click handler; when provided the box renders as a button
  * @param props.tokens - Tokens belonging to this phrase
  * @returns A bordered inline container
  */
 export default function PhraseBox({
-  isFocused = false,
   onClick,
   tokens,
 }: Readonly<{
-  isFocused?: boolean;
   onClick?: () => void;
   tokens: Token[];
 }>) {
-  const baseClass = isFocused
-    ? 'tw-inline-flex tw-items-center tw-rounded tw-border-2 tw-border-border tw-bg-muted/30 tw-px-1 tw-py-0.5'
-    : 'tw-inline-flex tw-items-center tw-rounded tw-border tw-border-border/40 tw-bg-muted/20 tw-px-1 tw-py-0.5';
+  const baseClass =
+    'tw-inline-flex tw-items-center tw-rounded tw-border-2 tw-border-border/40 tw-bg-muted/20 tw-px-1 tw-py-0.5';
   const innerContent = (
     <span className="tw-inline-flex tw-items-center tw-gap-1">
       {tokens.map((token) => (
@@ -33,8 +33,7 @@ export default function PhraseBox({
   if (onClick) {
     return (
       <button
-        className={`${baseClass} tw-cursor-pointer tw-text-left hover:tw-bg-muted/30`}
-        data-focus-state={isFocused ? 'focused' : 'default'}
+        className={`${baseClass} tw-cursor-pointer tw-text-left tw-outline-none hover:tw-bg-muted/30 focus-visible:tw-outline-none`}
         data-phrase-box="true"
         onClick={onClick}
         type="button"
@@ -45,11 +44,7 @@ export default function PhraseBox({
   }
 
   return (
-    <span
-      className={baseClass}
-      data-focus-state={isFocused ? 'focused' : 'default'}
-      data-phrase-box="true"
-    >
+    <span className={baseClass} data-phrase-box="true">
       {innerContent}
     </span>
   );

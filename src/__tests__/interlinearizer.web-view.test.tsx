@@ -15,6 +15,7 @@ import {
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import { logger } from '@papi/frontend';
 
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
@@ -356,6 +357,7 @@ describe('InterlinearizerWebView', () => {
   });
 
   it('logs with "und" writing system when tokenization fails and writing system is a PlatformError', () => {
+    const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
     mockBookData({});
     mockWritingSystem({ platformErrorVersion: 1, message: 'Setting unavailable' });
     jest.mocked(tokenizeBook).mockImplementation(() => {
@@ -364,9 +366,15 @@ describe('InterlinearizerWebView', () => {
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ writingSystem: 'und' }),
+    );
   });
 
   it('logs with "und" writing system when tokenization fails and writing system is an empty string', () => {
+    const loggerErrorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
     mockBookData({});
     mockWritingSystem('');
     jest.mocked(tokenizeBook).mockImplementation(() => {
@@ -375,6 +383,23 @@ describe('InterlinearizerWebView', () => {
     render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(loggerErrorSpy).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ writingSystem: 'und' }),
+    );
+  });
+
+  it('does not throw when the project menu item is selected', async () => {
+    render(<InterlinearizerWebView {...makeProps()} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+  });
+
+  it('does not throw when the view info menu item is selected', async () => {
+    render(<InterlinearizerWebView {...makeProps()} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-info-menu'));
   });
 
   it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {

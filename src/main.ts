@@ -123,6 +123,7 @@ async function promptForDistinctTargetProject(
   await papi.notifications
     .send({ message: '%interlinearizer_error_same_project%', severity: 'warning' })
     .catch(() => {});
+  // Recurse to avoid `await` in `while`
   return promptForDistinctTargetProject(sourceProjectId);
 }
 

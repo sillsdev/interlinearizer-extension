@@ -665,11 +665,16 @@ declare module 'interlinearizer' {
      * becomes a concern (token text is typically short, so the literal string is usually fine).
      */
     tokenSnapshot?: string;
-  } & (
-    | { gloss: MultiString; glossSenseRef?: never }
-    | { glossSenseRef: SenseRef; gloss?: never }
-    | { gloss?: never; glossSenseRef?: never }
-  );
+  } &
+    /**
+     * Exactly one of `gloss` or `glossSenseRef` may be set, or neither — but never both. Use
+     * `gloss` for a free-form string; use `glossSenseRef` to derive the rendered gloss from a
+     * Lexicon sense (enabling automatic refresh when the lexicon is edited).
+     */
+    (| { gloss: MultiString; glossSenseRef?: never }
+      | { glossSenseRef: SenseRef; gloss?: never }
+      | { gloss?: never; glossSenseRef?: never }
+    );
 
   /**
    * An ordered morpheme within a token's parse.
@@ -807,11 +812,16 @@ declare module 'interlinearizer' {
      * maintain this alignment when filtering or transforming tokens.
      */
     tokenSnapshots?: [string, ...string[]];
-  } & (
-    | { gloss: MultiString; senseRef?: never }
-    | { senseRef: SenseRef; gloss?: never }
-    | { gloss?: never; senseRef?: never }
-  );
+  } &
+    /**
+     * Exactly one of `gloss` or `senseRef` may be set, or neither — but never both. Use `gloss` for
+     * a free-form phrase gloss; use `senseRef` when the phrase is a multi-word lexical entry in the
+     * Lexicon extension (enabling automatic gloss refresh).
+     */
+    (| { gloss: MultiString; senseRef?: never }
+      | { senseRef: SenseRef; gloss?: never }
+      | { gloss?: never; senseRef?: never }
+    );
 
   // ---------------------------------------------------------------------------
   // §7 AlignmentLink, AlignmentEndpoint
@@ -892,18 +902,24 @@ declare module 'interlinearizer' {
      * the link's `status` to `'stale'` to prompt re-review.
      */
     tokenSnapshot?: string;
-  } & (
-    | { morphemeId?: never; tokenAnalysisId?: never }
-    | {
-        /**
-         * The `TokenAnalysis.id` that owns the referenced morpheme. Required when `morphemeId` is
-         * set.
-         */
-        tokenAnalysisId: string;
-        /** Specific `Morpheme.id` within the identified `TokenAnalysis.morphemes`. */
-        morphemeId: string;
-      }
-  );
+  } &
+    /**
+     * Either both `morphemeId` and `tokenAnalysisId` are set (morpheme-level link), or neither is
+     * set (token-level link). `tokenAnalysisId` is required alongside `morphemeId` because a single
+     * token may have multiple competing `TokenAnalysis` entries; without it the target morpheme
+     * would be ambiguous.
+     */
+    (| { morphemeId?: never; tokenAnalysisId?: never }
+      | {
+          /**
+           * The `TokenAnalysis.id` that owns the referenced morpheme. Required when `morphemeId` is
+           * set.
+           */
+          tokenAnalysisId: string;
+          /** Specific `Morpheme.id` within the identified `TokenAnalysis.morphemes`. */
+          morphemeId: string;
+        }
+    );
 
   // ---------------------------------------------------------------------------
   // §8 InterlinearProject — persisted project envelope

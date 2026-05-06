@@ -4,6 +4,11 @@
     "en": {
       "%interlinearizer_dialog_open_title%": "Open Interlinearizer",
       "%interlinearizer_dialog_open_prompt%": "Choose a project to open in the Interlinearizer:",
+      "%interlinearizer_dialog_create_source_title%": "Create Interlinearizer Project",
+      "%interlinearizer_dialog_create_source_prompt%": "Choose the source project to interlinearize:",
+      "%interlinearizer_dialog_create_target_title%": "Create Interlinearizer Project",
+      "%interlinearizer_dialog_create_target_prompt%": "Choose the target project for glosses and analysis:",
+      "%interlinearizer_error_create_project_failed%": "Could not create the interlinearizer project. Please try again.",
       "%interlinearizer_openForProject%": "Open Interlinearizer for this Project",
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",

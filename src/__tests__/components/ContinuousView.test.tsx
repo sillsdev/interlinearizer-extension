@@ -788,3 +788,31 @@ describe('ContinuousView non-word tokens and word-free paths', () => {
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// RTL layout
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView RTL layout', () => {
+  beforeEach(() => {
+    document.documentElement.dir = 'rtl';
+  });
+
+  afterEach(() => {
+    document.documentElement.dir = 'ltr';
+  });
+
+  it('shows right-arrow (→) on the previous button in RTL mode', () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    const prevBtn = screen.getByRole('button', { name: 'Previous token' });
+    expect(prevBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2192');
+  });
+
+  it('shows left-arrow (←) on the next button in RTL mode', () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    const nextBtn = screen.getByRole('button', { name: 'Next token' });
+    expect(nextBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2190');
+  });
+});

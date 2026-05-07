@@ -245,7 +245,9 @@ export default function ContinuousView({
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
       const nextIndex = i + delta;
+      /* v8 ignore next -- disabled buttons prevent underflow */
       if (nextIndex < 0) return 0;
+      /* v8 ignore next -- disabled buttons prevent overflow */
       if (nextIndex >= phraseEntriesRef.current.length) return phraseEntriesRef.current.length - 1;
       return nextIndex;
     });

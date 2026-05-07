@@ -66,11 +66,20 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
   );
+
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
+
   const handleContinuousVerseChange = useCallback(
     (v: { book: string; chapter: number; verse: number }) => {
       setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });
+    },
+    [setScrRef],
+  );
+
+  const handleSegmentSelect = useCallback(
+    (ref: { book: string; chapter: number; verse: number }) => {
+      setScrRef({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse });
     },
     [setScrRef],
   );
@@ -171,13 +180,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
                     segment={seg}
                     isActive={seg.startRef.verse === scrRef.verseNum}
                     displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-                    onClick={() =>
-                      setScrRef({
-                        book: seg.startRef.book,
-                        chapterNum: seg.startRef.chapter,
-                        verseNum: seg.startRef.verse,
-                      })
-                    }
+                    onClick={handleSegmentSelect}
                   />
                 ))}
               </div>

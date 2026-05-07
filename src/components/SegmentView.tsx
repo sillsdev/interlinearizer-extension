@@ -23,9 +23,11 @@ export default function SegmentView({
 }: Readonly<{
   displayMode?: SegmentDisplayMode;
   isActive?: boolean;
-  onClick?: () => void;
+  onClick?: (ref: { book: string; chapter: number; verse: number }) => void;
   segment: Segment;
 }>) {
+  const { book, chapter, verse } = segment.startRef;
+
   return (
     <button
       aria-current={isActive ? 'true' : undefined}
@@ -34,11 +36,11 @@ export default function SegmentView({
           ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
           : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
       }
-      onClick={onClick}
+      onClick={() => onClick?.({ book, chapter, verse })}
       type="button"
     >
       <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
-        {segment.startRef.verse}
+        {verse}
       </span>
       {displayMode === 'baseline-text' ? (
         <span className="tw-font-mono tw-text-sm tw-text-foreground">{segment.baselineText}</span>

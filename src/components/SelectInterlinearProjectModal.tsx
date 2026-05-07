@@ -21,6 +21,22 @@ export type InterlinearProjectSummary = Pick<
   'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem' | 'name' | 'description'
 >;
 
+/** Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON. */
+export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
+  return (
+    !!p &&
+    typeof p === 'object' &&
+    'id' in p &&
+    typeof p.id === 'string' &&
+    'createdAt' in p &&
+    typeof p.createdAt === 'string' &&
+    'sourceProjectId' in p &&
+    typeof p.sourceProjectId === 'string' &&
+    'analysisWritingSystem' in p &&
+    typeof p.analysisWritingSystem === 'string'
+  );
+}
+
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
  * select one, view its details (via the info icon), or request that a new one be created. Fires
@@ -54,7 +70,13 @@ export function SelectInterlinearProjectModal({
 
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
 
-  /** Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. */
+  /**
+   * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
+   * shows a notification on failure.
+   *
+   * @returns A promise that resolves when the project list is loaded or the error notification is
+   *   sent.
+   */
   const loadProjects = useCallback(async () => {
     try {
       const json = await papi.commands.sendCommand(
@@ -62,10 +84,7 @@ export function SelectInterlinearProjectModal({
         sourceProjectId,
       );
       const parsed: unknown = JSON.parse(json);
-      if (Array.isArray(parsed))
-        setProjects(
-          parsed.filter((p): p is InterlinearProjectSummary => !!p && typeof p === 'object'),
-        );
+      if (Array.isArray(parsed)) setProjects(parsed.filter(isInterlinearProjectSummary));
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);
       await papi.notifications
@@ -82,6 +101,7 @@ export function SelectInterlinearProjectModal({
    * Delegates to `onSelect` when the user clicks a project row.
    *
    * @param project - The project the user selected.
+   * @returns Void
    */
   const handleSelect = useCallback(
     (project: InterlinearProjectSummary) => {
@@ -94,6 +114,7 @@ export function SelectInterlinearProjectModal({
    * Delegates to `onViewInfo` when the user clicks a project's info icon.
    *
    * @param project - The project whose info icon was clicked.
+   * @returns Void
    */
   const handleViewInfo = useCallback(
     (project: InterlinearProjectSummary) => {

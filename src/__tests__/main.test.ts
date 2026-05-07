@@ -1,11 +1,14 @@
 /** @file Unit tests for the extension entry point (main.ts). */
 /// <reference types="jest" />
 
-import type { SavedWebViewDefinition } from '@papi/core';
+import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } from '@papi/core';
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
+import * as projectStorage from '../projectStorage';
 import { createTestActivationContext } from './test-helpers';
+
+jest.mock('../projectStorage');
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */
 interface PapiBackendTestMock {
@@ -16,8 +19,6 @@ interface PapiBackendTestMock {
   __mockGetOpenWebViewDefinition: jest.Mock;
   __mockOnDidOpenWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
-  __mockReadUserData: jest.Mock;
-  __mockWriteUserData: jest.Mock;
   __mockNotificationsSend: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
@@ -37,8 +38,6 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockGetOpenWebViewDefinition' in m &&
     '__mockOnDidOpenWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
-    '__mockReadUserData' in m &&
-    '__mockWriteUserData' in m &&
     '__mockNotificationsSend' in m &&
     '__mockLogger' in m
   );
@@ -53,8 +52,6 @@ const {
   __mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView,
   __mockOnDidCloseWebView,
-  __mockReadUserData,
-  __mockWriteUserData,
   __mockNotificationsSend,
   __mockLogger,
 } = papiBackendMock;
@@ -69,12 +66,25 @@ function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
   return typeof f === 'function';
 }
 
-/**
- * Finds the handler registered for a command name in the mocked registerCommand calls.
- *
- * @param commandName - The command name to look up.
- * @returns The handler function, or undefined if no matching call was recorded.
- */
+type WebViewProvider = {
+  getWebView(
+    savedWebViewDefinition: SavedWebViewDefinition,
+    openWebViewOptions: OpenWebViewOptions | undefined,
+    webViewNonce: string,
+  ): Promise<WebViewDefinition | undefined>;
+};
+
+function isWebViewProvider(x: unknown): x is WebViewProvider {
+  return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
+}
+
+/** Retrieves the provider registered with the platform and asserts it exists. */
+function getRegisteredProvider(): WebViewProvider {
+  const raw = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+  if (!isWebViewProvider(raw)) throw new Error('Expected registered provider');
+  return raw;
+}
+
 function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
   const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
   const rawHandler: unknown = call?.[1];
@@ -119,14 +129,60 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (analysisWritingSystem: string) => Promise<string | undefined>
+  (sourceProjectId: string, analysisWritingSystem: string) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (ws: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(ws);
+  return async (sourceProjectId: string, ws: string): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(sourceProjectId, ws);
+    return typeof result === 'string' ? result : undefined;
+  };
+}
+
+async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.deleteProject');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.deleteProject');
+  return async (id: string): Promise<void> => {
+    await rawHandler(id);
+  };
+}
+
+async function getProjectsForSourceHandler(): Promise<
+  (sourceProjectId: string) => Promise<string>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.getProjectsForSource');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProjectsForSource');
+  return async (sourceProjectId: string): Promise<string> => {
+    const result: unknown = await rawHandler(sourceProjectId);
+    return typeof result === 'string' ? result : '[]';
+  };
+}
+
+async function getUpdateProjectMetadataHandler(): Promise<
+  (
+    id: string,
+    name: string | undefined,
+    description: string | undefined,
+    analysisWritingSystem?: string,
+  ) => Promise<string | undefined>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.updateProjectMetadata');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.updateProjectMetadata');
+  return async (
+    id: string,
+    name: string | undefined,
+    description: string | undefined,
+    analysisWritingSystem?: string,
+  ): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(id, name, description, analysisWritingSystem);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -144,47 +200,49 @@ describe('main', () => {
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
-    __mockReadUserData.mockRejectedValue(
-      Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' }),
-    );
-    __mockWriteUserData.mockResolvedValue(undefined);
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
-    jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000000');
   });
 
   describe('activate', () => {
-    it('registers the WebView provider with the platform', async () => {
+    it('registers the WebView provider with a callable getWebView handler', async () => {
       const context = createTestActivationContext();
-
       await activate(context);
 
-      expect(__mockRegisterWebViewProvider).toHaveBeenCalledTimes(1);
-      expect(__mockRegisterWebViewProvider).toHaveBeenCalledWith(
-        mainWebViewType,
-        expect.objectContaining({
-          getWebView: expect.any(Function),
-        }),
-      );
+      const raw: unknown = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
+      expect(isWebViewProvider(raw)).toBe(true);
     });
 
-    it('registers the interlinearizer.openForWebView command', async () => {
+    it('registers the interlinearizer.openForWebView command with a callable handler', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+
+      const handler = findRegisteredHandler('interlinearizer.openForWebView');
+      expect(handler).toBeDefined();
+      expect(typeof handler).toBe('function');
+    });
+
+    it('registers all expected commands and subscriptions', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.openForWebView',
-        expect.any(Function),
+      const registeredCommands = jest.mocked(__mockRegisterCommand).mock.calls.map((c) => c[0]);
+      expect(registeredCommands).toEqual(
+        expect.arrayContaining([
+          'interlinearizer.openForWebView',
+          'interlinearizer.createProject',
+          'interlinearizer.getProjectsForSource',
+          'interlinearizer.newProject',
+          'interlinearizer.updateProjectMetadata',
+          'interlinearizer.deleteProject',
+        ]),
+      );
+      expect(__mockRegisterWebViewProvider).toHaveBeenCalledWith(
+        'interlinearizer.mainWebView',
         expect.any(Object),
       );
-    });
-
-    it('adds all five registrations to the activation context', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(context.registrations.unsubscribers.size).toBe(5);
+      expect(__mockOnDidOpenWebView).toHaveBeenCalledTimes(1);
+      expect(__mockOnDidCloseWebView).toHaveBeenCalledTimes(1);
     });
 
     it('logs activation start and finish', async () => {
@@ -200,23 +258,6 @@ describe('main', () => {
   });
 
   describe('mainWebViewProvider.getWebView', () => {
-    type WebViewProvider = {
-      getWebView(saved: SavedWebViewDefinition, opts?: object): Promise<unknown>;
-    };
-
-    function isWebViewProvider(x: unknown): x is WebViewProvider {
-      return (
-        !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function'
-      );
-    }
-
-    /** Retrieves the provider registered with the platform and asserts it exists. */
-    function getRegisteredProvider(): WebViewProvider {
-      const raw = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
-      if (!isWebViewProvider(raw)) throw new Error('Expected registered provider');
-      return raw;
-    }
-
     it('returns WebView definition when webViewType matches', async () => {
       const context = createTestActivationContext();
 
@@ -228,7 +269,7 @@ describe('main', () => {
         webViewType: mainWebViewType,
       };
 
-      const result = await provider.getWebView(savedWebView, {});
+      const result = await provider.getWebView(savedWebView, {}, 'nonce');
 
       expect(result).toMatchObject({
         ...savedWebView,
@@ -249,7 +290,7 @@ describe('main', () => {
       };
 
       const options: InterlinearizerOpenOptions = { projectId: 'my-project' };
-      const result = await provider.getWebView(savedWebView, options);
+      const result = await provider.getWebView(savedWebView, options, 'nonce');
 
       expect(result).toMatchObject({ projectId: 'my-project' });
     });
@@ -265,7 +306,7 @@ describe('main', () => {
         projectId: 'saved-project',
       };
 
-      const result = await provider.getWebView(savedWebView, {});
+      const result = await provider.getWebView(savedWebView, {}, 'nonce');
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });
@@ -281,7 +322,7 @@ describe('main', () => {
         webViewType: 'other.webView',
       };
 
-      await expect(provider.getWebView(savedWebView, {})).rejects.toThrow(
+      await expect(provider.getWebView(savedWebView, {}, 'nonce')).rejects.toThrow(
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
     });
@@ -297,7 +338,7 @@ describe('main', () => {
         projectId: 'saved-project',
       };
 
-      const result = await provider.getWebView(savedWebView, undefined);
+      const result = await provider.getWebView(savedWebView, undefined, 'nonce');
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });
@@ -390,9 +431,55 @@ describe('main', () => {
 
       expect(result).toBe('interlinearizer-webview-id');
     });
+
+    it('propagates errors thrown by selectProject', async () => {
+      __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
+      __mockSelectProject.mockRejectedValue(new Error('picker failed'));
+      const openForWebView = await getOpenForWebViewHandler();
+
+      await expect(openForWebView('some-webview')).rejects.toThrow('picker failed');
+    });
+  });
+
+  describe('interlinearizer.newProject command', () => {
+    it('registers the interlinearizer.newProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.newProject',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.newProject');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.newProject');
+
+      await expect(rawHandler()).resolves.toBeUndefined();
+      expect(__mockOpenWebView).not.toHaveBeenCalled();
+      expect(__mockSelectProject).not.toHaveBeenCalled();
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
   });
 
   describe('interlinearizer.createProject command', () => {
+    const mockCreateProject = jest.mocked(projectStorage.createProject);
+    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const stubProject = {
+      id: 'new-project-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src-project',
+      analysisWritingSystem: 'en',
+      sourceAnalysis: emptyAnalysis,
+      targetAnalysis: emptyAnalysis,
+      links: [],
+    };
+
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
 
@@ -405,78 +492,36 @@ describe('main', () => {
       );
     });
 
-    it('creates and returns the new project ID when both pickers are confirmed', async () => {
-      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce('tgt-project');
+    it('delegates to projectStorage.createProject and returns the new project ID', async () => {
+      mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('en');
+      const result = await handler('src-project', 'en');
 
-      expect(result).toBe('00000000-0000-0000-0000-000000000000');
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
+      expect(mockCreateProject).toHaveBeenCalledWith(
         expect.anything(),
-        'project:00000000-0000-0000-0000-000000000000',
-        expect.stringContaining('"sourceProjectId":"src-project"'),
+        'src-project',
+        'en',
+        undefined,
+        undefined,
       );
+      expect(result).toBe('new-project-id');
     });
 
-    it('returns undefined when the source picker is cancelled', async () => {
-      __mockSelectProject.mockResolvedValue(undefined);
+    it('does not show a project picker dialog', async () => {
+      mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('en');
+      await handler('src-project', 'en');
 
-      expect(result).toBeUndefined();
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it('returns undefined when the target picker is cancelled', async () => {
-      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce(undefined);
-      const handler = await getCreateProjectHandler();
-
-      const result = await handler('en');
-
-      expect(result).toBeUndefined();
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
-    });
-
-    it('sends a warning notification and re-prompts when target equals source', async () => {
-      __mockSelectProject
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('tgt-project');
-      const handler = await getCreateProjectHandler();
-
-      const result = await handler('en');
-
-      expect(result).toBe('00000000-0000-0000-0000-000000000000');
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'warning' }),
-      );
-      expect(__mockSelectProject).toHaveBeenCalledTimes(3);
-    });
-
-    it('returns undefined when the user cancels the target picker after a same-project warning', async () => {
-      __mockSelectProject
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce(undefined);
-      const handler = await getCreateProjectHandler();
-
-      const result = await handler('en');
-
-      expect(result).toBeUndefined();
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'warning' }),
-      );
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
+      expect(__mockSelectProject).not.toHaveBeenCalled();
     });
 
     it('logs the error, sends an error notification, and returns undefined when storage fails', async () => {
-      __mockSelectProject.mockResolvedValueOnce('src-project').mockResolvedValueOnce('tgt-project');
-      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+      mockCreateProject.mockRejectedValue(new Error('disk full'));
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('en');
+      const result = await handler('src-project', 'en');
 
       expect(result).toBeUndefined();
       expect(__mockLogger.error).toHaveBeenCalledWith(
@@ -630,6 +675,147 @@ describe('main', () => {
           expect.objectContaining({ existingId: 'my-tab' }),
         );
       });
+    });
+  });
+
+  describe('interlinearizer.deleteProject command', () => {
+    const mockDeleteProject = jest.mocked(projectStorage.deleteProject);
+
+    it('registers the interlinearizer.deleteProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.deleteProject',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('delegates to projectStorage.deleteProject with the given ID', async () => {
+      mockDeleteProject.mockResolvedValue(undefined);
+      const handler = await getDeleteProjectHandler();
+
+      await handler('to-delete-id');
+
+      expect(mockDeleteProject).toHaveBeenCalledWith(expect.anything(), 'to-delete-id');
+    });
+  });
+
+  describe('interlinearizer.getProjectsForSource command', () => {
+    const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
+    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const stubProject = {
+      id: 'proj-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src-project',
+      analysisWritingSystem: 'en',
+      sourceAnalysis: emptyAnalysis,
+      targetAnalysis: emptyAnalysis,
+      links: [],
+    };
+
+    it('registers the interlinearizer.getProjectsForSource command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.getProjectsForSource',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('returns a JSON string of matching projects', async () => {
+      mockGetProjectsForSource.mockResolvedValue([stubProject]);
+      const handler = await getProjectsForSourceHandler();
+
+      const result = await handler('src-project');
+
+      expect(result).toBe(JSON.stringify([stubProject]));
+    });
+
+    it('returns "[]" and logs an error when storage throws', async () => {
+      mockGetProjectsForSource.mockRejectedValue(new Error('disk full'));
+      const handler = await getProjectsForSourceHandler();
+
+      const result = await handler('src-project');
+
+      expect(result).toBe('[]');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to list projects for source',
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe('interlinearizer.updateProjectMetadata command', () => {
+    const mockUpdateProjectMetadata = jest.mocked(projectStorage.updateProjectMetadata);
+    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const stubProject = {
+      id: 'proj-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src-project',
+      analysisWritingSystem: 'en',
+      sourceAnalysis: emptyAnalysis,
+      targetAnalysis: emptyAnalysis,
+      links: [],
+    };
+
+    it('registers the interlinearizer.updateProjectMetadata command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.updateProjectMetadata',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('passes name and description to projectStorage.updateProjectMetadata', async () => {
+      mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
+      const handler = await getUpdateProjectMetadataHandler();
+
+      await handler('proj-id', 'My Name', 'My Desc');
+
+      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        'My Name',
+        'My Desc',
+        undefined,
+      );
+    });
+
+    it('passes analysisWritingSystem to projectStorage.updateProjectMetadata when provided', async () => {
+      mockUpdateProjectMetadata.mockResolvedValue({
+        ...stubProject,
+        analysisWritingSystem: 'fr',
+      });
+      const handler = await getUpdateProjectMetadataHandler();
+
+      await handler('proj-id', undefined, undefined, 'fr');
+
+      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        undefined,
+        undefined,
+        'fr',
+      );
+    });
+
+    it('returns undefined when the project does not exist', async () => {
+      mockUpdateProjectMetadata.mockResolvedValue(undefined);
+      const handler = await getUpdateProjectMetadataHandler();
+
+      const result = await handler('missing', undefined, undefined);
+
+      expect(result).toBeUndefined();
     });
   });
 

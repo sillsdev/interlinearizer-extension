@@ -5,6 +5,20 @@
 
 import type { ReactElement, ReactNode } from 'react';
 
+export interface MenuItemContainingCommand {
+  label: `%${string}%`;
+  command: `${string}.${string}`;
+  group: `${string}.${string}`;
+  order: number;
+  localizeNotes: string;
+  tooltip?: `%${string}%`;
+  searchTerms?: `%${string}%`;
+  iconPathBefore?: string;
+  iconPathAfter?: string;
+}
+
+export type SelectMenuItemHandler = (selectedMenuItem: MenuItemContainingCommand) => void;
+
 interface SerializedVerseRef {
   book: string;
   chapterNum: number;
@@ -22,6 +36,34 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
   '%history_recentSearches_ariaLabel%',
 ] as const;
 
+/** Sentinel menu item passed by the mock toolbar when the select-project menu button is clicked. */
+export const MOCK_CREATE_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_menu_select_project%',
+  command: 'interlinearizer.createProject',
+  group: 'interlinearizer.project.actions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the new-project button is clicked. */
+export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_menu_new_project%',
+  command: 'interlinearizer.newProject',
+  group: 'interlinearizer.project.actions',
+  order: 2,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the view-project-info button is clicked. */
+export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_menu_view_project_info%',
+  command: 'interlinearizer.viewProjectInfo',
+  group: 'interlinearizer.project.actions',
+  order: 3,
+  localizeNotes: '',
+};
+
+
 export function TabToolbar({
   startAreaChildren,
   endAreaChildren,
@@ -32,8 +74,8 @@ export function TabToolbar({
   startAreaChildren?: ReactNode;
   centerAreaChildren?: ReactNode;
   endAreaChildren?: ReactNode;
-  onSelectProjectMenuItem: (selectedMenuItem: unknown) => void;
-  onSelectViewInfoMenuItem: (selectedMenuItem: unknown) => void;
+  onSelectProjectMenuItem: SelectMenuItemHandler;
+  onSelectViewInfoMenuItem: SelectMenuItemHandler;
   projectMenuData?: unknown;
   tabViewMenuData?: unknown;
   id?: string;
@@ -47,16 +89,42 @@ export function TabToolbar({
         <button
           type="button"
           data-testid="tab-toolbar-project-menu"
-          onClick={() => onSelectProjectMenuItem(undefined)}
+          onClick={() => onSelectProjectMenuItem(MOCK_CREATE_PROJECT_MENU_ITEM)}
         >
           Project menu
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-new-project"
+          onClick={() => onSelectProjectMenuItem(MOCK_NEW_PROJECT_MENU_ITEM)}
+        >
+          New project
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-view-project-info"
+          onClick={() => onSelectProjectMenuItem(MOCK_VIEW_PROJECT_INFO_MENU_ITEM)}
+        >
+          View project info
         </button>
       )}
       {onSelectViewInfoMenuItem && (
         <button
           type="button"
           data-testid="tab-toolbar-view-info-menu"
-          onClick={() => onSelectViewInfoMenuItem(undefined)}
+          onClick={() =>
+            onSelectViewInfoMenuItem({
+              label: '%mock.viewInfo%',
+              command: 'mock.viewInfo',
+              group: 'mock.group',
+              order: 0,
+              localizeNotes: '',
+            })
+          }
         >
           View info menu
         </button>
@@ -91,6 +159,38 @@ export function ScrollGroupSelector({
         </option>
       ))}
     </select>
+  );
+}
+
+export function Button({
+  children,
+  onClick,
+  type,
+  className,
+  disabled,
+  variant: _variant,
+  size: _size,
+  'aria-label': ariaLabel,
+}: Readonly<{
+  children?: ReactNode;
+  onClick?: () => void;
+  type?: 'button' | 'submit' | 'reset';
+  className?: string;
+  disabled?: boolean;
+  variant?: 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline' | 'link';
+  size?: 'default' | 'sm' | 'lg' | 'icon';
+  'aria-label'?: string;
+}>): ReactElement {
+  return (
+    <button
+      type={type ?? 'button'}
+      onClick={onClick}
+      className={className}
+      aria-label={ariaLabel}
+      disabled={disabled}
+    >
+      {children}
+    </button>
   );
 }
 

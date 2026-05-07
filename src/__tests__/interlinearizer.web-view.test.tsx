@@ -7,18 +7,132 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
+  useData,
   useLocalizedStrings,
   useProjectData,
   useProjectSetting,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
-import type { Book } from 'interlinearizer';
+import { logger } from '@papi/frontend';
+import type { Book, InterlinearProject } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import { logger } from '@papi/frontend';
 
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
+jest.mock('../components/CreateProjectModal', () => ({
+  CreateProjectModal: ({
+    onClose,
+    onProjectCreated,
+  }: {
+    onClose: () => void;
+    onProjectCreated?: (id: string, ws: string) => void;
+  }) => (
+    <div>
+      <h2>Create Interlinear Project</h2>
+      <button type="button" onClick={() => onProjectCreated?.('new-il-id', 'en')}>
+        Submit
+      </button>
+      <button type="button" onClick={onClose}>
+        Cancel
+      </button>
+    </div>
+  ),
+}));
+
+jest.mock('../components/ProjectMetadataModal', () => ({
+  ProjectMetadataModal: ({
+    onClose,
+    onProjectSaved,
+    onProjectDeleted,
+    interlinearProjectId,
+  }: {
+    onClose: () => void;
+    onProjectSaved?: (updated: {
+      name?: string;
+      description?: string;
+      analysisWritingSystem: string;
+    }) => void;
+    onProjectDeleted?: (id: string) => void;
+    interlinearProjectId: string;
+  }) => (
+    <div>
+      <h2>Project Info</h2>
+      <span data-testid="metadata-project-id">{interlinearProjectId}</span>
+      <button type="button" onClick={() => onProjectSaved?.({ analysisWritingSystem: 'fr' })}>
+        Save
+      </button>
+      <button type="button" onClick={() => onProjectDeleted?.(interlinearProjectId)}>
+        Delete
+      </button>
+      <button type="button" onClick={onClose}>
+        Close
+      </button>
+    </div>
+  ),
+}));
+
+jest.mock('../components/SelectInterlinearProjectModal', () => ({
+  SelectInterlinearProjectModal: ({
+    onCreateNew,
+    onClose,
+    onSelect,
+    onViewInfo,
+  }: {
+    onCreateNew: () => void;
+    onClose: () => void;
+    onSelect?: (project: {
+      id: string;
+      createdAt: string;
+      sourceProjectId: string;
+      analysisWritingSystem: string;
+    }) => void;
+    onViewInfo?: (project: {
+      id: string;
+      createdAt: string;
+      sourceProjectId: string;
+      analysisWritingSystem: string;
+    }) => void;
+  }) => (
+    <div>
+      <h2>Select Interlinear Project</h2>
+      <button type="button" onClick={onCreateNew}>
+        Create New
+      </button>
+      <button
+        type="button"
+        data-testid="select-modal-select-project"
+        onClick={() =>
+          onSelect?.({
+            id: 'selected-proj-id',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sourceProjectId: 'src',
+            analysisWritingSystem: 'en',
+          })
+        }
+      >
+        Select Project
+      </button>
+      <button
+        type="button"
+        data-testid="select-modal-view-info"
+        onClick={() =>
+          onViewInfo?.({
+            id: 'modal-proj-id',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sourceProjectId: 'src',
+            analysisWritingSystem: 'en',
+          })
+        }
+      >
+        View Info
+      </button>
+      <button type="button" onClick={onClose}>
+        Cancel
+      </button>
+    </div>
+  ),
+}));
 
 /**
  * Matches the PlatformError shape from platform-bible-utils (discriminated by
@@ -137,21 +251,53 @@ const GEN_1_1_PUNCTUATION_BOOK: Book = {
   ],
 };
 
+/** The subset of InterlinearProject fields stored as WebView state. */
+type ActiveProjectState = Pick<
+  InterlinearProject,
+  'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem'
+>;
+
+/** Default `useWebViewState` stub — returns `defaultValue` unchanged for every key. */
+const defaultUseWebViewState: WebViewProps['useWebViewState'] = <T,>(
+  _key: string,
+  defaultValue: T,
+): [T, (v: T) => void, () => void] => [defaultValue, () => {}, () => {}];
+
+/**
+ * Builds a `useWebViewState` that returns the given project for the `'activeProject'` key and
+ * `defaultValue` for every other key. Avoids type casts by overloading on key equality.
+ *
+ * @param project - The active project snapshot to inject into WebView state.
+ * @returns A `useWebViewState` implementation suitable for passing to {@link makeProps}.
+ */
+function makeActiveProjectState(project: ActiveProjectState): WebViewProps['useWebViewState'] {
+  function useWebViewState(
+    key: 'activeProject',
+    defaultValue: ActiveProjectState | undefined,
+  ): [ActiveProjectState | undefined, (v: ActiveProjectState | undefined) => void, () => void];
+  function useWebViewState<T>(key: string, defaultValue: T): [T, (v: T) => void, () => void];
+  function useWebViewState<T>(
+    key: string,
+    defaultValue: T,
+  ): [T | ActiveProjectState | undefined, (v: T) => void, () => void] {
+    if (key === 'activeProject') return [project, () => {}, () => {}];
+    return [defaultValue, () => {}, () => {}];
+  }
+  return useWebViewState;
+}
+
 /** Builds a minimal WebViewProps for tests. */
 function makeProps(
   projectId?: string,
   scrRef: SerializedVerseRef = defaultScrRef,
   setScrRef: (r: SerializedVerseRef) => void = () => {},
+  useWebViewState: WebViewProps['useWebViewState'] = defaultUseWebViewState,
 ): WebViewProps {
   return {
     id: 'test-id',
     webViewType: 'interlinearizer.mainWebView',
     projectId,
-    useWebViewState: <T,>(_key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
-      defaultValue,
-      () => {},
-      () => {},
-    ],
+    useWebViewState,
     useWebViewScrollGroupScrRef: (): [
       SerializedVerseRef,
       (r: SerializedVerseRef) => void,
@@ -183,6 +329,11 @@ describe('InterlinearizerWebView', () => {
       recentScriptureRefs: [],
       addRecentScriptureRef: jest.fn(),
     });
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+      );
     jest.mocked(extractBookFromUsj).mockReturnValue({
       bookCode: 'GEN',
       writingSystem: 'en',
@@ -328,20 +479,21 @@ describe('InterlinearizerWebView', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('calls setScrRef and addRecentScriptureRef when the verse picker submits', async () => {
+  it('calls setScrRef and addRecentScriptureRef with the submitted ref when the verse picker submits', async () => {
     mockBookData({});
     const mockSetScrRef = jest.fn();
     const mockAddRecentRef = jest.fn();
+    const targetRef: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 7 };
     jest.mocked(useRecentScriptureRefs).mockReturnValue({
       recentScriptureRefs: [],
       addRecentScriptureRef: mockAddRecentRef,
     });
-    render(<InterlinearizerWebView {...makeProps(testProjectId, defaultScrRef, mockSetScrRef)} />);
+    render(<InterlinearizerWebView {...makeProps(testProjectId, targetRef, mockSetScrRef)} />);
 
     await userEvent.click(screen.getByRole('button', { name: /submit reference/i }));
 
-    expect(mockSetScrRef).toHaveBeenCalledWith(defaultScrRef);
-    expect(mockAddRecentRef).toHaveBeenCalledWith(defaultScrRef);
+    expect(mockSetScrRef).toHaveBeenCalledWith(targetRef);
+    expect(mockAddRecentRef).toHaveBeenCalledWith(targetRef);
   });
 
   it('calls setScrRef with the segment ref when a verse box is clicked', async () => {
@@ -390,10 +542,158 @@ describe('InterlinearizerWebView', () => {
     );
   });
 
-  it('does not throw when the project menu item is selected', async () => {
-    render(<InterlinearizerWebView {...makeProps()} />);
+  it('closes the select modal when a project is selected', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
 
     await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    await userEvent.click(screen.getByTestId('select-modal-select-project'));
+
+    expect(
+      screen.queryByRole('heading', { name: /select interlinear project/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the create modal open after onProjectCreated fires (modal is dismissed via onClose, not onProjectCreated)', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+    await userEvent.click(screen.getByRole('button', { name: /^submit$/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /create interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not open the project-info modal when viewProjectInfo is triggered with no active project', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('filters viewProjectInfo out of the menu when no active project is set and topMenu items is an array', async () => {
+    const menuWithArrayItems = {
+      topMenu: {
+        groups: {},
+        items: [
+          {
+            label: 'Select',
+            command: 'interlinearizer.createProject',
+            group: 'g',
+            order: 1,
+            localizeNotes: '',
+          },
+          {
+            label: 'View Info',
+            command: 'interlinearizer.viewProjectInfo',
+            group: 'g',
+            order: 3,
+            localizeNotes: '',
+          },
+        ],
+      },
+      includeDefaults: true,
+      contextMenu: undefined,
+    };
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy(
+          {},
+          { get: () => jest.fn().mockReturnValue([menuWithArrayItems, jest.fn(), false]) },
+        ),
+      );
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('switches from select modal to create modal when Create New is clicked', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^create new$/i }));
+
+    expect(
+      screen.queryByRole('heading', { name: /select interlinear project/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /create interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the select modal when Cancel is clicked', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    expect(
+      screen.queryByRole('heading', { name: /select interlinear project/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the select-project modal when the project menu is clicked and a projectId is set', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('does not show the create-project modal when no projectId is set and new-project is clicked', async () => {
+    render(<InterlinearizerWebView {...makeProps()} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+
+    expect(screen.queryByText('Create Interlinear Project')).not.toBeInTheDocument();
+  });
+
+  it('shows the create-project modal when new-project is clicked and a projectId is set', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+
+    expect(
+      screen.getByRole('heading', { name: /create interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('uses valid menu data from useData when it is not a PlatformError', () => {
+    const validMenu = {
+      topMenu: { groups: {}, items: {} },
+      includeDefaults: true,
+      contextMenu: undefined,
+    };
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy({}, { get: () => jest.fn().mockReturnValue([validMenu, jest.fn(), false]) }),
+      );
+    render(<InterlinearizerWebView {...makeProps()} />);
+
+    expect(screen.getByTestId('book-chapter-control')).toBeInTheDocument();
   });
 
   it('does not throw when the view info menu item is selected', async () => {
@@ -402,7 +702,209 @@ describe('InterlinearizerWebView', () => {
     await userEvent.click(screen.getByTestId('tab-toolbar-view-info-menu'));
   });
 
-  it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
+  it('closes the create-project modal when onClose is called', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+    expect(
+      screen.getByRole('heading', { name: /create interlinear project/i }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(
+      screen.queryByRole('heading', { name: /create interlinear project/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does not show the project-info modal when there is no active project', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    // useWebViewState mock returns undefined for activeProject — modal must stay hidden
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the project-info modal when viewProjectInfo is triggered and an active project is in state', async () => {
+    mockBookData({});
+    const activeProject = {
+      id: 'il-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: testProjectId,
+      analysisWritingSystem: 'en',
+    };
+    render(
+      <InterlinearizerWebView
+        {...makeProps(
+          testProjectId,
+          defaultScrRef,
+          undefined,
+          makeActiveProjectState(activeProject),
+        )}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+  });
+
+  it('closes the project-info modal when Close is clicked', async () => {
+    mockBookData({});
+    const activeProject = {
+      id: 'il-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: testProjectId,
+      analysisWritingSystem: 'en',
+    };
+    render(
+      <InterlinearizerWebView
+        {...makeProps(
+          testProjectId,
+          defaultScrRef,
+          undefined,
+          makeActiveProjectState(activeProject),
+        )}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }));
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the metadata modal when the info icon is clicked in the select modal', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('select-modal-view-info'));
+
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: /select interlinear project/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the correct project ID in the metadata modal when opened via info icon', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    await userEvent.click(screen.getByTestId('select-modal-view-info'));
+
+    expect(screen.getByTestId('metadata-project-id')).toHaveTextContent('modal-proj-id');
+  });
+
+  it('returns to the select modal when Close is clicked on metadata opened via info icon', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    await userEvent.click(screen.getByTestId('select-modal-view-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^close$/i }));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('returns to the select modal when Save is clicked on metadata opened via info icon', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    await userEvent.click(screen.getByTestId('select-modal-view-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('returns to the select modal when Delete is clicked on metadata opened via info icon', async () => {
+    mockBookData({});
+    render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+    await userEvent.click(screen.getByTestId('select-modal-view-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /select interlinear project/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('closes the metadata modal when onProjectSaved is called', async () => {
+    mockBookData({});
+    const activeProject = {
+      id: 'il-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: testProjectId,
+      analysisWritingSystem: 'en',
+    };
+    render(
+      <InterlinearizerWebView
+        {...makeProps(
+          testProjectId,
+          defaultScrRef,
+          undefined,
+          makeActiveProjectState(activeProject),
+        )}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('closes the metadata modal when onProjectDeleted is called', async () => {
+    mockBookData({});
+    const activeProject = {
+      id: 'il-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: testProjectId,
+      analysisWritingSystem: 'en',
+    };
+    render(
+      <InterlinearizerWebView
+        {...makeProps(
+          testProjectId,
+          defaultScrRef,
+          undefined,
+          makeActiveProjectState(activeProject),
+        )}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+    expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    expect(screen.queryByRole('heading', { name: /project info/i })).not.toBeInTheDocument();
+  });
+
+  it('passes a stable object reference to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
     const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
     jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));
     const { rerender } = render(<InterlinearizerWebView {...makeProps(testProjectId)} />);
@@ -412,9 +914,11 @@ describe('InterlinearizerWebView', () => {
       />,
     );
 
-    const refsPassed = mockBookUSJ.mock.calls.map((c) => c[0]);
-    refsPassed.forEach((ref) => expect(ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
     expect(mockBookUSJ.mock.calls.length).toBeGreaterThanOrEqual(2);
+    const refsPassed = mockBookUSJ.mock.calls.map((c) => c[0]);
+    // All calls must receive the exact same object reference (memo identity), not just equal values.
+    // If the memo were broken, each render would create a new object and this would fail.
     refsPassed.slice(1).forEach((ref) => expect(ref).toBe(refsPassed[0]));
+    expect(refsPassed[0]).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 });
   });
 });

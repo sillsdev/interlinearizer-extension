@@ -1,24 +1,39 @@
 import type { WebViewProps } from '@papi/core';
 import {
+  useData,
   useLocalizedStrings,
   useProjectData,
   useProjectSetting,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
   ScrollGroupSelector,
   TabToolbar,
 } from 'platform-bible-react';
+import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import type { Book, Segment } from 'interlinearizer';
-import { logger } from '@papi/frontend';
+import type { Book, InterlinearProject, Segment } from 'interlinearizer';
+import papi, { logger } from '@papi/frontend';
+import { CreateProjectModal } from './components/CreateProjectModal';
+import { ProjectMetadataModal } from './components/ProjectMetadataModal';
+import {
+  SelectInterlinearProjectModal,
+  type InterlinearProjectSummary,
+} from './components/SelectInterlinearProjectModal';
 
+/** Scroll group IDs offered in the scroll-group selector; `undefined` means "not synced". */
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
+
+/** WebView type identifier used to look up this WebView's menu data from the platform. */
+const INTERLINEARIZER_WEBVIEW_TYPE = 'interlinearizer.mainWebView';
+
+/** Fallback returned when the menu data provider hasn't loaded yet or returns an error. */
+const DEFAULT_WEBVIEW_MENU = { topMenu: undefined, includeDefaults: true, contextMenu: undefined };
 
 /**
  * Renders the tokens of a single segment as inline chips.
@@ -201,17 +216,23 @@ function ProjectBookFetcher({
 /**
  * Root WebView component for the Interlinearizer. Renders a sticky reference picker at the top and
  * delegates book fetching to {@link ProjectBookFetcher} in the scrollable content area below.
+ * Manages which modal is open (select, create, or metadata) and routes menu commands to the
+ * appropriate modal. The metadata modal is shared between the "View Project Info" menu action (for
+ * the active project) and the info icon in the select modal (for any listed project).
  *
  * @param props - WebView props injected by the PAPI host
  * @param props.projectId - PAPI project ID passed from the host; undefined when the WebView is
  *   opened outside a project context
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
+ * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
+ *   saved state (survives tab restores)
  * @returns The full interlinearizer WebView layout
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
   useWebViewScrollGroupScrRef,
+  useWebViewState,
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
@@ -221,10 +242,168 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
 
+  const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
+    INTERLINEARIZER_WEBVIEW_TYPE,
+    DEFAULT_WEBVIEW_MENU,
+  );
+
+  const webViewMenu = useMemo(() => {
+    if (!webViewMenuPossiblyError || isPlatformError(webViewMenuPossiblyError))
+      return DEFAULT_WEBVIEW_MENU;
+    return webViewMenuPossiblyError;
+  }, [webViewMenuPossiblyError]);
+
+  /** Which modal is currently visible. Only one can be open at a time. */
+  type ModalState = 'none' | 'select' | 'create' | 'metadata';
+  const [modal, setModal] = useState<ModalState>('none');
+
+  /** Fields of {@link InterlinearProject} persisted in WebView state for the active project. */
+  type ActiveProjectState = Pick<
+    InterlinearProject,
+    'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
+  >;
+
+  /**
+   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
+   * restores. Updated after creation and when the user selects an existing project from the
+   * picker.
+   */
+  const [activeProject, setActiveProject] = useWebViewState<ActiveProjectState | undefined>(
+    'activeProject',
+    undefined,
+  );
+
+  /**
+   * The project currently open in the metadata modal. Set when the user clicks the info icon in the
+   * select modal or triggers "View Project Info" from the menu. Cleared when the metadata modal
+   * closes.
+   */
+  const [metadataProject, setMetadataProject] = useState<InterlinearProjectSummary | undefined>(
+    undefined,
+  );
+
+  /**
+   * Tracks where the metadata modal was opened from so the correct modal is restored on close.
+   * `'select'` means it was opened via the ⓘ icon in the select modal; `'menu'` means it was opened
+   * via the "View Project Info" menu item.
+   */
+  const [metadataSource, setMetadataSource] = useState<'select' | 'menu'>('menu');
+
+  /** Hides "View Project Info" when no interlinear project is active. */
+  const projectMenuData = useMemo(() => {
+    if (!webViewMenu.topMenu || activeProject) return webViewMenu.topMenu;
+    const { items } = webViewMenu.topMenu;
+    if (!Array.isArray(items)) return webViewMenu.topMenu;
+    return {
+      ...webViewMenu.topMenu,
+      items: items.filter(
+        (item) => !('command' in item) || item.command !== 'interlinearizer.viewProjectInfo',
+      ),
+    };
+  }, [webViewMenu.topMenu, activeProject]);
+
+  /**
+   * Returns a stable callback that records a newly created interlinear project as the active
+   * project. Parameterized on `srcId` so the callback can be created inside the `projectId`-guarded
+   * JSX block, where the source project ID is known to be a non-empty string.
+   *
+   * @param srcId - The Platform.Bible source project ID; passed in from the JSX guard.
+   * @returns A callback suitable for `CreateProjectModal`'s `onProjectCreated` prop.
+   */
+  const makeHandleProjectCreated = useCallback(
+    (srcId: string) => (interlinearProjectId: string, analysisWritingSystem: string) => {
+      setActiveProject({
+        id: interlinearProjectId,
+        createdAt: new Date().toISOString(),
+        sourceProjectId: srcId,
+        analysisWritingSystem,
+      });
+    },
+    [setActiveProject],
+  );
+
+  /**
+   * Routes top-menu commands to the appropriate modal. `createProject` opens the select modal;
+   * `newProject` opens the create modal (only when a source project is available);
+   * `viewProjectInfo` opens the metadata modal for the currently active project.
+   *
+   * @param item - The menu item that was activated.
+   */
+  const menuCommandHandler = useCallback<SelectMenuItemHandler>(
+    (item) => {
+      if (item.command === 'interlinearizer.createProject') {
+        setModal('select');
+      } else if (item.command === 'interlinearizer.newProject') {
+        if (projectId) setModal('create');
+      } else if (item.command === 'interlinearizer.viewProjectInfo') {
+        if (activeProject) {
+          setMetadataProject({
+            id: activeProject.id,
+            createdAt: activeProject.createdAt,
+            name: activeProject.name,
+            description: activeProject.description,
+            sourceProjectId: activeProject.sourceProjectId,
+            analysisWritingSystem: activeProject.analysisWritingSystem,
+          });
+          setMetadataSource('menu');
+          setModal('metadata');
+        }
+      }
+    },
+    [activeProject, projectId],
+  );
+
+  /**
+   * Opens the metadata modal for the project whose info icon was clicked in the select modal.
+   * Records `'select'` as the source so closing the metadata modal returns to the select modal.
+   *
+   * @param project - The project to display in the metadata modal.
+   */
+  const handleViewInfo = useCallback((project: InterlinearProjectSummary) => {
+    setMetadataProject(project);
+    setMetadataSource('select');
+    setModal('metadata');
+  }, []);
+
+  /**
+   * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
+   * project is the currently active one. Returns to the select modal if the metadata modal was
+   * opened from there, otherwise dismisses to `none`.
+   *
+   * @param updated - The new name, description, and analysisWritingSystem from the modal.
+   */
+  const handleMetadataProjectSaved = useCallback(
+    (updated: { name?: string; description?: string; analysisWritingSystem: string }) => {
+      if (activeProject && metadataProject?.id === activeProject.id) {
+        setActiveProject({ ...activeProject, ...updated });
+      }
+      setModal(metadataSource === 'select' ? 'select' : 'none');
+      setMetadataProject(undefined);
+    },
+    [activeProject, metadataProject, metadataSource, setActiveProject],
+  );
+
+  /**
+   * Called when the metadata modal deletes the project. Clears `activeProject` state if it was the
+   * deleted project. Returns to the select modal if the metadata modal was opened from there,
+   * otherwise dismisses to `none`.
+   *
+   * @param deletedId - UUID of the project that was deleted.
+   */
+  const handleMetadataProjectDeleted = useCallback(
+    (deletedId: string) => {
+      if (activeProject?.id === deletedId) setActiveProject(undefined);
+      setModal(metadataSource === 'select' ? 'select' : 'none');
+      setMetadataProject(undefined);
+    },
+    [activeProject, metadataSource, setActiveProject],
+  );
+
   return (
     <div className="tw-flex tw-flex-col">
       <TabToolbar
-        className="tw-z-10"
+        className="tw-z-10 tw-bg-background"
+        projectMenuData={projectMenuData}
         startAreaChildren={
           <BookChapterControl
             scrRef={scrRef}
@@ -241,7 +420,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             onChangeScrollGroupId={setScrollGroupId}
           />
         }
-        onSelectProjectMenuItem={() => {}}
+        onSelectProjectMenuItem={menuCommandHandler}
         onSelectViewInfoMenuItem={() => {}}
       />
 
@@ -254,6 +433,44 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           </p>
         )}
       </div>
+
+      {modal === 'select' && projectId && (
+        <SelectInterlinearProjectModal
+          sourceProjectId={projectId}
+          onSelect={(project: InterlinearProjectSummary) => {
+            setActiveProject(project);
+            setModal('none');
+          }}
+          onCreateNew={() => setModal('create')}
+          onClose={() => setModal('none')}
+          onViewInfo={handleViewInfo}
+        />
+      )}
+
+      {modal === 'create' && projectId && (
+        <CreateProjectModal
+          projectId={projectId}
+          onClose={() => setModal('none')}
+          onProjectCreated={makeHandleProjectCreated(projectId)}
+        />
+      )}
+
+      {modal === 'metadata' && metadataProject && (
+        <ProjectMetadataModal
+          interlinearProjectId={metadataProject.id}
+          name={metadataProject.name}
+          description={metadataProject.description}
+          sourceProjectId={metadataProject.sourceProjectId}
+          analysisWritingSystem={metadataProject.analysisWritingSystem}
+          createdAt={metadataProject.createdAt}
+          onClose={() => {
+            setModal(metadataSource === 'select' ? 'select' : 'none');
+            setMetadataProject(undefined);
+          }}
+          onProjectSaved={handleMetadataProjectSaved}
+          onProjectDeleted={handleMetadataProjectDeleted}
+        />
+      )}
     </div>
   );
 };

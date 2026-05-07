@@ -13,15 +13,62 @@ declare module 'papi-shared-types' {
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
 
     /**
-     * Creates a new interlinearizer project. Prompts the user to select source and target
-     * Platform.Bible projects via picker dialogs. Returns the new project's UUID, or undefined if
-     * the user cancels either picker or if project creation fails (failure is logged and surfaced
-     * as an error notification).
+     * Creates a new interlinearizer project for the given source project. Called from the WebView
+     * after the user fills in the create-project modal. Returns the new project's UUID, or
+     * undefined if project creation fails (failure is logged and surfaced as an error
+     * notification).
      *
+     * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
      * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations
      *   (e.g. `'en'`).
+     * @param name Optional user-facing name for the project.
+     * @param description Optional user-facing description for the project.
      */
-    'interlinearizer.createProject': (analysisWritingSystem: string) => Promise<string | undefined>;
+    'interlinearizer.createProject': (
+      sourceProjectId: string,
+      analysisWritingSystem: string,
+      name?: string,
+      description?: string,
+    ) => Promise<string | undefined>;
+
+    /**
+     * Returns all interlinearizer projects for the given source project, serialized as a JSON
+     * string. Returns `"[]"` when none exist. The WebView uses this to populate the project picker
+     * and to decide whether to show "create new" vs "select existing" on first open.
+     *
+     * @param sourceProjectId Platform.Bible project ID of the source text to query.
+     */
+    'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
+
+    /**
+     * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
+     *
+     * @param interlinearProjectId UUID of the interlinearizer project to delete.
+     */
+    'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
+
+    /**
+     * Opens the create-project dialog in the Interlinearizer WebView. The backend registers this
+     * command to make it visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.newProject': () => Promise<void>;
+
+    /**
+     * Updates the metadata of an existing interlinearizer project. Returns the updated project as a
+     * JSON string, or `undefined` if no project with the given ID exists.
+     *
+     * @param interlinearProjectId UUID of the interlinearizer project to update.
+     * @param name New user-facing name; omit or pass `undefined` to clear.
+     * @param description New user-facing description; omit or pass `undefined` to clear.
+     * @param analysisWritingSystem New BCP 47 analysis language tag; omit or pass empty to leave
+     *   unchanged (the field is required and cannot be cleared).
+     */
+    'interlinearizer.updateProjectMetadata': (
+      interlinearProjectId: string,
+      name: string | undefined,
+      description: string | undefined,
+      analysisWritingSystem?: string,
+    ) => Promise<string | undefined>;
   }
 }
 
@@ -946,11 +993,14 @@ declare module 'interlinearizer' {
     /** ISO 8601 creation timestamp. */
     createdAt: string;
 
+    /** Optional user-facing name for the project. */
+    name?: string;
+
+    /** Optional user-facing description of the project's purpose. */
+    description?: string;
+
     /** Platform.Bible project ID for the source text (the side being analyzed). */
     sourceProjectId: string;
-
-    /** Platform.Bible project ID for the target text (the analysis / output side). */
-    targetProjectId: string;
 
     /**
      * BCP 47 tag for the language used in glosses and annotations (e.g. `'en'`). Populates

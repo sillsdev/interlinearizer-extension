@@ -69,16 +69,15 @@ export function CreateProjectModal({
         name || undefined,
         description || undefined,
       );
-<<<<<<< HEAD
       if (!projectJson) return;
       const parsed: unknown = JSON.parse(projectJson);
+<<<<<<< HEAD
       if (!isInterlinearProjectSummary(parsed))
         throw new Error('Created project has unexpected shape');
       onProjectCreated?.(parsed);
 =======
-      if (!newId) return;
-      onProjectCreated?.(newId, analysisLanguage);
->>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
+      if (isInterlinearProjectSummary(parsed)) onProjectCreated?.(parsed);
+>>>>>>> fba505f (Return full project JSON from createProject and add error handling for delete/update)
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);

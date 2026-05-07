@@ -99,8 +99,8 @@ describe('CreateProjectModal', () => {
     );
   });
 
-<<<<<<< HEAD
   it('calls onClose after submitting when sendCommand returns a project JSON', async () => {
+<<<<<<< HEAD
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(
       JSON.stringify({
         id: 'new-project-id',
@@ -110,9 +110,12 @@ describe('CreateProjectModal', () => {
       }),
     );
 =======
-  it('calls onClose after submitting when sendCommand returns an ID', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue('new-project-id');
->>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mockResolvedValue(
+        JSON.stringify({ id: 'new-project-id', createdAt: '2026-01-01T00:00:00.000Z' }),
+      );
+>>>>>>> fba505f (Return full project JSON from createProject and add error handling for delete/update)
     const onClose = jest.fn();
     render(<CreateProjectModal projectId={testProjectId} onClose={onClose} />);
 
@@ -151,9 +154,9 @@ describe('CreateProjectModal', () => {
     await waitFor(() =>
       expect(onProjectCreated).toHaveBeenCalledWith(expect.objectContaining(persistedProject)),
     );
+<<<<<<< HEAD
   });
 
-<<<<<<< HEAD
   it('does not call onProjectCreated or onClose and sends an error notification when sendCommand returns malformed JSON', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify({ bad: 'shape' }));
     const onProjectCreated = jest.fn();
@@ -175,10 +178,10 @@ describe('CreateProjectModal', () => {
     );
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+=======
+>>>>>>> fba505f (Return full project JSON from createProject and add error handling for delete/update)
   });
 
-=======
->>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
   it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const onProjectCreated = jest.fn();
@@ -196,7 +199,6 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-<<<<<<< HEAD
   });
 
   it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
@@ -235,8 +237,6 @@ describe('CreateProjectModal', () => {
     resolveCommand(undefined);
 
     await waitFor(() => expect(createButton).not.toBeDisabled());
-=======
->>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
   });
 
   it('does not call onClose or onProjectCreated when sendCommand rejects, but sends an error notification', async () => {

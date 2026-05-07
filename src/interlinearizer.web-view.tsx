@@ -1,10 +1,6 @@
 import type { WebViewProps } from '@papi/core';
-import {
-  useLocalizedStrings,
-  useProjectSetting,
-  useRecentScriptureRefs,
-} from '@papi/frontend/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalizedStrings, useRecentScriptureRefs } from '@papi/frontend/react';
+import { useCallback, useMemo } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -12,6 +8,7 @@ import {
   TabToolbar,
 } from 'platform-bible-react';
 import ContinuousScrollToggle from './components/ContinuousScrollToggle';
+import useOptimisticBooleanSetting from './hooks/useOptimisticBooleanSetting';
 import ContinuousView from './components/ContinuousView';
 import MemoizedSegmentView from './components/SegmentView';
 import useInterlinearizerBookData from './hooks/useInterlinearizerBookData';
@@ -35,16 +32,8 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
-  const [continuousScrollSetting, setContinuousScrollSetting] = useProjectSetting(
-    projectId ?? '',
-    'interlinearizer.continuousScroll',
-    true,
-  );
-  const settingValue = continuousScrollSetting === true;
-
-  const [continuousScroll, setContinuousScroll] = useState(settingValue);
-  const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>();
-  const skipSettingRevertRef = useRef(false);
+  const { value: continuousScroll, onChange: handleContinuousScrollChange } =
+    useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     {
@@ -53,47 +42,12 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     },
   );
 
-  // Drive UI from optimistic local state and clear pending once the setting confirms.
-  useEffect(() => {
-    if (pendingContinuousScroll === undefined) {
-      if (!skipSettingRevertRef.current) {
-        setContinuousScroll(settingValue);
-      }
-      skipSettingRevertRef.current = false;
-    } else if (settingValue === pendingContinuousScroll) {
-      setPendingContinuousScroll(undefined);
-      setContinuousScroll(settingValue);
-    }
-  }, [pendingContinuousScroll, settingValue]);
-
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
   );
 
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
-
-  const handleContinuousScrollChange = useCallback(
-    (checked: boolean) => {
-      if (pendingContinuousScroll !== undefined) return;
-
-      setContinuousScroll(checked);
-      setPendingContinuousScroll(checked);
-      setContinuousScrollSetting?.(checked);
-    },
-    [pendingContinuousScroll, setContinuousScrollSetting],
-  );
-
-  // Clear the pending flag after 15 s if the setting never confirms (e.g. network failure).
-  useEffect(() => {
-    if (pendingContinuousScroll === undefined) return undefined;
-
-    const timeout = setTimeout(() => {
-      skipSettingRevertRef.current = true;
-      setPendingContinuousScroll(undefined);
-    }, 15_000);
-    return () => clearTimeout(timeout);
-  }, [pendingContinuousScroll]);
 
   const handleContinuousVerseChange = useCallback(
     (v: { book: string; chapter: number; verse: number }) => {
@@ -134,7 +88,6 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             projectId && (
               <ContinuousScrollToggle
                 checked={continuousScroll}
-                disabled={pendingContinuousScroll !== undefined}
                 onCheckedChange={handleContinuousScrollChange}
               />
             )

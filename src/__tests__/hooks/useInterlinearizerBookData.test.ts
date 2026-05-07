@@ -9,8 +9,6 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { extractBookFromUsj, type RawBook } from 'parsers/papi/usjBookExtractor';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 
-jest.mock('@papi/frontend');
-jest.mock('@papi/frontend/react');
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
 

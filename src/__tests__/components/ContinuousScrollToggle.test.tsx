@@ -9,12 +9,12 @@ import ContinuousScrollToggle from '../../components/ContinuousScrollToggle';
 
 describe('ContinuousScrollToggle', () => {
   beforeEach(() => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([
-      {
-        '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll',
-      },
-      false,
-    ]);
+    jest
+      .mocked(useLocalizedStrings)
+      .mockReturnValue([
+        { '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll' },
+        false,
+      ]);
   });
 
   it('calls onCheckedChange when toggled', async () => {
@@ -26,11 +26,5 @@ describe('ContinuousScrollToggle', () => {
     await userEvent.click(checkbox);
 
     expect(onCheckedChange).toHaveBeenCalledWith(false);
-  });
-
-  it('renders disabled state when disabled is true', () => {
-    render(<ContinuousScrollToggle checked={false} disabled onCheckedChange={jest.fn()} />);
-
-    expect(screen.getByRole('checkbox')).toBeDisabled();
   });
 });

@@ -32,8 +32,11 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
-  const { value: continuousScroll, onChange: handleContinuousScrollChange } =
-    useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
+  const {
+    isLoading: isSettingLoading,
+    onChange: handleContinuousScrollChange,
+    value: continuousScroll,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     {
@@ -63,6 +66,9 @@ globalThis.webViewComponent = function InterlinearizerWebView({
     [setScrRef],
   );
 
+  const hasError = !!bookError || !!tokenizeError;
+  const showLoading = isLoading || isSettingLoading;
+
   return (
     <div className="tw-flex tw-flex-col">
       <div className="tw-sticky tw-top-0 tw-z-10 tw-bg-background">
@@ -85,7 +91,8 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             </div>
           }
           endAreaChildren={
-            projectId && (
+            projectId &&
+            !isSettingLoading && (
               <ContinuousScrollToggle
                 checked={continuousScroll}
                 onCheckedChange={handleContinuousScrollChange}
@@ -97,7 +104,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
           onSelectViewInfoMenuItem={() => {}}
         />
-        {projectId && !bookError && !tokenizeError && !isLoading && book && continuousScroll && (
+        {projectId && !hasError && !showLoading && book && continuousScroll && (
           <div className="tw-border-b tw-border-border tw-bg-background tw-py-2">
             <ContinuousView
               book={book}
@@ -137,17 +144,17 @@ globalThis.webViewComponent = function InterlinearizerWebView({
               </div>
             )}
 
-            {!bookError && !tokenizeError && isLoading && (
+            {!hasError && showLoading && (
               <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
             )}
 
-            {!bookError && !tokenizeError && !isLoading && chapterSegments.length === 0 && (
+            {!hasError && !showLoading && chapterSegments.length === 0 && (
               <p className="tw-text-sm tw-text-muted-foreground">
                 No verse data for {scrRef.book} {scrRef.chapterNum}.
               </p>
             )}
 
-            {!bookError && !tokenizeError && !isLoading && chapterSegments.length > 0 && (
+            {!hasError && !showLoading && chapterSegments.length > 0 && (
               <div className="tw-flex tw-flex-col tw-gap-2">
                 {chapterSegments.map((seg) => (
                   <MemoizedSegmentView

@@ -13,17 +13,23 @@ const TIMEOUT_MS = 15_000;
  * @param projectId - PAPI project ID; pass `undefined` when outside a project context
  * @param settingKey - A valid key for a boolean setting
  * @param defaultValue - Default value used when the setting has not been persisted yet
- * @returns `value` — the current display value; `onChange` — stable change handler
+ * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
+ *   stable change handler; `value` — the current display value
  */
 export default function useOptimisticBooleanSetting(
   projectId: string | undefined,
   settingKey: 'interlinearizer.continuousScroll',
   defaultValue: boolean,
 ): {
-  value: boolean;
+  isLoading: boolean;
   onChange: (newValue: boolean) => void;
+  value: boolean;
 } {
-  const [setting, setSetting] = useProjectSetting(projectId ?? '', settingKey, defaultValue);
+  const [setting, setSetting, , isLoading] = useProjectSetting(
+    projectId ?? '',
+    settingKey,
+    defaultValue,
+  );
 
   const [value, setValue] = useState(typeof setting === 'boolean' ? setting : defaultValue);
 
@@ -61,5 +67,5 @@ export default function useOptimisticBooleanSetting(
     [setSetting],
   );
 
-  return { value, onChange };
+  return { isLoading, onChange, value };
 }

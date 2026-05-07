@@ -99,8 +99,12 @@ describe('CreateProjectModal', () => {
     );
   });
 
-  it('calls onClose after submitting when sendCommand returns an ID', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue('new-project-id');
+  it('calls onClose after submitting when sendCommand returns a project JSON', async () => {
+    jest
+      .mocked(papi.commands.sendCommand)
+      .mockResolvedValue(
+        JSON.stringify({ id: 'new-project-id', createdAt: '2026-01-01T00:00:00.000Z' }),
+      );
     const onClose = jest.fn();
     render(<CreateProjectModal projectId={testProjectId} onClose={onClose} />);
 
@@ -117,8 +121,14 @@ describe('CreateProjectModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it('calls onProjectCreated with the new ID and language when sendCommand returns an ID', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue('new-project-id');
+  it('calls onProjectCreated with the parsed project when sendCommand returns a project JSON', async () => {
+    const persistedProject = {
+      id: 'new-project-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: testProjectId,
+      analysisWritingSystem: 'en',
+    };
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify(persistedProject));
     const onProjectCreated = jest.fn();
     render(
       <CreateProjectModal
@@ -130,7 +140,9 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    expect(onProjectCreated).toHaveBeenCalledWith('new-project-id', 'en');
+    await waitFor(() =>
+      expect(onProjectCreated).toHaveBeenCalledWith(expect.objectContaining(persistedProject)),
+    );
   });
 
   it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {

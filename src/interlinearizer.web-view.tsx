@@ -4,7 +4,7 @@ import {
   useProjectSetting,
   useRecentScriptureRefs,
 } from '@papi/frontend/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -34,16 +34,18 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+
   const [continuousScrollSetting, setContinuousScrollSetting] = useProjectSetting(
     projectId ?? '',
     'interlinearizer.continuousScroll',
     true,
   );
   const settingValue = continuousScrollSetting === true;
+
   const [continuousScroll, setContinuousScroll] = useState(settingValue);
-  const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>(
-    undefined,
-  );
+  const [pendingContinuousScroll, setPendingContinuousScroll] = useState<boolean | undefined>();
+  const skipSettingRevertRef = useRef(false);
+
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     {
       projectId,
@@ -54,14 +56,15 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   // Drive UI from optimistic local state and clear pending once the setting confirms.
   useEffect(() => {
     if (pendingContinuousScroll === undefined) {
-      setContinuousScroll(settingValue);
-      return;
-    }
-    if (settingValue === pendingContinuousScroll) {
+      if (!skipSettingRevertRef.current) {
+        setContinuousScroll(settingValue);
+      }
+      skipSettingRevertRef.current = false;
+    } else if (settingValue === pendingContinuousScroll) {
       setPendingContinuousScroll(undefined);
       setContinuousScroll(settingValue);
     }
-  }, [settingValue, pendingContinuousScroll]);
+  }, [pendingContinuousScroll, settingValue]);
 
   const [localizedStrings] = useLocalizedStrings(
     useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
@@ -69,6 +72,28 @@ globalThis.webViewComponent = function InterlinearizerWebView({
 
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
+
+  const handleContinuousScrollChange = useCallback(
+    (checked: boolean) => {
+      if (pendingContinuousScroll !== undefined) return;
+
+      setContinuousScroll(checked);
+      setPendingContinuousScroll(checked);
+      setContinuousScrollSetting?.(checked);
+    },
+    [pendingContinuousScroll, setContinuousScrollSetting],
+  );
+
+  // Clear the pending flag after 15 s if the setting never confirms (e.g. network failure).
+  useEffect(() => {
+    if (pendingContinuousScroll === undefined) return undefined;
+
+    const timeout = setTimeout(() => {
+      skipSettingRevertRef.current = true;
+      setPendingContinuousScroll(undefined);
+    }, 15_000);
+    return () => clearTimeout(timeout);
+  }, [pendingContinuousScroll]);
 
   const handleContinuousVerseChange = useCallback(
     (v: { book: string; chapter: number; verse: number }) => {
@@ -110,12 +135,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
               <ContinuousScrollToggle
                 checked={continuousScroll}
                 disabled={pendingContinuousScroll !== undefined}
-                onCheckedChange={(checked) => {
-                  if (pendingContinuousScroll !== undefined) return;
-                  setContinuousScroll(checked);
-                  setPendingContinuousScroll(checked);
-                  setContinuousScrollSetting?.(checked);
-                }}
+                onCheckedChange={handleContinuousScrollChange}
               />
             )
           }

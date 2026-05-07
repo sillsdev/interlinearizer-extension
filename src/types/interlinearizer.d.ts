@@ -22,9 +22,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the persisted project serialized as
-     * a JSON string, or undefined if project creation fails (failure is logged and surfaced as an
-     * error notification).
+     * after the user fills in the create-project modal. Returns the new project's UUID, or
+     * undefined if project creation fails (failure is logged and surfaced as an error
+     * notification).
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
      * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations
@@ -56,23 +56,10 @@ declare module 'papi-shared-types' {
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 
     /**
-     * Opens the project-selector dialog in the Interlinearizer WebView. The backend registers this
-     * command to make it visible to the platform menu system; all logic executes in the WebView.
-     */
-    'interlinearizer.openSelectProjectModal': () => Promise<void>;
-
-    /**
      * Opens the create-project dialog in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
-    'interlinearizer.openNewProjectModal': () => Promise<void>;
-
-    /**
-     * Opens the project-info modal for the active project in the Interlinearizer WebView. The
-     * backend registers this command to make it visible to the platform menu system; all logic
-     * executes in the WebView.
-     */
-    'interlinearizer.openProjectInfoModal': () => Promise<void>;
+    'interlinearizer.newProject': () => Promise<void>;
 
     /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a

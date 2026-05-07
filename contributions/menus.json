@@ -31,25 +31,25 @@
         },
         "items": [
           {
-            "label": "%interlinearizer_openSelectProjectModal%",
+            "label": "%interlinearizer_selectProject%",
             "localizeNotes": "Interlinearizer top menu > Open the project selector to switch to or manage existing interlinear projects",
             "group": "interlinearizer.projectActions",
             "order": 1,
-            "command": "interlinearizer.openSelectProjectModal"
+            "command": "interlinearizer.createProject"
           },
           {
-            "label": "%interlinearizer_openNewProjectModal%",
+            "label": "%interlinearizer_newProject%",
             "localizeNotes": "Interlinearizer top menu > Create a brand-new interlinear project for the current source project",
             "group": "interlinearizer.projectActions",
             "order": 2,
-            "command": "interlinearizer.openNewProjectModal"
+            "command": "interlinearizer.newProject"
           },
           {
-            "label": "%interlinearizer_openProjectInfoModal%",
+            "label": "%interlinearizer_viewProjectInfo%",
             "localizeNotes": "Interlinearizer top menu > View and edit metadata for the active interlinearizer project, or delete it",
             "group": "interlinearizer.projectActions",
             "order": 3,
-            "command": "interlinearizer.openProjectInfoModal"
+            "command": "interlinearizer.viewProjectInfo"
           }
         ]
       }

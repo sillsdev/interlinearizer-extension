@@ -108,16 +108,17 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 
 /**
  * Creates a new interlinearizer project for the given source project. Called from the WebView via
- * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the new
- * project's ID, or `undefined` if storage fails (failure is also logged and shown as a
- * notification).
+ * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the
+ * persisted project serialized as a JSON string, or `undefined` if storage fails (failure is also
+ * logged and shown as a notification).
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
  * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
  *   `'en'`).
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns The UUID of the new project, or `undefined` if storage fails.
+ * @returns JSON-stringified `InterlinearProject` for the new project, or `undefined` if storage
+ *   fails.
  */
 async function createInterlinearProject(
   sourceProjectId: string,
@@ -133,7 +134,7 @@ async function createInterlinearProject(
       name,
       description,
     );
-    return project.id;
+    return JSON.stringify(project);
   } catch (e) {
     logger.error('Interlinearizer: failed to create project', e);
     await papi.notifications
@@ -152,9 +153,20 @@ async function createInterlinearProject(
  * select-project modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
+ * @returns A promise that resolves when the deletion (or no-op) is complete.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
-  await projectStorage.deleteProject(executionToken, interlinearProjectId);
+  try {
+    await projectStorage.deleteProject(executionToken, interlinearProjectId);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to delete project', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_delete_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+  }
 }
 
 /**
@@ -175,14 +187,25 @@ async function updateProjectMetadata(
   description: string | undefined,
   analysisWritingSystem?: string,
 ): Promise<string | undefined> {
-  const updated = await projectStorage.updateProjectMetadata(
-    executionToken,
-    interlinearProjectId,
-    name,
-    description,
-    analysisWritingSystem,
-  );
-  return updated ? JSON.stringify(updated) : undefined;
+  try {
+    const updated = await projectStorage.updateProjectMetadata(
+      executionToken,
+      interlinearProjectId,
+      name,
+      description,
+      analysisWritingSystem,
+    );
+    return updated ? JSON.stringify(updated) : undefined;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to update project metadata', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_update_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    return undefined;
+  }
 }
 
 /**
@@ -288,7 +311,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'The UUID of the new project, or undefined if projectStorage.createProject failed',
+            'JSON-stringified InterlinearProject for the new project, or undefined if storage failed',
           schema: { type: 'string' },
         },
       },
@@ -325,6 +348,20 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     {
       method: {
         summary: 'Open the create-project dialog in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const viewProjectInfoCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.viewProjectInfo',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    async () => {},
+    {
+      method: {
+        summary:
+          'Open the project-info modal for the active project in the Interlinearizer WebView',
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
@@ -410,6 +447,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProjectsForSourceCommandRegistration,
     deleteProjectCommandRegistration,
     newProjectCommandRegistration,
+    viewProjectInfoCommandRegistration,
     updateProjectMetadataCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,

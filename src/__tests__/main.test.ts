@@ -241,6 +241,7 @@ describe('main', () => {
           'interlinearizer.createProject',
           'interlinearizer.getProjectsForSource',
           'interlinearizer.newProject',
+          'interlinearizer.viewProjectInfo',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),
@@ -481,6 +482,32 @@ describe('main', () => {
     });
   });
 
+  describe('interlinearizer.viewProjectInfo command', () => {
+    it('registers the interlinearizer.viewProjectInfo command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.viewProjectInfo',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.viewProjectInfo');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.viewProjectInfo');
+
+      await expect(rawHandler()).resolves.toBeUndefined();
+      expect(__mockOpenWebView).not.toHaveBeenCalled();
+      expect(__mockSelectProject).not.toHaveBeenCalled();
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
+    });
+  });
+
   describe('interlinearizer.createProject command', () => {
     const mockCreateProject = jest.mocked(projectStorage.createProject);
     const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
@@ -506,7 +533,7 @@ describe('main', () => {
       );
     });
 
-    it('delegates to projectStorage.createProject and returns the new project ID', async () => {
+    it('delegates to projectStorage.createProject and returns the JSON-serialized project', async () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
@@ -519,7 +546,7 @@ describe('main', () => {
         undefined,
         undefined,
       );
-      expect(result).toBe('new-project-id');
+      expect(result).toBe(JSON.stringify(stubProject));
     });
 
     it('does not show a project picker dialog', async () => {
@@ -715,6 +742,21 @@ describe('main', () => {
 
       expect(mockDeleteProject).toHaveBeenCalledWith(expect.anything(), 'to-delete-id');
     });
+
+    it('logs the error and sends an error notification when storage throws', async () => {
+      mockDeleteProject.mockRejectedValue(new Error('disk full'));
+      const handler = await getDeleteProjectHandler();
+
+      await handler('to-delete-id');
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to delete project',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+    });
   });
 
   describe('interlinearizer.getProjectsForSource command', () => {
@@ -830,6 +872,22 @@ describe('main', () => {
       const result = await handler('missing', undefined, undefined);
 
       expect(result).toBeUndefined();
+    });
+
+    it('logs the error, sends an error notification, and returns undefined when storage throws', async () => {
+      mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
+      const handler = await getUpdateProjectMetadataHandler();
+
+      const result = await handler('proj-id', 'My Name', 'My Desc');
+
+      expect(result).toBeUndefined();
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to update project metadata',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
     });
   });
 

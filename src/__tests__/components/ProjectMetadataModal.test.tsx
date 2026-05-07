@@ -232,6 +232,25 @@ describe('ProjectMetadataModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it('trims whitespace from the language input before saving', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    const langInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(langInput);
+    await userEvent.type(langInput, '  fr  ');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.updateProjectMetadata',
+        'il-project-uuid',
+        undefined,
+        undefined,
+        'fr',
+      ),
+    );
+  });
+
   it('disables the Save button when the language field is empty', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 

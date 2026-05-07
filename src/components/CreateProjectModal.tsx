@@ -73,8 +73,12 @@ export function CreateProjectModal({
 
   return (
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
-      <div className="tw-bg-background tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg">
-        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
+      <dialog
+        aria-labelledby="create-project-modal-title"
+        className="tw-bg-background tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg"
+        open
+      >
+        <h2 id="create-project-modal-title" className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
         <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-name">
@@ -116,7 +120,7 @@ export function CreateProjectModal({
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

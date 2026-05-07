@@ -43,7 +43,7 @@ const testProps = {
 describe('ProjectMetadataModal', () => {
   beforeEach(() => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
-    mockSendCommand.mockResolvedValue(undefined);
+    mockSendCommand.mockResolvedValue('{}');
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
@@ -191,6 +191,21 @@ describe('ProjectMetadataModal', () => {
         'en',
       ),
     );
+  });
+
+  it('does not call onProjectSaved or onClose when save sendCommand resolves with a falsy value', async () => {
+    mockSendCommand.mockResolvedValue(undefined);
+    const onProjectSaved = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} onClose={onClose} />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
+    expect(onProjectSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('does not call onProjectSaved or onClose when save sendCommand rejects, but sends an error notification', async () => {

@@ -95,6 +95,8 @@ const config: Config = {
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
     /** Mock ESM deps that Jest cannot parse. */
     '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
+    /** Mock ESM-only icon library. */
+    '^lucide-react$': '<rootDir>/__mocks__/lucide-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */

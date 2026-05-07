@@ -5,7 +5,7 @@ import { Button } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
-const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
+const PROJECT_METADATA_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_metadata_title%',
   '%interlinearizer_modal_metadata_id_label%',
   '%interlinearizer_modal_metadata_name_label%',
@@ -23,7 +23,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_delete_confirm_body%',
   '%interlinearizer_modal_metadata_delete_confirm_ok%',
   '%interlinearizer_modal_metadata_delete_confirm_cancel%',
-];
+] as const;
 
 /** Props for {@link ProjectMetadataModal}. */
 export type ProjectMetadataModalProps = Readonly<{
@@ -71,7 +71,7 @@ export function ProjectMetadataModal({
   onProjectDeleted,
 }: ProjectMetadataModalProps) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
-    PROJECT_METADATA_MODAL_STRING_KEYS,
+    useMemo(() => [...PROJECT_METADATA_MODAL_STRING_KEYS], []),
   );
 
   const [editName, setEditName] = useState(name ?? '');
@@ -89,14 +89,13 @@ export function ProjectMetadataModal({
     const newName = editName || undefined;
     const newDescription = editDescription || undefined;
     try {
-      const updatedProjectJson = await papi.commands.sendCommand(
+      await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
         editLanguage,
       );
-      if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
@@ -129,15 +128,8 @@ export function ProjectMetadataModal({
 
   return (
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
-      <dialog
-        aria-labelledby="project-metadata-modal-title"
-        className="tw-bg-background tw-text-foreground tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
-        open
-      >
-        <h2
-          id="project-metadata-modal-title"
-          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
-        >
+      <div className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg">
+        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_metadata_title%']}
         </h2>
 
@@ -225,12 +217,7 @@ export function ProjectMetadataModal({
               {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_body%']}
             </p>
             <div className="tw-flex tw-gap-2 tw-justify-end">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={isSubmitting}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_cancel%']}
               </Button>
               <Button variant="destructive" size="sm" onClick={handleDelete}>
@@ -254,7 +241,7 @@ export function ProjectMetadataModal({
             </div>
           </div>
         )}
-      </dialog>
+      </div>
     </div>
   );
 }

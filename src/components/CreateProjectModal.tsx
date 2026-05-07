@@ -1,14 +1,10 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState, useCallback } from 'react';
-import {
-  type InterlinearProjectSummary,
-  isInterlinearProjectSummary,
-} from './SelectInterlinearProjectModal';
+import { useState, useCallback, useMemo } from 'react';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
-const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
+const CREATE_PROJECT_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_create_title%',
   '%interlinearizer_modal_create_name_label%',
   '%interlinearizer_modal_create_name_placeholder%',
@@ -18,7 +14,7 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_language_placeholder%',
   '%interlinearizer_modal_create_submit%',
   '%interlinearizer_modal_create_cancel%',
-];
+] as const;
 
 /**
  * Modal dialog that collects project name, description, and analysis language tag before creating a
@@ -42,7 +38,9 @@ export function CreateProjectModal({
   onClose: () => void;
   onProjectCreated?: (interlinearProjectId: string, analysisWritingSystem: string) => void;
 }>) {
-  const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(
+    useMemo(() => [...CREATE_PROJECT_MODAL_STRING_KEYS], []),
+  );
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -75,15 +73,8 @@ export function CreateProjectModal({
 
   return (
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
-      <dialog
-        aria-labelledby="create-project-modal-title"
-        className="tw-bg-background tw-text-foreground tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg"
-        open
-      >
-        <h2
-          id="create-project-modal-title"
-          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
-        >
+      <div className="tw-bg-background tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg">
+        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
         <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-name">
@@ -91,7 +82,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="project-name"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
@@ -101,7 +92,7 @@ export function CreateProjectModal({
         </label>
         <textarea
           id="project-description"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -112,7 +103,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="analysis-language"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
           value={analysisLanguage}
           onChange={(e) => setAnalysisLanguage(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
@@ -125,7 +116,7 @@ export function CreateProjectModal({
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }

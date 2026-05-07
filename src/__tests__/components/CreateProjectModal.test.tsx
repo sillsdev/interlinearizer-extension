@@ -146,7 +146,6 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });

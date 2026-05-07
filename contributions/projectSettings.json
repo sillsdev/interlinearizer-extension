@@ -5,7 +5,8 @@
       "interlinearizer.continuousScroll": {
         "label": "%interlinearizer_projectSettings_continuousScroll%",
         "description": "%interlinearizer_projectSettings_continuousScrollDescription%",
-        "default": true
+        "default": true,
+        "type": "boolean"
       }
     }
   }

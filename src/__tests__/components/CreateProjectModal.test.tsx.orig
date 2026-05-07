@@ -55,11 +55,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-<<<<<<< HEAD
         'und',
-=======
-        'en',
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
         undefined,
         undefined,
       ),
@@ -77,11 +73,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-<<<<<<< HEAD
         'und',
-=======
-        'en',
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
         'My Project',
         'My Desc',
       ),
@@ -118,18 +110,15 @@ describe('CreateProjectModal', () => {
       }),
     );
 =======
-  it('calls onClose after submitting', async () => {
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
+  it('calls onClose after submitting when sendCommand returns an ID', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue('new-project-id');
+>>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
     const onClose = jest.fn();
     render(<CreateProjectModal projectId={testProjectId} onClose={onClose} />);
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-<<<<<<< HEAD
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-=======
-    expect(onClose).toHaveBeenCalledTimes(1);
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
   });
 
   it('renders nothing while strings are loading', () => {
@@ -140,7 +129,6 @@ describe('CreateProjectModal', () => {
     expect(container.firstChild).toBeNull();
   });
 
-<<<<<<< HEAD
   it('calls onProjectCreated with the parsed project when sendCommand returns a project JSON', async () => {
     const persistedProject = {
       id: 'new-project-id',
@@ -149,10 +137,6 @@ describe('CreateProjectModal', () => {
       analysisWritingSystem: 'en',
     };
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify(persistedProject));
-=======
-  it('calls onProjectCreated with the new ID and language when sendCommand returns an ID', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue('new-project-id');
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
     const onProjectCreated = jest.fn();
     render(
       <CreateProjectModal
@@ -164,12 +148,12 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-<<<<<<< HEAD
     await waitFor(() =>
       expect(onProjectCreated).toHaveBeenCalledWith(expect.objectContaining(persistedProject)),
     );
   });
 
+<<<<<<< HEAD
   it('does not call onProjectCreated or onClose and sends an error notification when sendCommand returns malformed JSON', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify({ bad: 'shape' }));
     const onProjectCreated = jest.fn();
@@ -193,13 +177,9 @@ describe('CreateProjectModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
 =======
-    expect(onProjectCreated).toHaveBeenCalledWith('new-project-id', 'en');
-  });
-
-  it('does not call onProjectCreated when sendCommand returns undefined', async () => {
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
+>>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
+  it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const onProjectCreated = jest.fn();
     const onClose = jest.fn();
@@ -213,10 +193,10 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-<<<<<<< HEAD
     await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+<<<<<<< HEAD
   });
 
   it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
@@ -256,9 +236,7 @@ describe('CreateProjectModal', () => {
 
     await waitFor(() => expect(createButton).not.toBeDisabled());
 =======
-    expect(onProjectCreated).not.toHaveBeenCalled();
-    expect(onClose).toHaveBeenCalledTimes(1);
->>>>>>> a35e5c2 (Add project creation, metadata editing, and project selection UI)
+>>>>>>> 2da77a2 (Fix modal close/callback ordering and trim whitespace from language input)
   });
 
   it('does not call onClose or onProjectCreated when sendCommand rejects, but sends an error notification', async () => {

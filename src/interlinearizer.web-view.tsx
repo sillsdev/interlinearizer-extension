@@ -305,19 +305,13 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   /**
    * Records a newly created interlinear project as the active project and closes the create modal.
    *
-   * @param interlinearProjectId - UUID of the newly created interlinear project.
-   * @param analysisWritingSystem - BCP47 writing-system tag chosen during project creation.
+   * @param project - The full persisted project returned by the create command.
    */
   const handleProjectCreated = useCallback(
-    (interlinearProjectId: string, analysisWritingSystem: string) => {
-      setActiveProject({
-        id: interlinearProjectId,
-        createdAt: new Date().toISOString(),
-        sourceProjectId: projectId ?? /* c8 ignore next -- projectId is never undefined here */ '',
-        analysisWritingSystem,
-      });
+    (project: InterlinearProjectSummary) => {
+      setActiveProject(project);
     },
-    [projectId, setActiveProject],
+    [setActiveProject],
   );
 
   /**

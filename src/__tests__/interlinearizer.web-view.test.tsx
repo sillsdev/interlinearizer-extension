@@ -26,11 +26,26 @@ jest.mock('../components/CreateProjectModal', () => ({
     onProjectCreated,
   }: {
     onClose: () => void;
-    onProjectCreated?: (id: string, ws: string) => void;
+    onProjectCreated?: (project: {
+      id: string;
+      createdAt: string;
+      sourceProjectId: string;
+      analysisWritingSystem: string;
+    }) => void;
   }) => (
     <div>
       <h2>Create Interlinear Project</h2>
-      <button type="button" onClick={() => onProjectCreated?.('new-il-id', 'en')}>
+      <button
+        type="button"
+        onClick={() =>
+          onProjectCreated?.({
+            id: 'new-il-id',
+            createdAt: '2026-01-01T00:00:00.000Z',
+            sourceProjectId: 'test-project-id',
+            analysisWritingSystem: 'en',
+          })
+        }
+      >
         Submit
       </button>
       <button type="button" onClick={onClose}>

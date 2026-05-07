@@ -89,6 +89,20 @@ const useRecentScriptureRefs = jest
   .fn()
   .mockImplementation(() => ({ recentScriptureRefs: [], addRecentScriptureRef: jest.fn() }));
 
+/**
+ * Mock for `useData`. Returns a `Proxy` whose property accesses each yield a function returning
+ * `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]` tuple
+ * without requiring a live data provider.
+ */
+const useData = jest.fn(() =>
+  new Proxy(
+    {},
+    {
+      get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]),
+    },
+  ),
+);
+
 module.exports = {
   __esModule: true,
   useProjectData,
@@ -96,6 +110,7 @@ module.exports = {
   useSetting,
   useLocalizedStrings,
   useRecentScriptureRefs,
+  useData,
 };
 
 /** Marks this file as a module so top-level const/let are module-scoped. */

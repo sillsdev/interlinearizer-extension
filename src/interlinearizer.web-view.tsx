@@ -9,11 +9,14 @@ import InterlinearizerLoader from './components/InterlinearizerLoader';
  *   opened outside a project context
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
+ * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
+ *   saved state (survives tab restores)
  * @returns The full interlinearizer WebView layout
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
   useWebViewScrollGroupScrRef,
+  useWebViewState,
 }: WebViewProps) {
   return (
     <div className="tw:flex tw:flex-col tw:h-full">

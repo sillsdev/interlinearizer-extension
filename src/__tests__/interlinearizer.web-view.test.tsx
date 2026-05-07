@@ -34,11 +34,7 @@ function makeProps(projectId?: string, scrRef: SerializedVerseRef = defaultScrRe
     id: 'test-id',
     webViewType: 'interlinearizer.mainWebView',
     projectId,
-    useWebViewState: <T,>(_key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
-      defaultValue,
-      () => {},
-      () => {},
-    ],
+    useWebViewState,
     useWebViewScrollGroupScrRef: (): [
       SerializedVerseRef,
       (r: SerializedVerseRef) => void,

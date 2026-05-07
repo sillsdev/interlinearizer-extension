@@ -303,23 +303,21 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   }, [webViewMenu.topMenu, activeProject]);
 
   /**
-   * Returns a stable callback that records a newly created interlinear project as the active
-   * project. Parameterized on `srcId` so the callback can be created inside the `projectId`-guarded
-   * JSX block, where the source project ID is known to be a non-empty string.
+   * Records a newly created interlinear project as the active project and closes the create modal.
    *
-   * @param srcId - The Platform.Bible source project ID; passed in from the JSX guard.
-   * @returns A callback suitable for `CreateProjectModal`'s `onProjectCreated` prop.
+   * @param interlinearProjectId - UUID of the newly created interlinear project.
+   * @param analysisWritingSystem - BCP47 writing-system tag chosen during project creation.
    */
-  const makeHandleProjectCreated = useCallback(
-    (srcId: string) => (interlinearProjectId: string, analysisWritingSystem: string) => {
+  const handleProjectCreated = useCallback(
+    (interlinearProjectId: string, analysisWritingSystem: string) => {
       setActiveProject({
         id: interlinearProjectId,
         createdAt: new Date().toISOString(),
-        sourceProjectId: srcId,
+        sourceProjectId: projectId ?? /* c8 ignore next -- projectId is never undefined here */ '',
         analysisWritingSystem,
       });
     },
-    [setActiveProject],
+    [projectId, setActiveProject],
   );
 
   /**
@@ -451,7 +449,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         <CreateProjectModal
           projectId={projectId}
           onClose={() => setModal('none')}
-          onProjectCreated={makeHandleProjectCreated(projectId)}
+          onProjectCreated={handleProjectCreated}
         />
       )}
 

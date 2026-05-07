@@ -59,7 +59,8 @@ export function CreateProjectModal({
         name || undefined,
         description || undefined,
       );
-      if (newId) onProjectCreated?.(newId, analysisLanguage);
+      if (!newId) return;
+      onProjectCreated?.(newId, analysisLanguage);
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);

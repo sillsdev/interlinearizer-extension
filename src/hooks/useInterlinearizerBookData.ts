@@ -8,7 +8,7 @@ import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
 
 interface UseInterlinearizerBookDataArgs {
-  projectId?: string;
+  projectId: string;
   scrRef: SerializedVerseRef;
 }
 
@@ -24,25 +24,23 @@ export default function useInterlinearizerBookData({
   projectId,
   scrRef,
 }: Readonly<UseInterlinearizerBookDataArgs>): UseInterlinearizerBookDataResult {
-  const hasProject = Boolean(projectId);
-  const resolvedProjectId = projectId ?? '';
-
   const bookScrRef = useMemo(
     () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
     [scrRef.book],
   );
 
-  const [bookResult, , isLoadingRaw] = useProjectData(
-    'platformScripture.USJ_Book',
-    resolvedProjectId,
-  ).BookUSJ(bookScrRef, undefined);
-  const [writingSystem] = useProjectSetting(resolvedProjectId, 'platform.languageTag', '');
+  const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
+    bookScrRef,
+    undefined,
+  );
+  const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
 
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,
     { message: string; raw: unknown } | undefined,
   ] => {
     if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
+
     try {
       const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
       return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
@@ -52,16 +50,16 @@ export default function useInterlinearizerBookData({
   }, [bookResult, writingSystem]);
 
   useEffect(() => {
-    if (!hasProject || !tokenizeError) return;
+    if (!tokenizeError) return;
 
     const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
     logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
       writingSystem: ws,
-      projectId: resolvedProjectId,
+      projectId,
       book: scrRef.book,
     });
-  }, [hasProject, tokenizeError, writingSystem, resolvedProjectId, scrRef.book]);
+  }, [tokenizeError, writingSystem, projectId, scrRef.book]);
 
   const chapterSegments = useMemo(
     () =>
@@ -71,13 +69,11 @@ export default function useInterlinearizerBookData({
     [book, scrRef.book, scrRef.chapterNum],
   );
 
-  const isLoading = hasProject ? isLoadingRaw : false;
-
   let bookError: string | undefined;
-  if (hasProject && isPlatformError(bookResult)) {
+  if (isPlatformError(bookResult)) {
     bookError = bookResult.message;
-  } else if (hasProject && !isLoading && bookResult === undefined) {
-    bookError = `No USJ book available for ${scrRef.book} in project ${resolvedProjectId}`;
+  } else if (!isLoading && !bookResult) {
+    bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   }
 
   return { book, chapterSegments, isLoading, bookError, tokenizeError };

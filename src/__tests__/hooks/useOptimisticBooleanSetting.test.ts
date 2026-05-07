@@ -168,9 +168,4 @@ describe('useOptimisticBooleanSetting', () => {
     unmount();
     expect(clearTimeoutSpy).toHaveBeenCalled();
   });
-
-  it('passes empty string to useProjectSetting when projectId is undefined', () => {
-    renderHook(() => useOptimisticBooleanSetting(undefined, SETTING_KEY, false));
-    expect(mockUseProjectSetting).toHaveBeenCalledWith('', SETTING_KEY, false);
-  });
 });

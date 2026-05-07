@@ -10,14 +10,14 @@ const TIMEOUT_MS = 15_000;
  * The local value is updated immediately on change and stays locked until timeout elapses, to allow
  * the stored setting to finish updating.
  *
- * @param projectId - PAPI project ID; pass `undefined` when outside a project context
- * @param settingKey - A valid key for a boolean setting
  * @param defaultValue - Default value used when the setting has not been persisted yet
+ * @param projectId - PAPI project ID
+ * @param settingKey - A valid key for a boolean setting
  * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
  *   stable change handler; `value` — the current display value
  */
 export default function useOptimisticBooleanSetting(
-  projectId: string | undefined,
+  projectId: string,
   settingKey: 'interlinearizer.continuousScroll',
   defaultValue: boolean,
 ): {
@@ -25,11 +25,7 @@ export default function useOptimisticBooleanSetting(
   onChange: (newValue: boolean) => void;
   value: boolean;
 } {
-  const [setting, setSetting, , isLoading] = useProjectSetting(
-    projectId ?? '',
-    settingKey,
-    defaultValue,
-  );
+  const [setting, setSetting, , isLoading] = useProjectSetting(projectId, settingKey, defaultValue);
 
   const [value, setValue] = useState(typeof setting === 'boolean' ? setting : defaultValue);
 

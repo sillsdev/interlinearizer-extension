@@ -111,17 +111,6 @@ describe('useInterlinearizerBookData', () => {
     setupDefaultProjectSettingMock();
   });
 
-  it('returns idle state when no projectId is provided', () => {
-    const { result } = renderHook(() =>
-      useInterlinearizerBookData({ projectId: undefined, scrRef: { ...GEN_1_1_SRC_REF } }),
-    );
-
-    expect(result.current.book).toBeUndefined();
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.bookError).toBeUndefined();
-    expect(result.current.tokenizeError).toBeUndefined();
-  });
-
   it('returns book data when project is set and data loads successfully', () => {
     jest.mocked(useProjectData).mockReturnValue({ BookUSJ: () => [undefined, jest.fn(), true] });
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
@@ -275,21 +264,6 @@ describe('useInterlinearizerBookData', () => {
         writingSystem: 'en',
       },
     );
-  });
-
-  it('does not log error when hook has no projectId', () => {
-    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
-
-    const error = new Error('Tokenization failed');
-    jest.mocked(tokenizeBook).mockImplementation(() => {
-      throw error;
-    });
-
-    renderHook(() =>
-      useInterlinearizerBookData({ projectId: undefined, scrRef: { ...GEN_1_1_SRC_REF } }),
-    );
-
-    expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
   });
 
   it('logs tokenization error with PlatformError writing system', () => {

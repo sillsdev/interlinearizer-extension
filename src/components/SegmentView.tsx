@@ -1,4 +1,4 @@
-import type { Segment } from 'interlinearizer';
+import type { ScriptureRef, Segment } from 'interlinearizer';
 import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
@@ -24,7 +24,7 @@ export function SegmentView({
 }: Readonly<{
   displayMode?: SegmentDisplayMode;
   isActive?: boolean;
-  onClick?: (ref: { book: string; chapter: number; verse: number }) => void;
+  onClick?: (ref: ScriptureRef) => void;
   segment: Segment;
 }>) {
   const { book, chapter, verse } = segment.startRef;

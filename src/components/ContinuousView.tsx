@@ -1,15 +1,8 @@
 /** @file Continuous horizontal token-strip viewer for a full book. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { Book, Token } from 'interlinearizer';
+import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
-
-/** A verse coordinate used to drive the strip's scroll position. */
-export interface VerseCoordinate {
-  book: string;
-  chapter: number;
-  verse: number;
-}
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
@@ -37,9 +30,9 @@ export default function ContinuousView({
   book,
   onVerseChange,
 }: Readonly<{
-  activeVerse?: VerseCoordinate;
+  activeVerse?: ScriptureRef;
   book: Book;
-  onVerseChange?: (verse: VerseCoordinate) => void;
+  onVerseChange?: (verse: ScriptureRef) => void;
 }>) {
   const STRIP_FADE_MS = 500;
   const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
@@ -100,7 +93,7 @@ export default function ContinuousView({
   tokenSegmentRef.current = tokenSegment;
 
   const getPhraseIndexForVerse = useCallback(
-    (verse?: VerseCoordinate): number | undefined => {
+    (verse?: ScriptureRef): number | undefined => {
       /* v8 ignore next -- verse is always defined at the one call site */
       if (!verse) return;
 

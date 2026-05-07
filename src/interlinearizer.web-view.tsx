@@ -107,12 +107,12 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         {projectId && !hasError && !showLoading && book && continuousScroll && (
           <div className="tw-border-b tw-border-border tw-bg-background tw-py-2">
             <ContinuousView
-              book={book}
               activeVerse={{
                 book: scrRef.book,
                 chapter: scrRef.chapterNum,
                 verse: scrRef.verseNum,
               }}
+              book={book}
               onVerseChange={handleContinuousVerseChange}
             />
           </div>

@@ -1,17 +1,15 @@
-import type { WebViewProps } from '@papi/core';
 import { logger } from '@papi/frontend';
 import { useProjectData, useProjectSetting } from '@papi/frontend/react';
+import { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
 
-type ScrRef = ReturnType<WebViewProps['useWebViewScrollGroupScrRef']>[0];
-
 interface UseInterlinearizerBookDataArgs {
   projectId?: string;
-  scrRef: ScrRef;
+  scrRef: SerializedVerseRef;
 }
 
 interface UseInterlinearizerBookDataResult {

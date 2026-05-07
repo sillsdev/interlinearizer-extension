@@ -92,13 +92,14 @@ export function ProjectMetadataModal({
     const newDescription = editDescription || undefined;
     const newLanguage = editLanguage.trim();
     try {
-      await papi.commands.sendCommand(
+      const updatedProjectJson = await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
         newLanguage,
       );
+      if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
@@ -136,8 +137,12 @@ export function ProjectMetadataModal({
 
   return (
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
-      <div className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg">
-        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
+      <dialog
+        aria-labelledby="project-metadata-modal-title"
+        className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
+        open
+      >
+        <h2 id="project-metadata-modal-title" className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_metadata_title%']}
         </h2>
 
@@ -249,7 +254,7 @@ export function ProjectMetadataModal({
             </div>
           </div>
         )}
-      </div>
+      </dialog>
     </div>
   );
 }

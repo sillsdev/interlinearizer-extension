@@ -141,8 +141,80 @@ function makeSingleTokenBook(): Book {
   };
 }
 
-// ---------------------------------------------------------------------------
-// scrollIntoView mock
+/**
+ * A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only a punctuation
+ * token (no word tokens). Used to exercise code paths that run when a segment exists in the book
+ * but contributes nothing to phraseEntries / segmentStartIndex.
+ */
+function makeMixedBook(): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: [
+      {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: 'In the',
+        tokens: [
+          {
+            id: 'mix-tok-0',
+            surfaceText: 'In',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 0,
+            charEnd: 2,
+          },
+        ],
+      },
+      {
+        id: 'GEN 1:2',
+        startRef: { book: 'GEN', chapter: 1, verse: 2 },
+        endRef: { book: 'GEN', chapter: 1, verse: 2 },
+        baselineText: '.',
+        tokens: [
+          {
+            id: 'mix-punct-0',
+            surfaceText: '.',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 0,
+            charEnd: 1,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** A book where every token is non-word, so phraseEntries is empty. */
+function makeWordFreeBook(): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: [
+      {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: '...',
+        tokens: [
+          {
+            id: 'wf-punct-0',
+            surfaceText: '.',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 0,
+            charEnd: 1,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 const scrollIntoViewMock = jest.fn();
@@ -669,5 +741,50 @@ describe('ContinuousView onVerseChange propagation', () => {
     rerender(<ContinuousView book={exoBook} onVerseChange={handleVerseChange} />);
 
     expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-word token rendering, word-free books, and word-free segment jumps
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView non-word tokens and word-free paths', () => {
+  it('renders a non-word token via TokenChip within the strip', () => {
+    // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
+    render(<ContinuousView book={makeMixedBook()} />);
+
+    // Both the word chip ("In") and the punctuation chip (".") must appear
+    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
+  it('renders without crashing when book has no word tokens (empty phraseEntries)', () => {
+    render(<ContinuousView book={makeWordFreeBook()} />);
+
+    // No phrase boxes rendered; both arrow buttons disabled (atStart && atEnd when length === 0)
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    // The punctuation token itself is rendered
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
+  it('does not jump when activeVerse targets a segment that has no word tokens', () => {
+    // Start focused at GEN 1:1 (word token), then move activeVerse to GEN 1:2 (punctuation only).
+    // getPhraseIndexForVerse should return undefined → no pending jump.
+    jest.useFakeTimers();
+    const { rerender } = render(
+      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+
+    rerender(
+      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+    jest.useRealTimers();
+
+    // No jump occurred; focus stays at GEN 1:1 (index 0), so left arrow remains disabled.
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });

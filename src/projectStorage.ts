@@ -56,23 +56,26 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
- * @param targetProjectId - The Platform.Bible project ID of the target text.
  * @param analysisWritingSystem - The BCP 47 writing-system code used for analysis strings.
+ * @param name - Optional user-facing name for the project.
+ * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  */
 export async function createProject(
   token: ExecutionToken,
   sourceProjectId: string,
-  targetProjectId: string,
   analysisWritingSystem: string,
+  name?: string,
+  description?: string,
 ): Promise<InterlinearProject> {
   const id = crypto.randomUUID();
   const project: InterlinearProject = {
     id,
     createdAt: new Date().toISOString(),
+    ...(name !== undefined && { name }),
+    ...(description !== undefined && { description }),
     sourceProjectId,
-    targetProjectId,
     analysisWritingSystem,
     sourceAnalysis: emptyAnalysis(),
     targetAnalysis: emptyAnalysis(),
@@ -118,6 +121,63 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
   const ids = await readIds(token);
   const projects = await Promise.all(ids.map((id) => getProject(token, id)));
   return projects.filter((p): p is InterlinearProject => p !== undefined);
+}
+
+/**
+ * Returns all interlinearizer projects whose `sourceProjectId` matches the given value, in creation
+ * order.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible project ID to filter by.
+ * @returns All projects for the given source, ordered by creation time.
+ * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
+ */
+export async function getProjectsForSource(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<InterlinearProject[]> {
+  const all = await listProjects(token);
+  return all.filter((p) => p.sourceProjectId === sourceProjectId);
+}
+
+/**
+ * Updates the metadata of an existing interlinearizer project.
+ *
+ * @param token - The execution token for storage access.
+ * @param id - The interlinearizer project UUID to update.
+ * @param name - New user-facing name, or `undefined` to clear it.
+ * @param description - New user-facing description, or `undefined` to clear it.
+ * @param analysisWritingSystem - New BCP 47 analysis language tag. A non-empty string overwrites
+ *   the field; an empty string or `undefined` leaves the field unchanged, since
+ *   `analysisWritingSystem` is required and must not be cleared.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ */
+export async function updateProjectMetadata(
+  token: ExecutionToken,
+  id: string,
+  name: string | undefined,
+  description: string | undefined,
+  analysisWritingSystem?: string,
+): Promise<InterlinearProject | undefined> {
+  const project = await getProject(token, id);
+  if (!project) return undefined;
+  const updated: InterlinearProject = { ...project };
+  if (name === undefined) {
+    delete updated.name;
+  } else {
+    updated.name = name;
+  }
+  if (description === undefined) {
+    delete updated.description;
+  } else {
+    updated.description = description;
+  }
+  if (analysisWritingSystem) {
+    updated.analysisWritingSystem = analysisWritingSystem;
+  }
+  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+  return updated;
 }
 
 /**

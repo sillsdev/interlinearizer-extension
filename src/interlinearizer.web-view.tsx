@@ -114,7 +114,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           onSelectViewInfoMenuItem={() => {}}
         />
         {projectId && !bookError && !tokenizeError && !isLoading && book && continuousScroll && (
-          <div className="tw-bg-background tw-py-2">
+          <div className="tw-border-b tw-border-border tw-bg-background tw-py-2">
             <ContinuousView
               book={book}
               activeVerse={{

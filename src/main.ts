@@ -212,7 +212,9 @@ async function updateProjectMetadata(
  * "select existing" when the user opens the project menu.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist or storage fails.
+ * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
+ * @throws The storage error when the underlying read fails, so callers can distinguish an outage
+ *   from an empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
@@ -220,7 +222,7 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
     return JSON.stringify(projects);
   } catch (e) {
     logger.error('Interlinearizer: failed to list projects for source', e);
-    return '[]';
+    throw e;
   }
 }
 

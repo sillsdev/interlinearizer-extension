@@ -48,7 +48,8 @@ export function CreateProjectModal({
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [analysisLanguage, setAnalysisLanguage] = useState('en');
+  const [analysisLanguage, setAnalysisLanguage] = useState('und');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
    * Sends the `interlinearizer.createProject` command with the collected form values, notifies the
@@ -58,11 +59,13 @@ export function CreateProjectModal({
    * @returns A promise that resolves when the command completes or the error notification is sent.
    */
   const handleSubmit = useCallback(async () => {
+    setIsSubmitting(true);
+    const normalizedAnalysisLanguage = analysisLanguage.trim() || 'und';
     try {
       const projectJson = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        analysisLanguage,
+        normalizedAnalysisLanguage,
         name || undefined,
         description || undefined,
       );
@@ -75,6 +78,8 @@ export function CreateProjectModal({
       await papi.notifications
         .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
         .catch(() => {});
+    } finally {
+      setIsSubmitting(false);
     }
   }, [projectId, analysisLanguage, name, description, onClose, onProjectCreated]);
 
@@ -125,7 +130,7 @@ export function CreateProjectModal({
           <Button variant="secondary" onClick={onClose}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>
-          <Button onClick={handleSubmit}>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>

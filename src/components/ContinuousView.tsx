@@ -43,6 +43,7 @@ export default function ContinuousView({
 }>) {
   const STRIP_FADE_MS = 500;
   const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+  const isRtl = document.documentElement.dir === 'rtl';
 
   const allTokens: Token[] = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens),
@@ -309,12 +310,7 @@ export default function ContinuousView({
         onClick={stepPrev}
         type="button"
       >
-        <span aria-hidden="true" className="ltr:tw-inline rtl:tw-hidden">
-          &#8592;
-        </span>
-        <span aria-hidden="true" className="ltr:tw-hidden rtl:tw-inline">
-          &#8594;
-        </span>
+        <span aria-hidden="true">{isRtl ? '\u2192' : '\u2190'}</span>
       </button>
 
       {/* Scrollable token strip */}
@@ -375,12 +371,7 @@ export default function ContinuousView({
         onClick={stepNext}
         type="button"
       >
-        <span aria-hidden="true" className="ltr:tw-inline rtl:tw-hidden">
-          &#8594;
-        </span>
-        <span aria-hidden="true" className="ltr:tw-hidden rtl:tw-inline">
-          &#8592;
-        </span>
+        <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
       </button>
     </div>
   );

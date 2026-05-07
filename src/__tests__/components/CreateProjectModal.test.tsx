@@ -55,7 +55,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'en',
+        'und',
         undefined,
         undefined,
       ),
@@ -73,7 +73,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'en',
+        'und',
         'My Project',
         'My Desc',
       ),
@@ -162,6 +162,44 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
+    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
+
+    const languageInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(languageInput);
+    await userEvent.type(languageInput, '   ');
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        testProjectId,
+        'und',
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
+  it('disables the create button while a submission is in progress', async () => {
+    let resolveCommand: (value: undefined) => void = () => {};
+    jest.mocked(papi.commands.sendCommand).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
+
+    const createButton = screen.getByRole('button', { name: /^create$/i });
+    await userEvent.click(createButton);
+
+    expect(createButton).toBeDisabled();
+    resolveCommand(undefined);
+
+    await waitFor(() => expect(createButton).not.toBeDisabled());
   });
 
   it('does not call onClose or onProjectCreated when sendCommand rejects, but sends an error notification', async () => {

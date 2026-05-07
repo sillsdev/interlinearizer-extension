@@ -99,8 +99,8 @@ export default function ContinuousView({
   tokenSegmentRef.current = tokenSegment;
 
   const getPhraseIndexForVerse = useCallback(
-    (verse: VerseCoordinate | undefined): number | undefined => {
-      if (!verse) return undefined;
+    (verse?: VerseCoordinate): number | undefined => {
+      if (!verse) return;
 
       const seg = book.segments.find(
         (s) =>
@@ -108,10 +108,10 @@ export default function ContinuousView({
           s.startRef.chapter === verse.chapter &&
           s.startRef.verse === verse.verse,
       );
-      if (!seg) return undefined;
+      if (!seg) return;
 
       const tokenIndex = segmentStartIndex.get(seg.id);
-      if (tokenIndex === undefined) return undefined;
+      if (tokenIndex === undefined) return;
 
       return phraseIndexByTokenIndex.get(tokenIndex);
     },
@@ -122,6 +122,7 @@ export default function ContinuousView({
   // correctly before the initial-load fade-in fires.
   const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
     if (!activeVerse) return 0;
+
     const seg = book.segments.find(
       (s) =>
         s.startRef.book === activeVerse.book &&
@@ -129,8 +130,10 @@ export default function ContinuousView({
         s.startRef.verse === activeVerse.verse,
     );
     if (!seg) return 0;
+
     const tokenIdx = segmentStartIndex.get(seg.id);
     if (tokenIdx === undefined) return 0;
+
     return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
   });
 
@@ -142,11 +145,12 @@ export default function ContinuousView({
    */
   focusPhraseIndexRef.current = focusPhraseIndex;
 
-  const jumpTargetRef = useRef<number | undefined>(undefined);
+  const jumpTargetRef = useRef<number | undefined>();
   const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
     number | undefined
-  >(undefined);
-  const [stripOpacity, setStripOpacity] = useState<0 | 1>(0);
+  >();
+  const [isVisible, setIsVisible] = useState(false);
+
   const isExternalJumpInProgressRef = useRef(false);
   const isInitialLoadInProgressRef = useRef(true);
 
@@ -157,11 +161,11 @@ export default function ContinuousView({
     // Preserve current phrase focus when it is already inside the target verse.
     const currentlyFocusedPhrase = phraseEntriesRef.current[focusPhraseIndexRef.current];
     if (currentlyFocusedPhrase) {
-      const focusedSeg = tokenSegmentRef.current[currentlyFocusedPhrase.tokenIndex];
+      const ref = tokenSegmentRef.current[currentlyFocusedPhrase.tokenIndex]?.startRef;
       if (
-        focusedSeg?.startRef.book === activeVerse.book &&
-        focusedSeg.startRef.chapter === activeVerse.chapter &&
-        focusedSeg.startRef.verse === activeVerse.verse
+        ref?.book === activeVerse.book &&
+        ref.chapter === activeVerse.chapter &&
+        ref.verse === activeVerse.verse
       ) {
         return;
       }
@@ -172,7 +176,7 @@ export default function ContinuousView({
 
     jumpTargetRef.current = phraseIndex;
     isExternalJumpInProgressRef.current = true;
-    setStripOpacity(0);
+    setIsVisible(false);
     setPendingExternalJumpPhraseIndex(phraseIndex);
     // focusPhraseIndexRef is a ref so it is always current without being a dependency.
     // Listing focusPhraseIndex here would re-run the effect on every arrow press, causing the
@@ -193,10 +197,14 @@ export default function ContinuousView({
   }, [pendingExternalJumpPhraseIndex, STRIP_FADE_MS]);
 
   // Fire onVerseChange when arrow navigation crosses into a new verse.
-  // Initialise to the first segment so the initial render does not trigger the callback.
+  // Initialise to the segment that owns the initial focusPhraseIndex so the initial render does not trigger the callback.
   const firstVisibleSegId =
     phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined;
-  const lastReportedSegIdRef = useRef<string | undefined>(firstVisibleSegId);
+  const initialFocusedPhrase = phraseEntries[focusPhraseIndex];
+  const initialSegId = initialFocusedPhrase
+    ? tokenSegment[initialFocusedPhrase.tokenIndex]?.id
+    : firstVisibleSegId;
+  const lastReportedSegIdRef = useRef<string | undefined>(initialSegId);
 
   // Keep the reported-segment baseline in sync when switching to a different book.
   useEffect(() => {
@@ -231,9 +239,9 @@ export default function ContinuousView({
   // One ref slot per phrase so we can call scrollIntoView on the focused one.
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-  const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
-  const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
-  const stripOpacityClass = stripOpacity === 1 ? 'tw-opacity-100' : 'tw-opacity-0';
+  const atStart = !phraseEntries.length || !focusPhraseIndex;
+  const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
+  const stripOpacityClass = isVisible ? 'tw-opacity-100' : 'tw-opacity-0';
 
   const goLeft = useCallback(() => {
     setFocusPhraseIndex((i) => (i > 0 ? i - 1 : i));
@@ -272,13 +280,13 @@ export default function ContinuousView({
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
     // Defer the fade-in until after the browser applies the instant scroll position.
-    const rafId = requestAnimationFrame(() => setStripOpacity(1));
+    const rafId = requestAnimationFrame(() => setIsVisible(true));
 
     return () => {
       cancelAnimationFrame(rafId);
       // If the RAF was cancelled (another focus change fired before the first frame),
       // still reveal the strip so it is not left invisible.
-      setStripOpacity(1);
+      setIsVisible(true);
     };
   }, [focusPhraseIndex]);
 

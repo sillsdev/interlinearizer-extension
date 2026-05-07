@@ -107,57 +107,31 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
- * Prompts the user to pick a target project that is different from `sourceProjectId`. If the user
- * picks the same project, a warning notification is shown and the picker re-opens. Returns the
- * chosen target project ID, or `undefined` if the user cancels.
+ * Creates a new interlinearizer project for the given source project. Called from the WebView via
+ * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the new
+ * project's ID, or `undefined` if storage fails (failure is also logged and shown as a
+ * notification).
  *
- * @param sourceProjectId - The already-chosen source project ID to guard against.
- * @returns A project ID distinct from `sourceProjectId`, or `undefined` if the user cancels.
- */
-async function promptForDistinctTargetProject(
-  sourceProjectId: string,
-): Promise<string | undefined> {
-  const targetProjectId = await papi.dialogs.selectProject({
-    title: '%interlinearizer_dialog_create_target_title%',
-    prompt: '%interlinearizer_dialog_create_target_prompt%',
-  });
-  if (!targetProjectId || targetProjectId !== sourceProjectId) return targetProjectId;
-  await papi.notifications
-    .send({ message: '%interlinearizer_error_same_project%', severity: 'warning' })
-    .catch(() => {});
-  // Recurse to avoid `await` in `while`
-  return promptForDistinctTargetProject(sourceProjectId);
-}
-
-/**
- * Creates a new interlinearizer project. Prompts the user to select source and target
- * Platform.Bible projects via picker dialogs. If the user picks the same project for both roles a
- * warning notification is shown and the target picker re-opens until distinct projects are chosen
- * or the picker is cancelled. Returns the new project's ID, or undefined if the user cancels either
- * picker or if storage fails (failure is also logged and shown as a notification).
- *
+ * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
  * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
  *   `'en'`).
- * @returns The UUID of the new project, or `undefined` if the user cancels or storage fails.
+ * @param name - Optional user-facing name for the project.
+ * @param description - Optional user-facing description for the project.
+ * @returns The UUID of the new project, or `undefined` if storage fails.
  */
 async function createInterlinearProject(
+  sourceProjectId: string,
   analysisWritingSystem: string,
+  name?: string,
+  description?: string,
 ): Promise<string | undefined> {
-  const sourceProjectId = await papi.dialogs.selectProject({
-    title: '%interlinearizer_dialog_create_source_title%',
-    prompt: '%interlinearizer_dialog_create_source_prompt%',
-  });
-  if (!sourceProjectId) return undefined;
-
-  const targetProjectId = await promptForDistinctTargetProject(sourceProjectId);
-  if (!targetProjectId) return undefined;
-
   try {
     const project = await projectStorage.createProject(
       executionToken,
       sourceProjectId,
-      targetProjectId,
       analysisWritingSystem,
+      name,
+      description,
     );
     return project.id;
   } catch (e) {
@@ -169,6 +143,63 @@ async function createInterlinearProject(
       })
       .catch(() => {});
     return undefined;
+  }
+}
+
+/**
+ * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist. Called
+ * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
+ * select-project modal.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project to delete.
+ */
+async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
+  await projectStorage.deleteProject(executionToken, interlinearProjectId);
+}
+
+/**
+ * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
+ * user saves edits in the project info modal. Returns the updated project as a JSON string, or
+ * `undefined` if no project with the given ID exists.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project to update.
+ * @param name - New user-facing name, or `undefined` to clear it.
+ * @param description - New user-facing description, or `undefined` to clear it.
+ * @param analysisWritingSystem - New BCP 47 analysis language tag; omit or pass empty to leave
+ *   unchanged.
+ * @returns JSON string of the updated `InterlinearProject`, or `undefined` if not found.
+ */
+async function updateProjectMetadata(
+  interlinearProjectId: string,
+  name: string | undefined,
+  description: string | undefined,
+  analysisWritingSystem?: string,
+): Promise<string | undefined> {
+  const updated = await projectStorage.updateProjectMetadata(
+    executionToken,
+    interlinearProjectId,
+    name,
+    description,
+    analysisWritingSystem,
+  );
+  return updated ? JSON.stringify(updated) : undefined;
+}
+
+/**
+ * Returns all interlinearizer projects for the given source project as a JSON string. The WebView
+ * deserializes this to populate its project picker and to decide whether to prompt "create new" or
+ * "select existing" when the user opens the project menu.
+ *
+ * @param sourceProjectId - Platform.Bible project ID of the source text to query.
+ * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist or storage fails.
+ */
+async function getProjectsForSource(sourceProjectId: string): Promise<string> {
+  try {
+    const projects = await projectStorage.getProjectsForSource(executionToken, sourceProjectId);
+    return JSON.stringify(projects);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to list projects for source', e);
+    return '[]';
   }
 }
 
@@ -225,18 +256,132 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         summary: 'Create a new interlinearizer project',
         params: [
           {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID of the source text to interlinearize',
+            schema: { type: 'string' },
+          },
+          {
             name: 'analysisWritingSystem',
             required: true,
             summary: 'BCP 47 tag for the gloss / annotation language (e.g. "en")',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'name',
+            required: false,
+            summary: 'Optional user-facing name for the project',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'description',
+            required: false,
+            summary: 'Optional user-facing description for the project',
             schema: { type: 'string' },
           },
         ],
         result: {
           name: 'return value',
           summary:
-            'The UUID of the new project, or undefined if the user cancelled or if projectStorage.createProject failed',
+            'The UUID of the new project, or undefined if projectStorage.createProject failed',
           schema: { type: 'string' },
         },
+      },
+    },
+  );
+
+  const getProjectsForSourceCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getProjectsForSource',
+    getProjectsForSource,
+    {
+      method: {
+        summary: 'Return all interlinearizer projects for a source project as a JSON string',
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible project ID of the source text to query',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified InterlinearProject[] for the given source',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const newProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.newProject',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    async () => {},
+    {
+      method: {
+        summary: 'Open the create-project dialog in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const updateProjectMetadataCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.updateProjectMetadata',
+    updateProjectMetadata,
+    {
+      method: {
+        summary: 'Update the name and description of an existing interlinearizer project',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project to update',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'name',
+            required: false,
+            summary: 'New user-facing name; omit to clear',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'description',
+            required: false,
+            summary: 'New user-facing description; omit to clear',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'analysisWritingSystem',
+            required: false,
+            summary: 'New BCP 47 analysis language tag; omit or pass empty to leave unchanged',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified updated InterlinearProject, or undefined if not found',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const deleteProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.deleteProject',
+    deleteInterlinearProject,
+    {
+      method: {
+        summary: 'Delete an interlinearizer project by UUID',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project to delete',
+            schema: { type: 'string' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
@@ -256,6 +401,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     createProjectCommandRegistration,
+    getProjectsForSourceCommandRegistration,
+    deleteProjectCommandRegistration,
+    newProjectCommandRegistration,
+    updateProjectMetadataCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

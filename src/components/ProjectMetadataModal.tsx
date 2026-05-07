@@ -83,7 +83,9 @@ export function ProjectMetadataModal({
 
   /**
    * Sends the updated name, description, and analysis language to the backend, then notifies the
-   * caller and closes the modal.
+   * caller and closes the modal. Logs and shows a notification on failure.
+   *
+   * @returns A promise that resolves when the command completes or the error notification is sent.
    */
   const handleSave = useCallback(async () => {
     const newName = editName || undefined;
@@ -111,7 +113,12 @@ export function ProjectMetadataModal({
     }
   }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
 
-  /** Sends the delete command to the backend, then notifies the caller and closes the modal. */
+  /**
+   * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs
+   * and shows a notification on failure.
+   *
+   * @returns A promise that resolves when the command completes or the error notification is sent.
+   */
   const handleDelete = useCallback(async () => {
     try {
       await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);

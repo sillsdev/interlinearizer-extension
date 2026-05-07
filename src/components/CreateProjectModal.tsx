@@ -2,6 +2,10 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { useState, useCallback, useMemo } from 'react';
+import {
+  type InterlinearProjectSummary,
+  isInterlinearProjectSummary,
+} from './SelectInterlinearProjectModal';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
 const CREATE_PROJECT_MODAL_STRING_KEYS = [
@@ -24,8 +28,8 @@ const CREATE_PROJECT_MODAL_STRING_KEYS = [
  * @param props - Component props
  * @param props.projectId - Source project to create the interlinear project for
  * @param props.onClose - Callback invoked when the modal should be dismissed (cancel or submit)
- * @param props.onProjectCreated - Optional callback invoked with the new project UUID and analysis
- *   language after successful creation, before `onClose` is called.
+ * @param props.onProjectCreated - Optional callback invoked with the full persisted project after
+ *   successful creation, before `onClose` is called.
  * @returns The modal overlay with name, description, language inputs and submit/cancel buttons, or
  *   nothing while localized strings are loading.
  */
@@ -36,7 +40,7 @@ export function CreateProjectModal({
 }: Readonly<{
   projectId: string;
   onClose: () => void;
-  onProjectCreated?: (interlinearProjectId: string, analysisWritingSystem: string) => void;
+  onProjectCreated?: (project: InterlinearProjectSummary) => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
     useMemo(() => [...CREATE_PROJECT_MODAL_STRING_KEYS], []),
@@ -48,19 +52,23 @@ export function CreateProjectModal({
 
   /**
    * Sends the `interlinearizer.createProject` command with the collected form values, notifies the
-   * caller via `onProjectCreated`, then closes the modal.
+   * caller via `onProjectCreated`, then closes the modal. Logs and shows a notification on
+   * failure.
+   *
+   * @returns A promise that resolves when the command completes or the error notification is sent.
    */
   const handleSubmit = useCallback(async () => {
     try {
-      const newId = await papi.commands.sendCommand(
+      const projectJson = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
         analysisLanguage,
         name || undefined,
         description || undefined,
       );
-      if (!newId) return;
-      onProjectCreated?.(newId, analysisLanguage);
+      if (!projectJson) return;
+      const parsed: unknown = JSON.parse(projectJson);
+      if (isInterlinearProjectSummary(parsed)) onProjectCreated?.(parsed);
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);

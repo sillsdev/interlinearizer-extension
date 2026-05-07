@@ -648,7 +648,8 @@ declare module 'interlinearizer' {
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
    * `glossSenseRef` alternatively resolves the gloss through a specific `ISense` in the Lexicon
    * extension — when set, the rendered gloss is the sense's gloss text and may be refreshed
-   * automatically if the lexicon is edited. Setting both is a type error: use one or the other.
+   * automatically if the lexicon is edited. Both may be set concurrently: when both are present,
+   * `gloss` serves as a local override that takes precedence for rendering.
    *
    * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
    * `entryRef` / `senseRef`.
@@ -727,16 +728,21 @@ declare module 'interlinearizer' {
      * becomes a concern (token text is typically short, so the literal string is usually fine).
      */
     tokenSnapshot?: string;
-  } &
+
     /**
-     * Exactly one of `gloss` or `glossSenseRef` may be set, or neither — but never both. Use
-     * `gloss` for a free-form string; use `glossSenseRef` to derive the rendered gloss from a
-     * Lexicon sense (enabling automatic refresh when the lexicon is edited).
+     * Free-form gloss string for this token, keyed by analysis-language BCP 47 tag. May coexist
+     * with `glossSenseRef` when the user has both a local override and a lexicon-backed sense — the
+     * local gloss takes precedence for rendering in that case.
      */
-    (| { gloss: MultiString; glossSenseRef?: never }
-      | { glossSenseRef: SenseRef; gloss?: never }
-      | { gloss?: never; glossSenseRef?: never }
-    );
+    gloss?: MultiString;
+
+    /**
+     * Resolves the gloss through a specific `ISense` in the Lexicon extension, enabling automatic
+     * refresh when the lexicon is edited. May coexist with `gloss` when the user maintains both a
+     * lexicon-linked sense and a local override.
+     */
+    glossSenseRef?: SenseRef;
+  };
 
   /**
    * An ordered morpheme within a token's parse.
@@ -819,8 +825,9 @@ declare module 'interlinearizer' {
    *
    * `gloss` is a free-form phrase gloss. `senseRef` alternatively points at a lexicon sense when
    * the phrase is a multi-word lexical entry — the Lexicon extension supports both kinds via
-   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Setting
-   * both is a type error: use one or the other.
+   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Both may
+   * be set concurrently: when both are present, `gloss` serves as a local override that takes
+   * precedence for rendering.
    *
    * Provenance fields (`producer`, `sourceUser`, `confidence`, `status`) let a suggestion engine
    * record proposed phrases that a user can then approve or reject, enabling automated recognition
@@ -874,16 +881,22 @@ declare module 'interlinearizer' {
      * maintain this alignment when filtering or transforming tokens.
      */
     tokenSnapshots?: [string, ...string[]];
-  } &
+
     /**
-     * Exactly one of `gloss` or `senseRef` may be set, or neither — but never both. Use `gloss` for
-     * a free-form phrase gloss; use `senseRef` when the phrase is a multi-word lexical entry in the
-     * Lexicon extension (enabling automatic gloss refresh).
+     * Free-form phrase gloss keyed by analysis-language BCP 47 tag. May coexist with `senseRef`
+     * when the user has both a local override and a lexicon-backed sense — the local gloss takes
+     * precedence for rendering in that case.
      */
-    (| { gloss: MultiString; senseRef?: never }
-      | { senseRef: SenseRef; gloss?: never }
-      | { gloss?: never; senseRef?: never }
-    );
+    gloss?: MultiString;
+
+    /**
+     * Points at a multi-word lexical entry in the Lexicon extension (e.g. `IEntry.morphType =
+     * Phrase` or `DiscontiguousPhrase`), enabling automatic gloss refresh when the lexicon is
+     * edited. May coexist with `gloss` when the user maintains both a lexicon-linked sense and a
+     * local override.
+     */
+    senseRef?: SenseRef;
+  };
 
   // ---------------------------------------------------------------------------
   // §7 AlignmentLink, AlignmentEndpoint

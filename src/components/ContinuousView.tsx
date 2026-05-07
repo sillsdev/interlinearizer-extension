@@ -1,8 +1,10 @@
-/** @file Continuous horizontal token-strip viewer for a full book. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book, ScriptureRef, Token } from 'interlinearizer';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
+
+const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+const STRIP_FADE_MS = 500;
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
@@ -34,8 +36,6 @@ export default function ContinuousView({
   book: Book;
   onVerseChange?: (verse: ScriptureRef) => void;
 }>) {
-  const STRIP_FADE_MS = 500;
-  const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
   const isRtl = document.documentElement.dir === 'rtl';
 
   const allTokens: Token[] = useMemo(
@@ -103,6 +103,7 @@ export default function ContinuousView({
           s.startRef.chapter === verse.chapter &&
           s.startRef.verse === verse.verse,
       );
+      /* v8 ignore next -- only reachable when an external activeVerse references an unrecognized segment */
       if (!seg) return;
 
       const tokenIndex = segmentStartIndex.get(seg.id);
@@ -152,21 +153,28 @@ export default function ContinuousView({
   const isExternalJumpInProgressRef = useRef(false);
   const isInitialLoadInProgressRef = useRef(true);
 
+  /**
+   * Records the verse most recently reported via `onVerseChange`. When the parent echoes that verse
+   * back as `activeVerse` we skip the jump — the change originated here, not externally.
+   * Initialized to `activeVerse` so the initial mount position (set by the lazy `useState`
+   * initializer) is treated as already handled, preventing a spurious jump on first render.
+   */
+  const lastInternalVerseRef = useRef<ScriptureRef | undefined>(activeVerse);
+
   // Jump to the first token of the matching segment when the active verse changes.
   useEffect(() => {
     if (!activeVerse) return;
 
-    // Preserve current phrase focus when it is already inside the target verse.
-    const currentlyFocusedPhrase = phraseEntriesRef.current[focusPhraseIndexRef.current];
-    if (currentlyFocusedPhrase) {
-      const ref = tokenSegmentRef.current[currentlyFocusedPhrase.tokenIndex]?.startRef;
-      if (
-        ref?.book === activeVerse.book &&
-        ref.chapter === activeVerse.chapter &&
-        ref.verse === activeVerse.verse
-      ) {
-        return;
-      }
+    // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
+    const lastInternal = lastInternalVerseRef.current;
+    if (
+      lastInternal &&
+      lastInternal.book === activeVerse.book &&
+      lastInternal.chapter === activeVerse.chapter &&
+      lastInternal.verse === activeVerse.verse
+    ) {
+      lastInternalVerseRef.current = undefined;
+      return;
     }
 
     const phraseIndex = getPhraseIndexForVerse(activeVerse);
@@ -192,7 +200,7 @@ export default function ContinuousView({
     }, STRIP_FADE_MS);
 
     return () => clearTimeout(timeout);
-  }, [pendingExternalJumpPhraseIndex, STRIP_FADE_MS]);
+  }, [pendingExternalJumpPhraseIndex]);
 
   // Fire onVerseChange when arrow navigation crosses into a new verse.
   // Initialise to the segment that owns the initial focusPhraseIndex so the initial render does not trigger the callback.
@@ -225,11 +233,13 @@ export default function ContinuousView({
     if (!seg || seg.id === lastReportedSegIdRef.current) return;
 
     lastReportedSegIdRef.current = seg.id;
-    onVerseChange?.({
+    const verse = {
       book: seg.startRef.book,
       chapter: seg.startRef.chapter,
       verse: seg.startRef.verse,
-    });
+    };
+    lastInternalVerseRef.current = verse;
+    onVerseChange?.(verse);
     // onVerseChange and tokenSegmentRef are intentionally excluded — callers must stabilize the
     // reference (useCallback) and tokenSegmentRef is a ref so changes are always current.
     // eslint-disable-next-line react-hooks/exhaustive-deps

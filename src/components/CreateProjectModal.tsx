@@ -71,7 +71,9 @@ export function CreateProjectModal({
       );
       if (!projectJson) return;
       const parsed: unknown = JSON.parse(projectJson);
-      if (isInterlinearProjectSummary(parsed)) onProjectCreated?.(parsed);
+      if (!isInterlinearProjectSummary(parsed))
+        throw new Error('Created project has unexpected shape');
+      onProjectCreated?.(parsed);
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);

@@ -2,54 +2,24 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { InterlinearProject } from 'interlinearizer';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
-const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
+const SELECT_INTERLINEAR_PROJECT_STRING_KEYS = [
   '%interlinearizer_modal_select_title%',
   '%interlinearizer_modal_select_none%',
   '%interlinearizer_modal_select_create_new%',
   '%interlinearizer_modal_select_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_info_button_label%',
-];
+] as const;
 
 /** The subset of InterlinearProject fields this modal displays and returns. */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
   'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem' | 'name' | 'description'
 >;
-
-/** Fields of the active interlinear project persisted in WebView state. */
-export type ActiveProjectState = Pick<
-  InterlinearProjectSummary,
-  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
->;
-
-/**
- * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
- *
- * @param p - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `p` satisfies the {@link InterlinearProjectSummary} shape, narrowing its type
- *   accordingly.
- */
-export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
-  return (
-    !!p &&
-    typeof p === 'object' &&
-    'id' in p &&
-    typeof p.id === 'string' &&
-    'createdAt' in p &&
-    typeof p.createdAt === 'string' &&
-    'sourceProjectId' in p &&
-    typeof p.sourceProjectId === 'string' &&
-    'analysisWritingSystem' in p &&
-    typeof p.analysisWritingSystem === 'string' &&
-    (!('name' in p) || typeof p.name === 'string') &&
-    (!('description' in p) || typeof p.description === 'string')
-  );
-}
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
@@ -79,45 +49,28 @@ export function SelectInterlinearProjectModal({
   onViewInfo: (project: InterlinearProjectSummary) => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
-    SELECT_INTERLINEAR_PROJECT_STRING_KEYS,
+    useMemo(() => [...SELECT_INTERLINEAR_PROJECT_STRING_KEYS], []),
   );
 
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  /**
-   * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
-   * shows a notification on failure.
-   *
-   * @returns A promise that resolves when the project list is loaded or the error notification is
-   *   sent.
-   */
+  /** Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. */
   const loadProjects = useCallback(async () => {
-    setIsLoading(true);
     try {
       const json = await papi.commands.sendCommand(
         'interlinearizer.getProjectsForSource',
         sourceProjectId,
       );
       const parsed: unknown = JSON.parse(json);
-      if (!Array.isArray(parsed)) {
-        logger.warn('Interlinearizer: getProjectsForSource returned non-array', parsed);
-        return;
-      }
-      const valid = parsed.filter(isInterlinearProjectSummary);
-      if (valid.length !== parsed.length)
-        logger.warn(
-          'Interlinearizer: skipped malformed project entries',
-          parsed.length - valid.length,
+      if (Array.isArray(parsed))
+        setProjects(
+          parsed.filter((p): p is InterlinearProjectSummary => !!p && typeof p === 'object'),
         );
-      setProjects(valid);
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);
       await papi.notifications
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
         .catch(() => {});
-    } finally {
-      setIsLoading(false);
     }
   }, [sourceProjectId]);
 
@@ -125,40 +78,57 @@ export function SelectInterlinearProjectModal({
     loadProjects();
   }, [loadProjects]);
 
+  /**
+   * Delegates to `onSelect` when the user clicks a project row.
+   *
+   * @param project - The project the user selected.
+   */
+  const handleSelect = useCallback(
+    (project: InterlinearProjectSummary) => {
+      onSelect(project);
+    },
+    [onSelect],
+  );
+
+  /**
+   * Delegates to `onViewInfo` when the user clicks a project's info icon.
+   *
+   * @param project - The project whose info icon was clicked.
+   */
+  const handleViewInfo = useCallback(
+    (project: InterlinearProjectSummary) => {
+      onViewInfo(project);
+    },
+    [onViewInfo],
+  );
+
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
-      <dialog
-        aria-labelledby="select-project-modal-title"
-        className="tw:bg-background tw:text-foreground tw:rounded-lg tw:border tw:border-border tw:p-6 tw:w-lg tw:shadow-lg"
-        open
-      >
-        <h2
-          id="select-project-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
+      <div className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg">
+        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_select_title%']}
         </h2>
 
         {projects.length === 0 ? (
-          <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
+          <p className="tw-text-sm tw-text-muted-foreground tw-mb-4">
             {localizedStrings['%interlinearizer_modal_select_none%']}
           </p>
         ) : (
-          <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-96 tw:overflow-y-auto">
+          <ul className="tw-flex tw-flex-col tw-gap-1 tw-mb-4 tw-max-h-96 tw-overflow-y-auto">
             {projects.map((project) => (
-              <li key={project.id} className="tw:flex tw:items-center tw:gap-1">
+              <li key={project.id} className="tw-flex tw-items-center tw-gap-1">
                 <button
                   type="button"
-                  className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:hover:bg-muted/70 tw:transition-colors tw:min-w-0"
-                  onClick={() => onSelect(project)}
+                  className="tw-flex-1 tw-flex tw-items-center tw-gap-2 tw-rounded tw-border tw-border-border tw-bg-muted/40 tw-px-3 tw-py-2 tw-text-left tw-text-sm hover:tw-bg-muted/70 tw-transition-colors tw-min-w-0"
+                  onClick={() => handleSelect(project)}
                 >
-                  <span className="tw:font-medium tw:text-foreground tw:truncate">
+                  <span className="tw-font-medium tw-text-foreground tw-truncate">
                     {project.name ??
                       localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   </span>
-                  <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0">
+                  <span className="tw-font-mono tw-text-xs tw-text-muted-foreground tw-shrink-0">
                     {project.analysisWritingSystem}
                   </span>
                 </button>
@@ -166,8 +136,8 @@ export function SelectInterlinearProjectModal({
                   variant="ghost"
                   size="icon"
                   aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
-                  className="tw:shrink-0"
-                  onClick={() => onViewInfo(project)}
+                  className="tw-shrink-0"
+                  onClick={() => handleViewInfo(project)}
                 >
                   <Info size={15} />
                 </Button>
@@ -176,15 +146,15 @@ export function SelectInterlinearProjectModal({
           </ul>
         )}
 
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isLoading}>
+        <div className="tw-flex tw-gap-2 tw-justify-end">
+          <Button variant="secondary" onClick={onClose}>
             {localizedStrings['%interlinearizer_modal_select_cancel%']}
           </Button>
-          <Button onClick={onCreateNew} disabled={isLoading}>
+          <Button onClick={onCreateNew}>
             {localizedStrings['%interlinearizer_modal_select_create_new%']}
           </Button>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }

@@ -2,10 +2,10 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
-const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
+const PROJECT_METADATA_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_metadata_title%',
   '%interlinearizer_modal_metadata_id_label%',
   '%interlinearizer_modal_metadata_name_label%',
@@ -23,7 +23,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_delete_confirm_body%',
   '%interlinearizer_modal_metadata_delete_confirm_ok%',
   '%interlinearizer_modal_metadata_delete_confirm_cancel%',
-];
+] as const;
 
 /** Props for {@link ProjectMetadataModal}. */
 export type ProjectMetadataModalProps = Readonly<{
@@ -71,125 +71,96 @@ export function ProjectMetadataModal({
   onProjectDeleted,
 }: ProjectMetadataModalProps) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
-    PROJECT_METADATA_MODAL_STRING_KEYS,
+    useMemo(() => [...PROJECT_METADATA_MODAL_STRING_KEYS], []),
   );
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
   const [editLanguage, setEditLanguage] = useState(analysisWritingSystem);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
   /**
    * Sends the updated name, description, and analysis language to the backend, then notifies the
-   * caller and closes the modal. Logs on failure; the backend command handler is responsible for
-   * showing the error notification so this handler does not re-send it.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
+   * caller and closes the modal.
    */
   const handleSave = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
-    const newName = editName.trim() || undefined;
-    const newDescription = editDescription.trim() || undefined;
-    const newLanguage = editLanguage.trim();
+    const newName = editName || undefined;
+    const newDescription = editDescription || undefined;
     try {
-      const updatedProjectJson = await papi.commands.sendCommand(
+      await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
-        newLanguage,
+        editLanguage,
       );
-      if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisWritingSystem: newLanguage,
+        analysisWritingSystem: editLanguage,
       });
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to save project metadata', e);
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      await papi.notifications
+        .send({ message: '%interlinearizer_error_save_metadata_failed%', severity: 'error' })
+        .catch(() => {});
     }
   }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
 
-  /**
-   * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
-   * failure; the backend command handler is responsible for showing the error notification so this
-   * handler does not re-send it.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
-   */
+  /** Sends the delete command to the backend, then notifies the caller and closes the modal. */
   const handleDelete = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
     try {
       await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);
       onProjectDeleted?.(interlinearProjectId);
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to delete project', e);
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      await papi.notifications
+        .send({ message: '%interlinearizer_error_delete_project_failed%', severity: 'error' })
+        .catch(() => {});
     }
   }, [interlinearProjectId, onProjectDeleted, onClose]);
 
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
-      <dialog
-        aria-labelledby="project-metadata-modal-title"
-        aria-modal="true"
-        className="tw:bg-background tw:text-foreground tw:rounded-lg tw:border tw:border-border tw:p-6 tw:w-lg tw:shadow-lg"
-        open
-      >
-        <h2
-          id="project-metadata-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
+      <div className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg">
+        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_metadata_title%']}
         </h2>
 
         {/* Editable fields */}
-        <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
-          <div className="tw:flex tw:flex-col tw:gap-1">
+        <div className="tw-flex tw-flex-col tw-gap-3 tw-mb-4">
+          <div className="tw-flex tw-flex-col tw-gap-1">
             <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
+              className="tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide"
               htmlFor="metadata-edit-name"
             >
               {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
             </label>
             <input
               id="metadata-edit-name"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground"
+              className="tw-rounded tw-border tw-border-border tw-bg-background tw-px-2 tw-py-1 tw-text-sm tw-text-foreground"
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
             />
           </div>
 
-          <div className="tw:flex tw:flex-col tw:gap-1">
+          <div className="tw-flex tw-flex-col tw-gap-1">
             <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
+              className="tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide"
               htmlFor="metadata-edit-description"
             >
               {localizedStrings['%interlinearizer_modal_metadata_description_label%']}
             </label>
             <textarea
               id="metadata-edit-description"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:resize-none"
+              className="tw-rounded tw-border tw-border-border tw-bg-background tw-px-2 tw-py-1 tw-text-sm tw-text-foreground tw-resize-none"
               rows={2}
               value={editDescription}
               placeholder={
@@ -199,16 +170,16 @@ export function ProjectMetadataModal({
             />
           </div>
 
-          <div className="tw:flex tw:flex-col tw:gap-1">
+          <div className="tw-flex tw-flex-col tw-gap-1">
             <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
+              className="tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide"
               htmlFor="metadata-edit-language"
             >
               {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
             </label>
             <input
               id="metadata-edit-language"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:font-mono"
+              className="tw-rounded tw-border tw-border-border tw-bg-background tw-px-2 tw-py-1 tw-text-sm tw-text-foreground tw-font-mono"
               value={editLanguage}
               placeholder={
                 localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
@@ -219,7 +190,7 @@ export function ProjectMetadataModal({
         </div>
 
         {/* Read-only metadata */}
-        <dl className="tw:flex tw:flex-col tw:gap-2 tw:mb-5">
+        <dl className="tw-flex tw-flex-col tw-gap-2 tw-mb-5">
           <MetadataRow
             label={localizedStrings['%interlinearizer_modal_metadata_id_label%']}
             value={interlinearProjectId}
@@ -238,53 +209,39 @@ export function ProjectMetadataModal({
 
         {/* Footer */}
         {confirmingDelete ? (
-          <div className="tw:rounded tw:border tw:border-destructive/40 tw:bg-destructive/5 tw:px-3 tw:py-2">
-            <p className="tw:font-medium tw:text-foreground tw:mb-0.5">
+          <div className="tw-rounded tw-border tw-border-destructive/40 tw-bg-destructive/5 tw-px-3 tw-py-2">
+            <p className="tw-font-medium tw-text-foreground tw-mb-0.5">
               {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_title%']}
             </p>
-            <p className="tw:text-xs tw:text-muted-foreground tw:mb-2">
+            <p className="tw-text-xs tw-text-muted-foreground tw-mb-2">
               {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_body%']}
             </p>
-            <div className="tw:flex tw:gap-2 tw:justify-end">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConfirmingDelete(false)}
-                disabled={isSubmitting}
-              >
+            <div className="tw-flex tw-gap-2 tw-justify-end">
+              <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_cancel%']}
               </Button>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleDelete}
-                disabled={isSubmitting}
-              >
+              <Button variant="destructive" size="sm" onClick={handleDelete}>
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_ok%']}
               </Button>
             </div>
           </div>
         ) : (
-          <div className="tw:flex tw:gap-2 tw:justify-between">
-            <Button
-              variant="destructive"
-              onClick={() => setConfirmingDelete(true)}
-              disabled={isSubmitting}
-            >
-              <Trash2 size={13} className="tw:mr-1" />
+          <div className="tw-flex tw-gap-2 tw-justify-between">
+            <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+              <Trash2 size={13} className="tw-mr-1" />
               {localizedStrings['%interlinearizer_modal_metadata_delete%']}
             </Button>
-            <div className="tw:flex tw:gap-2">
-              <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+            <div className="tw-flex tw-gap-2">
+              <Button variant="secondary" onClick={onClose}>
                 {localizedStrings['%interlinearizer_modal_metadata_close%']}
               </Button>
-              <Button onClick={handleSave} disabled={isSubmitting || !editLanguage.trim()}>
+              <Button onClick={handleSave} disabled={!editLanguage.trim()}>
                 {localizedStrings['%interlinearizer_modal_metadata_save%']}
               </Button>
             </div>
           </div>
         )}
-      </dialog>
+      </div>
     </div>
   );
 }
@@ -304,12 +261,12 @@ function MetadataRow({
   mono,
 }: Readonly<{ label: string; value: string; mono?: boolean }>) {
   return (
-    <div className="tw:flex tw:flex-col tw:gap-0.5">
-      <dt className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
+    <div className="tw-flex tw-flex-col tw-gap-0.5">
+      <dt className="tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
         {label}
       </dt>
       <dd
-        className={['tw:text-sm tw:break-all tw:text-foreground', mono ? 'tw:font-mono' : '']
+        className={['tw-text-sm tw-break-all tw-text-foreground', mono ? 'tw-font-mono' : '']
           .filter(Boolean)
           .join(' ')}
       >

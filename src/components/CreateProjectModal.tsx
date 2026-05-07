@@ -1,14 +1,10 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState, useCallback, useRef } from 'react';
-import {
-  type InterlinearProjectSummary,
-  isInterlinearProjectSummary,
-} from './SelectInterlinearProjectModal';
+import { useState, useCallback, useMemo } from 'react';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
-const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
+const CREATE_PROJECT_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_create_title%',
   '%interlinearizer_modal_create_name_label%',
   '%interlinearizer_modal_create_name_placeholder%',
@@ -18,7 +14,7 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_language_placeholder%',
   '%interlinearizer_modal_create_submit%',
   '%interlinearizer_modal_create_cancel%',
-];
+] as const;
 
 /**
  * Modal dialog that collects project name, description, and analysis language tag before creating a
@@ -28,8 +24,8 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
  * @param props - Component props
  * @param props.projectId - Source project to create the interlinear project for
  * @param props.onClose - Callback invoked when the modal should be dismissed (cancel or submit)
- * @param props.onProjectCreated - Optional callback invoked with the full persisted project after
- *   successful creation, before `onClose` is called.
+ * @param props.onProjectCreated - Optional callback invoked with the new project UUID and analysis
+ *   language after successful creation, before `onClose` is called.
  * @returns The modal overlay with name, description, language inputs and submit/cancel buttons, or
  *   nothing while localized strings are loading.
  */
@@ -40,120 +36,87 @@ export function CreateProjectModal({
 }: Readonly<{
   projectId: string;
   onClose: () => void;
-  onProjectCreated?: (project: InterlinearProjectSummary) => void;
+  onProjectCreated?: (interlinearProjectId: string, analysisWritingSystem: string) => void;
 }>) {
-  const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(
+    useMemo(() => [...CREATE_PROJECT_MODAL_STRING_KEYS], []),
+  );
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [analysisLanguage, setAnalysisLanguage] = useState('und');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
+  const [analysisLanguage, setAnalysisLanguage] = useState('en');
 
   /**
-   * Sends the `interlinearizer.createProject` command with the collected form values, then notifies
-   * the caller via `onProjectCreated` and closes the modal. Shows a user-visible error notification
-   * if the response cannot be parsed (SyntaxError); for other errors, logs and defers to the
-   * backend command handler to surface the notification.
-   *
-   * @returns A promise that resolves when the command completes or the error is handled.
+   * Sends the `interlinearizer.createProject` command with the collected form values, notifies the
+   * caller via `onProjectCreated`, then closes the modal.
    */
   const handleSubmit = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
-    const normalizedAnalysisLanguage = analysisLanguage.trim() || 'und';
     try {
-      const projectJson = await papi.commands.sendCommand(
+      const newId = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        normalizedAnalysisLanguage,
-        name.trim() || undefined,
-        description.trim() || undefined,
+        analysisLanguage,
+        name || undefined,
+        description || undefined,
       );
-      if (!projectJson) return;
-      const parsed: unknown = JSON.parse(projectJson);
-      if (!isInterlinearProjectSummary(parsed)) {
-        await papi.notifications.send({
-          message: '%interlinearizer_error_create_project_failed%',
-          severity: 'error',
-        });
-        return;
-      }
-      onProjectCreated?.(parsed);
+      if (newId) onProjectCreated?.(newId, analysisLanguage);
       onClose();
     } catch (e) {
-      if (e instanceof SyntaxError) {
-        logger.error('Interlinearizer: failed to parse create project response', e);
-        await papi.notifications.send({
-          message: '%interlinearizer_error_create_project_failed%',
-          severity: 'error',
-        });
-        return;
-      }
       logger.error('Interlinearizer: failed to create project', e);
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
+      await papi.notifications
+        .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
+        .catch(() => {});
     }
   }, [projectId, analysisLanguage, name, description, onClose, onProjectCreated]);
 
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
-      <dialog
-        aria-labelledby="create-project-modal-title"
-        className="tw:bg-background tw:text-foreground tw:rounded tw:border tw:border-border tw:p-6 tw:w-96 tw:shadow-lg"
-        open
-      >
-        <h2
-          id="create-project-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
+      <div className="tw-bg-background tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg">
+        <h2 className="tw-text-base tw-font-semibold tw-mb-4">
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-name">
+        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-name">
           {localizedStrings['%interlinearizer_modal_create_name_label%']}
         </label>
         <input
           id="project-name"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
         />
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-description">
+        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-description">
           {localizedStrings['%interlinearizer_modal_create_description_label%']}
         </label>
         <textarea
           id="project-description"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3 tw:resize-none"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
         />
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="analysis-language">
+        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="analysis-language">
           {localizedStrings['%interlinearizer_modal_create_language_label%']}
         </label>
         <input
           id="analysis-language"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-4"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
           value={analysisLanguage}
           onChange={(e) => setAnalysisLanguage(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+        <div className="tw-flex tw-gap-2 tw-justify-end">
+          <Button variant="secondary" onClick={onClose}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button onClick={handleSubmit}>
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>
-      </dialog>
+      </div>
     </div>
   );
 }

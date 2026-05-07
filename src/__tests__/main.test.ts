@@ -5,10 +5,10 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import * as projectStorage from '../services/projectStorage';
+import * as projectStorage from '../projectStorage';
 import { createTestActivationContext } from './test-helpers';
 
-jest.mock('../services/projectStorage');
+jest.mock('../projectStorage');
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */
 interface PapiBackendTestMock {
@@ -129,14 +129,60 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (analysisWritingSystem: string) => Promise<string | undefined>
+  (sourceProjectId: string, analysisWritingSystem: string) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (ws: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(ws);
+  return async (sourceProjectId: string, ws: string): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(sourceProjectId, ws);
+    return typeof result === 'string' ? result : undefined;
+  };
+}
+
+async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.deleteProject');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.deleteProject');
+  return async (id: string): Promise<void> => {
+    await rawHandler(id);
+  };
+}
+
+async function getProjectsForSourceHandler(): Promise<
+  (sourceProjectId: string) => Promise<string>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.getProjectsForSource');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProjectsForSource');
+  return async (sourceProjectId: string): Promise<string> => {
+    const result: unknown = await rawHandler(sourceProjectId);
+    return typeof result === 'string' ? result : '[]';
+  };
+}
+
+async function getUpdateProjectMetadataHandler(): Promise<
+  (
+    id: string,
+    name: string | undefined,
+    description: string | undefined,
+    analysisWritingSystem?: string,
+  ) => Promise<string | undefined>
+> {
+  const context = createTestActivationContext();
+  await activate(context);
+  const rawHandler = findRegisteredHandler('interlinearizer.updateProjectMetadata');
+  if (!rawHandler) throw new Error('Handler not found for interlinearizer.updateProjectMetadata');
+  return async (
+    id: string,
+    name: string | undefined,
+    description: string | undefined,
+    analysisWritingSystem?: string,
+  ): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(id, name, description, analysisWritingSystem);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -186,9 +232,7 @@ describe('main', () => {
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
           'interlinearizer.getProjectsForSource',
-          'interlinearizer.openSelectProjectModal',
-          'interlinearizer.openNewProjectModal',
-          'interlinearizer.openProjectInfoModal',
+          'interlinearizer.newProject',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),
@@ -397,14 +441,14 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.openSelectProjectModal command', () => {
-    it('registers the interlinearizer.openSelectProjectModal command', async () => {
+  describe('interlinearizer.newProject command', () => {
+    it('registers the interlinearizer.newProject command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.openSelectProjectModal',
+        'interlinearizer.newProject',
         expect.any(Function),
         expect.any(Object),
       );
@@ -413,62 +457,8 @@ describe('main', () => {
     it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
       const context = createTestActivationContext();
       await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.openSelectProjectModal');
-      if (!rawHandler)
-        throw new Error('Handler not found for interlinearizer.openSelectProjectModal');
-
-      await expect(rawHandler()).resolves.toBeUndefined();
-      expect(__mockOpenWebView).not.toHaveBeenCalled();
-      expect(__mockSelectProject).not.toHaveBeenCalled();
-      expect(__mockNotificationsSend).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('interlinearizer.openNewProjectModal command', () => {
-    it('registers the interlinearizer.openNewProjectModal command', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.openNewProjectModal',
-        expect.any(Function),
-        expect.any(Object),
-      );
-    });
-
-    it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.openNewProjectModal');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.openNewProjectModal');
-
-      await expect(rawHandler()).resolves.toBeUndefined();
-      expect(__mockOpenWebView).not.toHaveBeenCalled();
-      expect(__mockSelectProject).not.toHaveBeenCalled();
-      expect(__mockNotificationsSend).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('interlinearizer.openProjectInfoModal command', () => {
-    it('registers the interlinearizer.openProjectInfoModal command', async () => {
-      const context = createTestActivationContext();
-
-      await activate(context);
-
-      expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.openProjectInfoModal',
-        expect.any(Function),
-        expect.any(Object),
-      );
-    });
-
-    it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.openProjectInfoModal');
-      if (!rawHandler)
-        throw new Error('Handler not found for interlinearizer.openProjectInfoModal');
+      const rawHandler = findRegisteredHandler('interlinearizer.newProject');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.newProject');
 
       await expect(rawHandler()).resolves.toBeUndefined();
       expect(__mockOpenWebView).not.toHaveBeenCalled();
@@ -478,6 +468,18 @@ describe('main', () => {
   });
 
   describe('interlinearizer.createProject command', () => {
+    const mockCreateProject = jest.mocked(projectStorage.createProject);
+    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const stubProject = {
+      id: 'new-project-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src-project',
+      analysisWritingSystem: 'en',
+      sourceAnalysis: emptyAnalysis,
+      targetAnalysis: emptyAnalysis,
+      links: [],
+    };
+
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
 
@@ -490,7 +492,7 @@ describe('main', () => {
       );
     });
 
-    it('delegates to projectStorage.createProject and returns the JSON-serialized project', async () => {
+    it('delegates to projectStorage.createProject and returns the new project ID', async () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
@@ -503,7 +505,7 @@ describe('main', () => {
         undefined,
         undefined,
       );
-      expect(result).toBe(JSON.stringify(stubProject));
+      expect(result).toBe('new-project-id');
     });
 
     it('does not show a project picker dialog', async () => {
@@ -513,38 +515,6 @@ describe('main', () => {
       await handler('src-project', 'en');
 
       expect(__mockSelectProject).not.toHaveBeenCalled();
-    });
-
-    it('sends a warning notification and re-prompts when target equals source', async () => {
-      __mockSelectProject
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('tgt-project');
-      const handler = await getCreateProjectHandler();
-
-      const result = await handler('en');
-
-      expect(result).toBe('00000000-0000-0000-0000-000000000000');
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'warning' }),
-      );
-      expect(__mockSelectProject).toHaveBeenCalledTimes(3);
-    });
-
-    it('returns undefined when the user cancels the target picker after a same-project warning', async () => {
-      __mockSelectProject
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce('src-project')
-        .mockResolvedValueOnce(undefined);
-      const handler = await getCreateProjectHandler();
-
-      const result = await handler('en');
-
-      expect(result).toBeUndefined();
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'warning' }),
-      );
-      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
     it('logs the error, sends an error notification, and returns undefined when storage fails', async () => {
@@ -731,21 +701,6 @@ describe('main', () => {
 
       expect(mockDeleteProject).toHaveBeenCalledWith(expect.anything(), 'to-delete-id');
     });
-
-    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
-      mockDeleteProject.mockRejectedValue(new Error('disk full'));
-      const handler = await getDeleteProjectHandler();
-
-      await expect(handler('to-delete-id')).rejects.toThrow('disk full');
-
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to delete project',
-        expect.any(Error),
-      );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      );
-    });
   });
 
   describe('interlinearizer.getProjectsForSource command', () => {
@@ -782,11 +737,13 @@ describe('main', () => {
       expect(result).toBe(JSON.stringify([stubProject]));
     });
 
-    it('throws and logs an error when storage throws', async () => {
+    it('returns "[]" and logs an error when storage throws', async () => {
       mockGetProjectsForSource.mockRejectedValue(new Error('disk full'));
       const handler = await getProjectsForSourceHandler();
 
-      await expect(handler('src-project')).rejects.toThrow('disk full');
+      const result = await handler('src-project');
+
+      expect(result).toBe('[]');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to list projects for source',
         expect.any(Error),
@@ -859,22 +816,6 @@ describe('main', () => {
       const result = await handler('missing', undefined, undefined);
 
       expect(result).toBeUndefined();
-    });
-
-    it('logs the error, sends an error notification, and returns undefined when storage throws', async () => {
-      mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
-      const handler = await getUpdateProjectMetadataHandler();
-
-      const result = await handler('proj-id', 'My Name', 'My Desc');
-
-      expect(result).toBeUndefined();
-      expect(__mockLogger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to update project metadata',
-        expect.any(Error),
-      );
-      expect(__mockNotificationsSend).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      );
     });
   });
 

@@ -159,14 +159,6 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.queryByText('42')).not.toBeInTheDocument();
   });
 
-  it('silently drops entries with a non-string description field', async () => {
-    const badDescription = { ...STUB_PROJECT, description: 123 };
-    mockSendCommand.mockResolvedValue(JSON.stringify([badDescription, STUB_PROJECT_2]));
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
-    expect(screen.getAllByRole('listitem')).toHaveLength(1);
-  });
-
   it('shows the empty-state message when getProjectsForSource returns a non-array', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify({ not: 'an array' }));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

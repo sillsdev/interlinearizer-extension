@@ -39,9 +39,9 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
 ] as const;
 
 /** Sentinel menu item passed by the mock toolbar when the select-project menu button is clicked. */
-export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
+export const MOCK_CREATE_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_select_project%',
-  command: 'interlinearizer.openSelectProjectModal',
+  command: 'interlinearizer.createProject',
   group: 'interlinearizer.project.actions',
   order: 1,
   localizeNotes: '',
@@ -50,7 +50,7 @@ export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 /** Sentinel menu item passed by the mock toolbar when the new-project button is clicked. */
 export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_new_project%',
-  command: 'interlinearizer.openNewProjectModal',
+  command: 'interlinearizer.newProject',
   group: 'interlinearizer.project.actions',
   order: 2,
   localizeNotes: '',
@@ -59,26 +59,13 @@ export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 /** Sentinel menu item passed by the mock toolbar when the view-project-info button is clicked. */
 export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_view_project_info%',
-  command: 'interlinearizer.openProjectInfoModal',
+  command: 'interlinearizer.viewProjectInfo',
   group: 'interlinearizer.project.actions',
   order: 3,
   localizeNotes: '',
 };
 
 
-/**
- * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
- * can trigger menu commands without a real toolbar implementation.
- *
- * @param props - Component props.
- * @param props.startAreaChildren - Content rendered in the start slot.
- * @param props.endAreaChildren - Content rendered in the end slot.
- * @param props.onSelectProjectMenuItem - Called with a sentinel item when a project-menu button is
- *   clicked (select-project, new-project, or view-project-info buttons).
- * @param props.onSelectViewInfoMenuItem - Called with a generic sentinel item when the view-info
- *   button is clicked.
- * @returns A div with `data-testid="tab-toolbar"` containing the rendered buttons.
- */
 export function TabToolbar({
   startAreaChildren,
   endAreaChildren,
@@ -89,8 +76,8 @@ export function TabToolbar({
   startAreaChildren?: ReactNode;
   centerAreaChildren?: ReactNode;
   endAreaChildren?: ReactNode;
-  onSelectProjectMenuItem: (selectedMenuItem: unknown) => void;
-  onSelectViewInfoMenuItem: (selectedMenuItem: unknown) => void;
+  onSelectProjectMenuItem: SelectMenuItemHandler;
+  onSelectViewInfoMenuItem: SelectMenuItemHandler;
   projectMenuData?: unknown;
   tabViewMenuData?: unknown;
   id?: string;
@@ -104,16 +91,42 @@ export function TabToolbar({
         <button
           type="button"
           data-testid="tab-toolbar-project-menu"
-          onClick={() => onSelectProjectMenuItem(undefined)}
+          onClick={() => onSelectProjectMenuItem(MOCK_CREATE_PROJECT_MENU_ITEM)}
         >
           Project menu
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-new-project"
+          onClick={() => onSelectProjectMenuItem(MOCK_NEW_PROJECT_MENU_ITEM)}
+        >
+          New project
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-view-project-info"
+          onClick={() => onSelectProjectMenuItem(MOCK_VIEW_PROJECT_INFO_MENU_ITEM)}
+        >
+          View project info
         </button>
       )}
       {onSelectViewInfoMenuItem && (
         <button
           type="button"
           data-testid="tab-toolbar-view-info-menu"
-          onClick={() => onSelectViewInfoMenuItem(undefined)}
+          onClick={() =>
+            onSelectViewInfoMenuItem({
+              label: '%mock.viewInfo%',
+              command: 'mock.viewInfo',
+              group: 'mock.group',
+              order: 0,
+              localizeNotes: '',
+            })
+          }
         >
           View info menu
         </button>
@@ -161,21 +174,6 @@ export function ScrollGroupSelector({
   );
 }
 
-/**
- * Stub button that passes through `children`, `onClick`, `type`, `className`, `disabled`,
- * `aria-label`, and forwards them to a native `<button>` element; `variant` and `size` are
- * accepted but ignored.
- *
- * @param props - Component props.
- * @param props.children - Button content.
- * @param props.onClick - Click handler.
- * @param props.type - HTML button type attribute.
- * @param props.className - CSS class names.
- * @param props.disabled - Whether the button is disabled.
- * @param props.variant - Ignored styling variant.
- * @param props.size - Ignored size variant.
- * @returns A native `<button>` element with `aria-label` forwarded.
- */
 export function Button({
   children,
   onClick,
@@ -208,16 +206,6 @@ export function Button({
   );
 }
 
-/**
- * Stub book/chapter control that displays the current reference as text and exposes a single
- * "Submit reference" button so tests can simulate reference changes without the real picker UI.
- *
- * @param props - Component props.
- * @param props.scrRef - The currently displayed scripture reference.
- * @param props.handleSubmit - Called with `scrRef` when the submit button is clicked.
- * @param props.onAddRecentSearch - Called with `scrRef` after `handleSubmit` when provided.
- * @returns A `<div data-testid="book-chapter-control">` with a submit button.
- */
 export function BookChapterControl({
   scrRef,
   handleSubmit,

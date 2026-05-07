@@ -43,7 +43,7 @@ const testProps = {
 describe('ProjectMetadataModal', () => {
   beforeEach(() => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
-    mockSendCommand.mockResolvedValue('{}');
+    mockSendCommand.mockResolvedValue(undefined);
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
@@ -193,23 +193,7 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
-  it('does not call onProjectSaved, onClose, or send a notification when save sendCommand resolves with a falsy value', async () => {
-    mockSendCommand.mockResolvedValue(undefined);
-    const onProjectSaved = jest.fn();
-    const onClose = jest.fn();
-    render(
-      <ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} onClose={onClose} />,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
-    expect(onProjectSaved).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
-  });
-
-  it('does not call onProjectSaved, onClose, or send a notification when save sendCommand rejects', async () => {
+  it('does not call onProjectSaved or onClose when save sendCommand rejects, but sends an error notification', async () => {
     mockSendCommand.mockRejectedValue(new Error('save failed'));
     const onProjectSaved = jest.fn();
     const onClose = jest.fn();
@@ -219,13 +203,16 @@ describe('ProjectMetadataModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      ),
+    );
     expect(onProjectSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectDeleted, onClose, or send a notification when delete sendCommand rejects', async () => {
+  it('does not call onProjectDeleted or onClose when delete sendCommand rejects, but sends an error notification', async () => {
     mockSendCommand.mockRejectedValue(new Error('delete failed'));
     const onProjectDeleted = jest.fn();
     const onClose = jest.fn();
@@ -236,66 +223,13 @@ describe('ProjectMetadataModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
-    expect(onProjectDeleted).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
-  });
-
-  it('trims whitespace from the language input before saving', async () => {
-    render(<ProjectMetadataModal {...testProps} />);
-
-    const langInput = screen.getByLabelText(/analysis language/i);
-    await userEvent.clear(langInput);
-    await userEvent.type(langInput, '  fr  ');
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
     await waitFor(() =>
-      expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.updateProjectMetadata',
-        'il-project-uuid',
-        undefined,
-        undefined,
-        'fr',
+      expect(papi.notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
       ),
     );
-  });
-
-  it('sends the save command only once when Save is double-clicked before the first resolves', async () => {
-    let resolveCommand: (value: string) => void = () => {};
-    mockSendCommand.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveCommand = resolve;
-        }),
-    );
-    render(<ProjectMetadataModal {...testProps} />);
-
-    const saveButton = screen.getByRole('button', { name: /^save$/i });
-    await userEvent.click(saveButton);
-    await userEvent.click(saveButton);
-    resolveCommand('{}');
-
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
-  });
-
-  it('sends the delete command only once when delete-confirm is double-clicked before the first resolves', async () => {
-    let resolveCommand: (value: string) => void = () => {};
-    mockSendCommand.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveCommand = resolve;
-        }),
-    );
-    render(<ProjectMetadataModal {...testProps} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    const confirmButton = screen.getByRole('button', { name: /^delete$/i });
-    await userEvent.click(confirmButton);
-    await userEvent.click(confirmButton);
-    resolveCommand('{}');
-
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
+    expect(onProjectDeleted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('disables the Save button when the language field is empty', async () => {

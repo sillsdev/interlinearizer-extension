@@ -92,7 +92,9 @@ globalThis.webViewComponent = function InterlinearizerWebView({
               />
             )
           }
+          /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
           onSelectProjectMenuItem={() => {}}
+          /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
           onSelectViewInfoMenuItem={() => {}}
         />
         {projectId && !bookError && !tokenizeError && !isLoading && book && continuousScroll && (

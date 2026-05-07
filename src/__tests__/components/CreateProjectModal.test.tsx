@@ -100,11 +100,14 @@ describe('CreateProjectModal', () => {
   });
 
   it('calls onClose after submitting when sendCommand returns a project JSON', async () => {
-    jest
-      .mocked(papi.commands.sendCommand)
-      .mockResolvedValue(
-        JSON.stringify({ id: 'new-project-id', createdAt: '2026-01-01T00:00:00.000Z' }),
-      );
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(
+      JSON.stringify({
+        id: 'new-project-id',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        sourceProjectId: testProjectId,
+        analysisWritingSystem: 'en',
+      }),
+    );
     const onClose = jest.fn();
     render(<CreateProjectModal projectId={testProjectId} onClose={onClose} />);
 
@@ -143,6 +146,29 @@ describe('CreateProjectModal', () => {
     await waitFor(() =>
       expect(onProjectCreated).toHaveBeenCalledWith(expect.objectContaining(persistedProject)),
     );
+  });
+
+  it('does not call onProjectCreated or onClose and sends an error notification when sendCommand returns malformed JSON', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify({ bad: 'shape' }));
+    const onProjectCreated = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <CreateProjectModal
+        projectId={testProjectId}
+        onClose={onClose}
+        onProjectCreated={onProjectCreated}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      ),
+    );
+    expect(onProjectCreated).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {

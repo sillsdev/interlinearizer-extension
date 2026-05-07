@@ -1,6 +1,7 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
 import type { Token } from 'interlinearizer';
-import TokenChip from './TokenChip';
+import { memo } from 'react';
+import MemoizedTokenChip from './TokenChip';
 
 /**
  * Wraps one or more tokens in a phrase-level visual container.
@@ -10,13 +11,15 @@ import TokenChip from './TokenChip';
  * @param props.tokens - Tokens belonging to this phrase
  * @returns A bordered inline container
  */
-export default function PhraseBox({
+export function PhraseBox({
+  index,
   isFocused = false,
   onClick,
   tokens,
 }: Readonly<{
+  index?: number;
   isFocused?: boolean;
-  onClick?: () => void;
+  onClick?: (index?: number) => void;
   tokens: Token[];
 }>) {
   const baseClass = isFocused
@@ -25,7 +28,7 @@ export default function PhraseBox({
   const innerContent = (
     <span className="tw-inline-flex tw-items-center tw-gap-1">
       {tokens.map((token) => (
-        <TokenChip key={token.id} token={token} />
+        <MemoizedTokenChip key={token.id} token={token} />
       ))}
     </span>
   );
@@ -36,7 +39,7 @@ export default function PhraseBox({
         className={`${baseClass} tw-cursor-pointer tw-text-left hover:tw-bg-muted/30`}
         data-focus-state={isFocused ? 'focused' : 'default'}
         data-phrase-box="true"
-        onClick={onClick}
+        onClick={() => onClick?.(index)}
         type="button"
       >
         {innerContent}
@@ -54,3 +57,6 @@ export default function PhraseBox({
     </span>
   );
 }
+
+const MemoizedPhraseBox = memo(PhraseBox);
+export default MemoizedPhraseBox;

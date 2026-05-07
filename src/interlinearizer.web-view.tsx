@@ -13,7 +13,7 @@ import {
 } from 'platform-bible-react';
 import ContinuousScrollToggle from './components/ContinuousScrollToggle';
 import ContinuousView from './components/ContinuousView';
-import SegmentView from './components/SegmentView';
+import MemoizedSegmentView from './components/SegmentView';
 import useInterlinearizerBookData from './hooks/useInterlinearizerBookData';
 
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
@@ -175,7 +175,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
             {!bookError && !tokenizeError && !isLoading && chapterSegments.length > 0 && (
               <div className="tw-flex tw-flex-col tw-gap-2">
                 {chapterSegments.map((seg) => (
-                  <SegmentView
+                  <MemoizedSegmentView
                     key={seg.id}
                     segment={seg}
                     isActive={seg.startRef.verse === scrRef.verseNum}

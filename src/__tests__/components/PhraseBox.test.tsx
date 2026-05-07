@@ -5,7 +5,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Token } from 'interlinearizer';
-import PhraseBox from '../../components/PhraseBox';
+import { PhraseBox } from '../../components/PhraseBox';
 
 jest.mock('../../components/TokenChip', () => ({
   __esModule: true,

@@ -5,7 +5,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Segment } from 'interlinearizer';
-import SegmentView from '../../components/SegmentView';
+import { SegmentView } from '../../components/SegmentView';
 
 /** A word token segment. */
 const WORD_SEGMENT: Segment = {

@@ -1,6 +1,7 @@
 import type { Segment } from 'interlinearizer';
-import TokenChip from './TokenChip';
-import PhraseBox from './PhraseBox';
+import { memo } from 'react';
+import MemoizedPhraseBox from './PhraseBox';
+import MemoizedTokenChip from './TokenChip';
 
 /** The two display modes for {@link SegmentView}. */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
@@ -15,7 +16,7 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  * @param props.segment - The segment to render
  * @returns A button containing the segment's verse label and content
  */
-export default function SegmentView({
+export function SegmentView({
   displayMode = 'token-chip',
   isActive,
   onClick,
@@ -48,9 +49,9 @@ export default function SegmentView({
         <span className="tw-flex tw-flex-wrap tw-gap-1">
           {segment.tokens.map((token) =>
             token.type === 'word' ? (
-              <PhraseBox key={token.id} tokens={[token]} />
+              <MemoizedPhraseBox key={token.id} tokens={[token]} />
             ) : (
-              <TokenChip key={token.id} token={token} />
+              <MemoizedTokenChip key={token.id} token={token} />
             ),
           )}
         </span>
@@ -58,3 +59,6 @@ export default function SegmentView({
     </button>
   );
 }
+
+const MemoizedSegmentView = memo(SegmentView);
+export default MemoizedSegmentView;

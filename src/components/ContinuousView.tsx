@@ -1,8 +1,8 @@
 /** @file Continuous horizontal token-strip viewer for a full book. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Book, Token } from 'interlinearizer';
-import TokenChip from './TokenChip';
-import PhraseBox from './PhraseBox';
+import MemoizedPhraseBox from './PhraseBox';
+import MemoizedTokenChip from './TokenChip';
 
 /** A verse coordinate used to drive the strip's scroll position. */
 export interface VerseCoordinate {
@@ -244,6 +244,15 @@ export default function ContinuousView({
     setFocusPhraseIndex((i) => (i < max ? i + 1 : i));
   }, []);
 
+  const handlePhraseSelect = useCallback(
+    (index?: number) => {
+      if (index !== undefined && index !== focusPhraseIndex) {
+        setFocusPhraseIndex(index);
+      }
+    },
+    [focusPhraseIndex],
+  );
+
   useEffect(() => {
     const isExternalJump = isExternalJumpInProgressRef.current;
     const isInitialLoad = isInitialLoadInProgressRef.current;
@@ -313,7 +322,7 @@ export default function ContinuousView({
           }}
         >
           {allTokens.map((token, tokenIndex) => {
-            if (token.type !== 'word') return <TokenChip key={token.id} token={token} />;
+            if (token.type !== 'word') return <MemoizedTokenChip key={token.id} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
@@ -324,13 +333,10 @@ export default function ContinuousView({
                   if (phraseIndex !== undefined) phraseRefs.current[phraseIndex] = el;
                 }}
               >
-                <PhraseBox
+                <MemoizedPhraseBox
+                  index={phraseIndex}
                   isFocused={isFocusedPhrase}
-                  onClick={() => {
-                    if (phraseIndex !== undefined && phraseIndex !== focusPhraseIndex) {
-                      setFocusPhraseIndex(phraseIndex);
-                    }
-                  }}
+                  onClick={handlePhraseSelect}
                   tokens={[token]}
                 />
               </span>

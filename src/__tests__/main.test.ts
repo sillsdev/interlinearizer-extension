@@ -779,13 +779,11 @@ describe('main', () => {
       expect(result).toBe(JSON.stringify([stubProject]));
     });
 
-    it('returns "[]" and logs an error when storage throws', async () => {
+    it('throws and logs an error when storage throws', async () => {
       mockGetProjectsForSource.mockRejectedValue(new Error('disk full'));
       const handler = await getProjectsForSourceHandler();
 
-      const result = await handler('src-project');
-
-      expect(result).toBe('[]');
+      await expect(handler('src-project')).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to list projects for source',
         expect.any(Error),

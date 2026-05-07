@@ -286,13 +286,13 @@ describe('ContinuousView rendering', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView arrow disabled states', () => {
-  it('disables the left arrow on initial render (book start)', () => {
+  it('disables the prev arrow on initial render (book start)', () => {
     render(<ContinuousView book={makeBook()} />);
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 
-  it('enables the right arrow on initial render when there are multiple tokens', () => {
+  it('enables the next arrow on initial render when there are multiple tokens', () => {
     render(<ContinuousView book={makeBook()} />);
 
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
@@ -305,7 +305,7 @@ describe('ContinuousView arrow disabled states', () => {
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
   });
 
-  it('enables the left arrow after clicking right once', async () => {
+  it('enables the prev arrow after clicking next once', async () => {
     render(<ContinuousView book={makeBook()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
@@ -313,7 +313,7 @@ describe('ContinuousView arrow disabled states', () => {
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 
-  it('disables the right arrow when advanced to the last token', async () => {
+  it('disables the next arrow when advanced to the last token', async () => {
     render(<ContinuousView book={makeBook()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
@@ -325,7 +325,7 @@ describe('ContinuousView arrow disabled states', () => {
     expect(nextBtn).toBeDisabled();
   });
 
-  it('re-enables the right arrow after going left from the last token', async () => {
+  it('re-enables the next arrow after going prev from the last token', async () => {
     render(<ContinuousView book={makeBook()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
@@ -346,40 +346,40 @@ describe('ContinuousView arrow disabled states', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView fade overlays', () => {
-  it('does not render left fade at book start', () => {
+  it('does not render prev fade at book start', () => {
     const { container } = render(<ContinuousView book={makeBook()} />);
 
-    // Left fade gradient is tw-from-background (left-to-right gradient)
+    // Prev fade gradient is tw-from-background (prev-to-next gradient)
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const leftFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw-bg-gradient-to-r'),
+    const prevFades = Array.from(gradients).filter((el) =>
+      el.className.includes('tw-bg-gradient-to-e'),
     );
-    expect(leftFades).toHaveLength(0);
+    expect(prevFades).toHaveLength(0);
   });
 
-  it('renders right fade at book start (right side is enabled)', () => {
+  it('renders next fade at book start (next side is enabled)', () => {
     const { container } = render(<ContinuousView book={makeBook()} />);
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const rightFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw-bg-gradient-to-l'),
+    const nextFades = Array.from(gradients).filter((el) =>
+      el.className.includes('tw-bg-gradient-to-s'),
     );
-    expect(rightFades).toHaveLength(1);
+    expect(nextFades).toHaveLength(1);
   });
 
-  it('renders left fade after moving away from book start', async () => {
+  it('renders prev fade after moving away from book start', async () => {
     const { container } = render(<ContinuousView book={makeBook()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const leftFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw-bg-gradient-to-r'),
+    const prevFades = Array.from(gradients).filter((el) =>
+      el.className.includes('tw-bg-gradient-to-e'),
     );
-    expect(leftFades).toHaveLength(1);
+    expect(prevFades).toHaveLength(1);
   });
 
-  it('does not render right fade at book end', async () => {
+  it('does not render next fade at book end', async () => {
     const { container } = render(<ContinuousView book={makeBook()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
@@ -388,10 +388,10 @@ describe('ContinuousView fade overlays', () => {
     await userEvent.click(nextBtn);
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const rightFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw-bg-gradient-to-l'),
+    const nextFades = Array.from(gradients).filter((el) =>
+      el.className.includes('tw-bg-gradient-to-s'),
     );
-    expect(rightFades).toHaveLength(0);
+    expect(nextFades).toHaveLength(0);
   });
 });
 
@@ -408,15 +408,15 @@ describe('ContinuousView cross-chapter traversal', () => {
     expect(screen.getByText('Beta')).toBeInTheDocument();
   });
 
-  it('can navigate across a chapter boundary with the right arrow', async () => {
+  it('can navigate across a chapter boundary with the next arrow', async () => {
     render(<ContinuousView book={makeTwoChapterBook()} />);
 
-    // Only one token per chapter, so clicking right once reaches chapter 2's token (index 1 = last)
+    // Only one token per chapter, so clicking next once reaches chapter 2's token (index 1 = last)
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
-    // Right arrow should now be disabled (at end = last token = chapter 2 token)
+    // Next arrow should now be disabled (at end = last token = chapter 2 token)
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    // Left arrow should be enabled
+    // Prev arrow should be enabled
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 });
@@ -426,7 +426,7 @@ describe('ContinuousView cross-chapter traversal', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView smooth-scroll intent', () => {
-  it('calls scrollIntoView with smooth behaviour when right arrow is clicked', async () => {
+  it('calls scrollIntoView with smooth behaviour when next arrow is clicked', async () => {
     render(<ContinuousView book={makeBook()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
@@ -436,7 +436,7 @@ describe('ContinuousView smooth-scroll intent', () => {
     );
   });
 
-  it('calls scrollIntoView with smooth behaviour when left arrow is clicked', async () => {
+  it('calls scrollIntoView with smooth behaviour when prev arrow is clicked', async () => {
     render(<ContinuousView book={makeBook()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
@@ -453,7 +453,7 @@ describe('ContinuousView smooth-scroll intent', () => {
     render(<ContinuousView book={makeBook()} />);
     scrollIntoViewMock.mockClear();
 
-    // Left arrow is disabled at start — clicking it should be a no-op
+    // Prev arrow is disabled at start — clicking it should be a no-op
     await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
 
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
@@ -478,7 +478,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
     );
 
-    // At index 0 the left arrow should be disabled
+    // At index 0 the prev arrow should be disabled
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 
@@ -496,7 +496,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
       jest.advanceTimersByTime(500);
     });
 
-    // focusIndex is now 2 (first token of segment 2), so left arrow should be enabled
+    // focusIndex is now 2 (first token of segment 2), so prev arrow should be enabled
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 
@@ -518,7 +518,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
       jest.advanceTimersByTime(500);
     });
 
-    // Chapter 2 starts at index 1 (the last token), so right arrow should be disabled
+    // Chapter 2 starts at index 1 (the last token), so next arrow should be disabled
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
@@ -548,7 +548,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
       <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
     );
 
-    // Index 2 is not the start (left enabled) and not the end (right enabled).
+    // Index 2 is not the start (prev enabled) and not the end (next enabled).
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
   });
@@ -575,7 +575,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView onVerseChange propagation', () => {
-  it('calls onVerseChange when the right arrow crosses into a new verse', async () => {
+  it('calls onVerseChange when the next arrow crosses into a new verse', async () => {
     // makeBook(): segment GEN 1:1 has tokens at index 0,1; GEN 1:2 starts at index 2
     const handleVerseChange = jest.fn();
     render(<ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />);
@@ -587,7 +587,7 @@ describe('ContinuousView onVerseChange propagation', () => {
     expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
   });
 
-  it('calls onVerseChange when the left arrow crosses back into a prior verse', async () => {
+  it('calls onVerseChange when the prev arrow crosses back into a prior verse', async () => {
     const handleVerseChange = jest.fn();
     render(
       <ContinuousView
@@ -598,7 +598,7 @@ describe('ContinuousView onVerseChange propagation', () => {
     );
     handleVerseChange.mockClear();
 
-    // focusIndex is at 2 (first token of GEN 1:2); go left to cross back to GEN 1:1
+    // focusIndex is at 2 (first token of GEN 1:2); go prev to cross back to GEN 1:1
     await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
 
     expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 });
@@ -667,7 +667,7 @@ describe('ContinuousView onVerseChange propagation', () => {
       />,
     );
 
-    // Focus stays at index 2: left arrow enabled, right arrow enabled (not at start or end).
+    // Focus stays at index 2: prev arrow enabled, next arrow enabled (not at start or end).
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
     // onVerseChange must not have been called a second time (no loop).
@@ -700,7 +700,7 @@ describe('ContinuousView onVerseChange propagation', () => {
       />,
     );
 
-    // If focus was incorrectly reset to the first phrase of the verse ("beginning"), the right
+    // If focus was incorrectly reset to the first phrase of the verse ("beginning"), the next
     // arrow would be enabled. Staying on "God" keeps us at strip end, so it remains disabled.
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
     expect(godPhraseBox).toHaveAttribute('data-focus-state', 'focused');
@@ -784,7 +784,7 @@ describe('ContinuousView non-word tokens and word-free paths', () => {
     });
     jest.useRealTimers();
 
-    // No jump occurred; focus stays at GEN 1:1 (index 0), so left arrow remains disabled.
+    // No jump occurred; focus stays at GEN 1:1 (index 0), so prev arrow remains disabled.
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });

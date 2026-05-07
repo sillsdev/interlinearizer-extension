@@ -19,8 +19,8 @@ export interface VerseCoordinate {
  *
  * Edge behaviour:
  *
- * - Left arrow is disabled (and left fade suppressed) when the first token is focused.
- * - Right arrow is disabled (and right fade suppressed) when the last token is focused.
+ * - Previous arrow is disabled (and previous fade suppressed) when the first token is focused.
+ * - Next arrow is disabled (and next fade suppressed) when the last token is focused.
  *
  * When `activeVerse` changes the strip jumps to the first token of the matching segment. When arrow
  * navigation crosses a verse boundary `onVerseChange` is called with the new verse coordinate.
@@ -30,7 +30,7 @@ export interface VerseCoordinate {
  *   first token of the matching segment
  * @param props.book - The full tokenized book whose tokens should be streamed
  * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
- * @returns A horizontal token strip with left/right navigation arrows and edge-fade overlays
+ * @returns A horizontal token strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
   activeVerse,
@@ -248,16 +248,18 @@ export default function ContinuousView({
   const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw-opacity-100' : 'tw-opacity-0';
 
-  const goLeft = useCallback(() => {
-    /* v8 ignore next -- false branch (i === 0) is guarded by the disabled button */
-    setFocusPhraseIndex((i) => (i > 0 ? i - 1 : i));
+  const step = useCallback((delta: number) => {
+    setFocusPhraseIndex((i) => {
+      const nextIndex = i + delta;
+      if (nextIndex < 0) return 0;
+      if (nextIndex >= phraseEntriesRef.current.length) return phraseEntriesRef.current.length - 1;
+      return nextIndex;
+    });
   }, []);
 
-  const goRight = useCallback(() => {
-    const max = phraseEntriesRef.current.length - 1;
-    /* v8 ignore next -- false branch (i >= max) is guarded by the disabled button */
-    setFocusPhraseIndex((i) => (i < max ? i + 1 : i));
-  }, []);
+  const stepPrev = useCallback(() => step(-1), [step]);
+
+  const stepNext = useCallback(() => step(1), [step]);
 
   const handlePhraseSelect = useCallback(
     (index?: number) => {
@@ -299,32 +301,37 @@ export default function ContinuousView({
 
   return (
     <div className="tw-relative tw-flex tw-items-center tw-gap-1">
-      {/* Left navigation arrow */}
+      {/* Previous navigation arrow */}
       <button
         aria-label="Previous token"
         className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
         disabled={atStart}
-        onClick={goLeft}
+        onClick={stepPrev}
         type="button"
       >
-        &#8592;
+        <span aria-hidden="true" className="ltr:tw-inline rtl:tw-hidden">
+          &#8592;
+        </span>
+        <span aria-hidden="true" className="ltr:tw-hidden rtl:tw-inline">
+          &#8594;
+        </span>
       </button>
 
       {/* Scrollable token strip */}
       <div className="tw-relative tw-flex-1 tw-overflow-hidden">
-        {/* Left fade overlay — only rendered when the left arrow is enabled */}
+        {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (
           <div
             aria-hidden="true"
-            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-left-0 tw-z-10 tw-w-8 tw-bg-gradient-to-r tw-from-background tw-to-transparent"
+            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-start-0 tw-z-10 tw-w-8 tw-bg-gradient-to-e tw-from-background tw-to-transparent"
           />
         )}
 
-        {/* Right fade overlay — only rendered when the right arrow is enabled */}
+        {/* Next fade overlay — only rendered when the next arrow is enabled */}
         {!atEnd && (
           <div
             aria-hidden="true"
-            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-right-0 tw-z-10 tw-w-8 tw-bg-gradient-to-l tw-from-background tw-to-transparent"
+            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-end-0 tw-z-10 tw-w-8 tw-bg-gradient-to-s tw-from-background tw-to-transparent"
           />
         )}
 
@@ -360,15 +367,20 @@ export default function ContinuousView({
         </div>
       </div>
 
-      {/* Right navigation arrow */}
+      {/* Next navigation arrow */}
       <button
         aria-label="Next token"
         className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
         disabled={atEnd}
-        onClick={goRight}
+        onClick={stepNext}
         type="button"
       >
-        &#8594;
+        <span aria-hidden="true" className="ltr:tw-inline rtl:tw-hidden">
+          &#8594;
+        </span>
+        <span aria-hidden="true" className="ltr:tw-hidden rtl:tw-inline">
+          &#8592;
+        </span>
       </button>
     </div>
   );

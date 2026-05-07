@@ -88,18 +88,19 @@ export function ProjectMetadataModal({
   const handleSave = useCallback(async () => {
     const newName = editName || undefined;
     const newDescription = editDescription || undefined;
+    const newLanguage = editLanguage.trim();
     try {
       await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
-        editLanguage,
+        newLanguage,
       );
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisWritingSystem: editLanguage,
+        analysisWritingSystem: newLanguage,
       });
       onClose();
     } catch (e) {

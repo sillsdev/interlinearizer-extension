@@ -16,7 +16,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   return (
-    <div className="tw-flex tw-flex-col">
+    <div className="tw-flex tw-flex-col tw-h-full">
       {projectId ? (
         <InterlinearizerLoader
           projectId={projectId}

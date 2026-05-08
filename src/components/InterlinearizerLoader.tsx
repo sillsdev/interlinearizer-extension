@@ -72,11 +72,12 @@ export default function InterlinearizerLoader({
     />
   );
 
-  return hasError || showLoading || !book ? (
-    <div className="tw-flex tw-flex-col">
+  return (
+    <div className="tw-flex tw-flex-col tw-h-full">
       {toolbar}
-      <div className="tw-p-4">
-        <div className="tw-flex tw-flex-col tw-gap-4">
+
+      {hasError || showLoading || !book ? (
+        <div className="tw-flex tw-flex-col tw-gap-4 tw-p-4">
           {bookError && (
             <div className="tw-flex tw-flex-col tw-gap-2">
               <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error loading book</h2>
@@ -101,16 +102,15 @@ export default function InterlinearizerLoader({
             <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
           )}
         </div>
-      </div>
+      ) : (
+        <Interlinearizer
+          book={book}
+          bookSegments={chapterSegments}
+          continuousScroll={continuousScroll}
+          scrRef={scrRef}
+          setScrRef={setScrRef}
+        />
+      )}
     </div>
-  ) : (
-    <Interlinearizer
-      book={book}
-      bookSegments={chapterSegments}
-      continuousScroll={continuousScroll}
-      scrRef={scrRef}
-      setScrRef={setScrRef}
-      toolbar={toolbar}
-    />
   );
 }

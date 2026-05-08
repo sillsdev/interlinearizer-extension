@@ -135,7 +135,6 @@ function renderInterlinearizer({
       continuousScroll={continuousScroll}
       scrRef={scrRef}
       setScrRef={setScrRef}
-      toolbar={<div data-testid="toolbar" />}
     />,
   );
 }

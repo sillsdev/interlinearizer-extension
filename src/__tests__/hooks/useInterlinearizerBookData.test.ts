@@ -99,13 +99,7 @@ describe('useInterlinearizerBookData', () => {
     jest.mocked(useProjectSetting).mockReturnValue(['en', jest.fn(), jest.fn(), false]);
   };
 
-  beforeAll(() => {
-    setupDefaultProjectDataMock();
-    setupDefaultProjectSettingMock();
-  });
-
   beforeEach(() => {
-    jest.clearAllMocks();
     jest.mocked(logger.error).mockImplementation(() => {});
     setupDefaultProjectDataMock();
     setupDefaultProjectSettingMock();

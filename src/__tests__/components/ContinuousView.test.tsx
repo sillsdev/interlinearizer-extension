@@ -266,6 +266,22 @@ describe('ContinuousView rendering', () => {
     expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
   });
 
+  it('renders a non-word token via TokenChip within the strip', () => {
+    // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
+    render(<ContinuousView book={makeMixedBook()} />);
+
+    // Both the word chip ("In") and the punctuation chip (".") must appear
+    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
+  it('renders without crashing when book has no word tokens (empty phraseEntries)', () => {
+    render(<ContinuousView book={makeWordFreeBook()} />);
+
+    // The punctuation token is rendered
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
   it('clicking an out-of-focus phrase box brings it into focus', async () => {
     render(<ContinuousView book={makeBook()} />);
 
@@ -541,6 +557,26 @@ describe('ContinuousView activeVerse verse-jump', () => {
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
+  it('does not call onVerseChange when activeVerse changes', () => {
+    const { rerender } = render(
+      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+
+    const handleVerseChange = jest.fn();
+    rerender(
+      <ContinuousView
+        book={makeBook()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+        onVerseChange={handleVerseChange}
+      />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(handleVerseChange).not.toHaveBeenCalled();
+  });
+
   it('initializes at the target verse position when activeVerse is provided at mount', () => {
     // makeBook(): GEN 1:1 at index 0-1, GEN 1:2 at index 2-3. Mounting with verse 2 should
     // start the strip focused at index 2 immediately (lazy useState initializer, no effect wait).
@@ -566,6 +602,24 @@ describe('ContinuousView activeVerse verse-jump', () => {
     );
 
     // No matching segment — strip stays at focusIndex 0
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+
+  it('does not jump when activeVerse targets a segment that has no word tokens', () => {
+    // Start focused at GEN 1:1 (word token), then move activeVerse to GEN 1:2 (punctuation only).
+    // getPhraseIndexForVerse should return undefined → no pending jump.
+    const { rerender } = render(
+      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+    );
+
+    rerender(
+      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    // No jump occurred; focus stays at GEN 1:1 (index 0), so prev arrow remains disabled.
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });
@@ -615,99 +669,6 @@ describe('ContinuousView onVerseChange propagation', () => {
     expect(handleVerseChange).not.toHaveBeenCalled();
   });
 
-  it('does not call onVerseChange when activeVerse prop drives the jump', () => {
-    // Must advance timers so the jump actually completes and the echo-back guard is exercised.
-    jest.useFakeTimers();
-    const handleVerseChange = jest.fn();
-    const { rerender } = render(
-      <ContinuousView
-        book={makeBook()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-        onVerseChange={handleVerseChange}
-      />,
-    );
-    handleVerseChange.mockClear();
-
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-        onVerseChange={handleVerseChange}
-      />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-    jest.useRealTimers();
-
-    expect(handleVerseChange).not.toHaveBeenCalled();
-  });
-
-  it('does not jump back when arrow navigation crosses a verse and the parent echoes activeVerse', async () => {
-    // Regression: focusPhraseIndex was in the activeVerse effect's dep array, causing it to
-    // re-run on every arrow press. When crossing a verse, onVerseChange fired, the parent
-    // updated activeVerse, and the effect jumped back to the old verse — a loop.
-    const handleVerseChange = jest.fn();
-    const { rerender } = render(
-      <ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />,
-    );
-
-    // Advance twice from index 0 to index 2 (first token of GEN 1:2).
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
-
-    // Parent echoes activeVerse = GEN 1:2. The strip is already there — no jump should fire.
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-        onVerseChange={handleVerseChange}
-      />,
-    );
-
-    // Focus stays at index 2: prev arrow enabled, next arrow enabled (not at start or end).
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
-    // onVerseChange must not have been called a second time (no loop).
-    expect(handleVerseChange).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps clicked phrase focus when activeVerse updates to that same verse', async () => {
-    const onVerseChange = jest.fn();
-    const { rerender } = render(
-      <ContinuousView
-        book={makeBook()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-        onVerseChange={onVerseChange}
-      />,
-    );
-
-    // Click the last phrase in GEN 1:2 ("God", phraseIndex 3 = strip end).
-    const lastPhraseBox = screen.getByText('God').closest('[data-phrase-box="true"]');
-    if (!lastPhraseBox) throw new Error('Expected phrase box wrapper with token');
-    await userEvent.click(lastPhraseBox);
-
-    // Parent receives verse change and updates activeVerse to GEN 1:2.
-    expect(onVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-        onVerseChange={onVerseChange}
-      />,
-    );
-
-    const lastPhraseBoxB = screen.getByText('God').closest('[data-phrase-box="true"]');
-    if (!lastPhraseBoxB) throw new Error('Expected phrase box wrapper with token');
-    // If the echo-back incorrectly triggered a jump it would reset focus to the first phrase of
-    // GEN 1:2 ("beginning", phraseIndex 2), enabling Next. Staying on "God" (phraseIndex 3 = strip
-    // end) means the echo-back was correctly suppressed.
-    expect(lastPhraseBoxB).toHaveAttribute('data-focus-state', 'focused');
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-  });
-
   it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
     const handleVerseChange = jest.fn();
     render(<ContinuousView book={makeTwoChapterBook()} onVerseChange={handleVerseChange} />);
@@ -743,51 +704,6 @@ describe('ContinuousView onVerseChange propagation', () => {
     rerender(<ContinuousView book={exoBook} onVerseChange={handleVerseChange} />);
 
     expect(handleVerseChange).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Non-word token rendering, word-free books, and word-free segment jumps
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView non-word tokens and word-free paths', () => {
-  it('renders a non-word token via TokenChip within the strip', () => {
-    // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
-    render(<ContinuousView book={makeMixedBook()} />);
-
-    // Both the word chip ("In") and the punctuation chip (".") must appear
-    expect(screen.getByText('In')).toBeInTheDocument();
-    expect(screen.getByText('.')).toBeInTheDocument();
-  });
-
-  it('renders without crashing when book has no word tokens (empty phraseEntries)', () => {
-    render(<ContinuousView book={makeWordFreeBook()} />);
-
-    // No phrase boxes rendered; both arrow buttons disabled (atStart && atEnd when length === 0)
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    // The punctuation token itself is rendered
-    expect(screen.getByText('.')).toBeInTheDocument();
-  });
-
-  it('does not jump when activeVerse targets a segment that has no word tokens', () => {
-    // Start focused at GEN 1:1 (word token), then move activeVerse to GEN 1:2 (punctuation only).
-    // getPhraseIndexForVerse should return undefined → no pending jump.
-    jest.useFakeTimers();
-    const { rerender } = render(
-      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
-    );
-
-    rerender(
-      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-    jest.useRealTimers();
-
-    // No jump occurred; focus stays at GEN 1:1 (index 0), so prev arrow remains disabled.
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });
 

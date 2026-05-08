@@ -285,15 +285,31 @@ describe('ContinuousView rendering', () => {
   it('clicking an out-of-focus phrase box brings it into focus', async () => {
     render(<ContinuousView book={makeBook()} />);
 
-    const clickedToken = screen.getByText('beginning');
-    const clickedPhraseBox = clickedToken.closest('[data-phrase-box="true"]');
+    const clickedPhraseBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
     expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'default');
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
 
     await userEvent.click(clickedPhraseBox);
 
     expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'focused');
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+  });
+
+  it('clicking the already-focused phrase box leaves it focused', async () => {
+    render(<ContinuousView book={makeBook()} />);
+
+    // The first token is focused by default.
+    const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
+    expect(firstPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+
+    await userEvent.click(firstPhraseBox);
+
+    // Still focused, still at the start.
+    expect(firstPhraseBox).toHaveAttribute('data-focus-state', 'focused');
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 });
 

@@ -1,10 +1,14 @@
 import type { UseWebViewScrollGroupScrRefHook } from '@papi/core';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
+import { useMemo } from 'react';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
+import Interlinearizer from './Interlinearizer';
 import ScriptureNavControls from './ScriptureNavControls';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
-import Interlinearizer from './Interlinearizer';
+
+const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
 
 /**
  * Root component for loading the Interlinearizer. Loads book data and settings, then renders error
@@ -40,6 +44,8 @@ export default function InterlinearizerLoader({
   const hasError = !!bookError || !!tokenizeError;
   const showLoading = isLoading || isSettingLoading;
 
+  const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
+
   const toolbar = (
     <TabToolbar
       className="tw-z-10"
@@ -52,12 +58,12 @@ export default function InterlinearizerLoader({
         />
       }
       endAreaChildren={
-        !isSettingLoading && (
-          <ContinuousScrollToggle
-            checked={continuousScroll}
-            onCheckedChange={handleContinuousScrollChange}
-          />
-        )
+        <ContinuousScrollToggle
+          checked={continuousScroll}
+          disabled={isSettingLoading}
+          label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
+          onCheckedChange={handleContinuousScrollChange}
+        />
       }
       /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
       onSelectProjectMenuItem={() => {}}

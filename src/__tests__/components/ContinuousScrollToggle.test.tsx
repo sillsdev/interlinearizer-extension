@@ -2,19 +2,20 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ContinuousScrollToggle from '../../components/ContinuousScrollToggle';
 
 describe('ContinuousScrollToggle', () => {
-  beforeEach(() => {
-    jest
-      .mocked(useLocalizedStrings)
-      .mockReturnValue([
-        { '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll' },
-        false,
-      ]);
+  it('renders with a label', async () => {
+    render(
+      <ContinuousScrollToggle checked label="Continuous Scroll" onCheckedChange={jest.fn()} />,
+    );
+    const checkbox = screen.getByRole('checkbox');
+    const label = screen.getByText('Continuous Scroll');
+
+    expect(label).toBeInTheDocument();
+    expect(label).toHaveAttribute('for', checkbox.id);
   });
 
   it('calls onCheckedChange when toggled', async () => {

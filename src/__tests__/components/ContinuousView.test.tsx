@@ -684,11 +684,10 @@ describe('ContinuousView onVerseChange propagation', () => {
       />,
     );
 
-    // Click the second phrase in GEN 1:2 ("God", index 3 in the full strip).
-    const godToken = screen.getByText('God');
-    const godPhraseBox = godToken.closest('[data-phrase-box="true"]');
-    if (!godPhraseBox) throw new Error('Expected phrase box wrapper for token');
-    await userEvent.click(godPhraseBox);
+    // Click the last phrase in GEN 1:2 ("God", phraseIndex 3 = strip end).
+    const lastPhraseBox = screen.getByText('God').closest('[data-phrase-box="true"]');
+    if (!lastPhraseBox) throw new Error('Expected phrase box wrapper with token');
+    await userEvent.click(lastPhraseBox);
 
     // Parent receives verse change and updates activeVerse to GEN 1:2.
     expect(onVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
@@ -700,10 +699,13 @@ describe('ContinuousView onVerseChange propagation', () => {
       />,
     );
 
-    // If focus was incorrectly reset to the first phrase of the verse ("beginning"), the next
-    // arrow would be enabled. Staying on "God" keeps us at strip end, so it remains disabled.
+    const lastPhraseBoxB = screen.getByText('God').closest('[data-phrase-box="true"]');
+    if (!lastPhraseBoxB) throw new Error('Expected phrase box wrapper with token');
+    // If the echo-back incorrectly triggered a jump it would reset focus to the first phrase of
+    // GEN 1:2 ("beginning", phraseIndex 2), enabling Next. Staying on "God" (phraseIndex 3 = strip
+    // end) means the echo-back was correctly suppressed.
+    expect(lastPhraseBoxB).toHaveAttribute('data-focus-state', 'focused');
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    expect(godPhraseBox).toHaveAttribute('data-focus-state', 'focused');
   });
 
   it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {

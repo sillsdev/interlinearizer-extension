@@ -8,7 +8,8 @@ const TIMEOUT_MS = 15_000;
  * Manages a boolean project setting with optimistic UI updates.
  *
  * The local value is updated immediately on change and stays locked until timeout elapses, to allow
- * the stored setting to finish updating.
+ * the stored setting to finish updating. If the setting fails to save, the local value will persist
+ * rather than reverting.
  *
  * @param defaultValue - Default value used when the setting has not been persisted yet
  * @param projectId - PAPI project ID

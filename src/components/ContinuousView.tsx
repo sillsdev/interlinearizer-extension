@@ -67,8 +67,6 @@ export default function ContinuousView({
   const phraseEntriesRef = useRef(phraseEntries);
   phraseEntriesRef.current = phraseEntries;
 
-  const focusPhraseIndexRef = useRef(0);
-
   /** Flat token index -> phrase index lookup for focused rendering. */
   const phraseIndexByTokenIndex = useMemo(
     () =>
@@ -136,14 +134,6 @@ export default function ContinuousView({
     return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
   });
 
-  /**
-   * When activeVerse triggers a programmatic jump we record the target index here. The verse-change
-   * effect checks this before firing `onVerseChange` so the jump is not echoed back. Using the
-   * target index (rather than a boolean) avoids a race where the flag gets consumed by an unrelated
-   * tokenSegment reference change before the focusIndex state update arrives.
-   */
-  focusPhraseIndexRef.current = focusPhraseIndex;
-
   const jumpTargetRef = useRef<number | undefined>();
   const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
     number | undefined
@@ -184,9 +174,7 @@ export default function ContinuousView({
     isExternalJumpInProgressRef.current = true;
     setIsVisible(false);
     setPendingExternalJumpPhraseIndex(phraseIndex);
-    // focusPhraseIndexRef is a ref so it is always current without being a dependency.
-    // Listing focusPhraseIndex here would re-run the effect on every arrow press, causing the
-    // strip to jump back to the old verse before activeVerse has been updated by the parent.
+    // Exclude activeVerse to prevent rerun if the verse hasn't changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse, getPhraseIndexForVerse]);
 
@@ -267,14 +255,11 @@ export default function ContinuousView({
 
   const stepNext = useCallback(() => step(1), [step]);
 
-  const handlePhraseSelect = useCallback(
-    (index?: number) => {
-      if (index !== undefined && index !== focusPhraseIndex) {
-        setFocusPhraseIndex(index);
-      }
-    },
-    [focusPhraseIndex],
-  );
+  const handlePhraseSelect = useCallback((index?: number) => {
+    if (index !== undefined) {
+      setFocusPhraseIndex((prev) => (prev === index ? prev : index));
+    }
+  }, []);
 
   useEffect(() => {
     const isExternalJump = isExternalJumpInProgressRef.current;

@@ -5,7 +5,7 @@ const path = require('path');
 
 // Define directory lists
 const CORE_DIRS = [
-  () => path.join(process.env.APPDATA || '', 'Electron'),
+  () => (process.env.APPDATA ? path.join(process.env.APPDATA, 'Electron') : ''),
   path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
 ];
 

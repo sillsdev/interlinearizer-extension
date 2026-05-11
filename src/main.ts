@@ -166,6 +166,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
         severity: 'error',
       })
       .catch(() => {});
+    throw e;
   }
 }
 

@@ -426,6 +426,37 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
+    it('opens the create modal directly when the newProject menu item is clicked', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+
+      expect(screen.getByTestId('create-modal')).toBeInTheDocument();
+      expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
+    });
+
+    it('closes the create modal without showing another when close is clicked from menu source', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
+      await userEvent.click(screen.getByTestId('create-modal-close'));
+
+      expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
+    });
+
     it('closes the select modal when its close button is clicked', async () => {
       render(
         <InterlinearizerLoader
@@ -473,7 +504,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
     });
 
-    it('closes the create modal without opening another when close is clicked', async () => {
+    it('returns to the select modal when close is clicked after opening create from select', async () => {
       render(
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -487,7 +518,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('create-modal-close'));
 
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
+      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
     it('sets the active project and closes the select modal when a project is selected', async () => {
@@ -692,8 +723,8 @@ describe('InterlinearizerLoader', () => {
               localizeNotes: '',
             },
             {
-              command: 'interlinearizer.createProject',
-              label: 'Create',
+              command: 'interlinearizer.selectProject',
+              label: 'Select',
               group: 'g',
               order: 2,
               localizeNotes: '',

@@ -93,15 +93,26 @@ export default function InterlinearizerLoader({
   const [metadataSource, setMetadataSource] = useState<'select' | 'menu'>('menu');
 
   /**
-   * Routes top-menu commands to the appropriate modal. `createProject` opens the select modal;
-   * `viewProjectInfo` opens the metadata modal for the currently active project.
+   * Tracks where the create modal was opened from so the correct modal is restored on close.
+   * `'select'` means it was opened via "New Interlinear Project..." in the select modal; `'menu'`
+   * means it was opened directly from the top menu.
+   */
+  const [createSource, setCreateSource] = useState<'select' | 'menu'>('menu');
+
+  /**
+   * Routes top-menu commands to the appropriate modal. `selectProject` opens the select modal;
+   * `newProject` opens the create modal directly; `viewProjectInfo` opens the metadata modal for
+   * the currently active project.
    *
    * @param item - The menu item that was activated.
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {
-      if (item.command === 'interlinearizer.createProject') {
+      if (item.command === 'interlinearizer.selectProject') {
         setModal('select');
+      } else if (item.command === 'interlinearizer.newProject') {
+        setCreateSource('menu');
+        setModal('create');
       } else if (item.command === 'interlinearizer.viewProjectInfo') {
         if (activeProject) {
           setMetadataProject(activeProject);
@@ -263,7 +274,10 @@ export default function InterlinearizerLoader({
             setActiveProject(project);
             setModal('none');
           }}
-          onCreateNew={() => setModal('create')}
+          onCreateNew={() => {
+            setCreateSource('select');
+            setModal('create');
+          }}
           onClose={() => setModal('none')}
           onViewInfo={handleViewInfo}
         />
@@ -272,7 +286,7 @@ export default function InterlinearizerLoader({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
-          onClose={() => setModal('none')}
+          onClose={() => setModal(createSource === 'select' ? 'select' : 'none')}
           onProjectCreated={handleProjectCreated}
         />
       )}

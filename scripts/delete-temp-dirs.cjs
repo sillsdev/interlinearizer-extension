@@ -5,7 +5,19 @@ const path = require('path');
 
 // Define directory lists
 const CORE_DIRS = [
-  () => (process.env.APPDATA ? path.join(process.env.APPDATA, 'Electron') : ''),
+  () => {
+    /* eslint-disable no-nested-ternary */
+    const electronParent =
+      process.platform === 'win32'
+        ? process.env.APPDATA
+        : process.platform === 'linux'
+          ? path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '~', '.config'))
+          : process.platform === 'darwin'
+            ? path.join(process.env.HOME || '~', 'Library', 'Application Support')
+            : undefined;
+    /* eslint-enable no-nested-ternary */
+    return electronParent ? path.join(electronParent, 'Electron') : undefined;
+  },
   path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
 ];
 

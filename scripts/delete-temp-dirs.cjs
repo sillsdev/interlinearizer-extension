@@ -7,16 +7,18 @@ const path = require('path');
 const CORE_DIRS = [
   () => {
     /* eslint-disable no-nested-ternary */
-    const electronParent =
-      process.platform === 'win32'
-        ? process.env.APPDATA
-        : process.platform === 'linux'
-          ? path.join(process.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '~', '.config'))
+    let electronParent =
+      process.platform === 'win32' ? process.env.APPDATA : process.env.XDG_CONFIG_HOME;
+    if (!electronParent && process.env.HOME) {
+      electronParent =
+        process.platform === 'linux'
+          ? path.join(process.env.HOME, '.config')
           : process.platform === 'darwin'
-            ? path.join(process.env.HOME || '~', 'Library', 'Application Support')
-            : undefined;
+            ? path.join(process.env.HOME, 'Library', 'Application Support')
+            : '';
+    }
     /* eslint-enable no-nested-ternary */
-    return electronParent ? path.join(electronParent, 'Electron') : undefined;
+    return electronParent ? path.join(electronParent, 'Electron') : '';
   },
   path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
 ];
@@ -30,7 +32,7 @@ const EXT_DIRS = [
 /**
  * Delete a directory if it exists
  *
- * @param {string} dirPath - The directory path to delete
+ * @param {string | (() => string)} dirPath - The directory path to delete
  */
 function deleteDirectory(dirPath) {
   // Handle functions that generate paths (e.g., for environment variables)

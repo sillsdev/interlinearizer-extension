@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -88,6 +88,39 @@ function makeScrollGroupHook(
   ] => [scrRef, setScrRef, undefined, () => {}];
 }
 
+/** Typed read/write pair stored per key in {@link makeWebViewState}. */
+type StateSlot<T> = { get: () => T; set: (v: T) => void };
+
+/**
+ * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
+ * persists across re-renders within the same test without requiring any type assertions.
+ */
+function makeWebViewState() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const slots = new Map<string, StateSlot<any>>();
+  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
+    let slot: StateSlot<T> | undefined = slots.get(key);
+    if (slot === undefined) {
+      let stored = defaultValue;
+      slot = {
+        get: () => stored,
+        set: (v) => {
+          stored = v;
+        },
+      };
+      slots.set(key, slot);
+    }
+    const resolvedSlot = slot;
+    return [
+      resolvedSlot.get(),
+      (v: T) => resolvedSlot.set(v),
+      () => {
+        slots.delete(key);
+      },
+    ];
+  };
+}
+
 /**
  * Configures useInterlinearizerBookData to return the given state.
  *
@@ -133,6 +166,11 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     mockBookData();
     mockOptimisticSetting();
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+      );
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
     jest.mocked(useSetting).mockReturnValue(['simple', jest.fn(), jest.fn(), false]);
   });
@@ -143,6 +181,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -155,6 +194,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -168,6 +208,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -183,6 +224,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -196,6 +238,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -212,6 +255,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -228,6 +272,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -239,10 +284,12 @@ describe('InterlinearizerLoader', () => {
     // The book-stable ref logic lives in useInterlinearizerBookData, which is tested in its own
     // test file. This test verifies that InterlinearizerLoader passes scrRef into the hook and that
     // re-rendering with a new verse does not cause the hook to receive a new book ref.
+    const webViewState = makeWebViewState();
     const { rerender } = render(
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={webViewState}
       />,
     );
     rerender(
@@ -253,6 +300,7 @@ describe('InterlinearizerLoader', () => {
           chapterNum: 2,
           verseNum: 5,
         })}
+        useWebViewState={webViewState}
       />,
     );
 
@@ -267,6 +315,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -279,6 +328,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 
@@ -294,6 +344,7 @@ describe('InterlinearizerLoader', () => {
       <InterlinearizerLoader
         projectId={testProjectId}
         useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
       />,
     );
 

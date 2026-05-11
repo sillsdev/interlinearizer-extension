@@ -24,6 +24,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
         <InterlinearizerLoader
           projectId={projectId}
           useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}
+          useWebViewState={useWebViewState}
         />
       ) : (
         <p className="tw:text-sm tw:text-muted-foreground">

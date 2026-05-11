@@ -96,10 +96,11 @@ export default function ContinuousView({
   tokenSegmentRef.current = tokenSegment;
 
   /**
-   * Maps a verse coordinate to the phrase index of the first word token in the matching segment.
+   * Returns the phrase index of the first word token in the segment that matches `verse`, or
+   * `undefined` when `verse` is absent or does not match any known segment.
    *
-   * @param verse - The verse to look up; returns `undefined` when absent or unrecognized.
-   * @returns The phrase index, or `undefined` if no matching segment or no word token was found.
+   * @param verse - Target scripture reference to locate.
+   * @returns Zero-based phrase index, or `undefined` if the verse cannot be resolved.
    */
   const getPhraseIndexForVerse = useCallback(
     (verse?: ScriptureRef): number | undefined => {
@@ -251,9 +252,9 @@ export default function ContinuousView({
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /**
-   * Advances the focused phrase index by `delta`, clamped to `[0, phraseEntries.length - 1]`.
+   * Advances the focused phrase by `delta` positions, clamping to valid bounds.
    *
-   * @param delta - Signed step count; negative moves backward, positive moves forward.
+   * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
@@ -266,17 +267,16 @@ export default function ContinuousView({
     });
   }, []);
 
-  /** Moves focus one phrase toward the start. Bound to the previous arrow button. */
+  /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
 
-  /** Moves focus one phrase toward the end. Bound to the next arrow button. */
+  /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Moves focus to the phrase at `index` when clicked. No-op when `index` is `undefined` or already
-   * focused (avoids a redundant re-render).
+   * Sets the focused phrase to `index` when provided, ignoring calls with no argument.
    *
-   * @param index - Phrase index of the clicked `PhraseBox`, or `undefined` for punctuation chips.
+   * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
    */
   const handlePhraseSelect = useCallback((index?: number) => {
     if (index !== undefined) {

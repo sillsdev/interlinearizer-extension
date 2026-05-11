@@ -11,17 +11,22 @@ const path = require('path');
 
 // Define directory lists
 
+/* eslint-disable no-nested-ternary */
 let electronParent =
-  process.platform === 'win32' ? process.env.APPDATA : process.env.XDG_CONFIG_HOME;
+  process.platform === 'win32'
+    ? process.env.APPDATA
+    : process.platform === 'linux'
+      ? process.env.XDG_CONFIG_HOME
+      : '';
 if (!electronParent && process.env.HOME) {
   electronParent =
-    // eslint-disable-next-line no-nested-ternary
     process.platform === 'linux'
       ? path.join(process.env.HOME, '.config')
       : process.platform === 'darwin'
         ? path.join(process.env.HOME, 'Library', 'Application Support')
         : '';
 }
+/* eslint-enable no-nested-ternary */
 
 const CORE_DIRS = [
   electronParent ? path.join(electronParent, 'Platform.Bible') : '',

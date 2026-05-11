@@ -17,7 +17,7 @@ import {
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 
-const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
+const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
 /** Which modal is currently visible. Only one can be open at a time. */
 type ModalState = 'none' | 'select' | 'create' | 'metadata';
@@ -64,7 +64,7 @@ export default function InterlinearizerLoader({
   const hasError = !!bookError || !!tokenizeError;
   const showLoading = isLoading || isSettingLoading;
 
-  const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -73,10 +73,9 @@ export default function InterlinearizerLoader({
    * restores. Updated after creation and when the user selects an existing project from the
    * picker.
    */
-  const [activeProject, setActiveProject] = useWebViewState<ActiveProjectState | undefined>(
-    'activeProject',
-    undefined,
-  );
+  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
+    ActiveProjectState | undefined
+  >('activeProject', undefined);
 
   /**
    * The project currently open in the metadata modal. Set when the user clicks the info icon in the
@@ -163,11 +162,11 @@ export default function InterlinearizerLoader({
    */
   const handleMetadataProjectDeleted = useCallback(
     (deletedId: string) => {
-      if (activeProject?.id === deletedId) setActiveProject(undefined);
+      if (activeProject?.id === deletedId) resetActiveProject();
       setModal(metadataSource === 'select' ? 'select' : 'none');
       setMetadataProject(undefined);
     },
-    [activeProject, metadataSource, setActiveProject],
+    [activeProject, metadataSource, resetActiveProject],
   );
 
   /**

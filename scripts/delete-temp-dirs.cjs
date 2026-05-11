@@ -1,25 +1,33 @@
 const fs = require('fs');
 const path = require('path');
 
-/** Cross-platform script to delete temporary and cache directories */
+/**
+ * Cross-platform script to delete temporary and cache directories. Run this if Platform.Bible is
+ * holding on to outdated resources, such as localization strings, project data, or WebView ids.
+ *
+ * Warning: The `--core` flag will delete:
+ *
+ * - The `Electron/` cache directory, which holds the cache for all Electron apps that don't have a
+ *   `name` or `productName` specified in their `package.json`.
+ * - `paranext-core/dev-appdata/`, which includes `installed-extensions/`.
+ */
 
 // Define directory lists
+
+let electronParent =
+  process.platform === 'win32' ? process.env.APPDATA : process.env.XDG_CONFIG_HOME;
+if (!electronParent && process.env.HOME) {
+  electronParent =
+    // eslint-disable-next-line no-nested-ternary
+    process.platform === 'linux'
+      ? path.join(process.env.HOME, '.config')
+      : process.platform === 'darwin'
+        ? path.join(process.env.HOME, 'Library', 'Application Support')
+        : '';
+}
+
 const CORE_DIRS = [
-  () => {
-    /* eslint-disable no-nested-ternary */
-    let electronParent =
-      process.platform === 'win32' ? process.env.APPDATA : process.env.XDG_CONFIG_HOME;
-    if (!electronParent && process.env.HOME) {
-      electronParent =
-        process.platform === 'linux'
-          ? path.join(process.env.HOME, '.config')
-          : process.platform === 'darwin'
-            ? path.join(process.env.HOME, 'Library', 'Application Support')
-            : '';
-    }
-    /* eslint-enable no-nested-ternary */
-    return electronParent ? path.join(electronParent, 'Electron') : '';
-  },
+  electronParent ? path.join(electronParent, 'Electron') : '',
   path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
 ];
 
@@ -32,28 +40,27 @@ const EXT_DIRS = [
 /**
  * Delete a directory if it exists
  *
- * @param {string | (() => string)} dirPath - The directory path to delete
+ * @param {string} dirPath - The directory path to delete
  */
 function deleteDirectory(dirPath) {
-  // Handle functions that generate paths (e.g., for environment variables)
-  const resolvedPath = typeof dirPath === 'function' ? dirPath() : dirPath;
-
-  if (!resolvedPath) {
-    console.log('⊘ Path could not be resolved');
+  if (!dirPath) {
+    console.log('⊘ Skipping empty path');
     return;
   }
 
   try {
-    if (fs.existsSync(resolvedPath)) {
-      fs.rmSync(resolvedPath, { recursive: true, force: true });
-      console.log(`✓ Deleted ${resolvedPath}`);
+    if (fs.existsSync(dirPath)) {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      console.log(`✓ Deleted ${dirPath}`);
     } else {
-      console.log(`⊘ ${resolvedPath} does not exist`);
+      console.log(`⊘ ${dirPath} does not exist`);
     }
   } catch (error) {
-    console.error(`✗ Failed to delete ${resolvedPath}:`, error.message);
+    console.error(`✗ Failed to delete ${dirPath}:`, error.message);
   }
 }
+
+// Delete directories based on command-line flags
 
 try {
   const hasCoreFlag = process.argv.includes('--core');

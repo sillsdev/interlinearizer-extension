@@ -156,7 +156,18 @@ async function createInterlinearProject(
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
-  await projectStorage.deleteProject(executionToken, interlinearProjectId);
+  try {
+    await projectStorage.deleteProject(executionToken, interlinearProjectId);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to delete project', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_delete_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    throw e;
+  }
 }
 
 /**

@@ -701,6 +701,21 @@ describe('main', () => {
 
       expect(mockDeleteProject).toHaveBeenCalledWith(expect.anything(), 'to-delete-id');
     });
+
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
+      mockDeleteProject.mockRejectedValue(new Error('disk full'));
+      const handler = await getDeleteProjectHandler();
+
+      await expect(handler('to-delete-id')).rejects.toThrow('disk full');
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to delete project',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+    });
   });
 
   describe('interlinearizer.getProjectsForSource command', () => {

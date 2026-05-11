@@ -75,10 +75,13 @@ export function CreateProjectModal({
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
       <dialog
         aria-labelledby="create-project-modal-title"
-        className="tw-bg-background tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg"
+        className="tw-bg-background tw-text-foreground tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg"
         open
       >
-        <h2 id="create-project-modal-title" className="tw-text-base tw-font-semibold tw-mb-4">
+        <h2
+          id="create-project-modal-title"
+          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
+        >
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
         <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-name">
@@ -86,7 +89,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="project-name"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
@@ -96,7 +99,7 @@ export function CreateProjectModal({
         </label>
         <textarea
           id="project-description"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -107,7 +110,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="analysis-language"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
+          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
           value={analysisLanguage}
           onChange={(e) => setAnalysisLanguage(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}

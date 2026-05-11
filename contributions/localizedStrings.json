@@ -44,7 +44,11 @@
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",
       "%interlinearizer_modal_select_name_unnamed%": "Unnamed",
-      "%interlinearizer_modal_select_info_button_label%": "Project info"
+      "%interlinearizer_modal_select_info_button_label%": "Project info",
+      "%interlinearizer_projectSettings_title%": "Interlinearizer",
+      "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",
+      "%interlinearizer_projectSettings_continuousScrollDescription%": "Display tokens in a continuous horizontal scroll strip instead of chapter-segmented rows",
+      "%interlinearizer_continuousScrollToggle%": "Continuous Scroll"
     }
   }
 }

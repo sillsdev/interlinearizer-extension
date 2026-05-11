@@ -4,6 +4,14 @@
  */
 
 declare module 'papi-shared-types' {
+  export interface ProjectSettingTypes {
+    /**
+     * When true, the Interlinearizer displays a continuous horizontal token scroll strip above the
+     * chapter segments. When false, only chapter segments are shown in token-chip mode.
+     */
+    'interlinearizer.continuousScroll': boolean;
+  }
+
   export interface CommandHandlers {
     /**
      * Opens the Interlinearizer for the project associated with the given WebView ID. Called from

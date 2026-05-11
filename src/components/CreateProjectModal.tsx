@@ -1,14 +1,14 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import {
   type InterlinearProjectSummary,
   isInterlinearProjectSummary,
 } from './SelectInterlinearProjectModal';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
-const CREATE_PROJECT_MODAL_STRING_KEYS = [
+const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_title%',
   '%interlinearizer_modal_create_name_label%',
   '%interlinearizer_modal_create_name_placeholder%',
@@ -18,7 +18,7 @@ const CREATE_PROJECT_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_create_language_placeholder%',
   '%interlinearizer_modal_create_submit%',
   '%interlinearizer_modal_create_cancel%',
-] as const;
+];
 
 /**
  * Modal dialog that collects project name, description, and analysis language tag before creating a
@@ -42,9 +42,7 @@ export function CreateProjectModal({
   onClose: () => void;
   onProjectCreated?: (project: InterlinearProjectSummary) => void;
 }>) {
-  const [localizedStrings, stringsLoading] = useLocalizedStrings(
-    useMemo(() => [...CREATE_PROJECT_MODAL_STRING_KEYS], []),
-  );
+  const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

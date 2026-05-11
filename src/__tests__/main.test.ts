@@ -240,6 +240,7 @@ describe('main', () => {
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
           'interlinearizer.getProjectsForSource',
+          'interlinearizer.selectProject',
           'interlinearizer.newProject',
           'interlinearizer.viewProjectInfo',
           'interlinearizer.updateProjectMetadata',
@@ -453,6 +454,32 @@ describe('main', () => {
       const openForWebView = await getOpenForWebViewHandler();
 
       await expect(openForWebView('some-webview')).rejects.toThrow('picker failed');
+    });
+  });
+
+  describe('interlinearizer.selectProject command', () => {
+    it('registers the interlinearizer.selectProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.selectProject',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.selectProject');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.selectProject');
+
+      await expect(rawHandler()).resolves.toBeUndefined();
+      expect(__mockOpenWebView).not.toHaveBeenCalled();
+      expect(__mockSelectProject).not.toHaveBeenCalled();
+      expect(__mockNotificationsSend).not.toHaveBeenCalled();
     });
   });
 

@@ -344,33 +344,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const newProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.newProject',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    async () => {},
-    {
-      method: {
-        summary: 'Open the create-project dialog in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    },
-  );
-
-  const viewProjectInfoCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.viewProjectInfo',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    async () => {},
-    {
-      method: {
-        summary:
-          'Open the project-info modal for the active project in the Interlinearizer WebView',
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    },
-  );
-
   const updateProjectMetadataCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.updateProjectMetadata',
     updateProjectMetadata,
@@ -431,6 +404,46 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const selectProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.selectProject',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    async () => {},
+    {
+      method: {
+        summary: 'Open the project-selector dialog in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const newProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.newProject',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    async () => {},
+    {
+      method: {
+        summary: 'Open the create-project dialog in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const viewProjectInfoCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.viewProjectInfo',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    async () => {},
+    {
+      method: {
+        summary:
+          'Open the project-info modal for the active project in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
@@ -448,10 +461,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     continuousScrollValidatorRegistration,
     createProjectCommandRegistration,
     getProjectsForSourceCommandRegistration,
+    updateProjectMetadataCommandRegistration,
     deleteProjectCommandRegistration,
+    selectProjectCommandRegistration,
     newProjectCommandRegistration,
     viewProjectInfoCommandRegistration,
-    updateProjectMetadataCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

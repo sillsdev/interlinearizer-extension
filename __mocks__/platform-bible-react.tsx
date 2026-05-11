@@ -38,9 +38,9 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
 ] as const;
 
 /** Sentinel menu item passed by the mock toolbar when the select-project menu button is clicked. */
-export const MOCK_CREATE_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
+export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_select_project%',
-  command: 'interlinearizer.createProject',
+  command: 'interlinearizer.selectProject',
   group: 'interlinearizer.project.actions',
   order: 1,
   localizeNotes: '',
@@ -103,7 +103,7 @@ export function TabToolbar({
         <button
           type="button"
           data-testid="tab-toolbar-project-menu"
-          onClick={() => onSelectProjectMenuItem(MOCK_CREATE_PROJECT_MENU_ITEM)}
+          onClick={() => onSelectProjectMenuItem(MOCK_SELECT_PROJECT_MENU_ITEM)}
         >
           Project menu
         </button>

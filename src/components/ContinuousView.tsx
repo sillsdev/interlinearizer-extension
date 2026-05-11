@@ -90,6 +90,13 @@ export default function ContinuousView({
   const tokenSegmentRef = useRef(tokenSegment);
   tokenSegmentRef.current = tokenSegment;
 
+  /**
+   * Returns the phrase index of the first word token in the segment that matches `verse`, or
+   * `undefined` when `verse` is absent or does not match any known segment.
+   *
+   * @param verse - Target scripture reference to locate.
+   * @returns Zero-based phrase index, or `undefined` if the verse cannot be resolved.
+   */
   const getPhraseIndexForVerse = useCallback(
     (verse?: ScriptureRef): number | undefined => {
       /* v8 ignore next -- verse is always defined at the one call site */
@@ -240,6 +247,11 @@ export default function ContinuousView({
   const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
+  /**
+   * Advances the focused phrase by `delta` positions, clamping to valid bounds.
+   *
+   * @param delta - Number of phrases to move (positive = forward, negative = backward).
+   */
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
       const nextIndex = i + delta;
@@ -251,10 +263,17 @@ export default function ContinuousView({
     });
   }, []);
 
+  /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
 
+  /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
 
+  /**
+   * Sets the focused phrase to `index` when provided, ignoring calls with no argument.
+   *
+   * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
+   */
   const handlePhraseSelect = useCallback((index?: number) => {
     if (index !== undefined) {
       setFocusPhraseIndex((prev) => (prev === index ? prev : index));

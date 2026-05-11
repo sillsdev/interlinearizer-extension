@@ -94,34 +94,24 @@ Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Cove
 
 ### Mock internals
 
-**`__mocks__/papi-backend.ts`** — exposes `papi.commands`, `papi.dialogs`, `papi.webViewProviders`, and `papi.webViews` as jest fns. Internal mock references are re-exported on the default export as `__mock*` properties so tests can assert on them without re-importing:
+Key semantic properties of the mock setup:
 
-| Property                              | Jest fn                                    |
-| ------------------------------------- | ------------------------------------------ |
-| `papi.__mockRegisterWebViewProvider`  | `webViewProviders.registerWebViewProvider` |
-| `papi.__mockRegisterCommand`          | `commands.registerCommand`                 |
-| `papi.__mockOpenWebView`              | `webViews.openWebView`                     |
-| `papi.__mockSelectProject`            | `dialogs.selectProject`                    |
-| `papi.__mockGetOpenWebViewDefinition` | `webViews.getOpenWebViewDefinition`        |
-| `papi.__mockOnDidOpenWebView`         | `webViews.onDidOpenWebView`                |
-| `papi.__mockOnDidCloseWebView`        | `webViews.onDidCloseWebView`               |
-| `papi.__mockLogger`                   | `logger` (debug/error/info/warn)           |
+- **`resetMocks: true`** — Mock implementations are cleared before every test. Each test must set up its own mocks (typically in `beforeEach`); never rely on state leaking from a prior test.
+- **Backend vs. frontend exclusivity** — Backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` to be treated as a module.
+- **`globalThis.webViewComponent` contract** — The WebView root component is assigned to the global (not exported). Tests must `require()` the module and read `globalThis.webViewComponent` to get the component.
 
-**`__mocks__/papi-frontend.ts`** — stubs `logger` only (debug/error/info/warn as jest fns). Used by WebView tests that import from `@papi/frontend`.
+Mock files:
 
-**`__mocks__/papi-frontend-react.ts`** — stubs `useProjectData` (returns a `Proxy` whose properties return `[undefined, jest.fn(), false]`), `useProjectSetting` (returns `[defaultState, jest.fn(), jest.fn(), false]`), `useLocalizedStrings` (maps each key to itself), and `useRecentScriptureRefs` (returns empty array + no-op setter).
-
-**`__mocks__/papi-core.ts`** — empty module (`{}`). `@papi/core` is types-only at runtime; this mock exists only for module resolution.
-
-**`__mocks__/platform-bible-react.tsx`** — stubs `TabToolbar`, `BookChapterControl`, and `ScrollGroupSelector`. `TabToolbar` renders `data-testid="tab-toolbar"`, `data-testid="tab-toolbar-start"`, and `data-testid="tab-toolbar-end"` divs containing its start/end children — use these test IDs to find child controls in tests. `ScrollGroupSelector` renders a `<select data-testid="scroll-group-selector">`. `BookChapterControl` renders `data-testid="book-chapter-control"` with a Submit button.
-
-**`__mocks__/platform-bible-utils.ts`** — stubs `UnsubscriberAsyncList` (used by `test-helpers.ts`) and `isPlatformError` (used by the WebView).
-
-**`__mocks__/web-view-inline.ts`** — stubs the `*.web-view?inline` import as a null-returning React component so `main.ts` tests can import without pulling in React.
-
-**`__mocks__/styleInlineMock.ts`** / **`styleMock.ts`** / **`fileMock.ts`** — stub `.scss?inline`, `.scss`, and static asset imports respectively.
-
-**`src/__tests__/test-helpers.ts`** — `createTestActivationContext()` builds a minimal `ExecutionActivationContext` for testing `activate()` without type assertions.
+- **`__mocks__/fileMock.ts`** — Stub static asset imports.
+- **`__mocks__/papi-backend.ts`** — Mocks with jest fns. Re-exports internal jest fns on the default export as `__mock*` properties (e.g., `papi.__mockRegisterCommand`) so tests can assert on them without re-importing. See file for full list.
+- **`__mocks__/papi-core.ts`** — Empty module; exists only for module resolution since `@papi/core` is types-only at runtime.
+- **`__mocks__/papi-frontend.ts`** — Stubs `logger` (debug/error/info/warn as jest fns).
+- **`__mocks__/papi-frontend-react.ts`** — Stubs PAPI React hooks.
+- **`__mocks__/platform-bible-react.tsx`** — Stubs components with appropriate `data-testid` attributes. See file for test IDs.
+- **`__mocks__/platform-bible-utils.ts`** — Stubs util functions.
+- **`__mocks__/styleInlineMock.ts`** and **`__mocks__/styleMock.ts`** — Stub `.scss?inline` and `.scss`.
+- **`__mocks__/web-view-inline.ts`** — Stubs `*.web-view?inline` imports as a null-returning React component.
+- **`src/__tests__/test-helpers.ts`** — Exports `createTestActivationContext()` for testing `activate()` without type assertions.
 
 ### No type assertions
 

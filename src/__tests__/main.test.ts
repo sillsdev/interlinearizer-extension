@@ -743,11 +743,11 @@ describe('main', () => {
       expect(mockDeleteProject).toHaveBeenCalledWith(expect.anything(), 'to-delete-id');
     });
 
-    it('logs the error and sends an error notification when storage throws', async () => {
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
       mockDeleteProject.mockRejectedValue(new Error('disk full'));
       const handler = await getDeleteProjectHandler();
 
-      await handler('to-delete-id');
+      await expect(handler('to-delete-id')).rejects.toThrow('disk full');
 
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to delete project',

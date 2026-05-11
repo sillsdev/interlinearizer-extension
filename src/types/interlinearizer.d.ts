@@ -56,6 +56,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 
     /**
+     * Opens the project-selector dialog in the Interlinearizer WebView. The backend registers this
+     * command to make it visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.selectProject': () => Promise<void>;
+
+    /**
      * Opens the create-project dialog in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */

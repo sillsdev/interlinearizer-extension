@@ -35,7 +35,7 @@
             "localizeNotes": "Interlinearizer top menu > Open the project selector to switch to or manage existing interlinear projects",
             "group": "interlinearizer.projectActions",
             "order": 1,
-            "command": "interlinearizer.createProject"
+            "command": "interlinearizer.selectProject"
           },
           {
             "label": "%interlinearizer_newProject%",

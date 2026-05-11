@@ -21,13 +21,19 @@ export default function Interlinearizer({
   continuousScroll,
   scrRef,
   setScrRef,
-}: {
+}: Readonly<{
   book: Book;
   bookSegments: Segment[];
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
-}) {
+}>) {
+  /**
+   * Converts a `ScriptureRef` from `ContinuousView` into a `SerializedVerseRef` and forwards it to
+   * `setScrRef`.
+   *
+   * @param v - The verse coordinate reported by the continuous view.
+   */
   const handleVerseChange = useCallback(
     (v: ScriptureRef) => {
       setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });

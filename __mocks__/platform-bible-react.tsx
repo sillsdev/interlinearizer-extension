@@ -29,6 +29,7 @@ interface SerializedVerseRef {
   versificationStr?: string;
 }
 
+/** Localization keys required by {@link BookChapterControl}. */
 export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
   '%scripture_section_ot_long%',
   '%scripture_section_nt_long%',
@@ -66,6 +67,19 @@ export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
 };
 
 
+/**
+ * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
+ * can trigger menu commands without a real toolbar implementation.
+ *
+ * @param props - Component props.
+ * @param props.startAreaChildren - Content rendered in the start slot.
+ * @param props.endAreaChildren - Content rendered in the end slot.
+ * @param props.onSelectProjectMenuItem - Called with a sentinel item when a project-menu button is
+ *   clicked (select-project, new-project, or view-project-info buttons).
+ * @param props.onSelectViewInfoMenuItem - Called with a generic sentinel item when the view-info
+ *   button is clicked.
+ * @returns A div with `data-testid="tab-toolbar"` containing the rendered buttons.
+ */
 export function TabToolbar({
   startAreaChildren,
   endAreaChildren,
@@ -135,6 +149,16 @@ export function TabToolbar({
   );
 }
 
+/**
+ * Stub scroll-group selector rendered as a native `<select>` so tests can change the scroll group
+ * without the real component's styling or animation.
+ *
+ * @param props - Component props.
+ * @param props.availableScrollGroupIds - IDs to populate as `<option>` elements.
+ * @param props.scrollGroupId - The currently selected group ID.
+ * @param props.onChangeScrollGroupId - Called with the newly selected ID when the selection changes.
+ * @returns A `<select data-testid="scroll-group-selector">` element.
+ */
 export function ScrollGroupSelector({
   availableScrollGroupIds,
   scrollGroupId,
@@ -164,6 +188,21 @@ export function ScrollGroupSelector({
   );
 }
 
+/**
+ * Stub button that passes through `children`, `onClick`, `type`, `className`, `disabled`,
+ * `aria-label`, and forwards them to a native `<button>` element; `variant` and `size` are
+ * accepted but ignored.
+ *
+ * @param props - Component props.
+ * @param props.children - Button content.
+ * @param props.onClick - Click handler.
+ * @param props.type - HTML button type attribute.
+ * @param props.className - CSS class names.
+ * @param props.disabled - Whether the button is disabled.
+ * @param props.variant - Ignored styling variant.
+ * @param props.size - Ignored size variant.
+ * @returns A native `<button>` element with `aria-label` forwarded.
+ */
 export function Button({
   children,
   onClick,
@@ -196,6 +235,16 @@ export function Button({
   );
 }
 
+/**
+ * Stub book/chapter control that displays the current reference as text and exposes a single
+ * "Submit reference" button so tests can simulate reference changes without the real picker UI.
+ *
+ * @param props - Component props.
+ * @param props.scrRef - The currently displayed scripture reference.
+ * @param props.handleSubmit - Called with `scrRef` when the submit button is clicked.
+ * @param props.onAddRecentSearch - Called with `scrRef` after `handleSubmit` when provided.
+ * @returns A `<div data-testid="book-chapter-control">` with a submit button.
+ */
 export function BookChapterControl({
   scrRef,
   handleSubmit,
@@ -221,6 +270,17 @@ export function BookChapterControl({
   );
 }
 
+/**
+ * Stub toggle switch rendered as a native checkbox so tests can read and change the checked state
+ * without the real Radix UI implementation.
+ *
+ * @param props - Component props.
+ * @param props.checked - Whether the switch is on.
+ * @param props.disabled - Whether the switch is disabled.
+ * @param props.id - HTML `id` attribute forwarded to the input.
+ * @param props.onCheckedChange - Called with the new boolean state on change.
+ * @returns A native `<input type="checkbox">` element.
+ */
 export function Switch({
   checked,
   disabled,
@@ -243,6 +303,15 @@ export function Switch({
   );
 }
 
+/**
+ * Stub label rendered as a native `<label>` element.
+ *
+ * @param props - Component props.
+ * @param props.children - Label content.
+ * @param props.className - CSS class names.
+ * @param props.htmlFor - ID of the associated form control.
+ * @returns A native `<label>` element.
+ */
 export function Label({
   children,
   className,

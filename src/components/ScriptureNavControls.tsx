@@ -8,10 +8,7 @@ import {
   ScrollGroupSelectorProps,
 } from 'platform-bible-react';
 
-/**
- * Scroll group IDs offered to the user. `undefined` means "no scroll group" (the WebView scrolls
- * independently); numeric IDs 0–4 correspond to Platform.Bible's shared scroll groups.
- */
+/** Fixed set of scroll-group IDs offered in the selector; `undefined` means "unlinked". */
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 
 /**
@@ -22,15 +19,15 @@ type ScriptureNavControlsProps = Pick<BookChapterControlProps, 'scrRef' | 'handl
   Pick<ScrollGroupSelectorProps, 'scrollGroupId' | 'onChangeScrollGroupId'>;
 
 /**
- * Toolbar row combining a {@link BookChapterControl} for scripture navigation with a
- * {@link ScrollGroupSelector} for Platform.Bible scroll-group linking.
+ * Renders the scripture-navigation bar: a {@link BookChapterControl} for jumping to a reference and
+ * a {@link ScrollGroupSelector} for linking the view to a scroll group.
  *
- * @param props - Component props
- * @param props.scrRef - Current scripture reference displayed in the book/chapter picker.
- * @param props.handleSubmit - Called when the user submits a new scripture reference.
- * @param props.scrollGroupId - Currently active scroll group ID (or `undefined` for none).
- * @param props.onChangeScrollGroupId - Called when the user selects a different scroll group.
- * @returns A flex row containing the book/chapter control and the scroll group selector.
+ * @param props - Component props.
+ * @param props.scrRef - The currently displayed scripture reference.
+ * @param props.handleSubmit - Called when the user submits a new reference.
+ * @param props.scrollGroupId - The currently active scroll-group ID (`undefined` = unlinked).
+ * @param props.onChangeScrollGroupId - Called when the user picks a different scroll group.
+ * @returns A flex row containing the book/chapter control and scroll-group selector.
  */
 export default function ScriptureNavControls({
   scrRef,

@@ -129,10 +129,13 @@ export function SelectInterlinearProjectModal({
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
       <dialog
         aria-labelledby="select-project-modal-title"
-        className="tw-bg-background tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
+        className="tw-bg-background tw-text-foreground tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
         open
       >
-        <h2 id="select-project-modal-title" className="tw-text-base tw-font-semibold tw-mb-4">
+        <h2
+          id="select-project-modal-title"
+          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
+        >
           {localizedStrings['%interlinearizer_modal_select_title%']}
         </h2>
 

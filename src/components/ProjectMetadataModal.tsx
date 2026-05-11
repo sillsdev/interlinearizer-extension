@@ -5,7 +5,7 @@ import { Button } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
-const PROJECT_METADATA_MODAL_STRING_KEYS = [
+const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_title%',
   '%interlinearizer_modal_metadata_id_label%',
   '%interlinearizer_modal_metadata_name_label%',
@@ -23,7 +23,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS = [
   '%interlinearizer_modal_metadata_delete_confirm_body%',
   '%interlinearizer_modal_metadata_delete_confirm_ok%',
   '%interlinearizer_modal_metadata_delete_confirm_cancel%',
-] as const;
+];
 
 /** Props for {@link ProjectMetadataModal}. */
 export type ProjectMetadataModalProps = Readonly<{
@@ -71,7 +71,7 @@ export function ProjectMetadataModal({
   onProjectDeleted,
 }: ProjectMetadataModalProps) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(
-    useMemo(() => [...PROJECT_METADATA_MODAL_STRING_KEYS], []),
+    PROJECT_METADATA_MODAL_STRING_KEYS,
   );
 
   const [editName, setEditName] = useState(name ?? '');

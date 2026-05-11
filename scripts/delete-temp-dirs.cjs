@@ -5,11 +5,8 @@ const path = require('path');
  * Cross-platform script to delete temporary and cache directories. Run this if Platform.Bible is
  * holding on to outdated resources, such as localization strings, project data, or WebView ids.
  *
- * Warning: The `--core` flag will delete:
- *
- * - The `Electron/` cache directory, which holds the cache for all Electron apps that don't have a
- *   `name` or `productName` specified in their `package.json`.
- * - `paranext-core/dev-appdata/`, which includes `installed-extensions/`.
+ * Warning: One directory deleted with the `--core` flag is `paranext-core/dev-appdata/`, which
+ * includes `installed-extensions/`.
  */
 
 // Define directory lists
@@ -27,7 +24,7 @@ if (!electronParent && process.env.HOME) {
 }
 
 const CORE_DIRS = [
-  electronParent ? path.join(electronParent, 'Electron') : '',
+  electronParent ? path.join(electronParent, 'Platform.Bible') : '',
   path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
 ];
 

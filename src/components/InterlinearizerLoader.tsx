@@ -177,6 +177,7 @@ export default function InterlinearizerLoader({
       )}
 
       <ProjectModals
+        activeProject={activeProject}
         modal={modal}
         projectId={projectId}
         setModal={setModal}

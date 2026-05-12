@@ -1,5 +1,5 @@
 import type { UseWebViewStateHook } from '@papi/core';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import {
@@ -16,31 +16,32 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata';
  * selection, and metadata modals.
  *
  * @param props - Component props
+ * @param props.activeProject - The currently active interlinear project, read from WebView state by
+ *   the parent.
  * @param props.modal - Which modal is currently open
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.setModal - Setter for which modal is open
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores)
+ * @returns The currently active modal, or an empty container when no modal is open.
  */
 export default function ProjectModals({
+  activeProject,
   modal,
   projectId,
   setModal,
   useWebViewState,
 }: Readonly<{
+  activeProject: ActiveProjectState | undefined;
   modal: ModalState;
   projectId: string;
   setModal: (modal: ModalState) => void;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  /**
-   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
-   * restores. Updated after creation and when the user selects an existing project from the
-   * picker.
-   */
-  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
-    ActiveProjectState | undefined
-  >('activeProject', undefined);
+  const [, setActiveProject, resetActiveProject] = useWebViewState<ActiveProjectState | undefined>(
+    'activeProject',
+    undefined,
+  );
 
   /**
    * The project currently open in the metadata modal. Set when the user clicks the info icon in the
@@ -57,11 +58,13 @@ export default function ProjectModals({
    */
   const [metadataSourceIsSelect, setMetadataSourceIsSelect] = useState(false);
 
-  useEffect(() => {
-    if (modal === 'metadata' && !metadataProject) {
-      setMetadataProject(activeProject);
-    }
-  }, [modal, metadataProject, activeProject]);
+  /**
+   * Tracks whether the create modal was opened from the select modal, so the correct modal is
+   * restored on close.
+   */
+  const [createSourceIsSelect, setCreateSourceIsSelect] = useState(false);
+
+  const resolvedMetadataProject = metadataProject ?? activeProject;
 
   /**
    * Opens the metadata modal for the project whose info icon was clicked in the select modal.
@@ -79,34 +82,30 @@ export default function ProjectModals({
 
   /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one, then returns to the appropriate modal.
+   * project is the currently active one.
    *
    * @param updated - The updated name, description, and analysisWritingSystem.
    */
   const handleMetadataProjectSaved = useCallback(
     (updated: { name?: string; description?: string; analysisWritingSystem: string }) => {
-      if (activeProject && metadataProject?.id === activeProject.id) {
+      if (activeProject && resolvedMetadataProject?.id === activeProject.id) {
         setActiveProject({ ...activeProject, ...updated });
       }
-      setModal(metadataSourceIsSelect ? 'select' : 'none');
-      setMetadataProject(undefined);
     },
-    [activeProject, metadataProject, metadataSourceIsSelect, setActiveProject, setModal],
+    [activeProject, resolvedMetadataProject, setActiveProject],
   );
 
   /**
    * Called when the metadata modal deletes the project. Clears `activeProject` if it was the
-   * deleted project, then returns to the appropriate modal.
+   * deleted project.
    *
    * @param deletedId - UUID of the project that was deleted.
    */
   const handleMetadataProjectDeleted = useCallback(
     (deletedId: string) => {
       if (activeProject?.id === deletedId) resetActiveProject();
-      setModal(metadataSourceIsSelect ? 'select' : 'none');
-      setMetadataProject(undefined);
     },
-    [activeProject, metadataSourceIsSelect, resetActiveProject, setModal],
+    [activeProject, resetActiveProject],
   );
 
   return (
@@ -118,7 +117,10 @@ export default function ProjectModals({
             setActiveProject(project);
             setModal('none');
           }}
-          onCreateNew={() => setModal('create')}
+          onCreateNew={() => {
+            setCreateSourceIsSelect(true);
+            setModal('create');
+          }}
           onClose={() => setModal('none')}
           onViewInfo={handleViewInfo}
         />
@@ -127,19 +129,22 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
-          onClose={() => setModal('none')}
+          onClose={() => {
+            setModal(createSourceIsSelect ? 'select' : 'none');
+            setCreateSourceIsSelect(false);
+          }}
           onProjectCreated={setActiveProject}
         />
       )}
 
-      {modal === 'metadata' && metadataProject && (
+      {modal === 'metadata' && resolvedMetadataProject && (
         <ProjectMetadataModal
-          interlinearProjectId={metadataProject.id}
-          name={metadataProject.name}
-          description={metadataProject.description}
-          sourceProjectId={metadataProject.sourceProjectId}
-          analysisWritingSystem={metadataProject.analysisWritingSystem}
-          createdAt={metadataProject.createdAt}
+          interlinearProjectId={resolvedMetadataProject.id}
+          name={resolvedMetadataProject.name}
+          description={resolvedMetadataProject.description}
+          sourceProjectId={resolvedMetadataProject.sourceProjectId}
+          analysisWritingSystem={resolvedMetadataProject.analysisWritingSystem}
+          createdAt={resolvedMetadataProject.createdAt}
           onClose={() => {
             setModal(metadataSourceIsSelect ? 'select' : 'none');
             setMetadataSourceIsSelect(false);

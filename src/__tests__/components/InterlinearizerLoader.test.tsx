@@ -123,14 +123,20 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
       <button
         type="button"
         data-testid="metadata-modal-saved"
-        onClick={() => onProjectSaved({ analysisWritingSystem: 'fr' })}
+        onClick={() => {
+          onProjectSaved({ analysisWritingSystem: 'fr' });
+          onClose();
+        }}
       >
         Save
       </button>
       <button
         type="button"
         data-testid="metadata-modal-deleted"
-        onClick={() => onProjectDeleted(MOCK_PROJECT.id)}
+        onClick={() => {
+          onProjectDeleted(MOCK_PROJECT.id);
+          onClose();
+        }}
       >
         Delete
       </button>

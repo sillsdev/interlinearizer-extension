@@ -214,9 +214,9 @@ describe('main', () => {
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
           'interlinearizer.getProjectsForSource',
-          'interlinearizer.selectProject',
-          'interlinearizer.newProject',
-          'interlinearizer.viewProjectInfo',
+          'interlinearizer.openSelectProjectModal',
+          'interlinearizer.openNewProjectModal',
+          'interlinearizer.openProjectInfoModal',
           'interlinearizer.updateProjectMetadata',
           'interlinearizer.deleteProject',
         ]),
@@ -425,14 +425,14 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.selectProject command', () => {
-    it('registers the interlinearizer.selectProject command', async () => {
+  describe('interlinearizer.openSelectProjectModal command', () => {
+    it('registers the interlinearizer.openSelectProjectModal command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.selectProject',
+        'interlinearizer.openSelectProjectModal',
         expect.any(Function),
         expect.any(Object),
       );
@@ -441,8 +441,9 @@ describe('main', () => {
     it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
       const context = createTestActivationContext();
       await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.selectProject');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.selectProject');
+      const rawHandler = findRegisteredHandler('interlinearizer.openSelectProjectModal');
+      if (!rawHandler)
+        throw new Error('Handler not found for interlinearizer.openSelectProjectModal');
 
       await expect(rawHandler()).resolves.toBeUndefined();
       expect(__mockOpenWebView).not.toHaveBeenCalled();
@@ -451,14 +452,14 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.newProject command', () => {
-    it('registers the interlinearizer.newProject command', async () => {
+  describe('interlinearizer.openNewProjectModal command', () => {
+    it('registers the interlinearizer.openNewProjectModal command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.newProject',
+        'interlinearizer.openNewProjectModal',
         expect.any(Function),
         expect.any(Object),
       );
@@ -467,8 +468,8 @@ describe('main', () => {
     it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
       const context = createTestActivationContext();
       await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.newProject');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.newProject');
+      const rawHandler = findRegisteredHandler('interlinearizer.openNewProjectModal');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.openNewProjectModal');
 
       await expect(rawHandler()).resolves.toBeUndefined();
       expect(__mockOpenWebView).not.toHaveBeenCalled();
@@ -477,14 +478,14 @@ describe('main', () => {
     });
   });
 
-  describe('interlinearizer.viewProjectInfo command', () => {
-    it('registers the interlinearizer.viewProjectInfo command', async () => {
+  describe('interlinearizer.openProjectInfoModal command', () => {
+    it('registers the interlinearizer.openProjectInfoModal command', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
       expect(__mockRegisterCommand).toHaveBeenCalledWith(
-        'interlinearizer.viewProjectInfo',
+        'interlinearizer.openProjectInfoModal',
         expect.any(Function),
         expect.any(Object),
       );
@@ -493,8 +494,9 @@ describe('main', () => {
     it('resolves to undefined and triggers no side effects (handled entirely in the WebView)', async () => {
       const context = createTestActivationContext();
       await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.viewProjectInfo');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.viewProjectInfo');
+      const rawHandler = findRegisteredHandler('interlinearizer.openProjectInfoModal');
+      if (!rawHandler)
+        throw new Error('Handler not found for interlinearizer.openProjectInfoModal');
 
       await expect(rawHandler()).resolves.toBeUndefined();
       expect(__mockOpenWebView).not.toHaveBeenCalled();

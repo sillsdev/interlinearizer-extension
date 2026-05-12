@@ -59,20 +59,20 @@ declare module 'papi-shared-types' {
      * Opens the project-selector dialog in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
-    'interlinearizer.selectProject': () => Promise<void>;
+    'interlinearizer.openSelectProjectModal': () => Promise<void>;
 
     /**
      * Opens the create-project dialog in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
-    'interlinearizer.newProject': () => Promise<void>;
+    'interlinearizer.openNewProjectModal': () => Promise<void>;
 
     /**
      * Opens the project-info modal for the active project in the Interlinearizer WebView. The
      * backend registers this command to make it visible to the platform menu system; all logic
      * executes in the WebView.
      */
-    'interlinearizer.viewProjectInfo': () => Promise<void>;
+    'interlinearizer.openProjectInfoModal': () => Promise<void>;
 
     /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a

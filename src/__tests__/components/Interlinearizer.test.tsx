@@ -109,6 +109,13 @@ const GEN_1_MULTI_BOOK: Book = {
   ],
 };
 
+/**
+ * Renders an Interlinearizer component with sensible defaults, allowing individual props to be
+ * overridden per test.
+ *
+ * @param options - Partial props to merge over the defaults.
+ * @returns The render result from @testing-library/react.
+ */
 function renderInterlinearizer({
   book = GEN_1_1_BOOK,
   bookSegments = GEN_1_1_BOOK.segments,
@@ -226,9 +233,9 @@ describe('Interlinearizer', () => {
 
     expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any, no-type-assertion/no-type-assertion
-    const onVerseChange = capturedContinuousViewProps.onVerseChange as any;
-    expect(onVerseChange).toBeDefined();
+    const { onVerseChange } = capturedContinuousViewProps;
+    if (typeof onVerseChange !== 'function')
+      throw new Error('Expected onVerseChange to be a function');
 
     onVerseChange({ book: 'GEN', chapter: 2, verse: 3 });
 

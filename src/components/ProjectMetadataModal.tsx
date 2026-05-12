@@ -88,8 +88,8 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error notification is sent.
    */
   const handleSave = useCallback(async () => {
-    const newName = editName || undefined;
-    const newDescription = editDescription || undefined;
+    const newName = editName.trim() || undefined;
+    const newDescription = editDescription.trim() || undefined;
     const newLanguage = editLanguage.trim();
     try {
       const updatedProjectJson = await papi.commands.sendCommand(
@@ -99,7 +99,8 @@ export function ProjectMetadataModal({
         newDescription,
         newLanguage,
       );
-      if (!updatedProjectJson) return;
+      if (!updatedProjectJson)
+        throw new TypeError('updateProjectMetadata command returned no data');
       onProjectSaved?.({
         name: newName,
         description: newDescription,

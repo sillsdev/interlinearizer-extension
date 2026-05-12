@@ -9,7 +9,7 @@ import type {
 } from '@papi/core';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
-import * as projectStorage from './projectStorage';
+import * as projectStorage from './services/projectStorage';
 
 /**
  * WebView type identifier for the Interlinearizer. Used when registering the provider and when

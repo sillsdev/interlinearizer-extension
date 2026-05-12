@@ -5,10 +5,10 @@ import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } fr
 import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
-import * as projectStorage from '../projectStorage';
+import * as projectStorage from '../services/projectStorage';
 import { createTestActivationContext } from './test-helpers';
 
-jest.mock('../projectStorage');
+jest.mock('../services/projectStorage');
 
 /** Shape of the Jest-mocked @papi/backend default export used in these tests. */
 interface PapiBackendTestMock {

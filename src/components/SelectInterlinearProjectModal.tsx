@@ -32,7 +32,8 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     typeof p.createdAt === 'string' &&
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
-    'analysisLanguages' in p && Array.isArray(p.analysisLanguages)
+    'analysisLanguages' in p &&
+    Array.isArray(p.analysisLanguages)
   );
 }
 

@@ -541,6 +541,7 @@ describe('main', () => {
         ['en'],
         undefined,
         undefined,
+        undefined,
       );
       expect(result).toBe(JSON.stringify(stubProject));
     });
@@ -836,6 +837,7 @@ describe('main', () => {
         'My Name',
         'My Desc',
         undefined,
+        undefined,
       );
     });
 
@@ -854,6 +856,7 @@ describe('main', () => {
         undefined,
         undefined,
         ['fr'],
+        undefined,
       );
     });
 

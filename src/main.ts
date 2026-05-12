@@ -113,6 +113,8 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
  * @param analysisLanguages - BCP 47 tags for the languages used in glosses and annotations (e.g.
  *   `['en']`).
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text. Required for BT
+ *   Extension projects so that `AlignmentLink.targetEndpoints` can be resolved at runtime.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns JSON-stringified `InterlinearProject` for the new project, or `undefined` if storage
@@ -121,6 +123,7 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 async function createInterlinearProject(
   sourceProjectId: string,
   analysisLanguages: string[],
+  targetProjectId?: string,
   name?: string,
   description?: string,
 ): Promise<string | undefined> {
@@ -129,6 +132,7 @@ async function createInterlinearProject(
       executionToken,
       sourceProjectId,
       analysisLanguages,
+      targetProjectId,
       name,
       description,
     );
@@ -179,6 +183,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param description - New user-facing description, or `undefined` to clear it.
  * @param analysisLanguages - New BCP 47 analysis language tags; omit or pass empty array to leave
  *   unchanged.
+ * @param targetProjectId - New target-project ID, or `undefined` to clear it.
  * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
  *   found or if a storage failure occurs (in which case the error is logged and a notification is
  *   sent to the user).
@@ -188,6 +193,7 @@ async function updateProjectMetadata(
   name: string | undefined,
   description: string | undefined,
   analysisLanguages?: string[],
+  targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
     const updated = await projectStorage.updateProjectMetadata(
@@ -196,6 +202,7 @@ async function updateProjectMetadata(
       name,
       description,
       analysisLanguages,
+      targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
   } catch (e) {

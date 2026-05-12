@@ -789,18 +789,18 @@ describe('main', () => {
       );
     });
 
-    it('passes name and description to projectStorage.updateProjectMetadata', async () => {
+    it('passes name, description, and analysisLanguages to projectStorage.updateProjectMetadata', async () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc');
+      await handler('proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
-        undefined,
+        ['en'],
         undefined,
       );
     });
@@ -828,9 +828,25 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined);
+      const result = await handler('missing', undefined, undefined, ['en']);
 
       expect(result).toBeUndefined();
+    });
+
+    it('logs the error, sends an error notification, and returns undefined when storage throws', async () => {
+      mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
+      const handler = await getUpdateProjectMetadataHandler();
+
+      const result = await handler('proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(result).toBeUndefined();
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to update project metadata',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
     });
   });
 

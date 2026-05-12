@@ -79,8 +79,8 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param name New user-facing name; omit or pass `undefined` to clear.
      * @param description New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages New BCP 47 analysis language tags; omit or pass an empty array to
-     *   leave unchanged (the field is required and cannot be cleared).
+     * @param analysisLanguages New BCP 47 analysis language tags. Must be a non-empty array; pass
+     *   the current value to leave it unchanged (the field is required and cannot be cleared).
      * @param targetProjectId New target-project ID; omit or pass `undefined` to clear (removes the
      *   target-side text binding).
      */
@@ -88,7 +88,7 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
-      analysisLanguages?: string[],
+      analysisLanguages: string[],
       targetProjectId?: string,
     ) => Promise<string | undefined>;
   }

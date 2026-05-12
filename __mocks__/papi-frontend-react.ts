@@ -4,15 +4,29 @@
  */
 
 /**
- * Mock for `useProjectData`. Returns a `Proxy` whose property accesses each yield a function
- * returning `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]`
- * tuple without requiring a live data provider.
+ * Known data-provider method names exposed by this mock. Tests that call an unlisted method will
+ * receive a descriptive error rather than silently returning `undefined`, which mirrors the real
+ * PAPI behaviour where requesting an unsupported provider key is a programmer error.
+ */
+const KNOWN_PROJECT_DATA_METHODS = new Set(['BookUSJ']);
+
+/**
+ * Mock for `useProjectData`. Returns an object whose known methods each return
+ * `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]` tuple.
+ * Accessing an unknown method throws to catch misspelled provider keys in tests.
  */
 const useProjectData = jest.fn(() =>
   new Proxy(
     {},
     {
-      get: () => () => [undefined, jest.fn(), false],
+      get(_target, prop: string) {
+        if (KNOWN_PROJECT_DATA_METHODS.has(prop)) {
+          return () => [undefined, jest.fn(), false];
+        }
+        throw new Error(
+          `useProjectData mock: unknown method "${prop}". Add it to KNOWN_PROJECT_DATA_METHODS if intentional.`,
+        );
+      },
     },
   ),
 );

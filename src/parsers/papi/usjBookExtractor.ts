@@ -147,6 +147,7 @@ function handleChapterNode(node: UsjNode, state: TraversalState): void {
  * @param node - The `verse` USJ node; must carry a `sid` attribute (e.g. `"GEN 1:1"`).
  * @param state - Shared traversal state updated in place.
  * @throws {SyntaxError} If the `verse` node is missing its required `sid` attribute.
+ * @throws {SyntaxError} If the `verse` SID has already been seen (duplicate verse SID).
  */
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
   if (state.currentVerse !== undefined) {
@@ -194,6 +195,8 @@ const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalStat
  *
  * @param nodes - Content items to walk (`string` or {@link UsjNode}).
  * @param state - Shared mutable state updated in place during traversal.
+ * @throws {SyntaxError} If any verse node encountered during traversal is missing its `sid`
+ *   attribute or contains a duplicate SID (propagated from {@link handleVerseNode}).
  */
 function traverse(nodes: MarkerContent[], state: TraversalState): void {
   nodes.forEach((node) => {
@@ -219,6 +222,7 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
  * @returns A stable JSON string with object keys in UTF-16 code-unit order.
  */
 function stableStringify(value: unknown): string {
+  /* v8 ignore next -- defensive guard; production callers never pass undefined directly */
   if (value === undefined) return 'null';
   if (!(value instanceof Object)) return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;

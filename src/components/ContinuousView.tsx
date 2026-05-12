@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
+/** CSS easing for the strip opacity fade-in/out animation. */
 const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+/**
+ * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
+ * pending-jump effect.
+ */
 const STRIP_FADE_MS = 500;
 
 /**
@@ -90,6 +95,12 @@ export default function ContinuousView({
   const tokenSegmentRef = useRef(tokenSegment);
   tokenSegmentRef.current = tokenSegment;
 
+  /**
+   * Maps a verse coordinate to the phrase index of the first word token in the matching segment.
+   *
+   * @param verse - The verse to look up; returns `undefined` when absent or unrecognized.
+   * @returns The phrase index, or `undefined` if no matching segment or no word token was found.
+   */
   const getPhraseIndexForVerse = useCallback(
     (verse?: ScriptureRef): number | undefined => {
       /* v8 ignore next -- verse is always defined at the one call site */
@@ -158,8 +169,7 @@ export default function ContinuousView({
     // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
     const lastInternal = lastInternalVerseRef.current;
     if (
-      lastInternal &&
-      lastInternal.book === activeVerse.book &&
+      lastInternal?.book === activeVerse.book &&
       lastInternal.chapter === activeVerse.chapter &&
       lastInternal.verse === activeVerse.verse
     ) {
@@ -240,6 +250,11 @@ export default function ContinuousView({
   const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw-opacity-100' : 'tw-opacity-0';
 
+  /**
+   * Advances the focused phrase index by `delta`, clamped to `[0, phraseEntries.length - 1]`.
+   *
+   * @param delta - Signed step count; negative moves backward, positive moves forward.
+   */
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
       const nextIndex = i + delta;
@@ -251,10 +266,18 @@ export default function ContinuousView({
     });
   }, []);
 
+  /** Moves focus one phrase toward the start. Bound to the previous arrow button. */
   const stepPrev = useCallback(() => step(-1), [step]);
 
+  /** Moves focus one phrase toward the end. Bound to the next arrow button. */
   const stepNext = useCallback(() => step(1), [step]);
 
+  /**
+   * Moves focus to the phrase at `index` when clicked. No-op when `index` is `undefined` or already
+   * focused (avoids a redundant re-render).
+   *
+   * @param index - Phrase index of the clicked `PhraseBox`, or `undefined` for punctuation chips.
+   */
   const handlePhraseSelect = useCallback((index?: number) => {
     if (index !== undefined) {
       setFocusPhraseIndex((prev) => (prev === index ? prev : index));

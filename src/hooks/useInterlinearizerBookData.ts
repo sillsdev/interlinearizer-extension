@@ -7,19 +7,36 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
 
+/** Arguments for the {@link useInterlinearizerBookData} hook. */
 interface UseInterlinearizerBookDataArgs {
+  /** PAPI project ID whose USJ book data should be loaded. */
   projectId: string;
+  /** Current scripture reference; only `book` and `chapterNum` are used to scope the data. */
   scrRef: SerializedVerseRef;
 }
 
+/** Return value of the {@link useInterlinearizerBookData} hook. */
 interface UseInterlinearizerBookDataResult {
+  /** The fully tokenized book, or `undefined` while loading or on error. */
   book: Book | undefined;
+  /** Segments belonging to the current chapter (`scrRef.chapterNum`); empty while loading. */
   chapterSegments: Book['segments'];
+  /** `true` while the USJ book data is being fetched from the platform. */
   isLoading: boolean;
+  /** Human-readable error string when the platform returns an error or no USJ data. */
   bookError: string | undefined;
+  /** Error thrown by {@link extractBookFromUsj} or {@link tokenizeBook}; `undefined` on success. */
   tokenizeError: { message: string; raw: unknown } | undefined;
 }
 
+/**
+ * Fetches and tokenizes the USJ book for the given project and scripture reference.
+ *
+ * @param args - Hook arguments.
+ * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
+ * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
+ * @returns The tokenized book, chapter segments, loading state, and any errors encountered.
+ */
 export default function useInterlinearizerBookData({
   projectId,
   scrRef,

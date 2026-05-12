@@ -65,6 +65,7 @@ const openWebViewsByProject = new Map<string, string>();
  *
  * @param projectId - Project to open; if omitted a picker dialog is shown.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
+ * @throws If `papi.dialogs.selectProject` or `papi.webViews.openWebView` rejects.
  */
 async function openInterlinearizer(projectId?: string): Promise<string | undefined> {
   const resolvedProjectId =
@@ -89,6 +90,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
  *
  * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
+ * @throws If `papi.webViews.getOpenWebViewDefinition` or `openInterlinearizer` rejects.
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();

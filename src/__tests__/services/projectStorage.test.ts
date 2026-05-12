@@ -9,8 +9,8 @@ import {
   getProjectsForSource,
   listProjects,
   updateProjectMetadata,
-} from '../projectStorage';
-import { createTestActivationContext } from './test-helpers';
+} from '../../services/projectStorage';
+import { createTestActivationContext } from '../test-helpers';
 
 interface StorageMock {
   __mockReadUserData: jest.Mock;

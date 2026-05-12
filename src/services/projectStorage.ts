@@ -1,4 +1,4 @@
-import papi from '@papi/backend';
+import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
 import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 
@@ -38,8 +38,11 @@ function emptyAnalysis(): TextAnalysis {
  * Reads the stored list of project IDs.
  *
  * @param token - The execution token for storage access.
- * @returns The stored project ID array, or an empty array if `projectIds` has never been written.
+ * @returns The stored project ID array, or an empty array if `projectIds` has never been written
+ *   (ENOENT).
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
+ *   I/O error).
  */
 async function readIds(token: ExecutionToken): Promise<string[]> {
   try {
@@ -61,6 +64,8 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData`, `papi.storage.writeUserData`, or rollback via
+ *   `papi.storage.deleteUserData` rejects for a non-ENOENT reason.
  */
 export async function createProject(
   token: ExecutionToken,
@@ -83,8 +88,17 @@ export async function createProject(
   };
 
   const ids = await readIds(token);
-  await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
+  try {
+    await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
+  } catch (indexError) {
+    try {
+      await papi.storage.deleteUserData(token, projectKey(id));
+    } catch (rollbackError) {
+      logger.error(`Failed to roll back project ${id} after index write failure:`, rollbackError);
+    }
+    throw indexError;
+  }
 
   return project;
 }
@@ -94,8 +108,9 @@ export async function createProject(
  *
  * @param token - The execution token for storage access.
  * @param id - The project UUID.
- * @returns The project record, or `undefined` if it does not exist in storage.
+ * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getProject(
   token: ExecutionToken,
@@ -116,6 +131,7 @@ export async function getProject(
  * @param token - The execution token for storage access.
  * @returns All stored projects, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
   const ids = await readIds(token);
@@ -131,6 +147,7 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  * @param sourceProjectId - The Platform.Bible project ID to filter by.
  * @returns All projects for the given source, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getProjectsForSource(
   token: ExecutionToken,
@@ -152,6 +169,8 @@ export async function getProjectsForSource(
  *   `analysisWritingSystem` is required and must not be cleared.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
+ *   reason.
  */
 export async function updateProjectMetadata(
   token: ExecutionToken,

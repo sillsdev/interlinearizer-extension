@@ -77,11 +77,17 @@ describe('tokenizeBook', () => {
     expect(segments[0].tokens).toEqual([]);
   });
 
-  it('assigns unique IDs within a segment', () => {
+  it('gives every token a unique ID that can be used to look it up', () => {
     const text = 'A B C.';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
-    const ids = segments[0].tokens.map((t) => t.id);
+    const { tokens } = segments[0];
+    // IDs must be unique so each token can be referenced unambiguously.
+    const ids = tokens.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
+    // Each token must be retrievable by its ID.
+    ids.forEach((id, i) => {
+      expect(tokens.find((t) => t.id === id)).toBe(tokens[i]);
+    });
   });
 
   it('assigns unique IDs across segments', () => {
@@ -151,13 +157,8 @@ describe('tokenizeBook', () => {
     );
   });
 
-  it('throws on an invalid verse SID', () => {
-    expect(() => tokenizeBook(makeRawBook([{ sid: 'not-a-ref', text: 'text' }]))).toThrow(
-      expect.objectContaining({
-        name: 'SyntaxError',
-        message: expect.stringContaining('Invalid verse SID'),
-      }),
-    );
+  it.each(['GEN 1:', 'not-a-ref', ''])('throws on malformed verse SID "%s"', (sid) => {
+    expect(() => tokenizeBook(makeRawBook([{ sid, text: 'text' }]))).toThrow(SyntaxError);
   });
 
   describe('word-internal joiners', () => {

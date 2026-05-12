@@ -169,15 +169,17 @@ const parseStrictNumber = (raw: string): number | undefined => {
   if (raw === undefined || raw.trim() === '') return undefined;
   if (!/^\d+$/.test(raw.trim())) return undefined;
   const n = Number.parseInt(raw, 10);
+  /* v8 ignore next -- the ^\d+$ regex above makes n < 0 unreachable; guard kept for safety */
   return n >= 0 ? n : undefined;
 };
 
 /**
  * Maps a parsed VerseData's Punctuation array to {@link PunctuationData} array.
  *
- * Punctuations without a valid Range (or missing Index/Length) are filtered out rather than causing
- * a parse error. Punctuations are optional/non-critical to the interlinear display; clusters are
- * required and validated strictly in {@link extractClustersFromVerse}.
+ * Uses a **lenient** parsing strategy: entries without a valid `Range` (or with missing /
+ * non-integer `Index`/`Length`) are silently filtered out rather than throwing. Punctuation data is
+ * non-critical to the interlinear display; clusters are validated strictly in
+ * {@link extractClustersFromVerse} because they are required for alignment rendering.
  *
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Punctuation array or
  *   none).
@@ -254,6 +256,9 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
  * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
  * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
+ *
+ * Each instance holds a configured `XMLParser`; create one parser and reuse it across multiple
+ * `parse()` calls rather than constructing a new instance per file.
  */
 export class InterlinearXmlParser {
   private readonly parser: XMLParser;
@@ -291,9 +296,13 @@ export class InterlinearXmlParser {
    *   entries.
    * @returns Parsed interlinear data: ScrTextName, GlossLanguage, BookId, and Verses (record of
    *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
-   * @throws {SyntaxError} If the root element, required attributes (GlossLanguage, BookId), or
-   *   required structure (Verses, Cluster Range, Lexeme Id) is missing.
-   * @throws {SyntaxError} If a verse reference appears more than once.
+   * @throws {SyntaxError} If the `InterlinearData` root element is absent.
+   * @throws {SyntaxError} If `GlossLanguage` or `BookId` attributes are missing or empty.
+   * @throws {SyntaxError} If the `Verses` element is absent.
+   * @throws {SyntaxError} If a `Cluster` is missing its `Range` element, or `Range` has invalid
+   *   `Index`/`Length` attributes (must be non-negative integers).
+   * @throws {SyntaxError} If a `Lexeme` element is missing its required `Id` attribute.
+   * @throws {SyntaxError} If the same verse reference appears in more than one `item`.
    */
   parse(xml: string): InterlinearData {
     const parsed: ParsedInterlinearXml = this.parser.parse(xml);

@@ -83,6 +83,9 @@ function parseSid(sid: string): ScriptureRef {
  * character) are emitted in document order. Whitespace is not tokenized. Character offsets are
  * zero-based relative to `text`; `charEnd` is exclusive.
  *
+ * Each token inherits `writingSystem` from the book so that downstream consumers (renderers,
+ * alignment tools) can identify the script without access to the parent `RawBook`.
+ *
  * @param text - The verse's `baselineText` string.
  * @param sid - The verse SID used as the token ID prefix (e.g. `"GEN 1:1"`).
  * @param writingSystem - BCP 47 tag assigned to every token's `writingSystem` field.
@@ -111,7 +114,9 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  *
  * @param rawBook - Extracted book data from {@link extractBookFromUsj}.
  * @returns A `Book` with one `Segment` per verse, each containing its ordered `Token`s.
- * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference.
+ * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference
+ *   (propagated from {@link parseSid}).
+ * @throws {SyntaxError} If any `RawVerse.sid`'s book code does not match `rawBook.bookCode`.
  */
 export function tokenizeBook(rawBook: RawBook): Book {
   const segments: Segment[] = rawBook.verses.map(({ sid, text }) => {

@@ -199,7 +199,7 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages?: string[],
+  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {

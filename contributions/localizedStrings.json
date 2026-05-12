@@ -7,9 +7,9 @@
       "%interlinearizer_dialog_open_prompt%": "Choose a project to open in the Interlinearizer:",
 
       "%interlinearizer_menu_column_project%": "Project",
-      "%interlinearizer_selectProject%": "Select Interlinear Project…",
-      "%interlinearizer_newProject%": "New Interlinear Project…",
-      "%interlinearizer_viewProjectInfo%": "View Project Info…",
+      "%interlinearizer_openSelectProjectModal%": "Select Interlinear Project…",
+      "%interlinearizer_openNewProjectModal%": "New Interlinear Project…",
+      "%interlinearizer_openProjectInfoModal%": "View Project Info…",
 
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",

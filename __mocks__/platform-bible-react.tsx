@@ -42,7 +42,7 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
 /** Sentinel menu item passed by the mock toolbar when the select-project menu button is clicked. */
 export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_select_project%',
-  command: 'interlinearizer.selectProject',
+  command: 'interlinearizer.openSelectProjectModal',
   group: 'interlinearizer.project.actions',
   order: 1,
   localizeNotes: '',
@@ -51,7 +51,7 @@ export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 /** Sentinel menu item passed by the mock toolbar when the new-project button is clicked. */
 export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_new_project%',
-  command: 'interlinearizer.newProject',
+  command: 'interlinearizer.openNewProjectModal',
   group: 'interlinearizer.project.actions',
   order: 2,
   localizeNotes: '',
@@ -60,7 +60,7 @@ export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 /** Sentinel menu item passed by the mock toolbar when the view-project-info button is clicked. */
 export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_view_project_info%',
-  command: 'interlinearizer.viewProjectInfo',
+  command: 'interlinearizer.openProjectInfoModal',
   group: 'interlinearizer.project.actions',
   order: 3,
   localizeNotes: '',

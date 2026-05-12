@@ -94,7 +94,10 @@ jest.mock('../../components/CreateProjectModal', () => ({
       <button
         type="button"
         data-testid="create-modal-created"
-        onClick={() => onProjectCreated(MOCK_PROJECT)}
+        onClick={() => {
+          onProjectCreated(MOCK_PROJECT);
+          onClose();
+        }}
       >
         Created
       </button>
@@ -410,7 +413,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
-    it('opens the create modal directly when the newProject menu item is clicked', async () => {
+    it('opens the create modal directly when the openNewProjectModal menu item is clicked', async () => {
       render(
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -486,6 +489,23 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('create-modal-created'));
 
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
+    });
+
+    it('returns to the select modal after a project is created from the select modal', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-create-new'));
+      await userEvent.click(screen.getByTestId('create-modal-created'));
+
+      expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
+      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
     it('returns to the select modal when close is clicked after opening create from select', async () => {
@@ -583,7 +603,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
-    it('opens the metadata modal from the viewProjectInfo menu item when a project is active', async () => {
+    it('opens the metadata modal from the openProjectInfoModal menu item when a project is active', async () => {
       const state = makeWebViewState();
       render(
         <InterlinearizerLoader
@@ -601,7 +621,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
     });
 
-    it('does not open the metadata modal from viewProjectInfo when no project is active', async () => {
+    it('does not open the metadata modal from openProjectInfoModal when no project is active', async () => {
       render(
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -694,20 +714,20 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
 
-    it('filters viewProjectInfo from menu when no active project', () => {
+    it('filters openProjectInfoModal from menu when no active project', () => {
       const mockWebViewMenu = {
         topMenu: {
           label: 'top',
           items: [
             {
-              command: 'interlinearizer.viewProjectInfo',
+              command: 'interlinearizer.openProjectInfoModal',
               label: 'View',
               group: 'g',
               order: 1,
               localizeNotes: '',
             },
             {
-              command: 'interlinearizer.selectProject',
+              command: 'interlinearizer.openSelectProjectModal',
               label: 'Select',
               group: 'g',
               order: 2,

@@ -16,7 +16,7 @@ type MockProject = {
   id: string;
   createdAt: string;
   sourceProjectId: string;
-  analysisWritingSystem: string;
+  analysisLanguages: string[];
   name?: string;
   description?: string;
 };
@@ -27,7 +27,7 @@ const MOCK_PROJECT: MockProject = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
   sourceProjectId: testProjectId,
-  analysisWritingSystem: 'en',
+  analysisLanguages: ['en'],
   name: 'My Project',
 };
 
@@ -110,7 +110,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
     onProjectDeleted,
   }: {
     onClose: () => void;
-    onProjectSaved: (u: { analysisWritingSystem: string }) => void;
+    onProjectSaved: (u: { analysisLanguages: string[] }) => void;
     onProjectDeleted: (id: string) => void;
   }) => (
     <div data-testid="metadata-modal">
@@ -120,7 +120,10 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
       <button
         type="button"
         data-testid="metadata-modal-saved"
-        onClick={() => onProjectSaved({ analysisWritingSystem: 'fr' })}
+        onClick={() => {
+          onProjectSaved({ analysisLanguages: ['fr'] });
+          onClose();
+        }}
       >
         Save
       </button>

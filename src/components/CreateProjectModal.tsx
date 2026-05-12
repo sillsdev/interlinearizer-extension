@@ -57,9 +57,9 @@ export function CreateProjectModal({
       const newId = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        analysisLanguage,
-        name || undefined,
-        description || undefined,
+        [normalizedAnalysisLanguage],
+        name.trim() || undefined,
+        description.trim() || undefined,
       );
       if (newId) onProjectCreated?.(newId, analysisLanguage);
       onClose();

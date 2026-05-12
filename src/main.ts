@@ -192,7 +192,7 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages?: string[],
+  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
@@ -298,7 +298,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           {
             name: 'analysisLanguages',
             required: true,
-            summary: 'BCP 47 tag for the gloss / annotation language (e.g. "en")',
+            summary: 'BCP 47 tag for the gloss / annotation language (e.g. "und", "fr", "zh-Hans")',
             schema: { type: 'string' },
           },
           {

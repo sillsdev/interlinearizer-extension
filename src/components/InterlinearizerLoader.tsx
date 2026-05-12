@@ -25,7 +25,7 @@ type ModalState = 'none' | 'select' | 'create' | 'metadata';
 /** Fields of the active interlinear project persisted in WebView state. */
 type ActiveProjectState = Pick<
   InterlinearProjectSummary,
-  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
+  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisLanguages'
 >;
 
 /**
@@ -156,10 +156,10 @@ export default function InterlinearizerLoader({
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
    * project is the currently active one, then returns to the appropriate modal.
    *
-   * @param updated - The updated name, description, and analysisWritingSystem.
+   * @param updated - The updated name, description, and analysisLanguages.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: { name?: string; description?: string; analysisWritingSystem: string }) => {
+    (updated: { name?: string; description?: string; analysisLanguages: string[] }) => {
       if (activeProject && metadataProject?.id === activeProject.id) {
         setActiveProject({ ...activeProject, ...updated });
       }
@@ -303,7 +303,7 @@ export default function InterlinearizerLoader({
           name={metadataProject.name}
           description={metadataProject.description}
           sourceProjectId={metadataProject.sourceProjectId}
-          analysisWritingSystem={metadataProject.analysisWritingSystem}
+          analysisLanguages={metadataProject.analysisLanguages}
           createdAt={metadataProject.createdAt}
           onClose={() => {
             setModal(metadataSource === 'select' ? 'select' : 'none');

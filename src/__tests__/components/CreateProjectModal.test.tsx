@@ -55,7 +55,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
         undefined,
         undefined,
       ),
@@ -73,7 +73,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
         'My Project',
         'My Desc',
       ),
@@ -92,7 +92,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'fr',
+        ['fr'],
         undefined,
         undefined,
       ),
@@ -105,7 +105,7 @@ describe('CreateProjectModal', () => {
         id: 'new-project-id',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: testProjectId,
-        analysisWritingSystem: 'en',
+        analysisLanguages: ['en'],
       }),
     );
     const onClose = jest.fn();
@@ -129,7 +129,7 @@ describe('CreateProjectModal', () => {
       id: 'new-project-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: testProjectId,
-      analysisWritingSystem: 'en',
+      analysisLanguages: ['en'],
     };
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify(persistedProject));
     const onProjectCreated = jest.fn();
@@ -202,7 +202,7 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
         undefined,
         undefined,
       ),

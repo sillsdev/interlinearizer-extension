@@ -18,7 +18,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 /** The subset of InterlinearProject fields this modal displays and returns. */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
-  'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem' | 'name' | 'description'
+  'id' | 'createdAt' | 'sourceProjectId' | 'analysisLanguages' | 'name' | 'description'
 >;
 
 /** Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON. */
@@ -32,8 +32,7 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     typeof p.createdAt === 'string' &&
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
-    'analysisWritingSystem' in p &&
-    typeof p.analysisWritingSystem === 'string'
+    'analysisLanguages' in p && Array.isArray(p.analysisLanguages)
   );
 }
 
@@ -141,7 +140,7 @@ export function SelectInterlinearProjectModal({
                       localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   </span>
                   <span className="tw-font-mono tw-text-xs tw-text-muted-foreground tw-shrink-0">
-                    {project.analysisWritingSystem}
+                    {project.analysisLanguages.join(', ')}
                   </span>
                 </button>
                 <Button

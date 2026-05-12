@@ -485,6 +485,7 @@ describe('main', () => {
         ['en'],
         undefined,
         undefined,
+        undefined,
       );
       expect(result).toBe('new-project-id');
     });
@@ -782,6 +783,7 @@ describe('main', () => {
         'My Name',
         'My Desc',
         undefined,
+        undefined,
       );
     });
 
@@ -800,6 +802,7 @@ describe('main', () => {
         undefined,
         undefined,
         ['fr'],
+        undefined,
       );
     });
 

@@ -84,13 +84,44 @@ describe('projectStorage', () => {
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
+    it('stores multiple analysis languages when provided', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en', 'fr']);
+
+      expect(project.analysisLanguages).toEqual(['en', 'fr']);
+    });
+
     it('stores name and description when provided', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', ['en'], 'My Name', 'My Desc');
+      const project = await createProject(
+        token,
+        'src-proj',
+        ['en'],
+        undefined,
+        'My Name',
+        'My Desc',
+      );
 
       expect(project.name).toBe('My Name');
       expect(project.description).toBe('My Desc');
+    });
+
+    it('stores targetProjectId when provided', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en'], 'tgt-proj');
+
+      expect(project.targetProjectId).toBe('tgt-proj');
+    });
+
+    it('omits targetProjectId when not provided', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en']);
+
+      expect(project).not.toHaveProperty('targetProjectId');
     });
 
     it('writes the project JSON under the project key', async () => {
@@ -316,6 +347,42 @@ describe('projectStorage', () => {
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
 
       expect(result?.analysisLanguages).toEqual(['en']);
+    });
+
+    it('sets targetProjectId when provided', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await updateProjectMetadata(
+        token,
+        'proj-id',
+        'Name',
+        'Desc',
+        undefined,
+        'tgt-proj',
+      );
+
+      expect(result?.targetProjectId).toBe('tgt-proj');
+      const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
+      expect(typeof writtenArg).toBe('string');
+      if (typeof writtenArg === 'string') {
+        const parsed: unknown = JSON.parse(writtenArg);
+        expect(parsed).toMatchObject({ targetProjectId: 'tgt-proj' });
+      }
+    });
+
+    it('clears targetProjectId when undefined is provided', async () => {
+      const withTarget = { ...storedProject, targetProjectId: 'old-tgt' };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(withTarget));
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
+
+      expect(result?.targetProjectId).toBeUndefined();
+      const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
+      expect(typeof writtenArg).toBe('string');
+      if (typeof writtenArg === 'string') {
+        const parsed: unknown = JSON.parse(writtenArg);
+        expect(parsed).not.toHaveProperty('targetProjectId');
+      }
     });
   });
 

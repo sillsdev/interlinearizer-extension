@@ -102,20 +102,20 @@ export default function InterlinearizerLoader({
   const [createSource, setCreateSource] = useState<'select' | 'menu'>('menu');
 
   /**
-   * Routes top-menu commands to the appropriate modal. `selectProject` opens the select modal;
-   * `newProject` opens the create modal directly; `viewProjectInfo` opens the metadata modal for
-   * the currently active project.
+   * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
+   * modal; `openNewProjectModal` opens the create modal directly; `openProjectInfoModal` opens the
+   * metadata modal for the currently active project.
    *
    * @param item - The menu item that was activated.
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {
-      if (item.command === 'interlinearizer.selectProject') {
+      if (item.command === 'interlinearizer.openSelectProjectModal') {
         setModal('select');
-      } else if (item.command === 'interlinearizer.newProject') {
+      } else if (item.command === 'interlinearizer.openNewProjectModal') {
         setCreateSource('menu');
         setModal('create');
-      } else if (item.command === 'interlinearizer.viewProjectInfo') {
+      } else if (item.command === 'interlinearizer.openProjectInfoModal') {
         if (activeProject) {
           setMetadataProject(activeProject);
           setMetadataSource('menu');
@@ -138,17 +138,21 @@ export default function InterlinearizerLoader({
   }, []);
 
   /**
-   * Records a newly created interlinear project as the active project and closes the create modal.
+   * Records a newly created interlinear project as the active project.
    *
    * @param project - The full persisted project returned by the create command.
    */
   const handleProjectCreated = useCallback(
     (project: InterlinearProjectSummary) => {
       setActiveProject(project);
-      setModal('none');
     },
     [setActiveProject],
   );
+
+  /** Closes the create modal, returning to the select modal if creation was initiated from there. */
+  const handleCreateModalClose = useCallback(() => {
+    setModal(createSource === 'select' ? 'select' : 'none');
+  }, [createSource]);
 
   /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
@@ -202,7 +206,7 @@ export default function InterlinearizerLoader({
     return {
       ...menu.topMenu,
       items: items.filter(
-        (item) => !('command' in item) || item.command !== 'interlinearizer.viewProjectInfo',
+        (item) => !('command' in item) || item.command !== 'interlinearizer.openProjectInfoModal',
       ),
     };
   }, [webViewMenuPossiblyError, activeProject]);
@@ -292,7 +296,7 @@ export default function InterlinearizerLoader({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
-          onClose={() => setModal(createSource === 'select' ? 'select' : 'none')}
+          onClose={handleCreateModalClose}
           onProjectCreated={handleProjectCreated}
         />
       )}

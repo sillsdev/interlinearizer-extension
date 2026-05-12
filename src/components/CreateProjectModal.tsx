@@ -64,10 +64,10 @@ export function CreateProjectModal({
         'interlinearizer.createProject',
         projectId,
         normalizedAnalysisLanguage,
-        name || undefined,
-        description || undefined,
+        name.trim() || undefined,
+        description.trim() || undefined,
       );
-      if (!projectJson) return;
+      if (!projectJson) throw new TypeError('createProject command returned no data');
       const parsed: unknown = JSON.parse(projectJson);
       if (!isInterlinearProjectSummary(parsed))
         throw new Error('Created project has unexpected shape');

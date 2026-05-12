@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type { AlignmentLink, InterlinearProject, TextAnalysis } from 'interlinearizer';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -106,7 +106,7 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
- * @param analysisWritingSystem - The BCP 47 writing-system code used for analysis strings.
+ * @param analysisLanguages - The BCP 47 language tags used for analysis strings.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
@@ -117,7 +117,7 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
 export async function createProject(
   token: ExecutionToken,
   sourceProjectId: string,
-  analysisWritingSystem: string,
+  analysisLanguages: string[],
   name?: string,
   description?: string,
 ): Promise<InterlinearProject> {
@@ -128,9 +128,8 @@ export async function createProject(
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     sourceProjectId,
-    analysisWritingSystem,
-    sourceAnalysis: emptyAnalysis(),
-    targetAnalysis: emptyAnalysis(),
+    analysisLanguages,
+    analysis: emptyAnalysis(),
     links: [],
   };
 
@@ -223,9 +222,9 @@ export async function getProjectsForSource(
  * @param id - The interlinearizer project UUID to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisWritingSystem - New BCP 47 analysis language tag. A non-empty string overwrites
- *   the field; an empty string or `undefined` leaves the field unchanged, since
- *   `analysisWritingSystem` is required and must not be cleared.
+ * @param analysisLanguages - New BCP 47 analysis language tags. A non-empty array overwrites the
+ *   field; an empty array or `undefined` leaves the field unchanged, since `analysisLanguages` is
+ *   required and must not be cleared.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -236,7 +235,7 @@ export async function updateProjectMetadata(
   id: string,
   name: string | undefined,
   description: string | undefined,
-  analysisWritingSystem?: string,
+  analysisLanguages?: string[],
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
@@ -252,12 +251,39 @@ export async function updateProjectMetadata(
     } else {
       updated.description = description;
     }
-    if (analysisWritingSystem) {
-      updated.analysisWritingSystem = analysisWritingSystem;
+    if (analysisLanguages && analysisLanguages.length > 0) {
+      updated.analysisLanguages = analysisLanguages;
     }
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
     return updated;
   });
+}
+
+/**
+ * Writes updated `analysis` and `links` back to storage for an existing project, leaving all
+ * metadata fields untouched. This is the designated save path for annotation and alignment
+ * mutations; use {@link updateProjectMetadata} for name / description / writing-system changes.
+ *
+ * @param token - The execution token for storage access.
+ * @param id - The interlinearizer project UUID to update.
+ * @param analysis - The updated analysis layer to persist.
+ * @param links - The updated alignment links to persist.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
+ *   reason.
+ */
+export async function saveProjectAnalysis(
+  token: ExecutionToken,
+  id: string,
+  analysis: TextAnalysis,
+  links: AlignmentLink[],
+): Promise<InterlinearProject | undefined> {
+  const project = await getProject(token, id);
+  if (!project) return undefined;
+  const updated: InterlinearProject = { ...project, analysis, links };
+  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+  return updated;
 }
 
 /**

@@ -18,8 +18,38 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 /** The subset of InterlinearProject fields this modal displays and returns. */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
-  'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem' | 'name' | 'description'
+  'id' | 'createdAt' | 'sourceProjectId' | 'analysisLanguages' | 'name' | 'description'
 >;
+
+/** Fields of the active interlinear project persisted in WebView state. */
+export type ActiveProjectState = Pick<
+  InterlinearProjectSummary,
+  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisLanguages'
+>;
+
+/**
+ * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
+ *
+ * @param p - The value to test, typically a parsed JSON object of unknown shape.
+ * @returns `true` if `p` satisfies the {@link InterlinearProjectSummary} shape, narrowing its type
+ *   accordingly.
+ */
+export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
+  return (
+    !!p &&
+    typeof p === 'object' &&
+    'id' in p &&
+    typeof p.id === 'string' &&
+    'createdAt' in p &&
+    typeof p.createdAt === 'string' &&
+    'sourceProjectId' in p &&
+    typeof p.sourceProjectId === 'string' &&
+    'analysisLanguages' in p &&
+    Array.isArray(p.analysisLanguages) &&
+    (!('name' in p) || typeof p.name === 'string') &&
+    (!('description' in p) || typeof p.description === 'string')
+  );
+}
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
@@ -116,7 +146,7 @@ export function SelectInterlinearProjectModal({
                       localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   </span>
                   <span className="tw-font-mono tw-text-xs tw-text-muted-foreground tw-shrink-0">
-                    {project.analysisWritingSystem}
+                    {project.analysisLanguages.join(', ')}
                   </span>
                 </button>
                 <Button

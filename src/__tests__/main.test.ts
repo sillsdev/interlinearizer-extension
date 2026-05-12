@@ -129,14 +129,14 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (sourceProjectId: string, analysisWritingSystem: string) => Promise<string | undefined>
+  (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (sourceProjectId: string, ws: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(sourceProjectId, ws);
+  return async (sourceProjectId: string, langs: string[]): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(sourceProjectId, langs);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -169,7 +169,7 @@ async function getUpdateProjectMetadataHandler(): Promise<
     id: string,
     name: string | undefined,
     description: string | undefined,
-    analysisWritingSystem?: string,
+    analysisLanguages?: string[],
   ) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
@@ -180,9 +180,9 @@ async function getUpdateProjectMetadataHandler(): Promise<
     id: string,
     name: string | undefined,
     description: string | undefined,
-    analysisWritingSystem?: string,
+    analysisLanguages?: string[],
   ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(id, name, description, analysisWritingSystem);
+    const result: unknown = await rawHandler(id, name, description, analysisLanguages);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -474,9 +474,8 @@ describe('main', () => {
       id: 'new-project-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
       links: [],
     };
 
@@ -496,12 +495,12 @@ describe('main', () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('src-project', 'en');
+      const result = await handler('src-project', ['en']);
 
       expect(mockCreateProject).toHaveBeenCalledWith(
         expect.anything(),
         'src-project',
-        'en',
+        ['en'],
         undefined,
         undefined,
       );
@@ -512,7 +511,7 @@ describe('main', () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      await handler('src-project', 'en');
+      await handler('src-project', ['en']);
 
       expect(__mockSelectProject).not.toHaveBeenCalled();
     });
@@ -521,7 +520,7 @@ describe('main', () => {
       mockCreateProject.mockRejectedValue(new Error('disk full'));
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('src-project', 'en');
+      const result = await handler('src-project', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockLogger.error).toHaveBeenCalledWith(
@@ -725,9 +724,8 @@ describe('main', () => {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
       links: [],
     };
 
@@ -773,9 +771,8 @@ describe('main', () => {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
       links: [],
     };
 
@@ -806,21 +803,21 @@ describe('main', () => {
       );
     });
 
-    it('passes analysisWritingSystem to projectStorage.updateProjectMetadata when provided', async () => {
+    it('passes analysisLanguages to projectStorage.updateProjectMetadata when provided', async () => {
       mockUpdateProjectMetadata.mockResolvedValue({
         ...stubProject,
-        analysisWritingSystem: 'fr',
+        analysisLanguages: ['fr'],
       });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', undefined, undefined, 'fr');
+      await handler('proj-id', undefined, undefined, ['fr']);
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         undefined,
         undefined,
-        'fr',
+        ['fr'],
       );
     });
 

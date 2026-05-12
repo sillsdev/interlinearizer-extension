@@ -35,8 +35,8 @@ export type ProjectMetadataModalProps = Readonly<{
   description?: string;
   /** Platform.Bible project ID of the source text. */
   sourceProjectId: string;
-  /** BCP 47 tag for the analysis language. */
-  analysisWritingSystem: string;
+  /** BCP 47 tags for the analysis languages. */
+  analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
   /** Callback invoked when the modal should be dismissed without saving. */
@@ -45,7 +45,7 @@ export type ProjectMetadataModalProps = Readonly<{
   onProjectSaved?: (updated: {
     name?: string;
     description?: string;
-    analysisWritingSystem: string;
+    analysisLanguages: string[];
   }) => void;
   /** Optional callback invoked with the deleted project ID after deletion. */
   onProjectDeleted?: (deletedProjectId: string) => void;
@@ -64,7 +64,7 @@ export function ProjectMetadataModal({
   name,
   description,
   sourceProjectId,
-  analysisWritingSystem,
+  analysisLanguages,
   createdAt,
   onClose,
   onProjectSaved,
@@ -76,7 +76,7 @@ export function ProjectMetadataModal({
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
-  const [editLanguage, setEditLanguage] = useState(analysisWritingSystem);
+  const [editLanguage, setEditLanguage] = useState(analysisLanguages.join(', '));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
@@ -94,12 +94,12 @@ export function ProjectMetadataModal({
         interlinearProjectId,
         newName,
         newDescription,
-        editLanguage,
+        [newLanguage],
       );
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisWritingSystem: editLanguage,
+        analysisLanguages: [newLanguage],
       });
       onClose();
     } catch (e) {

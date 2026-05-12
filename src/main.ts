@@ -115,15 +115,15 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  * notification).
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
- * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
- *   `'en'`).
+ * @param analysisLanguages - BCP 47 tags for the languages used in glosses and annotations (e.g.
+ *   `['en']`).
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns The UUID of the new project, or `undefined` if storage fails.
  */
 async function createInterlinearProject(
   sourceProjectId: string,
-  analysisWritingSystem: string,
+  analysisLanguages: string[],
   name?: string,
   description?: string,
 ): Promise<string | undefined> {
@@ -131,7 +131,7 @@ async function createInterlinearProject(
     const project = await projectStorage.createProject(
       executionToken,
       sourceProjectId,
-      analysisWritingSystem,
+      analysisLanguages,
       name,
       description,
     );
@@ -184,7 +184,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisWritingSystem - New BCP 47 analysis language tag; omit or pass empty to leave
+ * @param analysisLanguages - New BCP 47 analysis language tags; omit or pass empty array to leave
  *   unchanged.
  * @returns JSON string of the updated `InterlinearProject`, or `undefined` if not found.
  */
@@ -192,16 +192,27 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisWritingSystem?: string,
+  analysisLanguages?: string[],
 ): Promise<string | undefined> {
-  const updated = await projectStorage.updateProjectMetadata(
-    executionToken,
-    interlinearProjectId,
-    name,
-    description,
-    analysisWritingSystem,
-  );
-  return updated ? JSON.stringify(updated) : undefined;
+  try {
+    const updated = await projectStorage.updateProjectMetadata(
+      executionToken,
+      interlinearProjectId,
+      name,
+      description,
+      analysisLanguages,
+    );
+    return updated ? JSON.stringify(updated) : undefined;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to update project metadata', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_update_project_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    return undefined;
+  }
 }
 
 /**
@@ -285,10 +296,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'analysisWritingSystem',
+            name: 'analysisLanguages',
             required: true,
             summary: 'BCP 47 tag for the gloss / annotation language (e.g. "en")',
-            schema: { type: 'string' },
+            schema: { type: 'array', items: { type: 'string' } },
           },
           {
             name: 'name',
@@ -376,10 +387,10 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'analysisWritingSystem',
+            name: 'analysisLanguages',
             required: false,
             summary: 'New BCP 47 analysis language tag; omit or pass empty to leave unchanged',
-            schema: { type: 'string' },
+            schema: { type: 'array', items: { type: 'string' } },
           },
         ],
         result: {

@@ -228,6 +228,25 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(createButton).not.toBeDisabled());
   });
 
+  it('disables the cancel button while a submission is in progress', async () => {
+    let resolveCommand: (value: undefined) => void = () => {};
+    jest.mocked(papi.commands.sendCommand).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
+
+    const cancelButton = screen.getByRole('button', { name: /cancel/i });
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    expect(cancelButton).toBeDisabled();
+    resolveCommand(undefined);
+
+    await waitFor(() => expect(cancelButton).not.toBeDisabled());
+  });
+
   it('does not call onClose or onProjectCreated when sendCommand rejects, but sends an error notification', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('network error'));
     const onProjectCreated = jest.fn();

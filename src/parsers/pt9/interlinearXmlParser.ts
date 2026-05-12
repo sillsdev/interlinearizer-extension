@@ -211,8 +211,8 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
  * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
  * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
  *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
- * @throws {SyntaxError} If a Cluster is missing its Range element or Range is missing Index or
- *   Length.
+ * @throws {SyntaxError} If a Cluster is missing its Range element, Range is missing Index or
+ *   Length, or Range Index/Length are not non-negative integers.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
   const clusterElements = verseDataElement.Cluster ?? [];
@@ -223,11 +223,15 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
       throw new SyntaxError('Invalid XML: Cluster missing required Range element');
     }
 
+    if (rangeElement['@_Index'] === undefined || rangeElement['@_Length'] === undefined) {
+      throw new SyntaxError('Invalid XML: Range missing Index or Length attribute');
+    }
+
     const index = parseStrictNumber(rangeElement['@_Index']);
     const length = parseStrictNumber(rangeElement['@_Length']);
     if (index === undefined || length === undefined) {
       throw new SyntaxError(
-        'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
+        'Invalid XML: Range has invalid Index/Length attributes (must be non-negative integers)',
       );
     }
 
@@ -299,8 +303,8 @@ export class InterlinearXmlParser {
    * @throws {SyntaxError} If the `InterlinearData` root element is absent.
    * @throws {SyntaxError} If `GlossLanguage` or `BookId` attributes are missing or empty.
    * @throws {SyntaxError} If the `Verses` element is absent.
-   * @throws {SyntaxError} If a `Cluster` is missing its `Range` element, or `Range` has invalid
-   *   `Index`/`Length` attributes (must be non-negative integers).
+   * @throws {SyntaxError} If a `Cluster` is missing its `Range` element, `Range` is missing
+   *   `Index`/`Length`, or `Index`/`Length` are not non-negative integers.
    * @throws {SyntaxError} If a `Lexeme` element is missing its required `Id` attribute.
    * @throws {SyntaxError} If the same verse reference appears in more than one `item`.
    */

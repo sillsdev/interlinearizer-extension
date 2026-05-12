@@ -466,6 +466,47 @@ describe('InterlinearXmlParser', () => {
       });
     });
 
+    it('parses multiple Punctuation entries in a single verse', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="1" />
+                  <Lexeme Id="x" />
+                </Cluster>
+                <Punctuation>
+                  <Range Index="5" Length="1" />
+                  <BeforeText>,</BeforeText>
+                  <AfterText> </AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Index="12" Length="1" />
+                  <BeforeText>.</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(2);
+      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
+        TextRange: { Index: 5, Length: 1 },
+        BeforeText: ',',
+        AfterText: ' ',
+      });
+      expect(result.Verses['MAT 1:1'].Punctuations[1]).toEqual({
+        TextRange: { Index: 12, Length: 1 },
+        BeforeText: '.',
+        AfterText: '',
+      });
+    });
+
     it('parses VerseData with Punctuation but no Cluster (Cluster ?? [] branch)', () => {
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
@@ -718,9 +759,7 @@ describe('InterlinearXmlParser', () => {
       expect(() => parser.parse(xmlNoIndex)).toThrow(
         expect.objectContaining({
           name: 'SyntaxError',
-          message: expect.stringContaining(
-            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
-          ),
+          message: expect.stringContaining('Invalid XML: Range missing Index or Length attribute'),
         }),
       );
 
@@ -742,9 +781,7 @@ describe('InterlinearXmlParser', () => {
       expect(() => parser.parse(xmlNoLength)).toThrow(
         expect.objectContaining({
           name: 'SyntaxError',
-          message: expect.stringContaining(
-            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
-          ),
+          message: expect.stringContaining('Invalid XML: Range missing Index or Length attribute'),
         }),
       );
     });
@@ -846,7 +883,7 @@ describe('InterlinearXmlParser', () => {
           expect.objectContaining({
             name: 'SyntaxError',
             message: expect.stringContaining(
-              'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
+              'Invalid XML: Range has invalid Index/Length attributes (must be non-negative integers)',
             ),
           }),
         );

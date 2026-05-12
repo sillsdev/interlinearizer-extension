@@ -206,6 +206,7 @@ export async function updateProjectMetadata(
  * @param token - The execution token for storage access.
  * @param id - The project UUID to delete.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws If `papi.storage.writeUserData` rejects when updating the index.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   try {

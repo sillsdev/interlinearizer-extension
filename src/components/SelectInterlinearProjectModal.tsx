@@ -84,7 +84,17 @@ export function SelectInterlinearProjectModal({
         sourceProjectId,
       );
       const parsed: unknown = JSON.parse(json);
-      if (Array.isArray(parsed)) setProjects(parsed.filter(isInterlinearProjectSummary));
+      if (!Array.isArray(parsed)) {
+        logger.warn('Interlinearizer: getProjectsForSource returned non-array', parsed);
+        return;
+      }
+      const valid = parsed.filter(isInterlinearProjectSummary);
+      if (valid.length !== parsed.length)
+        logger.warn(
+          'Interlinearizer: skipped malformed project entries',
+          parsed.length - valid.length,
+        );
+      setProjects(valid);
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);
       await papi.notifications

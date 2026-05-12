@@ -400,34 +400,34 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const selectProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.selectProject',
+  const openSelectProjectModalCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openSelectProjectModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
     async () => {},
     {
       method: {
-        summary: 'Open the project-selector dialog in the Interlinearizer WebView',
+        summary: 'Open the project-selector modal in the Interlinearizer WebView',
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
 
-  const newProjectCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.newProject',
+  const openNewProjectModalCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openNewProjectModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
     async () => {},
     {
       method: {
-        summary: 'Open the create-project dialog in the Interlinearizer WebView',
+        summary: 'Open the create-project modal in the Interlinearizer WebView',
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
 
-  const viewProjectInfoCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.viewProjectInfo',
+  const openProjectInfoModalCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openProjectInfoModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
     async () => {},
     {
@@ -458,9 +458,9 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProjectsForSourceCommandRegistration,
     updateProjectMetadataCommandRegistration,
     deleteProjectCommandRegistration,
-    selectProjectCommandRegistration,
-    newProjectCommandRegistration,
-    viewProjectInfoCommandRegistration,
+    openSelectProjectModalCommandRegistration,
+    openNewProjectModalCommandRegistration,
+    openProjectInfoModalCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

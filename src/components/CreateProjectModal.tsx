@@ -130,7 +130,7 @@ export function CreateProjectModal({
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
         <div className="tw-flex tw-gap-2 tw-justify-end">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>
           <Button onClick={handleSubmit} disabled={isSubmitting}>

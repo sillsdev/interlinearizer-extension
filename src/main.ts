@@ -179,7 +179,9 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param description - New user-facing description, or `undefined` to clear it.
  * @param analysisWritingSystem - New BCP 47 analysis language tag; omit or pass empty to leave
  *   unchanged.
- * @returns JSON string of the updated `InterlinearProject`, or `undefined` if not found.
+ * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
+ *   found or if a storage failure occurs (in which case the error is logged and a notification is
+ *   sent to the user).
  */
 async function updateProjectMetadata(
   interlinearProjectId: string,
@@ -372,7 +374,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         ],
         result: {
           name: 'return value',
-          summary: 'JSON-stringified updated InterlinearProject, or undefined if not found',
+          summary:
+            'JSON-stringified updated InterlinearProject, or undefined if not found or if a storage failure occurred',
           schema: { type: 'string' },
         },
       },

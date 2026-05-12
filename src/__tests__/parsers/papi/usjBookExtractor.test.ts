@@ -20,16 +20,14 @@ describe('extractBookFromUsj', () => {
     expect(extractBookFromUsj(usj, 'kmr').writingSystem).toBe('kmr');
   });
 
-  it('produces a stable contentHash for identical content', () => {
+  it('produces a stable contentHash independent of writingSystem', () => {
     const a: UsjDocument = { content: [{ type: 'book', code: 'GEN', content: [] }] };
     const b: UsjDocument = { content: [...a.content] };
+    // Same content, different writingSystem — hash must be identical (it hashes content only).
     expect(extractBookFromUsj(a, 'en').contentHash).toBe(extractBookFromUsj(b, 'es').contentHash);
-  });
-
-  it('produces different contentHashes for different content', () => {
-    const a: UsjDocument = { content: [{ type: 'book', code: 'GEN', content: [] }] };
-    const b: UsjDocument = { content: [{ type: 'book', code: 'MAT', content: [] }] };
-    expect(extractBookFromUsj(a, WS).contentHash).not.toBe(extractBookFromUsj(b, WS).contentHash);
+    // Different content must yield a different hash.
+    const c: UsjDocument = { content: [{ type: 'book', code: 'MAT', content: [] }] };
+    expect(extractBookFromUsj(a, WS).contentHash).not.toBe(extractBookFromUsj(c, WS).contentHash);
   });
 
   it('returns empty verses when there are no verse markers', () => {
@@ -275,5 +273,29 @@ describe('extractBookFromUsj', () => {
 
     const hash = extractBookFromUsj(withUndefined, WS).contentHash;
     expect(hash).toBe(extractBookFromUsj(withoutUndefined, WS).contentHash);
+  });
+
+  it('throws when a verse SID is a duplicate', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [
+            { type: 'verse', sid: 'GEN 1:1' },
+            'First.',
+            { type: 'verse', sid: 'GEN 1:1' },
+            'Duplicate.',
+          ],
+        },
+      ],
+    };
+    expect(() => extractBookFromUsj(usj, WS)).toThrow(
+      expect.objectContaining({
+        name: 'SyntaxError',
+        message: expect.stringContaining('duplicate verse SID'),
+      }),
+    );
   });
 });

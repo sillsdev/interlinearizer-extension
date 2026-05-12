@@ -4,8 +4,38 @@
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book } from 'interlinearizer';
+import type { Book, Token } from 'interlinearizer';
 import ContinuousView from '../../components/ContinuousView';
+
+jest.mock('../../components/PhraseBox', () => ({
+  __esModule: true,
+  default: ({
+    isFocused = false,
+    index,
+    onClick,
+    tokens,
+  }: {
+    isFocused?: boolean;
+    index?: number;
+    onClick?: (index?: number) => void;
+    tokens: Token[];
+  }) => (
+    <button
+      data-focus-state={isFocused ? 'focused' : 'default'}
+      data-phrase-box="true"
+      onClick={() => onClick?.(index)}
+      type="button"
+    >
+      {tokens.map((t) => t.surfaceText).join(' ')}
+    </button>
+  ),
+}));
+
+jest.mock('../../components/TokenChip', () => ({
+  __esModule: true,
+  default: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+  TokenChip: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+}));
 
 // ---------------------------------------------------------------------------
 // Test fixtures

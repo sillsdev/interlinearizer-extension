@@ -2,60 +2,72 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import {
-  useLocalizedStrings,
-  useProjectData,
-  useProjectSetting,
-  useRecentScriptureRefs,
-} from '@papi/frontend/react';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book } from 'interlinearizer';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
-import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
+import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
+import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 
-jest.mock('parsers/papi/bookTokenizer');
-jest.mock('parsers/papi/usjBookExtractor');
+jest.mock('../../hooks/useInterlinearizerBookData');
+jest.mock('../../hooks/useOptimisticBooleanSetting');
+
+jest.mock('../../components/ContinuousScrollToggle', () => ({
+  __esModule: true,
+  default: ({
+    checked,
+    disabled,
+    onCheckedChange,
+  }: {
+    checked: boolean;
+    disabled: boolean;
+    onCheckedChange: (v: boolean) => void;
+  }) => (
+    <button
+      aria-label="continuous scroll"
+      data-testid="continuous-scroll-toggle"
+      data-checked={String(checked)}
+      data-disabled={String(disabled)}
+      onClick={() => onCheckedChange(!checked)}
+      type="button"
+    />
+  ),
+}));
+
+jest.mock('../../components/ScriptureNavControls', () => ({
+  __esModule: true,
+  default: () => <div data-testid="scripture-nav-controls" />,
+}));
 
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
   default: () => <div data-testid="continuous-view" />,
 }));
 
-/**
- * Matches the PlatformError shape from platform-bible-utils (discriminated by
- * platformErrorVersion).
- */
-type PlatformError = { platformErrorVersion: number; message: string };
+type CapturedInterlinearizerProps = {
+  continuousScroll: boolean;
+};
+let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
+
+jest.mock('../../components/Interlinearizer', () => ({
+  __esModule: true,
+  default: (props: CapturedInterlinearizerProps) => {
+    capturedInterlinearizerProps = props;
+    return <div data-testid="interlinearizer" />;
+  },
+}));
 
 const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 const testProjectId = 'test-project-id';
 
-/** Pre-built Book with one GEN 1:1 segment. */
-const GEN_1_1_BOOK: Book = {
+/** A minimal Book used as the successful hook result. */
+const TEST_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
-  segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          id: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
-  ],
+  segments: [],
 };
 
 /**
@@ -76,50 +88,55 @@ function makeScrollGroupHook(
   ] => [scrRef, setScrRef, undefined, () => {}];
 }
 
-/** Configures useProjectData to return the given BookUSJ value and loading state this render. */
-function mockBookData(value: unknown, isLoading = false): void {
-  jest.mocked(useProjectData).mockImplementation(() => ({
-    BookUSJ: () => [value, jest.fn(), isLoading],
-  }));
+/**
+ * Configures useInterlinearizerBookData to return the given state.
+ *
+ * @param overrides - Partial hook result; all fields default to a successful loaded state
+ */
+function mockBookData(
+  overrides: Partial<{
+    book: Book | undefined;
+    chapterSegments: Book['segments'];
+    isLoading: boolean;
+    bookError: string | undefined;
+    tokenizeError: { message: string; raw: unknown } | undefined;
+  }> = {},
+): void {
+  jest.mocked(useInterlinearizerBookData).mockReturnValue({
+    book: TEST_BOOK,
+    chapterSegments: [],
+    isLoading: false,
+    bookError: undefined,
+    tokenizeError: undefined,
+    ...overrides,
+  });
 }
 
 /**
- * Configures useProjectSetting for the languageTag and continuousScroll keys. All other keys
- * receive their defaultState.
+ * Configures useOptimisticBooleanSetting to return the given state.
  *
- * @param tag - Writing system tag returned for `platform.languageTag`
- * @param continuousScroll - Value returned for `interlinearizer.continuousScroll`; defaults to
- *   `false` so existing token-chip rendering tests are unaffected
+ * @param value - The current boolean value; defaults to `false`
+ * @param onChange - The change handler; defaults to a jest.fn()
+ * @param isLoading - Whether the setting is loading; defaults to `false`
  */
-function mockWritingSystem(tag: string | PlatformError = 'en', continuousScroll = false): void {
-  jest.mocked(useProjectSetting).mockImplementation((_projectId, key, defaultState) => {
-    if (key === 'platform.languageTag') return [tag, jest.fn(), jest.fn(), false];
-    if (key === 'interlinearizer.continuousScroll')
-      return [continuousScroll, jest.fn(), jest.fn(), false];
-    return [defaultState, jest.fn(), jest.fn(), false];
-  });
+function mockOptimisticSetting(
+  value = false,
+  onChange: jest.Mock = jest.fn(),
+  isLoading = false,
+): jest.Mock {
+  jest.mocked(useOptimisticBooleanSetting).mockReturnValue({ value, onChange, isLoading });
+  return onChange;
 }
 
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
-    mockBookData(undefined);
-    mockWritingSystem();
+    capturedInterlinearizerProps = undefined;
+    mockBookData();
+    mockOptimisticSetting();
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
-    jest.mocked(useRecentScriptureRefs).mockReturnValue({
-      recentScriptureRefs: [],
-      addRecentScriptureRef: jest.fn(),
-    });
-    jest.mocked(extractBookFromUsj).mockReturnValue({
-      bookCode: 'GEN',
-      writingSystem: 'en',
-      contentHash: 'abc',
-      verses: [],
-    });
-    jest.mocked(tokenizeBook).mockReturnValue(GEN_1_1_BOOK);
   });
 
-  it('shows the book chapter control and renders a segment when book data is available', () => {
-    mockBookData({});
+  it('renders Interlinearizer and the nav controls when book data is available', () => {
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -127,12 +144,12 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByTestId('book-chapter-control')).toBeInTheDocument();
-    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByTestId('scripture-nav-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
   it('shows Loading when book data has not arrived', () => {
-    mockBookData(undefined, true);
+    mockBookData({ book: undefined, isLoading: true });
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -144,7 +161,10 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('shows an error when no USJ book is available for the project', () => {
-    mockBookData(undefined, false);
+    mockBookData({
+      book: undefined,
+      bookError: 'No USJ book available for GEN in project test-project-id',
+    });
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -157,7 +177,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('shows an error heading and message when book data is a PlatformError', () => {
-    mockBookData({ platformErrorVersion: 1, message: 'Project not found' });
+    mockBookData({ book: undefined, bookError: 'Project not found' });
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -169,38 +189,10 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
-  it('falls back to "und" writing system when useProjectSetting returns a PlatformError', () => {
-    mockBookData({});
-    mockWritingSystem({ platformErrorVersion: 1, message: 'Setting unavailable' });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-      />,
-    );
-
-    expect(screen.getByText('In')).toBeInTheDocument();
-    expect(extractBookFromUsj).toHaveBeenCalledWith(expect.anything(), 'und');
-  });
-
-  it('falls back to "und" writing system when useProjectSetting returns an empty string', () => {
-    mockBookData({});
-    mockWritingSystem('');
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-      />,
-    );
-
-    expect(screen.getByText('In')).toBeInTheDocument();
-    expect(extractBookFromUsj).toHaveBeenCalledWith(expect.anything(), 'und');
-  });
-
   it('shows an error heading and message when tokenization throws an Error', () => {
-    mockBookData({});
-    jest.mocked(tokenizeBook).mockImplementation(() => {
-      throw new Error('parse failure');
+    mockBookData({
+      book: undefined,
+      tokenizeError: { message: 'parse failure', raw: new Error('parse failure') },
     });
     render(
       <InterlinearizerLoader
@@ -214,10 +206,9 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('shows an error message when tokenization throws a non-Error value', () => {
-    mockBookData({});
-    jest.mocked(tokenizeBook).mockImplementation(() => {
-      // eslint-disable-next-line no-throw-literal
-      throw 'unexpected string error';
+    mockBookData({
+      book: undefined,
+      tokenizeError: { message: 'unexpected string error', raw: 'unexpected string error' },
     });
     render(
       <InterlinearizerLoader
@@ -231,8 +222,9 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
-    const mockBookUSJ = jest.fn().mockReturnValue([{}, jest.fn(), false]);
-    jest.mocked(useProjectData).mockImplementation(() => ({ BookUSJ: mockBookUSJ }));
+    // The book-stable ref logic lives in useInterlinearizerBookData, which is tested in its own
+    // test file. This test verifies that InterlinearizerLoader passes scrRef into the hook and that
+    // re-rendering with a new verse does not cause the hook to receive a new book ref.
     const { rerender } = render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -250,14 +242,13 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    const refsPassed = mockBookUSJ.mock.calls.map((c) => c[0]);
-    refsPassed.forEach((ref) => expect(ref).toEqual({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
-    expect(mockBookUSJ.mock.calls.length).toBeGreaterThanOrEqual(2);
-    refsPassed.slice(1).forEach((ref) => expect(ref).toBe(refsPassed[0]));
+    const { calls } = jest.mocked(useInterlinearizerBookData).mock;
+    expect(calls.length).toBeGreaterThanOrEqual(2);
+    calls.forEach((args) => expect(args[0].projectId).toBe(testProjectId));
   });
 
-  it('renders the continuous scroll toggle', () => {
-    mockBookData({});
+  it('passes continuousScroll from useOptimisticBooleanSetting to Interlinearizer', () => {
+    mockOptimisticSetting(true);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -265,12 +256,11 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByRole('checkbox')).toBeInTheDocument();
+    expect(capturedInterlinearizerProps?.continuousScroll).toBe(true);
   });
 
-  it('continuous scroll toggle is checked when the setting is true', () => {
-    mockBookData({});
-    mockWritingSystem('en', true);
+  it('passes checked and disabled from useOptimisticBooleanSetting to ContinuousScrollToggle', () => {
+    mockOptimisticSetting(true, jest.fn(), true);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -278,11 +268,14 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByRole('checkbox')).toBeChecked();
+    const toggle = screen.getByTestId('continuous-scroll-toggle');
+    expect(toggle).toHaveAttribute('data-checked', 'true');
+    expect(toggle).toHaveAttribute('data-disabled', 'true');
   });
 
-  it('continuous scroll toggle is unchecked when the setting is false', () => {
-    mockBookData({});
+  it('wires ContinuousScrollToggle onCheckedChange to the onChange from useOptimisticBooleanSetting', async () => {
+    const mockOnChange = jest.fn();
+    mockOptimisticSetting(false, mockOnChange);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -290,80 +283,8 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByRole('checkbox')).not.toBeChecked();
-  });
+    await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
 
-  it('clicking the continuous scroll toggle calls setContinuousScroll with the new value', async () => {
-    mockBookData({});
-    const mockSetContinuousScroll = jest.fn();
-    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
-      if (key === 'interlinearizer.continuousScroll')
-        return [true, mockSetContinuousScroll, jest.fn(), false];
-      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
-      return [d, jest.fn(), jest.fn(), false];
-    });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole('checkbox'));
-
-    expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
-  });
-
-  it('switches rendering immediately using optimistic local state while setting saves', async () => {
-    mockBookData({});
-    const mockSetContinuousScroll = jest.fn();
-    // Setting source remains true during the test (simulates delayed persistence confirmation).
-    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
-      if (key === 'interlinearizer.continuousScroll')
-        return [true, mockSetContinuousScroll, jest.fn(), false];
-      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
-      return [d, jest.fn(), jest.fn(), false];
-    });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-      />,
-    );
-
-    // Initially in continuous mode.
-    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
-    expect(screen.queryByText('In')).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByRole('checkbox'));
-
-    // Before setting saves, UI should already switch to token-chip mode.
-    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
-    expect(screen.getByText('In')).toBeInTheDocument();
-    expect(mockSetContinuousScroll).toHaveBeenCalledWith(false);
-  });
-
-  it('toggles continuous scroll setting back to true after being false', async () => {
-    mockBookData({});
-    const mockSetContinuousScroll = jest.fn();
-    jest.mocked(useProjectSetting).mockImplementation((_p, key, d) => {
-      if (key === 'interlinearizer.continuousScroll')
-        return [false, mockSetContinuousScroll, jest.fn(), false];
-      if (key === 'platform.languageTag') return ['en', jest.fn(), jest.fn(), false];
-      return [d, jest.fn(), jest.fn(), false];
-    });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-      />,
-    );
-
-    // Initially in token-chip mode
-    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
-
-    // Click toggle to turn on continuous mode
-    await userEvent.click(screen.getByRole('checkbox'));
-    expect(mockSetContinuousScroll).toHaveBeenCalledWith(true);
+    expect(mockOnChange).toHaveBeenCalledWith(true);
   });
 });

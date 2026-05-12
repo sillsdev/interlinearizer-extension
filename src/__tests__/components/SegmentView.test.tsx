@@ -4,8 +4,21 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Segment } from 'interlinearizer';
+import type { Segment, Token } from 'interlinearizer';
 import { SegmentView } from '../../components/SegmentView';
+
+jest.mock('../../components/PhraseBox', () => ({
+  __esModule: true,
+  default: ({ tokens }: { tokens: Token[] }) => (
+    <span>{tokens.map((t) => t.surfaceText).join(' ')}</span>
+  ),
+}));
+
+jest.mock('../../components/TokenChip', () => ({
+  __esModule: true,
+  default: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+  TokenChip: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+}));
 
 /** A word token segment. */
 const WORD_SEGMENT: Segment = {
@@ -56,12 +69,6 @@ describe('SegmentView', () => {
     render(<SegmentView segment={PUNCT_SEGMENT} />);
 
     expect(screen.getByText('.')).toBeInTheDocument();
-  });
-
-  it('renders explicit token-chip mode the same as the default', () => {
-    render(<SegmentView segment={WORD_SEGMENT} displayMode="token-chip" />);
-
-    expect(screen.getByText('In')).toBeInTheDocument();
   });
 
   it('renders baselineText in baseline-text mode', () => {

@@ -106,7 +106,10 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
- * @param analysisLanguages - The BCP 47 language tags used for analysis strings.
+ * @param analysisLanguages - BCP 47 tags for all languages used in glosses and annotations.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text. Set for bilateral
+ *   alignment projects (e.g. BT Extension) so that `AlignmentLink.targetEndpoints` can be resolved
+ *   at runtime.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
@@ -118,6 +121,7 @@ export async function createProject(
   token: ExecutionToken,
   sourceProjectId: string,
   analysisLanguages: string[],
+  targetProjectId?: string,
   name?: string,
   description?: string,
 ): Promise<InterlinearProject> {
@@ -128,6 +132,7 @@ export async function createProject(
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     sourceProjectId,
+    ...(targetProjectId !== undefined && { targetProjectId }),
     analysisLanguages,
     analysis: emptyAnalysis(),
     links: [],
@@ -225,6 +230,8 @@ export async function getProjectsForSource(
  * @param analysisLanguages - New BCP 47 analysis language tags. A non-empty array overwrites the
  *   field; an empty array or `undefined` leaves the field unchanged, since `analysisLanguages` is
  *   required and must not be cleared.
+ * @param targetProjectId - New target-project ID, or `undefined` to clear it (removes the
+ *   target-side text binding).
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -236,6 +243,7 @@ export async function updateProjectMetadata(
   name: string | undefined,
   description: string | undefined,
   analysisLanguages?: string[],
+  targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
@@ -253,6 +261,11 @@ export async function updateProjectMetadata(
     }
     if (analysisLanguages && analysisLanguages.length > 0) {
       updated.analysisLanguages = analysisLanguages;
+    }
+    if (targetProjectId === undefined) {
+      delete updated.targetProjectId;
+    } else {
+      updated.targetProjectId = targetProjectId;
     }
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
     return updated;

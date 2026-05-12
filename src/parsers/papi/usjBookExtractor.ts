@@ -216,14 +216,13 @@ function traverse(nodes: MarkerContent[], state: TraversalState): void {
  * Produces the same output regardless of engine locale, making the result safe to feed into a hash
  * function. Arrays preserve their original order; only object keys are sorted.
  *
- * Intended for plain JSON-shaped structures only; does not special-case Date, Map, Set, or RegExp.
+ * Intended for plain JSON-shaped structures only; does not special-case Date, Map, Set, RegExp, or
+ * undefined values.
  *
  * @param value - Any JSON-serializable value.
  * @returns A stable JSON string with object keys in UTF-16 code-unit order.
  */
 function stableStringify(value: unknown): string {
-  /* v8 ignore next -- defensive guard; production callers never pass undefined directly */
-  if (value === undefined) return 'null';
   if (!(value instanceof Object)) return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   const sorted = Object.entries(value)

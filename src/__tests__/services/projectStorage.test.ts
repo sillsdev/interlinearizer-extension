@@ -12,29 +12,50 @@ import {
 } from '../../services/projectStorage';
 import { createTestActivationContext } from '../test-helpers';
 
+/**
+ * Mock implementation of storage methods used in tests. Exposes `__mockReadUserData`,
+ * `__mockWriteUserData`, and `__mockDeleteUserData` as jest fns so tests can assert on calls to
+ * `papi.storage`, and `__mockLogger` so tests can assert on `papi.logger` calls.
+ */
 interface StorageMock {
   __mockReadUserData: jest.Mock;
   __mockWriteUserData: jest.Mock;
   __mockDeleteUserData: jest.Mock;
+  __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
+/**
+ * Type guard that narrows `m` to `StorageMock`.
+ *
+ * @param m - The value to test.
+ * @returns `m is StorageMock` — `true` when `m` has all three mock storage properties and the mock
+ *   logger.
+ */
 function isStorageMock(m: unknown): m is StorageMock {
   return (
     !!m &&
     typeof m === 'object' &&
     '__mockReadUserData' in m &&
     '__mockWriteUserData' in m &&
-    '__mockDeleteUserData' in m
+    '__mockDeleteUserData' in m &&
+    '__mockLogger' in m
   );
 }
 
 if (!isStorageMock(papiBackendMock)) throw new Error('Expected mocked @papi/backend with storage');
-const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData } = papiBackendMock;
+const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLogger } =
+  papiBackendMock;
 
 const token = createTestActivationContext().executionToken;
 
 const EMPTY_ANALYSIS = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
 
+/**
+ * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
+ * storage key has never been written.
+ *
+ * @returns An `Error` with `code` set to `'ENOENT'`.
+ */
 function enoentError(): Error {
   return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
 }
@@ -106,6 +127,32 @@ describe('projectStorage', () => {
         'projectIds',
         JSON.stringify(['existing-id', '00000000-0000-0000-0000-000000000001']),
       );
+    });
+
+    it('rolls back the project write and rethrows when the index write fails', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+
+      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(
+        token,
+        'project:00000000-0000-0000-0000-000000000001',
+      );
+    });
+
+    it('logs a rollback error and still rethrows the original error', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+      __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
+
+      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+
+      expect(__mockLogger.error).toHaveBeenCalled();
     });
   });
 

@@ -154,6 +154,7 @@ async function createInterlinearProject(
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
  * @returns A promise that resolves when the deletion (or no-op) is complete.
+ * @throws Re-throws storage errors after logging/notifying so the caller can handle failure UX.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
   try {

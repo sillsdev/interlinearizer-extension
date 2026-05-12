@@ -1,5 +1,5 @@
 import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
@@ -231,8 +231,10 @@ export default function InterlinearizerLoader({
           />
         }
         onSelectProjectMenuItem={menuCommandHandler}
-        /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-        onSelectViewInfoMenuItem={() => {}}
+        /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+        onSelectViewInfoMenuItem={() => {
+          logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
+        }}
       />
 
       {hasError || showLoading || !book ? (

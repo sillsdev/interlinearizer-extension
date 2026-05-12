@@ -217,9 +217,8 @@ export async function getProjectsForSource(
  * @param id - The interlinearizer project UUID to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags. A non-empty array overwrites the
- *   field; an empty array or `undefined` leaves the field unchanged, since `analysisLanguages` is
- *   required and must not be cleared.
+ * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass the
+ *   current value to leave it unchanged. The field is required and cannot be cleared.
  * @param targetProjectId - New target-project ID, or `undefined` to clear it (removes the
  *   target-side text binding).
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
@@ -232,7 +231,7 @@ export async function updateProjectMetadata(
   id: string,
   name: string | undefined,
   description: string | undefined,
-  analysisLanguages?: string[],
+  analysisLanguages: string[],
   targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
@@ -249,9 +248,7 @@ export async function updateProjectMetadata(
     } else {
       updated.description = description;
     }
-    if (analysisLanguages && analysisLanguages.length > 0) {
-      updated.analysisLanguages = analysisLanguages;
-    }
+    updated.analysisLanguages = analysisLanguages;
     if (targetProjectId === undefined) {
       delete updated.targetProjectId;
     } else {
@@ -290,8 +287,7 @@ export async function saveProjectAnalysis(
 }
 
 /**
- * Deletes the project with the given ID from storage and removes it from the index. No-ops silently
- * if the project does not exist.
+ * Deletes the project with the given ID from storage and removes it from the index.
  *
  * @param token - The execution token for storage access.
  * @param id - The project UUID to delete.
@@ -310,9 +306,13 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       if (!isNotFound(e)) throw e;
     }
     await enqueueIndexOp(async () => {
-      const ids = await readIds(token);
-      const updated = ids.filter((i) => i !== id);
-      await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
+      const ids: string[] = JSON.parse(await papi.storage.readUserData(token, PROJECT_IDS_KEY));
+      if (!ids.includes(id)) throw new RangeError(`Project not found in index: ${id}`);
+      await papi.storage.writeUserData(
+        token,
+        PROJECT_IDS_KEY,
+        JSON.stringify(ids.filter((i) => i !== id)),
+      );
     });
   });
 }

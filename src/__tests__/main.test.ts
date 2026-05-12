@@ -50,10 +50,22 @@ const {
   __mockLogger,
 } = papiBackendMock;
 
+/**
+ * Type guard that narrows an unknown value to a callable function.
+ *
+ * @param f - The value to test.
+ * @returns True if f is a function.
+ */
 function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
   return typeof f === 'function';
 }
 
+/**
+ * Finds the handler registered for a command name in the mocked registerCommand calls.
+ *
+ * @param commandName - The command name to look up.
+ * @returns The handler function, or undefined if no matching call was recorded.
+ */
 function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
   const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
   const rawHandler: unknown = call?.[1];
@@ -73,12 +85,24 @@ async function getOpenForWebViewHandler(): Promise<
   };
 }
 
+/**
+ * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
+ *
+ * @returns A typed wrapper around the captured callback.
+ * @throws If no callback was registered (i.e. activate was not called first).
+ */
 function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
   const cb: unknown = __mockOnDidOpenWebView.mock.calls[0]?.[0];
   if (!isCallable(cb)) throw new Error('onDidOpenWebView callback not found');
   return (event) => cb(event);
 }
 
+/**
+ * Retrieves the callback passed to onDidCloseWebView during the most recent activate() call.
+ *
+ * @returns A typed wrapper around the captured callback.
+ * @throws If no callback was registered (i.e. activate was not called first).
+ */
 function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
   const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
   if (!isCallable(cb)) throw new Error('onDidCloseWebView callback not found');

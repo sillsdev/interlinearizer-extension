@@ -4,6 +4,12 @@
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
 
+/**
+ * Builds a minimal RawBook fixture for GEN with the given verses.
+ *
+ * @param verses - Array of verse objects (sid + text) to include in the book.
+ * @returns A RawBook with fixed bookCode, writingSystem, and contentHash.
+ */
 function makeRawBook(verses: { sid: string; text: string }[]): RawBook {
   return { bookCode: 'GEN', writingSystem: 'en', contentHash: 'abc123', verses };
 }

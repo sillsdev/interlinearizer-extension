@@ -19,12 +19,12 @@ const useProjectData = jest.fn(() =>
   new Proxy(
     {},
     {
-      get(_target, prop: string) {
-        if (KNOWN_PROJECT_DATA_METHODS.has(prop)) {
+      get(_target, prop: string | symbol) {
+        if (typeof prop === 'string' && KNOWN_PROJECT_DATA_METHODS.has(prop)) {
           return () => [undefined, jest.fn(), false];
         }
         throw new Error(
-          `useProjectData mock: unknown method "${prop}". Add it to KNOWN_PROJECT_DATA_METHODS if intentional.`,
+          `useProjectData mock: unknown method "${String(prop)}". Add it to KNOWN_PROJECT_DATA_METHODS if intentional.`,
         );
       },
     },

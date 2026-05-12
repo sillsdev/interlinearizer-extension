@@ -26,8 +26,6 @@ export interface ClusterData {
   LexemesId: string;
   /** Unique cluster id: LexemesId plus TextRange (e.g. "Word:a/Word:b/21-3"). */
   Id: string;
-  /** Excluded flag. See [pt9-xml.md](./pt9-xml.md) for details. */
-  Excluded: boolean;
 }
 
 /** Data on punctuation change. */
@@ -81,14 +79,12 @@ interface ParsedLexeme {
   ['@_GlossId']?: string;
 }
 
-/** Cluster: optional Range, optional Lexeme[], optional Excluded. */
+/** Cluster: optional Range, optional Lexeme[]. */
 interface ParsedCluster {
   /** Range element (Index, Length). */
   Range?: ParsedRange;
   /** Lexeme elements in this cluster. */
   Lexeme?: ParsedLexeme[];
-  /** Excluded flag (optional). See [pt9-xml.md](pt9-xml.md) for details. */
-  Excluded?: string;
 }
 
 /** Punctuation: optional Range, BeforeText, AfterText. */
@@ -233,14 +229,11 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
     /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
-    const excluded = el.Excluded === 'true';
-
     return {
       TextRange: textRange,
       Lexemes: lexemes,
       LexemesId: lexemesId,
       Id: id,
-      Excluded: excluded,
     };
   });
 }

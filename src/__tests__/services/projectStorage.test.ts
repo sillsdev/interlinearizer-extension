@@ -276,7 +276,7 @@ describe('projectStorage', () => {
     it('returns the updated project with the new name and description', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name', description: 'My Desc' });
     });
@@ -284,7 +284,7 @@ describe('projectStorage', () => {
     it('writes the updated project to storage', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -297,7 +297,7 @@ describe('projectStorage', () => {
       const withMeta = { ...storedProject, name: 'Old', description: 'Old desc' };
       __mockReadUserData.mockResolvedValue(JSON.stringify(withMeta));
 
-      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined);
+      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined, ['en']);
 
       expect(result?.name).toBeUndefined();
       expect(result?.description).toBeUndefined();
@@ -313,13 +313,13 @@ describe('projectStorage', () => {
     it('returns undefined when the project does not exist', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc');
+      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('updates analysisLanguages when a non-empty array is provided', async () => {
+    it('updates analysisLanguages to the provided value', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr']);
@@ -333,22 +333,6 @@ describe('projectStorage', () => {
       }
     });
 
-    it('does not update analysisLanguages when an empty array is provided', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
-
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', []);
-
-      expect(result?.analysisLanguages).toEqual(['en']);
-    });
-
-    it('does not update analysisLanguages when undefined is provided', async () => {
-      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
-
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
-
-      expect(result?.analysisLanguages).toEqual(['en']);
-    });
-
     it('sets targetProjectId when provided', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
@@ -357,7 +341,7 @@ describe('projectStorage', () => {
         'proj-id',
         'Name',
         'Desc',
-        undefined,
+        ['en'],
         'tgt-proj',
       );
 
@@ -370,11 +354,11 @@ describe('projectStorage', () => {
       }
     });
 
-    it('clears targetProjectId when undefined is provided', async () => {
+    it('clears targetProjectId when not provided', async () => {
       const withTarget = { ...storedProject, targetProjectId: 'old-tgt' };
       __mockReadUserData.mockResolvedValue(JSON.stringify(withTarget));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
       expect(result?.targetProjectId).toBeUndefined();
       const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
@@ -415,16 +399,12 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
     });
 
-    it('no-ops silently when the project is not in the index', async () => {
+    it('throws RangeError without touching storage when the project is not in the index', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(['other']));
 
-      await deleteProject(token, 'nonexistent');
-
-      expect(__mockWriteUserData).toHaveBeenCalledWith(
-        token,
-        'projectIds',
-        JSON.stringify(['other']),
-      );
+      await expect(deleteProject(token, 'nonexistent')).rejects.toThrow(RangeError);
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
     });
 
     it('completes index cleanup when the project file is already missing', async () => {
@@ -440,6 +420,15 @@ describe('projectStorage', () => {
       );
     });
 
+    it('does not delete the project record when the index write fails', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete']));
+      __mockWriteUserData.mockRejectedValue(new Error('disk full'));
+
+      await expect(deleteProject(token, 'to-delete')).rejects.toThrow('disk full');
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
     it('propagates unexpected errors from deleteUserData', async () => {
       __mockDeleteUserData.mockRejectedValue(new Error('permission denied'));
       __mockReadUserData.mockResolvedValue(JSON.stringify(['to-delete']));
@@ -447,12 +436,12 @@ describe('projectStorage', () => {
       await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
     });
 
-    it('completes successfully when the project index does not exist', async () => {
+    it('propagates the error without touching storage when the project index does not exist', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      await deleteProject(token, 'nonexistent-id');
-
-      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
+      await expect(deleteProject(token, 'nonexistent-id')).rejects.toThrow('ENOENT');
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
     });
   });
 

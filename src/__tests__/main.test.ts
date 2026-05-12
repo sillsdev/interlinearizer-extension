@@ -825,18 +825,18 @@ describe('main', () => {
       );
     });
 
-    it('passes name and description to projectStorage.updateProjectMetadata', async () => {
+    it('passes name, description, and analysisLanguages to projectStorage.updateProjectMetadata', async () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc');
+      await handler('proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
-        undefined,
+        ['en'],
         undefined,
       );
     });
@@ -864,7 +864,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined);
+      const result = await handler('missing', undefined, undefined, ['en']);
 
       expect(result).toBeUndefined();
     });
@@ -873,7 +873,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('proj-id', 'My Name', 'My Desc');
+      const result = await handler('proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockLogger.error).toHaveBeenCalledWith(

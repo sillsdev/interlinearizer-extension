@@ -66,7 +66,7 @@ export function CreateProjectModal({
       const projectJson = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        normalizedAnalysisLanguage,
+        [normalizedAnalysisLanguage],
         name.trim() || undefined,
         description.trim() || undefined,
       );

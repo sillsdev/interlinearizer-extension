@@ -8,6 +8,7 @@ import {
   getProject,
   getProjectsForSource,
   listProjects,
+  saveProjectAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { createTestActivationContext } from '../test-helpers';
@@ -71,14 +72,13 @@ describe('projectStorage', () => {
     it('returns a project with the given fields and empty analysis/links', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en');
+      const project = await createProject(token, 'src-proj', ['en']);
 
       expect(project).toMatchObject({
         id: '00000000-0000-0000-0000-000000000001',
         sourceProjectId: 'src-proj',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
         links: [],
       });
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
@@ -87,7 +87,7 @@ describe('projectStorage', () => {
     it('stores name and description when provided', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en', 'My Name', 'My Desc');
+      const project = await createProject(token, 'src-proj', ['en'], 'My Name', 'My Desc');
 
       expect(project.name).toBe('My Name');
       expect(project.description).toBe('My Desc');
@@ -96,7 +96,7 @@ describe('projectStorage', () => {
     it('writes the project JSON under the project key', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en');
+      const project = await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -108,7 +108,7 @@ describe('projectStorage', () => {
     it('creates a new index when none exists', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      await createProject(token, 'src-proj', 'en');
+      await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -120,7 +120,7 @@ describe('projectStorage', () => {
     it('appends to an existing index', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(['existing-id']));
 
-      await createProject(token, 'src-proj', 'en');
+      await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -135,7 +135,7 @@ describe('projectStorage', () => {
         .mockResolvedValueOnce(undefined) // project write succeeds
         .mockRejectedValueOnce(new Error('disk full')); // index write fails
 
-      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
       expect(__mockDeleteUserData).toHaveBeenCalledWith(
         token,
@@ -150,7 +150,7 @@ describe('projectStorage', () => {
         .mockRejectedValueOnce(new Error('disk full')); // index write fails
       __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
 
-      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
       expect(__mockLogger.error).toHaveBeenCalled();
     });
@@ -162,9 +162,8 @@ describe('projectStorage', () => {
         id: 'abc',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'fr',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
+        analysisLanguages: ['fr'],
+        analysis: EMPTY_ANALYSIS,
         links: [],
       };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
@@ -198,9 +197,8 @@ describe('projectStorage', () => {
         id: 'id-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
         links: [],
       };
       const p2 = { ...p1, id: 'id-2' };
@@ -219,9 +217,8 @@ describe('projectStorage', () => {
         id: 'id-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
         links: [],
       };
       __mockReadUserData
@@ -240,9 +237,8 @@ describe('projectStorage', () => {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: EMPTY_ANALYSIS,
-      targetAnalysis: EMPTY_ANALYSIS,
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
       links: [],
     };
 
@@ -292,34 +288,34 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('updates analysisWritingSystem when a non-empty value is provided', async () => {
+    it('updates analysisLanguages when a non-empty array is provided', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', 'fr');
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr']);
 
-      expect(result?.analysisWritingSystem).toBe('fr');
+      expect(result?.analysisLanguages).toEqual(['fr']);
       const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
       expect(typeof writtenArg).toBe('string');
       if (typeof writtenArg === 'string') {
         const parsed: unknown = JSON.parse(writtenArg);
-        expect(parsed).toMatchObject({ analysisWritingSystem: 'fr' });
+        expect(parsed).toMatchObject({ analysisLanguages: ['fr'] });
       }
     });
 
-    it('does not update analysisWritingSystem when an empty string is provided', async () => {
+    it('does not update analysisLanguages when an empty array is provided', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', '');
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', []);
 
-      expect(result?.analysisWritingSystem).toBe('en');
+      expect(result?.analysisLanguages).toEqual(['en']);
     });
 
-    it('does not update analysisWritingSystem when undefined is provided', async () => {
+    it('does not update analysisLanguages when undefined is provided', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
 
-      expect(result?.analysisWritingSystem).toBe('en');
+      expect(result?.analysisLanguages).toEqual(['en']);
     });
   });
 
@@ -398,9 +394,8 @@ describe('projectStorage', () => {
       id: 'id-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-a',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: EMPTY_ANALYSIS,
-      targetAnalysis: EMPTY_ANALYSIS,
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
       links: [],
     };
 
@@ -460,8 +455,8 @@ describe('projectStorage', () => {
         .mockReturnValueOnce('00000000-0000-0000-0000-000000000001')
         .mockReturnValueOnce('00000000-0000-0000-0000-000000000002');
 
-      const p1 = createProject(token, 'src', 'en');
-      const p2 = createProject(token, 'src', 'en');
+      const p1 = createProject(token, 'src', ['en']);
+      const p2 = createProject(token, 'src', ['en']);
 
       resolveFirstIndexRead(JSON.stringify([]));
 
@@ -471,12 +466,87 @@ describe('projectStorage', () => {
       expect(ops).toEqual(['read:1', 'write:index', 'read:2', 'write:index']);
     });
   });
+  describe('saveProjectAnalysis', () => {
+    const storedProject = {
+      id: 'proj-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src',
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
+      links: [],
+    };
+
+    const updatedAnalysis = {
+      segmentAnalyses: [
+        {
+          id: 'sa-1',
+          segmentId: 'seg-1',
+          status: 'approved' as const,
+        },
+      ],
+      tokenAnalyses: [],
+      phrases: [],
+    };
+
+    const updatedLinks = [
+      {
+        id: 'link-1',
+        sourceEndpoints: [{ tokenId: 'tok-1' }],
+        targetEndpoints: [{ tokenId: 'tok-2' }],
+        status: 'approved' as const,
+      },
+    ];
+
+    it('returns the updated project with the new analysis and links', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await saveProjectAnalysis(token, 'proj-id', updatedAnalysis, updatedLinks);
+
+      expect(result).toMatchObject({
+        id: 'proj-id',
+        analysis: updatedAnalysis,
+        links: updatedLinks,
+      });
+    });
+
+    it('preserves metadata fields unchanged', async () => {
+      const withMeta = { ...storedProject, name: 'My Project', description: 'My desc' };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(withMeta));
+
+      const result = await saveProjectAnalysis(token, 'proj-id', updatedAnalysis, updatedLinks);
+
+      expect(result?.name).toBe('My Project');
+      expect(result?.description).toBe('My desc');
+      expect(result?.analysisLanguages).toEqual(['en']);
+    });
+
+    it('writes the updated project to storage', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      await saveProjectAnalysis(token, 'proj-id', updatedAnalysis, updatedLinks);
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'project:proj-id',
+        JSON.stringify({ ...storedProject, analysis: updatedAnalysis, links: updatedLinks }),
+      );
+    });
+
+    it('returns undefined when the project does not exist', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const result = await saveProjectAnalysis(token, 'missing', updatedAnalysis, updatedLinks);
+
+      expect(result).toBeUndefined();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+  });
 
   describe('error propagation', () => {
     it('propagates non-ENOENT errors from readIds', async () => {
       __mockReadUserData.mockRejectedValue(new Error('disk full'));
 
-      await expect(createProject(token, 'src', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src', ['en'])).rejects.toThrow('disk full');
     });
 
     it('propagates non-ENOENT errors from getProject', async () => {

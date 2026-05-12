@@ -601,15 +601,13 @@ declare module 'interlinearizer' {
    * - Paratext: `LexemeCluster` + `WordAnalysis`. `gloss` resolved from the selected
    *   `LexiconSense.Gloss` (per-language strings). `morphemes` from the `Lexeme[]` within
    *   `WordAnalysis` when `LexemeCluster.Type = WordParse`. Paratext stores POS on the lexeme, not
-   *   per-analysis. `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and `.Score`.
-   *   `excluded` from `Cluster.Excluded` — when `true`, the cluster is excluded from phrase-level
-   *   analysis at its position.
+   *   per-analysis. `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and
+   *   `.Score`.
    * - BT Extension: synthesized per-token from `gloss` / `lemmaText` / `senseIds`. BT Extension
    *   stores gloss per-token rather than as shared analysis objects — each token gets its own
    *   `TokenAnalysis`. `status` from `Instance.termStatusNum` (BiblicalTermStatus). `confidence`
    *   inferred from status. No morpheme decomposition — `morphemes` is either empty or a single
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
-   *   `excluded` is not applicable — BT Extension has no equivalent concept.
    */
   export type TokenAnalysis = {
     /**
@@ -664,13 +662,6 @@ declare module 'interlinearizer' {
      * becomes a concern (token text is typically short, so the literal string is usually fine).
      */
     tokenSnapshot?: string;
-
-    /**
-     * When `true`, this token is excluded from phrase-level analysis at its position. Carries PT9's
-     * `Cluster.Excluded` flag. Absent (treated as `false`) for LCM and BT Extension origins, which
-     * have no equivalent concept.
-     */
-    excluded?: boolean;
 
     /**
      * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over

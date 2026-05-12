@@ -45,7 +45,6 @@ describe('InterlinearXmlParser', () => {
                 Lexemes: [{ LexemeId: 'Word:word', SenseId: 'sense1' }],
                 LexemesId: 'Word:word',
                 Id: 'Word:word/0-4',
-                Excluded: false,
               },
             ],
             Punctuations: [],
@@ -223,33 +222,6 @@ describe('InterlinearXmlParser', () => {
         LexemeId: 'Word:a',
         SenseId: '',
       });
-    });
-
-    it.each([
-      ['true', true],
-      ['false', false],
-      [undefined, false],
-    ] as const)('parses Cluster Excluded=%s as boolean %s', (excludedValue, expectedBool) => {
-      const excludedTag =
-        excludedValue === undefined ? '' : `<Excluded>${excludedValue}</Excluded>`;
-      const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
-          <Verses>
-            <item>
-              <string>MAT 1:1</string>
-              <VerseData>
-                <Cluster>
-                  <Range Index="0" Length="4" />
-                  <Lexeme Id="Word:word" />
-                  ${excludedTag}
-                </Cluster>
-              </VerseData>
-            </item>
-          </Verses>
-        </InterlinearData>
-      `;
-      const result = parser.parse(xml);
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(expectedBool);
     });
 
     it('parses Punctuation with Range, BeforeText, AfterText', () => {

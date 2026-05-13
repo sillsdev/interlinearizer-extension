@@ -193,7 +193,7 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
-  it('does not call onProjectSaved or onClose when save sendCommand resolves with a falsy value', async () => {
+  it('does not call onProjectSaved, onClose, or send a notification when save sendCommand resolves with a falsy value', async () => {
     mockSendCommand.mockResolvedValue(undefined);
     const onProjectSaved = jest.fn();
     const onClose = jest.fn();
@@ -206,9 +206,10 @@ describe('ProjectMetadataModal', () => {
     await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
     expect(onProjectSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectSaved or onClose when save sendCommand rejects, but sends an error notification', async () => {
+  it('does not call onProjectSaved, onClose, or send a notification when save sendCommand rejects', async () => {
     mockSendCommand.mockRejectedValue(new Error('save failed'));
     const onProjectSaved = jest.fn();
     const onClose = jest.fn();
@@ -218,16 +219,13 @@ describe('ProjectMetadataModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() =>
-      expect(papi.notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      ),
-    );
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
     expect(onProjectSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectDeleted or onClose when delete sendCommand rejects, but sends an error notification', async () => {
+  it('does not call onProjectDeleted, onClose, or send a notification when delete sendCommand rejects', async () => {
     mockSendCommand.mockRejectedValue(new Error('delete failed'));
     const onProjectDeleted = jest.fn();
     const onClose = jest.fn();
@@ -238,13 +236,10 @@ describe('ProjectMetadataModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
-    await waitFor(() =>
-      expect(papi.notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      ),
-    );
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
     expect(onProjectDeleted).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
   it('trims whitespace from the language input before saving', async () => {

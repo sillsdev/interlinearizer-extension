@@ -40,6 +40,7 @@ module.exports = {
           'plugin',
           'source',
           'custom-variant',
+          'utility',
         ],
       },
     ],

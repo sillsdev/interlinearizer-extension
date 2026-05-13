@@ -134,7 +134,7 @@ export default function ContinuousView({
     return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
   });
 
-  const jumpTargetRef = useRef<number | undefined>();
+  const jumpTargetRef = useRef<number | undefined>(undefined);
   const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
     number | undefined
   >();
@@ -158,8 +158,7 @@ export default function ContinuousView({
     // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
     const lastInternal = lastInternalVerseRef.current;
     if (
-      lastInternal &&
-      lastInternal.book === activeVerse.book &&
+      lastInternal?.book === activeVerse.book &&
       lastInternal.chapter === activeVerse.chapter &&
       lastInternal.verse === activeVerse.verse
     ) {
@@ -238,7 +237,7 @@ export default function ContinuousView({
 
   const atStart = !phraseEntries.length || !focusPhraseIndex;
   const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
-  const stripOpacityClass = isVisible ? 'tw-opacity-100' : 'tw-opacity-0';
+  const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
@@ -291,11 +290,11 @@ export default function ContinuousView({
   }, [focusPhraseIndex]);
 
   return (
-    <div className="tw-relative tw-flex tw-items-center tw-gap-1">
+    <div className="tw:relative tw:flex tw:items-center tw:gap-1">
       {/* Previous navigation arrow */}
       <button
         aria-label="Previous token"
-        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
+        className="tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50"
         disabled={atStart}
         onClick={stepPrev}
         type="button"
@@ -304,12 +303,12 @@ export default function ContinuousView({
       </button>
 
       {/* Scrollable token strip */}
-      <div className="tw-relative tw-flex-1 tw-overflow-hidden">
+      <div className="tw:relative tw:flex-1 tw:overflow-hidden">
         {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (
           <div
             aria-hidden="true"
-            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-start-0 tw-z-10 tw-w-8 tw-bg-gradient-to-e tw-from-background tw-to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-s-0 tw:z-10 tw:w-8 tw-bg-gradient-to-e tw:from-background tw:to-transparent"
           />
         )}
 
@@ -317,13 +316,13 @@ export default function ContinuousView({
         {!atEnd && (
           <div
             aria-hidden="true"
-            className="tw-pointer-events-none tw-absolute tw-inset-y-0 tw-end-0 tw-z-10 tw-w-8 tw-bg-gradient-to-s tw-from-background tw-to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-e-0 tw:z-10 tw:w-8 tw-bg-gradient-to-s tw:from-background tw:to-transparent"
           />
         )}
 
         {/* Inner flex row */}
         <div
-          className={`no-scrollbar tw-flex tw-items-center tw-gap-1 tw-overflow-x-scroll tw-py-2 tw-transition-opacity ${stripOpacityClass}`}
+          className={`tw:no-scrollbar tw:flex tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
           style={{
             transitionDuration: `${STRIP_FADE_MS}ms`,
             transitionTimingFunction: STRIP_FADE_EASING,
@@ -356,7 +355,7 @@ export default function ContinuousView({
       {/* Next navigation arrow */}
       <button
         aria-label="Next token"
-        className="tw-z-10 tw-flex-shrink-0 tw-rounded tw-p-1 tw-text-foreground disabled:tw-opacity-30 hover:tw-bg-muted/50"
+        className="tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50"
         disabled={atEnd}
         onClick={stepNext}
         type="button"

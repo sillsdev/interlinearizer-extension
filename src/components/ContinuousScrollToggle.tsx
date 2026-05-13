@@ -25,7 +25,7 @@ export default function ContinuousScrollToggle({
   const switchId = useId();
 
   return (
-    <div className="tw-flex tw-items-center tw-gap-2 tw-text-sm">
+    <div className="tw:flex tw:items-center tw:gap-2 tw:text-sm">
       <Switch
         checked={checked}
         disabled={disabled}
@@ -33,7 +33,7 @@ export default function ContinuousScrollToggle({
         onCheckedChange={onCheckedChange}
       />
       {label && (
-        <Label className="tw-cursor-pointer" htmlFor={switchId}>
+        <Label className="tw:cursor-pointer" htmlFor={switchId}>
           {label}
         </Label>
       )}

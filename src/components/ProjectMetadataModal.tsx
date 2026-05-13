@@ -96,20 +96,23 @@ export function ProjectMetadataModal({
     setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
-    const newLanguage = editLanguage.trim();
+    const newLanguages = editLanguage
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
     try {
       const updatedProjectJson = await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
-        [newLanguage],
+        newLanguages,
       );
       if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisLanguages: [newLanguage],
+        analysisLanguages: newLanguages,
       });
       onClose();
     } catch (e) {

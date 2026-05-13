@@ -247,7 +247,7 @@ export default function ContinuousView({
   // One ref slot per phrase so we can call scrollIntoView on the focused one.
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-  const atStart = !phraseEntries.length || !focusPhraseIndex;
+  const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
   const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 

@@ -5,28 +5,15 @@ import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
-import ContinuousScrollToggle from './ContinuousScrollToggle';
-import { CreateProjectModal } from './CreateProjectModal';
-import Interlinearizer from './Interlinearizer';
-import { ProjectMetadataModal } from './ProjectMetadataModal';
-import ScriptureNavControls from './ScriptureNavControls';
-import {
-  SelectInterlinearProjectModal,
-  type InterlinearProjectSummary,
-} from './SelectInterlinearProjectModal';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
+import ContinuousScrollToggle from './ContinuousScrollToggle';
+import Interlinearizer from './Interlinearizer';
+import ProjectModals, { type ModalState } from './ProjectModals';
+import ScriptureNavControls from './ScriptureNavControls';
+import type { ActiveProjectState } from './SelectInterlinearProjectModal';
 
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
-
-/** Which modal is currently visible. Only one can be open at a time. */
-type ModalState = 'none' | 'select' | 'create' | 'metadata';
-
-/** Fields of the active interlinear project persisted in WebView state. */
-type ActiveProjectState = Pick<
-  InterlinearProjectSummary,
-  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
->;
 
 /**
  * Root component for loading the Interlinearizer. Loads book data and settings, manages modal state
@@ -73,31 +60,10 @@ export default function InterlinearizerLoader({
    * restores. Updated after creation and when the user selects an existing project from the
    * picker.
    */
-  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
-    ActiveProjectState | undefined
-  >('activeProject', undefined);
-
-  /**
-   * The project currently open in the metadata modal. Set when the user clicks the info icon in the
-   * select modal or triggers "View Project Info" from the menu.
-   */
-  const [metadataProject, setMetadataProject] = useState<InterlinearProjectSummary | undefined>(
+  const [activeProject] = useWebViewState<ActiveProjectState | undefined>(
+    'activeProject',
     undefined,
   );
-
-  /**
-   * Tracks where the metadata modal was opened from so the correct modal is restored on close.
-   * `'select'` means it was opened via the info icon in the select modal; `'menu'` means it was
-   * opened via the "View Project Info" menu item.
-   */
-  const [metadataSource, setMetadataSource] = useState<'select' | 'menu'>('menu');
-
-  /**
-   * Tracks where the create modal was opened from so the correct modal is restored on close.
-   * `'select'` means it was opened via "New Interlinear Project..." in the select modal; `'menu'`
-   * means it was opened directly from the top menu.
-   */
-  const [createSource, setCreateSource] = useState<'select' | 'menu'>('menu');
 
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
@@ -111,77 +77,14 @@ export default function InterlinearizerLoader({
       if (item.command === 'interlinearizer.openSelectProjectModal') {
         setModal('select');
       } else if (item.command === 'interlinearizer.openNewProjectModal') {
-        setCreateSource('menu');
         setModal('create');
       } else if (item.command === 'interlinearizer.openProjectInfoModal') {
         if (activeProject) {
-          setMetadataProject(activeProject);
-          setMetadataSource('menu');
           setModal('metadata');
         }
       }
     },
     [activeProject],
-  );
-
-  /**
-   * Opens the metadata modal for the project whose info icon was clicked in the select modal.
-   *
-   * @param project - The project to display in the metadata modal.
-   */
-  const handleViewInfo = useCallback((project: InterlinearProjectSummary) => {
-    setMetadataProject(project);
-    setMetadataSource('select');
-    setModal('metadata');
-  }, []);
-
-  /**
-   * Records a newly created interlinear project as the active project.
-   *
-   * @param project - The full persisted project returned by the create command.
-   */
-  const handleProjectCreated = useCallback(
-    (project: InterlinearProjectSummary) => {
-      setActiveProject(project);
-    },
-    [setActiveProject],
-  );
-
-  /** Closes the create modal, returning to the select modal if creation was initiated from there. */
-  const handleCreateModalClose = useCallback(() => {
-    setModal(createSource === 'select' ? 'select' : 'none');
-  }, [createSource]);
-
-  /**
-   * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one, then returns to the appropriate modal.
-   *
-   * @param updated - The updated name, description, and analysisWritingSystem.
-   */
-  const handleMetadataProjectSaved = useCallback(
-    (updated: { name?: string; description?: string; analysisWritingSystem: string }) => {
-      if (activeProject && metadataProject?.id === activeProject.id) {
-        setActiveProject({ ...activeProject, ...updated });
-      }
-      setModal(metadataSource === 'select' ? 'select' : 'none');
-      setMetadataProject(undefined);
-    },
-    [activeProject, metadataProject, metadataSource, setActiveProject],
-  );
-
-  /**
-   * Called when the metadata modal deletes the project. Clears `activeProject` if it was the
-   * deleted project, then returns to the appropriate modal.
-   *
-   * @param deletedId - UUID of the project that was deleted.
-   */
-  const handleMetadataProjectDeleted = useCallback(
-    (deletedId: string) => {
-      if (activeProject?.id === deletedId) resetActiveProject();
-      setModal(metadataSource === 'select' ? 'select' : 'none');
-      setMetadataProject(undefined);
-    },
-    [activeProject, metadataSource, resetActiveProject],
   );
 
   /**
@@ -273,46 +176,13 @@ export default function InterlinearizerLoader({
         />
       )}
 
-      {modal === 'select' && (
-        <SelectInterlinearProjectModal
-          sourceProjectId={projectId}
-          onSelect={(project) => {
-            setActiveProject(project);
-            setModal('none');
-          }}
-          onCreateNew={() => {
-            setCreateSource('select');
-            setModal('create');
-          }}
-          onClose={() => setModal('none')}
-          onViewInfo={handleViewInfo}
-        />
-      )}
-
-      {modal === 'create' && (
-        <CreateProjectModal
-          projectId={projectId}
-          onClose={handleCreateModalClose}
-          onProjectCreated={handleProjectCreated}
-        />
-      )}
-
-      {modal === 'metadata' && metadataProject && (
-        <ProjectMetadataModal
-          interlinearProjectId={metadataProject.id}
-          name={metadataProject.name}
-          description={metadataProject.description}
-          sourceProjectId={metadataProject.sourceProjectId}
-          analysisWritingSystem={metadataProject.analysisWritingSystem}
-          createdAt={metadataProject.createdAt}
-          onClose={() => {
-            setModal(metadataSource === 'select' ? 'select' : 'none');
-            setMetadataProject(undefined);
-          }}
-          onProjectSaved={handleMetadataProjectSaved}
-          onProjectDeleted={handleMetadataProjectDeleted}
-        />
-      )}
+      <ProjectModals
+        activeProject={activeProject}
+        modal={modal}
+        projectId={projectId}
+        setModal={setModal}
+        useWebViewState={useWebViewState}
+      />
     </div>
   );
 }

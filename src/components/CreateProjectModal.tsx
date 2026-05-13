@@ -58,6 +58,7 @@ export function CreateProjectModal({
         'interlinearizer.createProject',
         projectId,
         [normalizedAnalysisLanguage],
+        undefined,
         name.trim() || undefined,
         description.trim() || undefined,
       );

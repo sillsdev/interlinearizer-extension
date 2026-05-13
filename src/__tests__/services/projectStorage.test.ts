@@ -491,12 +491,18 @@ describe('projectStorage', () => {
       await expect(listProjects(token)).rejects.toThrow(SyntaxError);
     });
 
-    it('propagates a JSON parse error from getProject as a corrupt-record signal', async () => {
+    it('skips a project whose storage value is corrupt JSON and logs the error', async () => {
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['abc']))
         .mockResolvedValueOnce('not valid json');
 
-      await expect(listProjects(token)).rejects.toThrow(SyntaxError);
+      const result = await listProjects(token);
+
+      expect(result).toEqual([]);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('abc'),
+        expect.any(SyntaxError),
+      );
     });
   });
 });

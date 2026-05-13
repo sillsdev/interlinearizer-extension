@@ -82,6 +82,23 @@ describe('ProjectMetadataModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('passes targetProjectId through to sendCommand on save', async () => {
+    render(<ProjectMetadataModal {...testProps} targetProjectId="tgt-project-id" />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.updateProjectMetadata',
+        'il-project-uuid',
+        undefined,
+        undefined,
+        ['en'],
+        'tgt-project-id',
+      ),
+    );
+  });
+
   it('calls sendCommand with updated values when Save is clicked', async () => {
     render(<ProjectMetadataModal {...testProps} name="Old Name" />);
 
@@ -97,6 +114,7 @@ describe('ProjectMetadataModal', () => {
         'New Name',
         undefined,
         ['en'],
+        undefined,
       ),
     );
   });
@@ -152,6 +170,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         'New Desc',
         ['en'],
+        undefined,
       ),
     );
   });
@@ -171,6 +190,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         'Replaced',
         ['en'],
+        undefined,
       ),
     );
   });
@@ -189,6 +209,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         undefined,
         ['en'],
+        undefined,
       ),
     );
   });
@@ -246,6 +267,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         undefined,
         ['en', 'fr'],
+        undefined,
       ),
     );
   });
@@ -265,6 +287,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         undefined,
         ['fr'],
+        undefined,
       ),
     );
     expect(onProjectDeleted).not.toHaveBeenCalled();

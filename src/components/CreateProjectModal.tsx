@@ -1,7 +1,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   type InterlinearProjectSummary,
   isInterlinearProjectSummary,
@@ -48,6 +48,7 @@ export function CreateProjectModal({
   const [description, setDescription] = useState('');
   const [analysisLanguage, setAnalysisLanguage] = useState('und');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   /**
    * Sends the `interlinearizer.createProject` command with the collected form values, then notifies
@@ -57,6 +58,8 @@ export function CreateProjectModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSubmit = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     const normalizedAnalysisLanguage = analysisLanguage.trim() || 'und';
     try {
@@ -76,6 +79,7 @@ export function CreateProjectModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [projectId, analysisLanguage, name, description, onClose, onProjectCreated]);

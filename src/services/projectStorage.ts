@@ -113,6 +113,8 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
+ * @throws {RangeError} If `sourceProjectId` is empty, `analysisLanguages` is empty, or
+ *   `targetProjectId` is a non-undefined empty string.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  * @throws If `papi.storage.writeUserData` (project or index) or rollback via
  *   `papi.storage.deleteUserData` rejects for a non-ENOENT reason.
@@ -125,6 +127,11 @@ export async function createProject(
   name?: string,
   description?: string,
 ): Promise<InterlinearProject> {
+  if (sourceProjectId.length === 0) throw new RangeError('sourceProjectId must not be empty');
+  if (analysisLanguages.length === 0)
+    throw new RangeError('analysisLanguages must contain at least one BCP 47 tag');
+  if (targetProjectId?.length === 0)
+    throw new RangeError('targetProjectId must not be empty; pass undefined to leave it unset');
   const id = crypto.randomUUID();
   const project: InterlinearProject = {
     id,
@@ -223,6 +230,8 @@ export async function getProjectsForSource(
  *   this parameter should only accept IDs sourced from PAPI storage (they are random UUIDs and
  *   should not be freely supplied by callers).
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @throws {RangeError} If `analysisLanguages` is empty or `targetProjectId` is a non-undefined
+ *   empty string.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
  *   reason.
@@ -236,6 +245,10 @@ export async function updateProjectMetadata(
   targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
+    if (analysisLanguages.length === 0)
+      throw new RangeError('analysisLanguages must contain at least one BCP 47 tag');
+    if (targetProjectId?.length === 0)
+      throw new RangeError('targetProjectId must not be empty; pass undefined to clear it');
     const project = await getProject(token, id);
     if (!project) return undefined;
     const updated: InterlinearProject = { ...project };

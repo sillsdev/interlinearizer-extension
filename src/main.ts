@@ -154,6 +154,12 @@ async function createInterlinearProject(
  * select-project modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
+ * @returns A promise that resolves when the deletion (or no-op) is complete.
+ * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
+ *   {@link projectStorage.deleteProject} via {@link readIds}).
+ * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
+ *   `papi.storage.writeUserData` rejects when updating the index. All storage errors are logged and
+ *   shown as a notification before being re-thrown so the caller can handle failure UX.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
   try {
@@ -204,7 +210,11 @@ async function updateProjectMetadata(
  * "select existing" when the user opens the project menu.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist or storage fails.
+ * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
+ * @throws {SyntaxError} If the project-IDs index or any project record contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
+ *   {@link projectStorage.getProjectsForSource}). Callers can use this to distinguish a storage
+ *   outage from a legitimately empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
@@ -344,7 +354,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary: 'Update the name and description of an existing interlinearizer project',
+        summary:
+          'Update the name, description, and analysis language of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',

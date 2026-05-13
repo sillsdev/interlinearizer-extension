@@ -224,7 +224,12 @@ export function ProjectMetadataModal({
               {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_body%']}
             </p>
             <div className="tw-flex tw-gap-2 tw-justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setConfirmingDelete(false)}
+                disabled={isSubmitting}
+              >
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_cancel%']}
               </Button>
               <Button variant="destructive" size="sm" onClick={handleDelete}>

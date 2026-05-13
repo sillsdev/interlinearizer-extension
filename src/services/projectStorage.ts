@@ -175,16 +175,26 @@ export async function getProject(
 
 /**
  * Returns all stored projects in creation order. Projects whose storage keys are missing (e.g.
- * after a failed delete) are silently omitted.
+ * after a failed delete) are silently omitted. Projects that fail to read or parse are logged and
+ * skipped so a single corrupted record does not prevent access to the rest.
  *
  * @param token - The execution token for storage access.
  * @returns All stored projects, ordered by creation time.
- * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
- * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ * @throws {SyntaxError} If `projectIds` contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
   const ids = await readIds(token);
-  const projects = await Promise.all(ids.map((id) => getProject(token, id)));
+  const projects = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        return await getProject(token, id);
+      } catch (e) {
+        logger.error(`Interlinearizer: failed to read project ${id}:`, e);
+        return undefined;
+      }
+    }),
+  );
   return projects.filter((p): p is InterlinearProject => p !== undefined);
 }
 

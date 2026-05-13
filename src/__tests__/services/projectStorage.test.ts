@@ -448,6 +448,7 @@ describe('projectStorage', () => {
         return Promise.resolve(JSON.stringify([]));
       });
       __mockWriteUserData.mockImplementation(
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         (_t: unknown, key: unknown, _v: unknown): Promise<void> => {
           if (key === 'projectIds') ops.push('write:index');
           return Promise.resolve();

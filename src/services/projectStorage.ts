@@ -5,6 +5,26 @@ import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 const PROJECT_IDS_KEY = 'projectIds';
 
 /**
+ * Serializes all read-modify-write operations on the shared `projectIds` index. Every operation
+ * that reads then writes the index must be enqueued here so concurrent calls (e.g. from two open
+ * WebView tabs) cannot interleave at await boundaries and silently overwrite each other's updates.
+ */
+let indexQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Enqueues `fn` on the index serialization queue and returns a promise that resolves or rejects
+ * with `fn`'s result. The queue always advances regardless of whether `fn` throws.
+ *
+ * @param fn - The async function to serialize.
+ * @returns A promise that resolves or rejects with the return value of `fn`.
+ */
+function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
+  const result = indexQueue.then(fn);
+  indexQueue = result.catch(() => {});
+  return result;
+}
+
+/**
  * Returns the storage key for a project by ID.
  *
  * @param id - The project UUID.
@@ -64,7 +84,7 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws If `papi.storage.readUserData`, `papi.storage.writeUserData`, or rollback via
+ * @throws If `papi.storage.writeUserData` (project or index) or rollback via
  *   `papi.storage.deleteUserData` rejects for a non-ENOENT reason.
  */
 export async function createProject(
@@ -87,10 +107,12 @@ export async function createProject(
     links: [],
   };
 
-  const ids = await readIds(token);
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
   try {
-    await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
+    await enqueueIndexOp(async () => {
+      const ids = await readIds(token);
+      await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify([...ids, id]));
+    });
   } catch (indexError) {
     try {
       await papi.storage.deleteUserData(token, projectKey(id));
@@ -214,7 +236,9 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
   } catch (e) {
     if (!isNotFound(e)) throw e;
   }
-  const ids = await readIds(token);
-  const updated = ids.filter((i) => i !== id);
-  await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
+  await enqueueIndexOp(async () => {
+    const ids = await readIds(token);
+    const updated = ids.filter((i) => i !== id);
+    await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
+  });
 }

@@ -170,6 +170,7 @@ async function getUpdateProjectMetadataHandler(): Promise<
     name: string | undefined,
     description: string | undefined,
     analysisLanguages?: string[],
+    targetProjectId?: string,
   ) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
@@ -181,8 +182,15 @@ async function getUpdateProjectMetadataHandler(): Promise<
     name: string | undefined,
     description: string | undefined,
     analysisLanguages?: string[],
+    targetProjectId?: string,
   ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(id, name, description, analysisLanguages);
+    const result: unknown = await rawHandler(
+      id,
+      name,
+      description,
+      analysisLanguages,
+      targetProjectId,
+    );
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -821,6 +829,25 @@ describe('main', () => {
         undefined,
         ['fr'],
         undefined,
+      );
+    });
+
+    it('passes targetProjectId to projectStorage.updateProjectMetadata when provided', async () => {
+      mockUpdateProjectMetadata.mockResolvedValue({
+        ...stubProject,
+        targetProjectId: 'target-project',
+      });
+      const handler = await getUpdateProjectMetadataHandler();
+
+      await handler('proj-id', undefined, undefined, ['en'], 'target-project');
+
+      expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        undefined,
+        undefined,
+        ['en'],
+        'target-project',
       );
     });
 

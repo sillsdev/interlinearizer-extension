@@ -185,6 +185,18 @@ describe('projectStorage', () => {
 
       expect(__mockLogger.error).toHaveBeenCalled();
     });
+
+    it('throws RangeError when sourceProjectId is empty', async () => {
+      await expect(createProject(token, '', ['en'])).rejects.toThrow(RangeError);
+    });
+
+    it('throws RangeError when analysisLanguages is empty', async () => {
+      await expect(createProject(token, 'src-proj', [])).rejects.toThrow(RangeError);
+    });
+
+    it('throws RangeError when targetProjectId is an empty string', async () => {
+      await expect(createProject(token, 'src-proj', ['en'], '')).rejects.toThrow(RangeError);
+    });
   });
 
   describe('getProject', () => {
@@ -367,6 +379,18 @@ describe('projectStorage', () => {
         const parsed: unknown = JSON.parse(writtenArg);
         expect(parsed).not.toHaveProperty('targetProjectId');
       }
+    });
+
+    it('throws RangeError when analysisLanguages is empty', async () => {
+      await expect(
+        updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', []),
+      ).rejects.toThrow(RangeError);
+    });
+
+    it('throws RangeError when targetProjectId is an empty string', async () => {
+      await expect(
+        updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en'], ''),
+      ).rejects.toThrow(RangeError);
     });
   });
 

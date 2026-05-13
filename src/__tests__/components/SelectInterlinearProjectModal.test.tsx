@@ -159,6 +159,14 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.queryByText('42')).not.toBeInTheDocument();
   });
 
+  it('silently drops projects with empty analysisLanguages', async () => {
+    const emptyLanguages = { ...STUB_PROJECT, analysisLanguages: [] };
+    mockSendCommand.mockResolvedValue(JSON.stringify([emptyLanguages, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
   it('shows the empty-state message when getProjectsForSource returns a non-array', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify({ not: 'an array' }));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

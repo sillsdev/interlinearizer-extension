@@ -46,7 +46,7 @@ The parser produces objects conforming to the types in `src/types/interlinearize
 
 - **InterlinearData:** `ScrTextName`, `GlossLanguage`, `BookId`, `Verses` (record of verse key → **VerseData**).
 - **VerseData:** `Hash`, `Clusters` (array of **ClusterData**), `Punctuations` (array of **PunctuationData**).
-- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes), `Excluded` (boolean flag for location-specific exclusion).
+- **ClusterData:** `TextRange` (`Index`, `Length`), `Lexemes` (array of `{ LexemeId, SenseId }`), `LexemesId` (slash-joined lexeme IDs), `Id` (cluster id: `LexemesId/Index-Length` or `Index-Length` when there are no lexemes).
 - **PunctuationData:** `TextRange`, `BeforeText`, `AfterText`.
 
 ## Example (minimal valid document)

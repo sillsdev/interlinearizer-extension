@@ -1,3 +1,37 @@
+/* CUSTOM: Added `tw:` prefix */
+@import 'tailwindcss' prefix(tw);
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/ibm-plex-sans';
+
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 /*
  * CUSTOM: Theme variable policy.
  *
@@ -13,25 +47,8 @@
  * merging.
  */
 
-/* CUSTOM: Added `tw:` prefix */
-@import 'tailwindcss' prefix(tw);
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
-@import '@fontsource-variable/ibm-plex-sans';
-
 /* CUSTOM: need some config from tailwind.config.ts which can't be inlined in this file */
 @config '../tailwind.config.ts';
-
-@layer utilities {
-  .no-scrollbar {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
-}
 
 /* CUSTOM: shared region opener. */
 /* #region shared with https://github.com/paranext/paranext-core/blob/main/lib/platform-bible-react/src/index.css */

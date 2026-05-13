@@ -23,10 +23,10 @@ export function PhraseBox({
   tokens: Token[];
 }>) {
   const baseClass = isFocused
-    ? 'tw-inline-flex tw-items-center tw-rounded tw-border-2 tw-border-border tw-bg-muted/30 tw-px-1 tw-py-0.5'
-    : 'tw-inline-flex tw-items-center tw-rounded tw-border tw-border-border/40 tw-bg-muted/20 tw-px-1 tw-py-0.5';
+    ? 'tw:inline-flex tw:items-center tw:rounded tw:border-2 tw:border-border tw:bg-muted/30 tw:px-1 tw:py-0.5'
+    : 'tw:inline-flex tw:items-center tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-1 tw:py-0.5';
   const innerContent = (
-    <span className="tw-inline-flex tw-items-center tw-gap-1">
+    <span className="tw:inline-flex tw:items-center tw:gap-1">
       {tokens.map((token) => (
         <MemoizedTokenChip key={token.id} token={token} />
       ))}
@@ -36,7 +36,7 @@ export function PhraseBox({
   if (onClick) {
     return (
       <button
-        className={`${baseClass} tw-cursor-pointer tw-text-left hover:tw-bg-muted/30`}
+        className={`${baseClass} tw:cursor-pointer tw:text-left tw:hover:bg-muted/30`}
         data-focus-state={isFocused ? 'focused' : 'default'}
         data-phrase-box="true"
         onClick={() => onClick?.(index)}

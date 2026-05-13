@@ -26,7 +26,7 @@ export default function ScriptureNavControls({
     useRecentScriptureRefs();
 
   return (
-    <div className="tw-flex tw-flex-row tw-items-center tw-gap-2">
+    <div className="tw:flex tw:flex-row tw:items-center tw:gap-2">
       <BookChapterControl
         handleSubmit={handleSubmit}
         localizedStrings={localizedStrings}

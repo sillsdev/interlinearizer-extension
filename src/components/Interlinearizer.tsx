@@ -36,9 +36,9 @@ export default function Interlinearizer({
   );
 
   return (
-    <div className="tw-flex tw-flex-col tw-flex-1 tw-min-h-0">
+    <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
       {continuousScroll && (
-        <div className="tw-shrink-0 tw-border-b tw-border-border tw-bg-background tw-py-2">
+        <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
           <ContinuousView
             activeVerse={{
               book: scrRef.book,
@@ -51,15 +51,15 @@ export default function Interlinearizer({
         </div>
       )}
 
-      <div className="tw-min-h-0 tw-flex-1 tw-overflow-y-auto tw-flex tw-flex-col tw-gap-4 tw-p-4">
+      <div className="tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4">
         {bookSegments.length === 0 && (
-          <p className="tw-text-sm tw-text-muted-foreground">
+          <p className="tw:text-sm tw:text-muted-foreground">
             No verse data for {scrRef.book} {scrRef.chapterNum}.
           </p>
         )}
 
         {bookSegments.length > 0 && (
-          <div className="tw-flex tw-flex-col tw-gap-2">
+          <div className="tw:flex tw:flex-col tw:gap-2">
             {bookSegments.map((seg) => (
               <MemoizedSegmentView
                 key={seg.id}

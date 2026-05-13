@@ -81,6 +81,15 @@ export function ProjectMetadataModal({
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
+  const parsedLanguages = useMemo(
+    () =>
+      editLanguage
+        .split(',')
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    [editLanguage],
+  );
+
   /**
    * Sends the updated name, description, and analysis language to the backend, then notifies the
    * caller and closes the modal.
@@ -91,10 +100,7 @@ export function ProjectMetadataModal({
     setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
-    const newLanguages = editLanguage
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
+    const newLanguages = parsedLanguages;
     try {
       await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
@@ -115,7 +121,7 @@ export function ProjectMetadataModal({
         .send({ message: '%interlinearizer_error_save_metadata_failed%', severity: 'error' })
         .catch(() => {});
     }
-  }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
+  }, [editName, editDescription, parsedLanguages, interlinearProjectId, onProjectSaved, onClose]);
 
   /** Sends the delete command to the backend, then notifies the caller and closes the modal. */
   const handleDelete = useCallback(async () => {
@@ -254,7 +260,7 @@ export function ProjectMetadataModal({
               <Button variant="secondary" onClick={onClose}>
                 {localizedStrings['%interlinearizer_modal_metadata_close%']}
               </Button>
-              <Button onClick={handleSave} disabled={!editLanguage.trim()}>
+              <Button onClick={handleSave} disabled={isSubmitting || parsedLanguages.length === 0}>
                 {localizedStrings['%interlinearizer_modal_metadata_save%']}
               </Button>
             </div>

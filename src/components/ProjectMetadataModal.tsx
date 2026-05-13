@@ -79,7 +79,7 @@ export function ProjectMetadataModal({
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
-  const [editLanguage, setEditLanguage] = useState(analysisLanguages.join(', '));
+  const [editLanguage, setEditLanguage] = useState((analysisLanguages ?? []).join(', '));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);

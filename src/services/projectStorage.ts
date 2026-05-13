@@ -12,6 +12,13 @@ const PROJECT_IDS_KEY = 'projectIds';
 let indexQueue: Promise<unknown> = Promise.resolve();
 
 /**
+ * Per-project serialization queues. Keyed by project ID; each entry serializes all
+ * read-modify-write operations on that project's storage record so concurrent update and delete
+ * calls cannot interleave and create orphaned or stale records.
+ */
+const projectQueues = new Map<string, Promise<unknown>>();
+
+/**
  * Enqueues `fn` on the index serialization queue and returns a promise that resolves or rejects
  * with `fn`'s result. The queue always advances regardless of whether `fn` throws.
  *
@@ -21,6 +28,26 @@ let indexQueue: Promise<unknown> = Promise.resolve();
 function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
   const result = indexQueue.then(fn);
   indexQueue = result.catch(() => {});
+  return result;
+}
+
+/**
+ * Enqueues `fn` on the per-project serialization queue for `id` and returns a promise that resolves
+ * or rejects with `fn`'s result. Cleans up the queue entry when the operation settles.
+ *
+ * @param id - The project UUID whose queue `fn` should join.
+ * @param fn - The async function to serialize.
+ * @returns A promise that resolves or rejects with the return value of `fn`.
+ */
+function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
+  const previous = projectQueues.get(id) ?? Promise.resolve();
+  const result = previous.then(fn);
+  let settled: Promise<void>;
+  const cleanup = () => {
+    if (projectQueues.get(id) === settled) projectQueues.delete(id);
+  };
+  settled = result.then(cleanup, cleanup);
+  projectQueues.set(id, settled);
   return result;
 }
 
@@ -201,24 +228,26 @@ export async function updateProjectMetadata(
   description: string | undefined,
   analysisWritingSystem?: string,
 ): Promise<InterlinearProject | undefined> {
-  const project = await getProject(token, id);
-  if (!project) return undefined;
-  const updated: InterlinearProject = { ...project };
-  if (name === undefined) {
-    delete updated.name;
-  } else {
-    updated.name = name;
-  }
-  if (description === undefined) {
-    delete updated.description;
-  } else {
-    updated.description = description;
-  }
-  if (analysisWritingSystem) {
-    updated.analysisWritingSystem = analysisWritingSystem;
-  }
-  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
-  return updated;
+  return enqueueProjectOp(id, async () => {
+    const project = await getProject(token, id);
+    if (!project) return undefined;
+    const updated: InterlinearProject = { ...project };
+    if (name === undefined) {
+      delete updated.name;
+    } else {
+      updated.name = name;
+    }
+    if (description === undefined) {
+      delete updated.description;
+    } else {
+      updated.description = description;
+    }
+    if (analysisWritingSystem) {
+      updated.analysisWritingSystem = analysisWritingSystem;
+    }
+    await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+    return updated;
+  });
 }
 
 /**
@@ -231,14 +260,16 @@ export async function updateProjectMetadata(
  * @throws If `papi.storage.writeUserData` rejects when updating the index.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
-  try {
-    await papi.storage.deleteUserData(token, projectKey(id));
-  } catch (e) {
-    if (!isNotFound(e)) throw e;
-  }
-  await enqueueIndexOp(async () => {
-    const ids = await readIds(token);
-    const updated = ids.filter((i) => i !== id);
-    await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
+  await enqueueProjectOp(id, async () => {
+    try {
+      await papi.storage.deleteUserData(token, projectKey(id));
+    } catch (e) {
+      if (!isNotFound(e)) throw e;
+    }
+    await enqueueIndexOp(async () => {
+      const ids = await readIds(token);
+      const updated = ids.filter((i) => i !== id);
+      await papi.storage.writeUserData(token, PROJECT_IDS_KEY, JSON.stringify(updated));
+    });
   });
 }

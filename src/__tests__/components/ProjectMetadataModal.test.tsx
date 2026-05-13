@@ -261,6 +261,43 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
+  it('sends the save command only once when Save is double-clicked before the first resolves', async () => {
+    let resolveCommand: (value: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    render(<ProjectMetadataModal {...testProps} />);
+
+    const saveButton = screen.getByRole('button', { name: /^save$/i });
+    await userEvent.click(saveButton);
+    await userEvent.click(saveButton);
+    resolveCommand('{}');
+
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
+  });
+
+  it('sends the delete command only once when delete-confirm is double-clicked before the first resolves', async () => {
+    let resolveCommand: (value: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCommand = resolve;
+        }),
+    );
+    render(<ProjectMetadataModal {...testProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+    const confirmButton = screen.getByRole('button', { name: /^delete$/i });
+    await userEvent.click(confirmButton);
+    await userEvent.click(confirmButton);
+    resolveCommand('{}');
+
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalledTimes(1));
+  });
+
   it('disables the Save button when the language field is empty', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 

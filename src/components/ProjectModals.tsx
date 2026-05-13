@@ -143,6 +143,7 @@ export default function ProjectModals({
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
           sourceProjectId={resolvedMetadataProject.sourceProjectId}
+          targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
           onClose={() => {

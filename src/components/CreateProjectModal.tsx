@@ -50,11 +50,11 @@ export function CreateProjectModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   /**
-   * Sends the `interlinearizer.createProject` command with the collected form values, notifies the
-   * caller via `onProjectCreated`, then closes the modal. Logs and shows a notification on
-   * failure.
+   * Sends the `interlinearizer.createProject` command with the collected form values, then notifies
+   * the caller via `onProjectCreated` and closes the modal. Logs on failure; the backend command
+   * handler is responsible for showing the error notification so this handler does not re-send it.
    *
-   * @returns A promise that resolves when the command completes or the error notification is sent.
+   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSubmit = useCallback(async () => {
     setIsSubmitting(true);
@@ -67,7 +67,7 @@ export function CreateProjectModal({
         name.trim() || undefined,
         description.trim() || undefined,
       );
-      if (!projectJson) throw new TypeError('createProject command returned no data');
+      if (!projectJson) return;
       const parsed: unknown = JSON.parse(projectJson);
       if (!isInterlinearProjectSummary(parsed))
         throw new Error('Created project has unexpected shape');
@@ -75,9 +75,6 @@ export function CreateProjectModal({
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to create project', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
-        .catch(() => {});
     } finally {
       setIsSubmitting(false);
     }

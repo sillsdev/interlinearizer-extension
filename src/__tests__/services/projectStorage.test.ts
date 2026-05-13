@@ -431,6 +431,46 @@ describe('projectStorage', () => {
     });
   });
 
+  describe('concurrent index serialization', () => {
+    it('does not interleave index reads and writes across concurrent createProject calls', async () => {
+      // Track the order of index reads and writes to verify they do not interleave.
+      const ops: string[] = [];
+      let resolveFirstIndexRead!: (value: string) => void;
+      const firstIndexReadGate = new Promise<string>((resolve) => {
+        resolveFirstIndexRead = resolve;
+      });
+
+      let readCallCount = 0;
+      __mockReadUserData.mockImplementation(() => {
+        readCallCount += 1;
+        ops.push(`read:${readCallCount}`);
+        if (readCallCount === 1) return firstIndexReadGate;
+        return Promise.resolve(JSON.stringify([]));
+      });
+      __mockWriteUserData.mockImplementation(
+        (_t: unknown, key: unknown, _v: unknown): Promise<void> => {
+          if (key === 'projectIds') ops.push('write:index');
+          return Promise.resolve();
+        },
+      );
+
+      jest
+        .spyOn(crypto, 'randomUUID')
+        .mockReturnValueOnce('00000000-0000-0000-0000-000000000001')
+        .mockReturnValueOnce('00000000-0000-0000-0000-000000000002');
+
+      const p1 = createProject(token, 'src', 'en');
+      const p2 = createProject(token, 'src', 'en');
+
+      resolveFirstIndexRead(JSON.stringify([]));
+
+      await Promise.all([p1, p2]);
+
+      // Serialized order: read1 → write1 → read2 → write2 (no interleaving)
+      expect(ops).toEqual(['read:1', 'write:index', 'read:2', 'write:index']);
+    });
+  });
+
   describe('error propagation', () => {
     it('propagates non-ENOENT errors from readIds', async () => {
       __mockReadUserData.mockRejectedValue(new Error('disk full'));

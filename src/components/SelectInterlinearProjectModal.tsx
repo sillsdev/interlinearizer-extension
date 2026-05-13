@@ -53,9 +53,11 @@ export function SelectInterlinearProjectModal({
   );
 
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   /** Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. */
   const loadProjects = useCallback(async () => {
+    setIsLoading(true);
     try {
       const json = await papi.commands.sendCommand(
         'interlinearizer.getProjectsForSource',
@@ -71,6 +73,8 @@ export function SelectInterlinearProjectModal({
       await papi.notifications
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
         .catch(() => {});
+    } finally {
+      setIsLoading(false);
     }
   }, [sourceProjectId]);
 
@@ -130,10 +134,10 @@ export function SelectInterlinearProjectModal({
         )}
 
         <div className="tw-flex tw-gap-2 tw-justify-end">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={isLoading}>
             {localizedStrings['%interlinearizer_modal_select_cancel%']}
           </Button>
-          <Button onClick={onCreateNew}>
+          <Button onClick={onCreateNew} disabled={isLoading}>
             {localizedStrings['%interlinearizer_modal_select_create_new%']}
           </Button>
         </div>

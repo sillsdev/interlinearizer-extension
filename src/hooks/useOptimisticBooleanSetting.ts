@@ -30,7 +30,7 @@ export default function useOptimisticBooleanSetting(
 
   const [value, setValue] = useState(typeof setting === 'boolean' ? setting : defaultValue);
 
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
 
   // Drive UI from optimistic local state and clear pending once the setting confirms.

@@ -11,11 +11,11 @@ import { memo } from 'react';
  */
 export function TokenChip({ token }: Readonly<{ token: Token }>) {
   return token.type === 'word' ? (
-    <span className="tw-inline-block tw-rounded tw-border tw-border-border tw-bg-muted tw-px-1.5 tw-py-0.5 tw-font-mono tw-text-sm tw-text-foreground">
+    <span className="tw:inline-block tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5 tw:font-mono tw:text-sm tw:text-foreground">
       {token.surfaceText}
     </span>
   ) : (
-    <span className="tw-inline-block tw-font-mono tw-text-sm tw-text-muted-foreground">
+    <span className="tw:inline-block tw:font-mono tw:text-sm tw:text-muted-foreground">
       {token.surfaceText}
     </span>
   );

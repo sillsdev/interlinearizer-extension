@@ -73,7 +73,7 @@ describe('PhraseBox', () => {
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'focused');
-    expect(phraseBox).toHaveClass('tw-border-2');
+    expect(phraseBox).toHaveClass('tw:border-2');
   });
 
   it('applies default styling when isFocused is false', () => {
@@ -81,7 +81,7 @@ describe('PhraseBox', () => {
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
-    expect(phraseBox).not.toHaveClass('tw-border-2');
+    expect(phraseBox).not.toHaveClass('tw:border-2');
   });
 
   it('applies default styling when isFocused is not provided', () => {
@@ -97,8 +97,8 @@ describe('PhraseBox', () => {
 
     const button = screen.getByRole('button');
     expect(button).toHaveAttribute('data-focus-state', 'focused');
-    expect(button).toHaveClass('tw-cursor-pointer');
-    expect(button).toHaveClass('tw-text-left');
+    expect(button).toHaveClass('tw:cursor-pointer');
+    expect(button).toHaveClass('tw:text-left');
   });
 
   it('button has hover styling', () => {
@@ -106,7 +106,7 @@ describe('PhraseBox', () => {
     render(<PhraseBox tokens={[TEST_TOKEN]} onClick={mockOnClick} />);
 
     const button = screen.getByRole('button');
-    expect(button).toHaveClass('hover:tw-bg-muted/30');
+    expect(button).toHaveClass('tw:hover:bg-muted/30');
   });
 
   it('renders multiple tokens in order', () => {
@@ -121,14 +121,14 @@ describe('PhraseBox', () => {
     const { rerender } = render(<PhraseBox tokens={[TEST_TOKEN]} />);
 
     const span = document.querySelector('[data-phrase-box="true"]');
-    expect(span).toHaveClass('tw-px-1');
-    expect(span).toHaveClass('tw-py-0.5');
+    expect(span).toHaveClass('tw:px-1');
+    expect(span).toHaveClass('tw:py-0.5');
 
     const mockOnClick = jest.fn();
     rerender(<PhraseBox tokens={[TEST_TOKEN]} onClick={mockOnClick} />);
 
     const button = screen.getByRole('button');
-    expect(button).toHaveClass('tw-px-1');
-    expect(button).toHaveClass('tw-py-0.5');
+    expect(button).toHaveClass('tw:px-1');
+    expect(button).toHaveClass('tw:py-0.5');
   });
 });

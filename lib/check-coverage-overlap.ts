@@ -5,10 +5,10 @@
  * Exit code 1 if any suite covers functions or branches in an out-of-scope source file.
  */
 
-import { spawnSync } from 'child_process';
-import fs from 'fs';
-import os from 'os';
-import path from 'path';
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { globSync } from 'glob';
 
 const rootDir = path.resolve(__dirname, '..');
@@ -48,6 +48,11 @@ interface SuiteResult {
 /**
  * Derives the primary source file path from a test file path by stripping the `__tests__/` segment
  * and the `.test.` infix.
+ *
+ * Assumes a strict 1:1 test-to-source mapping with a mirrored directory structure
+ * (`src/__tests__/foo.test.ts` → `src/foo.ts`). Test files that cover multiple source files, use a
+ * non-standard naming convention, or don't mirror `src/` will derive a nonexistent primary source
+ * file, causing all their coverage to be flagged as out-of-scope.
  *
  * @param testFile - Absolute path to a test file.
  * @returns Absolute path to the expected primary source file.
@@ -118,34 +123,43 @@ function escapeRegExp(s: string): string {
  *
  * @param testFile - Absolute path to the test file to run.
  * @param coverageDir - Directory where Jest should write coverage output.
+ * @returns A promise that resolves when Jest exits successfully.
  * @throws If Jest exits with a non-zero status.
  */
-function runJest(testFile: string, coverageDir: string): void {
-  const relativeTestFile = path.relative(rootDir, testFile);
-  const result = spawnSync(
-    'node',
-    [
-      'node_modules/.bin/jest',
-      '--config',
-      'jest.config.ts',
-      '--coverage',
-      '--coverageDirectory',
-      coverageDir,
-      '--testPathPatterns',
-      escapeRegExp(relativeTestFile),
-      '--coverageThreshold',
-      '{}',
-      '--forceExit',
-      '--silent',
-    ],
-    { cwd: rootDir, encoding: 'utf8' },
-  );
+function runJest(testFile: string, coverageDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const relativeTestFile = path.relative(rootDir, testFile);
+    const proc = spawn(
+      'node',
+      [
+        'node_modules/.bin/jest',
+        '--config',
+        'jest.config.ts',
+        '--coverage',
+        '--coverageDirectory',
+        coverageDir,
+        '--testPathPatterns',
+        escapeRegExp(relativeTestFile),
+        '--coverageThreshold',
+        '{}',
+        '--forceExit',
+        '--silent',
+      ],
+      { cwd: rootDir },
+    );
 
-  if (result.status !== 0) {
-    const stderr = result.stderr?.trim() ?? '';
-    const stdout = result.stdout?.trim() ?? '';
-    throw new Error(`Jest failed:\n${stderr || stdout}`);
-  }
+    const chunks: Buffer[] = [];
+    proc.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
+    proc.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Jest failed:\n${Buffer.concat(chunks).toString('utf8').trim()}`));
+      }
+    });
+  });
 }
 
 /**
@@ -153,43 +167,43 @@ function runJest(testFile: string, coverageDir: string): void {
  * covered source files against the expected primary source file.
  *
  * @param testFile - Absolute path to the test file.
- * @returns A SuiteResult describing any out-of-scope coverage hits.
+ * @returns A promise resolving to a SuiteResult describing any out-of-scope coverage hits.
  */
-function analyseSuite(testFile: string): SuiteResult {
+async function analyzeSuite(testFile: string): Promise<SuiteResult> {
   const primarySourceFile = deriveSourcePath(testFile);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-overlap-'));
   const start = Date.now();
 
   try {
-    runJest(testFile, tmpDir);
+    await runJest(testFile, tmpDir);
 
     const coverageJson = path.join(tmpDir, 'coverage-final.json');
-    if (!fs.existsSync(coverageJson)) {
-      return {
-        testFile,
-        primarySourceFile,
-        outOfScopeHits: [],
-        elapsedMs: Date.now() - start,
-        error: 'coverage-final.json not found after jest run',
-      };
+    if (fs.existsSync(coverageJson)) {
+      const coverageData: Record<string, FileCoverage> = JSON.parse(
+        fs.readFileSync(coverageJson, 'utf8'),
+      );
+
+      const outOfScopeHits: OutOfScopeHit[] = Object.entries(coverageData)
+        .filter(([filePath]) => filePath !== primarySourceFile)
+        .flatMap(([filePath, data]) => {
+          const fnHit = countNonZero(data.f);
+          const fnTotal = Object.keys(data.fnMap).length;
+          const branchHit = countBranchHits(data.b);
+          const branchTotal = countBranchTotal(data.b);
+          if (fnHit === 0 && branchHit === 0) return [];
+          return [{ file: filePath, fnHit, fnTotal, branchHit, branchTotal }];
+        });
+
+      return { testFile, primarySourceFile, outOfScopeHits, elapsedMs: Date.now() - start };
     }
 
-    const coverageData: Record<string, FileCoverage> = JSON.parse(
-      fs.readFileSync(coverageJson, 'utf8'),
-    );
-
-    const outOfScopeHits: OutOfScopeHit[] = Object.entries(coverageData)
-      .filter(([filePath]) => filePath !== primarySourceFile)
-      .flatMap(([filePath, data]) => {
-        const fnHit = countNonZero(data.f);
-        const fnTotal = Object.keys(data.fnMap).length;
-        const branchHit = countBranchHits(data.b);
-        const branchTotal = countBranchTotal(data.b);
-        if (fnHit === 0 && branchHit === 0) return [];
-        return [{ file: filePath, fnHit, fnTotal, branchHit, branchTotal }];
-      });
-
-    return { testFile, primarySourceFile, outOfScopeHits, elapsedMs: Date.now() - start };
+    return {
+      testFile,
+      primarySourceFile,
+      outOfScopeHits: [],
+      elapsedMs: Date.now() - start,
+      error: 'coverage-final.json not found after jest run',
+    };
   } catch (err) {
     return {
       testFile,
@@ -255,8 +269,8 @@ function printReport(results: SuiteResult[]): boolean {
   return hasViolations;
 }
 
-/** Discovers all test files, runs each in isolation, and reports coverage overlap. */
-(function main() {
+/** Discovers all test files, runs each in isolation concurrently, and reports coverage overlap. */
+(async function main() {
   const testFiles = globSync('src/**/__tests__/**/*.test.{ts,tsx}', {
     cwd: rootDir,
     absolute: true,
@@ -267,14 +281,17 @@ function printReport(results: SuiteResult[]): boolean {
     process.exit(1);
   }
 
-  console.log(`Analysing coverage overlap for ${testFiles.length} test suite(s)...`);
+  console.log(`Analyzing coverage overlap for ${testFiles.length} test suite(s)...`);
 
-  const results: SuiteResult[] = testFiles.map((testFile) => {
-    process.stdout.write(`  Running ${path.relative(rootDir, testFile)}...`);
-    const result = analyseSuite(testFile);
-    process.stdout.write(` done (${(result.elapsedMs / 1000).toFixed(1)}s)\n`);
-    return result;
-  });
+  const results = await Promise.all(
+    testFiles.map(async (testFile) => {
+      const result = await analyzeSuite(testFile);
+      console.log(
+        `  done (${(result.elapsedMs / 1000).toFixed(1)}s)  ${path.relative(rootDir, testFile)}`,
+      );
+      return result;
+    }),
+  );
 
   const hasViolations = printReport(results);
   process.exit(hasViolations ? 1 : 0);

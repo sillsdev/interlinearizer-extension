@@ -149,6 +149,7 @@ export function ProjectMetadataModal({
     <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
       <dialog
         aria-labelledby="project-metadata-modal-title"
+        aria-modal="true"
         className="tw-bg-background tw-text-foreground tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
         open
       >

@@ -3,7 +3,6 @@ import { useCallback, useState } from 'react';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import {
-  type ActiveProjectState,
   type InterlinearProjectSummary,
   SelectInterlinearProjectModal,
 } from './SelectInterlinearProjectModal';
@@ -32,16 +31,15 @@ export default function ProjectModals({
   setModal,
   useWebViewState,
 }: Readonly<{
-  activeProject: ActiveProjectState | undefined;
+  activeProject: InterlinearProjectSummary | undefined;
   modal: ModalState;
   projectId: string;
   setModal: (modal: ModalState) => void;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [, setActiveProject, resetActiveProject] = useWebViewState<ActiveProjectState | undefined>(
-    'activeProject',
-    undefined,
-  );
+  const [, setActiveProject, resetActiveProject] = useWebViewState<
+    InterlinearProjectSummary | undefined
+  >('activeProject', undefined);
 
   /**
    * The project currently open in the metadata modal. Set when the user clicks the info icon in the

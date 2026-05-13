@@ -27,18 +27,6 @@ export type InterlinearProjectSummary = Pick<
   | 'description'
 >;
 
-/** Fields of the active interlinear project persisted in WebView state. */
-export type ActiveProjectState = Pick<
-  InterlinearProjectSummary,
-  | 'id'
-  | 'createdAt'
-  | 'name'
-  | 'description'
-  | 'sourceProjectId'
-  | 'targetProjectId'
-  | 'analysisLanguages'
->;
-
 /**
  * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
  *
@@ -59,8 +47,10 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     'analysisLanguages' in p &&
     Array.isArray(p.analysisLanguages) &&
     p.analysisLanguages.length > 0 &&
+    p.analysisLanguages.every((l) => typeof l === 'string') &&
     (!('name' in p) || typeof p.name === 'string') &&
-    (!('description' in p) || typeof p.description === 'string')
+    (!('description' in p) || typeof p.description === 'string') &&
+    (!('targetProjectId' in p) || typeof p.targetProjectId === 'string')
   );
 }
 

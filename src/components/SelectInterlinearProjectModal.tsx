@@ -27,7 +27,13 @@ export type ActiveProjectState = Pick<
   'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
 >;
 
-/** Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON. */
+/**
+ * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
+ *
+ * @param p - The value to test, typically a parsed JSON object of unknown shape.
+ * @returns `true` if `p` satisfies the {@link InterlinearProjectSummary} shape, narrowing its type
+ *   accordingly.
+ */
 export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
   return (
     !!p &&

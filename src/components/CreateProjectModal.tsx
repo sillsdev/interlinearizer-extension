@@ -61,12 +61,16 @@ export function CreateProjectModal({
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const normalizedAnalysisLanguage = analysisLanguage.trim() || 'und';
+    const parsedLanguages = analysisLanguage
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    const normalizedLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
     try {
       const projectJson = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        [normalizedAnalysisLanguage],
+        normalizedLanguages,
         undefined,
         name.trim() || undefined,
         description.trim() || undefined,

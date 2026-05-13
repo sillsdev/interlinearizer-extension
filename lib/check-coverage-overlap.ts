@@ -139,7 +139,7 @@ function runJest(testFile: string, coverageDir: string): Promise<void> {
         '--coverageDirectory',
         coverageDir,
         '--testPathPatterns',
-        escapeRegExp(relativeTestFile),
+        `${escapeRegExp(relativeTestFile)}$`,
         '--coverageThreshold',
         '{}',
         '--forceExit',
@@ -287,6 +287,7 @@ async function runWithConcurrencyLimit(
   const results: SuiteResult[] = new Array(testFiles.length);
   let next = 0;
 
+  /** Pulls test files from the shared queue and runs them sequentially until the queue is exhausted. */
   async function worker(): Promise<void> {
     while (next < testFiles.length) {
       const index = next;
@@ -322,7 +323,7 @@ async function runWithConcurrencyLimit(
 
   console.log(`Analyzing coverage overlap for ${testFiles.length} test suite(s)...`);
 
-  const concurrency = os.cpus().length;
+  const concurrency = Math.max(1, os.cpus().length);
   const results = await runWithConcurrencyLimit(testFiles, concurrency);
 
   const hasViolations = printReport(results);

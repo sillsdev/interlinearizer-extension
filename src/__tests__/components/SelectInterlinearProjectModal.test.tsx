@@ -167,6 +167,22 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
+  it('silently drops projects with non-string analysisLanguages elements', async () => {
+    const badLanguages = { ...STUB_PROJECT, analysisLanguages: [42, true] };
+    mockSendCommand.mockResolvedValue(JSON.stringify([badLanguages, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('silently drops projects with a non-string targetProjectId', async () => {
+    const badTargetId = { ...STUB_PROJECT, targetProjectId: 42 };
+    mockSendCommand.mockResolvedValue(JSON.stringify([badTargetId, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
   it('shows the empty-state message when getProjectsForSource returns a non-array', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify({ not: 'an array' }));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

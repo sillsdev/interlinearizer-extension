@@ -11,7 +11,7 @@ import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
-import type { ActiveProjectState } from './SelectInterlinearProjectModal';
+import type { InterlinearProjectSummary } from './SelectInterlinearProjectModal';
 
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
@@ -60,7 +60,7 @@ export default function InterlinearizerLoader({
    * restores. Updated after creation and when the user selects an existing project from the
    * picker.
    */
-  const [activeProject] = useWebViewState<ActiveProjectState | undefined>(
+  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
     'activeProject',
     undefined,
   );

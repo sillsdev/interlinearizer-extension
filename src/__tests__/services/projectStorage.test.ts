@@ -354,18 +354,18 @@ describe('projectStorage', () => {
       }
     });
 
-    it('preserves targetProjectId when not provided', async () => {
+    it('clears targetProjectId when omitted', async () => {
       const withTarget = { ...storedProject, targetProjectId: 'old-tgt' };
       __mockReadUserData.mockResolvedValue(JSON.stringify(withTarget));
 
       const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
-      expect(result?.targetProjectId).toBe('old-tgt');
+      expect(result).not.toHaveProperty('targetProjectId');
       const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
       expect(typeof writtenArg).toBe('string');
       if (typeof writtenArg === 'string') {
         const parsed: unknown = JSON.parse(writtenArg);
-        expect(parsed).toMatchObject({ targetProjectId: 'old-tgt' });
+        expect(parsed).not.toHaveProperty('targetProjectId');
       }
     });
   });

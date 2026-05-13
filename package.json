@@ -100,7 +100,6 @@
     "stylelint-config-sass-guidelines": "^12.1.0",
     "swc-loader": "^0.2.6",
     "tailwindcss": "^4.3.0",
-    "tailwindcss-animate": "^1.0.7",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",

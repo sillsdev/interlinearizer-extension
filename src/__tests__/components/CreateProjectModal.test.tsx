@@ -148,7 +148,7 @@ describe('CreateProjectModal', () => {
     );
   });
 
-  it('does not call onProjectCreated or onClose and sends an error notification when sendCommand returns malformed JSON', async () => {
+  it('does not call onProjectCreated or onClose when sendCommand returns malformed JSON', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify({ bad: 'shape' }));
     const onProjectCreated = jest.fn();
     const onClose = jest.fn();
@@ -162,16 +162,13 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    await waitFor(() =>
-      expect(papi.notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      ),
-    );
+    await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
+  it('does not call onProjectCreated, onClose, or send a notification when sendCommand returns undefined', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const onProjectCreated = jest.fn();
     const onClose = jest.fn();
@@ -188,6 +185,7 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
   it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
@@ -247,7 +245,7 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(cancelButton).not.toBeDisabled());
   });
 
-  it('does not call onClose or onProjectCreated when sendCommand rejects, but sends an error notification', async () => {
+  it('does not call onClose or onProjectCreated when sendCommand rejects, and does not send a notification', async () => {
     jest.mocked(papi.commands.sendCommand).mockRejectedValue(new Error('network error'));
     const onProjectCreated = jest.fn();
     const onClose = jest.fn();
@@ -261,12 +259,9 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    await waitFor(() =>
-      expect(papi.notifications.send).toHaveBeenCalledWith(
-        expect.objectContaining({ severity: 'error' }),
-      ),
-    );
+    await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 });

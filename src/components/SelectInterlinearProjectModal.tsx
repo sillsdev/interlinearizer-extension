@@ -45,7 +45,9 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
     'analysisWritingSystem' in p &&
-    typeof p.analysisWritingSystem === 'string'
+    typeof p.analysisWritingSystem === 'string' &&
+    (!('name' in p) || typeof p.name === 'string') &&
+    (!('description' in p) || typeof p.description === 'string')
   );
 }
 

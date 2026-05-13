@@ -78,16 +78,19 @@ export function ProjectMetadataModal({
   const [editDescription, setEditDescription] = useState(description ?? '');
   const [editLanguage, setEditLanguage] = useState(analysisWritingSystem);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
   /**
    * Sends the updated name, description, and analysis language to the backend, then notifies the
-   * caller and closes the modal. Logs and shows a notification on failure.
+   * caller and closes the modal. Logs on failure; the backend command handler is responsible for
+   * showing the error notification so this handler does not re-send it.
    *
-   * @returns A promise that resolves when the command completes or the error notification is sent.
+   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(async () => {
+    setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
     const newLanguage = editLanguage.trim();
@@ -99,8 +102,7 @@ export function ProjectMetadataModal({
         newDescription,
         newLanguage,
       );
-      if (!updatedProjectJson)
-        throw new TypeError('updateProjectMetadata command returned no data');
+      if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
@@ -109,28 +111,28 @@ export function ProjectMetadataModal({
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to save project metadata', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_save_metadata_failed%', severity: 'error' })
-        .catch(() => {});
+    } finally {
+      setIsSubmitting(false);
     }
   }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
 
   /**
-   * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs
-   * and shows a notification on failure.
+   * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
+   * failure; the backend command handler is responsible for showing the error notification so this
+   * handler does not re-send it.
    *
-   * @returns A promise that resolves when the command completes or the error notification is sent.
+   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(async () => {
+    setIsSubmitting(true);
     try {
       await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);
       onProjectDeleted?.(interlinearProjectId);
       onClose();
     } catch (e) {
       logger.error('Interlinearizer: failed to delete project', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_delete_project_failed%', severity: 'error' })
-        .catch(() => {});
+    } finally {
+      setIsSubmitting(false);
     }
   }, [interlinearProjectId, onProjectDeleted, onClose]);
 
@@ -237,22 +239,31 @@ export function ProjectMetadataModal({
               <Button variant="secondary" size="sm" onClick={() => setConfirmingDelete(false)}>
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_cancel%']}
               </Button>
-              <Button variant="destructive" size="sm" onClick={handleDelete}>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDelete}
+                disabled={isSubmitting}
+              >
                 {localizedStrings['%interlinearizer_modal_metadata_delete_confirm_ok%']}
               </Button>
             </div>
           </div>
         ) : (
           <div className="tw-flex tw-gap-2 tw-justify-between">
-            <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+            <Button
+              variant="destructive"
+              onClick={() => setConfirmingDelete(true)}
+              disabled={isSubmitting}
+            >
               <Trash2 size={13} className="tw-mr-1" />
               {localizedStrings['%interlinearizer_modal_metadata_delete%']}
             </Button>
             <div className="tw-flex tw-gap-2">
-              <Button variant="secondary" onClick={onClose}>
+              <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 {localizedStrings['%interlinearizer_modal_metadata_close%']}
               </Button>
-              <Button onClick={handleSave} disabled={!editLanguage.trim()}>
+              <Button onClick={handleSave} disabled={isSubmitting || !editLanguage.trim()}>
                 {localizedStrings['%interlinearizer_modal_metadata_save%']}
               </Button>
             </div>

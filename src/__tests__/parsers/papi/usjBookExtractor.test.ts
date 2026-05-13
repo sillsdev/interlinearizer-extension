@@ -281,15 +281,16 @@ describe('extractBookFromUsj', () => {
     // stableStringify recurses into all object properties; traverse only follows .content.
     // Putting undefined inside an extra non-content array lets us exercise the
     // `if (value === undefined) return 'null'` path without crashing traverse.
-    // eslint-disable-next-line no-type-assertion/no-type-assertion
-    const withUndefined = {
+    type UsjDocumentWithExtra = {
+      content: (UsjDocument['content'][number] & { extra?: (undefined | null)[] })[];
+    };
+    const withUndefined: UsjDocumentWithExtra = {
       content: [{ type: 'book', code: 'GEN', content: [], extra: [undefined] }],
-    } as unknown as UsjDocument;
-    // eslint-disable-next-line no-type-assertion/no-type-assertion
-    const withNull = {
+    };
+    const withNull: UsjDocumentWithExtra = {
       // eslint-disable-next-line no-null/no-null
       content: [{ type: 'book', code: 'GEN', content: [], extra: [null] }],
-    } as unknown as UsjDocument;
+    };
 
     expect(extractBookFromUsj(withUndefined, WS).contentHash).toBe(
       extractBookFromUsj(withNull, WS).contentHash,

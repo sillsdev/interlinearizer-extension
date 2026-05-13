@@ -190,6 +190,26 @@ describe('CreateProjectModal', () => {
     expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
+  it('splits comma-separated languages into an array when submitted', async () => {
+    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
+
+    const languageInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(languageInput);
+    await userEvent.type(languageInput, 'en, fr');
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        testProjectId,
+        ['en', 'fr'],
+        undefined,
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
   it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
     render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
 

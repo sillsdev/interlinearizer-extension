@@ -152,6 +152,10 @@ function runJest(testFile: string, coverageDir: string): Promise<void> {
     proc.stdout.on('data', (chunk: Buffer) => chunks.push(chunk));
     proc.stderr.on('data', (chunk: Buffer) => chunks.push(chunk));
 
+    proc.on('error', (err) => {
+      reject(new Error(`Failed to spawn Jest: ${err.message}`));
+    });
+
     proc.on('close', (code) => {
       if (code === 0) {
         resolve();
@@ -269,7 +273,42 @@ function printReport(results: SuiteResult[]): boolean {
   return hasViolations;
 }
 
-/** Discovers all test files, runs each in isolation concurrently, and reports coverage overlap. */
+/**
+ * Runs `analyzeSuite` over `testFiles` with at most `concurrency` suites active at a time.
+ *
+ * @param testFiles - Absolute paths to test files.
+ * @param concurrency - Maximum number of Jest processes to run simultaneously.
+ * @returns Array of SuiteResults in the same order as `testFiles`.
+ */
+async function runWithConcurrencyLimit(
+  testFiles: string[],
+  concurrency: number,
+): Promise<SuiteResult[]> {
+  const results: SuiteResult[] = new Array(testFiles.length);
+  let next = 0;
+
+  async function worker(): Promise<void> {
+    while (next < testFiles.length) {
+      const index = next;
+      next += 1;
+      const testFile = testFiles[index];
+      // eslint-disable-next-line no-await-in-loop
+      const result = await analyzeSuite(testFile);
+      results[index] = result;
+      console.log(
+        `  done (${(result.elapsedMs / 1000).toFixed(1)}s)  ${path.relative(rootDir, testFile)}`,
+      );
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, testFiles.length) }, worker));
+  return results;
+}
+
+/**
+ * Discovers all test files, runs each in isolation with bounded concurrency, and reports coverage
+ * overlap.
+ */
 (async function main() {
   const testFiles = globSync('src/**/__tests__/**/*.test.{ts,tsx}', {
     cwd: rootDir,
@@ -283,15 +322,8 @@ function printReport(results: SuiteResult[]): boolean {
 
   console.log(`Analyzing coverage overlap for ${testFiles.length} test suite(s)...`);
 
-  const results = await Promise.all(
-    testFiles.map(async (testFile) => {
-      const result = await analyzeSuite(testFile);
-      console.log(
-        `  done (${(result.elapsedMs / 1000).toFixed(1)}s)  ${path.relative(rootDir, testFile)}`,
-      );
-      return result;
-    }),
-  );
+  const concurrency = os.cpus().length;
+  const results = await runWithConcurrencyLimit(testFiles, concurrency);
 
   const hasViolations = printReport(results);
   process.exit(hasViolations ? 1 : 0);

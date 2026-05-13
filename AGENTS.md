@@ -31,7 +31,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 `src/main.ts` — called by Platform.Bible on activation. Exports two lifecycle functions:
 
-- `activate(context)` — registers the `interlinearizer.mainWebView` WebView provider, the `interlinearizer.openForWebView` command, and `onDidOpenWebView` / `onDidCloseWebView` subscriptions. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
+- `activate(context)` — registers the `interlinearizer.mainWebView` WebView provider, eight commands (`interlinearizer.openForWebView`, `interlinearizer.createProject`, `interlinearizer.getProjectsForSource`, `interlinearizer.updateProjectMetadata`, `interlinearizer.deleteProject`, `interlinearizer.openSelectProjectModal`, `interlinearizer.openNewProjectModal`, `interlinearizer.openProjectInfoModal`), and `onDidOpenWebView` / `onDidCloseWebView` subscriptions. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
 - `deactivate()` — clears `openWebViewsByProject` and returns `true`.
 
 `openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.
@@ -70,9 +70,10 @@ Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two
 
 The core types are:
 
-- `InterlinearAlignment` — top-level bilingual container (source + target `InterlinearText`)
-- `Book → Segment → Token` — the text hierarchy
-- `TextAnalysis` — flat analysis layer keyed by id (does **not** mirror text hierarchy)
+- `InterlinearProject` — persisted envelope: metadata, `sourceProjectId`, optional `targetProjectId` (bilateral alignment projects only), `analysis: TextAnalysis`, and `links: AlignmentLink[]`. The text hierarchy is **not** stored here — it is rebuilt from USJ at runtime.
+- `ActiveProject` — runtime pairing of `project: InterlinearProject` with reconstructed `source: Book[]` and optional `target?: Book[]` text layers. Never serialized.
+- `Book → Segment → Token` — the text hierarchy (rebuilt from USJ on load; not persisted in `InterlinearProject`)
+- `TextAnalysis` — flat analysis layer on `InterlinearProject.analysis`, keyed by id (does **not** mirror text hierarchy)
 - `TokenAnalysis / Morpheme` — parse and 1:1 glosses; multiple analyses per token are allowed, distinguished by `status`
 - `AlignmentLink` — links between source and target tokens/morphemes
 - `AlignmentEndpoint` — has either token-level or morpheme-level specificity, never both
@@ -109,6 +110,7 @@ Mock files:
 - **`__mocks__/papi-frontend-react.ts`** — Stubs PAPI React hooks.
 - **`__mocks__/platform-bible-react.tsx`** — Stubs components with appropriate `data-testid` attributes. See file for test IDs.
 - **`__mocks__/platform-bible-utils.ts`** — Stubs util functions.
+- **`__mocks__/lucide-react.tsx`** — Stubs icon components (`Trash2` → `data-testid="trash-icon"`, `Info` → `data-testid="info-icon"`).
 - **`__mocks__/styleInlineMock.ts`** and **`__mocks__/styleMock.ts`** — Stub `.scss?inline` and `.scss`.
 - **`__mocks__/web-view-inline.ts`** — Stubs `*.web-view?inline` imports as a null-returning React component.
 - **`src/__tests__/test-helpers.ts`** — Exports `createTestActivationContext()` for testing `activate()` without type assertions.

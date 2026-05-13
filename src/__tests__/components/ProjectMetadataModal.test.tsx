@@ -223,6 +223,41 @@ describe('ProjectMetadataModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
+    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
+    expect(onProjectDeleted).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
+  });
+
+  it('displays multiple analysis languages joined by comma in the language input', () => {
+    render(<ProjectMetadataModal {...testProps} analysisLanguages={['en', 'fr']} />);
+    expect(screen.getByLabelText(/analysis language/i)).toHaveValue('en, fr');
+  });
+
+  it('splits comma-separated language input back into an array on save', async () => {
+    render(<ProjectMetadataModal {...testProps} analysisLanguages={['en', 'fr']} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.updateProjectMetadata',
+        'il-project-uuid',
+        undefined,
+        undefined,
+        ['en', 'fr'],
+      ),
+    );
+  });
+
+  it('trims whitespace from the language input before saving', async () => {
+    render(<ProjectMetadataModal {...testProps} />);
+
+    const langInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(langInput);
+    await userEvent.type(langInput, '  fr  ');
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
     await waitFor(() =>
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.updateProjectMetadata',

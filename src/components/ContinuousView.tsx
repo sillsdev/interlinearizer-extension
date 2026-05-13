@@ -134,7 +134,7 @@ export default function ContinuousView({
     return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
   });
 
-  const jumpTargetRef = useRef<number | undefined>();
+  const jumpTargetRef = useRef<number | undefined>(undefined);
   const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
     number | undefined
   >();
@@ -309,7 +309,7 @@ export default function ContinuousView({
         {!atStart && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-s-0 tw:z-10 tw:w-8 tw-bg-gradient-to-e tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-s-0 tw:z-10 tw:w-8 tw:bg-gradient-to-e tw:from-background tw:to-transparent"
           />
         )}
 
@@ -317,7 +317,7 @@ export default function ContinuousView({
         {!atEnd && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-e-0 tw:z-10 tw:w-8 tw-bg-gradient-to-s tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-e-0 tw:z-10 tw:w-8 tw:bg-gradient-to-s tw:from-background tw:to-transparent"
           />
         )}
 

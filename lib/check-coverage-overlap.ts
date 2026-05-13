@@ -16,8 +16,11 @@ const rootDir = path.resolve(__dirname, '..');
 /** V8 coverage data for a single source file as written by Jest's coverage-final.json. */
 interface FileCoverage {
   path: string;
+  /** Istanbul statement hit counts, keyed by statement id. */
   s: Record<string, number>;
+  /** Istanbul branch hit counts, keyed by branch id; each value is an array of per-path counts. */
   b: Record<string, number[]>;
+  /** Istanbul function hit counts, keyed by function id. */
   f: Record<string, number>;
   statementMap: Record<string, unknown>;
   branchMap: Record<string, unknown>;
@@ -111,8 +114,7 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * Runs a single Jest test file with coverage enabled and returns the path to the generated
- * coverage-final.json.
+ * Runs a single Jest test file with coverage enabled, writing results to `coverageDir`.
  *
  * @param testFile - Absolute path to the test file to run.
  * @param coverageDir - Directory where Jest should write coverage output.
@@ -267,12 +269,12 @@ function printReport(results: SuiteResult[]): boolean {
 
   console.log(`Analysing coverage overlap for ${testFiles.length} test suite(s)...`);
 
-  const results: SuiteResult[] = testFiles.reduce<SuiteResult[]>((acc, testFile) => {
+  const results: SuiteResult[] = testFiles.map((testFile) => {
     process.stdout.write(`  Running ${path.relative(rootDir, testFile)}...`);
     const result = analyseSuite(testFile);
     process.stdout.write(` done (${(result.elapsedMs / 1000).toFixed(1)}s)\n`);
-    return [...acc, result];
-  }, []);
+    return result;
+  });
 
   const hasViolations = printReport(results);
   process.exit(hasViolations ? 1 : 0);

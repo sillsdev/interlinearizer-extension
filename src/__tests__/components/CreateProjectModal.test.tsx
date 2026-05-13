@@ -162,10 +162,9 @@ describe('CreateProjectModal', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
-    await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
+    await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
   it('does not call onProjectCreated, onClose, or send a notification when sendCommand returns undefined', async () => {

@@ -72,8 +72,13 @@ export function CreateProjectModal({
       );
       if (!projectJson) return;
       const parsed: unknown = JSON.parse(projectJson);
-      if (!isInterlinearProjectSummary(parsed))
-        throw new Error('Created project has unexpected shape');
+      if (!isInterlinearProjectSummary(parsed)) {
+        await papi.notifications.send({
+          message: '%interlinearizer_error_create_project_failed%',
+          severity: 'error',
+        });
+        return;
+      }
       onProjectCreated?.(parsed);
       onClose();
     } catch (e) {

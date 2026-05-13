@@ -2,7 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -79,6 +79,7 @@ export function ProjectMetadataModal({
   const [editLanguage, setEditLanguage] = useState(analysisWritingSystem);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
@@ -90,6 +91,8 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
@@ -112,6 +115,7 @@ export function ProjectMetadataModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to save project metadata', e);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
@@ -124,6 +128,8 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     try {
       await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);
@@ -132,6 +138,7 @@ export function ProjectMetadataModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to delete project', e);
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [interlinearProjectId, onProjectDeleted, onClose]);

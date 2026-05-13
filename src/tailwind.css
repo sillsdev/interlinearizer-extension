@@ -1,3 +1,9 @@
+/* CUSTOM: Added `tw:` prefix */
+@import 'tailwindcss' prefix(tw);
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+@import '@fontsource-variable/ibm-plex-sans';
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -24,6 +30,7 @@
     display: none;
   }
 }
+
 /*
  * CUSTOM: Theme variable policy.
  *
@@ -38,12 +45,6 @@
  * If you do decide to add a new semantic color, you MUST receive direct approval from UX before
  * merging.
  */
-
-/* CUSTOM: Added `tw:` prefix */
-@import 'tailwindcss' prefix(tw);
-@import 'tw-animate-css';
-@import 'shadcn/tailwind.css';
-@import '@fontsource-variable/ibm-plex-sans';
 
 /* CUSTOM: need some config from tailwind.config.ts which can't be inlined in this file */
 @config '../tailwind.config.ts';

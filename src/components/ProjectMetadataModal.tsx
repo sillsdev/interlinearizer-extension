@@ -35,6 +35,8 @@ export type ProjectMetadataModalProps = Readonly<{
   description?: string;
   /** Platform.Bible project ID of the source text. */
   sourceProjectId: string;
+  /** Optional Platform.Bible project ID of the target text. Passed through unchanged on save. */
+  targetProjectId?: string;
   /** BCP 47 tags for the analysis languages. */
   analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
@@ -64,6 +66,7 @@ export function ProjectMetadataModal({
   name,
   description,
   sourceProjectId,
+  targetProjectId,
   analysisLanguages,
   createdAt,
   onClose,
@@ -108,6 +111,7 @@ export function ProjectMetadataModal({
         newName,
         newDescription,
         newLanguages,
+        targetProjectId,
       );
       onProjectSaved?.({
         name: newName,
@@ -121,7 +125,15 @@ export function ProjectMetadataModal({
         .send({ message: '%interlinearizer_error_save_metadata_failed%', severity: 'error' })
         .catch(() => {});
     }
-  }, [editName, editDescription, parsedLanguages, interlinearProjectId, onProjectSaved, onClose]);
+  }, [
+    editName,
+    editDescription,
+    parsedLanguages,
+    interlinearProjectId,
+    targetProjectId,
+    onProjectSaved,
+    onClose,
+  ]);
 
   /** Sends the delete command to the backend, then notifies the caller and closes the modal. */
   const handleDelete = useCallback(async () => {

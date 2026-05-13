@@ -153,9 +153,8 @@ async function createInterlinearProject(
 }
 
 /**
- * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist. Called
- * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
- * select-project modal.
+ * Deletes an interlinearizer project by UUID. Called from the WebView via
+ * `papi.commands.sendCommand` when the user deletes a project from the select-project modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
  * @returns A promise that resolves when the deletion (or no-op) is complete.
@@ -188,8 +187,8 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisLanguages - New BCP 47 analysis language tags; omit or pass empty array to leave
- *   unchanged.
+ * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass the
+ *   current value to leave it unchanged. The field is required and cannot be cleared.
  * @param targetProjectId - New target-project ID, or `undefined` to clear it.
  * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
  *   found or if a storage failure occurs (in which case the error is logged and a notification is
@@ -311,6 +310,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'array', items: { type: 'string' } },
           },
           {
+            name: 'targetProjectId',
+            required: false,
+            summary:
+              'Optional Platform.Bible project ID of the target text; required for BT Extension projects',
+            schema: { type: 'string' },
+          },
+          {
             name: 'name',
             required: false,
             summary: 'Optional user-facing name for the project',
@@ -397,9 +403,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
           {
             name: 'analysisLanguages',
-            required: false,
-            summary: 'New BCP 47 analysis language tag; omit or pass empty to leave unchanged',
+            required: true,
+            summary:
+              'New BCP 47 analysis language tags; must be non-empty — pass the current value to leave unchanged',
             schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
+            required: false,
+            summary: 'New target-project ID; omit or pass undefined to clear',
+            schema: { type: 'string' },
           },
         ],
         result: {

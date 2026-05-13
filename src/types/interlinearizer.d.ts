@@ -54,9 +54,10 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 
     /**
-     * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
+     * Deletes an interlinearizer project by UUID.
      *
      * @param interlinearProjectId UUID of the interlinearizer project to delete.
+     * @throws {RangeError} If the project ID is not found in the stored index.
      */
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 

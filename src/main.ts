@@ -73,7 +73,8 @@ const openWebViewsByProject = new Map<string, string>();
  *
  * @param projectId - Project to open; if omitted a picker dialog is shown.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
- * @throws If `papi.dialogs.selectProject` or `papi.webViews.openWebView` rejects.
+ * @throws If `papi.dialogs.selectProject` rejects (e.g. platform error while showing the dialog).
+ * @throws If `papi.webViews.openWebView` rejects (e.g. the platform cannot open or focus the tab).
  */
 async function openInterlinearizer(projectId?: string): Promise<string | undefined> {
   const resolvedProjectId =
@@ -98,7 +99,8 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
  *
  * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
- * @throws If `papi.webViews.getOpenWebViewDefinition` or `openInterlinearizer` rejects.
+ * @throws If `papi.webViews.getOpenWebViewDefinition` rejects.
+ * @throws Any error thrown by {@link openInterlinearizer} (dialog or WebView platform errors).
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
@@ -154,7 +156,11 @@ async function createInterlinearProject(
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
  * @returns A promise that resolves when the deletion (or no-op) is complete.
- * @throws Re-throws storage errors after logging/notifying so the caller can handle failure UX.
+ * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
+ *   {@link projectStorage.deleteProject} via {@link readIds}).
+ * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
+ *   `papi.storage.writeUserData` rejects when updating the index. All storage errors are logged and
+ *   shown as a notification before being re-thrown so the caller can handle failure UX.
  */
 async function deleteInterlinearProject(interlinearProjectId: string): Promise<void> {
   try {
@@ -219,8 +225,10 @@ async function updateProjectMetadata(
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
  * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
- * @throws The storage error when the underlying read fails, so callers can distinguish an outage
- *   from an empty list.
+ * @throws {SyntaxError} If the project-IDs index or any project record contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
+ *   {@link projectStorage.getProjectsForSource}). Callers can use this to distinguish a storage
+ *   outage from a legitimately empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
@@ -347,7 +355,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     updateProjectMetadata,
     {
       method: {
-        summary: 'Update the name and description of an existing interlinearizer project',
+        summary:
+          'Update the name, description, and analysis language of an existing interlinearizer project',
         params: [
           {
             name: 'interlinearProjectId',

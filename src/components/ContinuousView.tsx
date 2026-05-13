@@ -323,7 +323,7 @@ export default function ContinuousView({
 
         {/* Inner flex row */}
         <div
-          className={`no-scrollbar tw:flex tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
+          className={`tw:no-scrollbar tw:flex tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
           style={{
             transitionDuration: `${STRIP_FADE_MS}ms`,
             transitionTimingFunction: STRIP_FADE_EASING,

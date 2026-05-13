@@ -53,11 +53,19 @@ export function CreateProjectModal({
    * caller via `onProjectCreated`, then closes the modal.
    */
   const handleSubmit = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    const parsedLanguages = analysisLanguage
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    const normalizedLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
     try {
       const newId = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        [normalizedAnalysisLanguage],
+        normalizedLanguages,
         undefined,
         name.trim() || undefined,
         description.trim() || undefined,

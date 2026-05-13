@@ -382,9 +382,9 @@ describe('projectStorage', () => {
     });
 
     it('throws RangeError when analysisLanguages is empty', async () => {
-      await expect(
-        updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', []),
-      ).rejects.toThrow(RangeError);
+      await expect(updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', [])).rejects.toThrow(
+        RangeError,
+      );
     });
 
     it('throws RangeError when targetProjectId is an empty string', async () => {
@@ -459,10 +459,11 @@ describe('projectStorage', () => {
       await expect(deleteProject(token, 'to-delete')).rejects.toThrow('permission denied');
     });
 
-    it('propagates the error and does not write the index when the project index does not exist', async () => {
+    it('throws RangeError and does not write the index when the project index does not exist', async () => {
+      __mockDeleteUserData.mockResolvedValue(undefined);
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      await expect(deleteProject(token, 'nonexistent-id')).rejects.toThrow('ENOENT');
+      await expect(deleteProject(token, 'nonexistent-id')).rejects.toThrow(RangeError);
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
   });
@@ -617,6 +618,38 @@ describe('projectStorage', () => {
 
       expect(result).toBeUndefined();
       expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('does not interleave concurrent saveProjectAnalysis calls for the same project', async () => {
+      const ops: string[] = [];
+      let resolveFirstRead!: (value: string) => void;
+      const firstReadGate = new Promise<string>((resolve) => {
+        resolveFirstRead = resolve;
+      });
+
+      let readCallCount = 0;
+      __mockReadUserData.mockImplementation(() => {
+        readCallCount += 1;
+        ops.push(`read:${readCallCount}`);
+        if (readCallCount === 1) return firstReadGate;
+        return Promise.resolve(JSON.stringify(storedProject));
+      });
+      __mockWriteUserData.mockImplementation(
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        (_t: unknown, _k: unknown, _v: unknown): Promise<void> => {
+          ops.push('write');
+          return Promise.resolve();
+        },
+      );
+
+      const p1 = saveProjectAnalysis(token, 'proj-id', updatedAnalysis, updatedLinks);
+      const p2 = saveProjectAnalysis(token, 'proj-id', updatedAnalysis, updatedLinks);
+
+      resolveFirstRead(JSON.stringify(storedProject));
+
+      await Promise.all([p1, p2]);
+
+      expect(ops).toEqual(['read:1', 'write', 'read:2', 'write']);
     });
   });
 

@@ -32,8 +32,6 @@ The extension reads PT9 interlinear data from XML files (e.g. `Interlinear_<lang
       - **Attributes:**
         - `Id` (required): Lexeme id (e.g. from a Lexicon).
         - `GlossId` (optional): Sense/gloss id; omitted or empty is treated as empty string.
-    - **`Excluded`** (optional): Boolean flag indicating this instance of a phrase should be excluded from the interlinear display at this specific location. This is a very niche property that is included because it's possible to be present in the XML, even though it's rarely used. When `true`, the phrase is not displayed at this location but remains available elsewhere. The exclusion is location-specific (applies to this instance at this text range, not globally). Omitted or `false` means the phrase is included.
-
 - **Punctuation**
   - **Children:**
     - **`Range`** (optional): If present, must have numeric `Index` and `Length`. Entries without a valid `Range` are skipped (not an error).

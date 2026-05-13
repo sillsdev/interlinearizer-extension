@@ -1,14 +1,30 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss' prefix(tw);
 
-@layer utilities {
-  .no-scrollbar {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+@config '../tailwind.config.ts';
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
   }
+}
 
-  .no-scrollbar::-webkit-scrollbar {
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+
+  &::-webkit-scrollbar {
     display: none;
   }
 }
@@ -166,11 +182,11 @@
 /* #region shared with https://github.com/paranext/paranext-core/blob/main/lib/platform-bible-react/src/index.css but with the difference of being scoped to .pr-twp in platform-bible-react */
 @layer base {
   * {
-    @apply tw-border-border tw-outline-ring/50;
+    @apply tw:border-border tw:outline-ring/50;
   }
 
   body {
-    @apply tw-bg-background tw-text-foreground;
+    @apply tw:bg-background tw:text-foreground;
   }
 }
 /* #endregion */

@@ -34,19 +34,19 @@ export function SegmentView({
       aria-current={isActive ? 'true' : undefined}
       className={
         isActive
-          ? 'tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted/50 tw-p-2 tw-text-left'
-          : 'tw-w-full tw-rounded tw-p-2 tw-text-left tw-transition-colors hover:tw-bg-muted/30'
+          ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2 tw:text-left'
+          : 'tw:w-full tw:rounded tw:p-2 tw:text-left tw:transition-colors tw:hover:bg-muted/30'
       }
       onClick={() => onClick?.({ book, chapter, verse })}
       type="button"
     >
-      <span className="tw-mb-2 tw-block tw-text-xs tw-font-medium tw-text-muted-foreground tw-uppercase tw-tracking-wide">
+      <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
         {verse}
       </span>
       {displayMode === 'baseline-text' ? (
-        <span className="tw-font-mono tw-text-sm tw-text-foreground">{segment.baselineText}</span>
+        <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
       ) : (
-        <span className="tw-flex tw-flex-wrap tw-gap-1">
+        <span className="tw:flex tw:flex-wrap tw:gap-1">
           {segment.tokens.map((token) =>
             token.type === 'word' ? (
               <MemoizedPhraseBox key={token.id} tokens={[token]} />

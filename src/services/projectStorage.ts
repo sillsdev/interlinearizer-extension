@@ -192,8 +192,9 @@ export async function getProjectsForSource(
  * @param description - New user-facing description, or `undefined` to clear it.
  * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass the
  *   current value to leave it unchanged. The field is required and cannot be cleared.
- * @param targetProjectId - New target-project ID to set, or `undefined` to leave the existing value
- *   unchanged.
+ * @param targetProjectId - New target-project ID to set, or `undefined` to clear it. In the future
+ *   this parameter should only accept IDs sourced from PAPI storage (they are random UUIDs and
+ *   should not be freely supplied by callers).
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -221,7 +222,9 @@ export async function updateProjectMetadata(
     updated.description = description;
   }
   updated.analysisLanguages = analysisLanguages;
-  if (targetProjectId !== undefined) {
+  if (targetProjectId === undefined) {
+    delete updated.targetProjectId;
+  } else {
     updated.targetProjectId = targetProjectId;
   }
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));

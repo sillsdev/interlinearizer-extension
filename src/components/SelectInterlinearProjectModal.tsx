@@ -57,7 +57,8 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
     'analysisLanguages' in p &&
-    Array.isArray(p.analysisLanguages)
+    Array.isArray(p.analysisLanguages) &&
+    p.analysisLanguages.length > 0
   );
 }
 

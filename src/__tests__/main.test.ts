@@ -111,14 +111,32 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
+  (
+    sourceProjectId: string,
+    analysisLanguages: string[],
+    targetProjectId?: string,
+    name?: string,
+    description?: string,
+  ) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (sourceProjectId: string, langs: string[]): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(sourceProjectId, langs);
+  return async (
+    sourceProjectId: string,
+    langs: string[],
+    targetProjectId?: string,
+    name?: string,
+    description?: string,
+  ): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(
+      sourceProjectId,
+      langs,
+      targetProjectId,
+      name,
+      description,
+    );
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -552,6 +570,22 @@ describe('main', () => {
         undefined,
       );
       expect(result).toBe(JSON.stringify(stubProject));
+    });
+
+    it('forwards optional targetProjectId, name, and description to projectStorage.createProject', async () => {
+      mockCreateProject.mockResolvedValue(stubProject);
+      const handler = await getCreateProjectHandler();
+
+      await handler('src-project', ['en'], 'target-project', 'My Project', 'A description');
+
+      expect(mockCreateProject).toHaveBeenCalledWith(
+        expect.anything(),
+        'src-project',
+        ['en'],
+        'target-project',
+        'My Project',
+        'A description',
+      );
     });
 
     it('does not show a project picker dialog', async () => {

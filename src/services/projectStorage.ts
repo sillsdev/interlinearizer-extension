@@ -303,11 +303,13 @@ export async function saveProjectAnalysis(
   analysis: TextAnalysis,
   links: AlignmentLink[],
 ): Promise<InterlinearProject | undefined> {
-  const project = await getProject(token, id);
-  if (!project) return undefined;
-  const updated: InterlinearProject = { ...project, analysis, links };
-  await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
-  return updated;
+  return enqueueProjectOp(id, async () => {
+    const project = await getProject(token, id);
+    if (!project) return undefined;
+    const updated: InterlinearProject = { ...project, analysis, links };
+    await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+    return updated;
+  });
 }
 
 /**
@@ -315,6 +317,7 @@ export async function saveProjectAnalysis(
  *
  * @param token - The execution token for storage access.
  * @param id - The project UUID to delete.
+ * @throws {RangeError} If the project ID is not found in the stored index.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON (from
  *   {@link readIds}).
  * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT (non-ENOENT errors
@@ -330,7 +333,7 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
       if (!isNotFound(e)) throw e;
     }
     await enqueueIndexOp(async () => {
-      const ids: string[] = JSON.parse(await papi.storage.readUserData(token, PROJECT_IDS_KEY));
+      const ids = await readIds(token);
       if (!ids.includes(id)) throw new RangeError(`Project not found in index: ${id}`);
       await papi.storage.writeUserData(
         token,

@@ -20,7 +20,7 @@ import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
-import type { ActiveProjectState } from './SelectInterlinearProjectModal';
+import type { InterlinearProjectSummary } from './SelectInterlinearProjectModal';
 
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
@@ -78,15 +78,8 @@ export default function InterlinearizerLoader({
    * restores. Updated after creation and when the user selects an existing project from the
    * picker.
    */
-  const [activeProject, setActiveProject, resetActiveProject] = useWebViewState<
-    ActiveProjectState | undefined
-  >('activeProject', undefined);
-
-  /**
-   * The project currently open in the metadata modal. Set when the user clicks the info icon in the
-   * select modal or triggers "View Project Info" from the menu.
-   */
-  const [metadataProject, setMetadataProject] = useState<InterlinearProjectSummary | undefined>(
+  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
+    'activeProject',
     undefined,
   );
 

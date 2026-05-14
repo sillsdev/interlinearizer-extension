@@ -253,6 +253,12 @@ git merge template/main --allow-unrelated-histories
 
 For more information, read [the instructions on the wiki](https://github.com/paranext/paranext-extension-template/wiki/Merging-Template-Changes-into-Your-Extension).
 
+After updating this extension from the template, clear all temp/cache files and regenerate the extension's `package-lock.json` with this command:
+
+```bash
+npm run core:reinstall
+```
+
 **Note:** The merge/squash commits created when updating this repo from the template are important; Git uses them to compare the files for future updates. If you edit this repo's Git history, please preserve these commits (do not squash them, for example) to avoid duplicated merge conflicts in the future.
 
 ## Special features in this project

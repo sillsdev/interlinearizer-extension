@@ -103,6 +103,11 @@ declare module 'papi-shared-types' {
  *
  * Shape at a glance:
  *
+ *     ActiveProject
+ *       ├─ project : InterlinearProject
+ *       ├─ source  : Book[]
+ *       └─ target? : Book[]   — present only when targetProjectId is set
+ *
  *     InterlinearProject
  *       ├─ sourceProjectId
  *       ├─ targetProjectId?  — absent for analysis-only projects (LCM, PT9)
@@ -110,10 +115,13 @@ declare module 'papi-shared-types' {
  *       ├─ analysis : TextAnalysis
  *       └─ links?   : AlignmentLink[]
  *
- *       ActiveProject
- *       ├─ project : InterlinearProject
- *       ├─ source  : Book[]
- *       └─ target? : Book[]   — present only when targetProjectId is set
+ *     TextAnalysis
+ *       ├─ segmentAnalyses      : SegmentAnalysis[]
+ *       ├─ segmentAnalysisLinks : SegmentAnalysisLink[]
+ *       ├─ tokenAnalyses        : TokenAnalysis[]
+ *       ├─ tokenAnalysisLinks   : TokenAnalysisLink[]
+ *       ├─ phraseAnalyses       : PhraseAnalysis[]
+ *       └─ phraseAnalysisLinks  : PhraseAnalysisLink[]
  *
  * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting. Every
  * analysis record carries an id reference back to its text-layer counterpart (`segmentId` /
@@ -495,6 +503,8 @@ declare module 'interlinearizer' {
      */
     segmentAnalyses: SegmentAnalysis[];
 
+    segmentAnalysisLinks: SegmentAnalysisLink[];
+
     /**
      * Token-level analyses, flat across the whole text. Each entry references its token by
      * `tokenRef`; the text layer keeps every token (words and punctuation) but this list typically
@@ -511,6 +521,8 @@ declare module 'interlinearizer' {
      * invariant is the caller's responsibility to maintain; no runtime enforcement exists.
      */
     tokenAnalyses: TokenAnalysis[];
+
+    tokenAnalysisLinks: TokenAnalysisLink[];
 
     /**
      * Multi-token phrase analyses, flat across the whole text. A phrase may group adjacent or
@@ -529,6 +541,23 @@ declare module 'interlinearizer' {
      *   parse coexists with the phrase-level gloss and is not a competing analysis.
      */
     phraseAnalyses: PhraseAnalysis[];
+
+    phraseAnalysisLinks: PhraseAnalysisLink[];
+  }
+
+  export interface AnalysisLink {
+    analysisId: string;
+
+    /** Required review status. */
+    status: AssignmentStatus;
+
+    /** How much to trust this analysis assignment. */
+    confidence?: Confidence;
+  }
+
+  export interface SegmentAnalysisLink extends AnalysisLink {
+    /** Reference to the corresponding `Segment.id` in the text layer. */
+    segmentId: string;
   }
 
   /**
@@ -540,8 +569,7 @@ declare module 'interlinearizer' {
     /** Unique within the owning `TextAnalysis` — stable reference for this record. */
     id: string;
 
-    /** Required review status. */
-    status: AssignmentStatus;
+    surfaceText: string;
 
     /**
      * How much to trust this analysis. Independent of who produced it — see `producer` /
@@ -578,9 +606,6 @@ declare module 'interlinearizer' {
    *   synthesized.
    */
   export interface SegmentAnalysis extends Analysis {
-    /** Reference to the corresponding `Segment.id` in the text layer. */
-    segmentId: string;
-
     /** Idiomatic translation of the segment. */
     freeTranslation?: MultiString;
 
@@ -591,6 +616,11 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
   // §3 TokenAnalysis — parse + 1:1 gloss
   // ---------------------------------------------------------------------------
+
+  export interface TokenAnalysisLink extends AnalysisLink {
+    /** Token that this analysis refers to. */
+    token: TokenSnapshot;
+  }
 
   /**
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
@@ -626,9 +656,6 @@ declare module 'interlinearizer' {
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
   export interface TokenAnalysis extends Analysis {
-    /** Snapshot of the token being analyzed. */
-    token: TokenSnapshot;
-
     /**
      * Ordered morpheme breakdown. Present when the analysis reaches sub-word granularity (e.g. an
      * LCM `IWfiAnalysis` with `MorphBundlesOS`). Absent when the analysis treats the token as a
@@ -735,6 +762,11 @@ declare module 'interlinearizer' {
   // §4 PhraseAnalysis — multi-token gloss unit
   // ---------------------------------------------------------------------------
 
+  export interface PhraseAnalysisLink extends AnalysisLink {
+    /** Ordered snapshots of tokens that compose this phrase. */
+    tokens: [TokenSnapshot, ...TokenSnapshot[]];
+  }
+
   /**
    * A multi-token unit glossed or analyzed as a single phrase.
    *
@@ -767,9 +799,6 @@ declare module 'interlinearizer' {
    *   share the same gloss / sense.
    */
   export interface PhraseAnalysis extends Analysis {
-    /** Ordered snapshots of tokens that compose this phrase. */
-    tokens: [TokenSnapshot, ...TokenSnapshot[]];
-
     /**
      * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
      * `senseRef` when both are present.

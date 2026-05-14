@@ -92,50 +92,50 @@ export function CreateProjectModal({
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
+    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
       <dialog
         aria-labelledby="create-project-modal-title"
-        className="tw-bg-background tw-text-foreground tw-rounded tw-border tw-border-border tw-p-6 tw-w-96 tw-shadow-lg"
+        className="tw:bg-background tw:text-foreground tw:rounded tw:border tw:border-border tw:p-6 tw:w-96 tw:shadow-lg"
         open
       >
         <h2
           id="create-project-modal-title"
-          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
+          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
         >
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
-        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-name">
+        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-name">
           {localizedStrings['%interlinearizer_modal_create_name_label%']}
         </label>
         <input
           id="project-name"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3"
+          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
         />
-        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="project-description">
+        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-description">
           {localizedStrings['%interlinearizer_modal_create_description_label%']}
         </label>
         <textarea
           id="project-description"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-3 tw-resize-none"
+          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3 tw:resize-none"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
         />
-        <label className="tw-block tw-text-sm tw-mb-1" htmlFor="analysis-language">
+        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="analysis-language">
           {localizedStrings['%interlinearizer_modal_create_language_label%']}
         </label>
         <input
           id="analysis-language"
-          className="tw-w-full tw-rounded tw-border tw-border-border tw-bg-muted tw-text-foreground tw-px-3 tw-py-1.5 tw-text-sm tw-mb-4"
+          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-4"
           value={analysisLanguage}
           onChange={(e) => setAnalysisLanguage(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
-        <div className="tw-flex tw-gap-2 tw-justify-end">
+        <div className="tw:flex tw:gap-2 tw:justify-end">
           <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>

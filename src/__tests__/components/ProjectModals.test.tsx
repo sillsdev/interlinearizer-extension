@@ -148,6 +148,10 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
 /**
  * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
  * persists across re-renders within the same test without requiring any type assertions.
+ *
+ * @returns A hook function with the signature `(key, defaultValue) => [value, setter, reset]` where
+ *   `value` is the current stored value for `key` (initially `defaultValue`), `setter` updates it,
+ *   and `reset` removes the slot so the next call re-initializes from `defaultValue`.
  */
 function makeWebViewState() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -176,9 +180,13 @@ function makeWebViewState() {
 }
 
 /**
- * Renders ProjectModals with sensible defaults.
+ * Renders ProjectModals with sensible defaults and returns helpers for assertions.
  *
- * @param overrides - Partial props to override defaults.
+ * @param overrides - Partial props to merge over the defaults. Supports `activeProject`, `modal`
+ *   (defaults to `'none'`), `setModal` (defaults to a fresh `jest.fn()`), and `useWebViewState`
+ *   (defaults to a fresh {@link makeWebViewState} instance).
+ * @returns An object containing `setModal` — either the caller-supplied function or the internally
+ *   created `jest.fn()` — so callers can assert on it after interactions.
  */
 function renderModals(
   overrides: Partial<{
@@ -312,13 +320,12 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
-    it('sets the active project when a project is created', async () => {
+    it('keeps the create modal open and does not call setModal when a project is created', async () => {
       const state = makeWebViewState();
-      renderModals({ modal: 'create', useWebViewState: state });
+      const { setModal } = renderModals({ modal: 'create', useWebViewState: state });
       await userEvent.click(screen.getByTestId('create-created'));
-      // State is updated — verify by rendering metadata modal which uses activeProject
-      // (we can't read state directly, so just confirm no crash)
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
+      expect(setModal).not.toHaveBeenCalled();
     });
   });
 

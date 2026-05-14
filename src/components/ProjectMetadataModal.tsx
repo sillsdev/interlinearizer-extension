@@ -91,6 +91,7 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(async () => {
+    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -128,6 +129,7 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(async () => {
+    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);

@@ -52,12 +52,14 @@ export function CreateProjectModal({
 
   /**
    * Sends the `interlinearizer.createProject` command with the collected form values, then notifies
-   * the caller via `onProjectCreated` and closes the modal. Logs on failure; the backend command
-   * handler is responsible for showing the error notification so this handler does not re-send it.
+   * the caller via `onProjectCreated` and closes the modal. Shows a user-visible error notification
+   * if the response cannot be parsed (SyntaxError); for other errors, logs and defers to the
+   * backend command handler to surface the notification.
    *
-   * @returns A promise that resolves when the command completes or the error is logged.
+   * @returns A promise that resolves when the command completes or the error is handled.
    */
   const handleSubmit = useCallback(async () => {
+    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
@@ -82,6 +84,14 @@ export function CreateProjectModal({
       onProjectCreated?.(parsed);
       onClose();
     } catch (e) {
+      if (e instanceof SyntaxError) {
+        logger.error('Interlinearizer: failed to parse create project response', e);
+        await papi.notifications.send({
+          message: '%interlinearizer_error_create_project_failed%',
+          severity: 'error',
+        });
+        return;
+      }
       logger.error('Interlinearizer: failed to create project', e);
     } finally {
       isSubmittingRef.current = false;

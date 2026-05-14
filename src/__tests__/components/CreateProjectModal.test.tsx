@@ -8,6 +8,22 @@ import papi from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { CreateProjectModal } from '../../components/CreateProjectModal';
 
+jest.mock('../../components/SelectInterlinearProjectModal', () => ({
+  __esModule: true,
+  /** Minimal re-implementation that avoids importing the real module's coverage into this suite. */
+  isInterlinearProjectSummary(p: unknown): boolean {
+    if (!p || typeof p !== 'object') return false;
+    if (!('id' in p) || typeof p.id !== 'string') return false;
+    if (!('createdAt' in p) || typeof p.createdAt !== 'string') return false;
+    if (!('sourceProjectId' in p) || typeof p.sourceProjectId !== 'string') return false;
+    if (!('analysisWritingSystem' in p) || typeof p.analysisWritingSystem !== 'string')
+      return false;
+    if ('name' in p && typeof p.name !== 'string') return false;
+    if ('description' in p && typeof p.description !== 'string') return false;
+    return true;
+  },
+}));
+
 const testProjectId = 'test-project-id';
 
 describe('CreateProjectModal', () => {
@@ -242,6 +258,25 @@ describe('CreateProjectModal', () => {
     resolveCommand(undefined);
 
     await waitFor(() => expect(cancelButton).not.toBeDisabled());
+  });
+
+  it('sends a notification and does not call onProjectCreated or onClose when sendCommand returns invalid JSON', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue('not valid json{{{');
+    const onProjectCreated = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <CreateProjectModal
+        projectId={testProjectId}
+        onClose={onClose}
+        onProjectCreated={onProjectCreated}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
+    expect(onProjectCreated).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('does not call onClose or onProjectCreated when sendCommand rejects, and does not send a notification', async () => {

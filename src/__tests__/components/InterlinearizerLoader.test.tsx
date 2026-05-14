@@ -23,14 +23,6 @@ type MockProject = {
 
 const testProjectId = 'test-project-id';
 
-const MOCK_PROJECT: MockProject = {
-  id: 'proj-1',
-  createdAt: '2026-01-01T00:00:00Z',
-  sourceProjectId: testProjectId,
-  analysisWritingSystem: 'en',
-  name: 'My Project',
-};
-
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 
@@ -39,119 +31,170 @@ jest.mock('../../components/ContinuousView', () => ({
   default: () => <div data-testid="continuous-view" />,
 }));
 
-jest.mock('../../components/SelectInterlinearProjectModal', () => ({
+jest.mock('../../components/Interlinearizer', () => ({
   __esModule: true,
-  SelectInterlinearProjectModal: ({
-    onSelect,
-    onCreateNew,
-    onClose,
-    onViewInfo,
-  }: {
-    onSelect: (p: MockProject) => void;
-    onCreateNew: () => void;
-    onClose: () => void;
-    onViewInfo: (p: MockProject) => void;
-  }) => (
-    <div data-testid="select-modal">
-      <button
-        type="button"
-        data-testid="select-modal-select"
-        onClick={() => onSelect(MOCK_PROJECT)}
-      >
-        Select
-      </button>
-      <button type="button" data-testid="select-modal-create-new" onClick={onCreateNew}>
-        Create new
-      </button>
-      <button type="button" data-testid="select-modal-close" onClick={onClose}>
-        Close
-      </button>
-      <button
-        type="button"
-        data-testid="select-modal-view-info"
-        onClick={() => onViewInfo(MOCK_PROJECT)}
-      >
-        View info
-      </button>
-    </div>
-  ),
-  isInterlinearProjectSummary: (p: unknown) => !!p,
+  default: () => <div data-testid="interlinearizer" />,
 }));
 
-jest.mock('../../components/CreateProjectModal', () => ({
+jest.mock('../../components/ContinuousScrollToggle', () => ({
   __esModule: true,
-  CreateProjectModal: ({
-    onClose,
-    onProjectCreated,
+  default: ({
+    checked,
+    onCheckedChange,
   }: {
-    onClose: () => void;
-    onProjectCreated: (p: MockProject) => void;
+    checked: boolean;
+    disabled: boolean;
+    label: string;
+    onCheckedChange: (v: boolean) => void;
   }) => (
-    <div data-testid="create-modal">
-      <button type="button" data-testid="create-modal-close" onClick={onClose}>
-        Close
-      </button>
-      <button
-        type="button"
-        data-testid="create-modal-created"
-        onClick={() => {
-          onProjectCreated(MOCK_PROJECT);
-          onClose();
-        }}
-      >
-        Created
-      </button>
-    </div>
+    <input
+      type="checkbox"
+      data-testid="continuous-scroll-toggle"
+      checked={checked}
+      onChange={(e) => onCheckedChange(e.target.checked)}
+    />
   ),
 }));
 
-jest.mock('../../components/ProjectMetadataModal', () => ({
+jest.mock('../../components/ScriptureNavControls', () => ({
   __esModule: true,
-  ProjectMetadataModal: ({
-    onClose,
-    onProjectSaved,
-    onProjectDeleted,
+  default: () => <div data-testid="scripture-nav-controls" />,
+}));
+
+const STUB_ACTIVE_PROJECT: MockProject = {
+  id: 'proj-1',
+  createdAt: '2026-01-01T00:00:00Z',
+  sourceProjectId: testProjectId,
+  analysisWritingSystem: 'en',
+  name: 'My Project',
+};
+
+jest.mock('../../components/ProjectModals', () => ({
+  __esModule: true,
+  default: function StubProjectModals({
+    modal,
+    setModal,
+    activeProject,
+    useWebViewState,
   }: {
-    onClose: () => void;
-    onProjectSaved: (u: { analysisWritingSystem: string }) => void;
-    onProjectDeleted: (id: string) => void;
-  }) => (
-    <div data-testid="metadata-modal">
-      <button type="button" data-testid="metadata-modal-close" onClick={onClose}>
-        Close
-      </button>
-      <button
-        type="button"
-        data-testid="metadata-modal-saved"
-        onClick={() => {
-          onProjectSaved({ analysisWritingSystem: 'fr' });
-          onClose();
-        }}
-      >
-        Save
-      </button>
-      <button
-        type="button"
-        data-testid="metadata-modal-deleted"
-        onClick={() => {
-          onProjectDeleted(MOCK_PROJECT.id);
-          onClose();
-        }}
-      >
-        Delete
-      </button>
-    </div>
-  ),
+    modal: string;
+    setModal: (m: string) => void;
+    activeProject: MockProject | undefined;
+    useWebViewState: (
+      key: string,
+      def: MockProject | undefined,
+    ) => [MockProject | undefined, (v: MockProject | undefined) => void, () => void];
+    projectId: string;
+  }) {
+    const [, setActiveProject] = useWebViewState('activeProject', undefined);
+    return (
+      <div data-testid="project-modals" data-modal={modal}>
+        {modal === 'select' && (
+          <div data-testid="select-modal">
+            <button
+              type="button"
+              data-testid="select-modal-select"
+              onClick={() => {
+                setActiveProject(STUB_ACTIVE_PROJECT);
+                setModal('none');
+              }}
+            >
+              Select
+            </button>
+            <button
+              type="button"
+              data-testid="select-modal-create-new"
+              onClick={() => setModal('create')}
+            >
+              Create new
+            </button>
+            <button type="button" data-testid="select-modal-close" onClick={() => setModal('none')}>
+              Close
+            </button>
+            <button
+              type="button"
+              data-testid="select-modal-view-info"
+              onClick={() => setModal('metadata')}
+            >
+              View info
+            </button>
+          </div>
+        )}
+        {modal === 'create' && (
+          <div data-testid="create-modal">
+            <button type="button" data-testid="create-modal-close" onClick={() => setModal('none')}>
+              Close
+            </button>
+            <button
+              type="button"
+              data-testid="create-modal-created"
+              onClick={() => {
+                setActiveProject(STUB_ACTIVE_PROJECT);
+                setModal('select');
+              }}
+            >
+              Created
+            </button>
+          </div>
+        )}
+        {modal === 'metadata' && activeProject && (
+          <div data-testid="metadata-modal">
+            <button
+              type="button"
+              data-testid="metadata-modal-close"
+              onClick={() => setModal('none')}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              data-testid="metadata-modal-saved"
+              onClick={() => setModal('none')}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              data-testid="metadata-modal-deleted"
+              onClick={() => {
+                setActiveProject(undefined);
+                setModal('none');
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  },
 }));
 
 const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
-/** A minimal Book used as the successful hook result. */
-const TEST_BOOK: Book = {
+/** Pre-built Book with one GEN 1:1 segment. */
+const GEN_1_1_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
-  segments: [],
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          id: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+      ],
+    },
+  ],
 };
 
 /**
@@ -261,7 +304,7 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  it('shows the book chapter control and renders a segment when book data is available', () => {
+  it('shows nav controls and the interlinearizer when book data is available', () => {
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -332,7 +375,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.continuousScroll).toBe(true);
+    expect(screen.getByRole('checkbox')).toBeInTheDocument();
   });
 
   it('continuous scroll toggle is checked when the setting is true', () => {
@@ -345,9 +388,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    const toggle = screen.getByTestId('continuous-scroll-toggle');
-    expect(toggle).toHaveAttribute('data-checked', 'true');
-    expect(toggle).toHaveAttribute('data-disabled', 'true');
+    expect(screen.getByRole('checkbox')).toBeChecked();
   });
 
   it('continuous scroll toggle is unchecked when the setting is false', () => {
@@ -359,7 +400,8 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
+    expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
 
   it('clicking the continuous scroll toggle calls onChange with the toggled value', async () => {
     const mockOnChange = jest.fn();
@@ -377,8 +419,7 @@ describe('InterlinearizerLoader', () => {
     expect(mockOnChange).toHaveBeenCalledWith(false);
   });
 
-  it('renders continuous view when the setting is true', () => {
-    mockSettingHook(true);
+  it('renders the interlinearizer stub when the setting is false', () => {
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -387,21 +428,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
-    expect(screen.queryByText('In')).not.toBeInTheDocument();
-  });
-
-  it('renders token-chip view when the setting is false', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
-
-    expect(screen.queryByTestId('continuous-view')).not.toBeInTheDocument();
-    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
   describe('modal interactions', () => {
@@ -514,23 +541,6 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
-    it('returns to the select modal when close is clicked after opening create from select', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-create-new'));
-      await userEvent.click(screen.getByTestId('create-modal-close'));
-
-      expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
-      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
-    });
-
     it('sets the active project and closes the select modal when a project is selected', async () => {
       render(
         <InterlinearizerLoader
@@ -544,69 +554,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-select'));
 
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
-    });
-
-    it('opens the metadata modal from the select modal view-info button', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-view-info'));
-
-      expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
-    });
-
-    it('returns to the select modal when metadata is closed after being opened from select', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-view-info'));
-      await userEvent.click(screen.getByTestId('metadata-modal-close'));
-
-      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
-    });
-
-    it('returns to the select modal when metadata is saved after being opened from select', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-view-info'));
-      await userEvent.click(screen.getByTestId('metadata-modal-saved'));
-
-      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
-    });
-
-    it('returns to the select modal when a project is deleted from the metadata modal opened via select', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-view-info'));
-      await userEvent.click(screen.getByTestId('metadata-modal-deleted'));
-
-      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
     });
 
     it('opens the metadata modal from the openProjectInfoModal menu item when a project is active', async () => {

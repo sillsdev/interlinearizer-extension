@@ -77,6 +77,10 @@ interface PlatformError {
  * @returns `true` if `error` is a {@link PlatformError}, `false` otherwise.
  */
 const isPlatformError = (error: unknown): error is PlatformError =>
-  typeof error === 'object' && error !== null && 'platformErrorVersion' in error;
+  typeof error === 'object' &&
+  error !== null &&
+  'platformErrorVersion' in error &&
+  typeof (error as Record<string, unknown>).platformErrorVersion === 'number' &&
+  !Number.isNaN((error as Record<string, unknown>).platformErrorVersion);
 
 export { UnsubscriberAsyncList, isPlatformError };

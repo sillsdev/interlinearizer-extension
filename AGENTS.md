@@ -38,7 +38,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 ### WebView UI
 
-`src/interlinearizer.web-view.tsx` — React component rendered inside Platform.Bible's WebView iframe. `useWebViewScrollGroupScrRef` is a **prop injected by the PAPI host** (not a hook import). Uses PAPI frontend hooks (`useProjectData`, `useProjectSetting`, `useLocalizedStrings`, `useRecentScriptureRefs`) to fetch live data. Renders verse segments as token chips with Tailwind utility classes (all prefixed `tw-`).
+`src/interlinearizer.web-view.tsx` — React component rendered inside Platform.Bible's WebView iframe. `useWebViewScrollGroupScrRef` is a **prop injected by the PAPI host** (not a hook import). Uses PAPI frontend hooks (`useProjectData`, `useProjectSetting`, `useLocalizedStrings`, `useRecentScriptureRefs`) to fetch live data. Renders verse segments as token chips with Tailwind utility classes (all prefixed `tw:`).
 
 The WebView is injected into the main bundle via Webpack's `?inline` query:
 
@@ -55,7 +55,7 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 ### Styling
 
-All UI uses Tailwind CSS (via `src/tailwind.css`). Every Tailwind class is prefixed `tw-` to avoid collisions with Platform.Bible's own styles (configured in `tailwind.config.ts`).
+All UI uses Tailwind CSS (via `src/tailwind.css`). Every Tailwind class is prefixed `tw:` to avoid collisions with Platform.Bible's own styles (configured in `tailwind.config.ts`). For modifier variants the prefix comes first: `tw:hover:px-3`, not `hover:tw-px-3`.
 
 ### Parser pipeline
 

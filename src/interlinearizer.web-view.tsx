@@ -16,14 +16,14 @@ globalThis.webViewComponent = function InterlinearizerWebView({
   useWebViewScrollGroupScrRef,
 }: WebViewProps) {
   return (
-    <div className="tw-flex tw-flex-col tw-h-full">
+    <div className="tw:flex tw:flex-col tw:h-full">
       {projectId ? (
         <InterlinearizerLoader
           projectId={projectId}
           useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}
         />
       ) : (
-        <p className="tw-text-sm tw-text-muted-foreground">
+        <p className="tw:text-sm tw:text-muted-foreground">
           Open this WebView from a Paratext project to load its source book.
         </p>
       )}

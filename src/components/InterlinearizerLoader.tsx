@@ -48,7 +48,7 @@ export default function InterlinearizerLoader({
 
   const toolbar = (
     <TabToolbar
-      className="tw-z-10"
+      className="tw:z-10"
       startAreaChildren={
         <ScriptureNavControls
           scrRef={scrRef}
@@ -73,33 +73,33 @@ export default function InterlinearizerLoader({
   );
 
   return (
-    <div className="tw-flex tw-flex-col tw-h-full">
+    <div className="tw:flex tw:flex-col tw:h-full">
       {toolbar}
 
       {hasError || showLoading || !book ? (
-        <div className="tw-flex tw-flex-col tw-gap-4 tw-p-4">
+        <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
           {bookError && (
-            <div className="tw-flex tw-flex-col tw-gap-2">
-              <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error loading book</h2>
-              <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
+            <div className="tw:flex tw:flex-col tw:gap-2">
+              <h2 className="tw:text-lg tw:font-medium tw:text-destructive">Error loading book</h2>
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:p-4 tw:text-sm">
                 {bookError}
               </pre>
             </div>
           )}
 
           {tokenizeError && (
-            <div className="tw-flex tw-flex-col tw-gap-2">
-              <h2 className="tw-text-lg tw-font-medium tw-text-destructive">
+            <div className="tw:flex tw:flex-col tw:gap-2">
+              <h2 className="tw:text-lg tw:font-medium tw:text-destructive">
                 Error processing book
               </h2>
-              <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-p-4 tw-text-sm">
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:p-4 tw:text-sm">
                 {tokenizeError.message}
               </pre>
             </div>
           )}
 
           {!hasError && showLoading && (
-            <p className="tw-text-sm tw-text-muted-foreground">Loading…</p>
+            <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
           )}
         </div>
       ) : (

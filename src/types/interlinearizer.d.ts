@@ -176,7 +176,11 @@ declare module 'interlinearizer' {
   // Shared primitives
   // ---------------------------------------------------------------------------
 
-  /** A string value keyed by BCP 47 writing-system tag. */
+  /**
+   * A string value keyed by BCP 47 writing-system tag (e.g. `"en"`, `"fr"`, `"kmr-Latn"`). Keys
+   * follow the IETF BCP 47 standard (language, optional script and region components). Consumers
+   * should treat missing keys as "no value in that language" rather than an error.
+   */
   export type MultiString = Record<string, string>;
 
   /**
@@ -191,7 +195,10 @@ declare module 'interlinearizer' {
     chapter: number;
     /** 1-based verse number. */
     verse: number;
-    /** Zero-based character offset within the verse's baseline text. */
+    /**
+     * Zero-based character offset within the verse's baseline text. Absent when the reference is
+     * verse-level only (i.e. not anchored to a specific character position).
+     */
     charIndex?: number;
   }
 
@@ -215,7 +222,10 @@ declare module 'interlinearizer' {
     /** `IEntry.id` (GUID). */
     entryId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -231,7 +241,10 @@ declare module 'interlinearizer' {
     /** `ISense.id` (GUID). */
     senseId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -254,7 +267,10 @@ declare module 'interlinearizer' {
     /** `IMoForm.id` (GUID). */
     allomorphId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -278,7 +294,10 @@ declare module 'interlinearizer' {
     /** `IMoMorphSynAnalysis.id` (GUID). */
     msaId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -308,7 +327,12 @@ declare module 'interlinearizer' {
     /** Book identifier (e.g. `"GEN"`, `"MAT"`). */
     bookRef: string;
 
-    /** Version stamp of the baseline content at analysis time. */
+    /**
+     * Opaque version stamp of the book's baseline content at analysis time. In the current
+     * implementation this is an FNV-1a 32-bit hex hash of the serialized USJ content (e.g.
+     * `"a3f2c1b0"`). Consumers must treat it as an opaque string and compare only for equality — a
+     * change in value means the baseline has changed and analyses may be stale.
+     */
     textVersion: string;
 
     /** Ordered segments that compose this book. */
@@ -410,7 +434,12 @@ declare module 'interlinearizer' {
     /** BCP 47 writing-system tag for `surfaceText`. */
     writingSystem: string;
 
-    /** Whether this token is a word or punctuation. */
+    /**
+     * Whether this token is a word or punctuation. This is a text-layer classification only — it
+     * describes what the token looks like in the baseline, not how it is analyzed. Linguistic
+     * analysis (POS, morphemes, glosses) lives in the parallel `TokenAnalysis` in the analysis
+     * layer. Punctuation tokens typically have no corresponding `TokenAnalysis`.
+     */
     type: TokenType;
 
     /**
@@ -676,22 +705,28 @@ declare module 'interlinearizer' {
     /** Writing system of `form`. */
     writingSystem: string;
 
-    /** Lexicon entry this morpheme resolves to. */
+    /**
+     * Lexicon entry this morpheme resolves to. Present for most analyzed morphemes; absent when the
+     * morpheme has not yet been linked to a lexicon entry (e.g. an unreviewed parser suggestion).
+     */
     entryRef?: EntryRef;
 
-    /** Specific sense of the entry used here. */
+    /**
+     * Specific sense of the entry used here. Requires `entryRef` to be meaningful; absent when the
+     * entry has not been sense-disambiguated.
+     */
     senseRef?: SenseRef;
 
     /**
      * Specific allomorph (surface variant) within the entry — an `IMoForm` in the Lexicon
-     * extension.
+     * extension. Absent when allomorph-level detail is not available (e.g. BT Extension imports).
      */
     allomorphRef?: AllomorphRef;
 
     /**
      * Morphosyntactic analysis (MSA) — grammar / POS information tied to this (entry × sense ×
      * allomorph) usage. Points at an `IMoMorphSynAnalysis` in the Lexicon extension (pending direct
-     * exposure — see `GrammarRef`).
+     * exposure — see `GrammarRef`). Absent when MSA-level detail is not available.
      */
     grammarRef?: GrammarRef;
   }
@@ -783,7 +818,12 @@ declare module 'interlinearizer' {
     /** Review status of this alignment link. */
     status: AssignmentStatus;
 
-    /** How the alignment was created (manual, automatic tool, etc.). */
+    /**
+     * Free-form string describing how the alignment was produced — e.g. `"manual"`, `"eflomal"`,
+     * `"import-bt"`. No controlled vocabulary is enforced; consumers should treat unknown values as
+     * opaque. Absent when the origin was not recorded (e.g. legacy data or default-0 BT Extension
+     * imports).
+     */
     origin?: string;
 
     /**

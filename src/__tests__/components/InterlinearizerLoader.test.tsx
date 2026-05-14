@@ -281,8 +281,8 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(screen.getByTestId('book-chapter-control')).toBeInTheDocument();
-    expect(screen.getByText('In')).toBeInTheDocument();
+    expect(screen.getByTestId('scripture-nav-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
   it('shows Loading when book data has not arrived', () => {

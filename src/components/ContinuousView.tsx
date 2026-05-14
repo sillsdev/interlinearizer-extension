@@ -3,7 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
+/** CSS easing for the strip opacity fade-in/out animation. */
 const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+/**
+ * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
+ * pending-jump effect.
+ */
 const STRIP_FADE_MS = 500;
 
 /**
@@ -165,8 +170,7 @@ export default function ContinuousView({
     // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
     const lastInternal = lastInternalVerseRef.current;
     if (
-      lastInternal &&
-      lastInternal.book === activeVerse.book &&
+      lastInternal?.book === activeVerse.book &&
       lastInternal.chapter === activeVerse.chapter &&
       lastInternal.verse === activeVerse.verse
     ) {

@@ -79,7 +79,7 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(false);
   });
 
-  it('accepts incoming setting updates after the timeout elapses (covers lines 57-58)', () => {
+  it('accepts incoming setting updates after the timeout elapses', () => {
     // Setting not yet loaded so `setting` starts as non-boolean.
     mockUseProjectSetting.mockReturnValue([undefined, mockSetSetting, jest.fn(), false]);
     const { result, rerender } = renderHook(() =>
@@ -94,7 +94,7 @@ describe('useOptimisticBooleanSetting', () => {
     rerender();
     expect(result.current.value).toBe(false); // Locked to optimistic value.
 
-    // Fire the timeout — executes lines 57-58 (timeoutRef.current = undefined; ignoreRef.current = false).
+    // Fire the timeout — lock is released and incoming setting changes are accepted again.
     act(() => {
       jest.advanceTimersByTime(TIMEOUT_MS);
     });
@@ -106,7 +106,7 @@ describe('useOptimisticBooleanSetting', () => {
   });
 
   it('clears the first timeout when onChange is called a second time', () => {
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+    const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );
@@ -158,7 +158,7 @@ describe('useOptimisticBooleanSetting', () => {
   });
 
   it('clears the pending timeout on unmount', () => {
-    const clearTimeoutSpy = jest.spyOn(global, 'clearTimeout');
+    const clearTimeoutSpy = jest.spyOn(globalThis, 'clearTimeout');
     const { result, unmount } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );

@@ -87,14 +87,20 @@ const TEST_BOOK: Book = {
 const GEN_1_1_SRC_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
 describe('useInterlinearizerBookData', () => {
-  /** Default mock setup for useProjectData */
+  /**
+   * Configures useProjectData to return a resolved USJ object so the hook can proceed to
+   * extractBookFromUsj and tokenizeBook without hitting the error-state branches.
+   */
   const setupDefaultProjectDataMock = () => {
     jest.mocked(useProjectData).mockReturnValue({
       BookUSJ: () => [{ USJ: 'mock-usj' }, jest.fn(), false],
     });
   };
 
-  /** Default mock setup for useProjectSetting */
+  /**
+   * Configures useProjectSetting to return the writing system code 'en' so the hook uses a valid
+   * BCP 47 tag rather than falling back to 'und'.
+   */
   const setupDefaultProjectSettingMock = () => {
     jest.mocked(useProjectSetting).mockReturnValue(['en', jest.fn(), jest.fn(), false]);
   };

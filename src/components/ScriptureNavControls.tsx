@@ -11,6 +11,10 @@ import {
 /** Fixed set of scroll-group IDs offered in the selector; `undefined` means "unlinked". */
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 
+/**
+ * Props for {@link ScriptureNavControls}. Combines the scripture-reference fields from
+ * `BookChapterControlProps` with the scroll-group fields from `ScrollGroupSelectorProps`.
+ */
 type ScriptureNavControlsProps = Pick<BookChapterControlProps, 'scrRef' | 'handleSubmit'> &
   Pick<ScrollGroupSelectorProps, 'scrollGroupId' | 'onChangeScrollGroupId'>;
 

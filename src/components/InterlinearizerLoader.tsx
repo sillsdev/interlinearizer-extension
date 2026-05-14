@@ -115,9 +115,9 @@ export default function InterlinearizerLoader({
   }, [webViewMenuPossiblyError, activeProject]);
 
   return (
-    <div className="tw-flex tw-flex-col tw-h-full">
+    <div className="tw:flex tw:flex-col tw:h-full">
       <TabToolbar
-        className="tw-z-10"
+        className="tw:z-10"
         projectMenuData={projectMenuData}
         startAreaChildren={
           interfaceMode === 'power' ? (
@@ -147,9 +147,9 @@ export default function InterlinearizerLoader({
       {hasError || showLoading || !book ? (
         <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
           {bookError && (
-            <div className="tw-flex tw-flex-col tw-gap-2">
-              <h2 className="tw-text-lg tw-font-medium tw-text-destructive">Error loading book</h2>
-              <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-text-foreground tw-p-4 tw-text-sm">
+            <div className="tw:flex tw:flex-col tw:gap-2">
+              <h2 className="tw:text-lg tw:font-medium tw:text-destructive">Error loading book</h2>
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
                 {bookError}
               </pre>
             </div>
@@ -160,7 +160,7 @@ export default function InterlinearizerLoader({
               <h2 className="tw:text-lg tw:font-medium tw:text-destructive">
                 Error processing book
               </h2>
-              <pre className="tw-overflow-auto tw-rounded-md tw-bg-muted tw-text-foreground tw-p-4 tw-text-sm">
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
                 {tokenizeError.message}
               </pre>
             </div>

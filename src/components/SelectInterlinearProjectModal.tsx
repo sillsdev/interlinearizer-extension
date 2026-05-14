@@ -128,37 +128,37 @@ export function SelectInterlinearProjectModal({
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw-fixed tw-inset-0 tw-z-50 tw-flex tw-items-center tw-justify-center tw-bg-black/40">
+    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
       <dialog
         aria-labelledby="select-project-modal-title"
-        className="tw-bg-background tw-text-foreground tw-rounded-lg tw-border tw-border-border tw-p-6 tw-w-[32rem] tw-shadow-lg"
+        className="tw:bg-background tw:text-foreground tw:rounded-lg tw:border tw:border-border tw:p-6 tw:w-lg tw:shadow-lg"
         open
       >
         <h2
           id="select-project-modal-title"
-          className="tw-text-base tw-font-semibold tw-text-foreground tw-mb-4"
+          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
         >
           {localizedStrings['%interlinearizer_modal_select_title%']}
         </h2>
 
         {projects.length === 0 ? (
-          <p className="tw-text-sm tw-text-muted-foreground tw-mb-4">
+          <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
             {localizedStrings['%interlinearizer_modal_select_none%']}
           </p>
         ) : (
-          <ul className="tw-flex tw-flex-col tw-gap-1 tw-mb-4 tw-max-h-96 tw-overflow-y-auto">
+          <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-96 tw:overflow-y-auto">
             {projects.map((project) => (
-              <li key={project.id} className="tw-flex tw-items-center tw-gap-1">
+              <li key={project.id} className="tw:flex tw:items-center tw:gap-1">
                 <button
                   type="button"
-                  className="tw-flex-1 tw-flex tw-items-center tw-gap-2 tw-rounded tw-border tw-border-border tw-bg-muted/40 tw-px-3 tw-py-2 tw-text-left tw-text-sm hover:tw-bg-muted/70 tw-transition-colors tw-min-w-0"
+                  className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:hover:bg-muted/70 tw:transition-colors tw:min-w-0"
                   onClick={() => onSelect(project)}
                 >
-                  <span className="tw-font-medium tw-text-foreground tw-truncate">
+                  <span className="tw:font-medium tw:text-foreground tw:truncate">
                     {project.name ??
                       localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   </span>
-                  <span className="tw-font-mono tw-text-xs tw-text-muted-foreground tw-shrink-0">
+                  <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0">
                     {project.analysisWritingSystem}
                   </span>
                 </button>
@@ -166,7 +166,7 @@ export function SelectInterlinearProjectModal({
                   variant="ghost"
                   size="icon"
                   aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
-                  className="tw-shrink-0"
+                  className="tw:shrink-0"
                   onClick={() => onViewInfo(project)}
                 >
                   <Info size={15} />
@@ -176,7 +176,7 @@ export function SelectInterlinearProjectModal({
           </ul>
         )}
 
-        <div className="tw-flex tw-gap-2 tw-justify-end">
+        <div className="tw:flex tw:gap-2 tw:justify-end">
           <Button variant="secondary" onClick={onClose} disabled={isLoading}>
             {localizedStrings['%interlinearizer_modal_select_cancel%']}
           </Button>

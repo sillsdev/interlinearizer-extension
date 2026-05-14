@@ -18,7 +18,7 @@ const hasExtFlag = process.argv.includes('--ext');
 const hasNpmFlag = process.argv.includes('--npm');
 
 if (!hasCoreFlag && !hasExtFlag && !hasNpmFlag) {
-  console.error('Usage: node delete-temp-dirs.cjs [--core] [--ext] [--npm]');
+  console.error('Usage: node delete-temp-files.cjs [--core] [--ext] [--npm]');
   console.error('  --core          Delete Electron and core caches (Electron, dev-appdata)');
   console.error('  --ext           Delete extension directories (coverage, dist, src/temp-build)');
   console.error('  --npm           Delete both node_modules and extension package-lock.json');

@@ -225,7 +225,13 @@ describe('InterlinearXmlParser', () => {
       });
     });
 
-    it('parses Cluster with Excluded=true', () => {
+    it.each([
+      ['true', true],
+      ['false', false],
+      [undefined, false],
+    ] as const)('parses Cluster Excluded=%s as boolean %s', (excludedValue, expectedBool) => {
+      const excludedTag =
+        excludedValue === undefined ? '' : `<Excluded>${excludedValue}</Excluded>`;
       const xml = `
         <InterlinearData GlossLanguage="en" BookId="MAT">
           <Verses>
@@ -235,7 +241,7 @@ describe('InterlinearXmlParser', () => {
                 <Cluster>
                   <Range Index="0" Length="4" />
                   <Lexeme Id="Word:word" />
-                  <Excluded>true</Excluded>
+                  ${excludedTag}
                 </Cluster>
               </VerseData>
             </item>
@@ -243,51 +249,7 @@ describe('InterlinearXmlParser', () => {
         </InterlinearData>
       `;
       const result = parser.parse(xml);
-
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(true);
-    });
-
-    it('parses Cluster with Excluded=false', () => {
-      const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
-          <Verses>
-            <item>
-              <string>MAT 1:1</string>
-              <VerseData>
-                <Cluster>
-                  <Range Index="0" Length="4" />
-                  <Lexeme Id="Word:word" />
-                  <Excluded>false</Excluded>
-                </Cluster>
-              </VerseData>
-            </item>
-          </Verses>
-        </InterlinearData>
-      `;
-      const result = parser.parse(xml);
-
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(false);
-    });
-
-    it('parses Cluster without Excluded as Excluded=false', () => {
-      const xml = `
-        <InterlinearData GlossLanguage="en" BookId="MAT">
-          <Verses>
-            <item>
-              <string>MAT 1:1</string>
-              <VerseData>
-                <Cluster>
-                  <Range Index="0" Length="4" />
-                  <Lexeme Id="Word:word" />
-                </Cluster>
-              </VerseData>
-            </item>
-          </Verses>
-        </InterlinearData>
-      `;
-      const result = parser.parse(xml);
-
-      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(false);
+      expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(expectedBool);
     });
 
     it('parses Punctuation with Range, BeforeText, AfterText', () => {
@@ -501,6 +463,47 @@ describe('InterlinearXmlParser', () => {
         Hash: '',
         Clusters: [],
         Punctuations: [],
+      });
+    });
+
+    it('parses multiple Punctuation entries in a single verse', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="1" />
+                  <Lexeme Id="x" />
+                </Cluster>
+                <Punctuation>
+                  <Range Index="5" Length="1" />
+                  <BeforeText>,</BeforeText>
+                  <AfterText> </AfterText>
+                </Punctuation>
+                <Punctuation>
+                  <Range Index="12" Length="1" />
+                  <BeforeText>.</BeforeText>
+                  <AfterText></AfterText>
+                </Punctuation>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+
+      expect(result.Verses['MAT 1:1'].Punctuations).toHaveLength(2);
+      expect(result.Verses['MAT 1:1'].Punctuations[0]).toEqual({
+        TextRange: { Index: 5, Length: 1 },
+        BeforeText: ',',
+        AfterText: ' ',
+      });
+      expect(result.Verses['MAT 1:1'].Punctuations[1]).toEqual({
+        TextRange: { Index: 12, Length: 1 },
+        BeforeText: '.',
+        AfterText: '',
       });
     });
 
@@ -756,9 +759,7 @@ describe('InterlinearXmlParser', () => {
       expect(() => parser.parse(xmlNoIndex)).toThrow(
         expect.objectContaining({
           name: 'SyntaxError',
-          message: expect.stringContaining(
-            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
-          ),
+          message: expect.stringContaining('Invalid XML: Range missing Index or Length attribute'),
         }),
       );
 
@@ -780,9 +781,7 @@ describe('InterlinearXmlParser', () => {
       expect(() => parser.parse(xmlNoLength)).toThrow(
         expect.objectContaining({
           name: 'SyntaxError',
-          message: expect.stringContaining(
-            'Invalid XML: Range missing or invalid Index/Length attributes (must be non-negative integers)',
-          ),
+          message: expect.stringContaining('Invalid XML: Range missing Index or Length attribute'),
         }),
       );
     });
@@ -854,6 +853,88 @@ describe('InterlinearXmlParser', () => {
         }),
       );
     });
+  });
+
+  describe('parse() - invalid Range values on Cluster', () => {
+    it.each([
+      ['-1', '2'],
+      ['1', '-1'],
+      ['1.5', '2'],
+      ['1', '2.5'],
+    ] as const)(
+      'throws when Cluster Range Index="%s" Length="%s" (negative or float)',
+      (index, length) => {
+        const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="${index}" Length="${length}" />
+                  <Lexeme Id="x" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+        expect(() => parser.parse(xml)).toThrow(
+          expect.objectContaining({
+            name: 'SyntaxError',
+            message: expect.stringContaining(
+              'Invalid XML: Range has invalid Index/Length attributes (must be non-negative integers)',
+            ),
+          }),
+        );
+      },
+    );
+
+    it('accepts Index=0 and Length=0 (zero is a valid non-negative integer)', () => {
+      const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="0" />
+                  <Lexeme Id="x" />
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+      const result = parser.parse(xml);
+      expect(result.Verses['MAT 1:1'].Clusters[0].TextRange).toEqual({ Index: 0, Length: 0 });
+    });
+  });
+
+  describe('parse() - non-boolean Excluded values', () => {
+    it.each(['maybe', '1', '0', 'TRUE', 'yes'] as const)(
+      'treats unrecognized Excluded value "%s" as false',
+      (value) => {
+        const xml = `
+        <InterlinearData GlossLanguage="en" BookId="MAT">
+          <Verses>
+            <item>
+              <string>MAT 1:1</string>
+              <VerseData>
+                <Cluster>
+                  <Range Index="0" Length="1" />
+                  <Lexeme Id="x" />
+                  <Excluded>${value}</Excluded>
+                </Cluster>
+              </VerseData>
+            </item>
+          </Verses>
+        </InterlinearData>
+      `;
+        const result = parser.parse(xml);
+        expect(result.Verses['MAT 1:1'].Clusters[0].Excluded).toBe(false);
+      },
+    );
   });
 
   describe('constructor and instance', () => {

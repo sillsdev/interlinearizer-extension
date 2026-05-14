@@ -4,8 +4,38 @@
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book } from 'interlinearizer';
+import type { Book, Token } from 'interlinearizer';
 import ContinuousView from '../../components/ContinuousView';
+
+jest.mock('../../components/PhraseBox', () => ({
+  __esModule: true,
+  default: ({
+    isFocused = false,
+    index,
+    onClick,
+    tokens,
+  }: {
+    isFocused?: boolean;
+    index?: number;
+    onClick?: (index?: number) => void;
+    tokens: Token[];
+  }) => (
+    <button
+      data-focus-state={isFocused ? 'focused' : 'default'}
+      data-phrase-box="true"
+      onClick={() => onClick?.(index)}
+      type="button"
+    >
+      {tokens.map((t) => t.surfaceText).join(' ')}
+    </button>
+  ),
+}));
+
+jest.mock('../../components/TokenChip', () => ({
+  __esModule: true,
+  default: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+  TokenChip: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+}));
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -71,7 +101,12 @@ function makeBook(overrides?: Partial<Book>): Book {
   };
 }
 
-/** A two-chapter book: chapter 1 has one segment, chapter 2 has one segment. */
+/**
+ * Builds a two-chapter Book fixture: chapter 1 has one segment ("Alpha"), chapter 2 has one segment
+ * ("Beta"). Used to exercise cross-chapter traversal and verse-jump behaviour.
+ *
+ * @returns A two-chapter Book.
+ */
 function makeTwoChapterBook(): Book {
   return {
     id: 'GEN',
@@ -114,7 +149,12 @@ function makeTwoChapterBook(): Book {
   };
 }
 
-/** A book with exactly one token (minimal edge case). */
+/**
+ * Builds a Book with exactly one word token in one segment. Used to assert that both navigation
+ * arrows are disabled when the strip has nowhere to move.
+ *
+ * @returns A single-token Book.
+ */
 function makeSingleTokenBook(): Book {
   return {
     id: 'GEN',
@@ -188,7 +228,12 @@ function makeMixedBook(): Book {
   };
 }
 
-/** A book where every token is non-word, so phraseEntries is empty. */
+/**
+ * Builds a Book whose only token is punctuation, so phraseEntries is empty. Used to exercise the
+ * code path where ContinuousView renders with no word tokens to navigate between.
+ *
+ * @returns A word-free Book.
+ */
 function makeWordFreeBook(): Book {
   return {
     id: 'GEN',

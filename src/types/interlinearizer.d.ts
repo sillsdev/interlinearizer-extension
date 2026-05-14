@@ -105,12 +105,18 @@ declare module 'interlinearizer' {
   // Shared primitives
   // ---------------------------------------------------------------------------
 
-  /** A string value keyed by BCP 47 writing-system tag. */
+  /**
+   * A string value keyed by BCP 47 writing-system tag (e.g. `"en"`, `"fr"`, `"kmr-Latn"`). Keys
+   * follow the IETF BCP 47 standard (language, optional script and region components). Consumers
+   * should treat missing keys as "no value in that language" rather than an error.
+   */
   export type MultiString = Record<string, string>;
 
   /**
    * A character-level scripture reference anchored to a specific position within a verse's baseline
-   * text. When `charIndex` is absent the reference is verse-level only.
+   * text. When `charIndex` is absent the reference is verse-level only — it identifies the verse as
+   * a whole without pinpointing a specific character. Consumers must treat an absent `charIndex` as
+   * "beginning of verse" when a character position is required.
    */
   export interface ScriptureRef {
     /** 3-letter SIL book code (e.g. `"GEN"`). */
@@ -119,7 +125,10 @@ declare module 'interlinearizer' {
     chapter: number;
     /** 1-based verse number. */
     verse: number;
-    /** Zero-based character offset within the verse's baseline text. */
+    /**
+     * Zero-based character offset within the verse's baseline text. Absent when the reference is
+     * verse-level only (i.e. not anchored to a specific character position).
+     */
     charIndex?: number;
   }
 
@@ -143,7 +152,10 @@ declare module 'interlinearizer' {
     /** `IEntry.id` (GUID). */
     entryId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -159,7 +171,10 @@ declare module 'interlinearizer' {
     /** `ISense.id` (GUID). */
     senseId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -182,7 +197,10 @@ declare module 'interlinearizer' {
     /** `IMoForm.id` (GUID). */
     allomorphId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -206,7 +224,10 @@ declare module 'interlinearizer' {
     /** `IMoMorphSynAnalysis.id` (GUID). */
     msaId: string;
 
-    /** Lexicon project identifier (FwData / Harmony code). */
+    /**
+     * Lexicon project identifier (FwData / Harmony code). Omit when there is only one Lexicon
+     * project in context and the consumer can resolve it unambiguously.
+     */
     projectId?: string;
   }
 
@@ -261,7 +282,7 @@ declare module 'interlinearizer' {
 
     /**
      * Token- or morpheme-level alignment links connecting endpoints in the source interlinear to
-     * endpoints in the target interlinear.
+     * endpoints in the target interlinear. Empty when no alignment has been computed or imported.
      */
     links: AlignmentLink[];
   }
@@ -307,7 +328,11 @@ declare module 'interlinearizer' {
     /** Baseline text: books of scripture (or other texts). */
     books: Book[];
 
-    /** Parallel analysis layer. Omitted when the text is unanalyzed. */
+    /**
+     * Parallel analysis layer. Absent (not present) when the text has never been analyzed;
+     * present-but-empty (`segmentAnalyses: [], tokenAnalyses: [], phrases: []`) when analysis has
+     * been initialized but no records have been added yet.
+     */
     analysis?: TextAnalysis;
   }
 
@@ -337,7 +362,12 @@ declare module 'interlinearizer' {
     /** Book identifier (e.g. `"GEN"`, `"MAT"`). */
     bookRef: string;
 
-    /** Version stamp of the baseline content at analysis time. */
+    /**
+     * Opaque version stamp of the book's baseline content at analysis time. In the current
+     * implementation this is an FNV-1a 32-bit hex hash of the serialized USJ content (e.g.
+     * `"a3f2c1b0"`). Consumers must treat it as an opaque string and compare only for equality — a
+     * change in value means the baseline has changed and analyses may be stale.
+     */
     textVersion: string;
 
     /** Ordered segments that compose this book. */
@@ -430,7 +460,12 @@ declare module 'interlinearizer' {
     /** Writing system of `surfaceText`. */
     writingSystem: string;
 
-    /** Whether this token is a word or punctuation. */
+    /**
+     * Whether this token is a word or punctuation. This is a text-layer classification only — it
+     * describes what the token looks like in the baseline, not how it is analyzed. Linguistic
+     * analysis (POS, morphemes, glosses) lives in the parallel `TokenAnalysis` in the analysis
+     * layer. Punctuation tokens typically have no corresponding `TokenAnalysis`.
+     */
     type: TokenType;
 
     /**
@@ -583,7 +618,9 @@ declare module 'interlinearizer' {
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
    * `glossSenseRef` alternatively resolves the gloss through a specific `ISense` in the Lexicon
    * extension — when set, the rendered gloss is the sense's gloss text and may be refreshed
-   * automatically if the lexicon is edited. Setting both is a type error: use one or the other.
+   * automatically if the lexicon is edited. Exactly one of `gloss` or `glossSenseRef` may be set;
+   * setting both is a TypeScript type error. Omitting both is valid for a parse-only analysis with
+   * no gloss.
    *
    * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
    * `entryRef` / `senseRef`.
@@ -711,22 +748,28 @@ declare module 'interlinearizer' {
     /** Writing system of `form`. */
     writingSystem: string;
 
-    /** Lexicon entry this morpheme resolves to. */
+    /**
+     * Lexicon entry this morpheme resolves to. Present for most analyzed morphemes; absent when the
+     * morpheme has not yet been linked to a lexicon entry (e.g. an unreviewed parser suggestion).
+     */
     entryRef?: EntryRef;
 
-    /** Specific sense of the entry used here. */
+    /**
+     * Specific sense of the entry used here. Requires `entryRef` to be meaningful; absent when the
+     * entry has not been sense-disambiguated.
+     */
     senseRef?: SenseRef;
 
     /**
      * Specific allomorph (surface variant) within the entry — an `IMoForm` in the Lexicon
-     * extension.
+     * extension. Absent when allomorph-level detail is not available (e.g. BT Extension imports).
      */
     allomorphRef?: AllomorphRef;
 
     /**
      * Morphosyntactic analysis (MSA) — grammar / POS information tied to this (entry × sense ×
      * allomorph) usage. Points at an `IMoMorphSynAnalysis` in the Lexicon extension (pending direct
-     * exposure — see `GrammarRef`).
+     * exposure — see `GrammarRef`). Absent when MSA-level detail is not available.
      */
     grammarRef?: GrammarRef;
   }
@@ -749,8 +792,9 @@ declare module 'interlinearizer' {
    *
    * `gloss` is a free-form phrase gloss. `senseRef` alternatively points at a lexicon sense when
    * the phrase is a multi-word lexical entry — the Lexicon extension supports both kinds via
-   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Setting
-   * both is a type error: use one or the other.
+   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Exactly
+   * one of `gloss` or `senseRef` may be set; setting both is a TypeScript type error. Omitting both
+   * is valid (phrase without a gloss, e.g. a structural grouping only).
    *
    * Provenance fields (`producer`, `sourceUser`, `confidence`, `status`) let a suggestion engine
    * record proposed phrases that a user can then approve or reject, enabling automated recognition
@@ -844,7 +888,12 @@ declare module 'interlinearizer' {
     /** Review status of this alignment link. */
     status: AssignmentStatus;
 
-    /** How the alignment was created (manual, automatic tool, etc.). */
+    /**
+     * Free-form string describing how the alignment was produced — e.g. `"manual"`, `"eflomal"`,
+     * `"import-bt"`. No controlled vocabulary is enforced; consumers should treat unknown values as
+     * opaque. Absent when the origin was not recorded (e.g. legacy data or default-0 BT Extension
+     * imports).
+     */
     origin?: string;
 
     /**
@@ -864,6 +913,12 @@ declare module 'interlinearizer' {
    * have multiple competing `TokenAnalysis` entries, `tokenAnalysisId` is **required** alongside
    * `morphemeId` to identify the specific `TokenAnalysis` that owns the referenced morpheme. When
    * `morphemeId` is absent the link connects to the whole token.
+   *
+   * Exactly one of two shapes is valid — setting `morphemeId` without `tokenAnalysisId` (or vice
+   * versa) is a TypeScript type error:
+   *
+   * - Token-level: neither `morphemeId` nor `tokenAnalysisId` is present.
+   * - Morpheme-level: both `morphemeId` and `tokenAnalysisId` are present.
    *
    * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `tokenId`) → TokenAnalysis
    * (via `tokenAnalysisId`) → Morpheme (via `morphemeId`) → EntryRef → `IEntry` (Lexicon extension)

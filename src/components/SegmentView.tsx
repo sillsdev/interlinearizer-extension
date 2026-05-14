@@ -3,7 +3,14 @@ import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
-/** The two display modes for {@link SegmentView}. */
+/**
+ * The two display modes for {@link SegmentView}.
+ *
+ * - `token-chip` — renders each token as an inline chip (word tokens via `PhraseBox`, punctuation via
+ *   `TokenChip`). Used for the main interactive view.
+ * - `baseline-text` — renders the segment's raw `baselineText` as a single monospace string. Used for
+ *   fallback or debug display.
+ */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
 /**

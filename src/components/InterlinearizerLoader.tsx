@@ -8,6 +8,7 @@ import ScriptureNavControls from './ScriptureNavControls';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 
+/** Localization keys fetched from the platform for this component's UI strings. */
 const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
 
 /**
@@ -22,10 +23,10 @@ const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
 export default function InterlinearizerLoader({
   projectId,
   useWebViewScrollGroupScrRef,
-}: {
+}: Readonly<{
   projectId: string;
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
-}) {
+}>) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   const {

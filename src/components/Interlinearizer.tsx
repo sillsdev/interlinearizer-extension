@@ -21,13 +21,13 @@ export default function Interlinearizer({
   continuousScroll,
   scrRef,
   setScrRef,
-}: {
+}: Readonly<{
   book: Book;
   bookSegments: Segment[];
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
-}) {
+}>) {
   const handleVerseChange = useCallback(
     (v: ScriptureRef) => {
       setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });

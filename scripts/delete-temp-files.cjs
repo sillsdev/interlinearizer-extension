@@ -2,8 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Cross-platform script to delete temporary and cache directories. Run this if Platform.Bible is
- * holding on to outdated resources, such as localization strings, project data, or WebView ids.
+ * Cross-platform script to delete temporary and cache paths. Run this if Platform.Bible is holding
+ * on to outdated resources, such as localization strings, project data, or WebView ids.
  *
  * Warning: The `--core` flag deletes:
  *
@@ -19,7 +19,7 @@ const hasNpmFlag = process.argv.includes('--npm');
 
 if (!hasCoreFlag && !hasExtFlag && !hasNpmFlag) {
   console.error('Usage: node delete-temp-dirs.cjs [--core] [--ext] [--npm]');
-  console.error('  --core          Delete Electron and core cache (Electron, dev-appdata)');
+  console.error('  --core          Delete Electron and core caches (Electron, dev-appdata)');
   console.error('  --ext           Delete extension directories (coverage, dist, src/temp-build)');
   console.error('  --npm           Delete both node_modules and extension package-lock.json');
   process.exit(1);
@@ -65,44 +65,44 @@ const NPM_PATHS = [
 ];
 
 /**
- * Delete a directory if it exists
+ * Delete a path if it exists
  *
- * @param {string} dirPath - The directory path to delete
+ * @param {string} pathToDelete - The path to delete
  */
-function deleteDirectory(dirPath) {
-  if (!dirPath) {
+function deletePath(pathToDelete) {
+  if (!pathToDelete) {
     console.log('⊘ Skipping empty path');
     return;
   }
 
   try {
-    if (fs.existsSync(dirPath)) {
-      fs.rmSync(dirPath, { recursive: true, force: true });
-      console.log(`✓ Deleted ${dirPath}`);
+    if (fs.existsSync(pathToDelete)) {
+      fs.rmSync(pathToDelete, { recursive: true, force: true });
+      console.log(`✓ Deleted ${pathToDelete}`);
     } else {
-      console.log(`⊘ ${dirPath} does not exist`);
+      console.log(`⊘ ${pathToDelete} does not exist`);
     }
   } catch (error) {
-    console.error(`✗ Failed to delete ${dirPath}:`, error.message);
+    console.error(`✗ Failed to delete ${pathToDelete}:`, error.message);
   }
 }
 
-// Delete directories based on command-line flags
+// Delete paths based on command-line flags
 
 try {
   if (hasCoreFlag) {
     console.log('Deleting core cache directories...');
-    CORE_DIRS.forEach(deleteDirectory);
+    CORE_DIRS.forEach(deletePath);
   }
 
   if (hasExtFlag) {
     console.log('Deleting extension directories...');
-    EXT_DIRS.forEach(deleteDirectory);
+    EXT_DIRS.forEach(deletePath);
   }
 
   if (hasNpmFlag) {
     console.log('Deleting node_modules and package-lock.json...');
-    NPM_PATHS.forEach(deleteDirectory);
+    NPM_PATHS.forEach(deletePath);
   }
 
   console.log('Complete!');

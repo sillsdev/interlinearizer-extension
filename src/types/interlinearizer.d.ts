@@ -4,6 +4,7 @@
  */
 
 declare module 'papi-shared-types' {
+  /** Project-level settings contributed by the Interlinearizer extension. */
   export interface ProjectSettingTypes {
     /**
      * When true, the Interlinearizer displays a continuous horizontal token scroll strip above the
@@ -555,6 +556,7 @@ declare module 'interlinearizer' {
     phraseAnalysisLinks: PhraseAnalysisLink[];
   }
 
+  /** Shared link metadata for attaching an analysis payload record to text-layer targets. */
   export interface AnalysisLink {
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
@@ -566,6 +568,7 @@ declare module 'interlinearizer' {
     confidence?: Confidence;
   }
 
+  /** Links one `SegmentAnalysis` payload record to a single source segment. */
   export interface SegmentAnalysisLink extends AnalysisLink {
     /** Reference to the corresponding `Segment.id` in the text layer. */
     segmentId: string;
@@ -580,6 +583,7 @@ declare module 'interlinearizer' {
     /** Unique within the owning `TextAnalysis` — stable reference for this record. */
     id: string;
 
+    /** Surface form of the analyzed text span (token, phrase, or segment). */
     surfaceText: string;
 
     /**
@@ -628,6 +632,7 @@ declare module 'interlinearizer' {
   // §3 TokenAnalysis — parse + 1:1 gloss
   // ---------------------------------------------------------------------------
 
+  /** Links one `TokenAnalysis` payload record to exactly one token snapshot. */
   export interface TokenAnalysisLink extends AnalysisLink {
     /** Token that this analysis refers to. */
     token: TokenSnapshot;
@@ -772,6 +777,7 @@ declare module 'interlinearizer' {
   // §4 PhraseAnalysis — multi-token gloss unit
   // ---------------------------------------------------------------------------
 
+  /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
   export interface PhraseAnalysisLink extends AnalysisLink {
     /** Ordered snapshots of tokens that compose this phrase. */
     tokens: [TokenSnapshot, ...TokenSnapshot[]];

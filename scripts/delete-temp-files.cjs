@@ -9,26 +9,39 @@ const path = require('path');
  *
  * - The `Electron` cache folder, which affect any other Electron apps
  * - `paranext-core/dev-appdata/`, which includes `installed-extensions/`
+ *
+ * Warning: The `--yalc` flag deletion includes:
+ *
+ * - `paranext-core/dev-packages/`, which makes the core re-install last minutes longer
  */
 
 // Check command-line arguments
 
+const hasAllFlag = process.argv.includes('--all');
 const hasCoreFlag = process.argv.includes('--core');
 const hasExtFlag = process.argv.includes('--ext');
 const hasNpmFlag = process.argv.includes('--npm');
+const hasYalcFlag = process.argv.includes('--yalc');
 
-if (!hasCoreFlag && !hasExtFlag && !hasNpmFlag) {
-  console.error('Usage: node delete-temp-files.cjs [--core] [--ext] [--npm]');
+if (!hasAllFlag && !hasCoreFlag && !hasExtFlag && !hasNpmFlag && !hasYalcFlag) {
+  console.error('Usage: node delete-temp-files.cjs [--all] [--core] [--ext] [--npm] [--yalc]');
   console.error('  --core          Delete Electron and core caches (Electron, dev-appdata)');
   console.error('  --ext           Delete extension directories (coverage, dist, src/temp-build)');
   console.error('  --npm           Delete both node_modules and extension package-lock.json');
+  console.error('  --yalc          Delete core yalc-related files');
+  console.error('  --all           Delete all of the above');
   process.exit(1);
 }
+
+const shouldDeleteCore = hasAllFlag || hasCoreFlag;
+const shouldDeleteExt = hasAllFlag || hasExtFlag;
+const shouldDeleteNpm = hasAllFlag || hasNpmFlag;
+const shouldDeleteYalc = hasAllFlag || hasYalcFlag;
 
 // Define directory lists
 
 let electronParent = '';
-if (hasCoreFlag) {
+if (shouldDeleteCore) {
   /* eslint-disable no-nested-ternary */
   electronParent =
     process.platform === 'win32'
@@ -64,6 +77,12 @@ const NPM_PATHS = [
   path.join(__dirname, '..', 'package-lock.json'),
 ];
 
+const YALC_PATHS = [
+  path.join(__dirname, '..', '..', 'paranext-core', '.yalc'),
+  path.join(__dirname, '..', '..', 'paranext-core', 'dev-packages'),
+  path.join(__dirname, '..', '..', 'paranext-core', 'yalc.lock'),
+];
+
 /**
  * Delete a path if it exists
  *
@@ -90,19 +109,24 @@ function deletePath(pathToDelete) {
 // Delete paths based on command-line flags
 
 try {
-  if (hasCoreFlag) {
+  if (shouldDeleteCore) {
     console.log('Deleting core cache directories...');
     CORE_DIRS.forEach(deletePath);
   }
 
-  if (hasExtFlag) {
+  if (shouldDeleteExt) {
     console.log('Deleting extension directories...');
     EXT_DIRS.forEach(deletePath);
   }
 
-  if (hasNpmFlag) {
+  if (shouldDeleteNpm) {
     console.log('Deleting node_modules and package-lock.json...');
     NPM_PATHS.forEach(deletePath);
+  }
+
+  if (shouldDeleteYalc) {
+    console.log('Deleting core yalc-related files...');
+    YALC_PATHS.forEach(deletePath);
   }
 
   console.log('Complete!');

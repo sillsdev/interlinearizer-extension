@@ -528,7 +528,7 @@ declare module 'interlinearizer' {
      * - A token may carry both a `TokenAnalysis` _and_ an approved `PhraseAnalysis`; the per-token
      *   parse coexists with the phrase-level gloss and is not a competing analysis.
      */
-    phrases: PhraseAnalysis[];
+    phraseAnalyses: PhraseAnalysis[];
   }
 
   /**
@@ -626,8 +626,8 @@ declare module 'interlinearizer' {
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
   export interface TokenAnalysis extends Analysis {
-    /** Reference to the `Token.ref` being analyzed. */
-    tokenRef: string;
+    /** Snapshot of the token being analyzed. */
+    token: TokenSnapshot;
 
     /**
      * Ordered morpheme breakdown. Present when the analysis reaches sub-word granularity (e.g. an
@@ -644,13 +644,6 @@ declare module 'interlinearizer' {
      * }`).
      */
     features?: Record<string, string>;
-
-    /**
-     * Surface text of the token at analysis time — used for drift detection. Consumers compare this
-     * against the current `Token.surfaceText`; on mismatch, flip `status` to `'stale'` to prompt
-     * re-review.
-     */
-    tokenSnapshot?: string;
 
     /**
      * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
@@ -745,7 +738,7 @@ declare module 'interlinearizer' {
   /**
    * A multi-token unit glossed or analyzed as a single phrase.
    *
-   * `tokenRefs` lists the tokens (in order) that belong to the phrase. The tokens may be:
+   * `tokens` lists the tokens (in order) that belong to the phrase. The tokens may be:
    *
    * - Adjacent within one segment ("en el" → "in the")
    * - Disjoint within one segment (French "ne … pas" → "not")
@@ -774,8 +767,8 @@ declare module 'interlinearizer' {
    *   share the same gloss / sense.
    */
   export interface PhraseAnalysis extends Analysis {
-    /** Ordered `Token.ref` values of the tokens that compose this phrase. */
-    tokenRefs: [string, ...string[]];
+    /** Ordered snapshots of tokens that compose this phrase. */
+    tokens: [TokenSnapshot, ...TokenSnapshot[]];
 
     /**
      * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
@@ -905,6 +898,7 @@ declare module 'interlinearizer' {
   export interface MorphemeLink {
     /** The `TokenAnalysis.id` that owns the referenced morpheme. */
     tokenAnalysisId: string;
+
     /** Specific `MorphemeAnalysis.id` within the identified `TokenAnalysis.morphemes`. */
     morphemeId: string;
   }

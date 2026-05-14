@@ -11,24 +11,41 @@ const path = require('path');
  * - `paranext-core/dev-appdata/`, which includes `installed-extensions/`
  */
 
+// Check command-line arguments
+
+const hasCoreFlag = process.argv.includes('--core');
+const hasExtFlag = process.argv.includes('--ext');
+const hasNpmFlag = process.argv.includes('--npm');
+
+if (!hasCoreFlag && !hasExtFlag && !hasNpmFlag) {
+  console.error('Usage: node delete-temp-dirs.cjs [--core] [--ext] [--npm]');
+  console.error('  --core          Delete Electron and core cache (Electron, dev-appdata)');
+  console.error('  --ext           Delete extension directories (coverage, dist, src/temp-build)');
+  console.error('  --npm           Delete both node_modules and extension package-lock.json');
+  process.exit(1);
+}
+
 // Define directory lists
 
-/* eslint-disable no-nested-ternary */
-let electronParent =
-  process.platform === 'win32'
-    ? process.env.APPDATA
-    : process.platform === 'linux'
-      ? process.env.XDG_CONFIG_HOME
-      : '';
-if (!electronParent && process.env.HOME) {
+let electronParent = '';
+if (hasCoreFlag) {
+  /* eslint-disable no-nested-ternary */
   electronParent =
-    process.platform === 'linux'
-      ? path.join(process.env.HOME, '.config')
-      : process.platform === 'darwin'
-        ? path.join(process.env.HOME, 'Library', 'Application Support')
+    process.platform === 'win32'
+      ? process.env.APPDATA
+      : process.platform === 'linux'
+        ? process.env.XDG_CONFIG_HOME
         : '';
+  if (!electronParent && process.env.HOME) {
+    electronParent =
+      process.platform === 'linux'
+        ? path.join(process.env.HOME, '.config')
+        : process.platform === 'darwin'
+          ? path.join(process.env.HOME, 'Library', 'Application Support')
+          : '';
+  }
+  /* eslint-enable no-nested-ternary */
 }
-/* eslint-enable no-nested-ternary */
 
 const CORE_DIRS = [
   electronParent ? path.join(electronParent, 'Electron') : '',
@@ -39,6 +56,12 @@ const EXT_DIRS = [
   path.join(__dirname, '..', 'coverage'),
   path.join(__dirname, '..', 'dist'),
   path.join(__dirname, '..', 'src', 'temp-build'),
+];
+
+const NPM_PATHS = [
+  path.join(__dirname, '..', '..', 'paranext-core', 'node_modules'),
+  path.join(__dirname, '..', 'node_modules'),
+  path.join(__dirname, '..', 'package-lock.json'),
 ];
 
 /**
@@ -67,16 +90,6 @@ function deleteDirectory(dirPath) {
 // Delete directories based on command-line flags
 
 try {
-  const hasCoreFlag = process.argv.includes('--core');
-  const hasExtFlag = process.argv.includes('--ext');
-
-  if (!hasCoreFlag && !hasExtFlag) {
-    console.error('Usage: node delete-temp-dirs.cjs [--core] [--ext]');
-    console.error('  --core  Delete AppData and core cache directories (Electron, dev-appdata)');
-    console.error('  --ext   Delete extension directories (coverage, dist, src/temp-build)');
-    process.exit(1);
-  }
-
   if (hasCoreFlag) {
     console.log('Deleting core cache directories...');
     CORE_DIRS.forEach(deleteDirectory);
@@ -85,6 +98,11 @@ try {
   if (hasExtFlag) {
     console.log('Deleting extension directories...');
     EXT_DIRS.forEach(deleteDirectory);
+  }
+
+  if (hasNpmFlag) {
+    console.log('Deleting node_modules and package-lock.json...');
+    NPM_PATHS.forEach(deleteDirectory);
   }
 
   console.log('Complete!');

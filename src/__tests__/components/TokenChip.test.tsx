@@ -38,13 +38,13 @@ describe('TokenChip', () => {
   it('applies a border class to word tokens', () => {
     render(<TokenChip token={WORD_TOKEN} />);
     const span = screen.getByText('hello');
-    expect(span.className).toContain('tw-border');
+    expect(span.className).toContain('tw:border');
   });
 
   it('does not apply a border class to punctuation tokens', () => {
     render(<TokenChip token={PUNCT_TOKEN} />);
     const span = screen.getByText('.');
-    expect(span.className).not.toContain('tw-border');
+    expect(span.className).not.toContain('tw:border');
   });
 
   it('renders word and punctuation tokens as inline spans', () => {

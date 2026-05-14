@@ -9,7 +9,8 @@ import MemoizedTokenChip from './TokenChip';
  * @param props - Component props
  * @param props.index - Index passed back to `onClick` to identify which phrase was clicked
  * @param props.isFocused - Whether this phrase is the current navigation focus
- * @param props.onClick - Called with `index` when the phrase is clicked; omit to render a non-interactive span
+ * @param props.onClick - Called with `index` when the phrase is clicked; omit to render a
+ *   non-interactive span
  * @param props.tokens - Tokens belonging to this phrase
  * @returns A bordered inline container
  */

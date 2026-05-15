@@ -1,31 +1,42 @@
-import type { UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import { useLocalizedStrings } from '@papi/frontend/react';
+import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
+import papi, { logger } from '@papi/frontend';
+import { useData, useLocalizedStrings } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
-import { useMemo } from 'react';
-import ContinuousScrollToggle from './ContinuousScrollToggle';
-import Interlinearizer from './Interlinearizer';
-import ScriptureNavControls from './ScriptureNavControls';
+import type { SelectMenuItemHandler } from 'platform-bible-react';
+import { isPlatformError } from 'platform-bible-utils';
+import { useCallback, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
+import ContinuousScrollToggle from './ContinuousScrollToggle';
+import Interlinearizer from './Interlinearizer';
+import ProjectModals, { type ModalState } from './ProjectModals';
+import ScriptureNavControls from './ScriptureNavControls';
+import type { ActiveProjectState } from './SelectInterlinearProjectModal';
 
-/** Localization keys fetched from the platform for this component's UI strings. */
-const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
+const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
 /**
- * Root component for loading the Interlinearizer. Loads book data and settings, then renders error
- * and loading states or delegates to {@link Interlinearizer} when data is ready.
+ * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
+ * for project creation/selection/metadata, then renders error and loading states or delegates to
+ * {@link Interlinearizer} when data is ready.
  *
  * @param props - Component props
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
+ * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
+ *   saved state (survives tab restores)
+ * @returns The interlinearizer layout: tab toolbar, loading/error states or main view, and any
+ *   currently open project modal.
  */
 export default function InterlinearizerLoader({
   projectId,
   useWebViewScrollGroupScrRef,
+  useWebViewState,
 }: Readonly<{
   projectId: string;
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
+  useWebViewState: UseWebViewStateHook;
 }>) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
@@ -36,53 +47,113 @@ export default function InterlinearizerLoader({
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
-    {
-      projectId,
-      scrRef,
-    },
+    { projectId, scrRef },
   );
 
   const hasError = !!bookError || !!tokenizeError;
   const showLoading = isLoading || isSettingLoading;
 
-  const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
-  const toolbar = (
-    <TabToolbar
-      className="tw:z-10"
-      startAreaChildren={
-        <ScriptureNavControls
-          scrRef={scrRef}
-          handleSubmit={setScrRef}
-          scrollGroupId={scrollGroupId}
-          onChangeScrollGroupId={setScrollGroupId}
-        />
-      }
-      endAreaChildren={
-        <ContinuousScrollToggle
-          checked={continuousScroll}
-          disabled={isSettingLoading}
-          label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
-          onCheckedChange={handleContinuousScrollChange}
-        />
-      }
-      /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-      onSelectProjectMenuItem={() => {}}
-      /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-      onSelectViewInfoMenuItem={() => {}}
-    />
+  const [modal, setModal] = useState<ModalState>('none');
+
+  /**
+   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
+   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
+   * key; this component reads the value to decide which menu items to show.
+   */
+  const [activeProject] = useWebViewState<ActiveProjectState | undefined>(
+    'activeProject',
+    undefined,
   );
+
+  /**
+   * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
+   * modal; `openNewProjectModal` opens the create modal directly; `openProjectInfoModal` opens the
+   * metadata modal for the currently active project.
+   *
+   * @param item - The menu item that was activated.
+   */
+  const menuCommandHandler = useCallback<SelectMenuItemHandler>(
+    (item) => {
+      if (item.command === 'interlinearizer.openSelectProjectModal') {
+        setModal('select');
+      } else if (item.command === 'interlinearizer.openNewProjectModal') {
+        setModal('create');
+      } else if (item.command === 'interlinearizer.openProjectInfoModal') {
+        if (activeProject) {
+          setModal('metadata');
+        }
+      }
+    },
+    [activeProject],
+  );
+
+  /**
+   * Fetches the top-menu data for this WebView from the platform's menu data provider, hiding "View
+   * Project Info" when no interlinear project is currently active.
+   */
+  const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
+    'interlinearizer.mainWebView',
+    { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
+  );
+
+  /**
+   * Top-menu descriptor passed to {@link TabToolbar}. Identical to
+   * `webViewMenuPossiblyError.topMenu` except that the `interlinearizer.openProjectInfoModal` item
+   * is filtered out when no project is active, since that command requires an active project to act
+   * on.
+   */
+  const projectMenuData = useMemo(() => {
+    const menu =
+      webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
+        ? webViewMenuPossiblyError
+        : { topMenu: undefined, includeDefaults: true, contextMenu: undefined };
+    if (!menu.topMenu || activeProject) return menu.topMenu;
+    const { items } = menu.topMenu;
+    if (!Array.isArray(items)) return menu.topMenu;
+    return {
+      ...menu.topMenu,
+      items: items.filter(
+        (item) => !('command' in item) || item.command !== 'interlinearizer.openProjectInfoModal',
+      ),
+    };
+  }, [webViewMenuPossiblyError, activeProject]);
 
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
-      {toolbar}
+      <TabToolbar
+        className="tw:z-10"
+        projectMenuData={projectMenuData}
+        startAreaChildren={
+          <ScriptureNavControls
+            scrRef={scrRef}
+            handleSubmit={setScrRef}
+            scrollGroupId={scrollGroupId}
+            onChangeScrollGroupId={setScrollGroupId}
+          />
+        }
+        endAreaChildren={
+          <ContinuousScrollToggle
+            checked={continuousScroll}
+            disabled={isSettingLoading}
+            label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
+            onCheckedChange={handleContinuousScrollChange}
+          />
+        }
+        onSelectProjectMenuItem={menuCommandHandler}
+        /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+        onSelectViewInfoMenuItem={() => {
+          logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
+        }}
+      />
 
       {hasError || showLoading || !book ? (
         <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
           {bookError && (
             <div className="tw:flex tw:flex-col tw:gap-2">
               <h2 className="tw:text-lg tw:font-medium tw:text-destructive">Error loading book</h2>
-              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:p-4 tw:text-sm">
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
                 {bookError}
               </pre>
             </div>
@@ -93,7 +164,7 @@ export default function InterlinearizerLoader({
               <h2 className="tw:text-lg tw:font-medium tw:text-destructive">
                 Error processing book
               </h2>
-              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:p-4 tw:text-sm">
+              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
                 {tokenizeError.message}
               </pre>
             </div>
@@ -112,6 +183,14 @@ export default function InterlinearizerLoader({
           setScrRef={setScrRef}
         />
       )}
+
+      <ProjectModals
+        activeProject={activeProject}
+        modal={modal}
+        projectId={projectId}
+        setModal={setModal}
+        useWebViewState={useWebViewState}
+      />
     </div>
   );
 }

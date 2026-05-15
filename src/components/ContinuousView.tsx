@@ -96,10 +96,11 @@ export default function ContinuousView({
   tokenSegmentRef.current = tokenSegment;
 
   /**
-   * Maps a verse coordinate to the phrase index of the first word token in the matching segment.
+   * Returns the phrase index of the first word token in the segment that matches `verse`, or
+   * `undefined` when `verse` is absent or does not match any known segment.
    *
-   * @param verse - The verse to look up; returns `undefined` when absent or unrecognized.
-   * @returns The phrase index, or `undefined` if no matching segment or no word token was found.
+   * @param verse - Target scripture reference to locate.
+   * @returns Zero-based phrase index, or `undefined` if the verse cannot be resolved.
    */
   const getPhraseIndexForVerse = useCallback(
     (verse?: ScriptureRef): number | undefined => {
@@ -246,14 +247,14 @@ export default function ContinuousView({
   // One ref slot per phrase so we can call scrollIntoView on the focused one.
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-  const atStart = !phraseEntries.length || !focusPhraseIndex;
-  const atEnd = !phraseEntries.length || focusPhraseIndex >= phraseEntries.length - 1;
+  const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
+  const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /**
-   * Advances the focused phrase index by `delta`, clamped to `[0, phraseEntries.length - 1]`.
+   * Advances the focused phrase by `delta` positions, clamping to valid bounds.
    *
-   * @param delta - Signed step count; negative moves backward, positive moves forward.
+   * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
   const step = useCallback((delta: number) => {
     setFocusPhraseIndex((i) => {
@@ -266,17 +267,16 @@ export default function ContinuousView({
     });
   }, []);
 
-  /** Moves focus one phrase toward the start. Bound to the previous arrow button. */
+  /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
 
-  /** Moves focus one phrase toward the end. Bound to the next arrow button. */
+  /** Moves focus one phrase forward. */
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Moves focus to the phrase at `index` when clicked. No-op when `index` is `undefined` or already
-   * focused (avoids a redundant re-render).
+   * Sets the focused phrase to `index` when provided, ignoring calls with no argument.
    *
-   * @param index - Phrase index of the clicked `PhraseBox`, or `undefined` for punctuation chips.
+   * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
    */
   const handlePhraseSelect = useCallback((index?: number) => {
     if (index !== undefined) {
@@ -318,7 +318,7 @@ export default function ContinuousView({
       {/* Previous navigation arrow */}
       <button
         aria-label="Previous token"
-        className="tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50"
+        className="tw:icon-button"
         disabled={atStart}
         onClick={stepPrev}
         type="button"
@@ -332,7 +332,7 @@ export default function ContinuousView({
         {!atStart && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-s-0 tw:z-10 tw:w-8 tw:bg-gradient-to-e tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-0 tw:z-10 tw:w-8 tw:bg-linear-to-r tw:from-background tw:to-transparent"
           />
         )}
 
@@ -340,7 +340,7 @@ export default function ContinuousView({
         {!atEnd && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-e-0 tw:z-10 tw:w-8 tw:bg-gradient-to-s tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:right-0 tw:z-10 tw:w-8 tw:bg-linear-to-l tw:from-background tw:to-transparent"
           />
         )}
 
@@ -353,13 +353,13 @@ export default function ContinuousView({
           }}
         >
           {allTokens.map((token, tokenIndex) => {
-            if (token.type !== 'word') return <MemoizedTokenChip key={token.id} token={token} />;
+            if (token.type !== 'word') return <MemoizedTokenChip key={token.ref} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
             return (
               <span
-                key={token.id}
+                key={token.ref}
                 ref={(el) => {
                   if (phraseIndex !== undefined) phraseRefs.current[phraseIndex] = el;
                 }}
@@ -379,7 +379,7 @@ export default function ContinuousView({
       {/* Next navigation arrow */}
       <button
         aria-label="Next token"
-        className="tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50"
+        className="tw:icon-button"
         disabled={atEnd}
         onClick={stepNext}
         type="button"

@@ -47,18 +47,16 @@ export function SegmentView({
       onClick={() => onClick?.({ book, chapter, verse })}
       type="button"
     >
-      <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-        {verse}
-      </span>
+      <span className="tw:mb-2 tw:block tw:section-label">{verse}</span>
       {displayMode === 'baseline-text' ? (
         <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
       ) : (
         <span className="tw:flex tw:flex-wrap tw:gap-1">
           {segment.tokens.map((token) =>
             token.type === 'word' ? (
-              <MemoizedPhraseBox key={token.id} tokens={[token]} />
+              <MemoizedPhraseBox key={token.ref} tokens={[token]} />
             ) : (
-              <MemoizedTokenChip key={token.id} token={token} />
+              <MemoizedTokenChip key={token.ref} token={token} />
             ),
           )}
         </span>

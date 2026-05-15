@@ -5,8 +5,8 @@ import ContinuousView from './ContinuousView';
 import MemoizedSegmentView from './SegmentView';
 
 /**
- * Main component for the Interlinearizer. Renders a sticky toolbar and continuous view at the top,
- * followed by segmented views.
+ * Main content area for the Interlinearizer. Renders an optional {@link ContinuousView} strip at the
+ * top followed by a scrollable list of {@link MemoizedSegmentView}s for the current chapter.
  *
  * @param props - Component props
  * @param props.book - Book data used by the continuous view
@@ -14,6 +14,8 @@ import MemoizedSegmentView from './SegmentView';
  * @param props.continuousScroll - Whether the continuous scroll view is shown
  * @param props.scrRef - Current scripture reference
  * @param props.setScrRef - Callback to update the scripture reference
+ * @returns The continuous-view strip (when enabled) above the scrollable segment list for the
+ *   active chapter.
  */
 export default function Interlinearizer({
   book,
@@ -28,6 +30,12 @@ export default function Interlinearizer({
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
 }>) {
+  /**
+   * Converts a `ScriptureRef` from `ContinuousView` into a `SerializedVerseRef` and forwards it to
+   * `setScrRef`.
+   *
+   * @param v - The verse coordinate reported by the continuous view.
+   */
   const handleVerseChange = useCallback(
     (v: ScriptureRef) => {
       setScrRef({ book: v.book, chapterNum: v.chapter, verseNum: v.verse });

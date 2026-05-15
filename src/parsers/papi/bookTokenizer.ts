@@ -87,7 +87,7 @@ function parseSid(sid: string): ScriptureRef {
  * alignment tools) can identify the script without access to the parent `RawBook`.
  *
  * @param text - The verse's `baselineText` string.
- * @param sid - The verse SID used as the token ID prefix (e.g. `"GEN 1:1"`).
+ * @param sid - The verse SID used as the token `ref` prefix (e.g. `"GEN 1:1"`).
  * @param writingSystem - BCP 47 tag assigned to every token's `writingSystem` field.
  * @returns Ordered array of {@link Token}s; empty when `text` contains no word or punctuation
  *   characters.
@@ -98,7 +98,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
     const charStart = match.index;
     const charEnd = charStart + surfaceText.length;
     const type: TokenType = WORD_CONTAIN_RE.test(surfaceText) ? 'word' : 'punctuation';
-    return { id: `${sid}:${charStart}`, surfaceText, writingSystem, type, charStart, charEnd };
+    return { ref: `${sid}:${charStart}`, surfaceText, writingSystem, type, charStart, charEnd };
   });
 }
 

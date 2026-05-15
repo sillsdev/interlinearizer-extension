@@ -14,6 +14,46 @@
     "items": []
   },
   "webViewMenus": {
+    "interlinearizer.mainWebView": {
+      "topMenu": {
+        "columns": {
+          "interlinearizer.project": {
+            "label": "%interlinearizer_menu_column_project%",
+            "localizeNotes": "Interlinearizer top menu column for project actions",
+            "order": 1
+          }
+        },
+        "groups": {
+          "interlinearizer.projectActions": {
+            "column": "interlinearizer.project",
+            "order": 1
+          }
+        },
+        "items": [
+          {
+            "label": "%interlinearizer_openSelectProjectModal%",
+            "localizeNotes": "Interlinearizer top menu > Open the project selector to switch to or manage existing interlinear projects",
+            "group": "interlinearizer.projectActions",
+            "order": 1,
+            "command": "interlinearizer.openSelectProjectModal"
+          },
+          {
+            "label": "%interlinearizer_openNewProjectModal%",
+            "localizeNotes": "Interlinearizer top menu > Create a brand-new interlinear project for the current source project",
+            "group": "interlinearizer.projectActions",
+            "order": 2,
+            "command": "interlinearizer.openNewProjectModal"
+          },
+          {
+            "label": "%interlinearizer_openProjectInfoModal%",
+            "localizeNotes": "Interlinearizer top menu > View and edit metadata for the active interlinearizer project, or delete it",
+            "group": "interlinearizer.projectActions",
+            "order": 3,
+            "command": "interlinearizer.openProjectInfoModal"
+          }
+        ]
+      }
+    },
     "platformScriptureEditor.react": {
       "topMenu": {
         "columns": {},

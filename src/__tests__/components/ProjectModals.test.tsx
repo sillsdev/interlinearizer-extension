@@ -81,7 +81,10 @@ jest.mock('../../components/CreateProjectModal', () => ({
       <button
         type="button"
         data-testid="create-created"
-        onClick={() => onProjectCreated(MOCK_PROJECT)}
+        onClick={() => {
+          onProjectCreated(MOCK_PROJECT);
+          onClose();
+        }}
       >
         Created
       </button>

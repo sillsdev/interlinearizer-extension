@@ -16,7 +16,11 @@ jest.mock('../../components/SelectInterlinearProjectModal', () => ({
     if (!('id' in p) || typeof p.id !== 'string') return false;
     if (!('createdAt' in p) || typeof p.createdAt !== 'string') return false;
     if (!('sourceProjectId' in p) || typeof p.sourceProjectId !== 'string') return false;
-    if (!('analysisWritingSystem' in p) || typeof p.analysisWritingSystem !== 'string')
+    if (
+      !('analysisLanguages' in p) ||
+      !Array.isArray(p.analysisLanguages) ||
+      !p.analysisLanguages.every((l) => typeof l === 'string')
+    )
       return false;
     if ('name' in p && typeof p.name !== 'string') return false;
     if ('description' in p && typeof p.description !== 'string') return false;
@@ -71,7 +75,8 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
+        undefined,
         undefined,
         undefined,
       ),
@@ -89,7 +94,8 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
+        undefined,
         'My Project',
         'My Desc',
       ),
@@ -108,7 +114,28 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'fr',
+        ['fr'],
+        undefined,
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
+  it('parses a comma-separated language list into an array', async () => {
+    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
+
+    const languageInput = screen.getByLabelText(/analysis language/i);
+    await userEvent.clear(languageInput);
+    await userEvent.type(languageInput, 'en, fr, de');
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        testProjectId,
+        ['en', 'fr', 'de'],
+        undefined,
         undefined,
         undefined,
       ),
@@ -121,7 +148,7 @@ describe('CreateProjectModal', () => {
         id: 'new-project-id',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: testProjectId,
-        analysisWritingSystem: 'en',
+        analysisLanguages: ['en'],
       }),
     );
     const onClose = jest.fn();
@@ -145,7 +172,7 @@ describe('CreateProjectModal', () => {
       id: 'new-project-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: testProjectId,
-      analysisWritingSystem: 'en',
+      analysisLanguages: ['en'],
     };
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(JSON.stringify(persistedProject));
     const onProjectCreated = jest.fn();
@@ -203,7 +230,7 @@ describe('CreateProjectModal', () => {
     expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
-  it('defaults analysis language to "und" when the language input contains only whitespace', async () => {
+  it('defaults analysis language to ["und"] when the language input contains only whitespace', async () => {
     render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
 
     const languageInput = screen.getByLabelText(/analysis language/i);
@@ -215,7 +242,8 @@ describe('CreateProjectModal', () => {
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
         testProjectId,
-        'und',
+        ['und'],
+        undefined,
         undefined,
         undefined,
       ),

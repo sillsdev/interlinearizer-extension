@@ -55,7 +55,7 @@ function makeBook(overrides?: Partial<Book>): Book {
         baselineText: 'In the',
         tokens: [
           {
-            id: 'tok-0',
+            ref: 'tok-0',
             surfaceText: 'In',
             writingSystem: 'en',
             type: 'word',
@@ -63,7 +63,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 2,
           },
           {
-            id: 'tok-1',
+            ref: 'tok-1',
             surfaceText: 'the',
             writingSystem: 'en',
             type: 'word',
@@ -79,7 +79,7 @@ function makeBook(overrides?: Partial<Book>): Book {
         baselineText: 'beginning God',
         tokens: [
           {
-            id: 'tok-2',
+            ref: 'tok-2',
             surfaceText: 'beginning',
             writingSystem: 'en',
             type: 'word',
@@ -87,7 +87,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 9,
           },
           {
-            id: 'tok-3',
+            ref: 'tok-3',
             surfaceText: 'God',
             writingSystem: 'en',
             type: 'word',
@@ -120,7 +120,7 @@ function makeTwoChapterBook(): Book {
         baselineText: 'Alpha',
         tokens: [
           {
-            id: 'ch1-tok-0',
+            ref: 'ch1-tok-0',
             surfaceText: 'Alpha',
             writingSystem: 'en',
             type: 'word',
@@ -136,7 +136,7 @@ function makeTwoChapterBook(): Book {
         baselineText: 'Beta',
         tokens: [
           {
-            id: 'ch2-tok-0',
+            ref: 'ch2-tok-0',
             surfaceText: 'Beta',
             writingSystem: 'en',
             type: 'word',
@@ -168,7 +168,7 @@ function makeSingleTokenBook(): Book {
         baselineText: 'Word',
         tokens: [
           {
-            id: 'tok-only',
+            ref: 'tok-only',
             surfaceText: 'Word',
             writingSystem: 'en',
             type: 'word',
@@ -199,7 +199,7 @@ function makeMixedBook(): Book {
         baselineText: 'In the',
         tokens: [
           {
-            id: 'mix-tok-0',
+            ref: 'mix-tok-0',
             surfaceText: 'In',
             writingSystem: 'en',
             type: 'word',
@@ -215,7 +215,7 @@ function makeMixedBook(): Book {
         baselineText: '.',
         tokens: [
           {
-            id: 'mix-punct-0',
+            ref: 'mix-punct-0',
             surfaceText: '.',
             writingSystem: 'en',
             type: 'punctuation',
@@ -247,7 +247,7 @@ function makeWordFreeBook(): Book {
         baselineText: '...',
         tokens: [
           {
-            id: 'wf-punct-0',
+            ref: 'wf-punct-0',
             surfaceText: '.',
             writingSystem: 'en',
             type: 'punctuation',

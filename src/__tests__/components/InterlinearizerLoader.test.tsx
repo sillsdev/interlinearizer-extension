@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
+import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -134,9 +134,11 @@ describe('InterlinearizerLoader', () => {
     mockBookData();
     mockOptimisticSetting();
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    jest.mocked(useSetting).mockReturnValue(['simple', jest.fn(), jest.fn(), false]);
   });
 
-  it('renders Interlinearizer and the nav controls when book data is available', () => {
+  it('shows nav controls when interface mode is power', () => {
+    jest.mocked(useSetting).mockReturnValue(['power', jest.fn(), jest.fn(), false]);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -145,6 +147,18 @@ describe('InterlinearizerLoader', () => {
     );
 
     expect(screen.getByTestId('scripture-nav-controls')).toBeInTheDocument();
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+  });
+
+  it('hides nav controls when interface mode is simple', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 

@@ -63,6 +63,23 @@ const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
 ]);
 
 /**
+ * Mock for `useSetting`. Returns `[defaultState, setSetting, resetSetting, false]`, passing
+ * `defaultState` through unchanged so callers receive a predictable initial value.
+ *
+ * @param _key - Ignored setting key.
+ * @param defaultState - Value surfaced as the current setting state.
+ * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ */
+const useSetting = jest
+  .fn()
+  .mockImplementation((_key: string, defaultState: unknown) => [
+    defaultState,
+    jest.fn(),
+    jest.fn(),
+    false,
+  ]);
+
+/**
  * Mock for `useRecentScriptureRefs`. Returns an empty history and a no-op `addRecentScriptureRef`
  * so components that display recent references render without errors.
  *
@@ -76,6 +93,7 @@ module.exports = {
   __esModule: true,
   useProjectData,
   useProjectSetting,
+  useSetting,
   useLocalizedStrings,
   useRecentScriptureRefs,
 };

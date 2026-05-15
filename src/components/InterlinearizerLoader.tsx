@@ -26,6 +26,8 @@ const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'
  *   reference and its setter
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores)
+ * @returns The interlinearizer layout: tab toolbar, loading/error states or main view, and any
+ *   currently open project modal.
  */
 export default function InterlinearizerLoader({
   projectId,

@@ -23,9 +23,9 @@ declare module 'papi-shared-types' {
 
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the new project's UUID, or
-     * undefined if project creation fails (failure is logged and surfaced as an error
-     * notification).
+     * after the user fills in the create-project modal. Returns the persisted `InterlinearProject`
+     * serialized as a JSON string, or `undefined` if project creation fails (failure is logged and
+     * surfaced as an error notification).
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
      * @param analysisLanguages BCP 47 tags for all languages used in glosses and annotations (e.g.
@@ -55,10 +55,11 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 
     /**
-     * Deletes an interlinearizer project by UUID.
+     * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
      *
      * @param interlinearProjectId UUID of the interlinearizer project to delete.
-     * @throws {RangeError} If the project ID is not found in the stored index.
+     * @throws If the underlying storage write fails (the failure is also logged and surfaced as an
+     *   error notification before being re-thrown).
      */
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 
@@ -72,7 +73,14 @@ declare module 'papi-shared-types' {
      * Opens the create-project modal in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
-    'interlinearizer.newProject': () => Promise<void>;
+    'interlinearizer.openNewProjectModal': () => Promise<void>;
+
+    /**
+     * Opens the project-info (metadata) modal for the active project in the Interlinearizer
+     * WebView. The backend registers this command to make it visible to the platform menu system;
+     * all logic executes in the WebView.
+     */
+    'interlinearizer.openProjectInfoModal': () => Promise<void>;
 
     /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a

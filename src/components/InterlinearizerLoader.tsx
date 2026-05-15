@@ -16,7 +16,7 @@ import type { ActiveProjectState } from './SelectInterlinearProjectModal';
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
 /**
- * Root component for loading the Interlinearizer. Loads book data and settings, manages modal state
+ * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
  * for project creation/selection/metadata, then renders error and loading states or delegates to
  * {@link Interlinearizer} when data is ready.
  *
@@ -61,8 +61,8 @@ export default function InterlinearizerLoader({
 
   /**
    * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
-   * restores. Updated after creation and when the user selects an existing project from the
-   * picker.
+   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
+   * key; this component reads the value to decide which menu items to show.
    */
   const [activeProject] = useWebViewState<ActiveProjectState | undefined>(
     'activeProject',
@@ -100,6 +100,12 @@ export default function InterlinearizerLoader({
     { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
   );
 
+  /**
+   * Top-menu descriptor passed to {@link TabToolbar}. Identical to
+   * `webViewMenuPossiblyError.topMenu` except that the `interlinearizer.openProjectInfoModal` item
+   * is filtered out when no project is active, since that command requires an active project to act
+   * on.
+   */
   const projectMenuData = useMemo(() => {
     const menu =
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)

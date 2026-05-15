@@ -268,7 +268,7 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('calls setModal with create and sets createSourceIsSelect when create new is clicked', async () => {
+    it('calls setModal with create when create new is clicked', async () => {
       const { setModal } = renderModals({ modal: 'select' });
       await userEvent.click(screen.getByTestId('select-create-new'));
       expect(setModal).toHaveBeenCalledWith('create');
@@ -282,19 +282,16 @@ describe('ProjectModals', () => {
   });
 
   describe('create modal', () => {
-    it('calls setModal with none when create modal closes without a select source', async () => {
+    it('calls setModal with none when create modal is closed', async () => {
       const { setModal } = renderModals({ modal: 'create' });
       await userEvent.click(screen.getByTestId('create-close'));
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('calls setModal with select on close when createSourceIsSelect is true', async () => {
-      // To set createSourceIsSelect, we must open create from the select modal.
-      // Render with select open first, then trigger create-new.
+    it('calls setModal with none when create modal is closed after opening from select', async () => {
       const setModal = jest.fn();
       const state = makeWebViewState();
 
-      // Render with select modal so create-new can be clicked
       const { rerender } = render(
         <ProjectModals
           activeProject={undefined}
@@ -305,7 +302,6 @@ describe('ProjectModals', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('select-create-new'));
-      // setModal was called with 'create' — now re-render with modal='create'
       rerender(
         <ProjectModals
           activeProject={undefined}
@@ -317,15 +313,14 @@ describe('ProjectModals', () => {
       );
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('create-close'));
-      expect(setModal).toHaveBeenCalledWith('select');
+      expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('keeps the create modal open and does not call setModal when a project is created', async () => {
+    it('selects the created project and calls setModal with none when a project is created', async () => {
       const state = makeWebViewState();
       const { setModal } = renderModals({ modal: 'create', useWebViewState: state });
       await userEvent.click(screen.getByTestId('create-created'));
-      expect(screen.getByTestId('create-modal')).toBeInTheDocument();
-      expect(setModal).not.toHaveBeenCalled();
+      expect(setModal).toHaveBeenCalledWith('none');
     });
   });
 

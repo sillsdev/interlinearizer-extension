@@ -73,12 +73,19 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
- * Returns a `TextAnalysis` with empty collections for all three analysis arrays.
+ * Returns a `TextAnalysis` with empty collections for every analysis and link array.
  *
  * @returns A new, empty `TextAnalysis` object.
  */
 function emptyAnalysis(): TextAnalysis {
-  return { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+  return {
+    segmentAnalyses: [],
+    segmentAnalysisLinks: [],
+    tokenAnalyses: [],
+    tokenAnalysisLinks: [],
+    phraseAnalyses: [],
+    phraseAnalysisLinks: [],
+  };
 }
 
 /**
@@ -106,7 +113,11 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
- * @param analysisWritingSystem - The BCP 47 writing-system code used for analysis strings.
+ * @param analysisLanguages - BCP 47 tags for languages used in glosses and annotations. Required
+ *   and must contain at least one entry.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text. When provided,
+ *   the project is created as a bilateral alignment project and `links` is initialized to `[]`;
+ *   when omitted the project is analysis-only and `links` is left undefined.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
@@ -117,7 +128,8 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
 export async function createProject(
   token: ExecutionToken,
   sourceProjectId: string,
-  analysisWritingSystem: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
   name?: string,
   description?: string,
 ): Promise<InterlinearProject> {
@@ -128,10 +140,10 @@ export async function createProject(
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     sourceProjectId,
-    analysisWritingSystem,
-    sourceAnalysis: emptyAnalysis(),
-    targetAnalysis: emptyAnalysis(),
-    links: [],
+    ...(targetProjectId !== undefined && { targetProjectId }),
+    analysisLanguages,
+    analysis: emptyAnalysis(),
+    ...(targetProjectId !== undefined && { links: [] }),
   };
 
   await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(project));
@@ -223,9 +235,10 @@ export async function getProjectsForSource(
  * @param id - The interlinearizer project UUID to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisWritingSystem - New BCP 47 analysis language tag. A non-empty string overwrites
- *   the field; an empty string or `undefined` leaves the field unchanged, since
- *   `analysisWritingSystem` is required and must not be cleared.
+ * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
+ *   pass the current value to leave the field unchanged (it cannot be cleared).
+ * @param targetProjectId - New target-project ID. `undefined` removes the target binding (the
+ *   project becomes analysis-only); a string overwrites the existing value.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -236,7 +249,8 @@ export async function updateProjectMetadata(
   id: string,
   name: string | undefined,
   description: string | undefined,
-  analysisWritingSystem?: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
@@ -252,8 +266,11 @@ export async function updateProjectMetadata(
     } else {
       updated.description = description;
     }
-    if (analysisWritingSystem) {
-      updated.analysisWritingSystem = analysisWritingSystem;
+    updated.analysisLanguages = analysisLanguages;
+    if (targetProjectId === undefined) {
+      delete updated.targetProjectId;
+    } else {
+      updated.targetProjectId = targetProjectId;
     }
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
     return updated;

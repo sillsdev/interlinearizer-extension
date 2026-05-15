@@ -7,7 +7,7 @@ import type { Token } from 'interlinearizer';
 import { TokenChip } from '../../components/TokenChip';
 
 const WORD_TOKEN: Token = {
-  id: 'GEN 1:1:0',
+  ref: 'GEN 1:1:0',
   surfaceText: 'hello',
   writingSystem: 'en',
   type: 'word',
@@ -16,7 +16,7 @@ const WORD_TOKEN: Token = {
 };
 
 const PUNCT_TOKEN: Token = {
-  id: 'GEN 1:1:5',
+  ref: 'GEN 1:1:5',
   surfaceText: '.',
   writingSystem: 'en',
   type: 'punctuation',

@@ -49,7 +49,14 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
 
 const token = createTestActivationContext().executionToken;
 
-const EMPTY_ANALYSIS = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+const EMPTY_ANALYSIS = {
+  segmentAnalyses: [],
+  segmentAnalysisLinks: [],
+  tokenAnalyses: [],
+  tokenAnalysisLinks: [],
+  phraseAnalyses: [],
+  phraseAnalysisLinks: [],
+};
 
 /**
  * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
@@ -70,26 +77,52 @@ describe('projectStorage', () => {
   });
 
   describe('createProject', () => {
-    it('returns a project with the given fields and empty analysis/links', async () => {
+    it('returns a project with the given fields and empty analysis when analysis-only', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en');
+      const project = await createProject(token, 'src-proj', ['en']);
 
       expect(project).toMatchObject({
         id: '00000000-0000-0000-0000-000000000001',
         sourceProjectId: 'src-proj',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
-        links: [],
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
       });
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    });
+
+    it('omits links and targetProjectId for analysis-only projects', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en']);
+
+      expect(project).not.toHaveProperty('links');
+      expect(project).not.toHaveProperty('targetProjectId');
+    });
+
+    it('initializes empty links and stores targetProjectId for bilateral projects', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en'], 'tgt-proj');
+
+      expect(project).toMatchObject({
+        sourceProjectId: 'src-proj',
+        targetProjectId: 'tgt-proj',
+        links: [],
+      });
     });
 
     it('stores name and description when provided', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en', 'My Name', 'My Desc');
+      const project = await createProject(
+        token,
+        'src-proj',
+        ['en'],
+        undefined,
+        'My Name',
+        'My Desc',
+      );
 
       expect(project.name).toBe('My Name');
       expect(project.description).toBe('My Desc');
@@ -98,7 +131,7 @@ describe('projectStorage', () => {
     it('writes the project JSON under the project key', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const project = await createProject(token, 'src-proj', 'en');
+      const project = await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -110,7 +143,7 @@ describe('projectStorage', () => {
     it('creates a new index when none exists', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      await createProject(token, 'src-proj', 'en');
+      await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -122,7 +155,7 @@ describe('projectStorage', () => {
     it('appends to an existing index', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(['existing-id']));
 
-      await createProject(token, 'src-proj', 'en');
+      await createProject(token, 'src-proj', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -137,7 +170,7 @@ describe('projectStorage', () => {
         .mockResolvedValueOnce(undefined) // project write succeeds
         .mockRejectedValueOnce(new Error('disk full')); // index write fails
 
-      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
       expect(__mockDeleteUserData).toHaveBeenCalledWith(
         token,
@@ -152,7 +185,7 @@ describe('projectStorage', () => {
         .mockRejectedValueOnce(new Error('disk full')); // index write fails
       __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
 
-      await expect(createProject(token, 'src-proj', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
       expect(__mockLogger.error).toHaveBeenCalled();
     });
@@ -164,10 +197,8 @@ describe('projectStorage', () => {
         id: 'abc',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'fr',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
-        links: [],
+        analysisLanguages: ['fr'],
+        analysis: EMPTY_ANALYSIS,
       };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
 
@@ -200,10 +231,8 @@ describe('projectStorage', () => {
         id: 'id-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
-        links: [],
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
       };
       const p2 = { ...p1, id: 'id-2' };
       __mockReadUserData
@@ -221,10 +250,8 @@ describe('projectStorage', () => {
         id: 'id-1',
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
-        analysisWritingSystem: 'en',
-        sourceAnalysis: EMPTY_ANALYSIS,
-        targetAnalysis: EMPTY_ANALYSIS,
-        links: [],
+        analysisLanguages: ['en'],
+        analysis: EMPTY_ANALYSIS,
       };
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-missing']))
@@ -242,16 +269,14 @@ describe('projectStorage', () => {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: EMPTY_ANALYSIS,
-      targetAnalysis: EMPTY_ANALYSIS,
-      links: [],
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
     };
 
     it('returns the updated project with the new name and description', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result).toMatchObject({ id: 'proj-id', name: 'My Name', description: 'My Desc' });
     });
@@ -259,7 +284,7 @@ describe('projectStorage', () => {
     it('writes the updated project to storage', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc');
+      await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
@@ -272,7 +297,7 @@ describe('projectStorage', () => {
       const withMeta = { ...storedProject, name: 'Old', description: 'Old desc' };
       __mockReadUserData.mockResolvedValue(JSON.stringify(withMeta));
 
-      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined);
+      const result = await updateProjectMetadata(token, 'proj-id', undefined, undefined, ['en']);
 
       expect(result?.name).toBeUndefined();
       expect(result?.description).toBeUndefined();
@@ -288,40 +313,62 @@ describe('projectStorage', () => {
     it('returns undefined when the project does not exist', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
-      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc');
+      const result = await updateProjectMetadata(token, 'missing', 'Name', 'Desc', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
 
-    it('updates analysisWritingSystem when a non-empty value is provided', async () => {
+    it('overwrites analysisLanguages with the provided value', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', 'fr');
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['fr', 'de']);
 
-      expect(result?.analysisWritingSystem).toBe('fr');
+      expect(result?.analysisLanguages).toEqual(['fr', 'de']);
       const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
       expect(typeof writtenArg).toBe('string');
       if (typeof writtenArg === 'string') {
         const parsed: unknown = JSON.parse(writtenArg);
-        expect(parsed).toMatchObject({ analysisWritingSystem: 'fr' });
+        expect(parsed).toMatchObject({ analysisLanguages: ['fr', 'de'] });
       }
     });
 
-    it('does not update analysisWritingSystem when an empty string is provided', async () => {
+    it('leaves analysisLanguages unchanged when the current value is passed back', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', '');
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
 
-      expect(result?.analysisWritingSystem).toBe('en');
+      expect(result?.analysisLanguages).toEqual(['en']);
     });
 
-    it('does not update analysisWritingSystem when undefined is provided', async () => {
+    it('sets targetProjectId when a value is provided', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
 
-      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc');
+      const result = await updateProjectMetadata(
+        token,
+        'proj-id',
+        'Name',
+        'Desc',
+        ['en'],
+        'tgt-proj',
+      );
 
-      expect(result?.analysisWritingSystem).toBe('en');
+      expect(result?.targetProjectId).toBe('tgt-proj');
+    });
+
+    it('clears targetProjectId when undefined is passed', async () => {
+      const withTarget = { ...storedProject, targetProjectId: 'tgt-proj' };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(withTarget));
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'Name', 'Desc', ['en']);
+
+      expect(result?.targetProjectId).toBeUndefined();
+      const writtenArg: unknown = __mockWriteUserData.mock.calls[0]?.[2];
+      expect(typeof writtenArg).toBe('string');
+      if (typeof writtenArg === 'string') {
+        const parsed: unknown = JSON.parse(writtenArg);
+        expect(parsed).not.toHaveProperty('targetProjectId');
+      }
     });
   });
 
@@ -400,10 +447,8 @@ describe('projectStorage', () => {
       id: 'id-1',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-a',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: EMPTY_ANALYSIS,
-      targetAnalysis: EMPTY_ANALYSIS,
-      links: [],
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
     };
 
     it('returns only projects whose sourceProjectId matches', async () => {
@@ -462,8 +507,8 @@ describe('projectStorage', () => {
         .mockReturnValueOnce('00000000-0000-0000-0000-000000000001')
         .mockReturnValueOnce('00000000-0000-0000-0000-000000000002');
 
-      const p1 = createProject(token, 'src', 'en');
-      const p2 = createProject(token, 'src', 'en');
+      const p1 = createProject(token, 'src', ['en']);
+      const p2 = createProject(token, 'src', ['en']);
 
       resolveFirstIndexRead(JSON.stringify([]));
 
@@ -478,7 +523,7 @@ describe('projectStorage', () => {
     it('propagates non-ENOENT errors from readIds', async () => {
       __mockReadUserData.mockRejectedValue(new Error('disk full'));
 
-      await expect(createProject(token, 'src', 'en')).rejects.toThrow('disk full');
+      await expect(createProject(token, 'src', ['en'])).rejects.toThrow('disk full');
     });
 
     it('propagates non-ENOENT errors from getProject', async () => {

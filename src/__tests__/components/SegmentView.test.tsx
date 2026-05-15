@@ -27,9 +27,16 @@ const WORD_SEGMENT: Segment = {
   endRef: { book: 'GEN', chapter: 1, verse: 1 },
   baselineText: 'In the beginning.',
   tokens: [
-    { id: 'tok-0', surfaceText: 'In', writingSystem: 'en', type: 'word', charStart: 0, charEnd: 2 },
     {
-      id: 'tok-1',
+      ref: 'tok-0',
+      surfaceText: 'In',
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 2,
+    },
+    {
+      ref: 'tok-1',
       surfaceText: 'the',
       writingSystem: 'en',
       type: 'word',
@@ -47,7 +54,7 @@ const PUNCT_SEGMENT: Segment = {
   baselineText: '.',
   tokens: [
     {
-      id: 'tok-p',
+      ref: 'tok-p',
       surfaceText: '.',
       writingSystem: 'en',
       type: 'punctuation',

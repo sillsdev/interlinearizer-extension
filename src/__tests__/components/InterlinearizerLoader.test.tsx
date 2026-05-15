@@ -64,7 +64,7 @@ type MockProject = {
   id: string;
   createdAt: string;
   sourceProjectId: string;
-  analysisWritingSystem: string;
+  analysisLanguages: string[];
   name?: string;
   description?: string;
 };
@@ -75,7 +75,7 @@ const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
   sourceProjectId: testProjectId,
-  analysisWritingSystem: 'en',
+  analysisLanguages: ['en'],
   name: 'My Project',
 };
 
@@ -195,7 +195,7 @@ const GEN_1_1_BOOK: Book = {
       baselineText: 'In the beginning.',
       tokens: [
         {
-          id: 'GEN 1:1:0',
+          ref: 'GEN 1:1:0',
           surfaceText: 'In',
           writingSystem: 'en',
           type: 'word',
@@ -532,7 +532,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   describe('modal interactions', () => {
-    it('opens the select modal when the project menu createProject item is clicked', async () => {
+    it('opens the select modal when the project menu selectProject item is clicked', async () => {
       render(
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -767,7 +767,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
 
-    it('filters openProjectInfoModal from menu when no active project', () => {
+    it('renders without error when useData provides a topMenu with items', () => {
       const mockWebViewMenu = {
         topMenu: {
           label: 'top',
@@ -807,9 +807,6 @@ describe('InterlinearizerLoader', () => {
         />,
       );
 
-      // tab-toolbar-view-project-info button is rendered only when projectMenuData includes it
-      // The TabToolbar mock renders it always when onSelectProjectMenuItem is provided,
-      // so we verify the projectMenuData filtering by checking the loader renders without error
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
   });

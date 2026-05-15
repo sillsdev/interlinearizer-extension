@@ -14,6 +14,7 @@ import MemoizedSegmentView from './SegmentView';
  * @param props.continuousScroll - Whether the continuous scroll view is shown
  * @param props.scrRef - Current scripture reference
  * @param props.setScrRef - Callback to update the scripture reference
+ * @returns The continuous-view header (when enabled) above the segment list for the active chapter.
  */
 export default function Interlinearizer({
   book,

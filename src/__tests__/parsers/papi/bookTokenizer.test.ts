@@ -83,34 +83,34 @@ describe('tokenizeBook', () => {
     expect(segments[0].tokens).toEqual([]);
   });
 
-  it('gives every token a unique ID that can be used to look it up', () => {
+  it('gives every token a unique ref that can be used to look it up', () => {
     const text = 'A B C.';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
     const { tokens } = segments[0];
-    // IDs must be unique so each token can be referenced unambiguously.
-    const ids = tokens.map((t) => t.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    // Each token must be retrievable by its ID.
-    ids.forEach((id, i) => {
-      expect(tokens.find((t) => t.id === id)).toBe(tokens[i]);
+    // Refs must be unique so each token can be referenced unambiguously.
+    const refs = tokens.map((t) => t.ref);
+    expect(new Set(refs).size).toBe(refs.length);
+    // Each token must be retrievable by its ref.
+    refs.forEach((ref, i) => {
+      expect(tokens.find((t) => t.ref === ref)).toBe(tokens[i]);
     });
   });
 
-  it('assigns unique IDs across segments', () => {
+  it('assigns unique refs across segments', () => {
     const raw = makeRawBook([
       { sid: 'GEN 1:1', text: 'Word.' },
       { sid: 'GEN 1:2', text: 'Word.' },
     ]);
     const book = tokenizeBook(raw);
-    // Each token id must start with its segment's id (the SID).
+    // Each token ref must start with its segment's id (the SID).
     book.segments.forEach((s) => {
       s.tokens.forEach((t) => {
-        expect(t.id.startsWith(s.id)).toBe(true);
+        expect(t.ref.startsWith(s.id)).toBe(true);
       });
     });
-    // All token ids across all segments must be globally unique.
-    const ids = book.segments.flatMap((s) => s.tokens.map((t) => t.id));
-    expect(new Set(ids).size).toBe(ids.length);
+    // All token refs across all segments must be globally unique.
+    const refs = book.segments.flatMap((s) => s.tokens.map((t) => t.ref));
+    expect(new Set(refs).size).toBe(refs.length);
   });
 
   it('assigns writingSystem to every token', () => {

@@ -56,9 +56,9 @@ export function SegmentView({
         <span className="tw:flex tw:flex-wrap tw:gap-1">
           {segment.tokens.map((token) =>
             token.type === 'word' ? (
-              <MemoizedPhraseBox key={token.id} tokens={[token]} />
+              <MemoizedPhraseBox key={token.ref} tokens={[token]} />
             ) : (
-              <MemoizedTokenChip key={token.id} token={token} />
+              <MemoizedTokenChip key={token.ref} token={token} />
             ),
           )}
         </span>

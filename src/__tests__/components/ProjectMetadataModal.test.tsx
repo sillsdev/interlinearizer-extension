@@ -40,6 +40,11 @@ const testProps = {
   onProjectDeleted: jest.fn(),
 };
 
+const testPropsWithTarget = {
+  ...testProps,
+  targetProjectId: 'target-project-id',
+};
+
 describe('ProjectMetadataModal', () => {
   beforeEach(() => {
     jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
@@ -97,6 +102,24 @@ describe('ProjectMetadataModal', () => {
         'New Name',
         undefined,
         ['en'],
+        undefined,
+      ),
+    );
+  });
+
+  it('passes targetProjectId to sendCommand when the project has a target project', async () => {
+    render(<ProjectMetadataModal {...testPropsWithTarget} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.updateProjectMetadata',
+        'il-project-uuid',
+        undefined,
+        undefined,
+        ['en'],
+        'target-project-id',
       ),
     );
   });
@@ -152,6 +175,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         'New Desc',
         ['en'],
+        undefined,
       ),
     );
   });
@@ -171,6 +195,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         'Replaced',
         ['en'],
+        undefined,
       ),
     );
   });
@@ -189,6 +214,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         undefined,
         ['en'],
+        undefined,
       ),
     );
   });
@@ -257,6 +283,7 @@ describe('ProjectMetadataModal', () => {
         undefined,
         undefined,
         ['fr'],
+        undefined,
       ),
     );
   });

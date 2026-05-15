@@ -36,6 +36,8 @@ declare module 'papi-shared-types' {
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name Optional user-facing name for the project.
      * @param description Optional user-facing description for the project.
+     * @returns The persisted `InterlinearProject` as a JSON string, or `undefined` if creation
+     *   fails.
      */
     'interlinearizer.createProject': (
       sourceProjectId: string,
@@ -51,6 +53,7 @@ declare module 'papi-shared-types' {
      * and to decide whether to show "create new" vs "select existing" on first open.
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to query.
+     * @returns A JSON string containing an `InterlinearProjectSummary[]`; `"[]"` when none exist.
      */
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 
@@ -93,6 +96,8 @@ declare module 'papi-shared-types' {
      *   the current value to leave it unchanged (the field is required and cannot be cleared).
      * @param targetProjectId New target-project ID; omit or pass `undefined` to clear (removes the
      *   target-side text binding).
+     * @returns The updated project as a JSON string, or `undefined` if no project with that ID
+     *   exists.
      */
     'interlinearizer.updateProjectMetadata': (
       interlinearProjectId: string,

@@ -12,8 +12,9 @@ import {
 export type ModalState = 'none' | 'select' | 'create' | 'metadata';
 
 /**
- * Component for managing project modals in the Interlinearizer. Handles state for project creation,
- * selection, and metadata modals.
+ * Single mount point for all project-related dialogs. Renders at most one of
+ * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, or {@link ProjectMetadataModal}
+ * based on the `modal` prop, and manages the shared WebView state for the active project.
  *
  * @param props - Component props
  * @param props.activeProject - The currently active interlinear project, read from WebView state by
@@ -52,9 +53,10 @@ export default function ProjectModals({
   );
 
   /**
-   * Tracks where the metadata modal was opened from so the correct modal is restored on close.
-   * `'select'` means it was opened via the info icon in the select modal; `'menu'` means it was
-   * opened via the "View Project Info" menu item.
+   * Tracks whether the metadata modal was opened from the select modal (info icon) or from the
+   * top-menu "View Project Info" item. `true` means opened via the select modal, so closing the
+   * metadata modal restores the select modal; `false` means opened from the menu, so closing
+   * dismisses to `'none'`.
    */
   const [metadataSourceIsSelect, setMetadataSourceIsSelect] = useState(false);
 
@@ -102,17 +104,42 @@ export default function ProjectModals({
     [activeProject, resetActiveProject],
   );
 
+  const handleSelectProject = useCallback(
+    (project: InterlinearProjectSummary) => {
+      setActiveProject(project);
+      setModal('none');
+    },
+    [setActiveProject, setModal],
+  );
+
+  const handleSelectCreateNew = useCallback(() => setModal('create'), [setModal]);
+
+  const handleSelectClose = useCallback(() => setModal('none'), [setModal]);
+
+  const handleCreateClose = useCallback(() => setModal('none'), [setModal]);
+
+  const handleProjectCreated = useCallback(
+    (project: InterlinearProjectSummary) => {
+      setActiveProject(project);
+      setModal('none');
+    },
+    [setActiveProject, setModal],
+  );
+
+  const handleMetadataClose = useCallback(() => {
+    setModal(metadataSourceIsSelect ? 'select' : 'none');
+    setMetadataSourceIsSelect(false);
+    setMetadataProject(undefined);
+  }, [metadataSourceIsSelect, setModal]);
+
   return (
     <div>
       {modal === 'select' && (
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
-          onSelect={(project) => {
-            setActiveProject(project);
-            setModal('none');
-          }}
-          onCreateNew={() => setModal('create')}
-          onClose={() => setModal('none')}
+          onSelect={handleSelectProject}
+          onCreateNew={handleSelectCreateNew}
+          onClose={handleSelectClose}
           onViewInfo={handleViewInfo}
         />
       )}
@@ -120,11 +147,8 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
-          onClose={() => setModal('none')}
-          onProjectCreated={(project) => {
-            setActiveProject(project);
-            setModal('none');
-          }}
+          onClose={handleCreateClose}
+          onProjectCreated={handleProjectCreated}
         />
       )}
 
@@ -134,13 +158,10 @@ export default function ProjectModals({
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
           sourceProjectId={resolvedMetadataProject.sourceProjectId}
+          targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
-          onClose={() => {
-            setModal(metadataSourceIsSelect ? 'select' : 'none');
-            setMetadataSourceIsSelect(false);
-            setMetadataProject(undefined);
-          }}
+          onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
           onProjectDeleted={handleMetadataProjectDeleted}
         />

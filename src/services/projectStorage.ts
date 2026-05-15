@@ -287,3 +287,13 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
     });
   });
 }
+
+/**
+ * Resets module-level queue state between tests. Jest's `resetMocks` resets mock implementations
+ * but does not re-execute modules, so `indexQueue` and `projectQueues` would otherwise persist
+ * across tests and allow promise chains from one test to bleed into the next.
+ */
+export function resetQueuesForTesting(): void {
+  indexQueue = Promise.resolve();
+  projectQueues.clear();
+}

@@ -58,12 +58,6 @@ export default function ProjectModals({
    */
   const [metadataSourceIsSelect, setMetadataSourceIsSelect] = useState(false);
 
-  /**
-   * Tracks whether the create modal was opened from the select modal, so the correct modal is
-   * restored on close.
-   */
-  const [createSourceIsSelect, setCreateSourceIsSelect] = useState(false);
-
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
   /**
@@ -117,10 +111,7 @@ export default function ProjectModals({
             setActiveProject(project);
             setModal('none');
           }}
-          onCreateNew={() => {
-            setCreateSourceIsSelect(true);
-            setModal('create');
-          }}
+          onCreateNew={() => setModal('create')}
           onClose={() => setModal('none')}
           onViewInfo={handleViewInfo}
         />
@@ -129,11 +120,11 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
-          onClose={() => {
-            setModal(createSourceIsSelect ? 'select' : 'none');
-            setCreateSourceIsSelect(false);
+          onClose={() => setModal('none')}
+          onProjectCreated={(project) => {
+            setActiveProject(project);
+            setModal('none');
           }}
-          onProjectCreated={setActiveProject}
         />
       )}
 

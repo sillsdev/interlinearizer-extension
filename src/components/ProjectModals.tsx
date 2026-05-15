@@ -104,6 +104,12 @@ export default function ProjectModals({
     [activeProject, resetActiveProject],
   );
 
+  /**
+   * Called when the user selects a project in the select modal. Persists it as the active project
+   * and dismisses the modal.
+   *
+   * @param project - The project the user selected.
+   */
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
       setActiveProject(project);
@@ -112,12 +118,21 @@ export default function ProjectModals({
     [setActiveProject, setModal],
   );
 
+  /** Called when the user clicks "Create new" in the select modal. Switches to the create modal. */
   const handleSelectCreateNew = useCallback(() => setModal('create'), [setModal]);
 
+  /** Called when the user dismisses the select modal without choosing a project. */
   const handleSelectClose = useCallback(() => setModal('none'), [setModal]);
 
+  /** Called when the user dismisses the create modal without saving. */
   const handleCreateClose = useCallback(() => setModal('none'), [setModal]);
 
+  /**
+   * Called when the create modal successfully creates a project. Persists it as the active project
+   * and dismisses the modal.
+   *
+   * @param project - The newly created project.
+   */
   const handleProjectCreated = useCallback(
     (project: InterlinearProjectSummary) => {
       setActiveProject(project);
@@ -126,6 +141,10 @@ export default function ProjectModals({
     [setActiveProject, setModal],
   );
 
+  /**
+   * Called when the metadata modal is dismissed. Returns to the select modal when it was opened
+   * from there; otherwise dismisses to `'none'`.
+   */
   const handleMetadataClose = useCallback(() => {
     setModal(metadataSourceIsSelect ? 'select' : 'none');
     setMetadataSourceIsSelect(false);

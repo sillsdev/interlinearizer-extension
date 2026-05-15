@@ -13,7 +13,7 @@ const MOCK_PROJECT: InterlinearProjectSummary = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
   sourceProjectId: 'source-proj',
-  analysisWritingSystem: 'en',
+  analysisLanguages: ['en'],
   name: 'My Project',
 };
 
@@ -21,7 +21,7 @@ const MOCK_PROJECT_2: InterlinearProjectSummary = {
   id: 'proj-2',
   createdAt: '2026-02-01T00:00:00Z',
   sourceProjectId: 'source-proj',
-  analysisWritingSystem: 'fr',
+  analysisLanguages: ['fr'],
   name: 'French Project',
 };
 
@@ -100,7 +100,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
     onProjectSaved: (u: {
       name?: string;
       description?: string;
-      analysisWritingSystem: string;
+      analysisLanguages: string[];
     }) => void;
     onProjectDeleted: (id: string) => void;
   }) => (
@@ -112,7 +112,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
         type="button"
         data-testid="metadata-save"
         onClick={() => {
-          onProjectSaved({ name: 'Updated', analysisWritingSystem: 'fr' });
+          onProjectSaved({ name: 'Updated', analysisLanguages: ['fr'] });
           onClose();
         }}
       >
@@ -288,7 +288,7 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('calls setModal with none when create modal is closed after opening from select', async () => {
+    it('calls setModal with none when create modal is closed regardless of how it was opened', async () => {
       const setModal = jest.fn();
       const state = makeWebViewState();
 
@@ -316,7 +316,7 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('selects the created project and calls setModal with none when a project is created', async () => {
+    it('sets the active project and calls setModal with none when a project is created', async () => {
       const state = makeWebViewState();
       const { setModal } = renderModals({ modal: 'create', useWebViewState: state });
       await userEvent.click(screen.getByTestId('create-created'));

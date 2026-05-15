@@ -53,7 +53,7 @@ const GEN_1_1_BOOK: Book = {
       baselineText: 'In the beginning.',
       tokens: [
         {
-          id: 'GEN 1:1:0',
+          ref: 'GEN 1:1:0',
           surfaceText: 'In',
           writingSystem: 'en',
           type: 'word',
@@ -81,7 +81,7 @@ const GEN_1_MULTI_BOOK: Book = {
       baselineText: 'In the beginning.',
       tokens: [
         {
-          id: 'GEN 1:1:0',
+          ref: 'GEN 1:1:0',
           surfaceText: 'In',
           writingSystem: 'en',
           type: 'word',
@@ -97,7 +97,7 @@ const GEN_1_MULTI_BOOK: Book = {
       baselineText: 'And the earth.',
       tokens: [
         {
-          id: 'GEN 1:2:0',
+          ref: 'GEN 1:2:0',
           surfaceText: 'And',
           writingSystem: 'en',
           type: 'word',

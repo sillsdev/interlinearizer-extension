@@ -31,7 +31,7 @@ export function PhraseBox({
   const innerContent = (
     <span className="tw:inline-flex tw:items-center tw:gap-1">
       {tokens.map((token) => (
-        <MemoizedTokenChip key={token.id} token={token} />
+        <MemoizedTokenChip key={token.ref} token={token} />
       ))}
     </span>
   );

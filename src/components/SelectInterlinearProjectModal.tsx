@@ -18,13 +18,13 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 /** The subset of InterlinearProject fields this modal displays and returns. */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
-  'id' | 'createdAt' | 'sourceProjectId' | 'analysisWritingSystem' | 'name' | 'description'
+  'id' | 'createdAt' | 'sourceProjectId' | 'analysisLanguages' | 'name' | 'description'
 >;
 
 /** Fields of the active interlinear project persisted in WebView state. */
 export type ActiveProjectState = Pick<
   InterlinearProjectSummary,
-  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisWritingSystem'
+  'id' | 'createdAt' | 'name' | 'description' | 'sourceProjectId' | 'analysisLanguages'
 >;
 
 /**
@@ -44,8 +44,9 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     typeof p.createdAt === 'string' &&
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
-    'analysisWritingSystem' in p &&
-    typeof p.analysisWritingSystem === 'string' &&
+    'analysisLanguages' in p &&
+    Array.isArray(p.analysisLanguages) &&
+    p.analysisLanguages.every((l) => typeof l === 'string') &&
     (!('name' in p) || typeof p.name === 'string') &&
     (!('description' in p) || typeof p.description === 'string')
   );
@@ -159,7 +160,7 @@ export function SelectInterlinearProjectModal({
                       localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                   </span>
                   <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0">
-                    {project.analysisWritingSystem}
+                    {project.analysisLanguages.join(', ')}
                   </span>
                 </button>
                 <Button

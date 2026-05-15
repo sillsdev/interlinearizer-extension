@@ -33,7 +33,7 @@ const LOCALIZED: Record<string, string> = {
 const testProps = {
   interlinearProjectId: 'il-project-uuid',
   sourceProjectId: 'src-project-id',
-  analysisWritingSystem: 'en',
+  analysisLanguages: ['en'],
   createdAt: '2026-01-15T10:30:00.000Z',
   onClose: jest.fn(),
   onProjectSaved: jest.fn(),
@@ -96,7 +96,7 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         'New Name',
         undefined,
-        'en',
+        ['en'],
       ),
     );
   });
@@ -124,7 +124,7 @@ describe('ProjectMetadataModal', () => {
       expect(onProjectSaved).toHaveBeenCalledWith({
         name: 'New Name',
         description: 'Old Desc',
-        analysisWritingSystem: 'fr',
+        analysisLanguages: ['fr'],
       }),
     );
   });
@@ -151,7 +151,7 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         undefined,
         'New Desc',
-        'en',
+        ['en'],
       ),
     );
   });
@@ -170,7 +170,7 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         undefined,
         'Replaced',
-        'en',
+        ['en'],
       ),
     );
   });
@@ -188,7 +188,7 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         undefined,
         undefined,
-        'en',
+        ['en'],
       ),
     );
   });
@@ -256,7 +256,7 @@ describe('ProjectMetadataModal', () => {
         'il-project-uuid',
         undefined,
         undefined,
-        'fr',
+        ['fr'],
       ),
     );
   });

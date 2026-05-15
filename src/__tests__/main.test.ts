@@ -129,14 +129,17 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
 }
 
 async function getCreateProjectHandler(): Promise<
-  (sourceProjectId: string, analysisWritingSystem: string) => Promise<string | undefined>
+  (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
   await activate(context);
   const rawHandler = findRegisteredHandler('interlinearizer.createProject');
   if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (sourceProjectId: string, ws: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(sourceProjectId, ws);
+  return async (
+    sourceProjectId: string,
+    analysisLanguages: string[],
+  ): Promise<string | undefined> => {
+    const result: unknown = await rawHandler(sourceProjectId, analysisLanguages);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -169,7 +172,7 @@ async function getUpdateProjectMetadataHandler(): Promise<
     id: string,
     name: string | undefined,
     description: string | undefined,
-    analysisWritingSystem?: string,
+    analysisLanguages: string[],
   ) => Promise<string | undefined>
 > {
   const context = createTestActivationContext();
@@ -180,9 +183,9 @@ async function getUpdateProjectMetadataHandler(): Promise<
     id: string,
     name: string | undefined,
     description: string | undefined,
-    analysisWritingSystem?: string,
+    analysisLanguages: string[],
   ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(id, name, description, analysisWritingSystem);
+    const result: unknown = await rawHandler(id, name, description, analysisLanguages);
     return typeof result === 'string' ? result : undefined;
   };
 }
@@ -525,15 +528,20 @@ describe('main', () => {
 
   describe('interlinearizer.createProject command', () => {
     const mockCreateProject = jest.mocked(projectStorage.createProject);
-    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const emptyAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
     const stubProject = {
       id: 'new-project-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
-      links: [],
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
     };
 
     it('registers the interlinearizer.createProject command', async () => {
@@ -552,12 +560,13 @@ describe('main', () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('src-project', 'en');
+      const result = await handler('src-project', ['en']);
 
       expect(mockCreateProject).toHaveBeenCalledWith(
         expect.anything(),
         'src-project',
-        'en',
+        ['en'],
+        undefined,
         undefined,
         undefined,
       );
@@ -568,7 +577,7 @@ describe('main', () => {
       mockCreateProject.mockResolvedValue(stubProject);
       const handler = await getCreateProjectHandler();
 
-      await handler('src-project', 'en');
+      await handler('src-project', ['en']);
 
       expect(__mockSelectProject).not.toHaveBeenCalled();
     });
@@ -577,7 +586,7 @@ describe('main', () => {
       mockCreateProject.mockRejectedValue(new Error('disk full'));
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('src-project', 'en');
+      const result = await handler('src-project', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockLogger.error).toHaveBeenCalledWith(
@@ -776,15 +785,20 @@ describe('main', () => {
 
   describe('interlinearizer.getProjectsForSource command', () => {
     const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
-    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const emptyAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
     const stubProject = {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
-      links: [],
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
     };
 
     it('registers the interlinearizer.getProjectsForSource command', async () => {
@@ -822,15 +836,20 @@ describe('main', () => {
 
   describe('interlinearizer.updateProjectMetadata command', () => {
     const mockUpdateProjectMetadata = jest.mocked(projectStorage.updateProjectMetadata);
-    const emptyAnalysis = { segmentAnalyses: [], tokenAnalyses: [], phrases: [] };
+    const emptyAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
     const stubProject = {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
-      analysisWritingSystem: 'en',
-      sourceAnalysis: emptyAnalysis,
-      targetAnalysis: emptyAnalysis,
-      links: [],
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
     };
 
     it('registers the interlinearizer.updateProjectMetadata command', async () => {
@@ -849,32 +868,34 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue({ ...stubProject, name: 'My Name' });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', 'My Name', 'My Desc');
+      await handler('proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         'My Name',
         'My Desc',
+        ['en'],
         undefined,
       );
     });
 
-    it('passes analysisWritingSystem to projectStorage.updateProjectMetadata when provided', async () => {
+    it('passes analysisLanguages to projectStorage.updateProjectMetadata', async () => {
       mockUpdateProjectMetadata.mockResolvedValue({
         ...stubProject,
-        analysisWritingSystem: 'fr',
+        analysisLanguages: ['fr', 'de'],
       });
       const handler = await getUpdateProjectMetadataHandler();
 
-      await handler('proj-id', undefined, undefined, 'fr');
+      await handler('proj-id', undefined, undefined, ['fr', 'de']);
 
       expect(mockUpdateProjectMetadata).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',
         undefined,
         undefined,
-        'fr',
+        ['fr', 'de'],
+        undefined,
       );
     });
 
@@ -882,7 +903,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockResolvedValue(undefined);
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('missing', undefined, undefined);
+      const result = await handler('missing', undefined, undefined, ['en']);
 
       expect(result).toBeUndefined();
     });
@@ -891,7 +912,7 @@ describe('main', () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('proj-id', 'My Name', 'My Desc');
+      const result = await handler('proj-id', 'My Name', 'My Desc', ['en']);
 
       expect(result).toBeUndefined();
       expect(__mockLogger.error).toHaveBeenCalledWith(

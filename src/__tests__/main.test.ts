@@ -596,13 +596,11 @@ describe('main', () => {
       expect(__mockSelectProject).not.toHaveBeenCalled();
     });
 
-    it('logs the error, sends an error notification, and returns undefined when storage fails', async () => {
+    it('logs the error, sends an error notification, and rethrows when storage fails', async () => {
       mockCreateProject.mockRejectedValue(new Error('disk full'));
       const handler = await getCreateProjectHandler();
 
-      const result = await handler('src-project', ['en']);
-
-      expect(result).toBeUndefined();
+      await expect(handler('src-project', ['en'])).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to create project',
         expect.any(Error),
@@ -922,13 +920,11 @@ describe('main', () => {
       expect(result).toBeUndefined();
     });
 
-    it('logs the error, sends an error notification, and returns undefined when storage throws', async () => {
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
       mockUpdateProjectMetadata.mockRejectedValue(new Error('disk full'));
       const handler = await getUpdateProjectMetadataHandler();
 
-      const result = await handler('proj-id', 'My Name', 'My Desc', ['en']);
-
-      expect(result).toBeUndefined();
+      await expect(handler('proj-id', 'My Name', 'My Desc', ['en'])).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to update project metadata',
         expect.any(Error),

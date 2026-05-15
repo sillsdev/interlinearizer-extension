@@ -111,8 +111,7 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 /**
  * Creates a new interlinearizer project for the given source project. Called from the WebView via
  * `papi.commands.sendCommand` after the user fills in the create-project modal. Returns the
- * persisted project serialized as a JSON string, or `undefined` if storage fails (failure is also
- * logged and shown as a notification).
+ * persisted project serialized as a JSON string.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
  * @param analysisLanguages - BCP 47 tags for languages used in glosses and annotations (e.g.
@@ -121,8 +120,9 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  *   alignment projects. Omit for analysis-only projects.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns JSON-stringified `InterlinearProject` for the new project, or `undefined` if storage
- *   fails.
+ * @returns JSON-stringified `InterlinearProject` for the new project.
+ * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
+ *   so the frontend `catch` block can suppress it without sending a second notification.
  */
 async function createInterlinearProject(
   sourceProjectId: string,
@@ -130,7 +130,7 @@ async function createInterlinearProject(
   targetProjectId?: string,
   name?: string,
   description?: string,
-): Promise<string | undefined> {
+): Promise<string> {
   try {
     const project = await projectStorage.createProject(
       executionToken,
@@ -149,7 +149,7 @@ async function createInterlinearProject(
         severity: 'error',
       })
       .catch(() => {});
-    return undefined;
+    throw e;
   }
 }
 
@@ -193,8 +193,9 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
- *   found or if a storage failure occurs (in which case the error is logged and a notification is
- *   sent to the user).
+ *   found.
+ * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
+ *   so the frontend `catch` block can suppress it without sending a second notification.
  */
 async function updateProjectMetadata(
   interlinearProjectId: string,
@@ -221,7 +222,7 @@ async function updateProjectMetadata(
         severity: 'error',
       })
       .catch(() => {});
-    return undefined;
+    throw e;
   }
 }
 

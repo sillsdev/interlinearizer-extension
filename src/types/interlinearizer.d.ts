@@ -4,6 +4,7 @@
  */
 
 declare module 'papi-shared-types' {
+  /** Project-level settings contributed by the Interlinearizer extension. */
   export interface ProjectSettingTypes {
     /**
      * When true, the Interlinearizer displays a continuous horizontal token scroll strip above the
@@ -103,6 +104,11 @@ declare module 'papi-shared-types' {
  *
  * Shape at a glance:
  *
+ *     ActiveProject
+ *       ├─ project : InterlinearProject
+ *       ├─ source  : Book[]
+ *       └─ target? : Book[]   — present only when targetProjectId is set
+ *
  *     InterlinearProject
  *       ├─ sourceProjectId
  *       ├─ targetProjectId?  — absent for analysis-only projects (LCM, PT9)
@@ -110,16 +116,19 @@ declare module 'papi-shared-types' {
  *       ├─ analysis : TextAnalysis
  *       └─ links?   : AlignmentLink[]
  *
- *       ActiveProject
- *       ├─ project : InterlinearProject
- *       ├─ source  : Book[]
- *       └─ target? : Book[]   — present only when targetProjectId is set
+ *     TextAnalysis
+ *       ├─ segmentAnalyses      : SegmentAnalysis[]
+ *       ├─ segmentAnalysisLinks : SegmentAnalysisLink[]
+ *       ├─ tokenAnalyses        : TokenAnalysis[]
+ *       ├─ tokenAnalysisLinks   : TokenAnalysisLink[]
+ *       ├─ phraseAnalyses       : PhraseAnalysis[]
+ *       └─ phraseAnalysisLinks  : PhraseAnalysisLink[]
  *
- * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting. Every
- * analysis record carries an id reference back to its text-layer counterpart (`segmentId` /
- * `tokenRef`). Consumers index by id at load time (`Map<tokenRef, TokenAnalysis[]>`, etc.) to
- * render a segment at a time. This keeps the layer's containers honest — none exist just to mirror
- * a parent — and makes it trivial to add analyses without touching the text hierarchy.
+ * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting.
+ * Analysis payloads (`SegmentAnalysis`, `TokenAnalysis`, `PhraseAnalysis`) are stored separately
+ * from their text-layer attachments. Link records (`segmentAnalysisLinks`, `tokenAnalysisLinks`,
+ * `phraseAnalysisLinks`) connect each analysis id to one segment or one/many tokens. Consumers
+ * index links by segment/token ids at load time to render a segment at a time.
  *
  * Lexical information (entries, senses, allomorphs, grammar / MSA, …) is **not** stored in this
  * model. It lives in the Lexicon extension (`lexicon`); this model references it via `EntryRef` /
@@ -136,10 +145,9 @@ declare module 'papi-shared-types' {
  * `Segment.tokens` so the baseline text can be reconstructed faithfully. They are simply omitted
  * from the analysis layer's `tokenAnalyses` (rather than stored there with empty analyses).
  *
- * Staleness detection: `TokenAnalysis` records carry a `tokenSnapshot` of the token's surface text
- * at analysis time. `AlignmentEndpoint` records carry an equivalent snapshot via
- * `token.surfaceText`. When the baseline changes, consumers compare the snapshot against the
- * current `Token.surfaceText` and flip `status` to `'stale'` on mismatch to prompt re-review.
+ * Staleness detection: `AlignmentEndpoint` records carry a token snapshot via `token.surfaceText`.
+ * When the baseline changes, consumers compare the snapshot against the current `Token.surfaceText`
+ * and flip `status` to `'stale'` on mismatch to prompt re-review.
  */
 declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
@@ -167,8 +175,8 @@ declare module 'interlinearizer' {
    * - `candidate` — proposed but not yet reviewed
    * - `rejected` — explicitly rejected by a human
    * - `stale` — the underlying token text has changed since this record was created; the record needs
-   *   human review. Set by drift-detection logic comparing `tokenSnapshot` against the current
-   *   `Token.surfaceText`.
+   *   human review. Set by drift-detection logic comparing stored `TokenSnapshot.surfaceText`
+   *   values against the current `Token.surfaceText`.
    */
   export type AssignmentStatus = 'approved' | 'suggested' | 'candidate' | 'rejected' | 'stale';
 
@@ -357,7 +365,7 @@ declare module 'interlinearizer' {
     /**
      * Stable identifier for this segment, unique within the owning `InterlinearProject`. In
      * practice the id is project-wide unique because it is set to the verse SID (e.g. `"GEN 1:1"`).
-     * Used as the cross-reference key by `SegmentAnalysis.segmentId`.
+     * Used as the segment-side key by `SegmentAnalysisLink.segmentId`.
      */
     id: string;
 
@@ -422,8 +430,8 @@ declare module 'interlinearizer' {
     /**
      * Stable identifier for this token, unique within the owning `InterlinearProject`. In practice
      * the ref is project-wide unique because it embeds the verse SID and the token's character
-     * offset (e.g. `"GEN 1:1:0"` for the first token in Genesis 1:1). Used as the cross-reference
-     * key by `TokenAnalysis.tokenRef`, `PhraseAnalysis.tokenRefs`, and
+     * offset (e.g. `"GEN 1:1:0"` for the first token in Genesis 1:1). Used as the token-side key by
+     * `TokenAnalysisLink.token.tokenRef`, `PhraseAnalysisLink.tokens[*].tokenRef`, and
      * `AlignmentEndpoint.token.tokenRef`.
      */
     ref: string;
@@ -463,10 +471,9 @@ declare module 'interlinearizer' {
   /**
    * The analysis layer for an `InterlinearProject`.
    *
-   * Flat by design — it does **not** mirror the text layer's book / segment nesting. Every record
-   * carries an id reference back to its text-layer counterpart (`segmentId` / `tokenRef`).
-   * Consumers that need segment-local views build `Map<segmentId, …>` / `Map<tokenRef,
-   * TokenAnalysis[]>` at load time.
+   * Flat by design — it does **not** mirror the text layer's book / segment nesting. Analysis
+   * payload records are linked to the text layer through the corresponding `*AnalysisLinks` arrays.
+   * Consumers that need segment-local views build indexes from those links at load time.
    *
    * Keeping this layer flat avoids ceremonial container types whose only purpose is to mirror a
    * parent, and makes it trivial to add or remove analyses without touching the text hierarchy.
@@ -481,67 +488,103 @@ declare module 'interlinearizer' {
    */
   export interface TextAnalysis {
     /**
-     * Per-segment analysis records, keyed to `Segment.id` via `segmentId`. Carries only
-     * segment-level data (free / literal translations); token-level data lives in `tokenAnalyses`.
+     * Per-segment analysis payload records. Carries only segment-level data (free / literal
+     * translations); token-level data lives in `tokenAnalyses`.
      *
-     * Competing analyses are permitted: a single `segmentId` may have multiple `SegmentAnalysis`
+     * Competing analyses are permitted: a single segment may have multiple linked `SegmentAnalysis`
      * entries (e.g. an AI-drafted back translation alongside a human-edited one), distinguished by
      * `status` / `confidence` / `producer`.
      *
-     * **Invariant:** at most one `SegmentAnalysis` per `segmentId` has `status: 'approved'`. That
-     * entry is the canonical segment-level analysis for rendering; alternates are available to
-     * review workflows via the other statuses. This invariant is the caller's responsibility to
-     * maintain; no runtime enforcement exists.
+     * **Invariant:** for a given segment, at most one linked `SegmentAnalysisLink` should have
+     * `status: 'approved'`. That linked analysis is the canonical segment-level analysis for
+     * rendering; alternates are available to review workflows via the other statuses. This
+     * invariant is the caller's responsibility to maintain; no runtime enforcement exists.
      */
     segmentAnalyses: SegmentAnalysis[];
 
     /**
-     * Token-level analyses, flat across the whole text. Each entry references its token by
-     * `tokenRef`; the text layer keeps every token (words and punctuation) but this list typically
-     * includes only the tokens being analyzed — punctuation is omitted rather than stored with
-     * empty analyses.
+     * Links each `SegmentAnalysis.id` to a single `Segment.id`, along with review metadata for that
+     * assignment.
+     */
+    segmentAnalysisLinks: SegmentAnalysisLink[];
+
+    /**
+     * Token-level analysis payload records, flat across the whole text. The text layer keeps every
+     * token (words and punctuation) but this list typically includes only tokens being analyzed —
+     * punctuation is omitted rather than stored with empty analyses.
      *
-     * Competing analyses are permitted: a single `tokenRef` may have multiple `TokenAnalysis`
+     * Competing analyses are permitted: a single token may have multiple linked `TokenAnalysis`
      * entries (e.g. a parser's suggestion alongside a human's choice), distinguished by `status` /
      * `confidence` / `producer`.
      *
-     * **Invariant:** at most one `TokenAnalysis` per `tokenRef` has `status: 'approved'`. That
-     * entry is the canonical analysis for rendering; alternates are available to review workflows
-     * via the other statuses (`'suggested'`, `'candidate'`, `'rejected'`, `'stale'`). This
-     * invariant is the caller's responsibility to maintain; no runtime enforcement exists.
+     * **Invariant:** for a given token, at most one linked `TokenAnalysisLink` should have `status:
+     * 'approved'`. That linked analysis is the canonical analysis for rendering; alternates are
+     * available to review workflows via the other statuses (`'suggested'`, `'candidate'`,
+     * `'rejected'`, `'stale'`). This invariant is the caller's responsibility to maintain; no
+     * runtime enforcement exists.
      */
     tokenAnalyses: TokenAnalysis[];
+
+    /**
+     * Links each `TokenAnalysis.id` to one token snapshot, along with review metadata for that
+     * assignment.
+     */
+    tokenAnalysisLinks: TokenAnalysisLink[];
 
     /**
      * Multi-token phrase analyses, flat across the whole text. A phrase may group adjacent or
      * disjoint tokens and carries its own gloss. A phrase's member tokens may span multiple
      * segments.
      *
-     * Competing phrases are permitted: a given `tokenRef` may appear in multiple `PhraseAnalysis`
+     * Competing phrases are permitted: a given token may appear in multiple linked `PhraseAnalysis`
      * records (e.g. a suggested phrase grouping plus a human-approved one) distinguished by
      * `status`.
      *
      * **Invariants:**
      *
-     * - At most one `PhraseAnalysis` containing a given `tokenRef` has `status: 'approved'`. That
-     *   phrase is canonical for rendering.
+     * - At most one linked `PhraseAnalysisLink` containing a given token should have `status:
+     *   'approved'`. That phrase is canonical for rendering.
      * - A token may carry both a `TokenAnalysis` _and_ an approved `PhraseAnalysis`; the per-token
      *   parse coexists with the phrase-level gloss and is not a competing analysis.
      */
     phraseAnalyses: PhraseAnalysis[];
+
+    /**
+     * Links each `PhraseAnalysis.id` to one or more token snapshots, along with review metadata for
+     * that assignment.
+     */
+    phraseAnalysisLinks: PhraseAnalysisLink[];
+  }
+
+  /** Shared link metadata for attaching an analysis payload record to text-layer targets. */
+  export interface AnalysisLink {
+    /** The `Analysis.id` for the linked analysis payload record. */
+    analysisId: string;
+
+    /** Required review status. */
+    status: AssignmentStatus;
+
+    /** How much to trust this analysis assignment. */
+    confidence?: Confidence;
+  }
+
+  /** Links one `SegmentAnalysis` payload record to a single source segment. */
+  export interface SegmentAnalysisLink extends AnalysisLink {
+    /** Reference to the corresponding `Segment.id` in the text layer. */
+    segmentId: string;
   }
 
   /**
-   * Shared base for all analysis record types (`SegmentAnalysis`, `TokenAnalysis`,
-   * `PhraseAnalysis`). Carries the fields common to every analysis: stable identity, review status,
-   * and optional provenance.
+   * Shared base for all analysis payload record types (`SegmentAnalysis`, `TokenAnalysis`,
+   * `PhraseAnalysis`). Carries fields common to each analysis payload: stable identity, token
+   * surface text, and optional provenance.
    */
   export interface Analysis {
     /** Unique within the owning `TextAnalysis` — stable reference for this record. */
     id: string;
 
-    /** Required review status. */
-    status: AssignmentStatus;
+    /** Surface form of the analyzed text span (token, phrase, or segment). */
+    surfaceText: string;
 
     /**
      * How much to trust this analysis. Independent of who produced it — see `producer` /
@@ -565,8 +608,8 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Per-segment analysis record. Carries data that belongs to a segment as a whole (free / literal
-   * translations). Token analyses and phrases live on `TextAnalysis` directly, keyed by id.
+   * Per-segment analysis payload record. Carries data that belongs to a segment as a whole (free /
+   * literal translations). Token analyses and phrases live on `TextAnalysis` directly.
    *
    * Source-system mapping:
    *
@@ -578,9 +621,6 @@ declare module 'interlinearizer' {
    *   synthesized.
    */
   export interface SegmentAnalysis extends Analysis {
-    /** Reference to the corresponding `Segment.id` in the text layer. */
-    segmentId: string;
-
     /** Idiomatic translation of the segment. */
     freeTranslation?: MultiString;
 
@@ -591,6 +631,12 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
   // §3 TokenAnalysis — parse + 1:1 gloss
   // ---------------------------------------------------------------------------
+
+  /** Links one `TokenAnalysis` payload record to exactly one token snapshot. */
+  export interface TokenAnalysisLink extends AnalysisLink {
+    /** Token that this analysis refers to. */
+    token: TokenSnapshot;
+  }
 
   /**
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
@@ -626,9 +672,6 @@ declare module 'interlinearizer' {
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
   export interface TokenAnalysis extends Analysis {
-    /** Snapshot of the token being analyzed. */
-    token: TokenSnapshot;
-
     /**
      * Ordered morpheme breakdown. Present when the analysis reaches sub-word granularity (e.g. an
      * LCM `IWfiAnalysis` with `MorphBundlesOS`). Absent when the analysis treats the token as a
@@ -660,10 +703,9 @@ declare module 'interlinearizer' {
   }
 
   /**
-   * Analysis of one morpheme within a token's parse. Unlike `TokenAnalysis` and `SegmentAnalysis`,
-   * which reference their subject by id, `MorphemeAnalysis` owns the morpheme itself: `form` and
-   * `writingSystem` store the structural data directly, while the optional refs link it into the
-   * Lexicon extension for lexical resolution.
+   * Analysis of one morpheme within a token's parse. `MorphemeAnalysis` owns the morpheme itself:
+   * `form` and `writingSystem` store the structural data directly, while the optional refs link it
+   * into the Lexicon extension for lexical resolution.
    *
    * `form` is the morpheme's surface text as it appeared in this analysis context — which may
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
@@ -735,10 +777,17 @@ declare module 'interlinearizer' {
   // §4 PhraseAnalysis — multi-token gloss unit
   // ---------------------------------------------------------------------------
 
+  /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
+  export interface PhraseAnalysisLink extends AnalysisLink {
+    /** Ordered snapshots of tokens that compose this phrase. */
+    tokens: [TokenSnapshot, ...TokenSnapshot[]];
+  }
+
   /**
    * A multi-token unit glossed or analyzed as a single phrase.
    *
-   * `tokens` lists the tokens (in order) that belong to the phrase. The tokens may be:
+   * The linked `PhraseAnalysisLink.tokens` list holds the token snapshots (in order) that belong to
+   * the phrase. The tokens may be:
    *
    * - Adjacent within one segment ("en el" → "in the")
    * - Disjoint within one segment (French "ne … pas" → "not")
@@ -761,15 +810,12 @@ declare module 'interlinearizer' {
    * - LCM: LCM does not natively model multi-word phrases as first-class objects. Multi-word glosses,
    *   when present, must be synthesized as `PhraseAnalysis` records during import.
    * - Paratext: a `LexemeCluster` with `Type = Phrase` spans multiple words — each such cluster
-   *   becomes one `PhraseAnalysis` whose `tokenRefs` enumerate the covered tokens. `senseRef` is
-   *   the selected `LexemeData` reference for the phrase.
+   *   becomes one `PhraseAnalysis` whose linked `PhraseAnalysisLink.tokens` enumerate the covered
+   *   tokens. `senseRef` is the selected `LexemeData` reference for the phrase.
    * - BT Extension: not natively tracked. Must be synthesized during migration when adjacent tokens
    *   share the same gloss / sense.
    */
   export interface PhraseAnalysis extends Analysis {
-    /** Ordered snapshots of tokens that compose this phrase. */
-    tokens: [TokenSnapshot, ...TokenSnapshot[]];
-
     /**
      * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
      * `senseRef` when both are present.
@@ -913,8 +959,8 @@ declare module 'interlinearizer' {
    *
    * The token hierarchy (`Book` / `Segment` / `Token`) is **not** stored here — it is rebuilt from
    * Platform.Bible's USJ on each load. Only the analysis data and alignment links are persisted.
-   * Token-level drift is detected via `tokenSnapshot` on `TokenAnalysis` records and via
-   * `token.surfaceText` on `AlignmentEndpoint` records.
+   * Token-level drift is detected via `token.surfaceText` snapshots on `AlignmentEndpoint`
+   * records.
    *
    * Projects are stored via `papi.storage` (extension-host only) under two keys:
    *

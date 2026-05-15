@@ -210,39 +210,6 @@ describe('CreateProjectModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
-    const onProjectCreated = jest.fn();
-    const onClose = jest.fn();
-    render(
-      <CreateProjectModal
-        projectId={testProjectId}
-        onClose={onClose}
-        onProjectCreated={onProjectCreated}
-      />,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
-
-    await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
-    expect(onProjectCreated).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('sends an error notification when sendCommand returns undefined', async () => {
-    jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
-    render(<CreateProjectModal projectId={testProjectId} onClose={jest.fn()} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
-
-    await waitFor(() =>
-      expect(papi.notifications.send).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_create_project_failed%',
-        severity: 'error',
-      }),
-    );
-  });
-
   it('defaults analysis language to ["und"] when the language input contains only whitespace', async () => {
     render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
 
@@ -264,7 +231,7 @@ describe('CreateProjectModal', () => {
   });
 
   it('disables the create button while a submission is in progress', async () => {
-    let resolveCommand: (value: undefined) => void = () => {};
+    let resolveCommand: (value: string) => void = () => {};
     jest.mocked(papi.commands.sendCommand).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -277,13 +244,13 @@ describe('CreateProjectModal', () => {
     await userEvent.click(createButton);
 
     expect(createButton).toBeDisabled();
-    resolveCommand(undefined);
+    resolveCommand('not valid json{{{');
 
     await waitFor(() => expect(createButton).not.toBeDisabled());
   });
 
   it('disables the cancel button while a submission is in progress', async () => {
-    let resolveCommand: (value: undefined) => void = () => {};
+    let resolveCommand: (value: string) => void = () => {};
     jest.mocked(papi.commands.sendCommand).mockImplementation(
       () =>
         new Promise((resolve) => {
@@ -296,7 +263,7 @@ describe('CreateProjectModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     expect(cancelButton).toBeDisabled();
-    resolveCommand(undefined);
+    resolveCommand('not valid json{{{');
 
     await waitFor(() => expect(cancelButton).not.toBeDisabled());
   });

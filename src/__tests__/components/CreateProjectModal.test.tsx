@@ -210,7 +210,7 @@ describe('CreateProjectModal', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('does not call onProjectCreated, onClose, or send a notification when sendCommand returns undefined', async () => {
+  it('does not call onProjectCreated or onClose when sendCommand returns undefined', async () => {
     jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
     const onProjectCreated = jest.fn();
     const onClose = jest.fn();
@@ -227,7 +227,20 @@ describe('CreateProjectModal', () => {
     await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
     expect(onProjectCreated).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
+  });
+
+  it('sends an error notification when sendCommand returns undefined', async () => {
+    jest.mocked(papi.commands.sendCommand).mockResolvedValue(undefined);
+    render(<CreateProjectModal projectId={testProjectId} onClose={jest.fn()} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_create_project_failed%',
+        severity: 'error',
+      }),
+    );
   });
 
   it('defaults analysis language to ["und"] when the language input contains only whitespace', async () => {

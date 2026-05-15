@@ -26,6 +26,9 @@ interface PapiBackendTestMock {
 /**
  * Type guard for the mocked @papi/backend default export. Allows destructuring mocks without type
  * assertions.
+ *
+ * @param m - The value to test, typically the default export of the mocked module.
+ * @returns `true` if `m` exposes all expected `__mock*` properties.
  */
 function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
   return (
@@ -74,6 +77,12 @@ type WebViewProvider = {
   ): Promise<WebViewDefinition | undefined>;
 };
 
+/**
+ * Type guard that narrows an unknown value to a {@link WebViewProvider}.
+ *
+ * @param x - The value to test.
+ * @returns `true` if `x` has a callable `getWebView` method.
+ */
 function isWebViewProvider(x: unknown): x is WebViewProvider {
   return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
 }
@@ -85,12 +94,26 @@ function getRegisteredProvider(): WebViewProvider {
   return raw;
 }
 
+/**
+ * Finds the handler registered for `commandName` in the most recent `activate()` call.
+ *
+ * @param commandName - The fully-qualified command name to look up.
+ * @returns The registered handler function, or `undefined` if none was registered for that name.
+ */
 function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
   const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
   const rawHandler: unknown = call?.[1];
   return isCallable(rawHandler) ? rawHandler : undefined;
 }
 
+/**
+ * Activates the extension and returns a typed wrapper around the `interlinearizer.openForWebView`
+ * command handler.
+ *
+ * @returns A function that invokes the handler with an optional WebView ID and resolves to the
+ *   opened WebView ID string, or `undefined` if the handler returns a non-string.
+ * @throws If the handler was not registered during `activate()`.
+ */
 async function getOpenForWebViewHandler(): Promise<
   (webViewId?: string) => Promise<string | undefined>
 > {
@@ -128,6 +151,14 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
   return (event) => cb(event);
 }
 
+/**
+ * Activates the extension and returns a typed wrapper around the `interlinearizer.createProject`
+ * command handler.
+ *
+ * @returns A function that invokes the handler with a source project ID and analysis languages,
+ *   resolving to the JSON-stringified project or `undefined` if the handler returns a non-string.
+ * @throws If the handler was not registered during `activate()`.
+ */
 async function getCreateProjectHandler(): Promise<
   (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
 > {
@@ -144,6 +175,14 @@ async function getCreateProjectHandler(): Promise<
   };
 }
 
+/**
+ * Activates the extension and returns a typed wrapper around the `interlinearizer.deleteProject`
+ * command handler.
+ *
+ * @returns A function that invokes the handler with a project UUID and resolves when deletion
+ *   completes.
+ * @throws If the handler was not registered during `activate()`.
+ */
 async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>> {
   const context = createTestActivationContext();
   await activate(context);
@@ -154,6 +193,14 @@ async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>>
   };
 }
 
+/**
+ * Activates the extension and returns a typed wrapper around the
+ * `interlinearizer.getProjectsForSource` command handler.
+ *
+ * @returns A function that invokes the handler with a source project ID and resolves to the
+ *   JSON-stringified project array (falls back to `'[]'` if the handler returns a non-string).
+ * @throws If the handler was not registered during `activate()`.
+ */
 async function getProjectsForSourceHandler(): Promise<
   (sourceProjectId: string) => Promise<string>
 > {
@@ -167,6 +214,15 @@ async function getProjectsForSourceHandler(): Promise<
   };
 }
 
+/**
+ * Activates the extension and returns a typed wrapper around the
+ * `interlinearizer.updateProjectMetadata` command handler.
+ *
+ * @returns A function that invokes the handler with a project UUID and updated fields, resolving to
+ *   the JSON-stringified updated project or `undefined` if the project was not found or the handler
+ *   returns a non-string.
+ * @throws If the handler was not registered during `activate()`.
+ */
 async function getUpdateProjectMetadataHandler(): Promise<
   (
     id: string,

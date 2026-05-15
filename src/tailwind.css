@@ -31,6 +31,14 @@
   }
 }
 
+@utility modal-overlay {
+  @apply tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40;
+}
+
+@utility modal-dialog {
+  @apply tw:static tw:bg-background tw:text-foreground tw:border tw:border-border tw:p-6 tw:shadow-lg;
+}
+
 /*
  * CUSTOM: Theme variable policy.
  *

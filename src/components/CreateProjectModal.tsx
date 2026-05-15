@@ -102,10 +102,10 @@ export function CreateProjectModal({
   if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40">
+    <div className="tw:modal-overlay">
       <dialog
         aria-labelledby="create-project-modal-title"
-        className="tw:bg-background tw:text-foreground tw:rounded tw:border tw:border-border tw:p-6 tw:w-96 tw:shadow-lg"
+        className="tw:modal-dialog tw:rounded tw:w-96"
         open
       >
         <h2

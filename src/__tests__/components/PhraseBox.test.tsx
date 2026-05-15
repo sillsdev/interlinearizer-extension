@@ -10,13 +10,13 @@ import { PhraseBox } from '../../components/PhraseBox';
 jest.mock('../../components/TokenChip', () => ({
   __esModule: true,
   default: ({ token }: { token: Token }) => (
-    <span data-testid={`token-${token.id}`}>{token.surfaceText}</span>
+    <span data-testid={`token-${token.ref}`}>{token.surfaceText}</span>
   ),
 }));
 
 /** Pre-built test token */
 const TEST_TOKEN: Token = {
-  id: 'token-1',
+  ref: 'token-1',
   surfaceText: 'Hello',
   writingSystem: 'en',
   type: 'word',
@@ -26,7 +26,7 @@ const TEST_TOKEN: Token = {
 
 /** Second test token */
 const TEST_TOKEN_2: Token = {
-  id: 'token-2',
+  ref: 'token-2',
   surfaceText: 'World',
   writingSystem: 'en',
   type: 'word',
@@ -77,7 +77,7 @@ describe('PhraseBox', () => {
   });
 
   it('applies default styling when isFocused is false', () => {
-    render(<PhraseBox tokens={[TEST_TOKEN]} />);
+    render(<PhraseBox tokens={[TEST_TOKEN]} isFocused={false} />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'default');

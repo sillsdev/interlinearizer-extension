@@ -353,13 +353,13 @@ export default function ContinuousView({
           }}
         >
           {allTokens.map((token, tokenIndex) => {
-            if (token.type !== 'word') return <MemoizedTokenChip key={token.id} token={token} />;
+            if (token.type !== 'word') return <MemoizedTokenChip key={token.ref} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
             return (
               <span
-                key={token.id}
+                key={token.ref}
                 ref={(el) => {
                   if (phraseIndex !== undefined) phraseRefs.current[phraseIndex] = el;
                 }}

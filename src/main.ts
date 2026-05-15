@@ -115,8 +115,10 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  * logged and shown as a notification).
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
- * @param analysisWritingSystem - BCP 47 tag for the language used in glosses and annotations (e.g.
- *   `'en'`).
+ * @param analysisLanguages - BCP 47 tags for languages used in glosses and annotations (e.g.
+ *   `['en']`). Required and must be non-empty.
+ * @param targetProjectId - Optional Platform.Bible project ID of the target text for bilateral
+ *   alignment projects. Omit for analysis-only projects.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @returns JSON-stringified `InterlinearProject` for the new project, or `undefined` if storage
@@ -124,7 +126,8 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  */
 async function createInterlinearProject(
   sourceProjectId: string,
-  analysisWritingSystem: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
   name?: string,
   description?: string,
 ): Promise<string | undefined> {
@@ -132,7 +135,8 @@ async function createInterlinearProject(
     const project = await projectStorage.createProject(
       executionToken,
       sourceProjectId,
-      analysisWritingSystem,
+      analysisLanguages,
+      targetProjectId,
       name,
       description,
     );
@@ -185,8 +189,9 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
  * @param description - New user-facing description, or `undefined` to clear it.
- * @param analysisWritingSystem - New BCP 47 analysis language tag; omit or pass empty to leave
- *   unchanged.
+ * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
+ *   pass the current value to leave it unchanged.
+ * @param targetProjectId - New target-project ID; omit to clear the target binding.
  * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
  *   found or if a storage failure occurs (in which case the error is logged and a notification is
  *   sent to the user).
@@ -195,7 +200,8 @@ async function updateProjectMetadata(
   interlinearProjectId: string,
   name: string | undefined,
   description: string | undefined,
-  analysisWritingSystem?: string,
+  analysisLanguages: string[],
+  targetProjectId?: string,
 ): Promise<string | undefined> {
   try {
     const updated = await projectStorage.updateProjectMetadata(
@@ -203,7 +209,8 @@ async function updateProjectMetadata(
       interlinearProjectId,
       name,
       description,
-      analysisWritingSystem,
+      analysisLanguages,
+      targetProjectId,
     );
     return updated ? JSON.stringify(updated) : undefined;
   } catch (e) {
@@ -304,9 +311,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'analysisWritingSystem',
+            name: 'analysisLanguages',
             required: true,
-            summary: 'BCP 47 tag for the gloss / annotation language (e.g. "en")',
+            summary:
+              'BCP 47 tags for gloss / annotation languages (e.g. ["en"]); must be non-empty',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
+            required: false,
+            summary:
+              'Optional Platform.Bible project ID of the target text for bilateral alignment projects',
             schema: { type: 'string' },
           },
           {
@@ -382,9 +397,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
           {
-            name: 'analysisWritingSystem',
+            name: 'analysisLanguages',
+            required: true,
+            summary:
+              'New BCP 47 analysis language tags; must be non-empty (pass current value to leave unchanged)',
+            schema: { type: 'array', items: { type: 'string' } },
+          },
+          {
+            name: 'targetProjectId',
             required: false,
-            summary: 'New BCP 47 analysis language tag; omit or pass empty to leave unchanged',
+            summary: 'New target-project ID; omit to clear the target binding',
             schema: { type: 'string' },
           },
         ],

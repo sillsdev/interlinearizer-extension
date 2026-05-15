@@ -40,7 +40,7 @@ const TEST_BOOK: Book = {
       baselineText: 'In the beginning.',
       tokens: [
         {
-          id: 'GEN 1:1:0',
+          ref: 'GEN 1:1:0',
           surfaceText: 'In',
           writingSystem: 'en',
           type: 'word',
@@ -56,7 +56,7 @@ const TEST_BOOK: Book = {
       baselineText: 'And the earth.',
       tokens: [
         {
-          id: 'GEN 1:2:0',
+          ref: 'GEN 1:2:0',
           surfaceText: 'And',
           writingSystem: 'en',
           type: 'word',
@@ -72,7 +72,7 @@ const TEST_BOOK: Book = {
       baselineText: 'The second day.',
       tokens: [
         {
-          id: 'GEN 2:1:0',
+          ref: 'GEN 2:1:0',
           surfaceText: 'The',
           writingSystem: 'en',
           type: 'word',
@@ -111,7 +111,7 @@ describe('useInterlinearizerBookData', () => {
     setupDefaultProjectSettingMock();
   });
 
-  it('returns book data when project is set and data loads successfully', () => {
+  it('returns isLoading=true and no book or error while data is still loading', () => {
     jest.mocked(useProjectData).mockReturnValue({ BookUSJ: () => [undefined, jest.fn(), true] });
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
 

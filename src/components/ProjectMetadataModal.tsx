@@ -35,8 +35,8 @@ export type ProjectMetadataModalProps = Readonly<{
   description?: string;
   /** Platform.Bible project ID of the source text. */
   sourceProjectId: string;
-  /** BCP 47 tag for the analysis language. */
-  analysisWritingSystem: string;
+  /** BCP 47 tags for the analysis languages. */
+  analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
   /** Callback invoked when the modal should be dismissed without saving. */
@@ -45,7 +45,7 @@ export type ProjectMetadataModalProps = Readonly<{
   onProjectSaved?: (updated: {
     name?: string;
     description?: string;
-    analysisWritingSystem: string;
+    analysisLanguages: string[];
   }) => void;
   /** Optional callback invoked with the deleted project ID after deletion. */
   onProjectDeleted?: (deletedProjectId: string) => void;
@@ -64,7 +64,7 @@ export function ProjectMetadataModal({
   name,
   description,
   sourceProjectId,
-  analysisWritingSystem,
+  analysisLanguages,
   createdAt,
   onClose,
   onProjectSaved,
@@ -76,7 +76,7 @@ export function ProjectMetadataModal({
 
   const [editName, setEditName] = useState(name ?? '');
   const [editDescription, setEditDescription] = useState(description ?? '');
-  const [editLanguage, setEditLanguage] = useState(analysisWritingSystem);
+  const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
@@ -84,9 +84,13 @@ export function ProjectMetadataModal({
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
   /**
-   * Sends the updated name, description, and analysis language to the backend, then notifies the
+   * Sends the updated name, description, and analysis languages to the backend, then notifies the
    * caller and closes the modal. Logs on failure; the backend command handler is responsible for
    * showing the error notification so this handler does not re-send it.
+   *
+   * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
+   * are trimmed and empty entries dropped. Save is disabled when the parsed list is empty since
+   * `analysisLanguages` is required and must not be cleared.
    *
    * @returns A promise that resolves when the command completes or the error is logged.
    */
@@ -97,20 +101,23 @@ export function ProjectMetadataModal({
     setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
-    const newLanguage = editLanguage.trim();
+    const newLanguages = editLanguages
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
     try {
       const updatedProjectJson = await papi.commands.sendCommand(
         'interlinearizer.updateProjectMetadata',
         interlinearProjectId,
         newName,
         newDescription,
-        newLanguage,
+        newLanguages,
       );
       if (!updatedProjectJson) return;
       onProjectSaved?.({
         name: newName,
         description: newDescription,
-        analysisWritingSystem: newLanguage,
+        analysisLanguages: newLanguages,
       });
       onClose();
     } catch (e) {
@@ -119,7 +126,7 @@ export function ProjectMetadataModal({
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [editName, editDescription, editLanguage, interlinearProjectId, onProjectSaved, onClose]);
+  }, [editName, editDescription, editLanguages, interlinearProjectId, onProjectSaved, onClose]);
 
   /**
    * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
@@ -209,11 +216,11 @@ export function ProjectMetadataModal({
             <input
               id="metadata-edit-language"
               className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:font-mono"
-              value={editLanguage}
+              value={editLanguages}
               placeholder={
                 localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']
               }
-              onChange={(e) => setEditLanguage(e.target.value)}
+              onChange={(e) => setEditLanguages(e.target.value)}
             />
           </div>
         </div>
@@ -278,7 +285,16 @@ export function ProjectMetadataModal({
               <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
                 {localizedStrings['%interlinearizer_modal_metadata_close%']}
               </Button>
-              <Button onClick={handleSave} disabled={isSubmitting || !editLanguage.trim()}>
+              <Button
+                onClick={handleSave}
+                disabled={
+                  isSubmitting ||
+                  editLanguages
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter((t) => t.length > 0).length === 0
+                }
+              >
                 {localizedStrings['%interlinearizer_modal_metadata_save%']}
               </Button>
             </div>

@@ -78,10 +78,10 @@ export default function ProjectModals({
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
    * project is the currently active one.
    *
-   * @param updated - The updated name, description, and analysisWritingSystem.
+   * @param updated - The updated name, description, and analysisLanguages.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: { name?: string; description?: string; analysisWritingSystem: string }) => {
+    (updated: { name?: string; description?: string; analysisLanguages: string[] }) => {
       if (activeProject && resolvedMetadataProject?.id === activeProject.id) {
         setActiveProject({ ...activeProject, ...updated });
       }
@@ -134,7 +134,7 @@ export default function ProjectModals({
           name={resolvedMetadataProject.name}
           description={resolvedMetadataProject.description}
           sourceProjectId={resolvedMetadataProject.sourceProjectId}
-          analysisWritingSystem={resolvedMetadataProject.analysisWritingSystem}
+          analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
           onClose={() => {
             setModal(metadataSourceIsSelect ? 'select' : 'none');

@@ -11,9 +11,9 @@ const TIMEOUT_MS = 15_000;
  * the stored setting to finish updating. If the setting fails to save, the local value will persist
  * rather than reverting.
  *
- * @param defaultValue - Default value used when the setting has not been persisted yet
  * @param projectId - PAPI project ID
  * @param settingKey - A valid key for a boolean setting
+ * @param defaultValue - Default value used when the setting has not been persisted yet
  * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
  *   stable change handler; `value` — the current display value
  */

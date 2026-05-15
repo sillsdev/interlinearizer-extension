@@ -46,7 +46,7 @@ export function CreateProjectModal({
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [analysisLanguage, setAnalysisLanguage] = useState('und');
+  const [analysisLanguages, setAnalysisLanguages] = useState('und');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 
@@ -56,6 +56,9 @@ export function CreateProjectModal({
    * if the response cannot be parsed (SyntaxError); for other errors, logs and defers to the
    * backend command handler to surface the notification.
    *
+   * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
+   * are trimmed and empty entries dropped. Falls back to `['und']` when the user clears the field.
+   *
    * @returns A promise that resolves when the command completes or the error is handled.
    */
   const handleSubmit = useCallback(async () => {
@@ -63,12 +66,17 @@ export function CreateProjectModal({
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
-    const normalizedAnalysisLanguage = analysisLanguage.trim() || 'und';
+    const parsedLanguages = analysisLanguages
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    const normalizedAnalysisLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
     try {
       const projectJson = await papi.commands.sendCommand(
         'interlinearizer.createProject',
         projectId,
-        normalizedAnalysisLanguage,
+        normalizedAnalysisLanguages,
+        undefined,
         name.trim() || undefined,
         description.trim() || undefined,
       );
@@ -97,7 +105,7 @@ export function CreateProjectModal({
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [projectId, analysisLanguage, name, description, onClose, onProjectCreated]);
+  }, [projectId, analysisLanguages, name, description, onClose, onProjectCreated]);
 
   if (stringsLoading) return undefined;
 
@@ -141,8 +149,8 @@ export function CreateProjectModal({
         <input
           id="analysis-language"
           className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-4"
-          value={analysisLanguage}
-          onChange={(e) => setAnalysisLanguage(e.target.value)}
+          value={analysisLanguages}
+          onChange={(e) => setAnalysisLanguages(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
         <div className="tw:flex tw:gap-2 tw:justify-end">

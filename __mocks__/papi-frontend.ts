@@ -10,8 +10,15 @@ const mockLogger = {
   warn: jest.fn(),
 };
 
+const mockPapi = {
+  menuData: {
+    dataProviderName: 'platform.menuDataServiceDataProvider',
+  },
+};
+
 module.exports = {
   __esModule: true,
+  default: mockPapi,
   logger: mockLogger,
 };
 

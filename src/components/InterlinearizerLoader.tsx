@@ -1,6 +1,7 @@
 import type { UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import { useLocalizedStrings } from '@papi/frontend/react';
-import type { Localized, MultiColumnMenu } from 'platform-bible-utils';
+import papi, { logger } from '@papi/frontend';
+import { useData, useLocalizedStrings } from '@papi/frontend/react';
+import { isPlatformError } from 'platform-bible-utils';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { TabToolbar } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
@@ -11,24 +12,10 @@ import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 
 /** Localization keys fetched from the platform for this component's UI strings. */
-const STRING_KEYS = [
-  '%interlinearizer_continuousScrollToggle%',
-  '%interlinearizer_retokenize%',
-] as const;
+const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
 
 /** Command name for the retokenize project menu item. */
 const RETOKENIZE_COMMAND = 'interlinearizer.retokenize' as const;
-
-/** Structural shell of the project menu; label is filled in at render time from localized strings. */
-const PROJECT_MENU_SHELL = {
-  columns: { 'interlinearizer.projectData.column': { order: 1, label: '' } },
-  groups: {
-    'interlinearizer.projectData': {
-      column: 'interlinearizer.projectData.column',
-      order: 1,
-    },
-  },
-} as const satisfies Omit<Localized<MultiColumnMenu>, 'items'>;
 
 /**
  * Root component for loading the Interlinearizer. Loads book data and settings, then renders error
@@ -69,28 +56,23 @@ export default function InterlinearizerLoader({
 
   const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
 
-  const projectMenuData = useMemo<Localized<MultiColumnMenu>>(
-    () => ({
-      ...PROJECT_MENU_SHELL,
-      items: [
-        {
-          command: RETOKENIZE_COMMAND,
-          group: 'interlinearizer.projectData',
-          label: localizedStrings['%interlinearizer_retokenize%'],
-          localizeNotes: 'Project data menu > re-run tokenization from the latest USJ',
-          order: 1,
-        },
-      ],
-    }),
-    [localizedStrings],
+  /** Fetches the top-menu data for this WebView from the platform's menu data provider. */
+  const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
+    'interlinearizer.mainWebView',
+    { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
   );
+
+  const projectMenuData = useMemo(() => {
+    if (!webViewMenuPossiblyError || isPlatformError(webViewMenuPossiblyError)) return undefined;
+    return webViewMenuPossiblyError.topMenu;
+  }, [webViewMenuPossiblyError]);
 
   /**
    * Handles project menu item selections from the toolbar. Dispatches known command names to the
    * appropriate local action; unknown commands are silently ignored.
    *
    * @param selectedMenuItem - The menu item that was selected.
-   * @param selectedMenuItem.command - The command name string from {@link PROJECT_MENU_SHELL}.
+   * @param selectedMenuItem.command - The command name string registered in `menus.json`.
    */
   const handleSelectProjectMenuItem = useCallback<SelectMenuItemHandler>(({ command }) => {
     if (command === RETOKENIZE_COMMAND) setRetokenizeKey((k) => k + 1);
@@ -117,8 +99,10 @@ export default function InterlinearizerLoader({
       }
       onSelectProjectMenuItem={handleSelectProjectMenuItem}
       projectMenuData={projectMenuData}
-      /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-      onSelectViewInfoMenuItem={() => {}}
+      /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+      onSelectViewInfoMenuItem={() => {
+        logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
+      }}
     />
   );
 

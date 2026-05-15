@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
+import { useData, useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -133,13 +133,23 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     mockBookData();
     mockOptimisticSetting();
-    jest.mocked(useLocalizedStrings).mockReturnValue([
-      {
-        '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll',
-        '%interlinearizer_retokenize%': 'Retokenize Book',
-      },
-      false,
-    ]);
+    jest
+      .mocked(useLocalizedStrings)
+      .mockReturnValue([
+        { '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll' },
+        false,
+      ]);
+    jest.mocked(useData).mockReturnValue(
+      new Proxy(
+        {},
+        {
+          get(_target, prop: string | symbol) {
+            if (prop === 'WebViewMenu') return () => [undefined, jest.fn(), false];
+            throw new Error(`useData mock: unexpected method "${String(prop)}"`);
+          },
+        },
+      ),
+    );
   });
 
   it('renders Interlinearizer and the nav controls when book data is available', () => {

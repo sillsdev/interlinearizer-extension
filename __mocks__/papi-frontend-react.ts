@@ -10,6 +10,33 @@
  */
 const KNOWN_PROJECT_DATA_METHODS = new Set(['BookUSJ']);
 
+/** Known method names on data providers accessed via {@link useData}. */
+const KNOWN_DATA_METHODS = new Set(['WebViewMenu']);
+
+/**
+ * Mock for `useData`. Returns an object whose known methods each return
+ * `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]` tuple.
+ * Accessing an unknown method throws to catch misspelled provider keys in tests.
+ *
+ * @param _providerName - Ignored data provider name.
+ * @returns Proxy object exposing known data methods.
+ */
+const useData = jest.fn((_providerName: unknown) =>
+  new Proxy(
+    {},
+    {
+      get(_target, prop: string | symbol) {
+        if (typeof prop === 'string' && KNOWN_DATA_METHODS.has(prop)) {
+          return () => [undefined, jest.fn(), false];
+        }
+        throw new Error(
+          `useData mock: unknown method "${String(prop)}". Add it to KNOWN_DATA_METHODS if intentional.`,
+        );
+      },
+    },
+  ),
+);
+
 /**
  * Mock for `useProjectData`. Returns an object whose known methods each return
  * `[undefined, jest.fn(), false]`, matching the real hook's `[data, setter, isLoading]` tuple.
@@ -74,6 +101,7 @@ const useRecentScriptureRefs = jest
 
 module.exports = {
   __esModule: true,
+  useData,
   useProjectData,
   useProjectSetting,
   useLocalizedStrings,

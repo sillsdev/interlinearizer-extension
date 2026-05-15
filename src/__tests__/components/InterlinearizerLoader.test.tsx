@@ -71,6 +71,48 @@ type MockProject = {
 
 const testProjectId = 'test-project-id';
 
+jest.mock('../../hooks/useInterlinearizerBookData');
+jest.mock('../../hooks/useOptimisticBooleanSetting');
+
+jest.mock('../../components/ContinuousView', () => ({
+  __esModule: true,
+  default: () => <div data-testid="continuous-view" />,
+}));
+
+jest.mock('../../components/Interlinearizer', () => ({
+  __esModule: true,
+  default: () => <div data-testid="interlinearizer" />,
+}));
+
+jest.mock('../../components/ContinuousScrollToggle', () => ({
+  __esModule: true,
+  default: ({
+    checked,
+    disabled,
+    onCheckedChange,
+  }: {
+    checked: boolean;
+    disabled: boolean;
+    label: string;
+    onCheckedChange: (v: boolean) => void;
+  }) => (
+    <input
+      type="checkbox"
+      data-testid="continuous-scroll-toggle"
+      checked={checked}
+      disabled={disabled}
+      onChange={(e) => {
+        if (!disabled) onCheckedChange(e.target.checked);
+      }}
+    />
+  ),
+}));
+
+jest.mock('../../components/ScriptureNavControls', () => ({
+  __esModule: true,
+  default: () => <div data-testid="scripture-nav-controls" />,
+}));
+
 const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
@@ -81,6 +123,19 @@ const STUB_ACTIVE_PROJECT: MockProject = {
 
 jest.mock('../../components/ProjectModals', () => ({
   __esModule: true,
+  /**
+   * Minimal ProjectModals stand-in that drives modal state and active-project state through the
+   * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
+   * without mounting the full modal tree.
+   *
+   * @param modal - Current modal identifier controlling which stub panel is rendered.
+   * @param setModal - Callback to transition to a different modal state.
+   * @param activeProject - The currently active interlinear project, or undefined when none is
+   *   selected.
+   * @param useWebViewState - Injected hook used to read and write persisted WebView state; must
+   *   support the `'activeProject'` key.
+   * @returns A JSX element containing the stub modal panels keyed by `modal`.
+   */
   default: function StubProjectModals({
     modal,
     setModal,

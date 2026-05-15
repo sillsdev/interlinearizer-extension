@@ -219,7 +219,7 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
-  it('does not call onProjectSaved, onClose, or send a notification when save sendCommand resolves with a falsy value', async () => {
+  it('does not call onProjectSaved or onClose when save sendCommand resolves with a falsy value', async () => {
     mockSendCommand.mockResolvedValue(undefined);
     const onProjectSaved = jest.fn();
     const onClose = jest.fn();
@@ -232,7 +232,20 @@ describe('ProjectMetadataModal', () => {
     await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
     expect(onProjectSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-    expect(papi.notifications.send).not.toHaveBeenCalled();
+  });
+
+  it('sends an error notification when save sendCommand resolves with a falsy value', async () => {
+    mockSendCommand.mockResolvedValue(undefined);
+    render(<ProjectMetadataModal {...testProps} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_save_metadata_failed%',
+        severity: 'error',
+      }),
+    );
   });
 
   it('does not call onProjectSaved, onClose, or send a notification when save sendCommand rejects', async () => {

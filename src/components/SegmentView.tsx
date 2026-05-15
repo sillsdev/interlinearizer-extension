@@ -47,9 +47,7 @@ export function SegmentView({
       onClick={() => onClick?.({ book, chapter, verse })}
       type="button"
     >
-      <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-        {verse}
-      </span>
+      <span className="tw:mb-2 tw:block tw:section-label">{verse}</span>
       {displayMode === 'baseline-text' ? (
         <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
       ) : (

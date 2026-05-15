@@ -39,6 +39,18 @@
   @apply tw:static tw:bg-background tw:text-foreground tw:border tw:border-border tw:p-6 tw:shadow-lg;
 }
 
+@utility modal-title {
+  @apply tw:text-base tw:font-semibold tw:text-foreground tw:mb-4;
+}
+
+@utility section-label {
+  @apply tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide;
+}
+
+@utility icon-button {
+  @apply tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
+}
+
 /*
  * CUSTOM: Theme variable policy.
  *

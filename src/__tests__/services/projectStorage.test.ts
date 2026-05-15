@@ -8,6 +8,7 @@ import {
   getProject,
   getProjectsForSource,
   listProjects,
+  resetQueuesForTesting,
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { createTestActivationContext } from '../test-helpers';
@@ -62,6 +63,7 @@ function enoentError(): Error {
 
 describe('projectStorage', () => {
   beforeEach(() => {
+    resetQueuesForTesting();
     __mockWriteUserData.mockResolvedValue(undefined);
     __mockDeleteUserData.mockResolvedValue(undefined);
     jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000001');

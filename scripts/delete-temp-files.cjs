@@ -21,21 +21,34 @@ const hasAllFlag = process.argv.includes('--all');
 const hasCoreFlag = process.argv.includes('--core');
 const hasExtFlag = process.argv.includes('--ext');
 const hasNpmFlag = process.argv.includes('--npm');
+const hasTestFlag = process.argv.includes('--test');
 const hasYalcFlag = process.argv.includes('--yalc');
 
-if (!hasAllFlag && !hasCoreFlag && !hasExtFlag && !hasNpmFlag && !hasYalcFlag) {
-  console.error('Usage: node delete-temp-files.cjs [--all] [--core] [--ext] [--npm] [--yalc]');
-  console.error('  --core          Delete Electron and core caches (Electron, dev-appdata)');
-  console.error('  --ext           Delete extension directories (coverage, dist, src/temp-build)');
-  console.error('  --npm           Delete both node_modules and extension package-lock.json');
-  console.error('  --yalc          Delete core yalc-related files');
-  console.error('  --all           Delete all of the above');
-  process.exit(1);
+function printUsageAndExit(code = 0) {
+  console.info(
+    'Usage: node delete-temp-files.cjs [--all] [--core] [--ext] [--npm] [--test] [--yalc]',
+  );
+  console.info('  --core          Delete Electron and core caches (Electron, dev-appdata)');
+  console.info('  --ext           Delete extension builds (dist, src/temp-build)');
+  console.info('  --npm           Delete extension package-lock.json and both node_modules');
+  console.info('  --test          Delete extension test/lint-related files');
+  console.info('  --yalc          Delete core yalc-related files');
+  console.info('  --all           Delete all of the above');
+  process.exit(code);
+}
+
+if (process.argv.length <= 2 || process.argv.includes('--help') || process.argv.includes('-h')) {
+  printUsageAndExit();
+}
+
+if (!hasAllFlag && !hasCoreFlag && !hasExtFlag && !hasNpmFlag && !hasTestFlag && !hasYalcFlag) {
+  printUsageAndExit(1);
 }
 
 const shouldDeleteCore = hasAllFlag || hasCoreFlag;
 const shouldDeleteExt = hasAllFlag || hasExtFlag;
 const shouldDeleteNpm = hasAllFlag || hasNpmFlag;
+const shouldDeleteTest = hasAllFlag || hasTestFlag;
 const shouldDeleteYalc = hasAllFlag || hasYalcFlag;
 
 // Define directory lists
@@ -66,7 +79,6 @@ const CORE_DIRS = [
 ];
 
 const EXT_DIRS = [
-  path.join(__dirname, '..', 'coverage'),
   path.join(__dirname, '..', 'dist'),
   path.join(__dirname, '..', 'src', 'temp-build'),
 ];
@@ -75,6 +87,11 @@ const NPM_PATHS = [
   path.join(__dirname, '..', '..', 'paranext-core', 'node_modules'),
   path.join(__dirname, '..', 'node_modules'),
   path.join(__dirname, '..', 'package-lock.json'),
+];
+
+const TEST_PATHS = [
+  path.join(__dirname, '..', 'coverage'),
+  path.join(__dirname, '..', '.eslintcache'),
 ];
 
 const YALC_PATHS = [
@@ -97,7 +114,7 @@ function deletePath(pathToDelete) {
   try {
     if (fs.existsSync(pathToDelete)) {
       fs.rmSync(pathToDelete, { recursive: true, force: true });
-      console.log(`✓ Deleted ${pathToDelete}`);
+      console.log(`✓ ${pathToDelete} deleted`);
     } else {
       console.log(`⊘ ${pathToDelete} does not exist`);
     }
@@ -122,6 +139,11 @@ try {
   if (shouldDeleteNpm) {
     console.log('Deleting node_modules and package-lock.json...');
     NPM_PATHS.forEach(deletePath);
+  }
+
+  if (shouldDeleteTest) {
+    console.log('Deleting extension test- and lint-related files...');
+    TEST_PATHS.forEach(deletePath);
   }
 
   if (shouldDeleteYalc) {

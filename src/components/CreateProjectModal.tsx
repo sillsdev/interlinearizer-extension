@@ -122,10 +122,7 @@ export function CreateProjectModal({
         className="tw:modal-dialog tw:rounded tw:w-96"
         open
       >
-        <h2
-          id="create-project-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+        <h2 id="create-project-modal-title" className="tw:modal-title">
           {localizedStrings['%interlinearizer_modal_create_title%']}
         </h2>
         <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-name">

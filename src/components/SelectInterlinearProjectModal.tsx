@@ -2,7 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InterlinearProject } from 'interlinearizer';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
@@ -98,21 +98,28 @@ export function SelectInterlinearProjectModal({
 
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  /** Incremented each time a load starts; lets an in-flight response detect it has been superseded. */
+  const loadGenRef = useRef(0);
 
   /**
    * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
-   * shows a notification on failure.
+   * shows a notification on failure. Ignores the response if a newer load has started since this
+   * one was initiated.
    *
    * @returns A promise that resolves when the project list is loaded or the error notification is
    *   sent.
    */
   const loadProjects = useCallback(async () => {
+    loadGenRef.current += 1;
+    const gen = loadGenRef.current;
     setIsLoading(true);
+    setProjects([]);
     try {
       const json = await papi.commands.sendCommand(
         'interlinearizer.getProjectsForSource',
         sourceProjectId,
       );
+      if (gen !== loadGenRef.current) return;
       const parsed: unknown = JSON.parse(json);
       if (!Array.isArray(parsed)) {
         logger.warn('Interlinearizer: getProjectsForSource returned non-array', parsed);
@@ -131,7 +138,7 @@ export function SelectInterlinearProjectModal({
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
         .catch(() => {});
     } finally {
-      setIsLoading(false);
+      if (gen === loadGenRef.current) setIsLoading(false);
     }
   }, [sourceProjectId]);
 
@@ -148,10 +155,7 @@ export function SelectInterlinearProjectModal({
         className="tw:modal-dialog tw:rounded-lg tw:w-lg"
         open
       >
-        <h2
-          id="select-project-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+        <h2 id="select-project-modal-title" className="tw:modal-title">
           {localizedStrings['%interlinearizer_modal_select_title%']}
         </h2>
 

@@ -180,20 +180,14 @@ export function ProjectMetadataModal({
         className="tw:modal-dialog tw:rounded-lg tw:w-lg"
         open
       >
-        <h2
-          id="project-metadata-modal-title"
-          className="tw:text-base tw:font-semibold tw:text-foreground tw:mb-4"
-        >
+        <h2 id="project-metadata-modal-title" className="tw:modal-title">
           {localizedStrings['%interlinearizer_modal_metadata_title%']}
         </h2>
 
         {/* Editable fields */}
         <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
-              htmlFor="metadata-edit-name"
-            >
+            <label className="tw:section-label" htmlFor="metadata-edit-name">
               {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
             </label>
             <input
@@ -206,10 +200,7 @@ export function ProjectMetadataModal({
           </div>
 
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
-              htmlFor="metadata-edit-description"
-            >
+            <label className="tw:section-label" htmlFor="metadata-edit-description">
               {localizedStrings['%interlinearizer_modal_metadata_description_label%']}
             </label>
             <textarea
@@ -225,10 +216,7 @@ export function ProjectMetadataModal({
           </div>
 
           <div className="tw:flex tw:flex-col tw:gap-1">
-            <label
-              className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide"
-              htmlFor="metadata-edit-language"
-            >
+            <label className="tw:section-label" htmlFor="metadata-edit-language">
               {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
             </label>
             <input
@@ -339,9 +327,7 @@ function MetadataRow({
 }: Readonly<{ label: string; value: string; mono?: boolean }>) {
   return (
     <div className="tw:flex tw:flex-col tw:gap-0.5">
-      <dt className="tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-        {label}
-      </dt>
+      <dt className="tw:section-label">{label}</dt>
       <dd
         className={['tw:text-sm tw:break-all tw:text-foreground', mono ? 'tw:font-mono' : '']
           .filter(Boolean)

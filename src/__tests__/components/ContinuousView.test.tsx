@@ -429,7 +429,7 @@ describe('ContinuousView fade overlays', () => {
     // Prev fade gradient is tw:from-background (prev-to-next gradient)
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-e'),
+      el.className.includes('tw:bg-linear-to-r'),
     );
     expect(prevFades).toHaveLength(0);
   });
@@ -439,7 +439,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-s'),
+      el.className.includes('tw:bg-linear-to-l'),
     );
     expect(nextFades).toHaveLength(1);
   });
@@ -451,7 +451,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-e'),
+      el.className.includes('tw:bg-linear-to-r'),
     );
     expect(prevFades).toHaveLength(1);
   });
@@ -466,7 +466,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-s'),
+      el.className.includes('tw:bg-linear-to-l'),
     );
     expect(nextFades).toHaveLength(0);
   });

@@ -54,15 +54,18 @@ describe('SelectInterlinearProjectModal', () => {
 
   it('renders nothing while strings are loading', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, true]);
+    mockSendCommand.mockReturnValue(new Promise(() => {}));
     const { container } = render(<SelectInterlinearProjectModal {...defaultProps} />);
     expect(container.firstChild).toBeNull();
   });
 
-  it('renders the modal heading when strings are loaded', () => {
+  it('renders the modal heading when strings are loaded', async () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
-    expect(
-      screen.getByRole('heading', { name: /select interlinear project/i }),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByRole('heading', { name: /select interlinear project/i }),
+      ).toBeInTheDocument(),
+    );
   });
 
   it('shows empty-state message when no projects are returned', async () => {
@@ -180,5 +183,83 @@ describe('SelectInterlinearProjectModal', () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('No projects yet.')).toBeInTheDocument());
     expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+  });
+
+  it('disables Cancel and Create New while the project list is loading', async () => {
+    let resolveLoad: (v: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create new/i })).toBeDisabled();
+
+    resolveLoad('[]');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+  });
+
+  it('re-enables Cancel and Create New after loading finishes', async () => {
+    mockSendCommand.mockResolvedValue('[]');
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+    expect(screen.getByRole('button', { name: /create new/i })).not.toBeDisabled();
+  });
+
+  it('clears the project list immediately when a new load begins', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    const { rerender } = render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+
+    // Hold the second load in-flight so we can assert the list cleared before it resolves.
+    let resolveSecond: (v: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSecond = resolve;
+        }),
+    );
+
+    rerender(<SelectInterlinearProjectModal {...defaultProps} sourceProjectId="src-proj-2" />);
+
+    await waitFor(() => expect(screen.queryByText('Unnamed')).not.toBeInTheDocument());
+    expect(screen.queryByRole('listitem')).not.toBeInTheDocument();
+
+    resolveSecond('[]');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+  });
+
+  it('ignores a response that arrives after a newer load has started', async () => {
+    let resolveFirst: (v: string) => void = () => {};
+    mockSendCommand
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+
+    const { rerender } = render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    // Start a second load by changing sourceProjectId before the first resolves.
+    rerender(<SelectInterlinearProjectModal {...defaultProps} sourceProjectId="src-proj-2" />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    // Now deliver the stale first response — it must not replace the current list.
+    resolveFirst(JSON.stringify([STUB_PROJECT]));
+
+    await waitFor(() => expect(screen.queryByText('Unnamed')).not.toBeInTheDocument());
+    expect(screen.getByText('French glosses')).toBeInTheDocument();
   });
 });

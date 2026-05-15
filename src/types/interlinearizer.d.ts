@@ -24,8 +24,7 @@ declare module 'papi-shared-types' {
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
      * after the user fills in the create-project modal. Returns the persisted `InterlinearProject`
-     * serialized as a JSON string, or `undefined` if project creation fails (failure is logged and
-     * surfaced as an error notification).
+     * serialized as a JSON string.
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
      * @param analysisLanguages BCP 47 tags for all languages used in glosses and annotations (e.g.
@@ -36,8 +35,9 @@ declare module 'papi-shared-types' {
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name Optional user-facing name for the project.
      * @param description Optional user-facing description for the project.
-     * @returns The persisted `InterlinearProject` as a JSON string, or `undefined` if creation
-     *   fails.
+     * @returns The persisted `InterlinearProject` as a JSON string.
+     * @throws If storage fails. The error is logged and an error notification is sent before
+     *   rethrowing so callers do not need to send a second notification.
      */
     'interlinearizer.createProject': (
       sourceProjectId: string,
@@ -45,7 +45,7 @@ declare module 'papi-shared-types' {
       targetProjectId?: string,
       name?: string,
       description?: string,
-    ) => Promise<string | undefined>;
+    ) => Promise<string>;
 
     /**
      * Returns all interlinearizer projects for the given source project, serialized as a JSON
@@ -98,6 +98,8 @@ declare module 'papi-shared-types' {
      *   target-side text binding).
      * @returns The updated project as a JSON string, or `undefined` if no project with that ID
      *   exists.
+     * @throws If storage fails. The error is logged and an error notification is sent before
+     *   rethrowing so callers do not need to send a second notification.
      */
     'interlinearizer.updateProjectMetadata': (
       interlinearProjectId: string,

@@ -30,7 +30,7 @@ function printUsageAndExit(code = 0) {
   );
   console.info('  --core          Delete Electron and core caches (Electron, dev-appdata)');
   console.info('  --ext           Delete extension builds (dist, src/temp-build)');
-  console.info('  --npm           Delete extension package-lock.json and both node_modules');
+  console.info('  --npm           Delete extension package-lock.json and all node_modules');
   console.info('  --test          Delete extension test/lint-related files');
   console.info('  --yalc          Delete core yalc-related files');
   console.info('  --all           Delete all of the above');
@@ -53,8 +53,12 @@ const shouldDeleteYalc = hasAllFlag || hasYalcFlag;
 
 // Define directory lists
 
-let electronParent = '';
+const CORE_DIRS = [path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata')];
+
 if (shouldDeleteCore) {
+  // Determine Electron cache directory based on platform and add to `CORE_DIRS`
+  let electronParent = '';
+
   /* eslint-disable no-nested-ternary */
   electronParent =
     process.platform === 'win32'
@@ -71,12 +75,11 @@ if (shouldDeleteCore) {
           : '';
   }
   /* eslint-enable no-nested-ternary */
-}
 
-const CORE_DIRS = [
-  electronParent ? path.join(electronParent, 'Electron') : '',
-  path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata'),
-];
+  if (electronParent) {
+    CORE_DIRS.push(path.join(electronParent, 'Electron Cache'));
+  }
+}
 
 const EXT_DIRS = [
   path.join(__dirname, '..', 'dist'),
@@ -84,10 +87,34 @@ const EXT_DIRS = [
 ];
 
 const NPM_PATHS = [
-  path.join(__dirname, '..', '..', 'paranext-core', 'node_modules'),
   path.join(__dirname, '..', 'node_modules'),
   path.join(__dirname, '..', 'package-lock.json'),
 ];
+
+if (shouldDeleteNpm) {
+  // Recursively find `node_modules` folders in `paranext-core/` and add them to `NPM_PATHS`
+  const corePath = path.join(__dirname, '..', '..', 'paranext-core');
+  const SKIP_DIRS = new Set(['dev-appdata', 'dev-packages']);
+  const findNodeModules = (dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries
+      .filter((entry) => entry.isDirectory() && !SKIP_DIRS.has(entry.name))
+      .forEach((entry) => {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.name === 'node_modules') {
+          NPM_PATHS.push(fullPath);
+        } else {
+          findNodeModules(fullPath);
+        }
+      });
+  };
+  findNodeModules(corePath);
+}
 
 const TEST_PATHS = [
   path.join(__dirname, '..', 'coverage'),

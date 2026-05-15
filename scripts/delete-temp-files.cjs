@@ -5,6 +5,10 @@ const path = require('path');
  * Cross-platform script to delete temporary and cache paths. Run this if Platform.Bible is holding
  * on to outdated resources, such as localization strings, project data, or WebView ids.
  *
+ * Warning: The `--build` flag deletes:
+ *
+ * - All core extension builds, which makes the next core:start last minutes longer
+ *
  * Warning: The `--core` flag deletes:
  *
  * - The `Electron` cache folder, which affect any other Electron apps
@@ -12,22 +16,24 @@ const path = require('path');
  *
  * Warning: The `--yalc` flag deletion includes:
  *
- * - `paranext-core/dev-packages/`, which makes the core re-install last minutes longer
+ * - `paranext-core/dev-packages/`, which makes the next core:install last minutes longer
  */
 
 // Check command-line arguments
 
-const hasAllFlag = process.argv.includes('--all');
-const hasCoreFlag = process.argv.includes('--core');
-const hasExtFlag = process.argv.includes('--ext');
-const hasNpmFlag = process.argv.includes('--npm');
-const hasTestFlag = process.argv.includes('--test');
-const hasYalcFlag = process.argv.includes('--yalc');
+const allFlag = process.argv.includes('--all');
+const buildFlag = process.argv.includes('--build');
+const coreFlag = process.argv.includes('--core');
+const extFlag = process.argv.includes('--ext');
+const npmFlag = process.argv.includes('--npm');
+const testFlag = process.argv.includes('--test');
+const yalcFlag = process.argv.includes('--yalc');
 
 function printUsageAndExit(code = 0) {
   console.info(
-    'Usage: node delete-temp-files.cjs [--all] [--core] [--ext] [--npm] [--test] [--yalc]',
+    'Usage: node delete-temp-files.cjs [--all] [--build] [--core] [--ext] [--npm] [--test] [--yalc]',
   );
+  console.info('  --build         Delete core build files');
   console.info('  --core          Delete Electron and core caches (Electron, dev-appdata)');
   console.info('  --ext           Delete extension builds (dist, src/temp-build)');
   console.info('  --npm           Delete extension package-lock.json and all node_modules');
@@ -41,22 +47,33 @@ if (process.argv.length <= 2 || process.argv.includes('--help') || process.argv.
   printUsageAndExit();
 }
 
-if (!hasAllFlag && !hasCoreFlag && !hasExtFlag && !hasNpmFlag && !hasTestFlag && !hasYalcFlag) {
+if (!allFlag && !buildFlag && !coreFlag && !extFlag && !npmFlag && !testFlag && !yalcFlag) {
   printUsageAndExit(1);
 }
 
-const shouldDeleteCore = hasAllFlag || hasCoreFlag;
-const shouldDeleteExt = hasAllFlag || hasExtFlag;
-const shouldDeleteNpm = hasAllFlag || hasNpmFlag;
-const shouldDeleteTest = hasAllFlag || hasTestFlag;
-const shouldDeleteYalc = hasAllFlag || hasYalcFlag;
+const shouldDeleteBuild = allFlag || buildFlag;
+const shouldDeleteCore = allFlag || coreFlag;
+const shouldDeleteExt = allFlag || extFlag;
+const shouldDeleteNpm = allFlag || npmFlag;
+const shouldDeleteTest = allFlag || testFlag;
+const shouldDeleteYalc = allFlag || yalcFlag;
 
 // Define directory lists
 
-const CORE_DIRS = [path.join(__dirname, '..', '..', 'paranext-core', 'dev-appdata')];
+const EXT_DIR_PATH = path.join(__dirname, '..');
+const CORE_DIR_PATH = path.join(EXT_DIR_PATH, '..', 'paranext-core');
+const SKIP_DIRS = new Set(['.yalc', 'dev-appdata', 'dev-packages', 'lib']);
 
+const BUILD_PATHS = [];
+if (shouldDeleteBuild) {
+  // Add core build output subdirectories to `BUILD_PATHS`
+  BUILD_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'dist', SKIP_DIRS));
+  BUILD_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'temp-build', SKIP_DIRS));
+}
+
+const CORE_PATHS = [path.join(CORE_DIR_PATH, 'dev-appdata')];
 if (shouldDeleteCore) {
-  // Determine Electron cache directory based on platform and add to `CORE_DIRS`
+  // Determine Electron cache directory based on platform and add to `CORE_PATHS`
   let electronParent = '';
 
   /* eslint-disable no-nested-ternary */
@@ -77,55 +94,52 @@ if (shouldDeleteCore) {
   /* eslint-enable no-nested-ternary */
 
   if (electronParent) {
-    CORE_DIRS.push(path.join(electronParent, 'Electron Cache'));
+    CORE_PATHS.push(path.join(electronParent, 'Electron Cache'));
   }
 }
 
-const EXT_DIRS = [
-  path.join(__dirname, '..', 'dist'),
-  path.join(__dirname, '..', 'src', 'temp-build'),
-];
+const EXT_PATHS = [path.join(EXT_DIR_PATH, 'dist'), path.join(EXT_DIR_PATH, 'src', 'temp-build')];
 
 const NPM_PATHS = [
-  path.join(__dirname, '..', 'node_modules'),
-  path.join(__dirname, '..', 'package-lock.json'),
+  path.join(EXT_DIR_PATH, 'node_modules'),
+  path.join(EXT_DIR_PATH, 'package-lock.json'),
 ];
-
 if (shouldDeleteNpm) {
-  // Recursively find `node_modules` folders in `paranext-core/` and add them to `NPM_PATHS`
-  const corePath = path.join(__dirname, '..', '..', 'paranext-core');
-  const SKIP_DIRS = new Set(['dev-appdata', 'dev-packages']);
-  const findNodeModules = (dir) => {
-    let entries;
-    try {
-      entries = fs.readdirSync(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    entries
-      .filter((entry) => entry.isDirectory() && !SKIP_DIRS.has(entry.name))
-      .forEach((entry) => {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.name === 'node_modules') {
-          NPM_PATHS.push(fullPath);
-        } else {
-          findNodeModules(fullPath);
-        }
-      });
-  };
-  findNodeModules(corePath);
+  // Find core `node_modules` subdirectories and add them to `NPM_PATHS`
+  NPM_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'node_modules', SKIP_DIRS));
 }
 
-const TEST_PATHS = [
-  path.join(__dirname, '..', 'coverage'),
-  path.join(__dirname, '..', '.eslintcache'),
-];
+const TEST_PATHS = [path.join(EXT_DIR_PATH, 'coverage'), path.join(EXT_DIR_PATH, '.eslintcache')];
 
 const YALC_PATHS = [
-  path.join(__dirname, '..', '..', 'paranext-core', '.yalc'),
-  path.join(__dirname, '..', '..', 'paranext-core', 'dev-packages'),
-  path.join(__dirname, '..', '..', 'paranext-core', 'yalc.lock'),
+  path.join(CORE_DIR_PATH, '.yalc'),
+  path.join(CORE_DIR_PATH, 'dev-packages'),
+  path.join(CORE_DIR_PATH, 'yalc.lock'),
 ];
+
+/**
+ * Recursively find all subdirectories named `targetDir` inside `corePath`, skipping `skipDirs`.
+ *
+ * @param {string} corePath - Root directory to search
+ * @param {string} targetDir - Directory name to collect
+ * @param {Set<string>} skipDirs - Directory names to skip entirely
+ * @returns {string[]} Absolute paths of every matching directory found
+ */
+function findDirsNamed(corePath, targetDir, skipDirs) {
+  let entries;
+  try {
+    entries = fs.readdirSync(corePath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isDirectory() && !skipDirs.has(entry.name))
+    .flatMap((entry) => {
+      const fullPath = path.join(corePath, entry.name);
+      if (entry.name === targetDir) return [fullPath];
+      return findDirsNamed(fullPath, targetDir, skipDirs);
+    });
+}
 
 /**
  * Delete a path if it exists
@@ -153,14 +167,19 @@ function deletePath(pathToDelete) {
 // Delete paths based on command-line flags
 
 try {
+  if (shouldDeleteBuild) {
+    console.log('Deleting core build directories...');
+    BUILD_PATHS.forEach(deletePath);
+  }
+
   if (shouldDeleteCore) {
     console.log('Deleting core cache directories...');
-    CORE_DIRS.forEach(deletePath);
+    CORE_PATHS.forEach(deletePath);
   }
 
   if (shouldDeleteExt) {
     console.log('Deleting extension directories...');
-    EXT_DIRS.forEach(deletePath);
+    EXT_PATHS.forEach(deletePath);
   }
 
   if (shouldDeleteNpm) {

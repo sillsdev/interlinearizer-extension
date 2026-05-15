@@ -1,5 +1,5 @@
 import type { UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import { useLocalizedStrings } from '@papi/frontend/react';
+import { useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import { useMemo } from 'react';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
@@ -29,6 +29,8 @@ export default function InterlinearizerLoader({
 }>) {
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
+  const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
+
   const {
     isLoading: isSettingLoading,
     onChange: handleContinuousScrollChange,
@@ -51,12 +53,14 @@ export default function InterlinearizerLoader({
     <TabToolbar
       className="tw:z-10"
       startAreaChildren={
-        <ScriptureNavControls
-          scrRef={scrRef}
-          handleSubmit={setScrRef}
-          scrollGroupId={scrollGroupId}
-          onChangeScrollGroupId={setScrollGroupId}
-        />
+        interfaceMode === 'power' ? (
+          <ScriptureNavControls
+            scrRef={scrRef}
+            handleSubmit={setScrRef}
+            scrollGroupId={scrollGroupId}
+            onChangeScrollGroupId={setScrollGroupId}
+          />
+        ) : undefined
       }
       endAreaChildren={
         <ContinuousScrollToggle

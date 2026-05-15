@@ -1,8 +1,6 @@
 /**
  * @file Jest mock for platform-bible-react. The real package ships ESM which Jest cannot parse
- * without extra transform configuration. This stub provides the subset used by extension
- * components: `BookChapterControl`, `BOOK_CHAPTER_CONTROL_STRING_KEYS`, `TabToolbar`, and
- * `ScrollGroupSelector`.
+ * without extra transform configuration. This stub provides the subset used by the extension.
  */
 
 import type { ReactElement, ReactNode } from 'react';

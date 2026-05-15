@@ -36,6 +36,11 @@ jest.mock('../../components/ContinuousScrollToggle', () => ({
   ),
 }));
 
+jest.mock('../../components/ScriptureNavControls', () => ({
+  __esModule: true,
+  default: () => <div data-testid="scripture-nav-controls" />,
+}));
+
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
   default: () => <div data-testid="continuous-view" />,
@@ -131,7 +136,7 @@ describe('InterlinearizerLoader', () => {
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
   });
 
-  it('renders Interlinearizer when book data is available', () => {
+  it('renders Interlinearizer and the nav controls when book data is available', () => {
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -139,6 +144,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
+    expect(screen.getByTestId('scripture-nav-controls')).toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 

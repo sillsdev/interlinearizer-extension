@@ -4,6 +4,7 @@ import { TabToolbar } from 'platform-bible-react';
 import { useMemo } from 'react';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
+import ScriptureNavControls from './ScriptureNavControls';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 
@@ -26,7 +27,7 @@ export default function InterlinearizerLoader({
   projectId: string;
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
 }>) {
-  const [scrRef, setScrRef] = useWebViewScrollGroupScrRef();
+  const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   const {
     isLoading: isSettingLoading,
@@ -35,7 +36,10 @@ export default function InterlinearizerLoader({
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
-    { projectId, scrRef },
+    {
+      projectId,
+      scrRef,
+    },
   );
 
   const hasError = !!bookError || !!tokenizeError;
@@ -46,6 +50,14 @@ export default function InterlinearizerLoader({
   const toolbar = (
     <TabToolbar
       className="tw:z-10"
+      startAreaChildren={
+        <ScriptureNavControls
+          scrRef={scrRef}
+          handleSubmit={setScrRef}
+          scrollGroupId={scrollGroupId}
+          onChangeScrollGroupId={setScrollGroupId}
+        />
+      }
       endAreaChildren={
         <ContinuousScrollToggle
           checked={continuousScroll}

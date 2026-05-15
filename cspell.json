@@ -50,6 +50,7 @@
     "recalc",
     "reinitializing",
     "reserialized",
+    "retokenize",
     "sandboxed",
     "scriptio",
     "sillsdev",

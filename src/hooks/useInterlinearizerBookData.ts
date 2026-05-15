@@ -13,6 +13,11 @@ interface UseInterlinearizerBookDataArgs {
   projectId: string;
   /** Current scripture reference; only `book` and `chapterNum` are used to scope the data. */
   scrRef: SerializedVerseRef;
+  /**
+   * Incrementing this value forces the extract+tokenize pipeline to re-run even when the USJ
+   * document has not changed, providing a manual retokenize capability.
+   */
+  retokenizeKey?: number;
 }
 
 /** Return value of the {@link useInterlinearizerBookData} hook. */
@@ -35,11 +40,14 @@ interface UseInterlinearizerBookDataResult {
  * @param args - Hook arguments.
  * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
  * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
+ * @param args.retokenizeKey - Increment to force a re-run of the tokenize pipeline even when the
+ *   USJ document is unchanged. Defaults to `0`.
  * @returns The tokenized book, chapter segments, loading state, and any errors encountered.
  */
 export default function useInterlinearizerBookData({
   projectId,
   scrRef,
+  retokenizeKey = 0,
 }: Readonly<UseInterlinearizerBookDataArgs>): UseInterlinearizerBookDataResult {
   const bookScrRef = useMemo(
     () => ({ book: scrRef.book, chapterNum: 1, verseNum: 1 }),
@@ -64,7 +72,8 @@ export default function useInterlinearizerBookData({
     } catch (err) {
       return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
     }
-  }, [bookResult, writingSystem]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retokenizeKey is intentional: incrementing it forces a re-run even when bookResult and writingSystem are unchanged
+  }, [bookResult, writingSystem, retokenizeKey]);
 
   useEffect(() => {
     if (!tokenizeError) return;

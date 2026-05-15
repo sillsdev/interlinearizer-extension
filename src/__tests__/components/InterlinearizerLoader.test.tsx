@@ -133,7 +133,13 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     mockBookData();
     mockOptimisticSetting();
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    jest.mocked(useLocalizedStrings).mockReturnValue([
+      {
+        '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll',
+        '%interlinearizer_retokenize%': 'Retokenize Book',
+      },
+      false,
+    ]);
   });
 
   it('renders Interlinearizer and the nav controls when book data is available', () => {
@@ -286,5 +292,83 @@ describe('InterlinearizerLoader', () => {
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
 
     expect(mockOnChange).toHaveBeenCalledWith(true);
+  });
+
+  it('falls back to an empty label when the retokenize string has not yet loaded', () => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    expect(screen.getByTestId('project-menu-item-interlinearizer.retokenize')).toHaveAttribute(
+      'aria-label',
+      '',
+    );
+  });
+
+  it('renders the retokenize project menu item with the localized label', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    expect(screen.getByTestId('project-menu-item-interlinearizer.retokenize')).toHaveAttribute(
+      'aria-label',
+      'Retokenize Book',
+    );
+  });
+
+  it('increments retokenizeKey passed to useInterlinearizerBookData when retokenize is clicked', async () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    const callsBefore = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyBefore =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsBefore - 1][0].retokenizeKey ?? 0;
+
+    await userEvent.click(screen.getByTestId('project-menu-item-interlinearizer.retokenize'));
+
+    const callsAfter = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyAfter =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsAfter - 1][0].retokenizeKey ?? 0;
+
+    expect(keyAfter).toBe(keyBefore + 1);
+  });
+
+  it('ignores unknown project menu commands without changing retokenizeKey', async () => {
+    // Simulate a foreign command arriving via onSelectProjectMenuItem
+    const { rerender } = render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    const callsBefore = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyBefore =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsBefore - 1][0].retokenizeKey ?? 0;
+
+    // Re-render doesn't change retokenizeKey when no retokenize action taken
+    rerender(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    const callsAfter = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyAfter =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsAfter - 1][0].retokenizeKey ?? 0;
+
+    expect(keyAfter).toBe(keyBefore);
   });
 });

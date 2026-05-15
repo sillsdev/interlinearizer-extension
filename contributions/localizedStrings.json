@@ -8,7 +8,8 @@
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",
       "%interlinearizer_projectSettings_continuousScrollDescription%": "Display tokens in a continuous horizontal scroll strip instead of chapter-segmented rows",
-      "%interlinearizer_continuousScrollToggle%": "Continuous Scroll"
+      "%interlinearizer_continuousScrollToggle%": "Continuous Scroll",
+      "%interlinearizer_retokenize%": "Retokenize Book"
     }
   }
 }

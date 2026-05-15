@@ -17,24 +17,62 @@ interface SerializedVerseRef {
 
 export const BOOK_CHAPTER_CONTROL_STRING_KEYS: string[] = [];
 
+interface MenuItemContainingCommand {
+  command: string;
+  label?: string;
+}
+
+type SelectMenuItemHandler = (selectedMenuItem: MenuItemContainingCommand) => void;
+
+/**
+ * Stub for `TabToolbar`. Renders start and end children, and one `<button>` per project menu item
+ * so tests can click individual commands via `data-testid="project-menu-item-{command}"`.
+ *
+ * @param props - Component props.
+ * @param props.startAreaChildren - Children rendered in the toolbar start area.
+ * @param props.endAreaChildren - Children rendered in the toolbar end area.
+ * @param props.onSelectProjectMenuItem - Handler called when a project menu button is clicked.
+ * @param props.projectMenuData - Menu data whose items are rendered as clickable buttons.
+ */
 export function TabToolbar({
   startAreaChildren,
   endAreaChildren,
+  onSelectProjectMenuItem,
+  projectMenuData,
 }: Readonly<{
   className?: string;
   startAreaChildren?: ReactNode;
   endAreaChildren?: ReactNode;
-  onSelectProjectMenuItem?: () => void;
-  onSelectViewInfoMenuItem?: () => void;
+  onSelectProjectMenuItem?: SelectMenuItemHandler;
+  onSelectViewInfoMenuItem?: SelectMenuItemHandler;
+  projectMenuData?: { items?: MenuItemContainingCommand[] };
 }>): ReactElement {
   return (
     <div data-testid="tab-toolbar">
       <div data-testid="tab-toolbar-start">{startAreaChildren}</div>
       <div data-testid="tab-toolbar-end">{endAreaChildren}</div>
+      {projectMenuData?.items?.map(({ command, label }) => (
+        <button
+          key={command}
+          aria-label={label}
+          data-testid={`project-menu-item-${command}`}
+          onClick={() => onSelectProjectMenuItem?.({ command })}
+          type="button"
+        />
+      ))}
     </div>
   );
 }
 
+/**
+ * Stub for `ScrollGroupSelector`. Renders a `<select>` element with one option per available scroll
+ * group ID so tests can drive scroll-group changes without the real component.
+ *
+ * @param props - Component props.
+ * @param props.availableScrollGroupIds - The set of scroll group IDs to render as options.
+ * @param props.scrollGroupId - The currently selected scroll group ID.
+ * @param props.onChangeScrollGroupId - Handler called when the selection changes.
+ */
 export function ScrollGroupSelector({
   availableScrollGroupIds,
   scrollGroupId,
@@ -48,7 +86,9 @@ export function ScrollGroupSelector({
     <select
       data-testid="scroll-group-selector"
       value={scrollGroupId ?? ''}
-      onChange={(e) => onChangeScrollGroupId?.(e.target.value === '' ? undefined : Number(e.target.value))}
+      onChange={(e) =>
+        onChangeScrollGroupId?.(e.target.value === '' ? undefined : Number(e.target.value))
+      }
     >
       <option value="">—</option>
       {availableScrollGroupIds?.map((id) => (
@@ -60,6 +100,15 @@ export function ScrollGroupSelector({
   );
 }
 
+/**
+ * Stub for `BookChapterControl`. Renders the current reference as text and a submit button so tests
+ * can trigger reference changes without the real component.
+ *
+ * @param props - Component props.
+ * @param props.scrRef - The current scripture reference to display.
+ * @param props.handleSubmit - Handler called with the reference when the submit button is clicked.
+ * @param props.onAddRecentSearch - Handler called with the reference alongside `handleSubmit`.
+ */
 export function BookChapterControl({
   scrRef,
   handleSubmit,
@@ -76,13 +125,29 @@ export function BookChapterControl({
   return (
     <div data-testid="book-chapter-control">
       {scrRef.book} {scrRef.chapterNum}:{scrRef.verseNum}
-      <button type="button" onClick={() => {handleSubmit(scrRef); onAddRecentSearch?.(scrRef);}}>
+      <button
+        type="button"
+        onClick={() => {
+          handleSubmit(scrRef);
+          onAddRecentSearch?.(scrRef);
+        }}
+      >
         Submit reference
       </button>
     </div>
   );
 }
 
+/**
+ * Stub for `Switch`. Renders a checkbox input so tests can toggle boolean settings without the real
+ * component.
+ *
+ * @param props - Component props.
+ * @param props.checked - Whether the switch is on.
+ * @param props.disabled - Whether the switch is disabled.
+ * @param props.id - HTML id attribute for label association.
+ * @param props.onCheckedChange - Handler called with the new boolean value on change.
+ */
 export function Switch({
   checked,
   disabled,
@@ -105,6 +170,15 @@ export function Switch({
   );
 }
 
+/**
+ * Stub for `Label`. Renders a plain `<label>` element so tests can locate labeled controls without
+ * the real component's styling.
+ *
+ * @param props - Component props.
+ * @param props.children - Label content.
+ * @param props.className - CSS class forwarded to the label element.
+ * @param props.htmlFor - The `for` attribute linking this label to a form control.
+ */
 export function Label({
   children,
   className,

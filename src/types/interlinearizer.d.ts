@@ -984,6 +984,11 @@ declare module 'interlinearizer' {
      *
      * When present, the `ActiveProject.target` books are rebuilt from this project's USJ on load,
      * exactly as `ActiveProject.source` is rebuilt from `sourceProjectId`.
+     *
+     * BT Extension: corresponds to one `Translation` scoped to two sides (`Translation.sideNum`).
+     * By BT convention `sideNum = 1` is the source and `sideNum = 2` is the target;
+     * `sourceProjectId` maps to the side-1 project and `targetProjectId` maps to the side-2
+     * project.
      */
     targetProjectId?: string;
 
@@ -1027,6 +1032,9 @@ declare module 'interlinearizer' {
    * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
    * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve
    * against these books; when absent, only `sourceEndpoints` can be resolved.
+   *
+   * BT Extension: `source` corresponds to `Translation.sideNum = 1` and `target` to `sideNum = 2`,
+   * following BT's convention that side 1 is the input being analyzed and side 2 is the output.
    */
   export interface ActiveProject {
     /** The persisted project envelope. Mutations target `project.analysis` and `project.links`. */

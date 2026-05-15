@@ -76,7 +76,7 @@ export default function InterlinearizerLoader({
         {
           command: RETOKENIZE_COMMAND,
           group: 'interlinearizer.projectData',
-          label: localizedStrings['%interlinearizer_retokenize%'] ?? '',
+          label: localizedStrings['%interlinearizer_retokenize%'],
           localizeNotes: 'Project data menu > re-run tokenization from the latest USJ',
           order: 1,
         },

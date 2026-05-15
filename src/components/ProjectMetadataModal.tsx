@@ -117,7 +117,13 @@ export function ProjectMetadataModal({
         newLanguages,
         targetProjectId,
       );
-      if (!updatedProjectJson) return;
+      if (!updatedProjectJson) {
+        await papi.notifications.send({
+          message: '%interlinearizer_error_save_metadata_failed%',
+          severity: 'error',
+        });
+        return;
+      }
       onProjectSaved?.({
         name: newName,
         description: newDescription,

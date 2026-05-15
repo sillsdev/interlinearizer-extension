@@ -80,7 +80,13 @@ export function CreateProjectModal({
         name.trim() || undefined,
         description.trim() || undefined,
       );
-      if (!projectJson) return;
+      if (!projectJson) {
+        await papi.notifications.send({
+          message: '%interlinearizer_error_create_project_failed%',
+          severity: 'error',
+        });
+        return;
+      }
       const parsed: unknown = JSON.parse(projectJson);
       if (!isInterlinearProjectSummary(parsed)) {
         await papi.notifications.send({

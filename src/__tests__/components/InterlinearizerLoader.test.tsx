@@ -130,7 +130,7 @@ jest.mock('../../components/ProjectModals', () => ({
               data-testid="create-modal-created"
               onClick={() => {
                 setActiveProject(STUB_ACTIVE_PROJECT);
-                setModal('select');
+                setModal('none');
               }}
             >
               Created
@@ -524,7 +524,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
     });
 
-    it('returns to the select modal after a project is created from the select modal', async () => {
+    it('closes all modals after a project is created from the select modal', async () => {
       render(
         <InterlinearizerLoader
           projectId={testProjectId}
@@ -538,7 +538,7 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('create-modal-created'));
 
       expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
-      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
+      expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
     });
 
     it('sets the active project and closes the select modal when a project is selected', async () => {

@@ -53,7 +53,7 @@ declare module 'papi-shared-types' {
      * and to decide whether to show "create new" vs "select existing" on first open.
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to query.
-     * @returns A JSON string containing an `InterlinearProjectSummary[]`; `"[]"` when none exist.
+     * @returns A JSON string containing an `InterlinearProject[]`; `"[]"` when none exist.
      */
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 
@@ -574,7 +574,7 @@ declare module 'interlinearizer' {
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
 
-    /** Required review status. */
+    /** Review status of this analysis assignment. */
     status: AssignmentStatus;
 
     /** How much to trust this analysis assignment. */
@@ -792,8 +792,8 @@ declare module 'interlinearizer' {
 
   /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
   export interface PhraseAnalysisLink extends AnalysisLink {
-    /** Ordered snapshots of tokens that compose this phrase. */
-    tokens: [TokenSnapshot, ...TokenSnapshot[]];
+    /** Ordered snapshots of tokens that compose this phrase (one or more). */
+    tokens: TokenSnapshot[];
   }
 
   /**

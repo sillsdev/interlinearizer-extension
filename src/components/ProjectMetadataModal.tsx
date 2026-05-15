@@ -35,6 +35,8 @@ export type ProjectMetadataModalProps = Readonly<{
   description?: string;
   /** Platform.Bible project ID of the source text. */
   sourceProjectId: string;
+  /** Optional Platform.Bible project ID of the target text for bilateral alignment projects. */
+  targetProjectId?: string;
   /** BCP 47 tags for the analysis languages. */
   analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
@@ -64,6 +66,7 @@ export function ProjectMetadataModal({
   name,
   description,
   sourceProjectId,
+  targetProjectId,
   analysisLanguages,
   createdAt,
   onClose,
@@ -112,6 +115,7 @@ export function ProjectMetadataModal({
         newName,
         newDescription,
         newLanguages,
+        targetProjectId,
       );
       if (!updatedProjectJson) return;
       onProjectSaved?.({
@@ -126,7 +130,15 @@ export function ProjectMetadataModal({
       isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [editName, editDescription, editLanguages, interlinearProjectId, onProjectSaved, onClose]);
+  }, [
+    editName,
+    editDescription,
+    editLanguages,
+    interlinearProjectId,
+    targetProjectId,
+    onProjectSaved,
+    onClose,
+  ]);
 
   /**
    * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on

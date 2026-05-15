@@ -167,6 +167,14 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(1);
   });
 
+  it('silently drops entries with a non-string targetProjectId field', async () => {
+    const badTarget = { ...STUB_PROJECT, targetProjectId: 99 };
+    mockSendCommand.mockResolvedValue(JSON.stringify([badTarget, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
   it('shows the empty-state message when getProjectsForSource returns a non-array', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify({ not: 'an array' }));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

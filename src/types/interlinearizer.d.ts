@@ -27,14 +27,19 @@ declare module 'papi-shared-types' {
      * notification).
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
-     * @param analysisLanguages BCP 47 tags for the languages used in glosses and annotations (e.g.
-     *   `['en']`).
+     * @param analysisLanguages BCP 47 tags for all languages used in glosses and annotations (e.g.
+     *   `['en']`). LCM: one per writing system present on `IWfiGloss.Form`. Paratext: one per
+     *   merged `GlossLanguage` file. BT Extension: typically one language.
+     * @param targetProjectId Optional Platform.Bible project ID of the target text. Required for BT
+     *   Extension projects so that `AlignmentLink.targetEndpoints` can be resolved at runtime.
+     *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name Optional user-facing name for the project.
      * @param description Optional user-facing description for the project.
      */
     'interlinearizer.createProject': (
       sourceProjectId: string,
       analysisLanguages: string[],
+      targetProjectId?: string,
       name?: string,
       description?: string,
     ) => Promise<string | undefined>;
@@ -74,14 +79,17 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param name New user-facing name; omit or pass `undefined` to clear.
      * @param description New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages New BCP 47 analysis language tags; omit or pass empty array to leave
-     *   unchanged (the field is required and cannot be cleared).
+     * @param analysisLanguages New BCP 47 analysis language tags; omit or pass an empty array to
+     *   leave unchanged (the field is required and cannot be cleared).
+     * @param targetProjectId New target-project ID; omit or pass `undefined` to clear (removes the
+     *   target-side text binding).
      */
     'interlinearizer.updateProjectMetadata': (
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
       analysisLanguages?: string[],
+      targetProjectId?: string,
     ) => Promise<string | undefined>;
   }
 }
@@ -96,7 +104,8 @@ declare module 'papi-shared-types' {
  *
  *     ActiveProject
  *     ├─ project : InterlinearProject   — persisted envelope (analysis + links)
- *     └─ source  : Book[]               — text layer (rebuilt from USJ at runtime)
+ *     ├─ source  : Book[]               — source text layer (rebuilt from USJ at runtime)
+ *     └─ target? : Book[]               — target text layer (rebuilt from USJ at runtime; absent for analysis-only projects)
  *          └─ Segment[] → Token[]
  *
  *     InterlinearProject.analysis : TextAnalysis   — analysis layer (flat)
@@ -571,10 +580,10 @@ declare module 'interlinearizer' {
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
    *
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
-   * `glossSenseRef` alternatively resolves the gloss through a specific `ISense` in the Lexicon
-   * extension — when set, the rendered gloss is the sense's gloss text and may be refreshed
-   * automatically if the lexicon is edited. Both may be set concurrently: when both are present,
-   * `gloss` serves as a local override that takes precedence for rendering.
+   * `glossSenseRef` resolves the gloss through a specific `ISense` in the Lexicon extension — when
+   * set, the sense's gloss text can be surfaced and refreshed automatically if the lexicon is
+   * edited. Both may be present simultaneously; when they are, `gloss` takes precedence for
+   * rendering (the local override wins over the lexicon-derived value).
    *
    * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
    * `entryRef` / `senseRef`.
@@ -592,8 +601,7 @@ declare module 'interlinearizer' {
    * - Paratext: `LexemeCluster` + `WordAnalysis`. `gloss` resolved from the selected
    *   `LexiconSense.Gloss` (per-language strings). `morphemes` from the `Lexeme[]` within
    *   `WordAnalysis` when `LexemeCluster.Type = WordParse`. Paratext stores POS on the lexeme, not
-   *   per-analysis. `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and
-   *   `.Score`.
+   *   per-analysis. `status` / `confidence` inferred from `InterlinearLexeme.IsGuess` and `.Score`.
    * - BT Extension: synthesized per-token from `gloss` / `lemmaText` / `senseIds`. BT Extension
    *   stores gloss per-token rather than as shared analysis objects — each token gets its own
    *   `TokenAnalysis`. `status` from `Instance.termStatusNum` (BiblicalTermStatus). `confidence`
@@ -655,16 +663,15 @@ declare module 'interlinearizer' {
     tokenSnapshot?: string;
 
     /**
-     * Free-form gloss string for this token, keyed by analysis-language BCP 47 tag. May coexist
-     * with `glossSenseRef` when the user has both a local override and a lexicon-backed sense — the
-     * local gloss takes precedence for rendering in that case.
+     * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
+     * `glossSenseRef` when both are present.
      */
     gloss?: MultiString;
 
     /**
-     * Resolves the gloss through a specific `ISense` in the Lexicon extension, enabling automatic
-     * refresh when the lexicon is edited. May coexist with `gloss` when the user maintains both a
-     * lexicon-linked sense and a local override.
+     * Reference to the `ISense` in the Lexicon extension whose gloss text this analysis uses. May
+     * coexist with `gloss`; when both are present, `gloss` is the active rendering value and
+     * `glossSenseRef` is retained so the lexicon link is not lost.
      */
     glossSenseRef?: SenseRef;
   };
@@ -754,11 +761,10 @@ declare module 'interlinearizer' {
    * Each token may still carry its own `TokenAnalysis` alongside the phrase; the phrase contributes
    * the combined-unit gloss.
    *
-   * `gloss` is a free-form phrase gloss. `senseRef` alternatively points at a lexicon sense when
-   * the phrase is a multi-word lexical entry — the Lexicon extension supports both kinds via
-   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Both may
-   * be set concurrently: when both are present, `gloss` serves as a local override that takes
-   * precedence for rendering.
+   * `gloss` is a free-form phrase gloss. `senseRef` points at a lexicon sense when the phrase is a
+   * multi-word lexical entry — the Lexicon extension supports both kinds via `IEntry.morphType =
+   * Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Both may be present
+   * simultaneously; when they are, `gloss` takes precedence for rendering.
    *
    * Provenance fields (`producer`, `sourceUser`, `confidence`, `status`) let a suggestion engine
    * record proposed phrases that a user can then approve or reject, enabling automated recognition
@@ -814,17 +820,15 @@ declare module 'interlinearizer' {
     tokenSnapshots?: [string, ...string[]];
 
     /**
-     * Free-form phrase gloss keyed by analysis-language BCP 47 tag. May coexist with `senseRef`
-     * when the user has both a local override and a lexicon-backed sense — the local gloss takes
-     * precedence for rendering in that case.
+     * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
+     * `senseRef` when both are present.
      */
     gloss?: MultiString;
 
     /**
-     * Points at a multi-word lexical entry in the Lexicon extension (e.g. `IEntry.morphType =
-     * Phrase` or `DiscontiguousPhrase`), enabling automatic gloss refresh when the lexicon is
-     * edited. May coexist with `gloss` when the user maintains both a lexicon-linked sense and a
-     * local override.
+     * Reference to the `ISense` in the Lexicon extension this phrase maps to. May coexist with
+     * `gloss`; when both are present, `gloss` is the active rendering value and `senseRef` is
+     * retained so the lexicon link is not lost.
      */
     senseRef?: SenseRef;
   };
@@ -944,7 +948,7 @@ declare module 'interlinearizer' {
 
   /**
    * The storage envelope for one interlinearizer project. Multiple projects may exist for the same
-   * pair of Platform.Bible projects (e.g. different analysis languages).
+   * source project (e.g. different analysis languages, or different target alignments).
    *
    * The token hierarchy (`Book` / `Segment` / `Token`) is **not** stored here — it is rebuilt from
    * Platform.Bible's USJ on each load. Only the analysis data and alignment links are persisted.
@@ -973,13 +977,28 @@ declare module 'interlinearizer' {
     sourceProjectId: string;
 
     /**
-     * BCP 47 tags for the languages used in glosses and annotations (e.g. `['en']`). Populates
+     * Platform.Bible project ID for the target text. Present only for bilateral alignment projects
+     * (e.g. BT Extension imports) where `AlignmentLink.targetEndpoints` must resolve to tokens in a
+     * second text. Omitted for analysis-only projects (LCM, PT9 single-sided glossing).
+     *
+     * When present, the `ActiveProject.target` books are rebuilt from this project's USJ on load,
+     * exactly as `ActiveProject.source` is rebuilt from `sourceProjectId`.
+     */
+    targetProjectId?: string;
+
+    /**
+     * BCP 47 tags for all languages used in glosses and annotations (e.g. `['en']`). Populates
      * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `Phrase` records.
+     *
+     * Source-system mapping:
+     *
+     * - LCM: the set of writing systems present on `IWfiGloss.Form` (one tag per analysis language in
+     *   the project).
+     * - Paratext: one tag per merged `GlossLanguage` file
+     *   (`Interlinear_{language}/Interlinear_{language}_{book}.xml`).
+     * - BT Extension: typically a single language; set from the per-token `gloss` writing system.
      */
     analysisLanguages: string[];
-
-    /** Platform.Bible project ID for the target text, if a target-side project is linked. */
-    targetProjectId?: string;
 
     /** Analysis layer. Empty at creation; populated as the user annotates tokens. */
     analysis: TextAnalysis;
@@ -992,16 +1011,21 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §7 ActiveProject — runtime pairing of project envelope and source text
+  // §7 ActiveProject — runtime pairing of project envelope and text layers
   // ---------------------------------------------------------------------------
 
   /**
    * The runtime object for an open interlinearizer project. Pairs the persisted
-   * {@link InterlinearProject} envelope with the reconstructed source-text hierarchy.
+   * {@link InterlinearProject} envelope with the reconstructed text hierarchies.
    *
-   * `source` is rebuilt from Platform.Bible's USJ on each load and is never serialized. All
-   * annotation and alignment mutations target `project.analysis` and `project.links`; saving is
-   * done by writing those fields back to storage via `saveProjectAnalysis`.
+   * `source` and `target` are rebuilt from Platform.Bible's USJ on each load and are never
+   * serialized. All annotation and alignment mutations target `project.analysis` and
+   * `project.links`; saving is done by writing those fields back to storage via
+   * `saveProjectAnalysis`.
+   *
+   * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
+   * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve
+   * against these books; when absent, only `sourceEndpoints` can be resolved.
    */
   export interface ActiveProject {
     /** The persisted project envelope. Mutations target `project.analysis` and `project.links`. */
@@ -1013,5 +1037,12 @@ declare module 'interlinearizer' {
      * be present when the UI has prefetched adjacent books.
      */
     source: Book[];
+
+    /**
+     * The reconstructed target books, built from `project.targetProjectId`'s USJ on load. Present
+     * only when `project.targetProjectId` is set; absent for analysis-only projects (LCM, PT9).
+     * Never serialized — rebuilt on every activation alongside `source`.
+     */
+    target?: Book[];
   }
 }

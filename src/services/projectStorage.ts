@@ -285,10 +285,10 @@ export async function updateProjectMetadata(
  * @param id - The project UUID to delete.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON (from
  *   {@link readIds}).
- * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT (non-ENOENT errors
- *   are rethrown).
+ * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
  * @throws If `papi.storage.writeUserData` rejects when updating `PROJECT_IDS_KEY`.
- * @throws Any error propagated from {@link readIds}, `enqueueProjectOp`, or `enqueueIndexOp`.
+ * @throws Any error propagated from {@link readIds}, {@link enqueueProjectOp}, or
+ *   {@link enqueueIndexOp}.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   await enqueueProjectOp(id, async () => {

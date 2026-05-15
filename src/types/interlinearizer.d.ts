@@ -4,6 +4,7 @@
  */
 
 declare module 'papi-shared-types' {
+  /** Project-level settings contributed by the Interlinearizer extension. */
   export interface ProjectSettingTypes {
     /**
      * When true, the Interlinearizer displays a continuous horizontal token scroll strip above the
@@ -22,19 +23,24 @@ declare module 'papi-shared-types' {
 
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the persisted project serialized as
-     * a JSON string, or undefined if project creation fails (failure is logged and surfaced as an
-     * error notification).
+     * after the user fills in the create-project modal. Returns the new project's UUID, or
+     * undefined if project creation fails (failure is logged and surfaced as an error
+     * notification).
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
-     * @param analysisWritingSystem BCP 47 tag for the language used in glosses and annotations
-     *   (e.g. `'en'`).
+     * @param analysisLanguages BCP 47 tags for all languages used in glosses and annotations (e.g.
+     *   `['en']`). LCM: one per writing system present on `IWfiGloss.Form`. Paratext: one per
+     *   merged `GlossLanguage` file. BT Extension: typically one language.
+     * @param targetProjectId Optional Platform.Bible project ID of the target text. Required for BT
+     *   Extension projects so that `AlignmentLink.targetEndpoints` can be resolved at runtime.
+     *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name Optional user-facing name for the project.
      * @param description Optional user-facing description for the project.
      */
     'interlinearizer.createProject': (
       sourceProjectId: string,
-      analysisWritingSystem: string,
+      analysisLanguages: string[],
+      targetProjectId?: string,
       name?: string,
       description?: string,
     ) => Promise<string | undefined>;
@@ -49,30 +55,24 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 
     /**
-     * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
+     * Deletes an interlinearizer project by UUID.
      *
      * @param interlinearProjectId UUID of the interlinearizer project to delete.
+     * @throws {RangeError} If the project ID is not found in the stored index.
      */
     'interlinearizer.deleteProject': (interlinearProjectId: string) => Promise<void>;
 
     /**
-     * Opens the project-selector dialog in the Interlinearizer WebView. The backend registers this
+     * Opens the project-selector modal in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
     'interlinearizer.openSelectProjectModal': () => Promise<void>;
 
     /**
-     * Opens the create-project dialog in the Interlinearizer WebView. The backend registers this
+     * Opens the create-project modal in the Interlinearizer WebView. The backend registers this
      * command to make it visible to the platform menu system; all logic executes in the WebView.
      */
-    'interlinearizer.openNewProjectModal': () => Promise<void>;
-
-    /**
-     * Opens the project-info modal for the active project in the Interlinearizer WebView. The
-     * backend registers this command to make it visible to the platform menu system; all logic
-     * executes in the WebView.
-     */
-    'interlinearizer.openProjectInfoModal': () => Promise<void>;
+    'interlinearizer.newProject': () => Promise<void>;
 
     /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a
@@ -81,14 +81,17 @@ declare module 'papi-shared-types' {
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param name New user-facing name; omit or pass `undefined` to clear.
      * @param description New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisWritingSystem New BCP 47 analysis language tag; omit or pass empty to leave
-     *   unchanged (the field is required and cannot be cleared).
+     * @param analysisLanguages New BCP 47 analysis language tags. Must be a non-empty array; pass
+     *   the current value to leave it unchanged (the field is required and cannot be cleared).
+     * @param targetProjectId New target-project ID; omit or pass `undefined` to clear (removes the
+     *   target-side text binding).
      */
     'interlinearizer.updateProjectMetadata': (
       interlinearProjectId: string,
       name: string | undefined,
       description: string | undefined,
-      analysisWritingSystem?: string,
+      analysisLanguages: string[],
+      targetProjectId?: string,
     ) => Promise<string | undefined>;
   }
 }
@@ -101,24 +104,31 @@ declare module 'papi-shared-types' {
  *
  * Shape at a glance:
  *
- *     InterlinearAlignment
- *     ├─ source : InterlinearText    — the input being analyzed
- *     ├─ target : InterlinearText    — the analysis / output side
- *     └─ links  : AlignmentLink[]
+ *     ActiveProject
+ *       ├─ project : InterlinearProject
+ *       ├─ source  : Book[]
+ *       └─ target? : Book[]   — present only when targetProjectId is set
  *
- *     InterlinearText
- *     ├─ books    : Book[]           — text layer (baseline)
- *     │    └─ Segment[] → Token[]
- *     └─ analysis : TextAnalysis     — analysis layer (flat)
- *          ├─ segmentAnalyses : SegmentAnalysis[]    (per-segment translations)
- *          ├─ tokenAnalyses   : TokenAnalysis[]      (parse + 1:1 gloss)
- *          └─ phrases         : Phrase[]             (multi-token gloss)
+ *     InterlinearProject
+ *       ├─ sourceProjectId
+ *       ├─ targetProjectId?  — absent for analysis-only projects (LCM, PT9)
+ *       ├─ analysisLanguages : string[]
+ *       ├─ analysis : TextAnalysis
+ *       └─ links?   : AlignmentLink[]
  *
- * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting. Every
- * analysis record carries an id reference back to its text-layer counterpart (`segmentId` /
- * `tokenId`). Consumers index by id at load time (`Map<tokenId, TokenAnalysis[]>`, etc.) to render
- * a segment at a time. This keeps the layer's containers honest — none exist just to mirror a
- * parent — and makes it trivial to add analyses without touching the text hierarchy.
+ *     TextAnalysis
+ *       ├─ segmentAnalyses      : SegmentAnalysis[]
+ *       ├─ segmentAnalysisLinks : SegmentAnalysisLink[]
+ *       ├─ tokenAnalyses        : TokenAnalysis[]
+ *       ├─ tokenAnalysisLinks   : TokenAnalysisLink[]
+ *       ├─ phraseAnalyses       : PhraseAnalysis[]
+ *       └─ phraseAnalysisLinks  : PhraseAnalysisLink[]
+ *
+ * The analysis layer is **flat** — not a mirror of the text layer's book / segment nesting.
+ * Analysis payloads (`SegmentAnalysis`, `TokenAnalysis`, `PhraseAnalysis`) are stored separately
+ * from their text-layer attachments. Link records (`segmentAnalysisLinks`, `tokenAnalysisLinks`,
+ * `phraseAnalysisLinks`) connect each analysis id to one segment or one/many tokens. Consumers
+ * index links by segment/token ids at load time to render a segment at a time.
  *
  * Lexical information (entries, senses, allomorphs, grammar / MSA, …) is **not** stored in this
  * model. It lives in the Lexicon extension (`lexicon`); this model references it via `EntryRef` /
@@ -131,15 +141,13 @@ declare module 'papi-shared-types' {
  * - `IMoForm` (allomorph) is not exported; no allomorph service.
  * - `IMoMorphSynAnalysis` (MSA) is not exported; no MSA service.
  *
- * Punctuation tokens are first-class citizens of the text layer on both source and target sides —
- * they are stored in `Segment.tokens` so the baseline text can be reconstructed faithfully. They
- * are simply omitted from the analysis layer's `tokenAnalyses` (rather than stored there with empty
- * analyses).
+ * Punctuation tokens are first-class citizens of the text layer — they are stored in
+ * `Segment.tokens` so the baseline text can be reconstructed faithfully. They are simply omitted
+ * from the analysis layer's `tokenAnalyses` (rather than stored there with empty analyses).
  *
- * Staleness detection: analysis records and alignment endpoints carry a `tokenSnapshot` of the
- * token's surface text at analysis time. When the baseline changes, consumers compare the snapshot
- * against the current `Token.surfaceText` and flip `status` to `'stale'` on mismatch to prompt
- * re-review.
+ * Staleness detection: `AlignmentEndpoint` records carry a token snapshot via `token.surfaceText`.
+ * When the baseline changes, consumers compare the snapshot against the current `Token.surfaceText`
+ * and flip `status` to `'stale'` on mismatch to prompt re-review.
  */
 declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
@@ -167,8 +175,8 @@ declare module 'interlinearizer' {
    * - `candidate` — proposed but not yet reviewed
    * - `rejected` — explicitly rejected by a human
    * - `stale` — the underlying token text has changed since this record was created; the record needs
-   *   human review. Set by drift-detection logic comparing `tokenSnapshot` against the current
-   *   `Token.surfaceText`.
+   *   human review. Set by drift-detection logic comparing stored `TokenSnapshot.surfaceText`
+   *   values against the current `Token.surfaceText`.
    */
   export type AssignmentStatus = 'approved' | 'suggested' | 'candidate' | 'rejected' | 'stale';
 
@@ -184,10 +192,9 @@ declare module 'interlinearizer' {
   export type MultiString = Record<string, string>;
 
   /**
-   * A character-level scripture reference anchored to a specific position within a verse's baseline
-   * text. When `charIndex` is absent the reference is verse-level only — it identifies the verse as
-   * a whole without pinpointing a specific character. Consumers must treat an absent `charIndex` as
-   * "beginning of verse" when a character position is required.
+   * A verse-level scripture reference that may optionally be anchored to a character position
+   * within the verse's baseline text. When `charIndex` is absent the reference is verse-level
+   * only.
    */
   export interface ScriptureRef {
     /** 3-letter SIL book code (e.g. `"GEN"`). */
@@ -303,112 +310,7 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §1 InterlinearAlignment
-  // ---------------------------------------------------------------------------
-
-  /**
-   * Top-level bilingual container pairing two interlinear texts — `source` (the input being
-   * analyzed) and `target` (the analysis / output side) — with the alignment links between them.
-   *
-   * The sides carry directional meaning: `source` is what the workflow takes in, `target` is what
-   * the workflow produces or aligns toward. The model types themselves are identical on both sides;
-   * that directional contract is enforced by the application layer, not by shape. Example
-   * pairings:
-   *
-   * - Glossing a vernacular draft (source) in an analyst language such as English (target);
-   * - Aligning a Greek / Hebrew resource text (source) against a vernacular translation (target);
-   * - Aligning one translation (source) against another (target).
-   *
-   * Each side carries its own text (books → segments → tokens) and, optionally, a flat analysis
-   * layer (`segmentAnalyses` / `tokenAnalyses` / `phrases`). `AlignmentLink`s bridge tokens or
-   * morphemes from source to target.
-   *
-   * Source-system mapping:
-   *
-   * - LCM: no native bilingual alignment model. Constructed by pairing two `InterlinearText`
-   *   instances produced from LCM / companion data; the workflow decides which is `source` and
-   *   which is `target`.
-   * - Paratext: not directly represented. Can be constructed from parallel projects that share the
-   *   same versification.
-   * - BT Extension: one `Translation` scoped to two sides (`Translation.sideNum`: 1 / 2). By BT
-   *   convention side 1 is the source and side 2 is the target; each side becomes an
-   *   `InterlinearText`. `Alignment` records become `AlignmentLink`s.
-   */
-  export interface InterlinearAlignment {
-    /** Unique identifier for this alignment pair. */
-    id: string;
-
-    /**
-     * The input being analyzed — for example a vernacular draft being glossed, a Greek / Hebrew
-     * resource text being aligned against a translation, or one translation being aligned against
-     * another.
-     */
-    source: InterlinearText;
-
-    /**
-     * The analysis / output side — for example an analyst-language gloss, a back translation, or
-     * the translation being aligned against the source.
-     */
-    target: InterlinearText;
-
-    /**
-     * Token- or morpheme-level alignment links connecting endpoints in the source interlinear to
-     * endpoints in the target interlinear. Empty when no alignment has been computed or imported.
-     */
-    links: AlignmentLink[];
-  }
-
-  // ---------------------------------------------------------------------------
-  // §2 InterlinearText
-  // ---------------------------------------------------------------------------
-
-  /**
-   * One side of an interlinear alignment — the baseline text plus its parallel analysis layer.
-   *
-   * The text layer (`books`) mirrors the underlying document's structure. The analysis layer
-   * (`analysis`) has the same divisions but carries morpheme / gloss / phrase information and
-   * references into the Lexicon extension.
-   *
-   * Source-system mapping:
-   *
-   * - LCM: one `IScripture` instance (singleton per project). Text layer from `IScrBook` /
-   *   `IScrSection` / `IScrTxtPara` content; analysis layer from `IWfiWordform` / `IWfiAnalysis` /
-   *   `IWfiGloss` referenced by `ISegment.AnalysesRS`. `analysisLanguages[]` is the set of
-   *   languages present on `IWfiGloss.Form`.
-   * - Paratext: merged from per-book, per-language `InterlinearData` files
-   *   (`Interlinear_{language}/Interlinear_{language}_{book}.xml`). Text layer from USFM; analysis
-   *   layer from `ClusterData` + `LexemeCluster` + `WordAnalysis`. Each file's `GlossLanguage` is
-   *   added to `analysisLanguages[]`.
-   * - BT Extension: one side of a `Translation` (a single `sideNum` value). Text layer from `Token` /
-   *   `Instance` records; analysis layer synthesized from per-token `gloss` / `lemmaText` /
-   *   `senseIds`. Analysis is typically in a single language.
-   */
-  export interface InterlinearText {
-    /** Unique identifier for this interlinear text. */
-    id: string;
-
-    /** Writing system of the baseline text. */
-    writingSystem: string;
-
-    /**
-     * Writing systems in which analyses are provided (e.g. `["en", "fr"]`). A single text can hold
-     * analyses in multiple languages.
-     */
-    analysisLanguages: string[];
-
-    /** Baseline text: books of scripture (or other texts). */
-    books: Book[];
-
-    /**
-     * Parallel analysis layer. Absent (not present) when the text has never been analyzed;
-     * present-but-empty (`segmentAnalyses: [], tokenAnalyses: [], phrases: []`) when analysis has
-     * been initialized but no records have been added yet.
-     */
-    analysis?: TextAnalysis;
-  }
-
-  // ---------------------------------------------------------------------------
-  // §3 Text layer — Book, Segment, Token
+  // §1 Text layer — Book, Segment, Token
   // ---------------------------------------------------------------------------
 
   /**
@@ -461,22 +363,28 @@ declare module 'interlinearizer' {
    */
   export interface Segment {
     /**
-     * Unique within the owning `InterlinearText` — used as the cross-reference key by
-     * `SegmentAnalysis.segmentId`.
+     * Stable identifier for this segment, unique within the owning `InterlinearProject`. In
+     * practice the id is project-wide unique because it is set to the verse SID (e.g. `"GEN 1:1"`).
+     * Used as the segment-side key by `SegmentAnalysisLink.segmentId`.
      */
     id: string;
 
-    /** Inclusive start of the text range, anchored to a character position within its verse. */
+    /**
+     * Inclusive start of the text range. `charIndex` is set when a sub-verse character offset is
+     * known.
+     */
     startRef: ScriptureRef;
 
-    /** Inclusive end of the text range, anchored to a character position within its verse. */
+    /**
+     * Inclusive end of the text range. `charIndex` is set when a sub-verse character offset is
+     * known.
+     */
     endRef: ScriptureRef;
 
     /**
-     * Raw text of the segment. Required — token character offsets (`Token.charStart` /
-     * `Token.charEnd`) are expressed relative to this string, so it must be present for the text
-     * layer to be interpretable, particularly for scriptio continua scripts where token boundaries
-     * are not derivable from whitespace.
+     * Token character offsets (`Token.charStart` / `Token.charEnd`) are expressed relative to this
+     * string, so it must be present for the text layer to be interpretable, particularly for
+     * scriptio continua scripts where token boundaries are not derivable from whitespace.
      */
     baselineText: string;
 
@@ -520,15 +428,18 @@ declare module 'interlinearizer' {
    */
   export interface Token {
     /**
-     * Unique within the owning `InterlinearText` — used as the cross-reference key by
-     * `TokenAnalysis.tokenId`, `Phrase.tokenIds`, and `AlignmentEndpoint.tokenId`.
+     * Stable identifier for this token, unique within the owning `InterlinearProject`. In practice
+     * the ref is project-wide unique because it embeds the verse SID and the token's character
+     * offset (e.g. `"GEN 1:1:0"` for the first token in Genesis 1:1). Used as the token-side key by
+     * `TokenAnalysisLink.token.tokenRef`, `PhraseAnalysisLink.tokens[*].tokenRef`, and
+     * `AlignmentEndpoint.token.tokenRef`.
      */
-    id: string;
+    ref: string;
 
     /** The token's text as it appears in the baseline. */
     surfaceText: string;
 
-    /** Writing system of `surfaceText`. */
+    /** BCP 47 writing-system tag for `surfaceText`. */
     writingSystem: string;
 
     /**
@@ -554,16 +465,15 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §4 Analysis layer — TextAnalysis, SegmentAnalysis
+  // §2 Analysis layer — TextAnalysis, SegmentAnalysis
   // ---------------------------------------------------------------------------
 
   /**
-   * The analysis layer for an `InterlinearText`.
+   * The analysis layer for an `InterlinearProject`.
    *
-   * Flat by design — it does **not** mirror the text layer's book / segment nesting. Every record
-   * carries an id reference back to its text-layer counterpart (`segmentId` / `tokenId`). Consumers
-   * that need segment-local views build `Map<segmentId, …>` / `Map<tokenId, TokenAnalysis[]>` at
-   * load time.
+   * Flat by design — it does **not** mirror the text layer's book / segment nesting. Analysis
+   * payload records are linked to the text layer through the corresponding `*AnalysisLinks` arrays.
+   * Consumers that need segment-local views build indexes from those links at load time.
    *
    * Keeping this layer flat avoids ceremonial container types whose only purpose is to mirror a
    * parent, and makes it trivial to add or remove analyses without touching the text hierarchy.
@@ -578,56 +488,128 @@ declare module 'interlinearizer' {
    */
   export interface TextAnalysis {
     /**
-     * Per-segment analysis records, keyed to `Segment.id` via `segmentId`. Carries only
-     * segment-level data (free / literal translations); token-level data lives in `tokenAnalyses`.
+     * Per-segment analysis payload records. Carries only segment-level data (free / literal
+     * translations); token-level data lives in `tokenAnalyses`.
      *
-     * Competing analyses are permitted: a single `segmentId` may have multiple `SegmentAnalysis`
+     * Competing analyses are permitted: a single segment may have multiple linked `SegmentAnalysis`
      * entries (e.g. an AI-drafted back translation alongside a human-edited one), distinguished by
      * `status` / `confidence` / `producer`.
      *
-     * **Invariant:** at most one `SegmentAnalysis` per `segmentId` has `status: 'approved'`. That
-     * entry is the canonical segment-level analysis for rendering; alternates are available to
-     * review workflows via the other statuses.
+     * **Invariant:** for a given segment, at most one linked `SegmentAnalysisLink` should have
+     * `status: 'approved'`. That linked analysis is the canonical segment-level analysis for
+     * rendering; alternates are available to review workflows via the other statuses. This
+     * invariant is the caller's responsibility to maintain; no runtime enforcement exists.
      */
     segmentAnalyses: SegmentAnalysis[];
 
     /**
-     * Token-level analyses, flat across the whole text. Each entry references its token by
-     * `tokenId`; the text layer keeps every token (words and punctuation) but this list typically
-     * includes only the tokens being analyzed — punctuation is omitted rather than stored with
-     * empty analyses.
+     * Links each `SegmentAnalysis.id` to a single `Segment.id`, along with review metadata for that
+     * assignment.
+     */
+    segmentAnalysisLinks: SegmentAnalysisLink[];
+
+    /**
+     * Token-level analysis payload records, flat across the whole text. The text layer keeps every
+     * token (words and punctuation) but this list typically includes only tokens being analyzed —
+     * punctuation is omitted rather than stored with empty analyses.
      *
-     * Competing analyses are permitted: a single `tokenId` may have multiple `TokenAnalysis`
+     * Competing analyses are permitted: a single token may have multiple linked `TokenAnalysis`
      * entries (e.g. a parser's suggestion alongside a human's choice), distinguished by `status` /
      * `confidence` / `producer`.
      *
-     * **Invariant:** at most one `TokenAnalysis` per `tokenId` has `status: 'approved'`. That entry
-     * is the canonical analysis for rendering; alternates are available to review workflows via the
-     * other statuses (`'suggested'`, `'candidate'`, `'rejected'`, `'stale'`).
+     * **Invariant:** for a given token, at most one linked `TokenAnalysisLink` should have `status:
+     * 'approved'`. That linked analysis is the canonical analysis for rendering; alternates are
+     * available to review workflows via the other statuses (`'suggested'`, `'candidate'`,
+     * `'rejected'`, `'stale'`). This invariant is the caller's responsibility to maintain; no
+     * runtime enforcement exists.
      */
     tokenAnalyses: TokenAnalysis[];
+
+    /**
+     * Links each `TokenAnalysis.id` to one token snapshot, along with review metadata for that
+     * assignment.
+     */
+    tokenAnalysisLinks: TokenAnalysisLink[];
 
     /**
      * Multi-token phrase analyses, flat across the whole text. A phrase may group adjacent or
      * disjoint tokens and carries its own gloss. A phrase's member tokens may span multiple
      * segments.
      *
-     * Competing phrases are permitted: a given `tokenId` may appear in multiple `Phrase` records
-     * (e.g. a suggested phrase grouping plus a human-approved one) distinguished by `status`.
+     * Competing phrases are permitted: a given token may appear in multiple linked `PhraseAnalysis`
+     * records (e.g. a suggested phrase grouping plus a human-approved one) distinguished by
+     * `status`.
      *
      * **Invariants:**
      *
-     * - At most one `Phrase` containing a given `tokenId` has `status: Approved`. That phrase is
-     *   canonical for rendering.
-     * - A token may carry both a `TokenAnalysis` _and_ an approved `Phrase`; the per-token parse
-     *   coexists with the phrase-level gloss and is not a competing analysis.
+     * - At most one linked `PhraseAnalysisLink` containing a given token should have `status:
+     *   'approved'`. That phrase is canonical for rendering.
+     * - A token may carry both a `TokenAnalysis` _and_ an approved `PhraseAnalysis`; the per-token
+     *   parse coexists with the phrase-level gloss and is not a competing analysis.
      */
-    phrases: Phrase[];
+    phraseAnalyses: PhraseAnalysis[];
+
+    /**
+     * Links each `PhraseAnalysis.id` to one or more token snapshots, along with review metadata for
+     * that assignment.
+     */
+    phraseAnalysisLinks: PhraseAnalysisLink[];
+  }
+
+  /** Shared link metadata for attaching an analysis payload record to text-layer targets. */
+  export interface AnalysisLink {
+    /** The `Analysis.id` for the linked analysis payload record. */
+    analysisId: string;
+
+    /** Required review status. */
+    status: AssignmentStatus;
+
+    /** How much to trust this analysis assignment. */
+    confidence?: Confidence;
+  }
+
+  /** Links one `SegmentAnalysis` payload record to a single source segment. */
+  export interface SegmentAnalysisLink extends AnalysisLink {
+    /** Reference to the corresponding `Segment.id` in the text layer. */
+    segmentId: string;
   }
 
   /**
-   * Per-segment analysis record. Carries data that belongs to a segment as a whole (free / literal
-   * translations). Token analyses and phrases live on `TextAnalysis` directly, keyed by id.
+   * Shared base for all analysis payload record types (`SegmentAnalysis`, `TokenAnalysis`,
+   * `PhraseAnalysis`). Carries fields common to each analysis payload: stable identity, token
+   * surface text, and optional provenance.
+   */
+  export interface Analysis {
+    /** Unique within the owning `TextAnalysis` — stable reference for this record. */
+    id: string;
+
+    /** Surface form of the analyzed text span (token, phrase, or segment). */
+    surfaceText: string;
+
+    /**
+     * How much to trust this analysis. Independent of who produced it — see `producer` /
+     * `sourceUser`.
+     */
+    confidence?: Confidence;
+
+    /**
+     * Free-form tag identifying what produced this analysis — e.g. `"human"`, `"parser"`,
+     * `"eflomal"`, or a specific tool name.
+     */
+    producer?: string;
+
+    /**
+     * User identifier for human-created or human-edited analyses. Omitted for purely
+     * machine-generated entries. Both `producer` and `sourceUser` may be set simultaneously when a
+     * human uses a tool-assisted workflow; `producer` names the tool and `sourceUser` identifies
+     * the human reviewer.
+     */
+    sourceUser?: string;
+  }
+
+  /**
+   * Per-segment analysis payload record. Carries data that belongs to a segment as a whole (free /
+   * literal translations). Token analyses and phrases live on `TextAnalysis` directly.
    *
    * Source-system mapping:
    *
@@ -638,59 +620,32 @@ declare module 'interlinearizer' {
    * - BT Extension: free / literal translations are not natively stored — typically absent unless
    *   synthesized.
    */
-  export interface SegmentAnalysis {
-    /**
-     * Unique within the owning `TextAnalysis` — used as a stable reference for this analysis
-     * record.
-     */
-    id: string;
-
-    /**
-     * Reference to the corresponding `Segment.id` in the text layer (unique within the owning
-     * `InterlinearText`).
-     */
-    segmentId: string;
-
+  export interface SegmentAnalysis extends Analysis {
     /** Idiomatic translation of the segment. */
     freeTranslation?: MultiString;
 
     /** Word-for-word translation. May be generated from token glosses. */
     literalTranslation?: MultiString;
-
-    /**
-     * How much to trust this segment-level analysis. Independent of who produced it — see
-     * `producer` / `sourceUser` for that.
-     */
-    confidence?: Confidence;
-
-    /** Required review status. */
-    status: AssignmentStatus;
-
-    /**
-     * Free-form tag identifying what produced this analysis — e.g. `"human"`, `"bt-draft"`, or a
-     * specific tool name.
-     */
-    producer?: string;
-
-    /**
-     * User identifier for human-created or human-edited analyses. Omitted for purely
-     * machine-generated entries.
-     */
-    sourceUser?: string;
   }
 
   // ---------------------------------------------------------------------------
-  // §5 TokenAnalysis — parse + 1:1 gloss
+  // §3 TokenAnalysis — parse + 1:1 gloss
   // ---------------------------------------------------------------------------
+
+  /** Links one `TokenAnalysis` payload record to exactly one token snapshot. */
+  export interface TokenAnalysisLink extends AnalysisLink {
+    /** Token that this analysis refers to. */
+    token: TokenSnapshot;
+  }
 
   /**
    * Analysis of a single token: a word-level (1:1) gloss plus optional morpheme-level parse.
    *
    * `gloss` is a free-form gloss string for the token (keyed by analysis-language tag).
-   * `glossSenseRef` alternatively resolves the gloss through a specific `ISense` in the Lexicon
-   * extension — when set, the rendered gloss is the sense's gloss text and may be refreshed
-   * automatically if the lexicon is edited. Both may be set concurrently: when both are present,
-   * `gloss` serves as a local override that takes precedence for rendering.
+   * `glossSenseRef` resolves the gloss through a specific `ISense` in the Lexicon extension — when
+   * set, the sense's gloss text can be surfaced and refreshed automatically if the lexicon is
+   * edited. Both may be present simultaneously; when they are, `gloss` takes precedence for
+   * rendering (the local override wins over the lexicon-derived value).
    *
    * `morphemes` carries the parse information. Each morpheme links to the Lexicon extension via
    * `entryRef` / `senseRef`.
@@ -716,18 +671,13 @@ declare module 'interlinearizer' {
    *   inferred from status. No morpheme decomposition — `morphemes` is either empty or a single
    *   whole-word morpheme. `pos` available from Macula TSV for source-language tokens only.
    */
-  export type TokenAnalysis = {
+  export interface TokenAnalysis extends Analysis {
     /**
-     * Unique within the owning `TextAnalysis` — used as the cross-reference key by
-     * `AlignmentEndpoint.tokenAnalysisId` for morpheme-level alignment links.
+     * Ordered morpheme breakdown. Present when the analysis reaches sub-word granularity (e.g. an
+     * LCM `IWfiAnalysis` with `MorphBundlesOS`). Absent when the analysis treats the token as a
+     * single whole-word unit.
      */
-    id: string;
-
-    /** Reference to the `Token.id` being analyzed (unique within the owning `InterlinearText`). */
-    tokenId: string;
-
-    /** Ordered morpheme breakdown. Omitted for whole-word analyses. */
-    morphemes?: Morpheme[];
+    morphemes?: MorphemeAnalysis[];
 
     /** Part of speech (free-form tag or lexicon POS id). */
     pos?: string;
@@ -739,54 +689,23 @@ declare module 'interlinearizer' {
     features?: Record<string, string>;
 
     /**
-     * How much to trust this analysis. Independent of who produced it — see `producer` /
-     * `sourceUser` for that.
-     */
-    confidence?: Confidence;
-
-    /** Required review status. */
-    status: AssignmentStatus;
-
-    /**
-     * Free-form tag identifying what produced this analysis — e.g. `"human"`, `"parser"`,
-     * `"eflomal"`, or a specific tool name. Distinguishes human edits from each of several possible
-     * engines.
-     */
-    producer?: string;
-
-    /**
-     * User identifier for human-created or human-edited analyses. Omitted for purely
-     * machine-generated entries.
-     */
-    sourceUser?: string;
-
-    /**
-     * Surface text of the token at analysis time — used for drift detection. Consumers compare this
-     * against the current `Token.surfaceText`; on mismatch, flip `status` to `'stale'` to prompt
-     * re-review.
-     *
-     * Holds the raw surface text for debuggability; can be swapped for a hash if storage cost
-     * becomes a concern (token text is typically short, so the literal string is usually fine).
-     */
-    tokenSnapshot?: string;
-
-    /**
-     * Free-form gloss string for this token, keyed by analysis-language BCP 47 tag. May coexist
-     * with `glossSenseRef` when the user has both a local override and a lexicon-backed sense — the
-     * local gloss takes precedence for rendering in that case.
+     * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
+     * `glossSenseRef` when both are present.
      */
     gloss?: MultiString;
 
     /**
-     * Resolves the gloss through a specific `ISense` in the Lexicon extension, enabling automatic
-     * refresh when the lexicon is edited. May coexist with `gloss` when the user maintains both a
-     * lexicon-linked sense and a local override.
+     * Reference to the `ISense` in the Lexicon extension whose gloss text this analysis uses. May
+     * coexist with `gloss`; when both are present, `gloss` is the active rendering value and
+     * `glossSenseRef` is retained so the lexicon link is not lost.
      */
     glossSenseRef?: SenseRef;
-  };
+  }
 
   /**
-   * An ordered morpheme within a token's parse.
+   * Analysis of one morpheme within a token's parse. `MorphemeAnalysis` owns the morpheme itself:
+   * `form` and `writingSystem` store the structural data directly, while the optional refs link it
+   * into the Lexicon extension for lexical resolution.
    *
    * `form` is the morpheme's surface text as it appeared in this analysis context — which may
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
@@ -815,10 +734,10 @@ declare module 'interlinearizer' {
    *   from the lemma. `allomorphRef` / `grammarRef` are left unset — BT Extension does not carry
    *   these.
    */
-  export interface Morpheme {
+  export interface MorphemeAnalysis {
     /**
      * Unique within the owning `TokenAnalysis.morphemes` array — used as the cross-reference key by
-     * `AlignmentEndpoint.morphemeId`.
+     * `MorphemeLink.morphemeId`.
      */
     id: string;
 
@@ -855,13 +774,20 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §6 Phrase — multi-token gloss unit
+  // §4 PhraseAnalysis — multi-token gloss unit
   // ---------------------------------------------------------------------------
+
+  /** Links one `PhraseAnalysis` payload record to one or more token snapshots. */
+  export interface PhraseAnalysisLink extends AnalysisLink {
+    /** Ordered snapshots of tokens that compose this phrase. */
+    tokens: [TokenSnapshot, ...TokenSnapshot[]];
+  }
 
   /**
    * A multi-token unit glossed or analyzed as a single phrase.
    *
-   * `tokenIds` lists the tokens (in order) that belong to the phrase. The tokens may be:
+   * The linked `PhraseAnalysisLink.tokens` list holds the token snapshots (in order) that belong to
+   * the phrase. The tokens may be:
    *
    * - Adjacent within one segment ("en el" → "in the")
    * - Disjoint within one segment (French "ne … pas" → "not")
@@ -870,11 +796,10 @@ declare module 'interlinearizer' {
    * Each token may still carry its own `TokenAnalysis` alongside the phrase; the phrase contributes
    * the combined-unit gloss.
    *
-   * `gloss` is a free-form phrase gloss. `senseRef` alternatively points at a lexicon sense when
-   * the phrase is a multi-word lexical entry — the Lexicon extension supports both kinds via
-   * `IEntry.morphType = Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Both may
-   * be set concurrently: when both are present, `gloss` serves as a local override that takes
-   * precedence for rendering.
+   * `gloss` is a free-form phrase gloss. `senseRef` points at a lexicon sense when the phrase is a
+   * multi-word lexical entry — the Lexicon extension supports both kinds via `IEntry.morphType =
+   * Phrase` (contiguous) or `DiscontiguousPhrase` (e.g. "ne … pas"). Both may be present
+   * simultaneously; when they are, `gloss` takes precedence for rendering.
    *
    * Provenance fields (`producer`, `sourceUser`, `confidence`, `status`) let a suggestion engine
    * record proposed phrases that a user can then approve or reject, enabling automated recognition
@@ -883,70 +808,30 @@ declare module 'interlinearizer' {
    * Source-system mapping:
    *
    * - LCM: LCM does not natively model multi-word phrases as first-class objects. Multi-word glosses,
-   *   when present, must be synthesized as `Phrase` records during import.
+   *   when present, must be synthesized as `PhraseAnalysis` records during import.
    * - Paratext: a `LexemeCluster` with `Type = Phrase` spans multiple words — each such cluster
-   *   becomes one `Phrase` whose `tokenIds` enumerate the covered tokens. `senseRef` is the
-   *   selected `LexemeData` reference for the phrase.
+   *   becomes one `PhraseAnalysis` whose linked `PhraseAnalysisLink.tokens` enumerate the covered
+   *   tokens. `senseRef` is the selected `LexemeData` reference for the phrase.
    * - BT Extension: not natively tracked. Must be synthesized during migration when adjacent tokens
    *   share the same gloss / sense.
    */
-  export type Phrase = {
-    /** Unique within the owning `TextAnalysis` — used as a stable reference for this phrase record. */
-    id: string;
-
-    /** Ordered `Token.id` values that compose this phrase. */
-    tokenIds: [string, ...string[]];
-
-    /** Required review status. */
-    status: AssignmentStatus;
-
+  export interface PhraseAnalysis extends Analysis {
     /**
-     * How much to trust this phrase. Independent of who produced it — see `producer` / `sourceUser`
-     * for that.
-     */
-    confidence?: Confidence;
-
-    /**
-     * Free-form tag identifying what produced this phrase — e.g. `"human"`, `"phrase-detector"`, or
-     * a specific tool name.
-     */
-    producer?: string;
-
-    /**
-     * User identifier for human-created or human-edited phrases. Omitted for purely
-     * machine-generated entries.
-     */
-    sourceUser?: string;
-
-    /**
-     * Surface text of each token at creation time, parallel to `tokenIds`. Enables drift detection
-     * for phrases — if any index's snapshot no longer matches the current `Token.surfaceText`, the
-     * phrase is flagged `Stale`.
-     *
-     * **Invariant:** when present, `tokenSnapshots` must have the same length as `tokenIds` and
-     * each index `i` corresponds to the `Token.surfaceText` for `tokenIds[i]`. Consumers must
-     * maintain this alignment when filtering or transforming tokens.
-     */
-    tokenSnapshots?: [string, ...string[]];
-
-    /**
-     * Free-form phrase gloss keyed by analysis-language BCP 47 tag. May coexist with `senseRef`
-     * when the user has both a local override and a lexicon-backed sense — the local gloss takes
-     * precedence for rendering in that case.
+     * Free-form gloss string keyed by BCP 47 analysis-language tag. Takes precedence over
+     * `senseRef` when both are present.
      */
     gloss?: MultiString;
 
     /**
-     * Points at a multi-word lexical entry in the Lexicon extension (e.g. `IEntry.morphType =
-     * Phrase` or `DiscontiguousPhrase`), enabling automatic gloss refresh when the lexicon is
-     * edited. May coexist with `gloss` when the user maintains both a lexicon-linked sense and a
-     * local override.
+     * Reference to the `ISense` in the Lexicon extension this phrase maps to. May coexist with
+     * `gloss`; when both are present, `gloss` is the active rendering value and `senseRef` is
+     * retained so the lexicon link is not lost.
      */
     senseRef?: SenseRef;
-  };
+  }
 
   // ---------------------------------------------------------------------------
-  // §7 AlignmentLink, AlignmentEndpoint
+  // §5 AlignmentLink, AlignmentEndpoint
   // ---------------------------------------------------------------------------
 
   /**
@@ -967,7 +852,7 @@ declare module 'interlinearizer' {
    *   Eflomal-generated alignments leave `originNum` and `statusNum` unset (default 0, CREATED).
    */
   export interface AlignmentLink {
-    /** Unique within the owning `InterlinearAlignment` — stable reference for this link. */
+    /** Unique within the owning `InterlinearProject` — stable reference for this link. */
     id: string;
 
     /** Source-side endpoints (one or more tokens / morphemes). */
@@ -993,79 +878,89 @@ declare module 'interlinearizer' {
      */
     confidence?: Confidence;
 
-    /** Multilingual notes keyed by writing system (e.g. UI locale). */
+    /** Multilingual notes keyed by BCP 47 writing-system tag (e.g. `'en'`, `'fr'`). */
     notes?: MultiString;
   }
 
   /**
    * One side of an alignment link.
    *
-   * When `morphemeId` is set the link connects at the morpheme level. Because a single token may
-   * have multiple competing `TokenAnalysis` entries, `tokenAnalysisId` is **required** alongside
-   * `morphemeId` to identify the specific `TokenAnalysis` that owns the referenced morpheme. When
-   * `morphemeId` is absent the link connects to the whole token.
+   * When `morphemeLink` is set the link connects at the morpheme level. Because a single token may
+   * have multiple competing `TokenAnalysis` entries, `morphemeLink.tokenAnalysisId` is **required**
+   * alongside `morphemeLink.morphemeId` to identify the specific `TokenAnalysis` that owns the
+   * referenced morpheme. When `morphemeLink` is absent the link connects to the whole token.
    *
-   * Exactly one of two shapes is valid — setting `morphemeId` without `tokenAnalysisId` (or vice
-   * versa) is a TypeScript type error:
+   * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
+   * TokenAnalysis (via `morphemeLink.tokenAnalysisId`) → MorphemeAnalysis (via
+   * `morphemeLink.morphemeId`) → EntryRef → `IEntry` (Lexicon extension) → SenseRef → `ISense`
+   * (Lexicon extension)
    *
-   * - Token-level: neither `morphemeId` nor `tokenAnalysisId` is present.
-   * - Morpheme-level: both `morphemeId` and `tokenAnalysisId` are present.
-   *
-   * Resolution chain (morpheme-level): AlignmentEndpoint → Token (via `tokenId`) → TokenAnalysis
-   * (via `tokenAnalysisId`) → Morpheme (via `morphemeId`) → EntryRef → `IEntry` (Lexicon extension)
-   * → SenseRef → `ISense` (Lexicon extension)
-   *
-   * Resolution chain (token-level): AlignmentEndpoint → Token (surface text only)
+   * Resolution chain (token-level): AlignmentEndpoint → Token (via `token.tokenRef`) →
+   * `Token.surfaceText` (display) / `TokenAnalysis[]` (analysis, looked up by `tokenRef`)
    *
    * Source-system mapping:
    *
    * - LCM / Paratext: endpoints produced only through external tools or parallel-project inference
    *   (see `AlignmentLink`).
    * - BT Extension: one endpoint per `Instance` in an `Alignment`'s `sourceInstances` /
-   *   `targetInstances`. `morphemeId` and `tokenAnalysisId` are set when the token has a
-   *   morpheme-level parse; otherwise the endpoint targets the whole token.
+   *   `targetInstances`. `morphemeLink` is set when the token has a morpheme-level parse; otherwise
+   *   the endpoint targets the whole token.
    */
-  export type AlignmentEndpoint = {
-    /** The `Token.id` this endpoint targets. */
-    tokenId: string;
+  export interface AlignmentEndpoint {
+    /**
+     * Token targeted by this endpoint. Identifies the token via `tokenRef` and carries a surface
+     * text snapshot for drift detection.
+     */
+    token: TokenSnapshot;
+
+    /**
+     * When set, narrows the endpoint to a specific morpheme within the token's parse. When absent,
+     * the endpoint targets the whole token.
+     */
+    morphemeLink?: MorphemeLink;
+  }
+
+  /**
+   * A snapshot of a token at the time an alignment endpoint was created. Carries the stable token
+   * reference and a copy of its surface text for drift detection.
+   */
+  export interface TokenSnapshot {
+    /** `Token.ref` of the targeted token. */
+    tokenRef: string;
 
     /**
      * Surface text of the token at link-creation time — used for drift detection. A link whose
      * endpoint snapshot no longer matches the current `Token.surfaceText` is stale; consumers flip
      * the link's `status` to `'stale'` to prompt re-review.
      */
-    tokenSnapshot?: string;
-  } &
-    /**
-     * Either both `morphemeId` and `tokenAnalysisId` are set (morpheme-level link), or neither is
-     * set (token-level link). `tokenAnalysisId` is required alongside `morphemeId` because a single
-     * token may have multiple competing `TokenAnalysis` entries; without it the target morpheme
-     * would be ambiguous.
-     */
-    (| { morphemeId?: never; tokenAnalysisId?: never }
-      | {
-          /**
-           * The `TokenAnalysis.id` that owns the referenced morpheme. Required when `morphemeId` is
-           * set.
-           */
-          tokenAnalysisId: string;
-          /** Specific `Morpheme.id` within the identified `TokenAnalysis.morphemes`. */
-          morphemeId: string;
-        }
-    );
+    surfaceText: string;
+  }
+
+  /**
+   * Identifies a specific morpheme within a token's parse for morpheme-level alignment endpoints.
+   * Both fields are required together: `tokenAnalysisId` selects the `TokenAnalysis` (since a token
+   * may have multiple competing analyses) and `morphemeId` selects the morpheme within it.
+   */
+  export interface MorphemeLink {
+    /** The `TokenAnalysis.id` that owns the referenced morpheme. */
+    tokenAnalysisId: string;
+
+    /** Specific `MorphemeAnalysis.id` within the identified `TokenAnalysis.morphemes`. */
+    morphemeId: string;
+  }
 
   // ---------------------------------------------------------------------------
-  // §8 InterlinearProject — persisted project envelope
+  // §6 InterlinearProject — persisted project envelope
   // ---------------------------------------------------------------------------
 
   /**
    * The storage envelope for one interlinearizer project. Multiple projects may exist for the same
-   * pair of Platform.Bible projects (e.g. different analysis languages).
+   * source project (e.g. different analysis languages, or different target alignments).
    *
    * The token hierarchy (`Book` / `Segment` / `Token`) is **not** stored here — it is rebuilt from
    * Platform.Bible's USJ on each load. Only the analysis data and alignment links are persisted.
-   * Token-level drift is detected via `tokenSnapshot` fields on `TokenAnalysis` and
-   * `AlignmentEndpoint` records.
+   * Token-level drift is detected via `token.surfaceText` snapshots on `AlignmentEndpoint`
+   * records.
    *
    * Projects are stored via `papi.storage` (extension-host only) under two keys:
    *
@@ -1089,21 +984,81 @@ declare module 'interlinearizer' {
     sourceProjectId: string;
 
     /**
-     * BCP 47 tag for the language used in glosses and annotations (e.g. `'en'`). Populates
-     * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `Phrase` records.
+     * Platform.Bible project ID for the target text. Present only for bilateral alignment projects
+     * (e.g. BT Extension imports) where `AlignmentLink.targetEndpoints` must resolve to tokens in a
+     * second text. Omitted for analysis-only projects (LCM, PT9 single-sided glossing).
+     *
+     * When present, the `ActiveProject.target` books are rebuilt from this project's USJ on load,
+     * exactly as `ActiveProject.source` is rebuilt from `sourceProjectId`.
+     *
+     * BT Extension: corresponds to one `Translation` scoped to two sides (`Translation.sideNum`).
+     * By BT convention `sideNum = 1` is the source and `sideNum = 2` is the target;
+     * `sourceProjectId` maps to the side-1 project and `targetProjectId` maps to the side-2
+     * project.
      */
-    analysisWritingSystem: string;
-
-    /** Source-side analysis layer. Empty at creation; populated as the user annotates tokens. */
-    sourceAnalysis: TextAnalysis;
-
-    /** Target-side analysis layer. Empty at creation; populated as the user annotates tokens. */
-    targetAnalysis: TextAnalysis;
+    targetProjectId?: string;
 
     /**
-     * Token- or morpheme-level alignment links. Empty at creation; populated as the user aligns
-     * source and target tokens.
+     * BCP 47 tags for all languages used in glosses and annotations (e.g. `['en']`). Populates
+     * `MultiString` keys in `TokenAnalysis`, `SegmentAnalysis`, and `PhraseAnalysis` records.
+     *
+     * Source-system mapping:
+     *
+     * - LCM: the set of writing systems present on `IWfiGloss.Form` (one tag per analysis language in
+     *   the project).
+     * - Paratext: one tag per merged `GlossLanguage` file
+     *   (`Interlinear_{language}/Interlinear_{language}_{book}.xml`).
+     * - BT Extension: typically a single language; set from the per-token `gloss` writing system.
      */
-    links: AlignmentLink[];
+    analysisLanguages: string[];
+
+    /** Analysis layer. Empty at creation; populated as the user annotates tokens. */
+    analysis: TextAnalysis;
+
+    /**
+     * Token- or morpheme-level alignment links. Absent (`undefined`) at creation for analysis-only
+     * projects; present (possibly empty) for bilateral alignment projects. Populated as the user
+     * aligns source and target tokens.
+     */
+    links?: AlignmentLink[];
+  }
+
+  // ---------------------------------------------------------------------------
+  // §7 ActiveProject — runtime pairing of project envelope and text layers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The runtime object for an open interlinearizer project. Pairs the persisted
+   * {@link InterlinearProject} envelope with the reconstructed text hierarchies.
+   *
+   * `source` and `target` are rebuilt from Platform.Bible's USJ on each load and are never
+   * serialized. All annotation and alignment mutations target `project.analysis` and
+   * `project.links`; saving is done by writing those fields back to storage via
+   * `saveProjectAnalysis`.
+   *
+   * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
+   * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve
+   * against these books; when absent, only `sourceEndpoints` can be resolved.
+   *
+   * BT Extension: `source` corresponds to `Translation.sideNum = 1` and `target` to `sideNum = 2`,
+   * following BT's convention that side 1 is the input being analyzed and side 2 is the output.
+   */
+  export interface ActiveProject {
+    /** The persisted project envelope. Mutations target `project.analysis` and `project.links`. */
+    project: InterlinearProject;
+
+    /**
+     * The reconstructed source books, built from Platform.Bible USJ on load. Never serialized —
+     * rebuilt on every activation. Typically one book per scripture book code; multiple books may
+     * be present when the UI has prefetched adjacent books.
+     */
+    source: Book[];
+
+    /**
+     * The reconstructed target books, built from `project.targetProjectId`'s USJ on load. Present
+     * only when `project.targetProjectId` is set; absent for analysis-only projects (LCM, PT9).
+     * Never serialized — rebuilt on every activation alongside `source`.
+     */
+    target?: Book[];
   }
 }

@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
+import { useData, useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -133,7 +133,23 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     mockBookData();
     mockOptimisticSetting();
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    jest
+      .mocked(useLocalizedStrings)
+      .mockReturnValue([
+        { '%interlinearizer_continuousScrollToggle%': 'Continuous Scroll' },
+        false,
+      ]);
+    jest.mocked(useData).mockReturnValue(
+      new Proxy(
+        {},
+        {
+          get(_target, prop: string | symbol) {
+            if (prop === 'WebViewMenu') return () => [undefined, jest.fn(), false];
+            throw new Error(`useData mock: unexpected method "${String(prop)}"`);
+          },
+        },
+      ),
+    );
   });
 
   it('renders Interlinearizer and the nav controls when book data is available', () => {
@@ -286,5 +302,26 @@ describe('InterlinearizerLoader', () => {
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
 
     expect(mockOnChange).toHaveBeenCalledWith(true);
+  });
+
+  it('increments retokenizeKey passed to useInterlinearizerBookData when retokenize is clicked', async () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+      />,
+    );
+
+    const callsBefore = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyBefore =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsBefore - 1][0].retokenizeKey ?? 0;
+
+    await userEvent.click(screen.getByTestId('tab-toolbar-retokenize'));
+
+    const callsAfter = jest.mocked(useInterlinearizerBookData).mock.calls.length;
+    const keyAfter =
+      jest.mocked(useInterlinearizerBookData).mock.calls[callsAfter - 1][0].retokenizeKey ?? 0;
+
+    expect(keyAfter).toBe(keyBefore + 1);
   });
 });

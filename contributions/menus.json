@@ -14,6 +14,32 @@
     "items": []
   },
   "webViewMenus": {
+    "interlinearizer.mainWebView": {
+      "topMenu": {
+        "columns": {
+          "interlinearizer.project": {
+            "label": "%interlinearizer_menu_column_project%",
+            "localizeNotes": "Interlinearizer top menu column for project actions",
+            "order": 1
+          }
+        },
+        "groups": {
+          "interlinearizer.projectActions": {
+            "column": "interlinearizer.project",
+            "order": 1
+          }
+        },
+        "items": [
+          {
+            "label": "%interlinearizer_retokenize%",
+            "localizeNotes": "Interlinearizer top menu > Re-run tokenization from the latest USJ",
+            "group": "interlinearizer.projectActions",
+            "order": 1,
+            "command": "interlinearizer.retokenize"
+          }
+        ]
+      }
+    },
     "platformScriptureEditor.react": {
       "topMenu": {
         "columns": {},

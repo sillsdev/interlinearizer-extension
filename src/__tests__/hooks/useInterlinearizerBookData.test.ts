@@ -319,4 +319,36 @@ describe('useInterlinearizerBookData', () => {
       },
     );
   });
+
+  it('re-runs tokenization when retokenizeKey changes even if USJ data is unchanged', () => {
+    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+    const { rerender } = renderHook(
+      ({ retokenizeKey }: { retokenizeKey: number }) =>
+        useInterlinearizerBookData({
+          projectId: 'test-project',
+          scrRef: { ...GEN_1_1_SRC_REF },
+          retokenizeKey,
+        }),
+      { initialProps: { retokenizeKey: 0 } },
+    );
+
+    const callsAfterFirst = jest.mocked(tokenizeBook).mock.calls.length;
+
+    rerender({ retokenizeKey: 1 });
+
+    expect(jest.mocked(tokenizeBook).mock.calls.length).toBeGreaterThan(callsAfterFirst);
+  });
+
+  it('defaults retokenizeKey to 0 when not provided', () => {
+    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+    const { result } = renderHook(() =>
+      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+    );
+
+    expect(result.current.book).toBe(TEST_BOOK);
+  });
 });

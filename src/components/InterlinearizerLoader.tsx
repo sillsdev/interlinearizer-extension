@@ -1,7 +1,10 @@
 import type { UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import { useLocalizedStrings } from '@papi/frontend/react';
+import papi, { logger } from '@papi/frontend';
+import { useData, useLocalizedStrings } from '@papi/frontend/react';
+import { isPlatformError } from 'platform-bible-utils';
+import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { TabToolbar } from 'platform-bible-react';
-import { useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ScriptureNavControls from './ScriptureNavControls';
@@ -10,6 +13,9 @@ import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 
 /** Localization keys fetched from the platform for this component's UI strings. */
 const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
+
+/** Command name for the retokenize project menu item. */
+const RETOKENIZE_COMMAND = 'interlinearizer.retokenize' as const;
 
 /**
  * Root component for loading the Interlinearizer. Loads book data and settings, then renders error
@@ -35,10 +41,13 @@ export default function InterlinearizerLoader({
     value: continuousScroll,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
+  const [retokenizeKey, setRetokenizeKey] = useState(0);
+
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     {
       projectId,
       scrRef,
+      retokenizeKey,
     },
   );
 
@@ -46,6 +55,28 @@ export default function InterlinearizerLoader({
   const showLoading = isLoading || isSettingLoading;
 
   const [localizedStrings] = useLocalizedStrings(useMemo(() => [...STRING_KEYS], []));
+
+  /** Fetches the top-menu data for this WebView from the platform's menu data provider. */
+  const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
+    'interlinearizer.mainWebView',
+    { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
+  );
+
+  const projectMenuData = useMemo(() => {
+    if (!webViewMenuPossiblyError || isPlatformError(webViewMenuPossiblyError)) return undefined;
+    return webViewMenuPossiblyError.topMenu;
+  }, [webViewMenuPossiblyError]);
+
+  /**
+   * Handles project menu item selections from the toolbar. Dispatches known command names to the
+   * appropriate local action; unknown commands are silently ignored.
+   *
+   * @param selectedMenuItem - The menu item that was selected.
+   * @param selectedMenuItem.command - The command name string registered in `menus.json`.
+   */
+  const handleSelectProjectMenuItem = useCallback<SelectMenuItemHandler>(({ command }) => {
+    if (command === RETOKENIZE_COMMAND) setRetokenizeKey((k) => k + 1);
+  }, []);
 
   const toolbar = (
     <TabToolbar
@@ -66,10 +97,12 @@ export default function InterlinearizerLoader({
           onCheckedChange={handleContinuousScrollChange}
         />
       }
-      /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-      onSelectProjectMenuItem={() => {}}
-      /* v8 ignore next -- stub required by TabToolbar API, no behaviour to test */
-      onSelectViewInfoMenuItem={() => {}}
+      onSelectProjectMenuItem={handleSelectProjectMenuItem}
+      projectMenuData={projectMenuData}
+      /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+      onSelectViewInfoMenuItem={() => {
+        logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
+      }}
     />
   );
 

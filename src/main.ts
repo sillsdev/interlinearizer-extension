@@ -336,7 +336,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified InterlinearProject for the new project, or undefined if storage failed',
+            'JSON-stringified InterlinearProject for the new project; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
       },
@@ -409,7 +409,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
         result: {
           name: 'return value',
           summary:
-            'JSON-stringified updated InterlinearProject, or undefined if not found or if a storage failure occurred',
+            'JSON-stringified updated InterlinearProject, or undefined if no project with that ID exists; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
       },

@@ -18,6 +18,12 @@ declare module 'papi-shared-types' {
      * Opens the Interlinearizer for the project associated with the given WebView ID. Called from
      * WebView context menus, which pass the tab's WebView ID as the argument. Falls back to a
      * project picker dialog if the WebView has no project or no ID is given.
+     *
+     * @param webViewId - ID of the WebView tab whose associated project should be opened; when
+     *   omitted or when the WebView has no linked project, a project-picker dialog is shown
+     *   instead.
+     * @returns A promise that resolves to the opened WebView ID, or `undefined` if the user
+     *   dismissed the picker without selecting a project.
      */
     'interlinearizer.openForWebView': (webViewId?: string) => Promise<string | undefined>;
 
@@ -54,6 +60,11 @@ declare module 'papi-shared-types' {
      *
      * @param sourceProjectId Platform.Bible project ID of the source text to query.
      * @returns A JSON string containing an `InterlinearProject[]`; `"[]"` when none exist.
+     * @throws {SyntaxError} If the project-IDs index or any stored project record contains invalid
+     *   JSON.
+     * @throws If `papi.storage.readUserData` rejects for a reason other than the file not existing
+     *   (propagated from the storage layer). Callers can use this to distinguish a storage outage
+     *   from a legitimately empty list.
      */
     'interlinearizer.getProjectsForSource': (sourceProjectId: string) => Promise<string>;
 

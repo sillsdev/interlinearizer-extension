@@ -185,6 +185,8 @@ function makeSingleTokenBook(): Book {
  * A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only a punctuation
  * token (no word tokens). Used to exercise code paths that run when a segment exists in the book
  * but contributes nothing to phraseEntries / segmentStartIndex.
+ *
+ * @returns A two-segment Book where the second segment has no word tokens.
  */
 function makeMixedBook(): Book {
   return {

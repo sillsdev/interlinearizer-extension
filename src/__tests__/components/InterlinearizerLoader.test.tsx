@@ -40,6 +40,7 @@ jest.mock('../../components/ContinuousScrollToggle', () => ({
   __esModule: true,
   default: ({
     checked,
+    disabled,
     onCheckedChange,
   }: {
     checked: boolean;
@@ -51,7 +52,10 @@ jest.mock('../../components/ContinuousScrollToggle', () => ({
       type="checkbox"
       data-testid="continuous-scroll-toggle"
       checked={checked}
-      onChange={(e) => onCheckedChange(e.target.checked)}
+      disabled={disabled}
+      onChange={(e) => {
+        if (!disabled) onCheckedChange(e.target.checked);
+      }}
     />
   ),
 }));
@@ -71,6 +75,19 @@ const STUB_ACTIVE_PROJECT: MockProject = {
 
 jest.mock('../../components/ProjectModals', () => ({
   __esModule: true,
+  /**
+   * Minimal ProjectModals stand-in that drives modal state and active-project state through the
+   * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
+   * without mounting the full modal tree.
+   *
+   * @param modal - Current modal identifier controlling which stub panel is rendered.
+   * @param setModal - Callback to transition to a different modal state.
+   * @param activeProject - The currently active interlinear project, or undefined when none is
+   *   selected.
+   * @param useWebViewState - Injected hook used to read and write persisted WebView state; must
+   *   support the `'activeProject'` key.
+   * @returns A JSX element containing the stub modal panels keyed by `modal`.
+   */
   default: function StubProjectModals({
     modal,
     setModal,

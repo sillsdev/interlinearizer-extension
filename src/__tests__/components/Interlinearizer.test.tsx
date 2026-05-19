@@ -261,7 +261,12 @@ describe('Interlinearizer', () => {
       setScrRef: mockSetScrRef,
     });
 
-    capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    act(() => {
+      capturedSegmentViewPropsList[1].onSelect?.(
+        { book: 'GEN', chapter: 1, verse: 2 },
+        'GEN 1:2:0',
+      );
+    });
 
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });

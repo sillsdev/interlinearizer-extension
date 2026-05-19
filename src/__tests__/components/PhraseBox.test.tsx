@@ -33,24 +33,24 @@ jest.mock('../../components/TokenChip', () => ({
 }));
 
 /** Pre-built test token */
-const TEST_TOKEN: Token = {
-  ref: 'token-1',
+const TEST_TOKEN = {
+  id: 'token-1',
   surfaceText: 'Hello',
   writingSystem: 'en',
   type: 'word',
   charStart: 0,
   charEnd: 5,
-};
+} satisfies Token;
 
 /** Second test token */
-const TEST_TOKEN_2: Token = {
-  ref: 'token-2',
+const TEST_TOKEN_2 = {
+  id: 'token-2',
   surfaceText: 'World',
   writingSystem: 'en',
   type: 'word',
   charStart: 6,
   charEnd: 11,
-};
+} satisfies Token;
 
 /** Shared props shape used by both helper functions. */
 type PhraseBoxTestProps = {
@@ -58,7 +58,7 @@ type PhraseBoxTestProps = {
   isFocused: boolean;
   onClick?: (index?: number) => void;
   onGlossChange: (tokenId: string, value: string) => void;
-  tokens: Token[];
+  tokens: (Token & { type: 'word' })[];
 };
 
 /**

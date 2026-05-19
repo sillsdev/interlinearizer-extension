@@ -11,14 +11,16 @@ jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
     glosses,
+    index,
     isFocused = false,
     onClick,
     onGlossChange,
     tokens,
   }: {
     glosses: Record<string, string>;
+    index?: number;
     isFocused: boolean;
-    onClick?: () => void;
+    onClick?: (index?: number) => void;
     onGlossChange: (tokenId: string, value: string) => void;
     tokens: Token[];
   }) => (
@@ -26,7 +28,7 @@ jest.mock('../../components/PhraseBox', () => ({
       {tokens.map((t) => (
         <span key={t.id}>
           {onClick ? (
-            <button onClick={onClick} type="button">
+            <button onClick={() => onClick(index)} type="button">
               {t.surfaceText}
             </button>
           ) : (

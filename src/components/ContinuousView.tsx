@@ -3,8 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
-/** CSS easing for the strip opacity fade-in/out animation. */
+/**
+ * Narrows a `Token` to a word token.
+ *
+ * @param token - The token to test.
+ * @returns `true` when `token.type === 'word'`.
+ */
+function isWordToken(token: Token): token is Token & { type: 'word' } {
+  return token.type === 'word';
+}
+
+/**
+ * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
+ * at both ends of the transition.
+ */
 const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+
 /**
  * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
  * pending-jump effect.
@@ -435,7 +449,7 @@ export default function ContinuousView({
         >
           {allTokens.slice(windowStartTokenIndex, windowEndTokenIndex).map((token, i) => {
             const tokenIndex = windowStartTokenIndex + i;
-            if (token.type !== 'word') return <MemoizedTokenChip key={token.id} token={token} />;
+            if (!isWordToken(token)) return <MemoizedTokenChip key={token.id} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;

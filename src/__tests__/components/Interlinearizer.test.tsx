@@ -3,7 +3,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import type { Book, Segment } from 'interlinearizer';
 import Interlinearizer from '../../components/Interlinearizer';
 
@@ -13,8 +13,9 @@ let capturedContinuousViewProps: Record<string, unknown> = {};
 type CapturedSegmentViewProps = {
   segment: Segment;
   displayMode?: string;
+  focusedTokenId?: string;
   isActive?: boolean;
-  onClick?: (ref: { book: string; chapter: number; verse: number }) => void;
+  onSelect?: (ref: { book: string; chapter: number; verse: number }, tokenId?: string) => void;
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
@@ -22,17 +23,30 @@ jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
   default: (props: Record<string, unknown>) => {
     capturedContinuousViewProps = props;
-    return <div data-testid="continuous-view" />;
+    return (
+      <div
+        data-active-phrase-index={
+          typeof props.activePhraseIndex === 'number' ? String(props.activePhraseIndex) : undefined
+        }
+        data-testid="continuous-view"
+      />
+    );
   },
 }));
 
 jest.mock('../../components/SegmentView', () => ({
   __esModule: true,
-  SegmentView: ({ segment, ...rest }: CapturedSegmentViewProps) => {
+  SegmentView: ({
+    segment,
+    ...rest
+  }: CapturedSegmentViewProps & { glosses?: Record<string, string> }) => {
     capturedSegmentViewPropsList.push({ segment, ...rest });
     return <div data-testid="segment-view" data-segment-id={segment.id} />;
   },
-  default: ({ segment, ...rest }: CapturedSegmentViewProps) => {
+  default: ({
+    segment,
+    ...rest
+  }: CapturedSegmentViewProps & { glosses?: Record<string, string> }) => {
     capturedSegmentViewPropsList.push({ segment, ...rest });
     return <div data-testid="segment-view" data-segment-id={segment.id} />;
   },
@@ -185,7 +199,7 @@ describe('Interlinearizer', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({ bookSegments: GEN_1_MULTI_BOOK.segments, setScrRef: mockSetScrRef });
 
-    capturedSegmentViewPropsList[1].onClick?.({ book: 'GEN', chapter: 1, verse: 2 });
+    capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 });
 
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
@@ -227,6 +241,76 @@ describe('Interlinearizer', () => {
     expect(allElements[0]).toBe(continuousView);
   });
 
+  it('passes onSelect to SegmentView when continuousScroll is false', () => {
+    renderInterlinearizer({ continuousScroll: false });
+
+    expect(capturedSegmentViewPropsList[0].onSelect).toBeInstanceOf(Function);
+  });
+
+  it('passes onSelect to SegmentView when continuousScroll is true', () => {
+    renderInterlinearizer({ continuousScroll: true });
+
+    expect(capturedSegmentViewPropsList[0].onSelect).toBeInstanceOf(Function);
+  });
+
+  it('calls setScrRef with the segment ref when a token is clicked', () => {
+    const mockSetScrRef = jest.fn();
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      setScrRef: mockSetScrRef,
+    });
+
+    capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+
+    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+  });
+
+  it('passes activePhraseIndex to ContinuousView matching the clicked token', () => {
+    // Render in token-chip mode first so onSelect is available on SegmentView props.
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: false,
+    });
+
+    // GEN 1:2 word token is phrase index 1 (after GEN 1:1's one word token at index 0).
+    const { onSelect } = capturedSegmentViewPropsList[1];
+    if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
+
+    act(() => {
+      onSelect({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    });
+
+    // Switch to continuous-scroll mode so ContinuousView is rendered and its props captured.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+      />,
+    );
+
+    expect(capturedContinuousViewProps.activePhraseIndex).toBe(1);
+  });
+
+  it('passes onGlossChange to ContinuousView and updates glosses state', () => {
+    renderInterlinearizer({ continuousScroll: true });
+
+    const { onGlossChange } = capturedContinuousViewProps;
+    if (typeof onGlossChange !== 'function')
+      throw new Error('Expected onGlossChange to be a function');
+
+    act(() => {
+      onGlossChange('token-1', 'hello');
+    });
+
+    expect(capturedContinuousViewProps.glosses).toEqual({ 'token-1': 'hello' });
+  });
+
   it('calls setScrRef when ContinuousView emits onVerseChange', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({ continuousScroll: true, setScrRef: mockSetScrRef });
@@ -240,5 +324,162 @@ describe('Interlinearizer', () => {
     onVerseChange({ book: 'GEN', chapter: 2, verse: 3 });
 
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 2, verseNum: 3 });
+  });
+
+  it('updates continuousViewPhraseIndex when ContinuousView emits onFocusPhraseIndexChange', () => {
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+    });
+
+    const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
+    if (typeof onFocusPhraseIndexChange !== 'function')
+      throw new Error('Expected onFocusPhraseIndexChange to be a function');
+
+    act(() => {
+      onFocusPhraseIndexChange(1);
+    });
+
+    // Re-render in continuous mode — just verifying the callback does not throw and updates state.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+      />,
+    );
+
+    expect(capturedContinuousViewProps.activePhraseIndex).toBeUndefined();
+  });
+
+  it('carries the strip phrase position into segment view when switching off continuousScroll', () => {
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+    });
+
+    // Simulate ContinuousView reporting that phrase index 1 (GEN 1:2's token) is in view.
+    const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
+    if (typeof onFocusPhraseIndexChange !== 'function')
+      throw new Error('Expected onFocusPhraseIndexChange to be a function');
+
+    act(() => {
+      onFocusPhraseIndexChange(1);
+    });
+
+    // Switch to segment view — Interlinearizer should carry over phrase index 1 as the focus.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+      />,
+    );
+
+    // The token at phrase index 1 is 'GEN 1:2:0'; it should now be the focusedTokenId.
+    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:2:0');
+    expect(focused).toBeDefined();
+  });
+
+  it('falls back to the active-verse first word when switching off continuousScroll with no strip position', () => {
+    // Start in continuous mode without ContinuousView ever calling onFocusPhraseIndexChange.
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+    });
+
+    // Switch to segment view without any strip position having been reported.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll={false}
+        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+        setScrRef={() => {}}
+      />,
+    );
+
+    // The fallback focuses the first word of GEN 1:1 ('GEN 1:1:0').
+    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:1:0');
+    expect(focused).toBeDefined();
+  });
+
+  it('preserves an existing focusedTokenId when switching off continuousScroll with no strip position', () => {
+    // Start in segment mode and focus a specific token.
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: false,
+    });
+
+    // Click a token to set focusedTokenId to 'GEN 1:2:0'.
+    const { onSelect } = capturedSegmentViewPropsList[1];
+    if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
+    act(() => {
+      onSelect({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+    });
+
+    // Switch to continuous mode (without strip reporting any position).
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+      />,
+    );
+
+    // Switch back to segment mode — existing focusedTokenId should be preserved.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+      />,
+    );
+
+    // 'GEN 1:2:0' was already focused, so the fallback must not overwrite it.
+    const stillFocused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:2:0');
+    expect(stillFocused).toBeDefined();
+  });
+
+  it('leaves focusedTokenId undefined when switching off continuousScroll with no strip position and no matching segment', () => {
+    // scrRef points to verse 99 which does not exist in GEN_1_MULTI_BOOK.
+    const { rerender } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      bookSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 99 },
+    });
+
+    capturedSegmentViewPropsList = [];
+    rerender(
+      <Interlinearizer
+        book={GEN_1_MULTI_BOOK}
+        bookSegments={GEN_1_MULTI_BOOK.segments}
+        continuousScroll={false}
+        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
+        setScrRef={() => {}}
+      />,
+    );
+
+    // No segment matches verse 99 so focusedTokenId stays undefined for all views.
+    capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenId).toBeUndefined());
   });
 });

@@ -82,7 +82,7 @@ describe('TokenChip', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
     expect(handleChange).toHaveBeenCalledTimes(2);
     expect(handleChange).toHaveBeenNthCalledWith(1, 'i');
-    expect(handleChange).toHaveBeenNthCalledWith(2, 'in');
+    expect(handleChange).toHaveBeenNthCalledWith(2, 'n');
   });
 
   it('does not throw when onGlossChange is omitted and the user types', async () => {

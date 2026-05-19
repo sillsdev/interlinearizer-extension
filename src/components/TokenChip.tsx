@@ -34,7 +34,7 @@ export function TokenChip({
         aria-label={`Gloss for ${token.surfaceText}`}
         className="tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
         style={{ fieldSizing: 'content', minWidth: '5ch' }}
-        defaultValue={gloss ?? ''}
+        value={gloss ?? ''}
         onChange={(e) => onGlossChange?.(e.target.value)}
         onFocus={onFocus}
         type="text"

@@ -51,6 +51,12 @@ export function SegmentView({
 }>) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = { book, chapter, verse };
+  /**
+   * Forwards a token-chip click to the parent as a scripture reference + token id.
+   *
+   * @param tokenId - The id of the clicked token.
+   * @throws Propagates any error thrown by `onSelect`.
+   */
   const handleTokenClick = (tokenId: string) => onSelect(ref, tokenId);
 
   const sharedClassName = isActive

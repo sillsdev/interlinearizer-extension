@@ -7,31 +7,44 @@ import MemoizedTokenChip from './TokenChip';
  * Wraps one or more tokens in a phrase-level visual container.
  *
  * @param props - Component props
- * @param props.index - Index passed back to `onClick` to identify which phrase was clicked
+ * @param props.glosses - Map from `Token.id` to current English gloss text for each token in this
+ *   phrase.
+ * @param props.index - Index passed back to `onClick` to identify which phrase was interacted with
  * @param props.isFocused - Whether this phrase is the current navigation focus
  * @param props.onClick - Called with `index` when the phrase is clicked; omit to render a
  *   non-interactive span
+ * @param props.onGlossChange - Called with the token id and new gloss value when a gloss is edited.
  * @param props.tokens - Tokens belonging to this phrase
  * @returns A bordered inline container
  */
 export function PhraseBox({
+  glosses,
   index,
   isFocused = false,
   onClick,
+  onGlossChange,
   tokens,
 }: Readonly<{
+  glosses: Record<string, string>;
   index?: number;
-  isFocused?: boolean;
+  isFocused: boolean;
   onClick?: (index?: number) => void;
+  onGlossChange: (tokenId: string, value: string) => void;
   tokens: Token[];
 }>) {
   const baseClass = isFocused
-    ? 'tw:inline-flex tw:items-center tw:rounded tw:border-2 tw:border-border tw:bg-muted/30 tw:px-1 tw:py-0.5'
+    ? 'tw:inline-flex tw:items-center tw:rounded tw:border-2 tw:border-white tw:bg-muted/30 tw:px-1 tw:py-0.5'
     : 'tw:inline-flex tw:items-center tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-1 tw:py-0.5';
   const innerContent = (
     <span className="tw:inline-flex tw:items-center tw:gap-1">
       {tokens.map((token) => (
-        <MemoizedTokenChip key={token.id} token={token} />
+        <MemoizedTokenChip
+          key={token.id}
+          gloss={glosses[token.id]}
+          onFocus={() => onClick?.(index)}
+          onGlossChange={(value) => onGlossChange(token.id, value)}
+          token={token}
+        />
       ))}
     </span>
   );
@@ -43,6 +56,7 @@ export function PhraseBox({
         data-focus-state={isFocused ? 'focused' : 'default'}
         data-phrase-box="true"
         onClick={() => onClick?.(index)}
+        tabIndex={-1}
         type="button"
       >
         {innerContent}

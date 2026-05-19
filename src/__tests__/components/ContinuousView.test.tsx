@@ -4,20 +4,24 @@
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, Token } from 'interlinearizer';
+import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import ContinuousView from '../../components/ContinuousView';
 
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
+    glosses,
     isFocused = false,
     index,
     onClick,
+    onGlossChange,
     tokens,
   }: {
-    isFocused?: boolean;
+    glosses: Record<string, string>;
+    isFocused: boolean;
     index?: number;
     onClick?: (index?: number) => void;
+    onGlossChange: (tokenId: string, value: string) => void;
     tokens: Token[];
   }) => (
     <button
@@ -26,7 +30,16 @@ jest.mock('../../components/PhraseBox', () => ({
       onClick={() => onClick?.(index)}
       type="button"
     >
-      {tokens.map((t) => t.surfaceText).join(' ')}
+      {tokens.map((t) => (
+        <span key={t.id}>
+          {t.surfaceText}
+          <input
+            aria-label={`Gloss for ${t.surfaceText}`}
+            onChange={(e) => onGlossChange?.(t.id, e.target.value)}
+            value={glosses?.[t.id] ?? ''}
+          />
+        </span>
+      ))}
     </button>
   ),
 }));
@@ -260,9 +273,64 @@ function makeWordFreeBook(): Book {
   };
 }
 
+/**
+ * Builds a Book with `count` word tokens spread across one segment per token, each in GEN 1:N. Used
+ * to exercise the phrase-window windowing code paths (PHRASE_WINDOW_HALF = 100 on each side).
+ *
+ * @param count - Total number of word-token segments to create.
+ * @returns A Book with `count` single-token segments.
+ */
+function makeLargeBook(count: number): Book {
+  return {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: '1',
+    segments: Array.from({ length: count }, (_, i) => ({
+      id: `GEN 1:${i + 1}`,
+      startRef: { book: 'GEN', chapter: 1, verse: i + 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: i + 1 },
+      baselineText: `word${i}`,
+      tokens: [
+        {
+          id: `large-tok-${i}`,
+          surfaceText: `word${i}`,
+          writingSystem: 'en' as const,
+          type: 'word' as const,
+          charStart: 0,
+          charEnd: String(`word${i}`).length,
+        },
+      ],
+    })),
+  };
+}
+
 // ---------------------------------------------------------------------------
 
 const scrollIntoViewMock = jest.fn();
+
+/**
+ * Minimal required props for ContinuousView. Spread into render calls so tests only need to
+ * override what they actually care about.
+ *
+ * @returns An object containing all required ContinuousView props set to no-op stubs.
+ */
+function requiredProps(): {
+  activeVerse: ScriptureRef;
+  activePhraseIndex: undefined;
+  glosses: Record<string, string>;
+  onFocusPhraseIndexChange: jest.Mock;
+  onGlossChange: jest.Mock;
+  onVerseChange: jest.Mock;
+} {
+  return {
+    activeVerse: { book: 'GEN', chapter: 1, verse: 1 },
+    activePhraseIndex: undefined,
+    glosses: {},
+    onFocusPhraseIndexChange: jest.fn(),
+    onGlossChange: jest.fn(),
+    onVerseChange: jest.fn(),
+  };
+}
 
 beforeAll(() => {
   // jsdom does not implement scrollIntoView.
@@ -279,7 +347,7 @@ beforeEach(() => {
 
 describe('ContinuousView rendering', () => {
   it('renders all tokens from all segments as a flat list', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
@@ -288,14 +356,14 @@ describe('ContinuousView rendering', () => {
   });
 
   it('renders tokens from both chapters in a two-chapter book', () => {
-    render(<ContinuousView book={makeTwoChapterBook()} />);
+    render(<ContinuousView book={makeTwoChapterBook()} {...requiredProps()} />);
 
     expect(screen.getByText('Alpha')).toBeInTheDocument();
     expect(screen.getByText('Beta')).toBeInTheDocument();
   });
 
   it('does not render any verse label or segment separator', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     // No verse numbers or colons that would indicate verse labels
     expect(screen.queryByText('1:1')).not.toBeInTheDocument();
@@ -305,7 +373,7 @@ describe('ContinuousView rendering', () => {
   });
 
   it('renders a Previous token button and a Next token button', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
@@ -313,7 +381,7 @@ describe('ContinuousView rendering', () => {
 
   it('renders a non-word token via TokenChip within the strip', () => {
     // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
-    render(<ContinuousView book={makeMixedBook()} />);
+    render(<ContinuousView book={makeMixedBook()} {...requiredProps()} />);
 
     // Both the word chip ("In") and the punctuation chip (".") must appear
     expect(screen.getByText('In')).toBeInTheDocument();
@@ -321,14 +389,14 @@ describe('ContinuousView rendering', () => {
   });
 
   it('renders without crashing when book has no word tokens (empty phraseEntries)', () => {
-    render(<ContinuousView book={makeWordFreeBook()} />);
+    render(<ContinuousView book={makeWordFreeBook()} {...requiredProps()} />);
 
     // The punctuation token is rendered
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
   it('clicking an out-of-focus phrase box brings it into focus', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const clickedPhraseBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
@@ -342,7 +410,7 @@ describe('ContinuousView rendering', () => {
   });
 
   it('clicking the already-focused phrase box leaves it focused', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     // The first token is focused by default.
     const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
@@ -364,26 +432,26 @@ describe('ContinuousView rendering', () => {
 
 describe('ContinuousView arrow disabled states', () => {
   it('disables the prev arrow on initial render (book start)', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 
   it('enables the next arrow on initial render when there are multiple tokens', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
   });
 
   it('disables both arrows when the book has exactly one token', () => {
-    render(<ContinuousView book={makeSingleTokenBook()} />);
+    render(<ContinuousView book={makeSingleTokenBook()} {...requiredProps()} />);
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
   });
 
   it('enables the prev arrow after clicking next once', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
@@ -391,7 +459,7 @@ describe('ContinuousView arrow disabled states', () => {
   });
 
   it('disables the next arrow when advanced to the last token', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
     // 4 tokens total: advance 3 times to reach index 3 (last)
@@ -403,7 +471,7 @@ describe('ContinuousView arrow disabled states', () => {
   });
 
   it('re-enables the next arrow after going prev from the last token', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
     await userEvent.click(nextBtn);
@@ -424,7 +492,7 @@ describe('ContinuousView arrow disabled states', () => {
 
 describe('ContinuousView fade overlays', () => {
   it('does not render prev fade at book start', () => {
-    const { container } = render(<ContinuousView book={makeBook()} />);
+    const { container } = render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     // Prev fade gradient is tw:from-background (prev-to-next gradient)
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
@@ -435,7 +503,7 @@ describe('ContinuousView fade overlays', () => {
   });
 
   it('renders next fade at book start (next side is enabled)', () => {
-    const { container } = render(<ContinuousView book={makeBook()} />);
+    const { container } = render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const nextFades = Array.from(gradients).filter((el) =>
@@ -445,7 +513,7 @@ describe('ContinuousView fade overlays', () => {
   });
 
   it('renders prev fade after moving away from book start', async () => {
-    const { container } = render(<ContinuousView book={makeBook()} />);
+    const { container } = render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
@@ -457,7 +525,7 @@ describe('ContinuousView fade overlays', () => {
   });
 
   it('does not render next fade at book end', async () => {
-    const { container } = render(<ContinuousView book={makeBook()} />);
+    const { container } = render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
     await userEvent.click(nextBtn);
@@ -478,7 +546,7 @@ describe('ContinuousView fade overlays', () => {
 
 describe('ContinuousView cross-chapter traversal', () => {
   it('indexes tokens across chapter boundaries in segment order', () => {
-    render(<ContinuousView book={makeTwoChapterBook()} />);
+    render(<ContinuousView book={makeTwoChapterBook()} {...requiredProps()} />);
 
     // Both chapter tokens should be present
     expect(screen.getByText('Alpha')).toBeInTheDocument();
@@ -486,7 +554,7 @@ describe('ContinuousView cross-chapter traversal', () => {
   });
 
   it('can navigate across a chapter boundary with the next arrow', async () => {
-    render(<ContinuousView book={makeTwoChapterBook()} />);
+    render(<ContinuousView book={makeTwoChapterBook()} {...requiredProps()} />);
 
     // Only one token per chapter, so clicking next once reaches chapter 2's token (index 1 = last)
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
@@ -504,7 +572,7 @@ describe('ContinuousView cross-chapter traversal', () => {
 
 describe('ContinuousView smooth-scroll intent', () => {
   it('calls scrollIntoView with smooth behaviour when next arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
@@ -514,7 +582,7 @@ describe('ContinuousView smooth-scroll intent', () => {
   });
 
   it('calls scrollIntoView with smooth behaviour when prev arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
     scrollIntoViewMock.mockClear();
@@ -527,7 +595,7 @@ describe('ContinuousView smooth-scroll intent', () => {
   });
 
   it('does not call scrollIntoView when a disabled arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
     scrollIntoViewMock.mockClear();
 
     // Prev arrow is disabled at start — clicking it should be a no-op
@@ -552,7 +620,11 @@ describe('ContinuousView activeVerse verse-jump', () => {
 
   it('positions at focusIndex 0 when activeVerse matches the first segment', () => {
     render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
     );
 
     // At index 0 the prev arrow should be disabled
@@ -562,11 +634,19 @@ describe('ContinuousView activeVerse verse-jump', () => {
   it('jumps to the first token of the second segment when activeVerse points there', () => {
     // makeBook() has 4 tokens: index 0,1 in segment GEN 1:1 and index 2,3 in GEN 1:2
     const { rerender } = render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
     );
 
     rerender(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+      />,
     );
     // Advance past the fade-out delay so the pending focus jump fires.
     act(() => {
@@ -581,6 +661,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
     const { rerender } = render(
       <ContinuousView
         book={makeTwoChapterBook()}
+        {...requiredProps()}
         activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
       />,
     );
@@ -588,6 +669,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
     rerender(
       <ContinuousView
         book={makeTwoChapterBook()}
+        {...requiredProps()}
         activeVerse={{ book: 'GEN', chapter: 2, verse: 1 }}
       />,
     );
@@ -604,12 +686,20 @@ describe('ContinuousView activeVerse verse-jump', () => {
     // External jumps use behavior:'auto' (not 'smooth') to avoid double-animation with the
     // strip opacity fade that already plays during the jump.
     const { rerender } = render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
     );
     scrollIntoViewMock.mockClear();
 
     rerender(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+      />,
     );
     act(() => {
       jest.advanceTimersByTime(500);
@@ -620,13 +710,18 @@ describe('ContinuousView activeVerse verse-jump', () => {
 
   it('does not call onVerseChange when activeVerse changes', () => {
     const { rerender } = render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
     );
 
     const handleVerseChange = jest.fn();
     rerender(
       <ContinuousView
         book={makeBook()}
+        {...requiredProps()}
         activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
         onVerseChange={handleVerseChange}
       />,
@@ -642,7 +737,11 @@ describe('ContinuousView activeVerse verse-jump', () => {
     // makeBook(): GEN 1:1 at index 0-1, GEN 1:2 at index 2-3. Mounting with verse 2 should
     // start the strip focused at index 2 immediately (lazy useState initializer, no effect wait).
     render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+      />,
     );
 
     // Index 2 is not the start (prev enabled) and not the end (next enabled).
@@ -651,7 +750,7 @@ describe('ContinuousView activeVerse verse-jump', () => {
   });
 
   it('does not jump when activeVerse is undefined', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     // Without activeVerse the strip stays at focusIndex 0
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
@@ -659,7 +758,11 @@ describe('ContinuousView activeVerse verse-jump', () => {
 
   it('does not jump when activeVerse does not match any segment', () => {
     render(
-      <ContinuousView book={makeBook()} activeVerse={{ book: 'GEN', chapter: 99, verse: 99 }} />,
+      <ContinuousView
+        book={makeBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 99, verse: 99 }}
+      />,
     );
 
     // No matching segment — strip stays at focusIndex 0
@@ -670,11 +773,19 @@ describe('ContinuousView activeVerse verse-jump', () => {
     // Start focused at GEN 1:1 (word token), then move activeVerse to GEN 1:2 (punctuation only).
     // getPhraseIndexForVerse should return undefined → no pending jump.
     const { rerender } = render(
-      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }} />,
+      <ContinuousView
+        book={makeMixedBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+      />,
     );
 
     rerender(
-      <ContinuousView book={makeMixedBook()} activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }} />,
+      <ContinuousView
+        book={makeMixedBook()}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
+      />,
     );
     act(() => {
       jest.advanceTimersByTime(500);
@@ -686,6 +797,101 @@ describe('ContinuousView activeVerse verse-jump', () => {
 });
 
 // ---------------------------------------------------------------------------
+// activePhraseIndex direct jump
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView activePhraseIndex', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('jumps to the specified phrase index after the fade delay when activePhraseIndex changes', () => {
+    const book = makeBook();
+    const { rerender } = render(
+      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
+    );
+
+    const phraseBtns = () =>
+      screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+
+    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'focused');
+
+    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'default');
+    expect(phraseBtns()[1]).toHaveAttribute('data-focus-state', 'focused');
+  });
+
+  it('uses instant scrollIntoView behaviour after the fade completes', () => {
+    const book = makeBook();
+    render(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(globalThis.HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto' }),
+    );
+  });
+
+  it('remains hidden while a second click overrides a pending jump mid-fade', () => {
+    // Regression: when a second activePhraseIndex arrives before the first fade-out timer fires,
+    // the RAF cleanup from the first jump must not reveal the strip prematurely.
+    const book = makeBook();
+    const { rerender } = render(
+      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    // First click — strip fades out; timer is pending.
+    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
+
+    // Second click before the first 500 ms timer fires — overrides the pending jump.
+    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
+
+    // Strip should still be hidden while the second fade-out timer is pending.
+    expect(screen.getByTestId('token-strip')).toHaveClass('tw:opacity-0');
+  });
+
+  it('jumps to the correct phrase when a second click arrives before the first jump resolves', () => {
+    // Regression: second click before the first fade timer fires must end at the second target, not
+    // wherever the first jump would have landed.
+    const book = makeBook();
+    const { rerender } = render(
+      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    const phraseBtns = () =>
+      screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+
+    // First click to index 1.
+    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
+
+    // Second click back to index 0 before the first timer fires.
+    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
+
+    // Let the second fade-out timer fire.
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'focused');
+    expect(phraseBtns()[1]).toHaveAttribute('data-focus-state', 'default');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // onVerseChange outbound propagation
 // ---------------------------------------------------------------------------
 
@@ -693,7 +899,9 @@ describe('ContinuousView onVerseChange propagation', () => {
   it('calls onVerseChange when the next arrow crosses into a new verse', async () => {
     // makeBook(): segment GEN 1:1 has tokens at index 0,1; GEN 1:2 starts at index 2
     const handleVerseChange = jest.fn();
-    render(<ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />);
+    render(
+      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
+    );
 
     // Advance twice to reach index 2 (first token of GEN 1:2)
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
@@ -707,6 +915,7 @@ describe('ContinuousView onVerseChange propagation', () => {
     render(
       <ContinuousView
         book={makeBook()}
+        {...requiredProps()}
         activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
         onVerseChange={handleVerseChange}
       />,
@@ -721,7 +930,9 @@ describe('ContinuousView onVerseChange propagation', () => {
 
   it('does not call onVerseChange for multiple arrow clicks within the same verse', async () => {
     const handleVerseChange = jest.fn();
-    render(<ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />);
+    render(
+      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
+    );
     handleVerseChange.mockClear();
 
     // index 0 → index 1: both are in GEN 1:1, no verse change
@@ -732,7 +943,13 @@ describe('ContinuousView onVerseChange propagation', () => {
 
   it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
     const handleVerseChange = jest.fn();
-    render(<ContinuousView book={makeTwoChapterBook()} onVerseChange={handleVerseChange} />);
+    render(
+      <ContinuousView
+        book={makeTwoChapterBook()}
+        {...requiredProps()}
+        onVerseChange={handleVerseChange}
+      />,
+    );
     handleVerseChange.mockClear();
 
     // ch1 has 1 token (index 0), ch2 starts at index 1 — one click crosses the boundary
@@ -744,7 +961,7 @@ describe('ContinuousView onVerseChange propagation', () => {
   it('does not call onVerseChange when book changes and focus resets to the first phrase', async () => {
     const handleVerseChange = jest.fn();
     const { rerender } = render(
-      <ContinuousView book={makeBook()} onVerseChange={handleVerseChange} />,
+      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
     );
 
     // Move focus away from index 0 so book-switch reset path is exercised.
@@ -762,7 +979,9 @@ describe('ContinuousView onVerseChange propagation', () => {
       })),
     };
 
-    rerender(<ContinuousView book={exoBook} onVerseChange={handleVerseChange} />);
+    rerender(
+      <ContinuousView book={exoBook} {...requiredProps()} onVerseChange={handleVerseChange} />,
+    );
 
     expect(handleVerseChange).not.toHaveBeenCalled();
   });
@@ -782,16 +1001,51 @@ describe('ContinuousView RTL layout', () => {
   });
 
   it('shows right-arrow (→) on the previous button in RTL mode', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const prevBtn = screen.getByRole('button', { name: 'Previous token' });
     expect(prevBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2192');
   });
 
   it('shows left-arrow (←) on the next button in RTL mode', () => {
-    render(<ContinuousView book={makeBook()} />);
+    render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 
     const nextBtn = screen.getByRole('button', { name: 'Next token' });
     expect(nextBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2190');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase window — windowing branches (PHRASE_WINDOW_HALF = 100 on each side)
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView phrase window', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('activates both windowing branches when the focused phrase is deep inside a large book', () => {
+    // A book with 250 tokens: focusing phrase 125 means windowStart = 25 (> 0) and
+    // windowEnd = 225 (< 249), exercising both the windowStartTokenIndex and
+    // windowEndTokenIndex non-default branches.
+    const book = makeLargeBook(250);
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+        activePhraseIndex={125}
+      />,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    // Phrase 125 is not at the start or end, so both arrows are enabled.
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
   });
 });

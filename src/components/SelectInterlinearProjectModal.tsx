@@ -152,6 +152,7 @@ export function SelectInterlinearProjectModal({
     <div className="tw:modal-overlay">
       <dialog
         aria-labelledby="select-project-modal-title"
+        aria-modal="true"
         className="tw:modal-dialog tw:rounded-lg tw:w-lg"
         open
       >

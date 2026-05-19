@@ -112,6 +112,7 @@ export function CreateProjectModal({
     <div className="tw:modal-overlay">
       <dialog
         aria-labelledby="create-project-modal-title"
+        aria-modal="true"
         className="tw:modal-dialog tw:rounded tw:w-96"
         open
       >

@@ -18,50 +18,90 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  *
  * @param props - Component props
  * @param props.displayMode - Controls how segment content is rendered; defaults to `'token-chip'`
+ * @param props.focusedTokenId - When set, the matching word token's `PhraseBox` is rendered in the
+ *   focused state; only meaningful in `token-chip` mode.
+ * @param props.glosses - Map from `Token.id` to current English gloss text for tokens in this
+ *   segment. Pass an empty object when no glosses have been entered yet.
  * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onClick - Callback invoked when the segment button is clicked
+ * @param props.onGlossChange - Called with the token id and new gloss value when a gloss is edited.
+ * @param props.onSelect - Called when the segment or one of its word tokens is interacted with. In
+ *   `baseline-text` mode the whole segment is clickable and `tokenId` is omitted. In `token-chip`
+ *   mode only word tokens trigger this callback and `tokenId` is always provided; omit to render
+ *   word tokens as non-interactive spans.
  * @param props.segment - The segment to render
- * @returns A button containing the segment's verse label and content
+ * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
+ *   segment content
  */
 export function SegmentView({
   displayMode = 'token-chip',
+  focusedTokenId,
+  glosses,
   isActive,
-  onClick,
+  onGlossChange,
+  onSelect,
   segment,
 }: Readonly<{
   displayMode?: SegmentDisplayMode;
+  focusedTokenId?: string;
+  glosses: Record<string, string>;
   isActive?: boolean;
-  onClick?: (ref: ScriptureRef) => void;
+  onGlossChange: (tokenId: string, value: string) => void;
+  onSelect: (ref: ScriptureRef, tokenId?: string) => void;
   segment: Segment;
 }>) {
   const { book, chapter, verse } = segment.startRef;
+  const ref: ScriptureRef = { book, chapter, verse };
+  const handleTokenClick = (tokenId: string) => onSelect(ref, tokenId);
+
+  const sharedClassName = isActive
+    ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
+    : 'tw:w-full tw:rounded tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+
+  const verseLabel = (
+    <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
+      {verse}
+    </span>
+  );
+
+  if (displayMode === 'baseline-text') {
+    return (
+      <button
+        aria-current={isActive ? 'true' : undefined}
+        className={`${sharedClassName} tw:text-left`}
+        data-testid="segment-container"
+        onClick={() => onSelect?.(ref)}
+        type="button"
+      >
+        {verseLabel}
+        <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
+      </button>
+    );
+  }
 
   return (
-    <button
+    <div
       aria-current={isActive ? 'true' : undefined}
-      className={
-        isActive
-          ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2 tw:text-left'
-          : 'tw:w-full tw:rounded tw:p-2 tw:text-left tw:transition-colors tw:hover:bg-muted/30'
-      }
-      onClick={() => onClick?.({ book, chapter, verse })}
-      type="button"
+      className={sharedClassName}
+      data-testid="segment-container"
     >
-      <span className="tw:mb-2 tw:block tw:section-label">{verse}</span>
-      {displayMode === 'baseline-text' ? (
-        <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
-      ) : (
-        <span className="tw:flex tw:flex-wrap tw:gap-1">
-          {segment.tokens.map((token) =>
-            token.type === 'word' ? (
-              <MemoizedPhraseBox key={token.ref} tokens={[token]} />
-            ) : (
-              <MemoizedTokenChip key={token.ref} token={token} />
-            ),
-          )}
-        </span>
-      )}
-    </button>
+      {verseLabel}
+      <span className="tw:flex tw:flex-wrap tw:gap-1">
+        {segment.tokens.map((token) =>
+          token.type === 'word' ? (
+            <MemoizedPhraseBox
+              key={token.id}
+              glosses={glosses}
+              isFocused={focusedTokenId === token.id}
+              onClick={() => handleTokenClick(token.id)}
+              onGlossChange={onGlossChange}
+              tokens={[token]}
+            />
+          ) : (
+            <MemoizedTokenChip key={token.id} token={token} />
+          ),
+        )}
+      </span>
+    </div>
   );
 }
 

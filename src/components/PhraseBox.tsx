@@ -30,7 +30,7 @@ export function PhraseBox({
   isFocused: boolean;
   onClick?: (index?: number) => void;
   onGlossChange: (tokenId: string, value: string) => void;
-  tokens: Token[];
+  tokens: (Token & { type: 'word' })[];
 }>) {
   const baseClass = isFocused
     ? 'tw:inline-flex tw:items-center tw:rounded tw:border-2 tw:border-white tw:bg-muted/30 tw:px-1 tw:py-0.5'
@@ -75,5 +75,6 @@ export function PhraseBox({
   );
 }
 
+/** Memoized version of {@link PhraseBox}; use this for all render-stable phrase lists. */
 const MemoizedPhraseBox = memo(PhraseBox);
 export default MemoizedPhraseBox;

@@ -1,7 +1,17 @@
-import type { ScriptureRef, Segment } from 'interlinearizer';
-import { memo } from 'react';
+import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import { memo, useCallback, useMemo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
+
+/**
+ * Narrows a `Token` to a word token.
+ *
+ * @param token - The token to test.
+ * @returns `true` when `token.type === 'word'`.
+ */
+function isWordToken(token: Token): token is Token & { type: 'word' } {
+  return token.type === 'word';
+}
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -50,14 +60,29 @@ export function SegmentView({
   segment: Segment;
 }>) {
   const { book, chapter, verse } = segment.startRef;
-  const ref: ScriptureRef = { book, chapter, verse };
+  const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
+
   /**
-   * Forwards a token-chip click to the parent as a scripture reference + token id.
+   * Forwards a token-chip click (identified by its index in `segment.tokens`) to the parent as a
+   * scripture reference + token id. Stable across renders so `MemoizedPhraseBox` can memoize.
    *
-   * @param tokenId - The id of the clicked token.
-   * @throws Propagates any error thrown by `onSelect`.
+   * @param index - Index of the clicked token within `segment.tokens`.
    */
-  const handleTokenClick = (tokenId: string) => onSelect(ref, tokenId);
+  const handleTokenClick = useCallback(
+    (index?: number) => {
+      if (index !== undefined) onSelect(ref, segment.tokens[index].id);
+    },
+    [onSelect, ref, segment.tokens],
+  );
+
+  /**
+   * Stable single-token arrays for word tokens keyed by position, so `MemoizedPhraseBox` receives
+   * the same reference across renders.
+   */
+  const tokenArrays = useMemo(
+    () => segment.tokens.map((token) => (isWordToken(token) ? [token] : [])),
+    [segment.tokens],
+  );
 
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
@@ -92,15 +117,16 @@ export function SegmentView({
     >
       {verseLabel}
       <span className="tw:flex tw:flex-wrap tw:gap-1">
-        {segment.tokens.map((token) =>
+        {segment.tokens.map((token, index) =>
           token.type === 'word' ? (
             <MemoizedPhraseBox
               key={token.id}
               glosses={glosses}
+              index={index}
               isFocused={focusedTokenId === token.id}
-              onClick={() => handleTokenClick(token.id)}
+              onClick={handleTokenClick}
               onGlossChange={onGlossChange}
-              tokens={[token]}
+              tokens={tokenArrays[index]}
             />
           ) : (
             <MemoizedTokenChip key={token.id} token={token} />
@@ -111,5 +137,6 @@ export function SegmentView({
   );
 }
 
+/** Memoized version of {@link SegmentView}; use this for all render-stable segment lists. */
 const MemoizedSegmentView = memo(SegmentView);
 export default MemoizedSegmentView;

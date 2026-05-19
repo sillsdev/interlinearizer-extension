@@ -19,6 +19,8 @@ const STRING_KEYS = ['%interlinearizer_continuousScrollToggle%'] as const;
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
+ * @returns The toolbar and either an error/loading state or the fully rendered
+ *   {@link Interlinearizer}
  */
 export default function InterlinearizerLoader({
   projectId,

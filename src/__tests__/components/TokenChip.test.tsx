@@ -70,11 +70,11 @@ const WORD_TOKEN = {
  *
  * @returns An object with all required props set to no-op stubs.
  */
-function requiredProps() {
+function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void } {
   return {
     token: WORD_TOKEN,
     onFocus: jest.fn(),
-  } as const;
+  };
 }
 
 const PUNCT_TOKEN = {

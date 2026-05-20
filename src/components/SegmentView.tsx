@@ -31,10 +31,10 @@ type SegmentViewProps = Readonly<{
  * @param props.focusedTokenId - When set, the matching word token's `PhraseBox` is rendered in the
  *   focused state; only meaningful in `token-chip` mode.
  * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onSelect - Called when the segment or one of its word tokens is interacted with. In
- *   `baseline-text` mode the whole segment is clickable and `tokenId` is omitted. In `token-chip`
- *   mode only word tokens trigger this callback and `tokenId` is always provided; omit to render
- *   word tokens as non-interactive spans.
+ * @param props.onSelect - Required callback invoked when the segment or one of its word tokens is
+ *   interacted with. In `baseline-text` mode the whole segment is clickable and `tokenId` is
+ *   omitted. In `token-chip` mode only word tokens trigger this callback and `tokenId` is always
+ *   provided.
  * @param props.segment - The segment to render
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content

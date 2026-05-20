@@ -22,24 +22,31 @@ jest.mock('../../components/GlossStore', () => ({
   useGlossDispatch: () => () => {},
 }));
 
+jest.mock('../../components/TokenChip', () => ({
+  __esModule: true,
+  MemoizedInertTokenChip({ token }: Readonly<{ token: Token }>) {
+    return <span>{token.surfaceText}</span>;
+  },
+}));
+
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
     index,
     isFocused = false,
-    onClick,
+    onFocusPhrase,
     tokens,
   }: Readonly<{
     index?: number;
     isFocused: boolean;
-    onClick?: (index?: number) => void;
+    onFocusPhrase?: (index?: number) => void;
     tokens: Token[];
   }>) => (
     <span data-focus-state={isFocused ? 'focused' : 'default'}>
       {tokens.map((t) => (
         <span key={t.id}>
-          {onClick ? (
-            <button onClick={() => onClick(index)} type="button">
+          {onFocusPhrase ? (
+            <button onClick={() => onFocusPhrase(index)} type="button">
               {t.surfaceText}
             </button>
           ) : (
@@ -49,12 +56,6 @@ jest.mock('../../components/PhraseBox', () => ({
       ))}
     </span>
   ),
-}));
-
-jest.mock('../../components/TokenChip', () => ({
-  __esModule: true,
-  default: ({ token }: Readonly<{ token: Token }>) => <span>{token.surfaceText}</span>,
-  TokenChip: ({ token }: Readonly<{ token: Token }>) => <span>{token.surfaceText}</span>,
 }));
 
 /** A word token segment. */

@@ -3,46 +3,24 @@ import { memo } from 'react';
 import { useGloss, useGlossDispatch } from './GlossStore';
 
 /**
- * Props for a word token chip. Requires `onFocus` because gloss input focus must propagate to the
- * parent `PhraseBox` for correct navigation state.
- */
-type WordProps = Readonly<{
-  /** The word token to render. */
-  token: Token & { type: 'word' };
-  /** Called when the gloss input receives focus; used to notify the parent `PhraseBox`. */
-  onFocus: () => void;
-}>;
-
-/**
- * Props for a punctuation token chip. `onFocus` is excluded via `never` to prevent callers from
- * accidentally passing a focus handler that would be silently ignored.
- */
-type PunctProps = Readonly<{
-  /** The punctuation token to render. */
-  token: Token;
-  onFocus?: never;
-}>;
-
-/**
- * Renders a single token as an inline chip. Word tokens get a bordered box with an editable gloss
- * input below; punctuation tokens are rendered as muted inline text with no gloss.
- *
- * Props are a discriminated union on `token.type`: word tokens require `onFocus`; punctuation
- * tokens accept none of these. Gloss value and dispatch are read from {@link GlossStoreProvider}
- * context via {@link useGloss} and {@link useGlossDispatch}.
+ * Renders a single word token as an inline chip with an editable gloss input below the surface
+ * text. Gloss value and dispatch are read from {@link GlossStoreProvider} context via
+ * {@link useGloss} and {@link useGlossDispatch}.
  *
  * @param props - Component props
- * @param props.token - The token to render; its `type` field discriminates the union.
- * @param props.onFocus - (word only) Called when the gloss input receives focus.
- * @returns A styled inline block
+ * @param props.token - The word token to render.
+ * @param props.onFocus - Called when the gloss input receives focus.
+ * @returns A styled label containing the surface text and a gloss input.
  */
-export function TokenChip({ onFocus, token }: WordProps | PunctProps) {
+export function TokenChip({
+  token,
+  onFocus,
+}: Readonly<{ token: Token & { type: 'word' }; onFocus: () => void }>) {
   const gloss = useGloss(token.id);
   const onGlossChange = useGlossDispatch();
-
-  return token.type === 'word' ? (
-    <span className="tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5">
-      <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground">
+  return (
+    <label className="tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5">
+      <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
         {token.surfaceText}
       </span>
       <input
@@ -54,8 +32,19 @@ export function TokenChip({ onFocus, token }: WordProps | PunctProps) {
         onFocus={onFocus}
         type="text"
       />
-    </span>
-  ) : (
+    </label>
+  );
+}
+
+/**
+ * Renders a non-word token (e.g. punctuation) as muted inline monospace text with no gloss input.
+ *
+ * @param props - Component props
+ * @param props.token - The non-word token to render.
+ * @returns A muted inline span.
+ */
+export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
+  return (
     <span className="tw:inline-block tw:font-mono tw:text-sm tw:text-muted-foreground">
       {token.surfaceText}
     </span>
@@ -65,3 +54,6 @@ export function TokenChip({ onFocus, token }: WordProps | PunctProps) {
 /** Memoized version of {@link TokenChip}; use this for all render-stable token lists. */
 const MemoizedTokenChip = memo(TokenChip);
 export default MemoizedTokenChip;
+
+/** Memoized version of {@link InertTokenChip}; use this for all render-stable token lists. */
+export const MemoizedInertTokenChip = memo(InertTokenChip);

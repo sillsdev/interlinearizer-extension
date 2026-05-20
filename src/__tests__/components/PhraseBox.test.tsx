@@ -101,7 +101,7 @@ const TEST_TOKEN_2 = {
 type PhraseBoxTestProps = {
   index: number | undefined;
   isFocused: boolean;
-  onClick: (index?: number) => void;
+  onFocusPhrase: (index?: number) => void;
   tokens: (Token & { type: 'word' })[];
 };
 
@@ -115,13 +115,13 @@ function requiredProps(): PhraseBoxTestProps {
   return {
     index: undefined,
     isFocused: false,
-    onClick: jest.fn(),
+    onFocusPhrase: jest.fn(),
     tokens: [TEST_TOKEN],
   };
 }
 
 describe('PhraseBox', () => {
-  it('renders as a button', () => {
+  it('renders as a label', () => {
     render(
       <GlossStoreProvider>
         <PhraseBox {...requiredProps()} />
@@ -129,8 +129,7 @@ describe('PhraseBox', () => {
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox?.tagName).toBe('BUTTON');
-    expect(phraseBox).toHaveAttribute('type', 'button');
+    expect(phraseBox?.tagName).toBe('LABEL');
   });
 
   it('renders one TokenChip per token in the tokens array', () => {
@@ -144,18 +143,17 @@ describe('PhraseBox', () => {
     expect(screen.getByTestId('token-token-2')).toBeInTheDocument();
   });
 
-  it('calls onClick when button is clicked', async () => {
-    const mockOnClick = jest.fn();
+  it('clicking the outer container focuses the first gloss input', async () => {
     render(
       <GlossStoreProvider>
-        <PhraseBox {...requiredProps()} onClick={mockOnClick} />
+        <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
       </GlossStoreProvider>,
     );
 
-    const button = screen.getByRole('button');
-    await userEvent.click(button);
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    await userEvent.click(phraseBox ?? document.body);
 
-    expect(mockOnClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
   });
 
   it('applies focused border and background when isFocused is true', () => {
@@ -186,27 +184,15 @@ describe('PhraseBox', () => {
     expect(phraseBox).toHaveClass('tw:bg-muted/20');
   });
 
-  it('button always has cursor-pointer and text-left classes', () => {
+  it('phrase box does not override cursor on gap areas', () => {
     render(
       <GlossStoreProvider>
         <PhraseBox {...requiredProps()} isFocused />
       </GlossStoreProvider>,
     );
 
-    const button = screen.getByRole('button');
-    expect(button).toHaveClass('tw:cursor-pointer');
-    expect(button).toHaveClass('tw:text-left');
-  });
-
-  it('button always has hover styling classes', () => {
-    render(
-      <GlossStoreProvider>
-        <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
-    );
-
-    const button = screen.getByRole('button');
-    expect(button).toHaveClass('tw:hover:bg-muted/30');
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).not.toHaveClass('tw:cursor-text');
   });
 
   it('renders tokens in the order they appear in the tokens array', () => {
@@ -257,38 +243,28 @@ describe('PhraseBox', () => {
     expect(spy).toHaveBeenNthCalledWith(2, 'token-1', 'hi');
   });
 
-  it('calls onClick with index when a gloss input receives focus', async () => {
-    const handleClick = jest.fn();
+  it('calls onFocusPhrase with index when a gloss input receives focus', async () => {
+    const handleFocus = jest.fn();
     render(
       <GlossStoreProvider>
-        <PhraseBox {...requiredProps()} onClick={handleClick} index={2} />
+        <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} index={2} />
       </GlossStoreProvider>,
     );
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for Hello' }));
 
-    expect(handleClick).toHaveBeenCalledWith(2);
+    expect(handleFocus).toHaveBeenCalledWith(2);
   });
 
-  it('button always has tabIndex -1 so tab focus goes only to gloss inputs', () => {
+  it('phrase box always has padding and gap spacing classes', () => {
     render(
       <GlossStoreProvider>
         <PhraseBox {...requiredProps()} />
       </GlossStoreProvider>,
     );
 
-    expect(screen.getByRole('button')).toHaveAttribute('tabindex', '-1');
-  });
-
-  it('button always has padding and gap spacing classes', () => {
-    render(
-      <GlossStoreProvider>
-        <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
-    );
-
-    const button = screen.getByRole('button');
-    expect(button).toHaveClass('tw:px-1');
-    expect(button).toHaveClass('tw:py-0.5');
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:px-1');
+    expect(phraseBox).toHaveClass('tw:py-0.5');
   });
 });

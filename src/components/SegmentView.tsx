@@ -2,7 +2,7 @@ import type { ScriptureRef, Segment } from 'interlinearizer';
 import { memo, useCallback, useMemo } from 'react';
 import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
-import MemoizedTokenChip from './TokenChip';
+import { MemoizedInertTokenChip } from './TokenChip';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -107,19 +107,18 @@ export function SegmentView({
     >
       {verseLabel}
       <span className="tw:flex tw:flex-wrap tw:gap-1">
-        {segment.tokens.map((token, index) =>
-          token.type === 'word' ? (
+        {segment.tokens.map((token, index) => {
+          if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.id} token={token} />;
+          return (
             <MemoizedPhraseBox
               key={token.id}
               index={index}
               isFocused={focusedTokenId === token.id}
-              onClick={handleTokenClick}
+              onFocusPhrase={handleTokenClick}
               tokens={tokenArrays[index]}
             />
-          ) : (
-            <MemoizedTokenChip key={token.id} token={token} />
-          ),
-        )}
+          );
+        })}
       </span>
     </div>
   );

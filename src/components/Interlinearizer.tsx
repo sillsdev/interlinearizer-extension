@@ -1,38 +1,34 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment } from 'interlinearizer';
+import { LocateFixed } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ContinuousView from './ContinuousView';
+import { GlossStoreProvider } from './GlossStore';
 import MemoizedSegmentView from './SegmentView';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
   book: Book;
-  bookSegments: Segment[];
+  chapterSegments: Segment[];
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
 }>;
 
 /**
- * Main content area for the Interlinearizer. Renders an optional {@link ContinuousView} strip at the
- * top followed by a scrollable list of {@link MemoizedSegmentView}s for the current chapter.
+ * Inner component that renders the segment list and continuous view. Separated from
+ * {@link Interlinearizer} so it can consume the `GlossStoreProvider` context that wraps it.
  *
- * @param props - Component props
- * @param props.book - Book data used by the continuous view
- * @param props.bookSegments - Segments to render as individual verse views
- * @param props.continuousScroll - Whether the continuous scroll view is shown
- * @param props.scrRef - Current scripture reference
- * @param props.setScrRef - Callback to update the scripture reference
- * @returns The full interlinearizer layout with optional continuous strip and segment list
+ * @param props - Same props as {@link Interlinearizer}.
+ * @returns The interlinearizer layout without the provider wrapper.
  */
-export default function Interlinearizer({
+function InterlinearizerInner({
   book,
-  bookSegments,
+  chapterSegments,
   continuousScroll,
   scrRef,
   setScrRef,
 }: InterlinearizerProps) {
-  const [glosses, setGlosses] = useState<Record<string, string>>({});
   const [focusedTokenId, setFocusedTokenId] = useState<string | undefined>(undefined);
 
   /** All word tokens in book order — index into this array is the phrase index. */
@@ -51,10 +47,36 @@ export default function Interlinearizer({
     [wordTokens],
   );
 
+  // activePhraseIndex is intentionally not updated by ContinuousView arrow navigation — only token
+  // clicks via handleSegmentSelect change focusedTokenId. Arrow navigation updates
+  // continuousViewPhraseIndex instead (via handleFocusPhraseIndexChange), and the mode-switch
+  // effect reads continuousViewPhraseIndexRef to recover the strip position when returning to
+  // segment view. The stale activePhraseIndex during arrow navigation is safe because ContinuousView
+  // manages its own focusPhraseIndex state and the unchanged prop doesn't re-trigger its effect.
   const activePhraseIndex =
     focusedTokenId === undefined ? undefined : phraseIndexByTokenId.get(focusedTokenId);
 
-  /** The scrollable segment list div; targeted by `scrollActiveSegmentIntoView`. */
+  /**
+   * Tracks the continuous strip's current phrase index as reported by ContinuousView. Read inside
+   * the mode-switch effect to recover the strip position when returning to segment view.
+   */
+  const continuousViewPhraseIndexRef = useRef<number | undefined>(undefined);
+
+  /**
+   * Keeps `continuousViewPhraseIndexRef` in sync with the strip's current position.
+   *
+   * @param index - The phrase index now focused inside `ContinuousView`.
+   */
+  const handleFocusPhraseIndexChange = useCallback((index: number) => {
+    continuousViewPhraseIndexRef.current = index;
+  }, []);
+
+  /**
+   * Previous value of `continuousScroll`; lets the mode-switch effect detect the transition
+   * direction.
+   */
+  const prevContinuousScrollRef = useRef<boolean>(continuousScroll);
+
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
@@ -67,36 +89,15 @@ export default function Interlinearizer({
   }, []);
 
   /**
-   * Tracks the continuous strip's current phrase index as reported by ContinuousView, so we know
-   * exactly where it is when the user switches to segment view and so the active segment scrolls
-   * into view when the focused phrase changes.
+   * Scrolls the element marked `aria-current="true"` inside the scroll container into view at the
+   * top of the list.
    */
-  const [continuousViewPhraseIndex, setContinuousViewPhraseIndex] = useState<number | undefined>(
-    undefined,
-  );
-
-  /**
-   * Ref mirror of `continuousViewPhraseIndex`. Read inside the mode-switch effect (which omits the
-   * state variable as a dep) so it always sees the latest value without causing a re-run.
-   */
-  const continuousViewPhraseIndexRef = useRef<number | undefined>(undefined);
-
-  /**
-   * Keeps `continuousViewPhraseIndex` state in sync with the strip's current position so the
-   * segment list can scroll the right verse into view when the focused phrase changes.
-   *
-   * @param index - The phrase index now focused inside `ContinuousView`.
-   */
-  const handleFocusPhraseIndexChange = useCallback((index: number) => {
-    continuousViewPhraseIndexRef.current = index;
-    setContinuousViewPhraseIndex(index);
+  const snapToActive = useCallback(() => {
+    const container = scrollContainerRef.current;
+    const active = container?.querySelector('[aria-current="true"]');
+    /* v8 ignore next -- active is always found when a verse is rendered; guard for empty lists */
+    active?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, []);
-
-  /**
-   * Previous value of `continuousScroll`; lets the mode-switch effect detect the transition
-   * direction.
-   */
-  const prevContinuousScrollRef = useRef<boolean>(continuousScroll);
 
   // When switching from continuous to segment view, carry over the focused phrase from the strip.
   // Only acts on the continuous→segment transition; leaving segment view does not overwrite focus.
@@ -117,42 +118,19 @@ export default function Interlinearizer({
     // Fallback: only move to first word of the active segment if nothing is focused yet.
     setFocusedTokenId((current) => {
       if (current !== undefined) return current;
-      const activeSeg = bookSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
+      const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
       return activeSeg?.tokens.find((t) => t.type === 'word')?.id ?? current;
     });
     // Only re-run when the mode switches; refs and stable arrays don't need to be deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuousScroll]);
 
-  /**
-   * Scrolls the element marked `aria-current="true"` inside the segment scroll container into view
-   * at the top of the list, so the active verse is always visible after a mode switch or focus
-   * change.
-   */
-  const scrollActiveSegmentIntoView = useCallback(() => {
-    const container = scrollContainerRef.current;
-    const active = container?.querySelector('[aria-current="true"]');
-    /* v8 ignore next -- active is always found when a verse is rendered; guard for empty lists */
-    active?.scrollIntoView({ behavior: 'auto', block: 'start' });
-  }, []);
-
-  // Scroll the active segment into view on mode switch and whenever the focused phrase changes
-  // while in continuous mode (ContinuousView is only mounted when continuousScroll is true, so
-  // continuousViewPhraseIndex only changes in that context).
+  // Snap the segment list to the active verse when switching modes.
   useEffect(() => {
-    scrollActiveSegmentIntoView();
+    snapToActive();
+    // snapToActive is stable (useCallback with no changing deps), so this only re-runs on mode switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuousScroll, continuousViewPhraseIndex]);
-
-  /**
-   * Merges an updated gloss value into the shared gloss map.
-   *
-   * @param tokenId - The id of the token whose gloss changed.
-   * @param value - The new gloss string entered by the user.
-   */
-  const handleGlossChange = useCallback((tokenId: string, value: string) => {
-    setGlosses((prev) => ({ ...prev, [tokenId]: value }));
-  }, []);
+  }, [continuousScroll]);
 
   /**
    * Updates the active scripture reference and, when a specific token was clicked, focuses that
@@ -169,6 +147,20 @@ export default function Interlinearizer({
     [setScrRef],
   );
 
+  /**
+   * Updates the active scripture reference when ContinuousView reports a verse change via arrow
+   * navigation. A separate wrapper from `handleSegmentSelect` because verse changes from the strip
+   * never carry a token id.
+   *
+   * @param ref - The new verse coordinate reported by the strip.
+   */
+  const handleVerseChange = useCallback(
+    (ref: ScriptureRef) => {
+      handleSegmentSelect(ref);
+    },
+    [handleSegmentSelect],
+  );
+
   return (
     <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
       {continuousScroll && (
@@ -181,41 +173,71 @@ export default function Interlinearizer({
               verse: scrRef.verseNum,
             }}
             book={book}
-            glosses={glosses}
             onFocusPhraseIndexChange={handleFocusPhraseIndexChange}
-            onGlossChange={handleGlossChange}
-            onVerseChange={handleSegmentSelect}
+            onVerseChange={handleVerseChange}
           />
         </div>
       )}
 
       <div
         ref={setScrollContainer}
-        className="tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
       >
-        {bookSegments.length === 0 && (
+        {chapterSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
             No verse data for {scrRef.book} {scrRef.chapterNum}.
           </p>
         )}
 
-        {bookSegments.length > 0 && (
-          <div className="tw:flex tw:flex-col tw:gap-2">
-            {bookSegments.map((seg) => (
-              <MemoizedSegmentView
-                key={seg.id}
-                segment={seg}
-                isActive={seg.startRef.verse === scrRef.verseNum}
-                displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-                focusedTokenId={continuousScroll ? undefined : focusedTokenId}
-                glosses={glosses}
-                onGlossChange={handleGlossChange}
-                onSelect={handleSegmentSelect}
-              />
-            ))}
-          </div>
+        {chapterSegments.length > 0 && (
+          <>
+            <div className="tw:sticky tw:top-0 tw:z-10 tw:flex tw:justify-end tw:pointer-events-none">
+              <button
+                aria-label="Scroll to active verse"
+                className="tw:rounded tw:p-1 tw:text-foreground tw:hover:bg-muted/50 tw:pointer-events-auto"
+                onClick={snapToActive}
+                type="button"
+              >
+                <LocateFixed className="tw:h-4 tw:w-4" />
+              </button>
+            </div>
+
+            <div className="tw:flex tw:flex-col tw:gap-2">
+              {chapterSegments.map((seg) => (
+                <MemoizedSegmentView
+                  key={seg.id}
+                  segment={seg}
+                  isActive={seg.startRef.verse === scrRef.verseNum}
+                  displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
+                  focusedTokenId={continuousScroll ? undefined : focusedTokenId}
+                  onSelect={handleSegmentSelect}
+                />
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Main component for the Interlinearizer. Renders a sticky toolbar and continuous view at the top,
+ * followed by segmented views. Wraps the layout in a {@link GlossStoreProvider} so all descendant
+ * components can read and write gloss values without prop drilling.
+ *
+ * @param props - Component props
+ * @param props.book - Book data used by the continuous view
+ * @param props.chapterSegments - Segments to render as individual verse views
+ * @param props.continuousScroll - Whether the continuous scroll view is shown
+ * @param props.scrRef - Current scripture reference
+ * @param props.setScrRef - Callback to update the scripture reference
+ * @returns The full interlinearizer layout with optional continuous strip and segment list
+ */
+export default function Interlinearizer(props: InterlinearizerProps) {
+  return (
+    <GlossStoreProvider>
+      <InterlinearizerInner {...props} />
+    </GlossStoreProvider>
   );
 }

@@ -141,6 +141,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.continuousScroll',
+    async (newValue) => typeof newValue === 'boolean',
+  );
+
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
@@ -155,6 +160,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   context.registrations.add(
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
+    continuousScrollValidatorRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

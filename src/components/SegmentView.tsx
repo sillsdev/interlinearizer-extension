@@ -1,5 +1,6 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo } from 'react';
+import type { GlossHandlers } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
@@ -23,11 +24,22 @@ function isWordToken(token: Token): token is Token & { type: 'word' } {
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
+/** Props for {@link SegmentView}. */
+type SegmentViewProps = Readonly<
+  GlossHandlers & {
+    displayMode: SegmentDisplayMode;
+    focusedTokenId: string | undefined;
+    isActive: boolean;
+    onSelect: (ref: ScriptureRef, tokenId?: string) => void;
+    segment: Segment;
+  }
+>;
+
 /**
  * Renders a single segment as either inline token chips or plain baseline text.
  *
  * @param props - Component props
- * @param props.displayMode - Controls how segment content is rendered; defaults to `'token-chip'`
+ * @param props.displayMode - Controls how segment content is rendered
  * @param props.focusedTokenId - When set, the matching word token's `PhraseBox` is rendered in the
  *   focused state; only meaningful in `token-chip` mode.
  * @param props.glosses - Map from `Token.id` to current English gloss text for tokens in this
@@ -43,22 +55,14 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  *   segment content
  */
 export function SegmentView({
-  displayMode = 'token-chip',
+  displayMode,
   focusedTokenId,
   glosses,
   isActive,
   onGlossChange,
   onSelect,
   segment,
-}: Readonly<{
-  displayMode?: SegmentDisplayMode;
-  focusedTokenId?: string;
-  glosses: Record<string, string>;
-  isActive?: boolean;
-  onGlossChange: (tokenId: string, value: string) => void;
-  onSelect: (ref: ScriptureRef, tokenId?: string) => void;
-  segment: Segment;
-}>) {
+}: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 

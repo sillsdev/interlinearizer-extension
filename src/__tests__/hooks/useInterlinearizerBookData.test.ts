@@ -111,7 +111,7 @@ describe('useInterlinearizerBookData', () => {
     setupDefaultProjectSettingMock();
   });
 
-  it('returns isLoading=true and no book or error while data is still loading', () => {
+  it('returns isLoading=true and no book when USJ data has not arrived', () => {
     jest.mocked(useProjectData).mockReturnValue({ BookUSJ: () => [undefined, jest.fn(), true] });
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
 

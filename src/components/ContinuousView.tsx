@@ -2,7 +2,7 @@ import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
-import MemoizedTokenChip from './TokenChip';
+import { MemoizedInertTokenChip } from './TokenChip';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -474,7 +474,7 @@ export default function ContinuousView({
         >
           {allTokens.slice(windowStartTokenIndex, windowEndTokenIndex).map((token, i) => {
             const tokenIndex = windowStartTokenIndex + i;
-            if (!isWordToken(token)) return <MemoizedTokenChip key={token.id} token={token} />;
+            if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.id} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
@@ -488,7 +488,7 @@ export default function ContinuousView({
                 <MemoizedPhraseBox
                   index={phraseIndex}
                   isFocused={isFocusedPhrase}
-                  onClick={handlePhraseSelect}
+                  onFocusPhrase={handlePhraseSelect}
                   tokens={tokenArrays[tokenIndex]}
                 />
               </span>

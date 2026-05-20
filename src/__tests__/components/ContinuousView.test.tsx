@@ -25,23 +25,30 @@ jest.mock('../../components/GlossStore', () => ({
 /** Render options that wrap every test render in a `GlossStoreProvider`. */
 const withGlossStore = { wrapper: GlossStoreProvider };
 
+jest.mock('../../components/TokenChip', () => ({
+  __esModule: true,
+  MemoizedInertTokenChip({ token }: Readonly<{ token: Token }>) {
+    return <span>{token.surfaceText}</span>;
+  },
+}));
+
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
-    isFocused = false,
     index,
-    onClick,
+    isFocused = false,
+    onFocusPhrase,
     tokens,
   }: Readonly<{
-    isFocused: boolean;
     index?: number;
-    onClick?: (index?: number) => void;
+    isFocused: boolean;
+    onFocusPhrase?: (index?: number) => void;
     tokens: Token[];
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
-      onClick={() => onClick?.(index)}
+      onClick={() => onFocusPhrase?.(index)}
       type="button"
     >
       {tokens.map((t) => (
@@ -49,12 +56,6 @@ jest.mock('../../components/PhraseBox', () => ({
       ))}
     </button>
   ),
-}));
-
-jest.mock('../../components/TokenChip', () => ({
-  __esModule: true,
-  default: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
-  TokenChip: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
 }));
 
 // ---------------------------------------------------------------------------
@@ -303,8 +304,8 @@ function makeLargeBook(count: number): Book {
         {
           id: `large-tok-${i}`,
           surfaceText: `word${i}`,
-          writingSystem: 'en' as const,
-          type: 'word' as const,
+          writingSystem: 'en',
+          type: 'word',
           charStart: 0,
           charEnd: String(`word${i}`).length,
         },
@@ -324,14 +325,14 @@ const scrollIntoViewMock = jest.fn();
  * @returns An object containing all required ContinuousView props set to no-op stubs.
  */
 function requiredProps(): {
-  activeVerse: ScriptureRef;
   activePhraseIndex: undefined;
+  activeVerse: ScriptureRef;
   onFocusPhraseIndexChange: jest.Mock;
   onVerseChange: jest.Mock;
 } {
   return {
-    activeVerse: { book: 'GEN', chapter: 1, verse: 1 },
     activePhraseIndex: undefined,
+    activeVerse: { book: 'GEN', chapter: 1, verse: 1 },
     onFocusPhraseIndexChange: jest.fn(),
     onVerseChange: jest.fn(),
   };
@@ -377,11 +378,11 @@ describe('ContinuousView initial render', () => {
     expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
   });
 
-  it('renders a non-word token via TokenChip within the strip', () => {
+  it('renders a non-word token via InertTokenChip within the strip', () => {
     // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
     render(<ContinuousView book={makeMixedBook()} {...requiredProps()} />, withGlossStore);
 
-    // Both the word chip ("In") and the punctuation chip (".") must appear
+    // Both the word chip ("In") and the inert chip (".") must appear
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('.')).toBeInTheDocument();
   });

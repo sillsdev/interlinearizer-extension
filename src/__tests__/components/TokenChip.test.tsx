@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import type { Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { GlossStoreProvider } from '../../components/GlossStore';
-import { TokenChip } from '../../components/TokenChip';
+import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 
 // ---------------------------------------------------------------------------
 // GlossStore mock — reactive useState-based stub so GlossStore.tsx stays out of scope
@@ -64,8 +64,21 @@ const WORD_TOKEN = {
   charEnd: 5,
 } satisfies Token;
 
+/**
+ * Minimal required props for {@link TokenChip}. Spread into render calls so tests only need to
+ * override what they actually care about.
+ *
+ * @returns An object with all required props set to no-op stubs.
+ */
+function requiredProps() {
+  return {
+    token: WORD_TOKEN,
+    onFocus: jest.fn(),
+  } as const;
+}
+
 const PUNCT_TOKEN = {
-  id: 'GEN 1:1:5',
+  id: 'GEN 1:1:p',
   surfaceText: '.',
   writingSystem: 'en',
   type: 'punctuation',
@@ -73,81 +86,51 @@ const PUNCT_TOKEN = {
   charEnd: 6,
 } satisfies Token;
 
-/**
- * Minimal required props for a word-token `TokenChip`. Spread into render calls so tests only need
- * to override what they actually care about.
- *
- * @returns An object with all required word-token props set to no-op stubs.
- */
-function requiredWordProps() {
-  return {
-    token: WORD_TOKEN,
-    onFocus: jest.fn(),
-  } as const;
-}
+describe('InertTokenChip', () => {
+  it('renders the surface text', () => {
+    render(<InertTokenChip token={PUNCT_TOKEN} />);
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
+  it('renders as an inline span', () => {
+    render(<InertTokenChip token={PUNCT_TOKEN} />);
+    expect(screen.getByText('.').tagName).toBe('SPAN');
+  });
+});
 
 describe('TokenChip', () => {
-  it('renders the surface text for a word token', () => {
+  it('renders the surface text', () => {
     render(
       <GlossStoreProvider>
-        <TokenChip {...requiredWordProps()} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
-  it('renders the surface text for a punctuation token', () => {
+  it('applies a border class to the outer container', () => {
     render(
       <GlossStoreProvider>
-        <TokenChip token={PUNCT_TOKEN} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
-    expect(screen.getByText('.')).toBeInTheDocument();
-  });
-
-  it('applies a border class to word tokens', () => {
-    render(
-      <GlossStoreProvider>
-        <TokenChip {...requiredWordProps()} />
-      </GlossStoreProvider>,
-    );
-    // The outer container holds the border; the inner span is just the surface text
     const outer = screen.getByText('hello').closest('span')?.parentElement;
     expect(outer?.className).toContain('tw:border');
   });
 
-  it('does not apply a border class to punctuation tokens', () => {
+  it('renders a gloss input', () => {
     render(
       <GlossStoreProvider>
-        <TokenChip token={PUNCT_TOKEN} />
-      </GlossStoreProvider>,
-    );
-    const span = screen.getByText('.');
-    expect(span.className).not.toContain('tw:border');
-  });
-
-  it('renders a gloss input for word tokens', () => {
-    render(
-      <GlossStoreProvider>
-        <TokenChip {...requiredWordProps()} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toBeInTheDocument();
   });
 
-  it('does not render a gloss input for punctuation tokens', () => {
-    render(
-      <GlossStoreProvider>
-        <TokenChip token={PUNCT_TOKEN} />
-      </GlossStoreProvider>,
-    );
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-  });
-
   it('shows the current gloss value from the store', () => {
     render(
       <GlossStoreProvider initialGlosses={{ 'GEN 1:1:0': 'in' }}>
-        <TokenChip {...requiredWordProps()} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('in');
@@ -156,7 +139,7 @@ describe('TokenChip', () => {
   it('shows an empty string in the input when no gloss has been set', () => {
     render(
       <GlossStoreProvider>
-        <TokenChip {...requiredWordProps()} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('');
@@ -166,7 +149,7 @@ describe('TokenChip', () => {
     const spy = jest.fn();
     render(
       <GlossStoreProvider onGlossChange={spy}>
-        <TokenChip {...requiredWordProps()} />
+        <TokenChip {...requiredProps()} />
       </GlossStoreProvider>,
     );
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
@@ -179,7 +162,7 @@ describe('TokenChip', () => {
     const handleFocus = jest.fn();
     render(
       <GlossStoreProvider>
-        <TokenChip {...requiredWordProps()} onFocus={handleFocus} />
+        <TokenChip {...requiredProps()} onFocus={handleFocus} />
       </GlossStoreProvider>,
     );
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));

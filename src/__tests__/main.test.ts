@@ -80,7 +80,7 @@ type WebViewProvider = {
   getWebView(
     savedWebViewDefinition: SavedWebViewDefinition,
     openWebViewOptions: OpenWebViewOptions | undefined,
-    webViewNonce: string,
+    webViewNonce?: string,
   ): Promise<WebViewDefinition | undefined>;
 };
 
@@ -344,7 +344,7 @@ describe('main', () => {
         webViewType: mainWebViewType,
       };
 
-      const result = await provider.getWebView(savedWebView, {}, 'nonce');
+      const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({
         ...savedWebView,
@@ -365,7 +365,7 @@ describe('main', () => {
       };
 
       const options: InterlinearizerOpenOptions = { projectId: 'my-project' };
-      const result = await provider.getWebView(savedWebView, options, 'nonce');
+      const result = await provider.getWebView(savedWebView, options);
 
       expect(result).toMatchObject({ projectId: 'my-project' });
     });
@@ -381,7 +381,7 @@ describe('main', () => {
         projectId: 'saved-project',
       };
 
-      const result = await provider.getWebView(savedWebView, {}, 'nonce');
+      const result = await provider.getWebView(savedWebView, {});
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });
@@ -397,7 +397,7 @@ describe('main', () => {
         webViewType: 'other.webView',
       };
 
-      await expect(provider.getWebView(savedWebView, {}, 'nonce')).rejects.toThrow(
+      await expect(provider.getWebView(savedWebView, {})).rejects.toThrow(
         `${mainWebViewType} provider received request to provide a ${savedWebView.webViewType} WebView`,
       );
     });
@@ -413,7 +413,7 @@ describe('main', () => {
         projectId: 'saved-project',
       };
 
-      const result = await provider.getWebView(savedWebView, undefined, 'nonce');
+      const result = await provider.getWebView(savedWebView, undefined);
 
       expect(result).toMatchObject({ projectId: 'saved-project' });
     });

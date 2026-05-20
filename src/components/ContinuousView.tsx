@@ -332,7 +332,7 @@ export default function ContinuousView({
         {!atStart && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-0 tw:z-10 tw:w-8 tw:bg-linear-to-r tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-s-0 tw:z-10 tw:w-8 tw:bg-linear-to-e tw:from-background tw:to-transparent"
           />
         )}
 
@@ -340,7 +340,7 @@ export default function ContinuousView({
         {!atEnd && (
           <div
             aria-hidden="true"
-            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:right-0 tw:z-10 tw:w-8 tw:bg-linear-to-l tw:from-background tw:to-transparent"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:inset-e-0 tw:z-10 tw:w-8 tw:bg-linear-to-s tw:from-background tw:to-transparent"
           />
         )}
 

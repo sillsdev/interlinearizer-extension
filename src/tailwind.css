@@ -48,8 +48,37 @@
 }
 
 @utility icon-button {
-  @apply tw:z-10 tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
+  @apply tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
 }
+
+@utility bg-linear-to-e {
+  --tw-gradient-position: to right;
+  @supports (background-image: linear-gradient(in lab, red, red)) {
+    --tw-gradient-position: to right in oklab;
+  }
+  background-image: linear-gradient(var(--tw-gradient-stops));
+  [dir='rtl'] & {
+    --tw-gradient-position: to left;
+    @supports (background-image: linear-gradient(in lab, red, red)) {
+      --tw-gradient-position: to left in oklab;
+    }
+  }
+}
+
+@utility bg-linear-to-s {
+  --tw-gradient-position: to left;
+  @supports (background-image: linear-gradient(in lab, red, red)) {
+    --tw-gradient-position: to left in oklab;
+  }
+  background-image: linear-gradient(var(--tw-gradient-stops));
+  [dir='rtl'] & {
+    --tw-gradient-position: to right;
+    @supports (background-image: linear-gradient(in lab, red, red)) {
+      --tw-gradient-position: to right in oklab;
+    }
+  }
+}
+
 
 /*
  * CUSTOM: Theme variable policy.

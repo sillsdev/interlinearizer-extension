@@ -1,10 +1,11 @@
+import type { Token } from 'interlinearizer';
+
 /**
- * Props shared by components that display and edit token glosses.
+ * Narrows a `Token` to a word token.
  *
- * @field glosses - Map from `Token.id` to current gloss text.
- * @field onGlossChange - Called with the token id and new value when a gloss is edited.
+ * @param token - The token to test.
+ * @returns `true` when `token.type === 'word'`.
  */
-export type GlossHandlers = {
-  glosses: Record<string, string>;
-  onGlossChange: (tokenId: string, value: string) => void;
-};
+export function isWordToken(token: Token): token is Token & { type: 'word' } {
+  return token.type === 'word';
+}

@@ -5,7 +5,55 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Token } from 'interlinearizer';
+import type { ReactNode } from 'react';
+import { GlossStoreProvider } from '../../components/GlossStore';
 import { TokenChip } from '../../components/TokenChip';
+
+// ---------------------------------------------------------------------------
+// GlossStore mock — reactive useState-based stub so GlossStore.tsx stays out of scope
+// ---------------------------------------------------------------------------
+
+jest.mock('../../components/GlossStore', () => {
+  const { createContext, useCallback, useContext, useMemo, useState } =
+    jest.requireActual<typeof import('react')>('react');
+
+  type GlossMap = Record<string, string>;
+  type MockCtxValue = {
+    glosses: GlossMap;
+    dispatch: (tokenId: string, value: string) => void;
+  };
+  const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
+
+  return {
+    __esModule: true,
+    GlossStoreProvider({
+      children,
+      initialGlosses,
+      onGlossChange,
+    }: Readonly<{
+      children: ReactNode;
+      initialGlosses?: GlossMap;
+      onGlossChange?: (tokenId: string, value: string) => void;
+    }>) {
+      const [glosses, setGlosses] = useState<GlossMap>(initialGlosses ?? {});
+      const dispatch = useCallback(
+        (tokenId: string, value: string) => {
+          setGlosses((prev) => ({ ...prev, [tokenId]: value }));
+          onGlossChange?.(tokenId, value);
+        },
+        [onGlossChange],
+      );
+      const ctx = useMemo(() => ({ glosses, dispatch }), [glosses, dispatch]);
+      return <MockCtx value={ctx}>{children}</MockCtx>;
+    },
+    useGloss(tokenId: string) {
+      return useContext(MockCtx).glosses[tokenId] ?? '';
+    },
+    useGlossDispatch() {
+      return useContext(MockCtx).dispatch;
+    },
+  };
+});
 
 const WORD_TOKEN = {
   id: 'GEN 1:1:0',
@@ -34,75 +82,106 @@ const PUNCT_TOKEN = {
 function requiredWordProps() {
   return {
     token: WORD_TOKEN,
-    gloss: '',
     onFocus: jest.fn(),
-    onGlossChange: jest.fn(),
   } as const;
 }
 
 describe('TokenChip', () => {
   it('renders the surface text for a word token', () => {
-    render(<TokenChip {...requiredWordProps()} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
   it('renders the surface text for a punctuation token', () => {
-    render(<TokenChip token={PUNCT_TOKEN} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip token={PUNCT_TOKEN} />
+      </GlossStoreProvider>,
+    );
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
   it('applies a border class to word tokens', () => {
-    render(<TokenChip {...requiredWordProps()} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     // The outer container holds the border; the inner span is just the surface text
     const outer = screen.getByText('hello').closest('span')?.parentElement;
     expect(outer?.className).toContain('tw:border');
   });
 
   it('does not apply a border class to punctuation tokens', () => {
-    render(<TokenChip token={PUNCT_TOKEN} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip token={PUNCT_TOKEN} />
+      </GlossStoreProvider>,
+    );
     const span = screen.getByText('.');
     expect(span.className).not.toContain('tw:border');
   });
 
-  it('renders word and punctuation tokens as inline spans', () => {
-    const { container: wc } = render(<TokenChip {...requiredWordProps()} />);
-    const { container: pc } = render(<TokenChip token={PUNCT_TOKEN} />);
-    expect(wc.querySelector('span')).toBeInTheDocument();
-    expect(pc.querySelector('span')).toBeInTheDocument();
-  });
-
   it('renders a gloss input for word tokens', () => {
-    render(<TokenChip {...requiredWordProps()} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toBeInTheDocument();
   });
 
   it('does not render a gloss input for punctuation tokens', () => {
-    render(<TokenChip token={PUNCT_TOKEN} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip token={PUNCT_TOKEN} />
+      </GlossStoreProvider>,
+    );
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
-  it('shows the current gloss value in the input', () => {
-    render(<TokenChip {...requiredWordProps()} gloss="in" />);
+  it('shows the current gloss value from the store', () => {
+    render(
+      <GlossStoreProvider initialGlosses={{ 'GEN 1:1:0': 'in' }}>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('in');
   });
 
-  it('shows an empty string in the input when gloss is empty', () => {
-    render(<TokenChip {...requiredWordProps()} gloss="" />);
+  it('shows an empty string in the input when no gloss has been set', () => {
+    render(
+      <GlossStoreProvider>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('');
   });
 
-  it('calls onGlossChange for each keystroke', async () => {
-    const handleChange = jest.fn();
-    render(<TokenChip {...requiredWordProps()} onGlossChange={handleChange} />);
+  it('calls the store onGlossChange spy with tokenId and value for each keystroke', async () => {
+    const spy = jest.fn();
+    render(
+      <GlossStoreProvider onGlossChange={spy}>
+        <TokenChip {...requiredWordProps()} />
+      </GlossStoreProvider>,
+    );
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
-    expect(handleChange).toHaveBeenCalledTimes(2);
-    expect(handleChange).toHaveBeenNthCalledWith(1, 'i');
-    expect(handleChange).toHaveBeenNthCalledWith(2, 'n');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenNthCalledWith(1, 'GEN 1:1:0', 'i');
+    expect(spy).toHaveBeenNthCalledWith(2, 'GEN 1:1:0', 'in');
   });
 
   it('calls onFocus when the input is focused', async () => {
     const handleFocus = jest.fn();
-    render(<TokenChip {...requiredWordProps()} onFocus={handleFocus} />);
+    render(
+      <GlossStoreProvider>
+        <TokenChip {...requiredWordProps()} onFocus={handleFocus} />
+      </GlossStoreProvider>,
+    );
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
     expect(handleFocus).toHaveBeenCalledTimes(1);
   });

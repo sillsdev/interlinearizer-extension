@@ -112,7 +112,7 @@ export default function InterlinearizerLoader({
       ) : (
         <Interlinearizer
           book={book}
-          bookSegments={chapterSegments}
+          chapterSegments={chapterSegments}
           continuousScroll={continuousScroll}
           scrRef={scrRef}
           setScrRef={setScrRef}

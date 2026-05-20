@@ -1,18 +1,8 @@
 import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { GlossHandlers } from './component-types';
+import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
-
-/**
- * Narrows a `Token` to a word token.
- *
- * @param token - The token to test.
- * @returns `true` when `token.type === 'word'`.
- */
-function isWordToken(token: Token): token is Token & { type: 'word' } {
-  return token.type === 'word';
-}
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -45,15 +35,13 @@ const STRIP_FADE_MS = 500;
 const PHRASE_WINDOW_HALF = 100;
 
 /** Props for {@link ContinuousView}. */
-type ContinuousViewProps = Readonly<
-  GlossHandlers & {
-    activePhraseIndex: number | undefined;
-    activeVerse: ScriptureRef;
-    book: Book;
-    onFocusPhraseIndexChange: (index: number) => void;
-    onVerseChange: (verse: ScriptureRef) => void;
-  }
->;
+type ContinuousViewProps = Readonly<{
+  activePhraseIndex: number | undefined;
+  activeVerse: ScriptureRef;
+  book: Book;
+  onFocusPhraseIndexChange: (index: number) => void;
+  onVerseChange: (verse: ScriptureRef) => void;
+}>;
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
@@ -75,10 +63,8 @@ type ContinuousViewProps = Readonly<
  * @param props.activeVerse - Verse coordinate; when it changes the strip scrolls to the first token
  *   of the matching segment
  * @param props.book - The full tokenized book whose tokens should be streamed
- * @param props.glosses - Map from `Token.id` to current English gloss text
  * @param props.onFocusPhraseIndexChange - Called whenever the focused phrase index changes so the
  *   parent can mirror the strip position
- * @param props.onGlossChange - Called with the token id and new gloss value when a gloss is edited
  * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
  * @returns A horizontal token strip with previous/next navigation arrows and edge-fade overlays
  */
@@ -86,9 +72,7 @@ export default function ContinuousView({
   activePhraseIndex,
   activeVerse,
   book,
-  glosses,
   onFocusPhraseIndexChange,
-  onGlossChange,
   onVerseChange,
 }: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
@@ -241,6 +225,14 @@ export default function ContinuousView({
    */
   const lastInternalVerseRef = useRef<ScriptureRef | undefined>(activeVerse);
 
+  // These two effects (activePhraseIndex and activeVerse) could theoretically race: if both props
+  // changed in one render, the activeVerse effect would overwrite the activePhraseIndex jump,
+  // scrolling to verse-start rather than the exact token. This is safe because Interlinearizer
+  // only passes activePhraseIndex when continuousScroll is false (segment mode), where ContinuousView
+  // is unmounted. When continuousScroll is true, SegmentView renders in baseline-text mode and
+  // onSelect is called without a tokenId, so activePhraseIndex is never set from within continuous
+  // mode. Any future change that adds token-level clicks in continuous mode must revisit this.
+
   // Jump to a specific phrase index when activePhraseIndex changes.
   useEffect(() => {
     if (activePhraseIndex === undefined) return;
@@ -344,6 +336,9 @@ export default function ContinuousView({
   /** Ref mirror of `onFocusPhraseIndexChange` so the notification effect never needs it as a dep. */
   const onFocusPhraseIndexChangeRef = useRef(onFocusPhraseIndexChange);
   onFocusPhraseIndexChangeRef.current = onFocusPhraseIndexChange;
+  // Intentionally fires on mount with the lazy-initialized focusPhraseIndex. This notifies the
+  // parent of the initial strip position so the segment list scrolls the active verse into view
+  // on first render. The coupling is load-bearing — do not add an early-return guard here.
   useEffect(() => {
     onFocusPhraseIndexChangeRef.current(focusPhraseIndex);
   }, [focusPhraseIndex]);
@@ -363,6 +358,10 @@ export default function ContinuousView({
   const windowStartTokenIndex =
     phraseEntries.length > 0 && windowStart > 0 ? phraseEntries[windowStart].tokenIndex : 0;
 
+  // windowEndTokenIndex stops at the last word token in the window, so punctuation tokens that
+  // trail it (before the next word) are excluded from the rendered slice. Punctuation before the
+  // window's first word IS included (windowStartTokenIndex points at the word itself). This
+  // asymmetry is invisible with PHRASE_WINDOW_HALF=100 but would matter if the window shrinks.
   /** Token index one past the last token in the rendered window. */
   const windowEndTokenIndex =
     phraseEntries.length > 0 && windowEnd < phraseEntries.length - 1
@@ -487,11 +486,9 @@ export default function ContinuousView({
                 }}
               >
                 <MemoizedPhraseBox
-                  glosses={glosses}
                   index={phraseIndex}
                   isFocused={isFocusedPhrase}
                   onClick={handlePhraseSelect}
-                  onGlossChange={onGlossChange}
                   tokens={tokenArrays[tokenIndex]}
                 />
               </span>

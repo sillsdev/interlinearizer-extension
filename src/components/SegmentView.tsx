@@ -1,18 +1,8 @@
-import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { ScriptureRef, Segment } from 'interlinearizer';
 import { memo, useCallback, useMemo } from 'react';
-import type { GlossHandlers } from './component-types';
+import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
-
-/**
- * Narrows a `Token` to a word token.
- *
- * @param token - The token to test.
- * @returns `true` when `token.type === 'word'`.
- */
-function isWordToken(token: Token): token is Token & { type: 'word' } {
-  return token.type === 'word';
-}
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -25,15 +15,13 @@ function isWordToken(token: Token): token is Token & { type: 'word' } {
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
 /** Props for {@link SegmentView}. */
-type SegmentViewProps = Readonly<
-  GlossHandlers & {
-    displayMode: SegmentDisplayMode;
-    focusedTokenId: string | undefined;
-    isActive: boolean;
-    onSelect: (ref: ScriptureRef, tokenId?: string) => void;
-    segment: Segment;
-  }
->;
+type SegmentViewProps = Readonly<{
+  displayMode: SegmentDisplayMode;
+  focusedTokenId: string | undefined;
+  isActive: boolean;
+  onSelect: (ref: ScriptureRef, tokenId?: string) => void;
+  segment: Segment;
+}>;
 
 /**
  * Renders a single segment as either inline token chips or plain baseline text.
@@ -42,10 +30,7 @@ type SegmentViewProps = Readonly<
  * @param props.displayMode - Controls how segment content is rendered
  * @param props.focusedTokenId - When set, the matching word token's `PhraseBox` is rendered in the
  *   focused state; only meaningful in `token-chip` mode.
- * @param props.glosses - Map from `Token.id` to current English gloss text for tokens in this
- *   segment. Pass an empty object when no glosses have been entered yet.
  * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onGlossChange - Called with the token id and new gloss value when a gloss is edited.
  * @param props.onSelect - Called when the segment or one of its word tokens is interacted with. In
  *   `baseline-text` mode the whole segment is clickable and `tokenId` is omitted. In `token-chip`
  *   mode only word tokens trigger this callback and `tokenId` is always provided; omit to render
@@ -57,9 +42,7 @@ type SegmentViewProps = Readonly<
 export function SegmentView({
   displayMode,
   focusedTokenId,
-  glosses,
   isActive,
-  onGlossChange,
   onSelect,
   segment,
 }: SegmentViewProps) {
@@ -113,6 +96,9 @@ export function SegmentView({
     );
   }
 
+  // Intentional: token-chip mode renders a div, not a button. In this mode individual word tokens
+  // (via PhraseBox gloss inputs) are the interactive elements, so the outer container does not need
+  // to be focusable. Keyboard access goes through the gloss inputs inside PhraseBox, not here.
   return (
     <div
       aria-current={isActive ? 'true' : undefined}
@@ -125,11 +111,9 @@ export function SegmentView({
           token.type === 'word' ? (
             <MemoizedPhraseBox
               key={token.id}
-              glosses={glosses}
               index={index}
               isFocused={focusedTokenId === token.id}
               onClick={handleTokenClick}
-              onGlossChange={onGlossChange}
               tokens={tokenArrays[index]}
             />
           ) : (

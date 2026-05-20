@@ -5,25 +5,36 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { ReactNode } from 'react';
+import { GlossStoreProvider } from '../../components/GlossStore';
 import { SegmentView } from '../../components/SegmentView';
+
+// ---------------------------------------------------------------------------
+// GlossStore mock — pass-through provider so GlossStore.tsx stays out of scope
+// ---------------------------------------------------------------------------
+
+jest.mock('../../components/GlossStore', () => ({
+  __esModule: true,
+  GlossStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+    return children;
+  },
+  useGloss: () => '',
+  useGlossDispatch: () => () => {},
+}));
 
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
-    glosses,
     index,
     isFocused = false,
     onClick,
-    onGlossChange,
     tokens,
-  }: {
-    glosses: Record<string, string>;
+  }: Readonly<{
     index?: number;
     isFocused: boolean;
     onClick?: (index?: number) => void;
-    onGlossChange: (tokenId: string, value: string) => void;
     tokens: Token[];
-  }) => (
+  }>) => (
     <span data-focus-state={isFocused ? 'focused' : 'default'}>
       {tokens.map((t) => (
         <span key={t.id}>
@@ -34,11 +45,6 @@ jest.mock('../../components/PhraseBox', () => ({
           ) : (
             <span>{t.surfaceText}</span>
           )}
-          <input
-            aria-label={`Gloss for ${t.surfaceText}`}
-            onChange={(e) => onGlossChange?.(t.id, e.target.value)}
-            value={glosses?.[t.id] ?? ''}
-          />
         </span>
       ))}
     </span>
@@ -47,8 +53,8 @@ jest.mock('../../components/PhraseBox', () => ({
 
 jest.mock('../../components/TokenChip', () => ({
   __esModule: true,
-  default: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
-  TokenChip: ({ token }: { token: Token }) => <span>{token.surfaceText}</span>,
+  default: ({ token }: Readonly<{ token: Token }>) => <span>{token.surfaceText}</span>,
+  TokenChip: ({ token }: Readonly<{ token: Token }>) => <span>{token.surfaceText}</span>,
 }));
 
 /** A word token segment. */
@@ -97,18 +103,14 @@ const PUNCT_SEGMENT: Segment = {
 function requiredProps(): {
   displayMode: 'token-chip';
   focusedTokenId: string | undefined;
-  glosses: Record<string, string>;
   isActive: boolean;
-  onGlossChange: (tokenId: string, value: string) => void;
   onSelect: (ref: ScriptureRef, tokenId?: string) => void;
   segment: Segment;
 } {
   return {
     displayMode: 'token-chip',
     focusedTokenId: undefined,
-    glosses: {},
     isActive: false,
-    onGlossChange: jest.fn(),
     onSelect: jest.fn(),
     segment: WORD_SEGMENT,
   };
@@ -116,58 +118,72 @@ function requiredProps(): {
 
 describe('SegmentView', () => {
   it('renders word token chips in token-chip mode (default)', () => {
-    render(<SegmentView {...requiredProps()} />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} />
+      </GlossStoreProvider>,
+    );
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
   });
 
   it('renders non-word (punctuation) tokens in token-chip mode', () => {
-    render(<SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />
+      </GlossStoreProvider>,
+    );
 
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
   it('renders baselineText in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} displayMode="baseline-text" />
+      </GlossStoreProvider>,
+    );
 
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
   });
 
   it('does not render individual tokens in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} displayMode="baseline-text" />
+      </GlossStoreProvider>,
+    );
 
     expect(screen.queryByText('In')).not.toBeInTheDocument();
     expect(screen.queryByText('the')).not.toBeInTheDocument();
   });
 
   it('shows the verse number label', () => {
-    render(<SegmentView {...requiredProps()} />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} />
+      </GlossStoreProvider>,
+    );
 
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 
   it('sets aria-current="true" when isActive is true', () => {
-    const { container } = render(<SegmentView {...requiredProps()} isActive />);
+    const { container } = render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} isActive />
+      </GlossStoreProvider>,
+    );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
   });
 
-  it('does not set aria-current when isActive is false', () => {
-    const { container } = render(<SegmentView {...requiredProps()} isActive={false} />);
-
-    expect(container.firstChild).not.toHaveAttribute('aria-current');
-  });
-
   it('does not set aria-current when isActive is omitted', () => {
-    const { container } = render(<SegmentView {...requiredProps()} />);
-
-    expect(container.firstChild).not.toHaveAttribute('aria-current');
-  });
-
-  it('does not set aria-current on the baseline-text button when isActive is false', () => {
     const { container } = render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" isActive={false} />,
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} />
+      </GlossStoreProvider>,
     );
 
     expect(container.firstChild).not.toHaveAttribute('aria-current');
@@ -175,7 +191,9 @@ describe('SegmentView', () => {
 
   it('sets aria-current="true" on the baseline-text button when isActive is true', () => {
     const { container } = render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />,
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />
+      </GlossStoreProvider>,
     );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
@@ -184,7 +202,9 @@ describe('SegmentView', () => {
   it('calls onSelect when clicked in baseline-text mode', async () => {
     const handleSelect = jest.fn();
     render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />
+      </GlossStoreProvider>,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -195,7 +215,11 @@ describe('SegmentView', () => {
 
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />);
+    render(
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} onSelect={handleSelect} />
+      </GlossStoreProvider>,
+    );
 
     await userEvent.click(screen.getByRole('button', { name: 'In' }));
 
@@ -204,32 +228,12 @@ describe('SegmentView', () => {
   });
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {
-    render(<SegmentView {...requiredProps()} />);
-
-    expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
-  });
-
-  it('passes glosses to word token inputs', () => {
-    render(<SegmentView {...requiredProps()} glosses={{ 'tok-0': 'In', 'tok-1': 'the' }} />);
-
-    expect(screen.getByRole('textbox', { name: 'Gloss for In' })).toHaveValue('In');
-    expect(screen.getByRole('textbox', { name: 'Gloss for the' })).toHaveValue('the');
-  });
-
-  it('calls onGlossChange with the token id and new value when a gloss changes', async () => {
-    const handleGlossChange = jest.fn();
     render(
-      <SegmentView
-        {...requiredProps()}
-        glosses={{ 'tok-0': '' }}
-        onGlossChange={handleGlossChange}
-      />,
+      <GlossStoreProvider>
+        <SegmentView {...requiredProps()} />
+      </GlossStoreProvider>,
     );
 
-    await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for In' }), 'In');
-
-    expect(handleGlossChange).toHaveBeenCalledTimes(2);
-    expect(handleGlossChange).toHaveBeenNthCalledWith(1, 'tok-0', 'I');
-    expect(handleGlossChange).toHaveBeenNthCalledWith(2, 'tok-0', 'n');
+    expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
   });
 });

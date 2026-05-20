@@ -30,6 +30,7 @@ const config: Config = {
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
+    '!src/components/component-types.ts',
   ],
 
   /** Directory for coverage output. */

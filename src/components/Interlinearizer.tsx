@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ContinuousView from './ContinuousView';
 import MemoizedSegmentView from './SegmentView';
 
+/** Props for {@link Interlinearizer}. */
+type InterlinearizerProps = Readonly<{
+  book: Book;
+  bookSegments: Segment[];
+  continuousScroll: boolean;
+  scrRef: SerializedVerseRef;
+  setScrRef: (newScrRef: SerializedVerseRef) => void;
+}>;
+
 /**
  * Main content area for the Interlinearizer. Renders an optional {@link ContinuousView} strip at the
  * top followed by a scrollable list of {@link MemoizedSegmentView}s for the current chapter.
@@ -22,13 +31,7 @@ export default function Interlinearizer({
   continuousScroll,
   scrRef,
   setScrRef,
-}: Readonly<{
-  book: Book;
-  bookSegments: Segment[];
-  continuousScroll: boolean;
-  scrRef: SerializedVerseRef;
-  setScrRef: (newScrRef: SerializedVerseRef) => void;
-}>) {
+}: InterlinearizerProps) {
   const [glosses, setGlosses] = useState<Record<string, string>>({});
   const [focusedTokenId, setFocusedTokenId] = useState<string | undefined>(undefined);
 

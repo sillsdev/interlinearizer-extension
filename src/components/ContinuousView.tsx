@@ -1,5 +1,6 @@
 import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { GlossHandlers } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
 import MemoizedTokenChip from './TokenChip';
 
@@ -11,6 +12,18 @@ import MemoizedTokenChip from './TokenChip';
  */
 function isWordToken(token: Token): token is Token & { type: 'word' } {
   return token.type === 'word';
+}
+
+/**
+ * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
+ *
+ * @param index - The raw index to clamp.
+ * @param len - Length of the target array.
+ * @returns A safe index guaranteed to be within bounds.
+ */
+function clampIndex(index: number, len: number): number {
+  if (len === 0) return 0;
+  return Math.max(0, Math.min(index, len - 1));
 }
 
 /**
@@ -30,6 +43,17 @@ const STRIP_FADE_MS = 500;
  * realistic viewport can ever render all tokens simultaneously.
  */
 const PHRASE_WINDOW_HALF = 100;
+
+/** Props for {@link ContinuousView}. */
+type ContinuousViewProps = Readonly<
+  GlossHandlers & {
+    activePhraseIndex: number | undefined;
+    activeVerse: ScriptureRef;
+    book: Book;
+    onFocusPhraseIndexChange: (index: number) => void;
+    onVerseChange: (verse: ScriptureRef) => void;
+  }
+>;
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
@@ -66,15 +90,7 @@ export default function ContinuousView({
   onFocusPhraseIndexChange,
   onGlossChange,
   onVerseChange,
-}: Readonly<{
-  activePhraseIndex: number | undefined;
-  activeVerse: ScriptureRef;
-  book: Book;
-  glosses: Record<string, string>;
-  onFocusPhraseIndexChange: (index: number) => void;
-  onGlossChange: (tokenId: string, value: string) => void;
-  onVerseChange: (verse: ScriptureRef) => void;
-}>) {
+}: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
 
   const allTokens: Token[] = useMemo(
@@ -101,6 +117,15 @@ export default function ContinuousView({
       allTokens
         .map((token, tokenIndex) => ({ token, tokenIndex }))
         .filter((entry) => entry.token.type === 'word'),
+    [allTokens],
+  );
+
+  /**
+   * Stable single-token arrays indexed by position in `allTokens`, so `MemoizedPhraseBox` receives
+   * the same array reference across renders and shallow memo comparison holds.
+   */
+  const tokenArrays = useMemo(
+    () => allTokens.map((token) => (isWordToken(token) ? [token] : [])),
     [allTokens],
   );
 
@@ -167,7 +192,7 @@ export default function ContinuousView({
   // correctly before the initial-load fade-in fires. Prefer activePhraseIndex (e.g. a focused token
   // carried over from segment view) so there is no flash to the verse-start position on mount.
   const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
-    if (activePhraseIndex !== undefined) return activePhraseIndex;
+    if (activePhraseIndex !== undefined) return clampIndex(activePhraseIndex, phraseEntries.length);
 
     const seg = book.segments.find(
       (s) =>
@@ -227,10 +252,11 @@ export default function ContinuousView({
       return;
     }
 
-    jumpTargetRef.current = activePhraseIndex;
+    const clamped = clampIndex(activePhraseIndex, phraseEntriesRef.current.length);
+    jumpTargetRef.current = clamped;
     isExternalJumpInProgressRef.current = true;
     setIsVisible(false);
-    setPendingExternalJumpPhraseIndex(activePhraseIndex);
+    setPendingExternalJumpPhraseIndex(clamped);
   }, [activePhraseIndex]);
 
   // Jump to the first token of the matching segment when the active verse changes.
@@ -466,7 +492,7 @@ export default function ContinuousView({
                   isFocused={isFocusedPhrase}
                   onClick={handlePhraseSelect}
                   onGlossChange={onGlossChange}
-                  tokens={[token]}
+                  tokens={tokenArrays[tokenIndex]}
                 />
               </span>
             );

@@ -397,6 +397,12 @@ describe('ContinuousView rendering', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
+  it('renders without crashing when book has no word tokens and activePhraseIndex is set', () => {
+    render(<ContinuousView book={makeWordFreeBook()} {...requiredProps()} activePhraseIndex={0} />);
+
+    expect(screen.getByText('.')).toBeInTheDocument();
+  });
+
   it('clicking an out-of-focus phrase box brings it into focus', async () => {
     render(<ContinuousView book={makeBook()} {...requiredProps()} />);
 

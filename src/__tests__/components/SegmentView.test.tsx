@@ -95,13 +95,19 @@ const PUNCT_SEGMENT: Segment = {
  * @returns An object containing all required SegmentView props set to no-op stubs.
  */
 function requiredProps(): {
+  displayMode: 'token-chip';
+  focusedTokenId: string | undefined;
   glosses: Record<string, string>;
+  isActive: boolean;
   onGlossChange: (tokenId: string, value: string) => void;
   onSelect: (ref: ScriptureRef, tokenId?: string) => void;
   segment: Segment;
 } {
   return {
+    displayMode: 'token-chip',
+    focusedTokenId: undefined,
     glosses: {},
+    isActive: false,
     onGlossChange: jest.fn(),
     onSelect: jest.fn(),
     segment: WORD_SEGMENT,

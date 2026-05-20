@@ -1,7 +1,18 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
 import type { Token } from 'interlinearizer';
 import { memo } from 'react';
+import type { GlossHandlers } from './component-types';
 import MemoizedTokenChip from './TokenChip';
+
+/** Props for {@link PhraseBox}. */
+type PhraseBoxProps = Readonly<
+  GlossHandlers & {
+    index?: number;
+    isFocused: boolean;
+    onClick?: (index?: number) => void;
+    tokens: (Token & { type: 'word' })[];
+  }
+>;
 
 /**
  * Wraps one or more tokens in a phrase-level visual container.
@@ -17,6 +28,7 @@ import MemoizedTokenChip from './TokenChip';
  * @param props.tokens - Tokens belonging to this phrase
  * @returns A bordered inline container
  */
+
 export function PhraseBox({
   glosses,
   index,
@@ -24,14 +36,7 @@ export function PhraseBox({
   onClick,
   onGlossChange,
   tokens,
-}: Readonly<{
-  glosses: Record<string, string>;
-  index?: number;
-  isFocused: boolean;
-  onClick?: (index?: number) => void;
-  onGlossChange: (tokenId: string, value: string) => void;
-  tokens: (Token & { type: 'word' })[];
-}>) {
+}: PhraseBoxProps) {
   const baseClass = isFocused
     ? 'tw:inline-flex tw:items-center tw:rounded tw:border-2 tw:border-white tw:bg-muted/30 tw:px-1 tw:py-0.5'
     : 'tw:inline-flex tw:items-center tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-1 tw:py-0.5';
@@ -40,7 +45,7 @@ export function PhraseBox({
       {tokens.map((token) => (
         <MemoizedTokenChip
           key={token.id}
-          gloss={glosses[token.id]}
+          gloss={glosses[token.id] ?? ''}
           onFocus={() => onClick?.(index)}
           onGlossChange={(value) => onGlossChange(token.id, value)}
           token={token}

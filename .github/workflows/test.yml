@@ -46,4 +46,4 @@ jobs:
 
       - name: Run tests
         working-directory: extension-repo
-        run: npm test:coverage
+        run: npm run test:coverage

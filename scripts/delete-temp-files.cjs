@@ -62,13 +62,13 @@ const shouldDeleteYalc = allFlag || yalcFlag;
 
 const EXT_DIR_PATH = path.join(__dirname, '..');
 const CORE_DIR_PATH = path.join(EXT_DIR_PATH, '..', 'paranext-core');
-const SKIP_DIRS = new Set(['.yalc', 'dev-appdata', 'dev-packages', 'lib']);
+const SKIP_DIRS = new Set(['.yalc', 'dev-appdata', 'dev-packages', 'lib', 'node_modules']);
 
 const BUILD_PATHS = [];
 if (shouldDeleteBuild) {
   // Add core build output subdirectories to `BUILD_PATHS`
-  BUILD_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'dist', SKIP_DIRS));
-  BUILD_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'temp-build', SKIP_DIRS));
+  BUILD_PATHS.push(...findNamed(CORE_DIR_PATH, 'dist', SKIP_DIRS));
+  BUILD_PATHS.push(...findNamed(CORE_DIR_PATH, 'temp-build', SKIP_DIRS));
 }
 
 const CORE_PATHS = [path.join(CORE_DIR_PATH, 'dev-appdata')];
@@ -106,7 +106,7 @@ const NPM_PATHS = [
 ];
 if (shouldDeleteNpm) {
   // Find core `node_modules` subdirectories and add them to `NPM_PATHS`
-  NPM_PATHS.push(...findDirsNamed(CORE_DIR_PATH, 'node_modules', SKIP_DIRS));
+  NPM_PATHS.push(...findNamed(CORE_DIR_PATH, 'node_modules', SKIP_DIRS));
 }
 
 const TEST_PATHS = [path.join(EXT_DIR_PATH, 'coverage'), path.join(EXT_DIR_PATH, '.eslintcache')];
@@ -125,7 +125,7 @@ const YALC_PATHS = [
  * @param {Set<string>} skipDirs - Directory names to skip entirely
  * @returns {string[]} Absolute paths of every matching directory found
  */
-function findDirsNamed(corePath, targetDir, skipDirs) {
+function findNamed(corePath, target, skipDirs) {
   let entries;
   try {
     entries = fs.readdirSync(corePath, { withFileTypes: true });
@@ -133,11 +133,10 @@ function findDirsNamed(corePath, targetDir, skipDirs) {
     return [];
   }
   return entries
-    .filter((entry) => entry.isDirectory() && !skipDirs.has(entry.name))
+    .filter((entry) => entry.name === target || (entry.isDirectory() && !skipDirs.has(entry.name)))
     .flatMap((entry) => {
       const fullPath = path.join(corePath, entry.name);
-      if (entry.name === targetDir) return [fullPath];
-      return findDirsNamed(fullPath, targetDir, skipDirs);
+      return entry.name === target ? [fullPath] : findNamed(fullPath, target, skipDirs);
     });
 }
 

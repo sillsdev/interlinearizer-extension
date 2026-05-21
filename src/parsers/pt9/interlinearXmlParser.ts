@@ -157,20 +157,18 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 }
 
 /**
- * Parses a string to a non-negative integer, returning `undefined` for empty, non-integer, or
- * negative values. Used to validate XML attribute strings before converting them to numeric
- * ranges.
+ * Parses a string to a non-negative integer, returning `undefined` for empty or non-integer values.
+ * Used to validate XML attribute strings before converting them to numeric ranges.
  *
- * @param raw - The string to parse (e.g. an XML attribute value).
- * @returns The parsed non-negative integer, or `undefined` if the input is empty, non-integer, or
- *   negative.
+ * @param raw - The string to parse (e.g. an XML attribute value). `undefined` is accepted because
+ *   fast-xml-parser may omit attributes at runtime despite the declared type.
+ * @returns The parsed non-negative integer, or `undefined` if the input is absent, empty, or
+ *   non-integer.
  */
-const parseStrictNumber = (raw: string): number | undefined => {
+const parseStrictNumber = (raw: string | undefined): number | undefined => {
   if (raw === undefined || raw.trim() === '') return undefined;
   if (!/^\d+$/.test(raw.trim())) return undefined;
-  const n = Number.parseInt(raw, 10);
-  /* v8 ignore next -- the ^\d+$ regex above makes n < 0 unreachable; guard kept for safety */
-  return n >= 0 ? n : undefined;
+  return Number.parseInt(raw, 10);
 };
 
 /**
@@ -265,6 +263,7 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * `parse()` calls rather than constructing a new instance per file.
  */
 export class InterlinearXmlParser {
+  /** Shared XMLParser instance, pre-configured in the constructor and reused across `parse()` calls. */
   private readonly parser: XMLParser;
 
   /**

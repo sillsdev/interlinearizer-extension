@@ -31,6 +31,56 @@
   }
 }
 
+@utility modal-overlay {
+  @apply tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40;
+}
+
+@utility modal-dialog {
+  @apply tw:static tw:bg-background tw:text-foreground tw:border tw:border-border tw:p-6 tw:shadow-lg;
+}
+
+@utility modal-title {
+  @apply tw:text-base tw:font-semibold tw:text-foreground tw:mb-4;
+}
+
+@utility section-label {
+  @apply tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide;
+}
+
+@utility icon-button {
+  @apply tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
+}
+
+@utility bg-linear-to-e {
+  --tw-gradient-position: to right;
+  @supports (background-image: linear-gradient(in lab, red, red)) {
+    --tw-gradient-position: to right in oklab;
+  }
+  background-image: linear-gradient(var(--tw-gradient-position), var(--tw-gradient-stops));
+
+  [dir='rtl'] & {
+    --tw-gradient-position: to left;
+    @supports (background-image: linear-gradient(in lab, red, red)) {
+      --tw-gradient-position: to left in oklab;
+    }
+  }
+}
+
+@utility bg-linear-to-s {
+  --tw-gradient-position: to left;
+  @supports (background-image: linear-gradient(in lab, red, red)) {
+    --tw-gradient-position: to left in oklab;
+  }
+  background-image: linear-gradient(var(--tw-gradient-position), var(--tw-gradient-stops));
+
+  [dir='rtl'] & {
+    --tw-gradient-position: to right;
+    @supports (background-image: linear-gradient(in lab, red, red)) {
+      --tw-gradient-position: to right in oklab;
+    }
+  }
+}
+
 /*
  * CUSTOM: Theme variable policy.
  *

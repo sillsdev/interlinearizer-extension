@@ -55,7 +55,7 @@ function makeBook(overrides?: Partial<Book>): Book {
         baselineText: 'In the',
         tokens: [
           {
-            id: 'tok-0',
+            ref: 'tok-0',
             surfaceText: 'In',
             writingSystem: 'en',
             type: 'word',
@@ -63,7 +63,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 2,
           },
           {
-            id: 'tok-1',
+            ref: 'tok-1',
             surfaceText: 'the',
             writingSystem: 'en',
             type: 'word',
@@ -79,7 +79,7 @@ function makeBook(overrides?: Partial<Book>): Book {
         baselineText: 'beginning God',
         tokens: [
           {
-            id: 'tok-2',
+            ref: 'tok-2',
             surfaceText: 'beginning',
             writingSystem: 'en',
             type: 'word',
@@ -87,7 +87,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 9,
           },
           {
-            id: 'tok-3',
+            ref: 'tok-3',
             surfaceText: 'God',
             writingSystem: 'en',
             type: 'word',
@@ -120,7 +120,7 @@ function makeTwoChapterBook(): Book {
         baselineText: 'Alpha',
         tokens: [
           {
-            id: 'ch1-tok-0',
+            ref: 'ch1-tok-0',
             surfaceText: 'Alpha',
             writingSystem: 'en',
             type: 'word',
@@ -136,7 +136,7 @@ function makeTwoChapterBook(): Book {
         baselineText: 'Beta',
         tokens: [
           {
-            id: 'ch2-tok-0',
+            ref: 'ch2-tok-0',
             surfaceText: 'Beta',
             writingSystem: 'en',
             type: 'word',
@@ -168,7 +168,7 @@ function makeSingleTokenBook(): Book {
         baselineText: 'Word',
         tokens: [
           {
-            id: 'tok-only',
+            ref: 'tok-only',
             surfaceText: 'Word',
             writingSystem: 'en',
             type: 'word',
@@ -185,6 +185,8 @@ function makeSingleTokenBook(): Book {
  * A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only a punctuation
  * token (no word tokens). Used to exercise code paths that run when a segment exists in the book
  * but contributes nothing to phraseEntries / segmentStartIndex.
+ *
+ * @returns A two-segment Book where the second segment has no word tokens.
  */
 function makeMixedBook(): Book {
   return {
@@ -199,7 +201,7 @@ function makeMixedBook(): Book {
         baselineText: 'In the',
         tokens: [
           {
-            id: 'mix-tok-0',
+            ref: 'mix-tok-0',
             surfaceText: 'In',
             writingSystem: 'en',
             type: 'word',
@@ -215,7 +217,7 @@ function makeMixedBook(): Book {
         baselineText: '.',
         tokens: [
           {
-            id: 'mix-punct-0',
+            ref: 'mix-punct-0',
             surfaceText: '.',
             writingSystem: 'en',
             type: 'punctuation',
@@ -247,7 +249,7 @@ function makeWordFreeBook(): Book {
         baselineText: '...',
         tokens: [
           {
-            id: 'wf-punct-0',
+            ref: 'wf-punct-0',
             surfaceText: '.',
             writingSystem: 'en',
             type: 'punctuation',
@@ -426,10 +428,9 @@ describe('ContinuousView fade overlays', () => {
   it('does not render prev fade at book start', () => {
     const { container } = render(<ContinuousView book={makeBook()} />);
 
-    // Prev fade gradient is tw:from-background (prev-to-next gradient)
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-e'),
+      el.className.includes('tw:bg-linear-to-e'),
     );
     expect(prevFades).toHaveLength(0);
   });
@@ -439,7 +440,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-s'),
+      el.className.includes('tw:bg-linear-to-s'),
     );
     expect(nextFades).toHaveLength(1);
   });
@@ -451,7 +452,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-e'),
+      el.className.includes('tw:bg-linear-to-e'),
     );
     expect(prevFades).toHaveLength(1);
   });
@@ -466,7 +467,7 @@ describe('ContinuousView fade overlays', () => {
 
     const gradients = container.querySelectorAll('[aria-hidden="true"]');
     const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-gradient-to-s'),
+      el.className.includes('tw:bg-linear-to-s'),
     );
     expect(nextFades).toHaveLength(0);
   });

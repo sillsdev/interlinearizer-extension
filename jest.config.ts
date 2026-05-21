@@ -18,6 +18,12 @@ const config: Config = {
   resetMocks: true,
 
   /**
+   * Restore spied-on methods to their original implementations before every test so that jest.spyOn
+   * calls never accumulate across tests.
+   */
+  restoreMocks: true,
+
+  /**
    * Coverage only when run with --coverage (see npm run test:coverage). Omit for faster default
    * test runs.
    */
@@ -89,6 +95,8 @@ const config: Config = {
     '^platform-bible-utils$': '<rootDir>/__mocks__/platform-bible-utils.ts',
     /** Mock ESM deps that Jest cannot parse. */
     '^platform-bible-react$': '<rootDir>/__mocks__/platform-bible-react.tsx',
+    /** Mock ESM-only icon library. */
+    '^lucide-react$': '<rootDir>/__mocks__/lucide-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
     /** Resolve webpack ?inline imports: SCSS content. */

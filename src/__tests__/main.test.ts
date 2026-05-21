@@ -312,12 +312,12 @@ describe('main', () => {
       );
     });
 
-    it('adds all six registrations to the activation context', async () => {
+    it('adds all twelve registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(6);
+      expect(context.registrations.unsubscribers.size).toBe(12);
     });
 
     it('logs activation start and finish', async () => {

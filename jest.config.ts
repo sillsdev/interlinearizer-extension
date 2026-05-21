@@ -36,7 +36,7 @@ const config: Config = {
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
-    '!src/utils/**',
+    '!src/utils/interlinear-project-summary.ts',
   ],
 
   /** Directory for coverage output. */

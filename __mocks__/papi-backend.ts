@@ -10,6 +10,7 @@ const mockSelectProject = jest.fn();
 const mockGetOpenWebViewDefinition = jest.fn();
 const mockOnDidOpenWebView = jest.fn();
 const mockOnDidCloseWebView = jest.fn();
+const mockRegisterValidator = jest.fn();
 const mockLogger = {
   debug: jest.fn(),
   error: jest.fn(),
@@ -23,6 +24,9 @@ const papi = {
   },
   dialogs: {
     selectProject: mockSelectProject,
+  },
+  projectSettings: {
+    registerValidator: mockRegisterValidator,
   },
   webViewProviders: {
     registerWebViewProvider: mockRegisterWebViewProvider,
@@ -44,6 +48,7 @@ const defaultExport = {
   __mockGetOpenWebViewDefinition: mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView: mockOnDidOpenWebView,
   __mockOnDidCloseWebView: mockOnDidCloseWebView,
+  __mockRegisterValidator: mockRegisterValidator,
   __mockLogger: mockLogger,
 };
 

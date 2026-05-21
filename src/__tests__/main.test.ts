@@ -16,6 +16,7 @@ interface PapiBackendTestMock {
   __mockGetOpenWebViewDefinition: jest.Mock;
   __mockOnDidOpenWebView: jest.Mock;
   __mockOnDidCloseWebView: jest.Mock;
+  __mockRegisterValidator: jest.Mock;
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
@@ -34,6 +35,7 @@ function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
     '__mockGetOpenWebViewDefinition' in m &&
     '__mockOnDidOpenWebView' in m &&
     '__mockOnDidCloseWebView' in m &&
+    '__mockRegisterValidator' in m &&
     '__mockLogger' in m
   );
 }
@@ -47,6 +49,7 @@ const {
   __mockGetOpenWebViewDefinition,
   __mockOnDidOpenWebView,
   __mockOnDidCloseWebView,
+  __mockRegisterValidator,
   __mockLogger,
 } = papiBackendMock;
 
@@ -117,6 +120,7 @@ describe('main', () => {
   beforeEach(() => {
     __mockRegisterWebViewProvider.mockResolvedValue({ dispose: jest.fn() });
     __mockRegisterCommand.mockResolvedValue({ dispose: jest.fn() });
+    __mockRegisterValidator.mockResolvedValue({ dispose: jest.fn() });
     __mockOpenWebView.mockResolvedValue('mock-webview-id');
     __mockSelectProject.mockResolvedValue(undefined);
     __mockGetOpenWebViewDefinition.mockResolvedValue(undefined);
@@ -151,12 +155,12 @@ describe('main', () => {
       );
     });
 
-    it('adds all four registrations to the activation context', async () => {
+    it('adds all five registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(4);
+      expect(context.registrations.unsubscribers.size).toBe(5);
     });
 
     it('logs activation start and finish', async () => {

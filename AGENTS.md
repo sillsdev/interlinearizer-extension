@@ -31,7 +31,7 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 `src/main.ts` — called by Platform.Bible on activation. Exports two lifecycle functions:
 
-- `activate(context)` — registers the `interlinearizer.mainWebView` WebView provider, the `interlinearizer.openForWebView` command, and `onDidOpenWebView` / `onDidCloseWebView` subscriptions. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
+- `activate(context)` — registers the `interlinearizer.mainWebView` WebView provider, the `interlinearizer.openForWebView` command, the `interlinearizer.continuousScroll` project settings validator, and `onDidOpenWebView` / `onDidCloseWebView` subscriptions. All registrations are added to `context.registrations` so the platform disposes them on deactivation.
 - `deactivate()` — clears `openWebViewsByProject` and returns `true`.
 
 `openWebViewsByProject` (`Map<string, string>`) tracks one open WebView ID per project to prevent duplicates; reopening an already-open project brings that tab to front via the `existingId` option.

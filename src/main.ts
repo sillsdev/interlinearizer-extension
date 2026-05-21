@@ -99,8 +99,9 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
 }
 
 /**
- * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
- * Called by the platform when the extension is loaded.
+ * Extension entry point. Registers the Interlinearizer WebView provider, the open command, the
+ * `continuousScroll` project settings validator, and `onDidOpenWebView` / `onDidCloseWebView`
+ * lifecycle subscriptions. Called by the platform when the extension is loaded.
  *
  * @param context - Activation context; used to register disposables so the platform can clean them
  *   up on deactivation.
@@ -141,6 +142,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.continuousScroll',
+    async (newValue) => typeof newValue === 'boolean',
+  );
+
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
@@ -155,6 +161,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   context.registrations.add(
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
+    continuousScrollValidatorRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

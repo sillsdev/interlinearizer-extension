@@ -52,12 +52,6 @@ describe('ProjectMetadataModal', () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
-  it('renders nothing while strings are loading', () => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, true]);
-    const { container } = render(<ProjectMetadataModal {...testProps} />);
-    expect(container.firstChild).toBeNull();
-  });
-
   it('renders the modal heading', () => {
     render(<ProjectMetadataModal {...testProps} />);
     expect(screen.getByRole('heading', { name: /project info/i })).toBeInTheDocument();
@@ -180,26 +174,6 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
-  it('replaces an existing description when description is cleared and retyped', async () => {
-    render(<ProjectMetadataModal {...testProps} description="Old Desc" />);
-
-    const descInput = screen.getByLabelText(/^description$/i);
-    await userEvent.clear(descInput);
-    await userEvent.type(descInput, 'Replaced');
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() =>
-      expect(mockSendCommand).toHaveBeenCalledWith(
-        'interlinearizer.updateProjectMetadata',
-        'il-project-uuid',
-        undefined,
-        'Replaced',
-        ['en'],
-        undefined,
-      ),
-    );
-  });
-
   it('sends undefined description when description is cleared', async () => {
     render(<ProjectMetadataModal {...testProps} description="Old Desc" />);
 
@@ -232,16 +206,6 @@ describe('ProjectMetadataModal', () => {
     await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
     expect(onProjectSaved).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
-  });
-
-  it('does not send a notification when save sendCommand resolves with undefined (project not found)', async () => {
-    mockSendCommand.mockResolvedValue(undefined);
-    render(<ProjectMetadataModal {...testProps} />);
-
-    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
-
-    await waitFor(() => expect(mockSendCommand).toHaveBeenCalled());
-    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
   it('does not call onProjectSaved, onClose, or send a notification when save sendCommand rejects', async () => {

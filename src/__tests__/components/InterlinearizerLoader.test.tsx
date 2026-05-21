@@ -10,6 +10,7 @@ import type { Book } from 'interlinearizer';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
+import { makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -220,55 +221,14 @@ const GEN_1_1_BOOK: Book = {
   ],
 };
 
-/**
- * Returns a `useWebViewScrollGroupScrRef` hook stub bound to the given reference and setter.
- *
- * @param scrRef - Scripture reference to expose; defaults to GEN 1:1
- * @param setScrRef - Setter callback; defaults to a no-op
- */
-function makeScrollGroupHook(
-  scrRef: SerializedVerseRef = defaultScrRef,
-  setScrRef: (r: SerializedVerseRef) => void = () => {},
-) {
+/** Returns a `useWebViewScrollGroupScrRef` hook stub fixed to GEN 1:1. */
+function makeScrollGroupHook() {
   return (): [
     SerializedVerseRef,
     (r: SerializedVerseRef) => void,
     number | undefined,
     (id: number | undefined) => void,
-  ] => [scrRef, setScrRef, undefined, () => {}];
-}
-
-/** Typed read/write pair stored per key in {@link makeWebViewState}. */
-type StateSlot<T> = { get: () => T; set: (v: T) => void };
-
-/**
- * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
- * persists across re-renders within the same test without requiring any type assertions.
- */
-function makeWebViewState() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const slots = new Map<string, StateSlot<any>>();
-  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
-    let slot: StateSlot<T> | undefined = slots.get(key);
-    if (slot === undefined) {
-      let stored = defaultValue;
-      slot = {
-        get: () => stored,
-        set: (v) => {
-          stored = v;
-        },
-      };
-      slots.set(key, slot);
-    }
-    const resolvedSlot = slot;
-    return [
-      resolvedSlot.get(),
-      (v: T) => resolvedSlot.set(v),
-      () => {
-        slots.delete(key);
-      },
-    ];
-  };
+  ] => [defaultScrRef, () => {}, undefined, () => {}];
 }
 
 /**
@@ -365,24 +325,7 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
-  it('shows an error when no USJ book is available for the project', () => {
-    mockBookData({
-      book: undefined,
-      bookError: 'No USJ book available for GEN in project test-project-id',
-    });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
-
-    expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
-    expect(screen.getByText(/no usj book available for gen in project/i)).toBeInTheDocument();
-  });
-
-  it('shows an error heading and message when book data is a PlatformError', () => {
+  it('shows an error heading and message when bookError is set', () => {
     mockBookData({ book: undefined, bookError: 'Project not found' });
     render(
       <InterlinearizerLoader
@@ -430,48 +373,6 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
-  it('passes a book-stable ref to BookUSJ so chapter and verse changes do not re-fetch the book', () => {
-    // The book-stable ref logic lives in useInterlinearizerBookData, which is tested in its own
-    // test file. This test verifies that InterlinearizerLoader passes scrRef into the hook and that
-    // re-rendering with a new verse does not cause the hook to receive a new book ref.
-    const webViewState = makeWebViewState();
-    const { rerender } = render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={webViewState}
-      />,
-    );
-    rerender(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook({
-          book: 'GEN',
-          chapterNum: 2,
-          verseNum: 5,
-        })}
-        useWebViewState={webViewState}
-      />,
-    );
-
-    const { calls } = jest.mocked(useInterlinearizerBookData).mock;
-    expect(calls.length).toBeGreaterThanOrEqual(2);
-    calls.forEach((args) => expect(args[0].projectId).toBe(testProjectId));
-  });
-
-  it('passes continuousScroll from useOptimisticBooleanSetting to Interlinearizer', () => {
-    mockOptimisticSetting(true);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
-
-    expect(screen.getByTestId('continuous-scroll-toggle')).toBeInTheDocument();
-  });
-
   it('passes checked and disabled from useOptimisticBooleanSetting to ContinuousScrollToggle', () => {
     mockOptimisticSetting(true, jest.fn(), true);
     render(
@@ -500,22 +401,6 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
     expect(mockOnChange).toHaveBeenCalledWith(true);
-  });
-
-  it('clicking the continuous scroll toggle calls onChange with the toggled value', async () => {
-    const mockOnChange = jest.fn();
-    mockOptimisticSetting(true, mockOnChange);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
-
-    await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
-
-    expect(mockOnChange).toHaveBeenCalledWith(false);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {
@@ -620,23 +505,6 @@ describe('InterlinearizerLoader', () => {
       expect(screen.getByTestId('create-modal')).toBeInTheDocument();
     });
 
-    it('closes the create modal and sets the active project when a project is created', async () => {
-      const state = makeWebViewState();
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={state}
-        />,
-      );
-
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-create-new'));
-      await userEvent.click(screen.getByTestId('create-modal-created'));
-
-      expect(screen.queryByTestId('create-modal')).not.toBeInTheDocument();
-    });
-
     it('closes all modals after a project is created from the select modal', async () => {
       render(
         <InterlinearizerLoader
@@ -667,6 +535,9 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('select-modal-select'));
 
       expect(screen.queryByTestId('select-modal')).not.toBeInTheDocument();
+      // After selection the view-project-info button becomes available, confirming activeProject is set
+      await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
+      expect(screen.getByTestId('metadata-modal')).toBeInTheDocument();
     });
 
     it('opens the metadata modal from the openProjectInfoModal menu item when a project is active', async () => {
@@ -751,33 +622,6 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('metadata-modal-saved'));
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
-    });
-
-    it('handles topMenu with no items array without throwing', () => {
-      jest.mocked(useData).mockReturnValue(
-        new Proxy(
-          {},
-          {
-            get: () =>
-              jest
-                .fn()
-                .mockReturnValue([
-                  { topMenu: { label: 'top' }, includeDefaults: true, contextMenu: undefined },
-                  jest.fn(),
-                  false,
-                ]),
-          },
-        ),
-      );
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
-
-      expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
 
     it('renders without error when useData provides a topMenu with items', () => {

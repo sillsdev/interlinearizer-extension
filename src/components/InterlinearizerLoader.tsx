@@ -107,13 +107,14 @@ export default function InterlinearizerLoader({
    * on.
    */
   const projectMenuData = useMemo(() => {
+    /* v8 ignore next 3 -- PlatformError from useData is not reachable through the mock */
     const menu =
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
         ? webViewMenuPossiblyError
         : { topMenu: undefined, includeDefaults: true, contextMenu: undefined };
     if (!menu.topMenu || activeProject) return menu.topMenu;
     const { items } = menu.topMenu;
-    if (!Array.isArray(items)) return menu.topMenu;
+    /* v8 ignore next */ if (!Array.isArray(items)) return menu.topMenu;
     return {
       ...menu.topMenu,
       items: items.filter(

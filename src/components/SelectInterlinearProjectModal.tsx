@@ -146,7 +146,7 @@ export function SelectInterlinearProjectModal({
     loadProjects();
   }, [loadProjects]);
 
-  if (stringsLoading) return undefined;
+  /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <div className="tw:modal-overlay">

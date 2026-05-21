@@ -53,6 +53,14 @@ export default function ProjectModals({
   );
 
   /**
+   * Tracks whether the create modal was opened from the select modal ("Create new" button) or from
+   * a top-menu command. `true` means opened via the select modal, so closing without creating
+   * restores the select modal; `false` means opened from the menu, so closing dismisses to
+   * `'none'`.
+   */
+  const [createSourceIsSelect, setCreateSourceIsSelect] = useState(false);
+
+  /**
    * Tracks whether the metadata modal was opened from the select modal (info icon) or from the
    * top-menu "View Project Info" item. `true` means opened via the select modal, so closing the
    * metadata modal restores the select modal; `false` means opened from the menu, so closing
@@ -118,14 +126,26 @@ export default function ProjectModals({
     [setActiveProject, setModal],
   );
 
-  /** Called when the user clicks "Create new" in the select modal. Switches to the create modal. */
-  const handleSelectCreateNew = useCallback(() => setModal('create'), [setModal]);
+  /**
+   * Called when the user clicks "Create new" in the select modal. Switches to the create modal and
+   * records that the create modal was opened from the select modal.
+   */
+  const handleSelectCreateNew = useCallback(() => {
+    setCreateSourceIsSelect(true);
+    setModal('create');
+  }, [setModal]);
 
   /** Called when the user dismisses the select modal without choosing a project. */
   const handleSelectClose = useCallback(() => setModal('none'), [setModal]);
 
-  /** Called when the user dismisses the create modal without saving. */
-  const handleCreateClose = useCallback(() => setModal('none'), [setModal]);
+  /**
+   * Called when the user dismisses the create modal without saving. Returns to the select modal
+   * when it was opened from there; otherwise dismisses to `'none'`.
+   */
+  const handleCreateClose = useCallback(() => {
+    setModal(createSourceIsSelect ? 'select' : 'none');
+    setCreateSourceIsSelect(false);
+  }, [createSourceIsSelect, setModal]);
 
   /**
    * Called when the create modal successfully creates a project. Persists it as the active project

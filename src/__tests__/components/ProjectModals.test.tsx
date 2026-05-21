@@ -4,6 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { makeWebViewState } from '../test-helpers';
 import type { ModalState } from '../../components/ProjectModals';
 import ProjectModals from '../../components/ProjectModals';
 import type { InterlinearProjectSummary } from '../../components/SelectInterlinearProjectModal';
@@ -145,43 +146,6 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
   ),
 }));
 
-/** Typed read/write pair stored per key in {@link makeWebViewState}. */
-type StateSlot<T> = { get: () => T; set: (v: T) => void };
-
-/**
- * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
- * persists across re-renders within the same test without requiring any type assertions.
- *
- * @returns A hook function with the signature `(key, defaultValue) => [value, setter, reset]` where
- *   `value` is the current stored value for `key` (initially `defaultValue`), `setter` updates it,
- *   and `reset` removes the slot so the next call re-initializes from `defaultValue`.
- */
-function makeWebViewState() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const slots = new Map<string, StateSlot<any>>();
-  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
-    let slot: StateSlot<T> | undefined = slots.get(key);
-    if (slot === undefined) {
-      let stored = defaultValue;
-      slot = {
-        get: () => stored,
-        set: (v) => {
-          stored = v;
-        },
-      };
-      slots.set(key, slot);
-    }
-    const resolvedSlot = slot;
-    return [
-      resolvedSlot.get(),
-      (v: T) => resolvedSlot.set(v),
-      () => {
-        slots.delete(key);
-      },
-    ];
-  };
-}
-
 /**
  * Renders ProjectModals with sensible defaults and returns helpers for assertions.
  *
@@ -285,13 +249,13 @@ describe('ProjectModals', () => {
   });
 
   describe('create modal', () => {
-    it('calls setModal with none when create modal is closed', async () => {
+    it('calls setModal with none when create modal is closed without a select source', async () => {
       const { setModal } = renderModals({ modal: 'create' });
       await userEvent.click(screen.getByTestId('create-close'));
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('calls setModal with none when create modal is closed regardless of how it was opened', async () => {
+    it('calls setModal with select on close when opened from the select modal', async () => {
       const setModal = jest.fn();
       const state = makeWebViewState();
 
@@ -315,6 +279,46 @@ describe('ProjectModals', () => {
         />,
       );
       setModal.mockClear();
+      await userEvent.click(screen.getByTestId('create-close'));
+      expect(setModal).toHaveBeenCalledWith('select');
+    });
+
+    it('resets createSourceIsSelect after closing from select source', async () => {
+      const setModal = jest.fn();
+      const state = makeWebViewState();
+
+      const { rerender } = render(
+        <ProjectModals
+          activeProject={undefined}
+          modal="select"
+          projectId="source-proj"
+          setModal={setModal}
+          useWebViewState={state}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('select-create-new'));
+      rerender(
+        <ProjectModals
+          activeProject={undefined}
+          modal="create"
+          projectId="source-proj"
+          setModal={setModal}
+          useWebViewState={state}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('create-close'));
+      // After close, setModal returns to 'select'. If we re-render with create again,
+      // closing this time should go to 'none' (select source was reset).
+      setModal.mockClear();
+      rerender(
+        <ProjectModals
+          activeProject={undefined}
+          modal="create"
+          projectId="source-proj"
+          setModal={setModal}
+          useWebViewState={state}
+        />,
+      );
       await userEvent.click(screen.getByTestId('create-close'));
       expect(setModal).toHaveBeenCalledWith('none');
     });

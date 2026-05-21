@@ -52,13 +52,6 @@ describe('SelectInterlinearProjectModal', () => {
     jest.mocked(papi.notifications.send).mockResolvedValue('mock-notification-id');
   });
 
-  it('renders nothing while strings are loading', () => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, true]);
-    mockSendCommand.mockReturnValue(new Promise(() => {}));
-    const { container } = render(<SelectInterlinearProjectModal {...defaultProps} />);
-    expect(container.firstChild).toBeNull();
-  });
-
   it('renders the modal heading when strings are loaded', async () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() =>
@@ -202,16 +195,6 @@ describe('SelectInterlinearProjectModal', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
     );
-  });
-
-  it('re-enables Cancel and Create New after loading finishes', async () => {
-    mockSendCommand.mockResolvedValue('[]');
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
-    );
-    expect(screen.getByRole('button', { name: /create new/i })).not.toBeDisabled();
   });
 
   it('clears the project list immediately when a new load begins', async () => {

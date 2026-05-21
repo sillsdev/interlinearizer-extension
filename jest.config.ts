@@ -29,13 +29,14 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /** Collect coverage from all source files. Excludes type declarations and test files. */
+  /** Collect coverage from all source files. Excludes type declarations, test files, and utils. */
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
+    '!src/utils/**',
   ],
 
   /** Directory for coverage output. */

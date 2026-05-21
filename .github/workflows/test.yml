@@ -47,3 +47,57 @@ jobs:
       - name: Run tests
         working-directory: extension-repo
         run: npm run test:coverage
+
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@v4
+        with:
+          path: extension-repo
+
+      - name: Checkout paranext-core repo
+        uses: actions/checkout@v4
+        with:
+          path: paranext-core
+          repository: paranext/paranext-core
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          cache: 'npm'
+          cache-dependency-path: |
+            extension-repo/package-lock.json
+            paranext-core/package-lock.json
+          node-version-file: extension-repo/package.json
+
+      - name: Install extension dependencies
+        working-directory: extension-repo
+        run: npm ci --ignore-scripts --omit=optional
+
+      - name: Install core dependencies
+        working-directory: paranext-core
+        run: npm ci --ignore-scripts --omit=optional
+
+      - name: Install system dependencies for Electron
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgbm-dev libnss3 libxss1 libasound2t64
+
+      - name: Build extension
+        working-directory: extension-repo
+        run: npm run build
+
+      - name: Build paranext-core dev bundle
+        working-directory: paranext-core
+        run: npm run prestart
+
+      - name: Run e2e smoke tests
+        working-directory: extension-repo
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e:smoke
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: extension-repo/e2e-tests/playwright-report/
+          retention-days: 7

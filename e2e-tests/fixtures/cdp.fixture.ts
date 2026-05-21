@@ -1,0 +1,69 @@
+// Adapted from paranext-core/e2e-tests/fixtures/cdp.fixture.ts
+/**
+ * CDP-based Playwright fixture for running E2E tests against an already-running Platform.Bible
+ * instance with remote debugging enabled.
+ *
+ * Uses `connectOverCDP` (port 9223) instead of `_electron.launch()`, so:
+ *
+ * - No app restart needed (no port 8876 conflict)
+ * - Tests run against the same app instance used during development
+ * - No teardown/shutdown of the app on completion
+ *
+ * Prerequisite: Platform.Bible running with --remote-debugging-port=9223 and the interlinearizer
+ * extension loaded.
+ */
+import { test as base, chromium, Page } from '@playwright/test';
+
+export { expect } from '@playwright/test';
+
+const CDP_URL = process.env.CDP_URL || 'http://localhost:9223';
+
+export interface CdpFixtures {
+  mainPage: Page;
+}
+
+export const test = base.extend<CdpFixtures>({
+  // eslint-disable-next-line no-empty-pattern
+  mainPage: async ({}, use) => {
+    let browser;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        // intentional retry loop
+        // eslint-disable-next-line no-await-in-loop
+        browser = await chromium.connectOverCDP(CDP_URL, { timeout: 30_000 });
+        break;
+      } catch (err) {
+        if (attempt === 3) throw err;
+        // intentional retry delay
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 2_000);
+        });
+      }
+    }
+    if (!browser) throw new Error('Failed to connect to CDP after 3 attempts');
+
+    // Find the renderer page (not devtools)
+    const allPages = browser.contexts().flatMap((ctx) => ctx.pages());
+    let page: Page | undefined = allPages.find((p) => {
+      const url = p.url();
+      return (
+        (url.includes('localhost') || url.includes('index.html') || url.startsWith('file://')) &&
+        !url.includes('devtools://')
+      );
+    });
+
+    if (!page) {
+      page = allPages.find((p) => !p.url().includes('devtools://'));
+    }
+
+    if (!page) throw new Error('No renderer page found via CDP');
+
+    await use(page);
+    try {
+      await browser.close();
+    } catch {
+      // Ignore disconnect errors during cleanup
+    }
+  },
+});

@@ -153,6 +153,48 @@ To package this extension into a zip file for distribution:
 
 `npm run package`
 
+## Testing
+
+### Unit tests
+
+Unit tests use [Jest](https://jestjs.io/) and live in `src/__tests__/`. To run:
+
+```bash
+npm test                 # run all tests
+npm run test:coverage    # run with coverage report (output to coverage/)
+```
+
+### End-to-end tests
+
+E2E tests use [Playwright](https://playwright.dev/) and live in `e2e-tests/`. They launch Platform.Bible with this extension loaded and verify behavior through the real UI.
+
+**Prerequisites:**
+
+- `npm run build` must have been run (`dist/src/main.js` must exist)
+- `paranext-core` must have deps installed (e.g., with `npm run core:install`)
+
+**Smoke tests** (self-contained, good for CI — launches and tears down Platform.Bible automatically):
+
+```bash
+npm run test:e2e:smoke
+```
+
+**CDP tests** (connect to an already-running app — faster for local development):
+
+1. Start Platform.Bible with remote debugging enabled:
+
+   ```bash
+   npm run start:cdp
+   ```
+
+2. In a second terminal, run the tests:
+
+   ```bash
+   npm run test:e2e:cdp
+   ```
+
+New feature tests should use `cdp.fixture` and navigate entirely through visible UI. See `e2e-tests/tests/_example/` for a reference template.
+
 ## Publishing
 
 These steps will walk you through releasing a version on GitHub and bumping the version to a new version so future changes apply to the new in-progress version.

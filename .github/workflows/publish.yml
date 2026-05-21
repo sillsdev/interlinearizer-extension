@@ -75,12 +75,12 @@ jobs:
 
       - name: Install packages
         run: |
-          npm ci --ignore-scripts --omit=optional
+          npm ci --ignore-scripts
 
       - name: Install core packages
         working-directory: paranext-core
         run: |
-          npm ci --ignore-scripts --omit=optional
+          npm ci --ignore-scripts
 
       - name: Package for distribution
         run: |

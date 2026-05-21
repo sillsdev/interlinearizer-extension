@@ -7,7 +7,7 @@ import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
-import type { ActiveProjectState } from '../types/interlinear-project-summary';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
@@ -64,7 +64,7 @@ export default function InterlinearizerLoader({
    * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
    * key; this component reads the value to decide which menu items to show.
    */
-  const [activeProject] = useWebViewState<ActiveProjectState | undefined>(
+  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
     'activeProject',
     undefined,
   );

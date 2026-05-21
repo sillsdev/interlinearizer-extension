@@ -11,15 +11,3 @@ export type InterlinearProjectSummary = Pick<
   | 'name'
   | 'description'
 >;
-
-/** Interlinear project fields persisted in Web View state for the currently selected project. */
-export type ActiveProjectState = Pick<
-  InterlinearProjectSummary,
-  | 'id'
-  | 'createdAt'
-  | 'name'
-  | 'description'
-  | 'sourceProjectId'
-  | 'targetProjectId'
-  | 'analysisLanguages'
->;

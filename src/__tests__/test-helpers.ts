@@ -33,7 +33,7 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
 export function makeWebViewState() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const slots = new Map<string, StateSlot<any>>();
-  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
+  return <T>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
     let slot: StateSlot<T> | undefined = slots.get(key);
     if (slot === undefined) {
       let stored = defaultValue;

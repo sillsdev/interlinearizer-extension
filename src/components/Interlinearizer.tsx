@@ -1,23 +1,37 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment } from 'interlinearizer';
+import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
 import { LocateFixed } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AnalysisStoreProvider } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
-import { GlossStoreProvider } from './GlossStore';
 import MemoizedSegmentView from './SegmentView';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
+  /** Tokenized book whose segments are rendered. */
   book: Book;
+  /** Segments belonging to the current chapter, filtered by the caller. */
   chapterSegments: Segment[];
+  /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
+  /** Current scripture reference used to highlight the active verse. */
   scrRef: SerializedVerseRef;
+  /** Called when the user navigates to a different verse. */
   setScrRef: (newScrRef: SerializedVerseRef) => void;
+  /** Initial analysis data seeded into the store; not reactive after mount. */
+  initialAnalysis?: TextAnalysis;
+  /**
+   * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
+   * active project (supplied by the caller). Falls back to `'en'` when omitted.
+   */
+  analysisLanguage?: string;
+  /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
+  onSaveAnalysis?: (analysis: TextAnalysis) => void;
 }>;
 
 /**
  * Inner component that renders the segment list and continuous view. Separated from
- * {@link Interlinearizer} so it can consume the `GlossStoreProvider` context that wraps it.
+ * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
  *
  * @param props - Same props as {@link Interlinearizer}.
  * @returns The interlinearizer layout without the provider wrapper.
@@ -29,7 +43,7 @@ function InterlinearizerInner({
   scrRef,
   setScrRef,
 }: InterlinearizerProps) {
-  const [focusedTokenId, setFocusedTokenId] = useState<string | undefined>(undefined);
+  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(undefined);
 
   /** All word tokens in book order — index into this array is the phrase index. */
   const wordTokens = useMemo(
@@ -38,23 +52,23 @@ function InterlinearizerInner({
   );
 
   /** Maps each word token id to its phrase index across the full book. */
-  const phraseIndexByTokenId = useMemo(
+  const phraseIndexByTokenRef = useMemo(
     () =>
       wordTokens.reduce((map, token, idx) => {
-        map.set(token.id, idx);
+        map.set(token.ref, idx);
         return map;
       }, new Map<string, number>()),
     [wordTokens],
   );
 
   // activePhraseIndex is intentionally not updated by ContinuousView arrow navigation — only token
-  // clicks via handleSegmentSelect change focusedTokenId. Arrow navigation updates
+  // clicks via handleSegmentSelect change focusedTokenRef. Arrow navigation updates
   // continuousViewPhraseIndex instead (via handleFocusPhraseIndexChange), and the mode-switch
   // effect reads continuousViewPhraseIndexRef to recover the strip position when returning to
   // segment view. The stale activePhraseIndex during arrow navigation is safe because ContinuousView
   // manages its own focusPhraseIndex state and the unchanged prop doesn't re-trigger its effect.
   const activePhraseIndex =
-    focusedTokenId === undefined ? undefined : phraseIndexByTokenId.get(focusedTokenId);
+    focusedTokenRef === undefined ? undefined : phraseIndexByTokenRef.get(focusedTokenRef);
 
   /**
    * Tracks the continuous strip's current phrase index as reported by ContinuousView. Read inside
@@ -111,15 +125,15 @@ function InterlinearizerInner({
     const idx = continuousViewPhraseIndexRef.current;
     const token = idx === undefined ? undefined : wordTokens[idx];
     if (token) {
-      setFocusedTokenId(token.id);
+      setFocusedTokenRef(token.ref);
       return;
     }
 
     // Fallback: only move to first word of the active segment if nothing is focused yet.
-    setFocusedTokenId((current) => {
+    setFocusedTokenRef((current) => {
       if (current !== undefined) return current;
       const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
-      return activeSeg?.tokens.find((t) => t.type === 'word')?.id ?? current;
+      return activeSeg?.tokens.find((t) => t.type === 'word')?.ref ?? current;
     });
     // Only re-run when the mode switches; refs and stable arrays don't need to be deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -137,12 +151,12 @@ function InterlinearizerInner({
    * token.
    *
    * @param ref - The verse coordinate that was selected.
-   * @param tokenId - The token that was clicked; omitted when the whole segment was selected.
+   * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.
    */
   const handleSegmentSelect = useCallback(
-    (ref: ScriptureRef, tokenId?: string) => {
+    (ref: ScriptureRef, tokenRef?: string) => {
       setScrRef({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse });
-      if (tokenId) setFocusedTokenId(tokenId);
+      if (tokenRef) setFocusedTokenRef(tokenRef);
     },
     [setScrRef],
   );
@@ -209,7 +223,7 @@ function InterlinearizerInner({
                   segment={seg}
                   isActive={seg.startRef.verse === scrRef.verseNum}
                   displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-                  focusedTokenId={continuousScroll ? undefined : focusedTokenId}
+                  focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
                   onSelect={handleSegmentSelect}
                 />
               ))}
@@ -223,8 +237,8 @@ function InterlinearizerInner({
 
 /**
  * Main component for the Interlinearizer. Renders a sticky toolbar and continuous view at the top,
- * followed by segmented views. Wraps the layout in a {@link GlossStoreProvider} so all descendant
- * components can read and write gloss values without prop drilling.
+ * followed by segmented views. Wraps the layout in an {@link AnalysisStoreProvider} so all
+ * descendant components can read and write analysis data without prop drilling.
  *
  * @param props - Component props
  * @param props.book - Book data used by the continuous view
@@ -232,12 +246,24 @@ function InterlinearizerInner({
  * @param props.continuousScroll - Whether the continuous scroll view is shown
  * @param props.scrRef - Current scripture reference
  * @param props.setScrRef - Callback to update the scripture reference
+ * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
+ * @param props.analysisLanguage - BCP 47 tag for gloss read/write; defaults to `'en'`
+ * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
-export default function Interlinearizer(props: InterlinearizerProps) {
+export default function Interlinearizer({
+  initialAnalysis,
+  analysisLanguage,
+  onSaveAnalysis,
+  ...innerProps
+}: InterlinearizerProps) {
   return (
-    <GlossStoreProvider>
-      <InterlinearizerInner {...props} />
-    </GlossStoreProvider>
+    <AnalysisStoreProvider
+      initialAnalysis={initialAnalysis}
+      analysisLanguage={analysisLanguage}
+      onSave={onSaveAnalysis}
+    >
+      <InterlinearizerInner {...innerProps} />
+    </AnalysisStoreProvider>
   );
 }

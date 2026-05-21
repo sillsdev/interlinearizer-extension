@@ -36,10 +36,18 @@ const PHRASE_WINDOW_HALF = 100;
 
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
+  /**
+   * When set, the strip jumps to this phrase index. Used to carry over a focused token when
+   * switching from segment view.
+   */
   activePhraseIndex: number | undefined;
+  /** Verse coordinate; when it changes the strip scrolls to the first token of that segment. */
   activeVerse: ScriptureRef;
+  /** The full tokenized book whose tokens are streamed into the strip. */
   book: Book;
+  /** Called whenever the focused phrase index changes so the parent can mirror the strip position. */
   onFocusPhraseIndexChange: (index: number) => void;
+  /** Called when arrow navigation moves the focus into a new verse. */
   onVerseChange: (verse: ScriptureRef) => void;
 }>;
 
@@ -474,7 +482,8 @@ export default function ContinuousView({
         >
           {allTokens.slice(windowStartTokenIndex, windowEndTokenIndex).map((token, i) => {
             const tokenIndex = windowStartTokenIndex + i;
-            if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.id} token={token} />;
+            if (!isWordToken(token))
+              return <MemoizedInertTokenChip key={token.ref} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;

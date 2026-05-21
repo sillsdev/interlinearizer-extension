@@ -8,7 +8,7 @@ import { isPlatformError } from 'platform-bible-utils';
 import { useEffect, useMemo } from 'react';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
-interface UseInterlinearizerBookDataArgs {
+export interface UseInterlinearizerBookDataArgs {
   /** PAPI project ID whose USJ book data should be loaded. */
   projectId: string;
   /** Current scripture reference; only `book` and `chapterNum` are used to scope the data. */
@@ -16,7 +16,7 @@ interface UseInterlinearizerBookDataArgs {
 }
 
 /** Return value of the {@link useInterlinearizerBookData} hook. */
-interface UseInterlinearizerBookDataResult {
+export interface UseInterlinearizerBookDataResult {
   /** The fully tokenized book, or `undefined` while loading or on error. */
   book: Book | undefined;
   /** Segments belonging to the current chapter (`scrRef.chapterNum`); empty while loading. */
@@ -69,7 +69,7 @@ export default function useInterlinearizerBookData({
   useEffect(() => {
     if (!tokenizeError) return;
 
-    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
+    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und'; /* v8 ignore next */
     logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
       writingSystem: ws,

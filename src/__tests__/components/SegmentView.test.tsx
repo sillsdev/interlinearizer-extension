@@ -6,16 +6,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { GlossStoreProvider } from '../../components/GlossStore';
+import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { SegmentView } from '../../components/SegmentView';
 
 // ---------------------------------------------------------------------------
-// GlossStore mock — pass-through provider so GlossStore.tsx stays out of scope
+// AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
 
-jest.mock('../../components/GlossStore', () => ({
+jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  GlossStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
   useGloss: () => '',
@@ -44,7 +44,7 @@ jest.mock('../../components/PhraseBox', () => ({
   }>) => (
     <span data-focus-state={isFocused ? 'focused' : 'default'}>
       {tokens.map((t) => (
-        <span key={t.id}>
+        <span key={t.ref}>
           {onFocusPhrase ? (
             <button onClick={() => onFocusPhrase(index)} type="button">
               {t.surfaceText}
@@ -110,14 +110,14 @@ const PUNCT_SEGMENT: Segment = {
  */
 function requiredProps(): {
   displayMode: 'token-chip';
-  focusedTokenId: string | undefined;
+  focusedTokenRef: string | undefined;
   isActive: boolean;
-  onSelect: (ref: ScriptureRef, tokenId?: string) => void;
+  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   segment: Segment;
 } {
   return {
     displayMode: 'token-chip',
-    focusedTokenId: undefined,
+    focusedTokenRef: undefined,
     isActive: false,
     onSelect: jest.fn(),
     segment: WORD_SEGMENT,
@@ -127,9 +127,9 @@ function requiredProps(): {
 describe('SegmentView', () => {
   it('renders word token chips in token-chip mode (default)', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByText('In')).toBeInTheDocument();
@@ -138,9 +138,9 @@ describe('SegmentView', () => {
 
   it('renders non-word (punctuation) tokens in token-chip mode', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByText('.')).toBeInTheDocument();
@@ -148,9 +148,9 @@ describe('SegmentView', () => {
 
   it('renders baselineText in baseline-text mode', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} displayMode="baseline-text" />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
@@ -158,9 +158,9 @@ describe('SegmentView', () => {
 
   it('does not render individual tokens in baseline-text mode', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} displayMode="baseline-text" />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.queryByText('In')).not.toBeInTheDocument();
@@ -169,9 +169,9 @@ describe('SegmentView', () => {
 
   it('shows the verse number label', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByText('1')).toBeInTheDocument();
@@ -179,9 +179,9 @@ describe('SegmentView', () => {
 
   it('sets aria-current="true" when isActive is true', () => {
     const { container } = render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} isActive />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
@@ -189,9 +189,9 @@ describe('SegmentView', () => {
 
   it('does not set aria-current when isActive is omitted', () => {
     const { container } = render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(container.firstChild).not.toHaveAttribute('aria-current');
@@ -199,9 +199,9 @@ describe('SegmentView', () => {
 
   it('sets aria-current="true" on the baseline-text button when isActive is true', () => {
     const { container } = render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
@@ -210,9 +210,9 @@ describe('SegmentView', () => {
   it('calls onSelect when clicked in baseline-text mode', async () => {
     const handleSelect = jest.fn();
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -224,9 +224,9 @@ describe('SegmentView', () => {
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
     const handleSelect = jest.fn();
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} onSelect={handleSelect} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'In' }));
@@ -237,9 +237,9 @@ describe('SegmentView', () => {
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <SegmentView {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();

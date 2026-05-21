@@ -16,10 +16,19 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
+  /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
-  focusedTokenId: string | undefined;
+  /** Token ref of the word token that should appear focused; `undefined` clears focus. */
+  focusedTokenRef: string | undefined;
+  /** Whether this segment corresponds to the currently active verse. */
   isActive: boolean;
-  onSelect: (ref: ScriptureRef, tokenId?: string) => void;
+  /**
+   * Called when the segment or one of its word tokens is selected. In `baseline-text` mode the
+   * whole segment is clickable and `tokenRef` is omitted; in `token-chip` mode only word tokens
+   * trigger this and `tokenRef` is always provided.
+   */
+  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  /** The segment to render. */
   segment: Segment;
 }>;
 
@@ -28,12 +37,12 @@ type SegmentViewProps = Readonly<{
  *
  * @param props - Component props
  * @param props.displayMode - Controls how segment content is rendered
- * @param props.focusedTokenId - When set, the matching word token's `PhraseBox` is rendered in the
+ * @param props.focusedTokenRef - When set, the matching word token's `PhraseBox` is rendered in the
  *   focused state; only meaningful in `token-chip` mode.
  * @param props.isActive - Whether this segment is the currently selected verse
  * @param props.onSelect - Required callback invoked when the segment or one of its word tokens is
- *   interacted with. In `baseline-text` mode the whole segment is clickable and `tokenId` is
- *   omitted. In `token-chip` mode only word tokens trigger this callback and `tokenId` is always
+ *   interacted with. In `baseline-text` mode the whole segment is clickable and `tokenRef` is
+ *   omitted. In `token-chip` mode only word tokens trigger this callback and `tokenRef` is always
  *   provided.
  * @param props.segment - The segment to render
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
@@ -41,7 +50,7 @@ type SegmentViewProps = Readonly<{
  */
 export function SegmentView({
   displayMode,
-  focusedTokenId,
+  focusedTokenRef,
   isActive,
   onSelect,
   segment,
@@ -57,7 +66,7 @@ export function SegmentView({
    */
   const handleTokenClick = useCallback(
     (index?: number) => {
-      if (index !== undefined) onSelect(ref, segment.tokens[index].id);
+      if (index !== undefined) onSelect(ref, segment.tokens[index].ref);
     },
     [onSelect, ref, segment.tokens],
   );
@@ -108,12 +117,12 @@ export function SegmentView({
       {verseLabel}
       <span className="tw:flex tw:flex-wrap tw:gap-1">
         {segment.tokens.map((token, index) => {
-          if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.id} token={token} />;
+          if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.ref} token={token} />;
           return (
             <MemoizedPhraseBox
-              key={token.id}
+              key={token.ref}
               index={index}
-              isFocused={focusedTokenId === token.id}
+              isFocused={focusedTokenRef === token.ref}
               onFocusPhrase={handleTokenClick}
               tokens={tokenArrays[index]}
             />
@@ -124,6 +133,6 @@ export function SegmentView({
   );
 }
 
-/** Memoized version of {@link SegmentView}; use this for all render-stable segment lists. */
+/** Memoized version of {@link SegmentView}; use in render-stable segment lists. */
 const MemoizedSegmentView = memo(SegmentView);
 export default MemoizedSegmentView;

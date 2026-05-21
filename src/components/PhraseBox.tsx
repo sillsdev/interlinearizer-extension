@@ -5,9 +5,13 @@ import MemoizedTokenChip from './TokenChip';
 
 /** Props for {@link PhraseBox}. */
 type PhraseBoxProps = Readonly<{
+  /** Index passed back to `onFocusPhrase` to identify which phrase gained focus. */
   index: number | undefined;
+  /** Whether this phrase is the current navigation focus. */
   isFocused: boolean;
+  /** Called with `index` when any child gloss input receives focus. */
   onFocusPhrase: (index?: number) => void;
+  /** Word tokens belonging to this phrase; must all have `type: 'word'`. */
   tokens: (Token & { type: 'word' })[];
 }>;
 
@@ -37,13 +41,13 @@ export function PhraseBox({ index, isFocused = false, onFocusPhrase, tokens }: P
     >
       <span className="tw:inline-flex tw:items-center tw:gap-1">
         {tokens.map((token) => (
-          <MemoizedTokenChip key={token.id} onFocus={handleFocus} token={token} />
+          <MemoizedTokenChip key={token.ref} onFocus={handleFocus} token={token} />
         ))}
       </span>
     </label>
   );
 }
 
-/** Memoized version of {@link PhraseBox}; use this for all render-stable phrase lists. */
+/** Memoized version of {@link PhraseBox}; use in render-stable phrase lists. */
 const MemoizedPhraseBox = memo(PhraseBox);
 export default MemoizedPhraseBox;

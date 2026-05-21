@@ -24,6 +24,8 @@ const projectQueues = new Map<string, Promise<unknown>>();
  *
  * @param fn - The async function to serialize.
  * @returns A promise that resolves or rejects with the return value of `fn`.
+ * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
+ *   blocked.
  */
 function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
   const result = indexQueue.then(fn);
@@ -38,6 +40,8 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
  * @param id - The project UUID whose queue `fn` should join.
  * @param fn - The async function to serialize.
  * @returns A promise that resolves or rejects with the return value of `fn`.
+ * @throws Whatever `fn` throws; the queue entry is removed and the rejection propagates to the
+ *   caller.
  */
 function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
   const previous = projectQueues.get(id) ?? Promise.resolve();

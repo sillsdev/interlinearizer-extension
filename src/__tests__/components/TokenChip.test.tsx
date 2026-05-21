@@ -6,40 +6,50 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { GlossStoreProvider } from '../../components/GlossStore';
+import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 
 // ---------------------------------------------------------------------------
-// GlossStore mock — reactive useState-based stub so GlossStore.tsx stays out of scope
+// AnalysisStore mock — reactive useState-based stub so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
 
-jest.mock('../../components/GlossStore', () => {
+jest.mock('../../components/AnalysisStore', () => {
   const { createContext, useCallback, useContext, useMemo, useState } =
     jest.requireActual<typeof import('react')>('react');
 
   type GlossMap = Record<string, string>;
   type MockCtxValue = {
     glosses: GlossMap;
-    dispatch: (tokenId: string, value: string) => void;
+    dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
   };
   const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
 
   return {
     __esModule: true,
-    GlossStoreProvider({
+    AnalysisStoreProvider({
       children,
-      initialGlosses,
+      initialAnalysis,
       onGlossChange,
     }: Readonly<{
       children: ReactNode;
-      initialGlosses?: GlossMap;
-      onGlossChange?: (tokenId: string, value: string) => void;
+      initialAnalysis?: {
+        tokenAnalyses: { id: string; gloss?: GlossMap }[];
+        tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
+      };
+      onGlossChange?: (tokenRef: string, value: string) => void;
     }>) {
-      const [glosses, setGlosses] = useState<GlossMap>(initialGlosses ?? {});
+      const byId = new Map((initialAnalysis?.tokenAnalyses ?? []).map((ta) => [ta.id, ta]));
+      const seed: GlossMap = (initialAnalysis?.tokenAnalysisLinks ?? [])
+        .filter((link) => link.status === 'approved')
+        .reduce((acc, link) => {
+          const gloss = byId.get(link.analysisId)?.gloss?.en;
+          return gloss === undefined ? acc : { ...acc, [link.token.tokenRef]: gloss };
+        }, {});
+      const [glosses, setGlosses] = useState<GlossMap>(seed);
       const dispatch = useCallback(
-        (tokenId: string, value: string) => {
-          setGlosses((prev) => ({ ...prev, [tokenId]: value }));
-          onGlossChange?.(tokenId, value);
+        (tokenRef: string, _surfaceText: string, value: string) => {
+          setGlosses((prev) => ({ ...prev, [tokenRef]: value }));
+          onGlossChange?.(tokenRef, value);
         },
         [onGlossChange],
       );
@@ -56,7 +66,7 @@ jest.mock('../../components/GlossStore', () => {
 });
 
 const WORD_TOKEN = {
-  id: 'GEN 1:1:0',
+  ref: 'GEN 1:1:0',
   surfaceText: 'hello',
   writingSystem: 'en',
   type: 'word',
@@ -78,7 +88,7 @@ function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void
 }
 
 const PUNCT_TOKEN = {
-  id: 'GEN 1:1:p',
+  ref: 'GEN 1:1:p',
   surfaceText: '.',
   writingSystem: 'en',
   type: 'punctuation',
@@ -101,18 +111,18 @@ describe('InertTokenChip', () => {
 describe('TokenChip', () => {
   it('renders the surface text', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     expect(screen.getByText('hello')).toBeInTheDocument();
   });
 
   it('applies a border class to the outer container', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     const outer = screen.getByText('hello').closest('span')?.parentElement;
     expect(outer?.className).toContain('tw:border');
@@ -120,27 +130,41 @@ describe('TokenChip', () => {
 
   it('renders a gloss input', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toBeInTheDocument();
   });
 
   it('shows the current gloss value from the store', () => {
+    const initialAnalysis = {
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'hello', gloss: { en: 'in' } }],
+      tokenAnalysisLinks: [
+        {
+          analysisId: 'ta-1',
+          status: 'approved' as const,
+          token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
+        },
+      ],
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
     render(
-      <GlossStoreProvider initialGlosses={{ 'GEN 1:1:0': 'in' }}>
+      <AnalysisStoreProvider initialAnalysis={initialAnalysis}>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('in');
   });
 
   it('shows an empty string in the input when no gloss has been set', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('');
   });
@@ -148,9 +172,9 @@ describe('TokenChip', () => {
   it('calls the store onGlossChange spy with tokenId and value for each keystroke', async () => {
     const spy = jest.fn();
     render(
-      <GlossStoreProvider onGlossChange={spy}>
+      <AnalysisStoreProvider onGlossChange={spy}>
         <TokenChip {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
     expect(spy).toHaveBeenCalledTimes(2);
@@ -161,9 +185,9 @@ describe('TokenChip', () => {
   it('calls onFocus when the input is focused', async () => {
     const handleFocus = jest.fn();
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <TokenChip {...requiredProps()} onFocus={handleFocus} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
     expect(handleFocus).toHaveBeenCalledTimes(1);

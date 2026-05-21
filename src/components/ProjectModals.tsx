@@ -5,7 +5,7 @@ import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
-/** Which modal is currently visible. Only one can be open at a time. */
+/** Which project-related modal is currently open; `'none'` means no modal is visible. */
 export type ModalState = 'none' | 'select' | 'create' | 'metadata';
 
 /**

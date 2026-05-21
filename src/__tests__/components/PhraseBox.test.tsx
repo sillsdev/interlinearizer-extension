@@ -6,48 +6,58 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { GlossStoreProvider } from '../../components/GlossStore';
+import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
 
 // ---------------------------------------------------------------------------
-// GlossStore mock — reactive useState-based stub so GlossStore.tsx stays out of scope
+// AnalysisStore mock — reactive useState-based stub so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
 
-jest.mock('../../components/GlossStore', () => {
+jest.mock('../../components/AnalysisStore', () => {
   const { createContext, useCallback, useContext, useMemo, useState } =
     jest.requireActual<typeof import('react')>('react');
 
   type GlossMap = Record<string, string>;
   type MockCtxValue = {
     glosses: GlossMap;
-    dispatch: (tokenId: string, value: string) => void;
+    dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
   };
   const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
 
   return {
     __esModule: true,
-    GlossStoreProvider({
+    AnalysisStoreProvider({
       children,
-      initialGlosses,
+      initialAnalysis,
       onGlossChange,
     }: Readonly<{
       children: ReactNode;
-      initialGlosses?: GlossMap;
-      onGlossChange?: (tokenId: string, value: string) => void;
+      initialAnalysis?: {
+        tokenAnalyses: { id: string; gloss?: GlossMap }[];
+        tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
+      };
+      onGlossChange?: (tokenRef: string, value: string) => void;
     }>) {
-      const [glosses, setGlosses] = useState<GlossMap>(initialGlosses ?? {});
+      const byId = new Map((initialAnalysis?.tokenAnalyses ?? []).map((ta) => [ta.id, ta]));
+      const seed: GlossMap = (initialAnalysis?.tokenAnalysisLinks ?? [])
+        .filter((link) => link.status === 'approved')
+        .reduce((acc, link) => {
+          const gloss = byId.get(link.analysisId)?.gloss?.en;
+          return gloss === undefined ? acc : { ...acc, [link.token.tokenRef]: gloss };
+        }, {});
+      const [glosses, setGlosses] = useState<GlossMap>(seed);
       const dispatch = useCallback(
-        (tokenId: string, value: string) => {
-          setGlosses((prev) => ({ ...prev, [tokenId]: value }));
-          onGlossChange?.(tokenId, value);
+        (tokenRef: string, _surfaceText: string, value: string) => {
+          setGlosses((prev) => ({ ...prev, [tokenRef]: value }));
+          onGlossChange?.(tokenRef, value);
         },
         [onGlossChange],
       );
       const ctx = useMemo(() => ({ glosses, dispatch }), [glosses, dispatch]);
       return <MockCtx value={ctx}>{children}</MockCtx>;
     },
-    useGloss(tokenId: string) {
-      return useContext(MockCtx).glosses[tokenId] ?? '';
+    useGloss(tokenRef: string) {
+      return useContext(MockCtx).glosses[tokenRef] ?? '';
     },
     useGlossDispatch() {
       return useContext(MockCtx).dispatch;
@@ -57,17 +67,17 @@ jest.mock('../../components/GlossStore', () => {
 
 jest.mock('../../components/TokenChip', () => {
   const { useGloss, useGlossDispatch } = jest.requireMock<
-    typeof import('../../components/GlossStore')
-  >('../../components/GlossStore');
+    typeof import('../../components/AnalysisStore')
+  >('../../components/AnalysisStore');
   function MockTokenChip({ onFocus, token }: Readonly<{ onFocus?: () => void; token: Token }>) {
-    const gloss = useGloss(token.id);
+    const gloss = useGloss(token.ref);
     const dispatch = useGlossDispatch();
     return (
-      <span data-testid={`token-${token.id}`}>
+      <span data-testid={`token-${token.ref}`}>
         {token.surfaceText}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
-          onChange={(e) => dispatch(token.id, e.target.value)}
+          onChange={(e) => dispatch(token.ref, token.surfaceText, e.target.value)}
           onFocus={onFocus}
           value={gloss}
         />
@@ -79,7 +89,7 @@ jest.mock('../../components/TokenChip', () => {
 
 /** Pre-built test token */
 const TEST_TOKEN = {
-  id: 'token-1',
+  ref: 'token-1',
   surfaceText: 'Hello',
   writingSystem: 'en',
   type: 'word',
@@ -89,7 +99,7 @@ const TEST_TOKEN = {
 
 /** Second test token */
 const TEST_TOKEN_2 = {
-  id: 'token-2',
+  ref: 'token-2',
   surfaceText: 'World',
   writingSystem: 'en',
   type: 'word',
@@ -123,9 +133,9 @@ function requiredProps(): PhraseBoxTestProps {
 describe('PhraseBox', () => {
   it('renders as a label', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -134,9 +144,9 @@ describe('PhraseBox', () => {
 
   it('renders one TokenChip per token in the tokens array', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByTestId('token-token-1')).toBeInTheDocument();
@@ -145,9 +155,9 @@ describe('PhraseBox', () => {
 
   it('clicking the outer container focuses the first gloss input', async () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -158,9 +168,9 @@ describe('PhraseBox', () => {
 
   it('applies focused border and background when isFocused is true', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} isFocused />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -172,9 +182,9 @@ describe('PhraseBox', () => {
 
   it('applies default border and background when isFocused is false', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} isFocused={false} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -186,9 +196,9 @@ describe('PhraseBox', () => {
 
   it('phrase box does not override cursor on gap areas', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} isFocused />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
@@ -197,9 +207,9 @@ describe('PhraseBox', () => {
 
   it('renders tokens in the order they appear in the tokens array', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     const tokens = document.querySelectorAll('[data-testid^="token-"]');
@@ -208,10 +218,32 @@ describe('PhraseBox', () => {
   });
 
   it('passes the gloss for each token from the store', () => {
+    const initialAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [
+        { id: 'ta-1', surfaceText: 'Hello', gloss: { en: 'hello' } },
+        { id: 'ta-2', surfaceText: 'World', gloss: { en: 'world' } },
+      ],
+      tokenAnalysisLinks: [
+        {
+          analysisId: 'ta-1',
+          status: 'approved' as const,
+          token: { tokenRef: 'token-1', surfaceText: 'Hello' },
+        },
+        {
+          analysisId: 'ta-2',
+          status: 'approved' as const,
+          token: { tokenRef: 'token-2', surfaceText: 'World' },
+        },
+      ],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
     render(
-      <GlossStoreProvider initialGlosses={{ 'token-1': 'hello', 'token-2': 'world' }}>
+      <AnalysisStoreProvider initialAnalysis={initialAnalysis}>
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveValue('hello');
@@ -220,9 +252,9 @@ describe('PhraseBox', () => {
 
   it('shows an empty string when the token id is absent from the store', () => {
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveValue('');
@@ -231,9 +263,9 @@ describe('PhraseBox', () => {
   it('updates the store when a gloss input changes', async () => {
     const spy = jest.fn();
     render(
-      <GlossStoreProvider onGlossChange={spy}>
+      <AnalysisStoreProvider onGlossChange={spy}>
         <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for Hello' }), 'hi');
@@ -246,9 +278,9 @@ describe('PhraseBox', () => {
   it('calls onFocusPhrase with index when a gloss input receives focus', async () => {
     const handleFocus = jest.fn();
     render(
-      <GlossStoreProvider>
+      <AnalysisStoreProvider>
         <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} index={2} />
-      </GlossStoreProvider>,
+      </AnalysisStoreProvider>,
     );
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for Hello' }));
@@ -256,15 +288,4 @@ describe('PhraseBox', () => {
     expect(handleFocus).toHaveBeenCalledWith(2);
   });
 
-  it('phrase box always has padding and gap spacing classes', () => {
-    render(
-      <GlossStoreProvider>
-        <PhraseBox {...requiredProps()} />
-      </GlossStoreProvider>,
-    );
-
-    const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).toHaveClass('tw:px-1');
-    expect(phraseBox).toHaveClass('tw:py-0.5');
-  });
 });

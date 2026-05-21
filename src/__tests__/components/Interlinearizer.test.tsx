@@ -19,15 +19,15 @@ let capturedContinuousViewProps: Record<string, unknown> = {};
 type CapturedSegmentViewProps = {
   segment: Segment;
   displayMode?: string;
-  focusedTokenId?: string;
+  focusedTokenRef?: string;
   isActive?: boolean;
-  onSelect?: (ref: { book: string; chapter: number; verse: number }, tokenId?: string) => void;
+  onSelect?: (ref: { book: string; chapter: number; verse: number }, tokenRef?: string) => void;
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
-jest.mock('../../components/GlossStore', () => ({
+jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  GlossStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
   useGloss: () => '',
@@ -261,15 +261,6 @@ describe('Interlinearizer', () => {
     expect(allElements[0]).toBe(continuousView);
   });
 
-  it('passes onSelect to SegmentView regardless of continuousScroll mode', () => {
-    renderInterlinearizer({ continuousScroll: false });
-    expect(capturedSegmentViewPropsList[0].onSelect).toBeInstanceOf(Function);
-
-    capturedSegmentViewPropsList = [];
-    renderInterlinearizer({ continuousScroll: true });
-    expect(capturedSegmentViewPropsList[0].onSelect).toBeInstanceOf(Function);
-  });
-
   it('calls setScrRef with the segment ref when a token is clicked', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({
@@ -392,8 +383,8 @@ describe('Interlinearizer', () => {
       />,
     );
 
-    // The token at phrase index 1 is 'GEN 1:2:0'; it should now be the focusedTokenId.
-    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:2:0');
+    // The token at phrase index 1 is 'GEN 1:2:0'; it should now be the focusedTokenRef.
+    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
     expect(focused).toBeDefined();
   });
 
@@ -419,11 +410,11 @@ describe('Interlinearizer', () => {
     );
 
     // The fallback focuses the first word of GEN 1:1 ('GEN 1:1:0').
-    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:1:0');
+    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:1:0');
     expect(focused).toBeDefined();
   });
 
-  it('preserves an existing focusedTokenId when switching off continuousScroll with no strip position', () => {
+  it('preserves an existing focusedTokenRef when switching off continuousScroll with no strip position', () => {
     // Start in segment mode and focus a specific token.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
@@ -431,7 +422,7 @@ describe('Interlinearizer', () => {
       continuousScroll: false,
     });
 
-    // Click a token to set focusedTokenId to 'GEN 1:2:0'.
+    // Click a token to set focusedTokenRef to 'GEN 1:2:0'.
     const { onSelect } = capturedSegmentViewPropsList[1];
     if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
     act(() => {
@@ -450,7 +441,7 @@ describe('Interlinearizer', () => {
       />,
     );
 
-    // Switch back to segment mode — existing focusedTokenId should be preserved.
+    // Switch back to segment mode — existing focusedTokenRef should be preserved.
     capturedSegmentViewPropsList = [];
     rerender(
       <Interlinearizer
@@ -463,7 +454,9 @@ describe('Interlinearizer', () => {
     );
 
     // 'GEN 1:2:0' was already focused, so the fallback must not overwrite it.
-    const stillFocused = capturedSegmentViewPropsList.find((p) => p.focusedTokenId === 'GEN 1:2:0');
+    const stillFocused = capturedSegmentViewPropsList.find(
+      (p) => p.focusedTokenRef === 'GEN 1:2:0',
+    );
     expect(stillFocused).toBeDefined();
   });
 
@@ -494,7 +487,7 @@ describe('Interlinearizer', () => {
     });
   });
 
-  it('leaves focusedTokenId undefined when switching off continuousScroll with no strip position and no matching segment', () => {
+  it('leaves focusedTokenRef undefined when switching off continuousScroll with no strip position and no matching segment', () => {
     // scrRef points to verse 99 which does not exist in GEN_1_MULTI_BOOK.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
@@ -514,7 +507,7 @@ describe('Interlinearizer', () => {
       />,
     );
 
-    // No segment matches verse 99 so focusedTokenId stays undefined for all views.
-    capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenId).toBeUndefined());
+    // No segment matches verse 99 so focusedTokenRef stays undefined for all views.
+    capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
   });
 });

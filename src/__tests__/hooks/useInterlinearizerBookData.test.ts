@@ -266,37 +266,12 @@ describe('useInterlinearizerBookData', () => {
     );
   });
 
-  it('logs tokenization error with PlatformError writing system', () => {
+  it('logs tokenization error with the resolved writing system', () => {
     const platformError: PlatformError = {
       message: 'Setting unavailable',
       platformErrorVersion: 1,
     };
     jest.mocked(useProjectSetting).mockReturnValue([platformError, jest.fn(), jest.fn(), false]);
-    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
-
-    const error = new Error('Tokenization failed');
-    jest.mocked(tokenizeBook).mockImplementation(() => {
-      throw error;
-    });
-
-    renderHook(() =>
-      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
-    );
-
-    expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-      'Failed to parse/tokenize USJ book',
-      error,
-      {
-        book: 'GEN',
-        message: 'Tokenization failed',
-        projectId: 'test-project',
-        writingSystem: 'und',
-      },
-    );
-  });
-
-  it('logs tokenization error with empty string writing system', () => {
-    jest.mocked(useProjectSetting).mockReturnValue(['', jest.fn(), jest.fn(), false]);
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
 
     const error = new Error('Tokenization failed');

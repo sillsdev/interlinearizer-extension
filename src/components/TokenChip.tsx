@@ -1,10 +1,10 @@
 import type { Token } from 'interlinearizer';
 import { memo } from 'react';
-import { useGloss, useGlossDispatch } from './GlossStore';
+import { useGloss, useGlossDispatch } from './AnalysisStore';
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
- * text. Gloss value and dispatch are read from {@link GlossStoreProvider} context via
+ * text. Gloss value and dispatch are read from {@link AnalysisStoreProvider} context via
  * {@link useGloss} and {@link useGlossDispatch}.
  *
  * @param props - Component props
@@ -16,7 +16,7 @@ export function TokenChip({
   token,
   onFocus,
 }: Readonly<{ token: Token & { type: 'word' }; onFocus: () => void }>) {
-  const gloss = useGloss(token.id);
+  const gloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
   return (
     <label className="tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5">
@@ -28,7 +28,7 @@ export function TokenChip({
         className="tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
         style={{ fieldSizing: 'content', minWidth: '5ch' }}
         value={gloss}
-        onChange={(e) => onGlossChange(token.id, e.target.value)}
+        onChange={(e) => onGlossChange(token.ref, token.surfaceText, e.target.value)}
         onFocus={onFocus}
         type="text"
       />
@@ -51,9 +51,9 @@ export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
   );
 }
 
-/** Memoized version of {@link TokenChip}; use this for all render-stable token lists. */
+/** Memoized version of {@link TokenChip}; use in render-stable token lists. */
 const MemoizedTokenChip = memo(TokenChip);
 export default MemoizedTokenChip;
 
-/** Memoized version of {@link InertTokenChip}; use this for all render-stable token lists. */
+/** Memoized version of {@link InertTokenChip}; use in render-stable token lists. */
 export const MemoizedInertTokenChip = memo(InertTokenChip);

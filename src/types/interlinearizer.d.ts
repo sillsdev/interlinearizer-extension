@@ -13,6 +13,10 @@ declare module 'papi-shared-types' {
     'interlinearizer.continuousScroll': boolean;
   }
 
+  /**
+   * Command handler signatures contributed by the Interlinearizer extension to the PAPI command
+   * bus.
+   */
   export interface CommandHandlers {
     /**
      * Opens the Interlinearizer for the project associated with the given WebView ID. Called from

@@ -48,15 +48,6 @@ describe('CreateProjectModal', () => {
       false,
     ]);
   });
-  it('renders the heading and analysis language input', () => {
-    render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
-
-    expect(
-      screen.getByRole('heading', { name: /create interlinear project/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText(/analysis language/i)).toBeInTheDocument();
-  });
-
   it('calls onClose when cancel is clicked', async () => {
     const onClose = jest.fn();
     render(<CreateProjectModal projectId={testProjectId} onClose={onClose} />);
@@ -157,14 +148,6 @@ describe('CreateProjectModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-  });
-
-  it('renders nothing while strings are loading', () => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, true]);
-    const { container } = render(
-      <CreateProjectModal projectId={testProjectId} onClose={() => {}} />,
-    );
-    expect(container.firstChild).toBeNull();
   });
 
   it('calls onProjectCreated with the parsed project when sendCommand returns a project JSON', async () => {

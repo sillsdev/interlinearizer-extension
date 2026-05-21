@@ -56,7 +56,7 @@
   @supports (background-image: linear-gradient(in lab, red, red)) {
     --tw-gradient-position: to right in oklab;
   }
-  background-image: linear-gradient(var(--tw-gradient-stops));
+  background-image: linear-gradient(var(--tw-gradient-position), var(--tw-gradient-stops));
 
   [dir='rtl'] & {
     --tw-gradient-position: to left;
@@ -71,7 +71,7 @@
   @supports (background-image: linear-gradient(in lab, red, red)) {
     --tw-gradient-position: to left in oklab;
   }
-  background-image: linear-gradient(var(--tw-gradient-stops));
+  background-image: linear-gradient(var(--tw-gradient-position), var(--tw-gradient-stops));
 
   [dir='rtl'] & {
     --tw-gradient-position: to right;

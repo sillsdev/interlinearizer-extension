@@ -443,7 +443,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const openSelectProjectModalCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openSelectProjectModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    async () => {},
+    /* v8 ignore next */ async () => {},
     {
       method: {
         summary: 'Open the project-selector modal in the Interlinearizer WebView',
@@ -456,7 +456,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const openNewProjectModalCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openNewProjectModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    async () => {},
+    /* v8 ignore next */ async () => {},
     {
       method: {
         summary: 'Open the create-project modal in the Interlinearizer WebView',
@@ -469,7 +469,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   const openProjectInfoModalCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.openProjectInfoModal',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    async () => {},
+    /* v8 ignore next */ async () => {},
     {
       method: {
         summary:

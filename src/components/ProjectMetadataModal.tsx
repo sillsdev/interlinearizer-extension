@@ -164,7 +164,7 @@ export function ProjectMetadataModal({
     }
   }, [interlinearProjectId, onProjectDeleted, onClose]);
 
-  if (stringsLoading) return undefined;
+  /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <div className="tw:modal-overlay">

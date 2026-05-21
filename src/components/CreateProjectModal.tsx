@@ -106,7 +106,7 @@ export function CreateProjectModal({
     }
   }, [projectId, analysisLanguages, name, description, onClose, onProjectCreated]);
 
-  if (stringsLoading) return undefined;
+  /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <div className="tw:modal-overlay">

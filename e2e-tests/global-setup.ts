@@ -8,7 +8,12 @@ import fs from 'fs';
 const WEBSOCKET_PORT = 8876;
 const RENDERER_PORT = 1212;
 
-/** Check if a port is already in use */
+/**
+ * Check if a port is already in use.
+ *
+ * @param port Port number to probe.
+ * @returns Resolves to `true` if the port is occupied, `false` if it is free.
+ */
 function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -24,7 +29,14 @@ function isPortInUse(port: number): Promise<boolean> {
   });
 }
 
-/** Wait until a port is accepting connections */
+/**
+ * Wait until a port is accepting connections.
+ *
+ * @param port Port number to poll.
+ * @param timeout Maximum time in milliseconds to wait before rejecting.
+ * @returns Resolves when a TCP connection to the port succeeds.
+ * @throws {Error} If the port does not become available within `timeout` milliseconds.
+ */
 function waitForPort(port: number, timeout: number): Promise<void> {
   const startTime = Date.now();
   return new Promise((resolve, reject) => {
@@ -47,7 +59,23 @@ function waitForPort(port: number, timeout: number): Promise<void> {
   });
 }
 
-// Playwright global setup requires this signature even though config is unused
+/**
+ * Playwright global setup. Runs once before any test worker starts.
+ *
+ * 1. Fails fast if port 8876 is already in use (a running Platform.Bible would conflict with the
+ *    Electron instance launched by fixtures).
+ * 2. Removes stale Electron singleton lock files left behind by crashes.
+ * 3. Fails fast if the extension dist is missing (directs the developer to run `npm run build`).
+ * 4. Ensures the paranext-core dev main bundle exists, building it via `npm run prestart` if not.
+ * 5. Starts the paranext-core webpack renderer dev server on port 1212 if not already running, and
+ *    stores its PID for {@link globalTeardown} to stop it.
+ *
+ * @param _config Playwright config object — unused; required by Playwright's global-setup
+ *   interface.
+ * @returns Resolves when the renderer dev server is ready.
+ * @throws {Error} If port 8876 is already in use.
+ * @throws {Error} If the extension dist is missing.
+ */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalSetup(_config: FullConfig): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..');

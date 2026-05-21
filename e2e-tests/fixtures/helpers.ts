@@ -43,7 +43,14 @@ export interface LaunchElectronAppOptions {
   envOverrides?: Record<string, string>;
 }
 
-/** Wait for the WebSocket server to be ready on the specified port. */
+/**
+ * Wait for the WebSocket server to be ready on the specified port.
+ *
+ * @param port Port number to connect to.
+ * @param timeout Maximum time in milliseconds to wait before throwing.
+ * @returns Resolves when a WebSocket connection to the port succeeds.
+ * @throws {Error} If the WebSocket server is not ready within `timeout` milliseconds.
+ */
 async function waitForWebSocketReady(port: number, timeout: number): Promise<void> {
   const startTime = Date.now();
 
@@ -79,8 +86,12 @@ async function waitForWebSocketReady(port: number, timeout: number): Promise<voi
 
 /**
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
- * `--extensionDirs`. Returns the app handle, the temp directory path, and a promise that resolves
- * when the app closes.
+ * `--extensions`.
+ *
+ * @param opts Optional launch options (e.g. environment variable overrides).
+ * @returns The app handle, the isolated user-data directory path, and a promise that resolves when
+ *   the app closes.
+ * @throws If Electron fails to launch or the WebSocket server does not become ready.
  */
 export async function launchElectronWithExtension(
   opts: LaunchElectronAppOptions = {},
@@ -161,6 +172,9 @@ export async function launchElectronWithExtension(
 /**
  * Tear down an Electron instance: kill the process group, wait for close, and clean up the isolated
  * user-data directory.
+ *
+ * @param ctx The app context returned by {@link launchElectronWithExtension}.
+ * @returns Resolves when the Electron process has been killed and user-data cleaned up.
  */
 export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void> {
   const { electronApp, userDataDir, appClosed } = ctx;
@@ -218,6 +232,15 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
 /**
  * One JSON-RPC 2.0 request over WebSocket: open, send, wait for response id `1`, close. Ignores
  * unrelated messages until the matching response arrives.
+ *
+ * @param method JSON-RPC method name to invoke.
+ * @param timeoutErrorMessage Custom error message on timeout; defaults to a standard timeout
+ *   message.
+ * @param params Positional parameters to send with the request.
+ * @param port WebSocket port to connect to.
+ * @param perRequestTimeoutMs Milliseconds before the request times out.
+ * @returns The `result` field of the JSON-RPC response, typed as `T`.
+ * @throws {Error} If the request times out or the server returns a JSON-RPC error.
  */
 async function sendPapiJsonRpcOnce<T>(
   method: string,
@@ -278,6 +301,13 @@ async function sendPapiJsonRpcOnce<T>(
 /**
  * Send a single JSON-RPC request where `method` is a PAPI request type (e.g. `rpc.discover`). Opens
  * a connection, sends one request, waits for the matching response id, then closes.
+ *
+ * @param method PAPI request type to invoke (e.g. `rpc.discover`).
+ * @param params Positional parameters to send with the request.
+ * @param port WebSocket port to connect to.
+ * @param perRequestTimeoutMs Milliseconds before the request times out.
+ * @returns The `result` field of the JSON-RPC response, typed as `T`.
+ * @throws {Error} If the request times out or the server returns a JSON-RPC error.
  */
 export async function sendPapiRequestOnce<T>(
   method: string,
@@ -288,7 +318,15 @@ export async function sendPapiRequestOnce<T>(
   return sendPapiJsonRpcOnce<T>(method, undefined, params, port, perRequestTimeoutMs);
 }
 
-/** Poll `rpc.discover` until `methodName` appears in `result.methods` or `timeoutMs` elapses. */
+/**
+ * Poll `rpc.discover` until `methodName` appears in `result.methods` or `timeoutMs` elapses.
+ *
+ * @param methodName The fully-qualified PAPI method name to wait for (e.g. `command:foo.bar`).
+ * @param port WebSocket port to connect to.
+ * @param timeoutMs Maximum time in milliseconds to poll before throwing.
+ * @returns Resolves when the method appears in `rpc.discover`.
+ * @throws {Error} If the method is not registered within `timeoutMs` milliseconds.
+ */
 export async function waitForPapiMethodRegistered(
   methodName: string,
   port: number = DEFAULT_WEBSOCKET_PORT,
@@ -320,6 +358,12 @@ export async function waitForPapiMethodRegistered(
 /**
  * Wait for the Platform.Bible UI to be fully ready: dock layout appears and `platform.about`
  * command is registered (dialog service has finished initializing).
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param timeout Maximum time in milliseconds to wait before throwing.
+ * @returns Resolves when the dock layout is visible and `platform.about` is registered.
+ * @throws If the dock layout or `platform.about` command does not appear within `timeout`
+ *   milliseconds.
  */
 export async function waitForAppReady(page: Page, timeout = 60_000): Promise<void> {
   const start = Date.now();
@@ -334,6 +378,10 @@ export async function waitForAppReady(page: Page, timeout = 60_000): Promise<voi
 /**
  * Wait for the interlinearizer extension to finish activating by polling `rpc.discover` until
  * `interlinearizer.openForWebView` is listed.
+ *
+ * @param timeoutMs Maximum time in milliseconds to poll before throwing.
+ * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
+ * @throws {Error} If the extension does not register within `timeoutMs` milliseconds.
  */
 export async function waitForInterlinearizerReady(timeoutMs = 90_000): Promise<void> {
   await waitForPapiMethodRegistered(

@@ -80,7 +80,7 @@ jobs:
         run: npm ci --ignore-scripts --omit=optional
 
       - name: Install system dependencies for Electron
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgbm-dev libnss3 libxss1 libasound2t64
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgbm-dev libnss3 libxss1 libasound2t64
 
       - name: Build extension
         working-directory: extension-repo

@@ -4,7 +4,16 @@ import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
-// Playwright global teardown requires this signature even though config is unused
+/**
+ * Playwright global teardown. Runs once after all test workers have finished.
+ *
+ * Stops the renderer dev server started by {@link globalSetup} (if any), then runs `npm run stop` in
+ * paranext-core to terminate any lingering Electron processes.
+ *
+ * @param _config Playwright config object — unused; required by Playwright's global-teardown
+ *   interface.
+ * @returns Resolves when all cleanup steps have completed.
+ */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalTeardown(_config: FullConfig): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..');

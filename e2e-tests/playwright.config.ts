@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test';
 /**
  * Playwright configuration for interlinearizer extension E2E tests.
  *
- * Launches Platform.Bible with the interlinearizer extension loaded via `--extensionDirs`.
+ * Launches Platform.Bible with the interlinearizer extension loaded via `--extensions`.
  *
  * Prerequisites:
  *
@@ -37,10 +37,6 @@ export default defineConfig({
     {
       name: 'smoke',
       testDir: './tests/smoke',
-    },
-    {
-      name: 'isolated',
-      testDir: './tests/isolated',
     },
   ],
 });

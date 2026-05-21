@@ -18,10 +18,15 @@ export { expect } from '@playwright/test';
 
 const CDP_URL = process.env.CDP_URL || 'http://localhost:9223';
 
+/** Fixtures provided by the CDP test fixture. */
 export interface CdpFixtures {
   mainPage: Page;
 }
 
+/**
+ * Playwright test fixture for feature tests. Connects to an already-running Platform.Bible instance
+ * via CDP and provides `mainPage`. Does not launch or shut down the app.
+ */
 export const test = base.extend<CdpFixtures>({
   // eslint-disable-next-line no-empty-pattern
   mainPage: async ({}, use) => {

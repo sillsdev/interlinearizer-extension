@@ -25,6 +25,11 @@ export interface TestAppFixtures {
   mainPage: Page;
 }
 
+/**
+ * Playwright test fixture for smoke tests. Launches one Electron instance per worker (shared across
+ * all tests in that worker) and provides `electronApp` and `mainPage`. Attaches a failure
+ * screenshot to the report when a test does not meet its expected status.
+ */
 export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
   // Worker-scoped: the Electron process is launched once per worker and shared across all tests,
   // avoiding the process startup/teardown cost per test.

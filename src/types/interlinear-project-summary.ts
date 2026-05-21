@@ -1,6 +1,6 @@
 import type { InterlinearProject } from 'interlinearizer';
 
-/** The subset of InterlinearProject fields this modal displays and returns. */
+/** Displayable summary of an interlinear project used across project selection and metadata UI. */
 export type InterlinearProjectSummary = Pick<
   InterlinearProject,
   | 'id'
@@ -12,7 +12,7 @@ export type InterlinearProjectSummary = Pick<
   | 'description'
 >;
 
-/** Fields of the active interlinear project persisted in WebView state. */
+/** Interlinear project fields persisted in Web View state for the currently selected project. */
 export type ActiveProjectState = Pick<
   InterlinearProjectSummary,
   | 'id'

@@ -7,11 +7,11 @@ import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
+import type { ActiveProjectState } from '../types/interlinear-project-summary';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
-import type { ActiveProjectState } from '../types/interlinear-project-summary';
 
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 

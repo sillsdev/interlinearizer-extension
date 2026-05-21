@@ -3,7 +3,8 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { InterlinearProject } from 'interlinearizer';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { isInterlinearProjectSummary } from '../utils/interlinear-project-summary';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
@@ -14,56 +15,6 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_info_button_label%',
 ];
-
-/** The subset of InterlinearProject fields this modal displays and returns. */
-export type InterlinearProjectSummary = Pick<
-  InterlinearProject,
-  | 'id'
-  | 'createdAt'
-  | 'sourceProjectId'
-  | 'targetProjectId'
-  | 'analysisLanguages'
-  | 'name'
-  | 'description'
->;
-
-/** Fields of the active interlinear project persisted in WebView state. */
-export type ActiveProjectState = Pick<
-  InterlinearProjectSummary,
-  | 'id'
-  | 'createdAt'
-  | 'name'
-  | 'description'
-  | 'sourceProjectId'
-  | 'targetProjectId'
-  | 'analysisLanguages'
->;
-
-/**
- * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
- *
- * @param p - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `p` satisfies the {@link InterlinearProjectSummary} shape, narrowing its type
- *   accordingly.
- */
-export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
-  return (
-    !!p &&
-    typeof p === 'object' &&
-    'id' in p &&
-    typeof p.id === 'string' &&
-    'createdAt' in p &&
-    typeof p.createdAt === 'string' &&
-    'sourceProjectId' in p &&
-    typeof p.sourceProjectId === 'string' &&
-    'analysisLanguages' in p &&
-    Array.isArray(p.analysisLanguages) &&
-    p.analysisLanguages.every((l) => typeof l === 'string') &&
-    (!('name' in p) || typeof p.name === 'string') &&
-    (!('description' in p) || typeof p.description === 'string') &&
-    (!('targetProjectId' in p) || typeof p.targetProjectId === 'string')
-  );
-}
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user

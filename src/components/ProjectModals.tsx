@@ -2,11 +2,8 @@ import type { UseWebViewStateHook } from '@papi/core';
 import { useCallback, useState } from 'react';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
-import {
-  type ActiveProjectState,
-  type InterlinearProjectSummary,
-  SelectInterlinearProjectModal,
-} from './SelectInterlinearProjectModal';
+import type { ActiveProjectState, InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
 /** Which modal is currently visible. Only one can be open at a time. */
 export type ModalState = 'none' | 'select' | 'create' | 'metadata';

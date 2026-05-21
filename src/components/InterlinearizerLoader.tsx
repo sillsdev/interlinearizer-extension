@@ -11,7 +11,7 @@ import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
-import type { ActiveProjectState } from './SelectInterlinearProjectModal';
+import type { ActiveProjectState } from '../types/interlinear-project-summary';
 
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 

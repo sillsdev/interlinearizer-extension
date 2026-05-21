@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { makeWebViewState } from '../test-helpers';
 import type { ModalState } from '../../components/ProjectModals';
 import ProjectModals from '../../components/ProjectModals';
-import type { InterlinearProjectSummary } from '../../components/SelectInterlinearProjectModal';
+import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 
 /** Minimal project summary used in tests. */
 const MOCK_PROJECT: InterlinearProjectSummary = {

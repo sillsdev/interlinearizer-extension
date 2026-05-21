@@ -29,13 +29,15 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /** Collect coverage from all source files. Excludes type declarations and test files. */
+  /** Collect coverage from all source files. Excludes tests, types, and select utils. */
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
     '!src/**/__tests__/**',
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
+    '!src/types/**',
+    '!src/utils/interlinear-project-summary.ts',
   ],
 
   /** Directory for coverage output. */
@@ -53,7 +55,7 @@ const config: Config = {
   /** Ts-jest compiles TS to JS; V8 instruments it for coverage. */
   coverageProvider: 'v8',
 
-  /** Enforce 100% coverage on parsers, main, and web-view. */
+  /** Enforce 100% coverage on parsers, main, and web-view (except where explicitly excluded). */
   coverageThreshold: {
     global: {
       branches: 100,

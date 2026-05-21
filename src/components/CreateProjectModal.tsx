@@ -2,10 +2,8 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { useState, useCallback, useRef } from 'react';
-import {
-  type InterlinearProjectSummary,
-  isInterlinearProjectSummary,
-} from './SelectInterlinearProjectModal';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import { isInterlinearProjectSummary } from '../utils/interlinear-project-summary';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
 const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [

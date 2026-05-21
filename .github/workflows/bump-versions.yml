@@ -42,7 +42,7 @@ jobs:
 
       - name: Install packages
         run: |
-          npm ci
+          npm ci --ignore-scripts --omit=optional
 
       - name: Bump repo versions
         if: ${{ inputs.newVersion != '' }}

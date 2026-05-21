@@ -38,12 +38,12 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
-        run: npm ci
+        run: npm ci --ignore-scripts --omit=optional
 
       - name: Install core dependencies
         working-directory: paranext-core
-        run: npm ci --ignore-scripts
+        run: npm ci --ignore-scripts --omit=optional
 
       - name: Run tests
         working-directory: extension-repo
-        run: npm test
+        run: npm test:coverage

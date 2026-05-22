@@ -38,7 +38,7 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
-        run: npm ci --ignore-scripts --omit=optional
+        run: npm ci --ignore-scripts --include=dev --omit=optional
 
       - name: Install core dependencies
         working-directory: paranext-core
@@ -119,7 +119,7 @@ jobs:
         with:
           name: playwright-artifacts-${{ matrix.os }}
           path: |
-            extension-repo/playwright-report/
             extension-repo/e2e-tests/test-results/
+            extension-repo/playwright-report/
           if-no-files-found: warn
           retention-days: 7

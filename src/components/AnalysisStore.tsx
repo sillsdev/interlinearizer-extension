@@ -109,17 +109,22 @@ export function AnalysisStoreProvider({
   const analysisRef = useRef<TextAnalysis>(initialAnalysis ?? EMPTY_ANALYSIS);
   const listenersRef = useRef(new Set<() => void>());
 
+  // These two indexes are built lazily via ??= so that passing an initializer expression to useRef
+  // (which evaluates on every render but is only used on the first mount) doesn't rebuild large Maps
+  // across a full-Bible analysis on every re-render.
+
   /** Pre-built map of `TokenAnalysis.id` → `TokenAnalysis` for O(1) lookup by id. */
-  const analysisByIdRef = useRef<Map<string, TokenAnalysis>>(
-    new Map(analysisRef.current.tokenAnalyses.map((ta) => [ta.id, ta])),
-  );
+  const analysisByIdRef = useRef<Map<string, TokenAnalysis> | undefined>(undefined);
+  analysisByIdRef.current ??= new Map(analysisRef.current.tokenAnalyses.map((ta) => [ta.id, ta]));
 
   /**
    * Pre-built map of `tokenRef` → approved `TokenAnalysis.id` for the active language. Reset on
    * every mutation that changes the analysis.
    */
-  const approvedAnalysisIdByTokenRef = useRef<Map<string, string>>(
-    buildApprovedGlossIndex(analysisRef.current, analysisByIdRef.current),
+  const approvedAnalysisIdByTokenRef = useRef<Map<string, string> | undefined>(undefined);
+  approvedAnalysisIdByTokenRef.current ??= buildApprovedGlossIndex(
+    analysisRef.current,
+    analysisByIdRef.current,
   );
 
   /**
@@ -145,9 +150,11 @@ export function AnalysisStoreProvider({
    */
   const getGloss = useCallback(
     (tokenRef: string) => {
-      const analysisId = approvedAnalysisIdByTokenRef.current.get(tokenRef);
+      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
+      const analysisId = approvedAnalysisIdByTokenRef.current!.get(tokenRef);
       if (!analysisId) return '';
-      const ta = analysisByIdRef.current.get(analysisId);
+      // eslint-disable-next-line no-type-assertion/no-type-assertion -- same: ??= guarantees non-null
+      const ta = analysisByIdRef.current!.get(analysisId);
       /* v8 ignore next -- optional chaining on ta?.gloss produces a branch V8 cannot reach through the mock */
       return ta?.gloss?.[analysisLanguage] ?? '';
     },
@@ -196,7 +203,8 @@ export function AnalysisStoreProvider({
       };
 
       analysisRef.current = next;
-      analysisByIdRef.current = new Map([...analysisByIdRef.current, [id, newAnalysis]]);
+      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
+      analysisByIdRef.current = new Map([...analysisByIdRef.current!, [id, newAnalysis]]);
       approvedAnalysisIdByTokenRef.current = buildApprovedGlossIndex(next, analysisByIdRef.current);
 
       listenersRef.current.forEach((l) => l());

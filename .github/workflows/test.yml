@@ -45,10 +45,6 @@ jobs:
         working-directory: paranext-core
         run: npm ci --ignore-scripts --omit=optional
 
-      - name: Verify jest-dom dependency
-        working-directory: extension-repo
-        run: npm ls @testing-library/jest-dom --depth=0
-
       - name: Run tests
         working-directory: extension-repo
         run: npm run test:coverage

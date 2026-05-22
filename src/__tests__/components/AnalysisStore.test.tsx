@@ -20,7 +20,7 @@ import {
  * Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token.
  *
  * @param tokenRef - Token reference string.
- * @param gloss - Gloss value for the `'en'` language key.
+ * @param gloss - Gloss value for the `'und'` language key.
  * @param surfaceText - Surface text of the token.
  * @returns A `TextAnalysis` seeded with one approved token analysis.
  */
@@ -32,7 +32,7 @@ function makeAnalysisWithGloss(
   const ta: TokenAnalysis = {
     id: `${tokenRef}-analysis`,
     surfaceText,
-    gloss: { en: gloss },
+    gloss: { und: gloss },
   };
   const link: TokenAnalysisLink = {
     analysisId: ta.id,
@@ -109,7 +109,7 @@ function GlossWriter({
 describe('useGloss', () => {
   it('returns an empty string for an unknown token', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <GlossReader tokenRef="tok-1" />
       </AnalysisStoreProvider>,
     );
@@ -118,7 +118,10 @@ describe('useGloss', () => {
 
   it('returns the approved gloss from initialAnalysis', () => {
     render(
-      <AnalysisStoreProvider initialAnalysis={makeAnalysisWithGloss('tok-1', 'hello')}>
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'hello')}
+        analysisLanguage="und"
+      >
         <GlossReader tokenRef="tok-1" />
       </AnalysisStoreProvider>,
     );
@@ -141,7 +144,7 @@ describe('useGloss', () => {
       phraseAnalysisLinks: [],
     };
     render(
-      <AnalysisStoreProvider initialAnalysis={analysis}>
+      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und">
         <GlossReader tokenRef="tok-1" />
       </AnalysisStoreProvider>,
     );
@@ -150,7 +153,7 @@ describe('useGloss', () => {
 
   it('updates when the subscribed token is glossed via dispatch', async () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <GlossReader tokenRef="tok-1" />
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="world" />
       </AnalysisStoreProvider>,
@@ -170,7 +173,7 @@ describe('useGloss', () => {
     }
 
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <CountingGlossReader tokenRef="tok-1" />
         <GlossWriter tokenRef="tok-2" surfaceText="other" value="other" />
       </AnalysisStoreProvider>,
@@ -214,7 +217,7 @@ describe('useGloss', () => {
 describe('useAnalysis', () => {
   it('returns an empty analysis when no initialAnalysis is provided', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <AnalysisReader />
       </AnalysisStoreProvider>,
     );
@@ -226,7 +229,7 @@ describe('useAnalysis', () => {
   it('returns seeded analyses from initialAnalysis', () => {
     const seed = makeAnalysisWithGloss('tok-1', 'hi');
     render(
-      <AnalysisStoreProvider initialAnalysis={seed}>
+      <AnalysisStoreProvider initialAnalysis={seed} analysisLanguage="und">
         <AnalysisReader />
       </AnalysisStoreProvider>,
     );
@@ -237,7 +240,7 @@ describe('useAnalysis', () => {
 
   it('updates after a gloss write', async () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <AnalysisReader />
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="world" />
       </AnalysisStoreProvider>,
@@ -245,7 +248,7 @@ describe('useAnalysis', () => {
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
     const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
     expect(analysis.tokenAnalyses).toHaveLength(1);
-    expect(analysis.tokenAnalyses[0].gloss).toStrictEqual({ en: 'world' });
+    expect(analysis.tokenAnalyses[0].gloss).toStrictEqual({ und: 'world' });
     expect(analysis.tokenAnalysisLinks[0].status).toBe('approved');
   });
 
@@ -260,7 +263,7 @@ describe('useAnalysis', () => {
 describe('useGlossDispatch', () => {
   it('creates a new approved TokenAnalysis on each write', async () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <AnalysisReader />
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
       </AnalysisStoreProvider>,
@@ -293,7 +296,7 @@ describe('useGlossDispatch', () => {
       phraseAnalysisLinks: [],
     };
     render(
-      <AnalysisStoreProvider initialAnalysis={seed}>
+      <AnalysisStoreProvider initialAnalysis={seed} analysisLanguage="und">
         <AnalysisReader />
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="new" />
       </AnalysisStoreProvider>,
@@ -310,7 +313,7 @@ describe('useGlossDispatch', () => {
   it('calls the onGlossChange spy with tokenRef and value', async () => {
     const spy = jest.fn();
     render(
-      <AnalysisStoreProvider onGlossChange={spy}>
+      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
       </AnalysisStoreProvider>,
     );
@@ -322,14 +325,14 @@ describe('useGlossDispatch', () => {
   it('calls onSave with the updated TextAnalysis', async () => {
     const onSave = jest.fn();
     render(
-      <AnalysisStoreProvider onSave={onSave}>
+      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
         <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
       </AnalysisStoreProvider>,
     );
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
-    expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ en: 'hi' });
+    expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'hi' });
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

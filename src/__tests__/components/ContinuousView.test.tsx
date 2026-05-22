@@ -15,7 +15,7 @@ import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
   useGloss: () => '',
@@ -23,7 +23,11 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 /** Render options that wrap every test render in a `AnalysisStoreProvider`. */
-const withAnalysisStore = { wrapper: AnalysisStoreProvider };
+const withAnalysisStore = {
+  wrapper({ children }: Readonly<{ children: ReactNode }>) {
+    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
+  },
+};
 
 jest.mock('../../components/TokenChip', () => ({
   __esModule: true,

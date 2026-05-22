@@ -15,7 +15,7 @@ import { SegmentView } from '../../components/SegmentView';
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
+  AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
   useGloss: () => '',
@@ -127,7 +127,7 @@ function requiredProps(): {
 describe('SegmentView', () => {
   it('renders word token chips in token-chip mode (default)', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -138,7 +138,7 @@ describe('SegmentView', () => {
 
   it('renders non-word (punctuation) tokens in token-chip mode', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />
       </AnalysisStoreProvider>,
     );
@@ -148,7 +148,7 @@ describe('SegmentView', () => {
 
   it('renders baselineText in baseline-text mode', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} displayMode="baseline-text" />
       </AnalysisStoreProvider>,
     );
@@ -158,7 +158,7 @@ describe('SegmentView', () => {
 
   it('does not render individual tokens in baseline-text mode', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} displayMode="baseline-text" />
       </AnalysisStoreProvider>,
     );
@@ -169,7 +169,7 @@ describe('SegmentView', () => {
 
   it('shows the verse number label', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -179,7 +179,7 @@ describe('SegmentView', () => {
 
   it('sets aria-current="true" when isActive is true', () => {
     const { container } = render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} isActive />
       </AnalysisStoreProvider>,
     );
@@ -189,7 +189,7 @@ describe('SegmentView', () => {
 
   it('does not set aria-current when isActive is omitted', () => {
     const { container } = render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -199,7 +199,7 @@ describe('SegmentView', () => {
 
   it('sets aria-current="true" on the baseline-text button when isActive is true', () => {
     const { container } = render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />
       </AnalysisStoreProvider>,
     );
@@ -210,7 +210,7 @@ describe('SegmentView', () => {
   it('calls onSelect when clicked in baseline-text mode', async () => {
     const handleSelect = jest.fn();
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />
       </AnalysisStoreProvider>,
     );
@@ -224,7 +224,7 @@ describe('SegmentView', () => {
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
     const handleSelect = jest.fn();
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} onSelect={handleSelect} />
       </AnalysisStoreProvider>,
     );
@@ -237,7 +237,7 @@ describe('SegmentView', () => {
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} />
       </AnalysisStoreProvider>,
     );

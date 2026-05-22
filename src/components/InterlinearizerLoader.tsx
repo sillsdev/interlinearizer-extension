@@ -13,6 +13,7 @@ import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
 
+/** Localized string keys used by {@link InterlinearizerLoader}. */
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
 /**
@@ -39,6 +40,11 @@ export default function InterlinearizerLoader({
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
+  const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
+  /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
+  const analysisLanguage = isPlatformError(interfaceLanguages)
+    ? 'und'
+    : (interfaceLanguages[0] ?? 'und');
 
   const {
     isLoading: isSettingLoading,
@@ -184,6 +190,7 @@ export default function InterlinearizerLoader({
           continuousScroll={continuousScroll}
           scrRef={scrRef}
           setScrRef={setScrRef}
+          analysisLanguage={analysisLanguage}
         />
       )}
 

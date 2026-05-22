@@ -108,8 +108,8 @@ const config: Config = {
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */
   modulePathIgnorePatterns: ['<rootDir>/dist'],
 
-  /** Load jest-dom matchers for React tests. */
-  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+  /** Load @testing-library/jest-dom matchers for React component tests. */
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
 
   /** Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). */
   testEnvironment: 'jsdom',

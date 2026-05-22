@@ -49,6 +49,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
 
   mainPage: async ({ electronApp }, use, testInfo: TestInfo) => {
     const page = await electronApp.firstWindow({ timeout: PROCESS_READY_TIMEOUT });
+    const rendererUrl = 'http://localhost:1212/index.html?logLevel=debug';
 
     console.log(`Window URL: ${page.url()}`);
     const onPageError = (err: Error) => console.error(`Page error: ${err.message}`);
@@ -58,21 +59,24 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
     page.on('pageerror', onPageError);
     page.on('console', onConsoleMsg);
 
-    await page.waitForLoadState('domcontentloaded');
-
     const readyDeadline = Date.now() + PROCESS_READY_TIMEOUT;
     let rootAttached = false;
 
     while (Date.now() < readyDeadline) {
       const currentUrl = page.url();
 
-      // CI can intermittently land on chrome-error://chromewebdata/ if the renderer dev server
-      // is still finishing compilation. Re-navigate and retry until React mounts or timeout.
-      if (currentUrl.startsWith('chrome-error://') || currentUrl === 'about:blank') {
+      // CI can intermittently land on chrome-error://chromewebdata/ if Electron opens before the
+      // renderer navigation has fully settled. Drive the page back to the actual renderer URL and
+      // retry until React mounts or timeout.
+      if (
+        currentUrl.startsWith('chrome-error://') ||
+        currentUrl === 'about:blank' ||
+        !currentUrl.startsWith('http://localhost:1212/')
+      ) {
         try {
-          await page.goto('http://127.0.0.1:1212/', {
+          await page.goto(rendererUrl, {
             waitUntil: 'domcontentloaded',
-            timeout: 10_000,
+            timeout: 15_000,
           });
         } catch {
           // Retry loop handles transient dev-server unavailability.
@@ -83,6 +87,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
       if (remaining <= 0) break;
 
       try {
+        await page.waitForLoadState('domcontentloaded');
         await page.waitForSelector('#root', {
           state: 'attached',
           timeout: Math.min(5_000, remaining),
@@ -99,6 +104,8 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
         `Main renderer did not mount #root within ${PROCESS_READY_TIMEOUT}ms (current URL: ${page.url()})`,
       );
     }
+
+    console.log(`Window URL: ${page.url()}`);
 
     await use(page);
 

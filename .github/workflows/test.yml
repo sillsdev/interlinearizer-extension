@@ -122,4 +122,5 @@ jobs:
           path: |
             extension-repo/e2e-tests/playwright-report/
             extension-repo/e2e-tests/test-results/
+            extension-repo/e2e-tests/test-results/renderer-dev-server.log
           retention-days: 7

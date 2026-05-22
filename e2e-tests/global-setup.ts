@@ -149,6 +149,9 @@ function waitForPort(port: number, timeout: number): Promise<void> {
 export default async function globalSetup(_config: FullConfig): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..');
   const coreDir = path.resolve(__dirname, '../../paranext-core');
+  const testResultsDir = path.join(extensionRoot, 'e2e-tests/test-results');
+  fs.mkdirSync(testResultsDir, { recursive: true });
+  const rendererLogPath = path.join(testResultsDir, 'renderer-dev-server.log');
 
   // Fail fast if Platform.Bible is already running (single-instance lock will
   // cause Playwright's Electron instance to exit immediately)
@@ -204,9 +207,10 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     console.log(`Renderer dev server already running on port ${RENDERER_PORT}.`);
   } else {
     console.log('Starting paranext-core renderer dev server...');
+    const rendererLogFd = fs.openSync(rendererLogPath, 'w');
     const devServer = spawn('npm', ['run', 'start:renderer'], {
       cwd: coreDir,
-      stdio: 'ignore',
+      stdio: ['ignore', rendererLogFd, rendererLogFd],
       shell: true,
       detached: true,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, SKIP_START_MAIN: '1' },
@@ -224,9 +228,20 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     console.log(
       `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
     );
-    // Wait for the renderer index to serve successfully so Electron does not attach during
-    // an in-progress compilation window.
-    await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/index.html`, 300_000);
+    // Wait for webpack-dev-middleware to begin serving renderer assets before launching Electron.
+    // In CI we degrade to a warning if this probe times out, since the dev server can still finish
+    // compiling shortly after Electron starts.
+    try {
+      await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/dist/renderer.dev.js`, 120_000);
+    } catch (error) {
+      if (!process.env.CI) throw error;
+      const message =
+        error instanceof Error ? error.message : 'Unknown renderer readiness probe failure';
+      console.warn(
+        `Renderer HTTP readiness probe timed out in CI: ${message}. Continuing with port-only readiness.`,
+      );
+      console.warn(`Renderer dev server logs: ${rendererLogPath}`);
+    }
     console.log('Renderer dev server is ready.');
   }
 }

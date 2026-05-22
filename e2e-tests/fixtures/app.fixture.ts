@@ -59,7 +59,46 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
     page.on('console', onConsoleMsg);
 
     await page.waitForLoadState('domcontentloaded');
-    await page.waitForSelector('#root', { state: 'attached', timeout: PROCESS_READY_TIMEOUT });
+
+    const readyDeadline = Date.now() + PROCESS_READY_TIMEOUT;
+    let rootAttached = false;
+
+    while (Date.now() < readyDeadline) {
+      const currentUrl = page.url();
+
+      // CI can intermittently land on chrome-error://chromewebdata/ if the renderer dev server
+      // is still finishing compilation. Re-navigate and retry until React mounts or timeout.
+      if (currentUrl.startsWith('chrome-error://') || currentUrl === 'about:blank') {
+        try {
+          await page.goto('http://127.0.0.1:1212/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 10_000,
+          });
+        } catch {
+          // Retry loop handles transient dev-server unavailability.
+        }
+      }
+
+      const remaining = Math.max(0, readyDeadline - Date.now());
+      if (remaining <= 0) break;
+
+      try {
+        await page.waitForSelector('#root', {
+          state: 'attached',
+          timeout: Math.min(5_000, remaining),
+        });
+        rootAttached = true;
+        break;
+      } catch {
+        // Keep retrying until deadline.
+      }
+    }
+
+    if (!rootAttached) {
+      throw new Error(
+        `Main renderer did not mount #root within ${PROCESS_READY_TIMEOUT}ms (current URL: ${page.url()})`,
+      );
+    }
 
     await use(page);
 

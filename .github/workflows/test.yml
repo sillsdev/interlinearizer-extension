@@ -81,7 +81,7 @@ jobs:
 
       - name: Install core dependencies
         working-directory: paranext-core
-        run: npm ci --ignore-scripts --include=optional
+        run: npm ci --ignore-scripts
 
       - name: Install Electron binary
         working-directory: paranext-core

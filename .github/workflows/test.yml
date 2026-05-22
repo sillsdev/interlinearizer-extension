@@ -38,7 +38,7 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
-        run: npm ci --ignore-scripts --include=dev --omit=optional
+        run: npm ci --ignore-scripts
 
       - name: Install core dependencies
         working-directory: paranext-core

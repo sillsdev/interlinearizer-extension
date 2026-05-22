@@ -270,7 +270,7 @@ describe('useAnalysis', () => {
 });
 
 describe('useGlossDispatch', () => {
-  it('creates a new approved TokenAnalysis on each write', async () => {
+  it('replaces the existing approved analysis on subsequent writes for the same token', async () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
         <AnalysisReader />
@@ -280,9 +280,24 @@ describe('useGlossDispatch', () => {
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
     const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
+    expect(analysis.tokenAnalyses).toHaveLength(1);
+    expect(analysis.tokenAnalysisLinks).toHaveLength(1);
+    expect(analysis.tokenAnalysisLinks[0].status).toBe('approved');
+  });
+
+  it('creates a new approved analysis when writing to a different token', async () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <AnalysisReader />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
+        <GlossWriter tokenRef="tok-2" surfaceText="other" value="bye" />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getAllByRole('button', { name: 'write' })[0]);
+    await userEvent.click(screen.getAllByRole('button', { name: 'write' })[1]);
+    const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
     expect(analysis.tokenAnalyses).toHaveLength(2);
     expect(analysis.tokenAnalysisLinks).toHaveLength(2);
-    analysis.tokenAnalysisLinks.forEach((link) => expect(link.status).toBe('approved'));
   });
 
   it('does not touch existing suggested analyses on write', async () => {

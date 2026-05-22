@@ -25,6 +25,8 @@ const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
+ * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
+ *   by the PAPI host
  * @returns The toolbar and either an error/loading state or the fully rendered
  *   {@link Interlinearizer}
  */
@@ -44,7 +46,7 @@ export default function InterlinearizerLoader({
   /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
   const analysisLanguage = isPlatformError(interfaceLanguages)
     ? 'und'
-    : (interfaceLanguages[0] ?? 'und');
+    : interfaceLanguages[0] || 'und';
 
   const {
     isLoading: isSettingLoading,

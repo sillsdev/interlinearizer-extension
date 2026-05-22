@@ -166,6 +166,15 @@ describe('useGloss', () => {
   it('does not re-render when a different token is glossed', async () => {
     let renderCount = 0;
 
+    /**
+     * Renders the current gloss for a token while counting how many times it re-renders, so tests
+     * can assert that unrelated gloss changes do not cause extra renders.
+     *
+     * @param props - Component props.
+     * @param props.tokenRef - The token whose approved gloss to read via {@link useGloss}.
+     * @returns A span containing the gloss string.
+     * @throws When called outside an {@link AnalysisStoreProvider}.
+     */
     function CountingGlossReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
       renderCount += 1;
       const gloss = useGloss(tokenRef);

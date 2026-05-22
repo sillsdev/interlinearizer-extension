@@ -4,44 +4,90 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
-import type { Book, Segment } from 'interlinearizer';
+import type { Book, ScriptureRef, Segment } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import Interlinearizer from '../../components/Interlinearizer';
+import type { SegmentDisplayMode } from '../../components/SegmentView';
+import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
+  /**
+   * Stub for the LocateFixed icon; renders a minimal SVG so icon-presence assertions work.
+   *
+   * @returns An SVG element with `data-testid="locate-fixed-icon"`.
+   */
   LocateFixed: () => <svg data-testid="locate-fixed-icon" />,
 }));
 
-// Store captured props so tests can inspect what Interlinearizer passes down
-let capturedContinuousViewProps: Record<string, unknown> = {};
+/**
+ * Props captured from ContinuousView renders so tests can assert on what Interlinearizer passes
+ * down.
+ */
+type CapturedContinuousViewProps = {
+  /** When set, the strip jumps to this phrase index. */
+  activePhraseIndex: number | undefined;
+  /** Verse coordinate used to scroll the strip. */
+  activeVerse: ScriptureRef;
+  /** The full tokenized book. */
+  book: Book;
+  /** Called when the focused phrase index changes. */
+  onFocusPhraseIndexChange: (index: number) => void;
+  /** Called when arrow navigation moves focus into a new verse. */
+  onVerseChange: (verse: ScriptureRef) => void;
+};
+let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
+/** Props captured from SegmentView renders so tests can assert on what Interlinearizer passes down. */
 type CapturedSegmentViewProps = {
+  /** The segment the component is asked to render. */
   segment: Segment;
-  displayMode?: string;
-  focusedTokenRef?: string;
-  isActive?: boolean;
-  onSelect?: (ref: { book: string; chapter: number; verse: number }, tokenRef?: string) => void;
+  /** Controls whether tokens are rendered as chips or as raw baseline text. */
+  displayMode: SegmentDisplayMode;
+  /** The `Token.ref` string of the currently focused token, if any. */
+  focusedTokenRef: string | undefined;
+  /** Whether this segment corresponds to the currently active verse. */
+  isActive: boolean;
+  /** Called when the user selects a token. */
+  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  /**
+   * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
+   * scope.
+   *
+   * @param props - Component props.
+   * @param props.children - Child nodes to render.
+   * @returns The children unchanged.
+   */
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
+  /**
+   * Returns a fixed empty gloss string for any token.
+   *
+   * @returns An empty string.
+   */
   useGloss: () => '',
+  /**
+   * Returns a no-op dispatch function.
+   *
+   * @returns A function that accepts any arguments and does nothing.
+   */
   useGlossDispatch: () => () => {},
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
-  default: (props: Record<string, unknown>) => {
+  default: (props: CapturedContinuousViewProps) => {
     capturedContinuousViewProps = props;
     return (
       <div
         data-active-phrase-index={
-          typeof props.activePhraseIndex === 'number' ? String(props.activePhraseIndex) : undefined
+          props.activePhraseIndex === undefined ? undefined : String(props.activePhraseIndex)
         }
         data-testid="continuous-view"
       />
@@ -51,6 +97,15 @@ jest.mock('../../components/ContinuousView', () => ({
 
 jest.mock('../../components/SegmentView', () => ({
   __esModule: true,
+  /**
+   * Named export stub for SegmentView; captures received props and renders a minimal div.
+   *
+   * @param props - The props passed by Interlinearizer.
+   * @param props.segment - The segment being rendered.
+   * @param props.isActive - Whether this segment is the active verse.
+   * @param props.rest - Any additional props forwarded from the parent.
+   * @returns A div with `data-testid="segment-view"` and the segment id.
+   */
   SegmentView: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
     capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
     return (
@@ -61,6 +116,15 @@ jest.mock('../../components/SegmentView', () => ({
       />
     );
   },
+  /**
+   * Default export stub for SegmentView; captures received props and renders a minimal div.
+   *
+   * @param props - The props passed by Interlinearizer.
+   * @param props.segment - The segment being rendered.
+   * @param props.isActive - Whether this segment is the active verse.
+   * @param props.rest - Any additional props forwarded from the parent.
+   * @returns A div with `data-testid="segment-view"` and the segment id.
+   */
   default: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
     capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
     return (
@@ -72,33 +136,6 @@ jest.mock('../../components/SegmentView', () => ({
     );
   },
 }));
-
-const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
-
-/** Pre-built Book with one GEN 1:1 segment. */
-const GEN_1_1_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
-  ],
-};
 
 /** Pre-built Book with no segments — used by the no-verse-data test. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
@@ -183,7 +220,7 @@ beforeEach(() => {
 
 describe('Interlinearizer', () => {
   beforeEach(() => {
-    capturedContinuousViewProps = {};
+    capturedContinuousViewProps = undefined;
     capturedSegmentViewPropsList = [];
   });
 
@@ -309,6 +346,8 @@ describe('Interlinearizer', () => {
       />,
     );
 
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
     expect(capturedContinuousViewProps.activePhraseIndex).toBe(1);
   });
 
@@ -318,9 +357,9 @@ describe('Interlinearizer', () => {
 
     expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
 
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
     const { onVerseChange } = capturedContinuousViewProps;
-    if (typeof onVerseChange !== 'function')
-      throw new Error('Expected onVerseChange to be a function');
 
     onVerseChange({ book: 'GEN', chapter: 2, verse: 3 });
 
@@ -334,9 +373,9 @@ describe('Interlinearizer', () => {
       continuousScroll: true,
     });
 
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
     const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
-    if (typeof onFocusPhraseIndexChange !== 'function')
-      throw new Error('Expected onFocusPhraseIndexChange to be a function');
 
     act(() => {
       onFocusPhraseIndexChange(1);
@@ -355,6 +394,8 @@ describe('Interlinearizer', () => {
       />,
     );
 
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
     expect(capturedContinuousViewProps.activePhraseIndex).toBeUndefined();
   });
 
@@ -366,9 +407,9 @@ describe('Interlinearizer', () => {
     });
 
     // Simulate ContinuousView reporting that phrase index 1 (GEN 1:2's token) is in view.
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
     const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
-    if (typeof onFocusPhraseIndexChange !== 'function')
-      throw new Error('Expected onFocusPhraseIndexChange to be a function');
 
     act(() => {
       onFocusPhraseIndexChange(1);

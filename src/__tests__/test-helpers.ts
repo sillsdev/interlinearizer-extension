@@ -1,9 +1,11 @@
 /**
  * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- *   ExecutionActivationContext that satisfies @papi/core types, and a `useWebViewState` hook stub
- *   for component tests.
+ *   ExecutionActivationContext that satisfies @papi/core types, a `useWebViewState` hook stub for
+ *   component tests, and shared Book fixtures.
  */
+import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
+import type { Book } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -55,6 +57,34 @@ export function makeWebViewState() {
     ];
   };
 }
+
+/** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
+export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+
+/** Pre-built Book with one GEN 1:1 segment and a single word token. */
+export const GEN_1_1_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+      ],
+    },
+  ],
+};
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */
 const mockElevatedPrivileges = {

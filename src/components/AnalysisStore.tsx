@@ -167,10 +167,9 @@ export function AnalysisStoreProvider({
    * gloss string (under `analysisLanguage`), replaces the analysis snapshot, notifies subscribers,
    * calls `onSave`, and calls the optional `spy` prop for test observability.
    *
-   * The new `TokenAnalysis` gets a UUID-like id built from `tokenRef` + current timestamp to ensure
-   * uniqueness within the project. Existing analyses for the token are left untouched — this
-   * follows the data model's "multiple competing analyses" design; the UI manages selection and
-   * deletion separately.
+   * The new `TokenAnalysis` gets a UUID (`crypto.randomUUID()`) as its id to ensure global
+   * uniqueness. Existing analyses for the token are left untouched — this follows the data model's
+   * "multiple competing analyses" design; the UI manages selection and deletion separately.
    *
    * @param tokenRef - The `Token.ref` of the token being glossed.
    * @param surfaceText - The surface text of the token (stored as `Analysis.surfaceText`).
@@ -178,7 +177,7 @@ export function AnalysisStoreProvider({
    */
   const onGlossChange = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
-      const id = `${tokenRef}:${Date.now()}`;
+      const id = crypto.randomUUID();
       const newAnalysis: TokenAnalysis = {
         id,
         surfaceText,

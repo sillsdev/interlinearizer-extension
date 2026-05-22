@@ -6,11 +6,11 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book } from 'interlinearizer';
+import type { Book, Segment } from 'interlinearizer';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
-import { makeWebViewState } from '../test-helpers';
+import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -48,8 +48,12 @@ jest.mock('../../components/ContinuousView', () => ({
 }));
 
 type CapturedInterlinearizerProps = {
+  book: Book;
+  chapterSegments: Segment[];
   continuousScroll: boolean;
-  analysisLanguage: string | undefined;
+  scrRef: SerializedVerseRef;
+  setScrRef: (newScrRef: SerializedVerseRef) => void;
+  analysisLanguage: string;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -195,33 +199,6 @@ jest.mock('../../components/ProjectModals', () => ({
   },
 }));
 
-const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
-
-/** Pre-built Book with one GEN 1:1 segment. */
-const GEN_1_1_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
-  ],
-};
-
 /** Returns a `useWebViewScrollGroupScrRef` hook stub fixed to GEN 1:1. */
 function makeScrollGroupHook() {
   return (): [
@@ -278,6 +255,8 @@ function mockOptimisticSetting(
  *
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
+ * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
+ *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
  */
 function mockSettings(
   interfaceMode: 'simple' | 'power' = 'simple',

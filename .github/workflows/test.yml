@@ -46,6 +46,11 @@ jobs:
         # Do not omit optional deps here: extensions/watch needs lightningcss native binaries.
         run: npm ci --ignore-scripts
 
+      - name: Install Linux lightningcss native binary
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: paranext-core
+        run: npm install --ignore-scripts --no-save lightningcss-linux-x64-gnu@1.32.0
+
       - name: Verify jest-dom dependency
         working-directory: extension-repo
         run: npm ls @testing-library/jest-dom --depth=0
@@ -87,7 +92,13 @@ jobs:
 
       - name: Install core dependencies
         working-directory: paranext-core
-        run: npm ci --ignore-scripts --omit=optional
+        # Do not omit optional deps here: extensions/watch needs lightningcss native binaries.
+        run: npm ci --ignore-scripts
+
+      - name: Install Linux lightningcss native binary
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: paranext-core
+        run: npm install --ignore-scripts --no-save lightningcss-linux-x64-gnu@1.32.0
 
       - name: Install Electron binary
         working-directory: paranext-core

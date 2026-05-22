@@ -185,6 +185,12 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
     `[teardown] Closing Electron app... pid=${electronProcess?.pid} exitCode=${electronProcess?.exitCode} signalCode=${electronProcess?.signalCode}`,
   );
 
+  /**
+   * Send `sig` to the Electron process group, falling back to the process itself if group kill
+   * fails.
+   *
+   * @param sig Signal to send (e.g. `'SIGKILL'`).
+   */
   const killGroup = (sig: NodeJS.Signals) => {
     if (!electronProcess?.pid) return;
     try {

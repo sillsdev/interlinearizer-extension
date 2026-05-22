@@ -47,6 +47,11 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
     let done = false;
     let currentReq: http.ClientRequest | undefined;
 
+    /**
+     * Mark the probe as failed, destroy the in-flight request, and reject the outer promise.
+     *
+     * @param message Human-readable failure reason passed to the rejected Error.
+     */
     const fail = (message: string) => {
       if (done) return;
       done = true;
@@ -58,6 +63,7 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
       fail(`${url} did not respond within ${timeout}ms`);
     }, timeout);
 
+    /** Fire one HTTP GET attempt; retries on transient failure within the overall timeout budget. */
     const attempt = () => {
       if (done) return;
       if (Date.now() - startTime >= timeout) {
@@ -109,6 +115,7 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
 function waitForPort(port: number, timeout: number): Promise<void> {
   const startTime = Date.now();
   return new Promise((resolve, reject) => {
+    /** Attempt one TCP connection; retries after 500 ms on failure within the overall timeout. */
     const tryConnect = () => {
       if (Date.now() - startTime > timeout) {
         reject(new Error(`Port ${port} did not become available within ${timeout}ms`));

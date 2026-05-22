@@ -8,7 +8,7 @@ import WebSocket from 'ws';
 
 const DEFAULT_WEBSOCKET_PORT = 8876;
 const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
-export const PROCESS_READY_TIMEOUT = 120_000;
+export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
  * Same serialized request type as `registerCommand('platform.about', ...)` in command.service

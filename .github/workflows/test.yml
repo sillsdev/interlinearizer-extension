@@ -43,7 +43,8 @@ jobs:
 
       - name: Install core dependencies
         working-directory: paranext-core
-        run: npm ci --ignore-scripts --omit=optional
+        # Do not omit optional deps here: extensions/watch needs lightningcss native binaries.
+        run: npm ci --ignore-scripts
 
       - name: Verify jest-dom dependency
         working-directory: extension-repo
@@ -118,13 +119,75 @@ jobs:
         working-directory: extension-repo
         run: npm run test:e2e:smoke
 
+      - name: Redact renderer dev server log
+        if: always()
+        shell: pwsh
+        run: |
+          $rawLog = "extension-repo/e2e-tests/test-results/renderer-dev-server.log"
+          $sanitizedLog = "extension-repo/e2e-tests/test-results/renderer-dev-server.sanitized.log"
+          if (-not (Test-Path $rawLog)) {
+            Write-Host "Renderer log file not found: $rawLog"
+            exit 0
+          }
+
+          # Redact common secret patterns before printing/uploading logs.
+          $content = Get-Content -Path $rawLog -Raw
+          $patterns = @(
+            @{ Regex = '(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(x-api-key\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(token\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(secret\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(password\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(client_secret\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(access[_-]?token\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(refresh[_-]?token\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(api[_-]?key\s*[:=]\s*)[^\s"'']+'; Replacement = '$1[REDACTED]' },
+            @{ Regex = '(?i)(-----BEGIN [A-Z ]+PRIVATE KEY-----)(.|\n|\r)*?(-----END [A-Z ]+PRIVATE KEY-----)'; Replacement = '$1[REDACTED]$3' }
+          )
+
+          foreach ($pattern in $patterns) {
+            $content = [System.Text.RegularExpressions.Regex]::Replace(
+              $content,
+              $pattern.Regex,
+              $pattern.Replacement,
+              [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+            )
+          }
+
+          Set-Content -Path $sanitizedLog -Value $content -NoNewline
+          Write-Host "Sanitized renderer log written to: $sanitizedLog"
+
+      - name: Show renderer dev server log tail (Linux)
+        if: failure() && matrix.os == 'ubuntu-latest'
+        run: |
+          LOG_PATH="extension-repo/e2e-tests/test-results/renderer-dev-server.sanitized.log"
+          if [ -f "$LOG_PATH" ]; then
+            echo "=== Renderer log tail: $LOG_PATH ==="
+            tail -n 200 "$LOG_PATH"
+          else
+            echo "Renderer log file not found: $LOG_PATH"
+          fi
+
+      - name: Show renderer dev server log tail (Windows)
+        if: failure() && matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $logPath = "extension-repo/e2e-tests/test-results/renderer-dev-server.sanitized.log"
+          if (Test-Path $logPath) {
+            Write-Host "=== Renderer log tail: $logPath ==="
+            Get-Content -Path $logPath -Tail 200
+          } else {
+            Write-Host "Renderer log file not found: $logPath"
+          }
+
       - name: Upload Playwright artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: playwright-artifacts-${{ matrix.os }}
           path: |
-            extension-repo/e2e-tests/playwright-report/
+            extension-repo/playwright-report/
             extension-repo/e2e-tests/test-results/
-            extension-repo/e2e-tests/test-results/renderer-dev-server.log
+            extension-repo/e2e-tests/test-results/renderer-dev-server.sanitized.log
+          if-no-files-found: warn
           retention-days: 7

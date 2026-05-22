@@ -22,6 +22,7 @@ const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
  */
 const GET_METHODS = 'rpc.discover';
 
+/** Subset of the `rpc.discover` response we actually inspect. */
 type RpcDiscoverResult = {
   methods?: Array<{ name: string }>;
 };

@@ -85,17 +85,22 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
           const currentUrl = page.url();
           console.log(`Window URL: ${currentUrl}`);
 
-          // CI can intermittently land on chrome-error://chromewebdata/ if Electron opens before the
-          // renderer navigation has fully settled. Drive the page back to the actual renderer URL and
-          // retry until React mounts or timeout.
+          // CI can intermittently land on chrome-error://chromewebdata/ when Electron opens before the
+          // renderer is fully ready. Playwright's page.goto() cannot navigate away from chrome-error://
+          // pages in some Electron configurations — it throws immediately. Use Electron's main-process
+          // BrowserWindow.loadURL() instead, which can force-reload the window from any URL state.
           if (
             currentUrl.startsWith('chrome-error://') ||
             currentUrl === 'about:blank' ||
             !currentUrl.startsWith('http://localhost:1212/')
           ) {
-            await page.goto(rendererUrl, {
-              waitUntil: 'domcontentloaded',
-              timeout: 15_000,
+            await electronApp.evaluate(({ BrowserWindow }, url) => {
+              const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed());
+              if (win) win.loadURL(url).catch(() => {});
+            }, rendererUrl);
+            // Allow the navigation to start before we poll loadState.
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 1_000);
             });
           }
 

@@ -43,13 +43,7 @@ jobs:
 
       - name: Install core dependencies
         working-directory: paranext-core
-        # Do not omit optional deps here: extensions/watch needs lightningcss native binaries.
-        run: npm ci --ignore-scripts
-
-      - name: Install Linux lightningcss native binary
-        if: matrix.os == 'ubuntu-latest'
-        working-directory: paranext-core
-        run: npm install --ignore-scripts --no-save lightningcss-linux-x64-gnu@1.32.0
+        run: npm ci --ignore-scripts --include=optional
 
       - name: Verify jest-dom dependency
         working-directory: extension-repo
@@ -92,12 +86,15 @@ jobs:
 
       - name: Install core dependencies
         working-directory: paranext-core
-        # Do not omit optional deps here: extensions/watch needs lightningcss native binaries.
+        # Keep optional deps enabled; the lockfile includes the native lightningcss package that
+        # extensions/watch needs during the renderer/extensions build.
         run: npm ci --ignore-scripts
 
       - name: Install Linux lightningcss native binary
         if: matrix.os == 'ubuntu-latest'
         working-directory: paranext-core
+        # Belt-and-suspenders install for GitHub Actions Ubuntu runners, where the native binary
+        # has been observed missing even after npm ci.
         run: npm install --ignore-scripts --no-save lightningcss-linux-x64-gnu@1.32.0
 
       - name: Install Electron binary

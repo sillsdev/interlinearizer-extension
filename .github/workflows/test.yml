@@ -38,6 +38,8 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
+        # Cannot --omit=optional: @swc/core-win32-x64-msvc is an optional dep and SWC needs it to
+        # transpile TypeScript in Jest on Windows.
         run: npm ci --ignore-scripts
 
       - name: Install core dependencies

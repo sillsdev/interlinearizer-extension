@@ -149,9 +149,6 @@ function waitForPort(port: number, timeout: number): Promise<void> {
 export default async function globalSetup(_config: FullConfig): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..');
   const coreDir = path.resolve(__dirname, '../../paranext-core');
-  const testResultsDir = path.join(extensionRoot, 'e2e-tests/test-results');
-  fs.mkdirSync(testResultsDir, { recursive: true });
-  const rendererLogPath = path.join(testResultsDir, 'renderer-dev-server.log');
 
   // Fail fast if Platform.Bible is already running (single-instance lock will
   // cause Playwright's Electron instance to exit immediately)
@@ -207,10 +204,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
     console.log(`Renderer dev server already running on port ${RENDERER_PORT}.`);
   } else {
     console.log('Starting paranext-core renderer dev server...');
-    const rendererLogFd = fs.openSync(rendererLogPath, 'w');
     const devServer = spawn('npm', ['run', 'start:renderer'], {
       cwd: coreDir,
-      stdio: ['ignore', rendererLogFd, rendererLogFd],
+      stdio: 'ignore',
       shell: true,
       detached: true,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, SKIP_START_MAIN: '1' },
@@ -241,7 +237,6 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
       console.warn(
         `Renderer HTTP readiness probe timed out in CI: ${message}. Continuing with port-only readiness.`,
       );
-      console.warn(`Renderer dev server logs: ${rendererLogPath}`);
     }
     console.log('Renderer dev server is ready.');
   }

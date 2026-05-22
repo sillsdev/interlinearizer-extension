@@ -4,6 +4,7 @@ End-to-end tests for the interlinearizer extension using Playwright + Electron. 
 
 **Contents:**
 
+- `*.json` — lint configs identical to those in `paranext-core/e2e-tests/`
 - `global-*.ts` — start/stop the paranext-core renderer dev server around the test run
 - `fixtures/` — test fixtures and helpers
 - `playwright*.config.ts` — fixture configs

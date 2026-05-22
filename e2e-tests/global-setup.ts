@@ -33,10 +33,10 @@ function isPortInUse(port: number): Promise<boolean> {
 /**
  * Wait until an HTTP GET to `url` returns a non-5xx response.
  *
- * webpack-dev-middleware holds every request open until the current compilation finishes, so a
+ * Webpack-dev-middleware holds every request open until the current compilation finishes, so a
  * successful response guarantees the initial bundle is ready. Using this after `waitForPort`
- * ensures Electron is not launched while webpack is still compiling (which would cause a
- * mid-load HMR reload that closes the Playwright page reference).
+ * ensures Electron is not launched while webpack is still compiling (which would cause a mid-load
+ * HMR reload that closes the Playwright page reference).
  *
  * @param url URL to probe.
  * @param timeout Maximum time in milliseconds to wait before rejecting.
@@ -44,26 +44,49 @@ function isPortInUse(port: number): Promise<boolean> {
  * @throws {Error} If the server does not respond within `timeout` milliseconds.
  */
 function waitForHttpOk(url: string, timeout: number): Promise<void> {
+  const startTime = Date.now();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      req.destroy();
-      reject(new Error(`${url} did not respond within ${timeout}ms`));
+    let done = false;
+    let currentReq: http.ClientRequest | undefined;
+
+    const overallTimer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        currentReq?.destroy();
+        reject(new Error(`${url} did not respond within ${timeout}ms`));
+      }
     }, timeout);
 
-    const req = http.get(url, (res) => {
-      clearTimeout(timer);
-      res.resume();
-      if (res.statusCode !== undefined && res.statusCode < 500) {
-        resolve();
-      } else {
-        reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+    const attempt = () => {
+      if (done) return;
+      if (Date.now() - startTime >= timeout) {
+        clearTimeout(overallTimer);
+        done = true;
+        reject(new Error(`${url} did not respond within ${timeout}ms`));
+        return;
       }
-    });
 
-    req.on('error', (err) => {
-      clearTimeout(timer);
-      reject(err);
-    });
+      currentReq = http.get(url, (res) => {
+        if (done) {
+          res.resume();
+          return;
+        }
+        clearTimeout(overallTimer);
+        done = true;
+        res.resume();
+        if (res.statusCode !== undefined && res.statusCode < 500) {
+          resolve();
+        } else {
+          reject(new Error(`HTTP ${res.statusCode} from ${url}`));
+        }
+      });
+
+      currentReq.on('error', () => {
+        if (!done) setTimeout(attempt, 1_000);
+      });
+    };
+
+    attempt();
   });
 }
 
@@ -190,7 +213,9 @@ export default async function globalSetup(_config: FullConfig): Promise<void> {
 
     console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
     await waitForPort(RENDERER_PORT, 60_000);
-    console.log(`Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`);
+    console.log(
+      `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
+    );
     // webpack-dev-middleware blocks HTTP responses until the initial bundle is compiled.
     // Waiting here ensures Electron loads a fully-compiled renderer and avoids a mid-load
     // HMR full-reload that would close the Playwright page reference during tests.

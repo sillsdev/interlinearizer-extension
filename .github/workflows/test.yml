@@ -13,6 +13,7 @@ jobs:
   test:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
@@ -51,6 +52,7 @@ jobs:
   e2e-smoke:
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
@@ -112,10 +114,12 @@ jobs:
         working-directory: extension-repo
         run: npm run test:e2e:smoke
 
-      - name: Upload Playwright report
+      - name: Upload Playwright artifacts
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ matrix.os }}
-          path: extension-repo/e2e-tests/playwright-report/
+          name: playwright-artifacts-${{ matrix.os }}
+          path: |
+            extension-repo/e2e-tests/playwright-report/
+            extension-repo/e2e-tests/test-results/
           retention-days: 7

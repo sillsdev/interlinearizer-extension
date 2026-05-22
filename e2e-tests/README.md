@@ -15,3 +15,4 @@ These tests are adapted from `paranext-core`'s e2e suite with changes to support
 
 - **Extension launch helper** — `fixtures/helpers.ts` uses `launchElectronWithExtension()` instead of `launchElectronApp()`. It passes `--extensions <dist>` to the Electron process, resolves the Electron binary from paranext-core's `node_modules`, and polls `rpc.discover` for the extension's PAPI method to confirm activation.
 - **Window finding** — `fixtures/app.fixture.ts` manually polls `electronApp.windows()` by URL instead of calling `electronApp.firstWindow()`, because the extension injects content into an existing window rather than being the sole owner of the renderer.
+- **Renderer readiness** — `global-setup.ts` adds an HTTP GET probe after the TCP port check to wait for webpack compilation to finish, rather than assuming the port being open means the bundle is ready.

@@ -179,7 +179,7 @@ describe('TokenChip', () => {
     expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveValue('');
   });
 
-  it('calls the store onGlossChange spy with tokenId and value for each keystroke', async () => {
+  it('calls the store onGlossChange spy once on blur with the final value', async () => {
     const spy = jest.fn();
     render(
       <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
@@ -187,9 +187,23 @@ describe('TokenChip', () => {
       </AnalysisStoreProvider>,
     );
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for hello' }), 'in');
-    expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenNthCalledWith(1, 'GEN 1:1:0', 'i');
-    expect(spy).toHaveBeenNthCalledWith(2, 'GEN 1:1:0', 'in');
+    expect(spy).not.toHaveBeenCalled();
+    await userEvent.tab();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('GEN 1:1:0', 'in');
+  });
+
+  it('does not call the store onGlossChange spy when blurring without typing', async () => {
+    const spy = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    await userEvent.tab();
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('GEN 1:1:0', '');
   });
 
   it('calls onFocus when the input is focused', async () => {

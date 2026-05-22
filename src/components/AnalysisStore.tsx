@@ -170,13 +170,11 @@ export function AnalysisStoreProvider({
   const getAnalysis = useCallback(() => analysisRef.current, []);
 
   /**
-   * Creates a new approved `TokenAnalysis` + `TokenAnalysisLink` for `tokenRef` with the given
-   * gloss string (under `analysisLanguage`), replaces the analysis snapshot, notifies subscribers,
-   * calls `onSave`, and calls the optional `spy` prop for test observability.
-   *
-   * The new `TokenAnalysis` gets a UUID (`crypto.randomUUID()`) as its id to ensure global
-   * uniqueness. Existing analyses for the token are left untouched — this follows the data model's
-   * "multiple competing analyses" design; the UI manages selection and deletion separately.
+   * Writes an approved gloss for `tokenRef`. If an approved `TokenAnalysis` already exists for the
+   * token it is updated in-place; otherwise a new `TokenAnalysis` + `TokenAnalysisLink` are
+   * appended. Non-approved analyses for the token are left untouched. Replaces the analysis
+   * snapshot, notifies subscribers, calls `onSave`, and calls the optional `spy` prop for test
+   * observability.
    *
    * @param tokenRef - The `Token.ref` of the token being glossed.
    * @param surfaceText - The surface text of the token (stored as `Analysis.surfaceText`).
@@ -184,28 +182,57 @@ export function AnalysisStoreProvider({
    */
   const onGlossChange = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
-      const id = crypto.randomUUID();
-      const newAnalysis: TokenAnalysis = {
-        id,
-        surfaceText,
-        gloss: { [analysisLanguage]: value },
-      };
-      const newLink: TokenAnalysisLink = {
-        analysisId: id,
-        status: 'approved',
-        token: { tokenRef, surfaceText },
-      };
+      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
+      const existingApprovedId = approvedAnalysisIdByTokenRef.current!.get(tokenRef);
+
+      let nextAnalyses: TokenAnalysis[];
+      let nextLinks: TokenAnalysisLink[];
+      let nextById: Map<string, TokenAnalysis>;
+
+      if (existingApprovedId === undefined) {
+        const id = crypto.randomUUID();
+        const newAnalysis: TokenAnalysis = {
+          id,
+          surfaceText,
+          gloss: { [analysisLanguage]: value },
+        };
+        const newLink: TokenAnalysisLink = {
+          analysisId: id,
+          status: 'approved',
+          token: { tokenRef, surfaceText },
+        };
+        nextAnalyses = [...analysisRef.current.tokenAnalyses, newAnalysis];
+        nextLinks = [...analysisRef.current.tokenAnalysisLinks, newLink];
+        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null
+        nextById = new Map([...analysisByIdRef.current!, [id, newAnalysis]]);
+      } else {
+        // Update the gloss on the existing approved analysis; preserve all other fields.
+        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; index only stores ids present in analysisByIdRef
+        const existing = analysisByIdRef.current!.get(existingApprovedId)!;
+        const updated: TokenAnalysis = {
+          ...existing,
+          surfaceText,
+          gloss: { ...existing.gloss, [analysisLanguage]: value },
+        };
+        nextAnalyses = analysisRef.current.tokenAnalyses.map(
+          /* v8 ignore next -- passthrough branch for non-matching tokens is structurally unreachable in tests */
+          (ta) => (ta.id === existingApprovedId ? updated : ta),
+        );
+        // Links are unchanged — the same link already points to existingApprovedId.
+        nextLinks = analysisRef.current.tokenAnalysisLinks;
+        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null
+        nextById = new Map([...analysisByIdRef.current!, [existingApprovedId, updated]]);
+      }
 
       const next: TextAnalysis = {
         ...analysisRef.current,
-        tokenAnalyses: [...analysisRef.current.tokenAnalyses, newAnalysis],
-        tokenAnalysisLinks: [...analysisRef.current.tokenAnalysisLinks, newLink],
+        tokenAnalyses: nextAnalyses,
+        tokenAnalysisLinks: nextLinks,
       };
 
       analysisRef.current = next;
-      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
-      analysisByIdRef.current = new Map([...analysisByIdRef.current!, [id, newAnalysis]]);
-      approvedAnalysisIdByTokenRef.current = buildApprovedGlossIndex(next, analysisByIdRef.current);
+      analysisByIdRef.current = nextById;
+      approvedAnalysisIdByTokenRef.current = buildApprovedGlossIndex(next, nextById);
 
       listenersRef.current.forEach((l) => l());
       onSave?.(next);

@@ -36,6 +36,7 @@ jest.mock('../../components/AnalysisStore', () => {
         tokenAnalyses: { id: string; gloss?: GlossMap }[];
         tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
       };
+      analysisLanguage: string;
       onGlossChange?: (tokenRef: string, value: string) => void;
     }>) {
       const byId = new Map((initialAnalysis?.tokenAnalyses ?? []).map((ta) => [ta.id, ta]));
@@ -133,7 +134,7 @@ function requiredProps(): PhraseBoxTestProps {
 describe('PhraseBox', () => {
   it('renders as a label', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -144,7 +145,7 @@ describe('PhraseBox', () => {
 
   it('renders one TokenChip per token in the tokens array', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
       </AnalysisStoreProvider>,
     );
@@ -155,7 +156,7 @@ describe('PhraseBox', () => {
 
   it('clicking the outer container focuses the first gloss input', async () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
       </AnalysisStoreProvider>,
     );
@@ -168,7 +169,7 @@ describe('PhraseBox', () => {
 
   it('applies focused border and background when isFocused is true', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} isFocused />
       </AnalysisStoreProvider>,
     );
@@ -182,7 +183,7 @@ describe('PhraseBox', () => {
 
   it('applies default border and background when isFocused is false', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} isFocused={false} />
       </AnalysisStoreProvider>,
     );
@@ -196,7 +197,7 @@ describe('PhraseBox', () => {
 
   it('phrase box does not override cursor on gap areas', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} isFocused />
       </AnalysisStoreProvider>,
     );
@@ -207,7 +208,7 @@ describe('PhraseBox', () => {
 
   it('renders tokens in the order they appear in the tokens array', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
       </AnalysisStoreProvider>,
     );
@@ -241,7 +242,7 @@ describe('PhraseBox', () => {
       phraseAnalysisLinks: [],
     };
     render(
-      <AnalysisStoreProvider initialAnalysis={initialAnalysis}>
+      <AnalysisStoreProvider initialAnalysis={initialAnalysis} analysisLanguage="und">
         <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
       </AnalysisStoreProvider>,
     );
@@ -252,7 +253,7 @@ describe('PhraseBox', () => {
 
   it('shows an empty string when the token id is absent from the store', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -263,7 +264,7 @@ describe('PhraseBox', () => {
   it('updates the store when a gloss input changes', async () => {
     const spy = jest.fn();
     render(
-      <AnalysisStoreProvider onGlossChange={spy}>
+      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
         <PhraseBox {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -278,7 +279,7 @@ describe('PhraseBox', () => {
   it('calls onFocusPhrase with index when a gloss input receives focus', async () => {
     const handleFocus = jest.fn();
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} index={2} />
       </AnalysisStoreProvider>,
     );
@@ -287,5 +288,4 @@ describe('PhraseBox', () => {
 
     expect(handleFocus).toHaveBeenCalledWith(2);
   });
-
 });

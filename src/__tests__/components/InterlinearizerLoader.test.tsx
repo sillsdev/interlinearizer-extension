@@ -49,6 +49,7 @@ jest.mock('../../components/ContinuousView', () => ({
 
 type CapturedInterlinearizerProps = {
   continuousScroll: boolean;
+  analysisLanguage: string | undefined;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -271,6 +272,25 @@ function mockOptimisticSetting(
   return onChange;
 }
 
+/**
+ * Configures `useSetting` to return per-key values for the two settings consumed by
+ * `InterlinearizerLoader`: `platform.interfaceMode` and `platform.interfaceLanguage`.
+ *
+ * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
+ * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
+ */
+function mockSettings(
+  interfaceMode: 'simple' | 'power' = 'simple',
+  interfaceLanguage: string[] = [],
+): void {
+  jest.mocked(useSetting).mockImplementation((key: string) => {
+    if (key === 'platform.interfaceMode') return [interfaceMode, jest.fn(), jest.fn(), false];
+    if (key === 'platform.interfaceLanguage')
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+    throw new Error(`useSetting mock: unexpected key "${key}"`);
+  });
+}
+
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
@@ -282,11 +302,11 @@ describe('InterlinearizerLoader', () => {
         new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
       );
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
-    jest.mocked(useSetting).mockReturnValue(['simple', jest.fn(), jest.fn(), false]);
+    mockSettings();
   });
 
   it('shows nav controls when interface mode is power', () => {
-    jest.mocked(useSetting).mockReturnValue(['power', jest.fn(), jest.fn(), false]);
+    mockSettings('power');
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -427,6 +447,31 @@ describe('InterlinearizerLoader', () => {
 
     expect(capturedInterlinearizerProps?.continuousScroll).toBe(false);
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+  });
+
+  it('passes the first interfaceLanguage tag to Interlinearizer as analysisLanguage', () => {
+    mockSettings('simple', ['fr', 'en']);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('passes "und" to Interlinearizer as analysisLanguage when interfaceLanguage is empty', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('und');
   });
 
   describe('modal interactions', () => {

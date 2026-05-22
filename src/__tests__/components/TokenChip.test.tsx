@@ -36,6 +36,7 @@ jest.mock('../../components/AnalysisStore', () => {
         tokenAnalyses: { id: string; gloss?: GlossMap }[];
         tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
       };
+      analysisLanguage: string;
       onGlossChange?: (tokenRef: string, value: string) => void;
     }>) {
       const byId = new Map((initialAnalysis?.tokenAnalyses ?? []).map((ta) => [ta.id, ta]));
@@ -111,7 +112,7 @@ describe('InertTokenChip', () => {
 describe('TokenChip', () => {
   it('renders the surface text', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -120,7 +121,7 @@ describe('TokenChip', () => {
 
   it('applies a border class to the outer container', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -130,7 +131,7 @@ describe('TokenChip', () => {
 
   it('renders a gloss input', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -153,7 +154,7 @@ describe('TokenChip', () => {
       phraseAnalysisLinks: [],
     };
     render(
-      <AnalysisStoreProvider initialAnalysis={initialAnalysis}>
+      <AnalysisStoreProvider initialAnalysis={initialAnalysis} analysisLanguage="und">
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -162,7 +163,7 @@ describe('TokenChip', () => {
 
   it('shows an empty string in the input when no gloss has been set', () => {
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -172,7 +173,7 @@ describe('TokenChip', () => {
   it('calls the store onGlossChange spy with tokenId and value for each keystroke', async () => {
     const spy = jest.fn();
     render(
-      <AnalysisStoreProvider onGlossChange={spy}>
+      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
         <TokenChip {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
@@ -185,7 +186,7 @@ describe('TokenChip', () => {
   it('calls onFocus when the input is focused', async () => {
     const handleFocus = jest.fn();
     render(
-      <AnalysisStoreProvider>
+      <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} onFocus={handleFocus} />
       </AnalysisStoreProvider>,
     );

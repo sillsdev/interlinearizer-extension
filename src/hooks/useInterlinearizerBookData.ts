@@ -69,7 +69,8 @@ export default function useInterlinearizerBookData({
   useEffect(() => {
     if (!tokenizeError) return;
 
-    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und'; /* v8 ignore next */
+    /* v8 ignore next -- isPlatformError branch for writingSystem is unreachable through the mock setup */
+    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
     logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
       writingSystem: ws,

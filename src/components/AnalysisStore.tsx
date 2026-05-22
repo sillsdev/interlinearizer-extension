@@ -36,16 +36,13 @@ const AnalysisStoreCtx = createContext<AnalysisStoreContextValue | undefined>(un
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
   children: ReactNode;
+  /** BCP 47 analysis-language tag used when reading and writing `TokenAnalysis.gloss` values. */
+  analysisLanguage: string;
   /**
    * The initial `TextAnalysis` to seed the store. Not reactive after mount — the caller is
    * responsible for unmounting and remounting when the active project changes.
    */
   initialAnalysis?: TextAnalysis;
-  /**
-   * BCP 47 analysis-language tag used when reading and writing `TokenAnalysis.gloss` values.
-   * Defaults to `'en'` when omitted.
-   */
-  analysisLanguage?: string;
   /**
    * Called after every store mutation with the updated `TextAnalysis`. Use this to persist changes
    * back to the active project's storage.
@@ -97,7 +94,7 @@ function buildApprovedGlossIndex(
  * @param props - Component props
  * @param props.children - Subtree that should have access to the analysis store
  * @param props.initialAnalysis - Seed `TextAnalysis`; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for reading/writing gloss values; defaults to `'en'`
+ * @param props.analysisLanguage - BCP 47 tag for reading/writing gloss values
  * @param props.onSave - Callback receiving the updated `TextAnalysis` after each mutation
  * @param props.onGlossChange - Spy called after each gloss write; for test observability only
  * @returns A context provider wrapping the subtree
@@ -105,7 +102,7 @@ function buildApprovedGlossIndex(
 export function AnalysisStoreProvider({
   children,
   initialAnalysis,
-  analysisLanguage = 'en',
+  analysisLanguage,
   onSave,
   onGlossChange: spy,
 }: AnalysisStoreProviderProps) {
@@ -151,7 +148,8 @@ export function AnalysisStoreProvider({
       const analysisId = approvedAnalysisIdByTokenRef.current.get(tokenRef);
       if (!analysisId) return '';
       const ta = analysisByIdRef.current.get(analysisId);
-      return ta?.gloss?.[analysisLanguage] ?? ''; /* v8 ignore next */
+      /* v8 ignore next -- optional chaining on ta?.gloss produces a branch V8 cannot reach through the mock */
+      return ta?.gloss?.[analysisLanguage] ?? '';
     },
     [analysisLanguage],
   );

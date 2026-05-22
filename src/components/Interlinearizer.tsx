@@ -18,13 +18,13 @@ type InterlinearizerProps = Readonly<{
   scrRef: SerializedVerseRef;
   /** Called when the user navigates to a different verse. */
   setScrRef: (newScrRef: SerializedVerseRef) => void;
-  /** Initial analysis data seeded into the store; not reactive after mount. */
-  initialAnalysis?: TextAnalysis;
   /**
    * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
-   * active project (supplied by the caller). Falls back to `'en'` when omitted.
+   * active project (supplied by the caller).
    */
-  analysisLanguage?: string;
+  analysisLanguage: string;
+  /** Initial analysis data seeded into the store; not reactive after mount. */
+  initialAnalysis?: TextAnalysis;
   /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
 }>;
@@ -42,7 +42,7 @@ function InterlinearizerInner({
   continuousScroll,
   scrRef,
   setScrRef,
-}: InterlinearizerProps) {
+}: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(undefined);
 
   /** All word tokens in book order — index into this array is the phrase index. */
@@ -220,11 +220,11 @@ function InterlinearizerInner({
               {chapterSegments.map((seg) => (
                 <MemoizedSegmentView
                   key={seg.id}
-                  segment={seg}
-                  isActive={seg.startRef.verse === scrRef.verseNum}
                   displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
                   focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
+                  isActive={seg.startRef.verse === scrRef.verseNum}
                   onSelect={handleSegmentSelect}
+                  segment={seg}
                 />
               ))}
             </div>
@@ -247,7 +247,7 @@ function InterlinearizerInner({
  * @param props.scrRef - Current scripture reference
  * @param props.setScrRef - Callback to update the scripture reference
  * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for gloss read/write; defaults to `'en'`
+ * @param props.analysisLanguage - BCP 47 tag for gloss read/write
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */

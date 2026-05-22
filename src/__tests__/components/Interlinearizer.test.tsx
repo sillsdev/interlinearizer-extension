@@ -171,6 +171,7 @@ function renderInterlinearizer({
       continuousScroll={continuousScroll}
       scrRef={scrRef}
       setScrRef={setScrRef}
+      analysisLanguage="und"
     />,
   );
 }
@@ -304,6 +305,7 @@ describe('Interlinearizer', () => {
         continuousScroll
         scrRef={defaultScrRef}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -349,6 +351,7 @@ describe('Interlinearizer', () => {
         continuousScroll
         scrRef={defaultScrRef}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -380,6 +383,7 @@ describe('Interlinearizer', () => {
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -406,6 +410,7 @@ describe('Interlinearizer', () => {
         continuousScroll={false}
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -438,6 +443,7 @@ describe('Interlinearizer', () => {
         continuousScroll
         scrRef={defaultScrRef}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -450,6 +456,7 @@ describe('Interlinearizer', () => {
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 
@@ -504,6 +511,7 @@ describe('Interlinearizer', () => {
         continuousScroll={false}
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
         setScrRef={() => {}}
+        analysisLanguage="und"
       />,
     );
 

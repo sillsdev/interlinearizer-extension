@@ -15,10 +15,28 @@ import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
+  /**
+   * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
+   * scope.
+   *
+   * @param props - Component props.
+   * @param props.children - Child nodes to render.
+   * @returns The children unchanged.
+   */
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
+  /**
+   * Returns a fixed empty gloss string for any token.
+   *
+   * @returns An empty string.
+   */
   useGloss: () => '',
+  /**
+   * Returns a no-op dispatch function.
+   *
+   * @returns A function that accepts any arguments and does nothing.
+   */
   useGlossDispatch: () => () => {},
 }));
 
@@ -44,15 +62,15 @@ jest.mock('../../components/PhraseBox', () => ({
     onFocusPhrase,
     tokens,
   }: Readonly<{
-    index?: number;
+    index: number | undefined;
     isFocused: boolean;
-    onFocusPhrase?: (index?: number) => void;
-    tokens: Token[];
+    onFocusPhrase: (index?: number) => void;
+    tokens: (Token & { type: 'word' })[];
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
-      onClick={() => onFocusPhrase?.(index)}
+      onClick={() => onFocusPhrase(index)}
       type="button"
     >
       {tokens.map((t) => (

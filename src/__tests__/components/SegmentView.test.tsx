@@ -37,21 +37,17 @@ jest.mock('../../components/PhraseBox', () => ({
     onFocusPhrase,
     tokens,
   }: Readonly<{
-    index?: number;
+    index: number | undefined;
     isFocused: boolean;
-    onFocusPhrase?: (index?: number) => void;
-    tokens: Token[];
+    onFocusPhrase: (index?: number) => void;
+    tokens: (Token & { type: 'word' })[];
   }>) => (
     <span data-focus-state={isFocused ? 'focused' : 'default'}>
       {tokens.map((t) => (
         <span key={t.ref}>
-          {onFocusPhrase ? (
-            <button onClick={() => onFocusPhrase(index)} type="button">
-              {t.surfaceText}
-            </button>
-          ) : (
-            <span>{t.surfaceText}</span>
-          )}
+          <button onClick={() => onFocusPhrase(index)} type="button">
+            {t.surfaceText}
+          </button>
         </span>
       ))}
     </span>

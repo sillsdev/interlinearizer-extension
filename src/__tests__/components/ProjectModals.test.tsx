@@ -101,12 +101,12 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
     onProjectDeleted,
   }: {
     onClose: () => void;
-    onProjectSaved: (u: {
+    onProjectSaved?: (u: {
       name?: string;
       description?: string;
       analysisLanguages: string[];
     }) => void;
-    onProjectDeleted: (id: string) => void;
+    onProjectDeleted?: (id: string) => void;
   }) => (
     <div data-testid="metadata-modal">
       <button type="button" data-testid="metadata-close" onClick={onClose}>
@@ -116,7 +116,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
         type="button"
         data-testid="metadata-save"
         onClick={() => {
-          onProjectSaved({ name: 'Updated', analysisLanguages: ['fr'] });
+          onProjectSaved?.({ name: 'Updated', analysisLanguages: ['fr'] });
           onClose();
         }}
       >
@@ -126,7 +126,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
         type="button"
         data-testid="metadata-delete"
         onClick={() => {
-          onProjectDeleted(MOCK_PROJECT.id);
+          onProjectDeleted?.(MOCK_PROJECT.id);
           onClose();
         }}
       >
@@ -136,7 +136,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
         type="button"
         data-testid="metadata-delete-2"
         onClick={() => {
-          onProjectDeleted(MOCK_PROJECT_2.id);
+          onProjectDeleted?.(MOCK_PROJECT_2.id);
           onClose();
         }}
       >

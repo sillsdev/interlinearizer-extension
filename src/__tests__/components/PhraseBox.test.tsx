@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Token } from 'interlinearizer';
+import type { AssignmentStatus, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
@@ -29,12 +29,17 @@ jest.mock('../../components/AnalysisStore', () => {
     AnalysisStoreProvider({
       children,
       initialAnalysis,
+      analysisLanguage,
       onGlossChange,
     }: Readonly<{
       children: ReactNode;
       initialAnalysis?: {
         tokenAnalyses: { id: string; gloss?: GlossMap }[];
-        tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
+        tokenAnalysisLinks: {
+          analysisId: string;
+          status: AssignmentStatus;
+          token: { tokenRef: string };
+        }[];
       };
       analysisLanguage: string;
       onGlossChange?: (tokenRef: string, value: string) => void;
@@ -43,7 +48,7 @@ jest.mock('../../components/AnalysisStore', () => {
       const seed: GlossMap = (initialAnalysis?.tokenAnalysisLinks ?? [])
         .filter((link) => link.status === 'approved')
         .reduce((acc, link) => {
-          const gloss = byId.get(link.analysisId)?.gloss?.en;
+          const gloss = byId.get(link.analysisId)?.gloss?.[analysisLanguage];
           return gloss === undefined ? acc : { ...acc, [link.token.tokenRef]: gloss };
         }, {});
       const [glosses, setGlosses] = useState<GlossMap>(seed);
@@ -223,19 +228,27 @@ describe('PhraseBox', () => {
       segmentAnalyses: [],
       segmentAnalysisLinks: [],
       tokenAnalyses: [
-        { id: 'ta-1', surfaceText: 'Hello', gloss: { en: 'hello' } },
-        { id: 'ta-2', surfaceText: 'World', gloss: { en: 'world' } },
+        { id: 'ta-1', surfaceText: 'Hello', gloss: { und: 'hello' } },
+        { id: 'ta-2', surfaceText: 'World', gloss: { und: 'world' } },
       ],
       tokenAnalysisLinks: [
         {
           analysisId: 'ta-1',
-          status: 'approved' as const,
+          status: 'approved',
           token: { tokenRef: 'token-1', surfaceText: 'Hello' },
+        } satisfies {
+          analysisId: string;
+          status: AssignmentStatus;
+          token: { tokenRef: string; surfaceText: string };
         },
         {
           analysisId: 'ta-2',
-          status: 'approved' as const,
+          status: 'approved',
           token: { tokenRef: 'token-2', surfaceText: 'World' },
+        } satisfies {
+          analysisId: string;
+          status: AssignmentStatus;
+          token: { tokenRef: string; surfaceText: string };
         },
       ],
       phraseAnalyses: [],

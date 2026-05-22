@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Token } from 'interlinearizer';
+import type { AssignmentStatus, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
@@ -29,12 +29,17 @@ jest.mock('../../components/AnalysisStore', () => {
     AnalysisStoreProvider({
       children,
       initialAnalysis,
+      analysisLanguage,
       onGlossChange,
     }: Readonly<{
       children: ReactNode;
       initialAnalysis?: {
         tokenAnalyses: { id: string; gloss?: GlossMap }[];
-        tokenAnalysisLinks: { analysisId: string; status: string; token: { tokenRef: string } }[];
+        tokenAnalysisLinks: {
+          analysisId: string;
+          status: AssignmentStatus;
+          token: { tokenRef: string };
+        }[];
       };
       analysisLanguage: string;
       onGlossChange?: (tokenRef: string, value: string) => void;
@@ -43,7 +48,7 @@ jest.mock('../../components/AnalysisStore', () => {
       const seed: GlossMap = (initialAnalysis?.tokenAnalysisLinks ?? [])
         .filter((link) => link.status === 'approved')
         .reduce((acc, link) => {
-          const gloss = byId.get(link.analysisId)?.gloss?.en;
+          const gloss = byId.get(link.analysisId)?.gloss?.[analysisLanguage];
           return gloss === undefined ? acc : { ...acc, [link.token.tokenRef]: gloss };
         }, {});
       const [glosses, setGlosses] = useState<GlossMap>(seed);
@@ -140,12 +145,16 @@ describe('TokenChip', () => {
 
   it('shows the current gloss value from the store', () => {
     const initialAnalysis = {
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'hello', gloss: { en: 'in' } }],
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'hello', gloss: { und: 'in' } }],
       tokenAnalysisLinks: [
         {
           analysisId: 'ta-1',
-          status: 'approved' as const,
+          status: 'approved',
           token: { tokenRef: 'GEN 1:1:0', surfaceText: 'hello' },
+        } satisfies {
+          analysisId: string;
+          status: AssignmentStatus;
+          token: { tokenRef: string; surfaceText: string };
         },
       ],
       segmentAnalyses: [],

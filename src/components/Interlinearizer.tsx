@@ -33,7 +33,13 @@ type InterlinearizerProps = Readonly<{
  * Inner component that renders the segment list and continuous view. Separated from
  * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
  *
- * @param props - Same props as {@link Interlinearizer}.
+ * @param props - Component props
+ * @param props.book - Tokenized book whose segments are rendered.
+ * @param props.chapterSegments - Segments belonging to the current chapter, filtered by the caller.
+ * @param props.continuousScroll - When true, the horizontal token strip is shown above the segment
+ *   list.
+ * @param props.scrRef - Current scripture reference used to highlight the active verse.
+ * @param props.setScrRef - Called when the user navigates to a different verse.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({

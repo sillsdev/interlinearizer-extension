@@ -202,8 +202,7 @@ describe('TokenChip', () => {
     );
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
     await userEvent.tab();
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith('GEN 1:1:0', '');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('calls onFocus when the input is focused', async () => {

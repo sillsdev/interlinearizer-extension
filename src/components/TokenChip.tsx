@@ -5,8 +5,9 @@ import { useGloss, useGlossDispatch } from './AnalysisStore';
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
  * text. Gloss value and dispatch are read from {@link AnalysisStoreProvider} context via
- * {@link useGloss} and {@link useGlossDispatch}. The gloss is written to the store only on blur to
- * avoid creating a new analysis entry on every keystroke.
+ * {@link useGloss} and {@link useGlossDispatch}. The gloss is written to the store only on blur, and
+ * only when the draft differs from the committed value, to avoid creating empty analysis entries on
+ * focus/blur cycles with no edits.
  *
  * @param props - Component props
  * @param props.token - The word token to render.
@@ -37,7 +38,9 @@ export function TokenChip({
         style={{ fieldSizing: 'content', minWidth: '5ch' }}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => onGlossChange(token.ref, token.surfaceText, draft)}
+        onBlur={() => {
+          if (draft !== committedGloss) onGlossChange(token.ref, token.surfaceText, draft);
+        }}
         onFocus={onFocus}
         type="text"
       />

@@ -79,10 +79,14 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
+        # Cannot --omit=optional: @swc/core-win32-x64-msvc is an optional dep; webpack needs it to
+        # transpile TypeScript on Windows.
         run: npm ci --ignore-scripts
 
       - name: Install core dependencies
         working-directory: paranext-core
+        # Cannot --omit=optional: lightningcss native binaries are optional deps required by the
+        # webpack build.
         run: npm ci --ignore-scripts
 
       - name: Install Electron binary

@@ -75,11 +75,14 @@ jobs:
 
       - name: Install packages
         run: |
+          # Cannot --omit=optional: lightningcss-linux-x64-gnu is an optional dep; Tailwind needs it
+          # for the CSS build.
           npm ci --ignore-scripts
 
       - name: Install core packages
         working-directory: paranext-core
         run: |
+          # Core is only checked out for its local npm packages; no core webpack build runs here.
           npm ci --ignore-scripts --omit=optional
 
       - name: Package for distribution

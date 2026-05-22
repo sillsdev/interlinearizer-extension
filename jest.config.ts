@@ -108,8 +108,13 @@ const config: Config = {
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */
   modulePathIgnorePatterns: ['<rootDir>/dist'],
 
-  /** Load @testing-library/jest-dom matchers for React component tests. */
-  setupFilesAfterEnv: ['@testing-library/jest-dom'],
+  /**
+   * Load jest-dom matchers for React tests.
+   *
+   * Using the concrete file path avoids occasional package-name resolution failures during Jest's
+   * config validation on Windows CI.
+   */
+  setupFilesAfterEnv: ['<rootDir>/node_modules/@testing-library/jest-dom/dist/index.js'],
 
   /** Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). */
   testEnvironment: 'jsdom',

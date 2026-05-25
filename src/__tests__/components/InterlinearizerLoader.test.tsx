@@ -104,11 +104,13 @@ jest.mock('../../components/ProjectModals', () => ({
     modal,
     setModal,
     activeProject,
+    defaultAnalysisLanguage,
     useWebViewState,
   }: {
     modal: string;
     setModal: (m: string) => void;
     activeProject: MockProject | undefined;
+    defaultAnalysisLanguage?: string;
     useWebViewState: (
       key: string,
       def: MockProject | undefined,
@@ -117,7 +119,11 @@ jest.mock('../../components/ProjectModals', () => ({
   }) {
     const [, setActiveProject] = useWebViewState('activeProject', undefined);
     return (
-      <div data-testid="project-modals" data-modal={modal}>
+      <div
+        data-testid="project-modals"
+        data-modal={modal}
+        data-default-lang={defaultAnalysisLanguage}
+      >
         {modal === 'select' && (
           <div data-testid="select-modal">
             <button
@@ -428,7 +434,34 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('passes the first interfaceLanguage tag to Interlinearizer as analysisLanguage', () => {
+  it('passes the first analysisLanguages tag from the active project as analysisLanguage', () => {
+    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={state}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
+  });
+
+  it('prefers the project analysisLanguage over the platform interface language', () => {
+    mockSettings('simple', ['fr']);
+    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={state}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
+  });
+
+  it('falls back to the first interfaceLanguage tag when no project is active', () => {
     mockSettings('simple', ['fr', 'en']);
     render(
       <InterlinearizerLoader
@@ -441,7 +474,20 @@ describe('InterlinearizerLoader', () => {
     expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
   });
 
-  it('passes "und" to Interlinearizer as analysisLanguage when interfaceLanguage is empty', () => {
+  it('passes the platform language to ProjectModals as defaultAnalysisLanguage', () => {
+    mockSettings('simple', ['de']);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(screen.getByTestId('project-modals')).toHaveAttribute('data-default-lang', 'de');
+  });
+
+  it('falls back to "und" as analysisLanguage when no project is active and interfaceLanguage is empty', () => {
     render(
       <InterlinearizerLoader
         projectId={testProjectId}

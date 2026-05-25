@@ -51,6 +51,12 @@ function InterlinearizerInner({
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(undefined);
 
+  // Clear stale focused token when the book changes so focusedTokenRef never refers to a token
+  // in a different book.
+  useEffect(() => {
+    setFocusedTokenRef(undefined);
+  }, [book]);
+
   /** All word tokens in book order — index into this array is the phrase index. */
   const wordTokens = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens).filter((token) => token.type === 'word'),

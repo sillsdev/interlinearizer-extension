@@ -28,17 +28,21 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
  * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
  * persists across re-renders within the same test without requiring any type assertions.
  *
+ * @param seed - Optional map of key → initial value. When a key is present in `seed` the slot is
+ *   pre-populated with that value instead of using the hook's `defaultValue` argument.
  * @returns A hook function with the signature `(key, defaultValue) => [value, setter, reset]` where
- *   `value` is the current stored value for `key` (initially `defaultValue`), `setter` updates it,
- *   and `reset` removes the slot so the next call re-initializes from `defaultValue`.
+ *   `value` is the current stored value for `key` (initially `defaultValue` or the seeded value),
+ *   `setter` updates it, and `reset` removes the slot so the next call re-initializes from
+ *   `defaultValue`.
  */
-export function makeWebViewState() {
+export function makeWebViewState(seed: Record<string, unknown> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const slots = new Map<string, StateSlot<any>>();
   return <T>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
     let slot: StateSlot<T> | undefined = slots.get(key);
     if (slot === undefined) {
-      let stored = defaultValue;
+      // eslint-disable-next-line no-type-assertion/no-type-assertion
+      let stored: T = Object.hasOwn(seed, key) ? (seed[key] as T) : defaultValue;
       slot = {
         get: () => stored,
         set: (v) => {

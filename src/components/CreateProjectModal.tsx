@@ -25,6 +25,9 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
  *
  * @param props - Component props
  * @param props.projectId - Source project to create the interlinear project for
+ * @param props.defaultAnalysisLanguage - BCP 47 tag pre-populated in the analysis language field;
+ *   caller should pass the platform UI language so the user sees a sensible starting value.
+ *   Defaults to `'und'` when absent.
  * @param props.onClose - Callback invoked when the modal should be dismissed (cancel or submit)
  * @param props.onProjectCreated - Optional callback invoked with the full persisted project after
  *   successful creation, before `onClose` is called.
@@ -33,10 +36,13 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
  */
 export function CreateProjectModal({
   projectId,
+  defaultAnalysisLanguage,
   onClose,
   onProjectCreated,
 }: Readonly<{
   projectId: string;
+  /** BCP 47 tag pre-populated in the analysis language field; defaults to `'und'` when absent. */
+  defaultAnalysisLanguage?: string;
   onClose: () => void;
   onProjectCreated?: (project: InterlinearProjectSummary) => void;
 }>) {
@@ -44,7 +50,7 @@ export function CreateProjectModal({
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [analysisLanguages, setAnalysisLanguages] = useState('und');
+  const [analysisLanguages, setAnalysisLanguages] = useState(defaultAnalysisLanguage ?? 'und');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
 

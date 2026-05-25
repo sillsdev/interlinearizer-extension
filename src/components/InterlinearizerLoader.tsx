@@ -44,9 +44,27 @@ export default function InterlinearizerLoader({
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
   /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
-  const analysisLanguage = isPlatformError(interfaceLanguages)
+  const platformLanguage = isPlatformError(interfaceLanguages)
     ? 'und'
     : interfaceLanguages[0] || 'und';
+
+  /**
+   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
+   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
+   * key; this component reads the value to decide which menu items to show and which analysis
+   * language to use.
+   */
+  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
+    'activeProject',
+    undefined,
+  );
+
+  /**
+   * BCP 47 tag used for reading and writing gloss values. Prefers the active project's first
+   * configured analysis language; falls back to the platform UI language when no project is
+   * active.
+   */
+  const analysisLanguage = activeProject?.analysisLanguages[0] ?? platformLanguage;
 
   const {
     isLoading: isSettingLoading,
@@ -64,16 +82,6 @@ export default function InterlinearizerLoader({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [modal, setModal] = useState<ModalState>('none');
-
-  /**
-   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
-   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
-   * key; this component reads the value to decide which menu items to show.
-   */
-  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
-    'activeProject',
-    undefined,
-  );
 
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
@@ -198,6 +206,7 @@ export default function InterlinearizerLoader({
 
       <ProjectModals
         activeProject={activeProject}
+        defaultAnalysisLanguage={platformLanguage}
         modal={modal}
         projectId={projectId}
         setModal={setModal}

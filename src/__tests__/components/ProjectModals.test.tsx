@@ -69,13 +69,15 @@ jest.mock('../../components/SelectInterlinearProjectModal', () => ({
 jest.mock('../../components/CreateProjectModal', () => ({
   __esModule: true,
   CreateProjectModal: ({
+    defaultAnalysisLanguage,
     onClose,
     onProjectCreated,
   }: {
+    defaultAnalysisLanguage?: string;
     onClose: () => void;
     onProjectCreated: (p: InterlinearProjectSummary) => void;
   }) => (
-    <div data-testid="create-modal">
+    <div data-testid="create-modal" data-default-lang={defaultAnalysisLanguage}>
       <button type="button" data-testid="create-close" onClick={onClose}>
         Close
       </button>
@@ -158,6 +160,7 @@ jest.mock('../../components/ProjectMetadataModal', () => ({
 function renderModals(
   overrides: Partial<{
     activeProject: InterlinearProjectSummary | undefined;
+    defaultAnalysisLanguage: string;
     modal: ModalState;
     setModal: (m: ModalState) => void;
     useWebViewState: ReturnType<typeof makeWebViewState>;
@@ -168,6 +171,7 @@ function renderModals(
   render(
     <ProjectModals
       activeProject={overrides.activeProject}
+      defaultAnalysisLanguage={overrides.defaultAnalysisLanguage}
       modal={overrides.modal ?? 'none'}
       projectId="source-proj"
       setModal={setModal}
@@ -249,6 +253,11 @@ describe('ProjectModals', () => {
   });
 
   describe('create modal', () => {
+    it('forwards defaultAnalysisLanguage to CreateProjectModal', () => {
+      renderModals({ modal: 'create', defaultAnalysisLanguage: 'es' });
+      expect(screen.getByTestId('create-modal')).toHaveAttribute('data-default-lang', 'es');
+    });
+
     it('calls setModal with none when create modal is closed without a select source', async () => {
       const { setModal } = renderModals({ modal: 'create' });
       await userEvent.click(screen.getByTestId('create-close'));

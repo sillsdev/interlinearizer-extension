@@ -29,6 +29,11 @@ const npmFlag = process.argv.includes('--npm');
 const testFlag = process.argv.includes('--test');
 const yalcFlag = process.argv.includes('--yalc');
 
+/**
+ * Print usage information and exit the process.
+ *
+ * @param {number} [code=0] - Exit code to pass to `process.exit`. Default is `0`
+ */
 function printUsageAndExit(code = 0) {
   console.info(
     'Usage: node delete-temp-files.cjs [--all] [--build] [--core] [--ext] [--npm] [--test] [--yalc]',
@@ -94,7 +99,7 @@ if (shouldDeleteCore) {
   /* eslint-enable no-nested-ternary */
 
   if (electronParent) {
-    CORE_PATHS.push(path.join(electronParent, 'Electron Cache'));
+    CORE_PATHS.push(path.join(electronParent, 'Electron'));
   }
 }
 
@@ -118,10 +123,10 @@ const YALC_PATHS = [
 ];
 
 /**
- * Recursively find all subdirectories named `targetDir` inside `corePath`, skipping `skipDirs`.
+ * Recursively find all entries named `target` inside `corePath`, skipping `skipDirs`.
  *
  * @param {string} corePath - Root directory to search
- * @param {string} targetDir - Directory name to collect
+ * @param {string} target - Name of the entry to collect
  * @param {Set<string>} skipDirs - Directory names to skip entirely
  * @returns {string[]} Absolute paths of every matching directory found
  */

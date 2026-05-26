@@ -5,71 +5,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token } from 'interlinearizer';
-import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 
-// ---------------------------------------------------------------------------
-// AnalysisStore mock — reactive useState-based stub so AnalysisStore.tsx stays out of scope
-// ---------------------------------------------------------------------------
-
-jest.mock('../../components/AnalysisStore', () => {
-  const { createContext, useCallback, useContext, useMemo, useState } =
-    jest.requireActual<typeof import('react')>('react');
-
-  type GlossMap = Record<string, string>;
-  type MockCtxValue = {
-    glosses: GlossMap;
-    dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
-  };
-  const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
-
-  return {
-    __esModule: true,
-    AnalysisStoreProvider({
-      children,
-      initialAnalysis,
-      analysisLanguage,
-      onGlossChange,
-    }: Readonly<{
-      children: ReactNode;
-      initialAnalysis?: {
-        tokenAnalyses: { id: string; gloss?: GlossMap }[];
-        tokenAnalysisLinks: {
-          analysisId: string;
-          status: AssignmentStatus;
-          token: { tokenRef: string };
-        }[];
-      };
-      analysisLanguage: string;
-      onGlossChange?: (tokenRef: string, value: string) => void;
-    }>) {
-      const byId = new Map((initialAnalysis?.tokenAnalyses ?? []).map((ta) => [ta.id, ta]));
-      const seed: GlossMap = (initialAnalysis?.tokenAnalysisLinks ?? [])
-        .filter((link) => link.status === 'approved')
-        .reduce((acc, link) => {
-          const gloss = byId.get(link.analysisId)?.gloss?.[analysisLanguage];
-          return gloss === undefined ? acc : { ...acc, [link.token.tokenRef]: gloss };
-        }, {});
-      const [glosses, setGlosses] = useState<GlossMap>(seed);
-      const dispatch = useCallback(
-        (tokenRef: string, _surfaceText: string, value: string) => {
-          setGlosses((prev) => ({ ...prev, [tokenRef]: value }));
-          onGlossChange?.(tokenRef, value);
-        },
-        [onGlossChange],
-      );
-      const ctx = useMemo(() => ({ glosses, dispatch }), [glosses, dispatch]);
-      return <MockCtx value={ctx}>{children}</MockCtx>;
-    },
-    useGloss(tokenId: string) {
-      return useContext(MockCtx).glosses[tokenId] ?? '';
-    },
-    useGlossDispatch() {
-      return useContext(MockCtx).dispatch;
-    },
-  };
-});
+jest.mock('../../components/AnalysisStore');
 
 const WORD_TOKEN = {
   ref: 'GEN 1:1:0',

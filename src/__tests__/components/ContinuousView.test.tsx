@@ -47,12 +47,7 @@ const withAnalysisStore = {
   },
 };
 
-jest.mock('../../components/TokenChip', () => ({
-  __esModule: true,
-  MemoizedInertTokenChip({ token }: Readonly<{ token: Token }>) {
-    return <span>{token.surfaceText}</span>;
-  },
-}));
+jest.mock('../../components/TokenChip');
 
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,

@@ -1,5 +1,5 @@
 import type { Token } from 'interlinearizer';
-import { memo, useEffect, useState } from 'react';
+import { memo, type MouseEventHandler, useEffect, useState } from 'react';
 import { useGloss, useGlossDispatch } from './AnalysisStore';
 
 /**
@@ -27,6 +27,13 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
+  const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
+    // Prevent the browser's built-in focus-and-scroll so only the React-controlled
+    // smooth scrollIntoView fires. We re-focus manually with preventScroll instead.
+    e.preventDefault();
+    e.currentTarget.focus({ preventScroll: true });
+  };
+
   return (
     <label className="tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5">
       <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
@@ -42,6 +49,7 @@ export function TokenChip({
           if (draft !== committedGloss) onGlossChange(token.ref, token.surfaceText, draft);
         }}
         onFocus={onFocus}
+        onMouseDown={handleMouseDown}
         type="text"
       />
     </label>

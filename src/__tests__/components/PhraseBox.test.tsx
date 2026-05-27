@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { AssignmentStatus, Token } from 'interlinearizer';
+import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
 
@@ -178,7 +178,7 @@ describe('PhraseBox', () => {
         } satisfies {
           analysisId: string;
           status: AssignmentStatus;
-          token: { tokenRef: string; surfaceText: string };
+          token: TokenSnapshot;
         },
         {
           analysisId: 'ta-2',
@@ -187,7 +187,7 @@ describe('PhraseBox', () => {
         } satisfies {
           analysisId: string;
           status: AssignmentStatus;
-          token: { tokenRef: string; surfaceText: string };
+          token: TokenSnapshot;
         },
       ],
       phraseAnalyses: [],

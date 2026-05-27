@@ -37,3 +37,7 @@ coverage
 package-lock.json
 
 # #endregion
+
+# Playwright test output
+e2e-tests/playwright-report
+e2e-tests/test-results

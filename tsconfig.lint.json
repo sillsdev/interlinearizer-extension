@@ -3,5 +3,5 @@
   "compilerOptions": {
     "allowJs": true
   },
-  "include": [".*.js", "*.js", "*.ts", "lib", "scripts", "src", "webpack"]
+  "include": [".*.js", "*.js", "*.ts", "e2e-tests", "lib", "scripts", "src", "webpack"]
 }

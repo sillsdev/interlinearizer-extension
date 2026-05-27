@@ -121,8 +121,8 @@ const config: Config = {
    */
   testMatch: ['**/__tests__/**/*.(test|spec).[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
 
-  /** Do not run tests from build output or dependencies. */
-  testPathIgnorePatterns: ['/node_modules/', '/dist/'],
+  /** Do not run tests from build output, e2e tests, or dependencies. */
+  testPathIgnorePatterns: ['/dist/', '/e2e-tests/', '/node_modules/'],
 
   /**
    * Transform TS/TSX with ts-jest (webpack uses SWC; Jest does not run webpack). Explicitly list

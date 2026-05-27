@@ -14,21 +14,23 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest]
     steps:
       - name: Checkout git repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: extension-repo
+          persist-credentials: false
 
       - name: Checkout paranext-core repo to use its sub-packages
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: paranext-core
           repository: paranext/paranext-core
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           cache: 'npm'
           cache-dependency-path: |
@@ -38,7 +40,9 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
-        run: npm ci --ignore-scripts --omit=optional
+        # Cannot --omit=optional: @swc/core-win32-x64-msvc is an optional dep and SWC needs it to
+        # transpile TypeScript in Jest on Windows.
+        run: npm ci --ignore-scripts
 
       - name: Install core dependencies
         working-directory: paranext-core
@@ -47,3 +51,84 @@ jobs:
       - name: Run tests
         working-directory: extension-repo
         run: npm run test:coverage
+
+  e2e-smoke:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout git repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: extension-repo
+          persist-credentials: false
+
+      - name: Checkout paranext-core repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: paranext-core
+          repository: paranext/paranext-core
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          cache: 'npm'
+          cache-dependency-path: |
+            extension-repo/package-lock.json
+            paranext-core/package-lock.json
+          node-version-file: extension-repo/package.json
+
+      - name: Install extension dependencies
+        working-directory: extension-repo
+        # Cannot --omit=optional: @swc/core-win32-x64-msvc is an optional dep; webpack needs it to
+        # transpile TypeScript on Windows.
+        run: npm ci --ignore-scripts
+
+      - name: Install core dependencies
+        working-directory: paranext-core
+        # Cannot --omit=optional: lightningcss native binaries are optional deps required by the
+        # webpack build.
+        run: npm ci --ignore-scripts
+
+      - name: Install Electron binary
+        working-directory: paranext-core
+        run: node node_modules/electron/install.js
+
+      - name: Install system dependencies for Electron
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb libgbm-dev libnss3 libxss1 libasound2t64
+
+      - name: Build extension
+        working-directory: extension-repo
+        run: npm run build
+
+      - name: Build paranext-core dev bundle
+        working-directory: paranext-core
+        run: npm run prestart
+
+      - name: Build paranext-core renderer DLL
+        working-directory: paranext-core
+        run: npm run build:dll
+
+      - name: Run e2e smoke tests (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: extension-repo
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e:smoke
+
+      - name: Run e2e smoke tests (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: extension-repo
+        run: npm run test:e2e:smoke
+
+      - name: Upload Playwright test results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: playwright-results-${{ matrix.os }}
+          retention-days: 7
+          path: |
+            extension-repo/e2e-tests/playwright-report/
+            extension-repo/e2e-tests/test-results/
+          if-no-files-found: warn

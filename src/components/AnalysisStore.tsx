@@ -1,37 +1,38 @@
-/** @file External analysis store with per-token subscriptions via `useSyncExternalStore`. */
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useRef,
-  useSyncExternalStore,
-} from 'react';
+/** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
+import type { TextAnalysis } from 'interlinearizer';
+import { createContext, useCallback, useContext, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
+import {
+  defaultAnalysis,
+  selectAnalysis,
+  selectApprovedGloss,
+  writeGloss,
+} from '../store/analysisSlice';
+import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
+
+// ---------------------------------------------------------------------------
+// Internal callback context — holds refs so useGlossDispatch stays stable
+// ---------------------------------------------------------------------------
 
 /**
- * Shape of the React context value provided by {@link AnalysisStoreProvider}. Consumed by
- * {@link useGloss}, {@link useAnalysis}, and {@link useGlossDispatch}.
+ * Stable ref-container passed through context so {@link useGlossDispatch} can call the latest
+ * `onSave` / `onGlossChange` callbacks without recreating its returned function on every parent
+ * render.
  */
-type AnalysisStoreContextValue = {
-  /** Registers a listener that fires whenever any analysis data changes. Returns an unsubscribe fn. */
-  subscribe: (onStoreChange: () => void) => () => void;
-  /** Returns the current approved gloss string for `tokenRef` in the active language, or `''`. */
-  getGloss: (tokenRef: string) => string;
-  /**
-   * Returns the entire current `TextAnalysis` snapshot. Same reference is returned until the next
-   * mutation so `useSyncExternalStore` detects changes via reference equality.
-   */
-  getAnalysis: () => TextAnalysis;
-  /**
-   * Creates a new approved `TokenAnalysis` + `TokenAnalysisLink` for `tokenRef` with the given
-   * gloss, notifies subscribers, and calls the `onSave` callback with the updated analysis.
-   */
-  onGlossChange: (tokenRef: string, surfaceText: string, value: string) => void;
+type CallbackRefs = {
+  /** Ref to the `onSave` prop of the nearest {@link AnalysisStoreProvider}. */
+  onSaveRef: { current: ((analysis: TextAnalysis) => void) | undefined };
+  /** Ref to the `onGlossChange` spy prop of the nearest {@link AnalysisStoreProvider}. */
+  onGlossChangeRef: { current: ((tokenRef: string, value: string) => void) | undefined };
 };
 
-const AnalysisStoreCtx = createContext<AnalysisStoreContextValue | undefined>(undefined);
+/** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
+const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
@@ -55,39 +56,8 @@ type AnalysisStoreProviderProps = Readonly<{
   onGlossChange?: (tokenRef: string, value: string) => void;
 }>;
 
-/** Empty `TextAnalysis` used as the default when no `initialAnalysis` is provided. */
-const EMPTY_ANALYSIS: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
-
 /**
- * Builds a lookup from `tokenRef` to the approved `TokenAnalysis.id` for that token. Only the last
- * approved link per token is indexed (the data model invariant says at most one should be approved;
- * this is a graceful tie-break when that invariant is violated).
- *
- * @param analysis - The `TextAnalysis` to index.
- * @param analysisById - Pre-built map of `TokenAnalysis.id` → `TokenAnalysis`.
- * @returns A map from `tokenRef` → approved `TokenAnalysis.id`.
- */
-function buildApprovedGlossIndex(
-  analysis: TextAnalysis,
-  analysisById: Map<string, TokenAnalysis>,
-): Map<string, string> {
-  return analysis.tokenAnalysisLinks.reduce((index, link) => {
-    if (link.status === 'approved' && analysisById.has(link.analysisId)) {
-      index.set(link.token.tokenRef, link.analysisId);
-    }
-    return index;
-  }, new Map<string, string>());
-}
-
-/**
- * Provides a `TextAnalysis`-backed store to the subtree. Components inside can read per-token
+ * Provides a Redux-backed `TextAnalysis` store to the subtree. Components inside can read per-token
  * approved gloss values via {@link useGloss} and write new approved analyses via
  * {@link useGlossDispatch}. The full analysis snapshot is accessible via {@link useAnalysis}.
  *
@@ -104,150 +74,32 @@ export function AnalysisStoreProvider({
   initialAnalysis,
   analysisLanguage,
   onSave,
-  onGlossChange: spy,
+  onGlossChange,
 }: AnalysisStoreProviderProps) {
-  const analysisRef = useRef<TextAnalysis>(initialAnalysis ?? EMPTY_ANALYSIS);
-  const listenersRef = useRef(new Set<() => void>());
+  const store = useRef(
+    createAnalysisStore({
+      analysis: { analysis: initialAnalysis ?? defaultAnalysis, analysisLanguage },
+    }),
+  ).current;
 
-  // These two indexes are built lazily via ??= so that passing an initializer expression to useRef
-  // (which evaluates on every render but is only used on the first mount) doesn't rebuild large Maps
-  // across a full-Bible analysis on every re-render.
+  // Use refs so the dispatch callback never needs to re-create when parent re-renders
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
+  const onGlossChangeRef = useRef(onGlossChange);
+  onGlossChangeRef.current = onGlossChange;
 
-  /** Pre-built map of `TokenAnalysis.id` → `TokenAnalysis` for O(1) lookup by id. */
-  const analysisByIdRef = useRef<Map<string, TokenAnalysis> | undefined>(undefined);
-  analysisByIdRef.current ??= new Map(analysisRef.current.tokenAnalyses.map((ta) => [ta.id, ta]));
+  const callbackRefs = useRef<CallbackRefs>({ onSaveRef, onGlossChangeRef }).current;
 
-  /**
-   * Pre-built map of `tokenRef` → approved `TokenAnalysis.id` for the active language. Reset on
-   * every mutation that changes the analysis.
-   */
-  const approvedAnalysisIdByTokenRef = useRef<Map<string, string> | undefined>(undefined);
-  approvedAnalysisIdByTokenRef.current ??= buildApprovedGlossIndex(
-    analysisRef.current,
-    analysisByIdRef.current,
+  return (
+    <ReduxProvider store={store}>
+      <AnalysisCallbackCtx.Provider value={callbackRefs}>{children}</AnalysisCallbackCtx.Provider>
+    </ReduxProvider>
   );
-
-  /**
-   * Registers `listener` to be called whenever any analysis data changes. Returns an unsubscribe
-   * function that removes the listener from the set.
-   *
-   * @param listener - Zero-argument callback invoked after every store mutation.
-   * @returns An unsubscribe function that, when called, removes the listener.
-   */
-  const subscribe = useCallback((listener: () => void) => {
-    listenersRef.current.add(listener);
-    return () => {
-      listenersRef.current.delete(listener);
-    };
-  }, []);
-
-  /**
-   * Returns the approved gloss string for `tokenRef` in the active `analysisLanguage`, or `''` when
-   * no approved analysis exists for the token.
-   *
-   * @param tokenRef - The token reference to look up.
-   * @returns The approved gloss string, or `''` when absent.
-   */
-  const getGloss = useCallback(
-    (tokenRef: string) => {
-      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
-      const analysisId = approvedAnalysisIdByTokenRef.current!.get(tokenRef);
-      if (!analysisId) return '';
-      // eslint-disable-next-line no-type-assertion/no-type-assertion -- same: ??= guarantees non-null
-      const ta = analysisByIdRef.current!.get(analysisId);
-      /* v8 ignore next -- optional chaining on ta?.gloss produces a branch V8 cannot reach through the mock */
-      return ta?.gloss?.[analysisLanguage] ?? '';
-    },
-    [analysisLanguage],
-  );
-
-  /**
-   * Returns the current `TextAnalysis` snapshot. The same reference is returned on every call until
-   * the next mutation so `useSyncExternalStore` can detect changes via reference equality.
-   *
-   * @returns The current `TextAnalysis`; a new object reference is produced on each mutation.
-   */
-  const getAnalysis = useCallback(() => analysisRef.current, []);
-
-  /**
-   * Writes an approved gloss for `tokenRef`. If an approved `TokenAnalysis` already exists for the
-   * token it is updated in-place; otherwise a new `TokenAnalysis` + `TokenAnalysisLink` are
-   * appended. Non-approved analyses for the token are left untouched. Replaces the analysis
-   * snapshot, notifies subscribers, calls `onSave`, and calls the optional `spy` prop for test
-   * observability.
-   *
-   * @param tokenRef - The `Token.ref` of the token being glossed.
-   * @param surfaceText - The surface text of the token (stored as `Analysis.surfaceText`).
-   * @param value - The new gloss string.
-   */
-  const onGlossChange = useCallback(
-    (tokenRef: string, surfaceText: string, value: string) => {
-      // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; TS can't see through the closure boundary
-      const existingApprovedId = approvedAnalysisIdByTokenRef.current!.get(tokenRef);
-
-      let nextAnalyses: TokenAnalysis[];
-      let nextLinks: TokenAnalysisLink[];
-      let nextById: Map<string, TokenAnalysis>;
-
-      if (existingApprovedId === undefined) {
-        const id = crypto.randomUUID();
-        const newAnalysis: TokenAnalysis = {
-          id,
-          surfaceText,
-          gloss: { [analysisLanguage]: value },
-        };
-        const newLink: TokenAnalysisLink = {
-          analysisId: id,
-          status: 'approved',
-          token: { tokenRef, surfaceText },
-        };
-        nextAnalyses = [...analysisRef.current.tokenAnalyses, newAnalysis];
-        nextLinks = [...analysisRef.current.tokenAnalysisLinks, newLink];
-        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null
-        nextById = new Map([...analysisByIdRef.current!, [id, newAnalysis]]);
-      } else {
-        // Update the gloss on the existing approved analysis; preserve all other fields.
-        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null; index only stores ids present in analysisByIdRef
-        const existing = analysisByIdRef.current!.get(existingApprovedId)!;
-        const updated: TokenAnalysis = {
-          ...existing,
-          surfaceText,
-          gloss: { ...existing.gloss, [analysisLanguage]: value },
-        };
-        nextAnalyses = analysisRef.current.tokenAnalyses.map(
-          /* v8 ignore next -- passthrough branch for non-matching tokens is structurally unreachable in tests */
-          (ta) => (ta.id === existingApprovedId ? updated : ta),
-        );
-        // Links are unchanged — the same link already points to existingApprovedId.
-        nextLinks = analysisRef.current.tokenAnalysisLinks;
-        // eslint-disable-next-line no-type-assertion/no-type-assertion -- ??= above guarantees non-null
-        nextById = new Map([...analysisByIdRef.current!, [existingApprovedId, updated]]);
-      }
-
-      const next: TextAnalysis = {
-        ...analysisRef.current,
-        tokenAnalyses: nextAnalyses,
-        tokenAnalysisLinks: nextLinks,
-      };
-
-      analysisRef.current = next;
-      analysisByIdRef.current = nextById;
-      approvedAnalysisIdByTokenRef.current = buildApprovedGlossIndex(next, nextById);
-
-      listenersRef.current.forEach((l) => l());
-      onSave?.(next);
-      spy?.(tokenRef, value);
-    },
-    [analysisLanguage, onSave, spy],
-  );
-
-  const ctx = useMemo(
-    () => ({ subscribe, getGloss, getAnalysis, onGlossChange }),
-    [subscribe, getGloss, getAnalysis, onGlossChange],
-  );
-
-  return <AnalysisStoreCtx value={ctx}>{children}</AnalysisStoreCtx>;
 }
+
+// ---------------------------------------------------------------------------
+// Hooks
+// ---------------------------------------------------------------------------
 
 /**
  * Returns the approved gloss string for the given token in the store's active analysis language,
@@ -258,12 +110,10 @@ export function AnalysisStoreProvider({
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGloss(tokenRef: string): string {
-  const ctx = useContext(AnalysisStoreCtx);
+  const ctx = useContext(AnalysisCallbackCtx);
   if (!ctx) throw new Error('useGloss must be used inside an AnalysisStoreProvider');
 
-  const getSnapshot = useMemo(() => () => ctx.getGloss(tokenRef), [ctx, tokenRef]);
-
-  return useSyncExternalStore(ctx.subscribe, getSnapshot);
+  return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
 }
 
 /**
@@ -274,22 +124,34 @@ export function useGloss(tokenRef: string): string {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysis(): TextAnalysis {
-  const ctx = useContext(AnalysisStoreCtx);
+  const ctx = useContext(AnalysisCallbackCtx);
   if (!ctx) throw new Error('useAnalysis must be used inside an AnalysisStoreProvider');
 
-  return useSyncExternalStore(ctx.subscribe, ctx.getAnalysis);
+  return useSelector((state: AnalysisRootState) => selectAnalysis(state.analysis));
 }
 
 /**
  * Returns the stable `onGlossChange` callback from the nearest {@link AnalysisStoreProvider}. The
- * callback creates a new approved `TokenAnalysis` for the token on each call.
+ * callback creates or updates the approved `TokenAnalysis` for the token on each call, then
+ * synchronously invokes `onSave` and the `onGlossChange` spy.
  *
  * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
-  const ctx = useContext(AnalysisStoreCtx);
-  if (!ctx) throw new Error('useGlossDispatch must be used inside an AnalysisStoreProvider');
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks) throw new Error('useGlossDispatch must be used inside an AnalysisStoreProvider');
 
-  return ctx.onGlossChange;
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (tokenRef: string, surfaceText: string, value: string) => {
+      dispatch(writeGloss(tokenRef, surfaceText, value));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
+      callbacks.onGlossChangeRef.current?.(tokenRef, value);
+    },
+    [dispatch, store, callbacks],
+  );
 }

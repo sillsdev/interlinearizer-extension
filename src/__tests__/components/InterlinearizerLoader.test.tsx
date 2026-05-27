@@ -5,7 +5,7 @@
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, Segment, TextAnalysis } from 'interlinearizer';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
@@ -449,28 +449,32 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('passes the first analysisLanguages tag from the active project as analysisLanguage', () => {
+  it('passes the first analysisLanguages tag from the active project as analysisLanguage', async () => {
     const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={state}
-      />,
+    await act(async () =>
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={state}
+        />,
+      ),
     );
 
     expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
   });
 
-  it('prefers the project analysisLanguage over the platform interface language', () => {
+  it('prefers the project analysisLanguage over the platform interface language', async () => {
     mockSettings('simple', ['fr']);
     const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={state}
-      />,
+    await act(async () =>
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={state}
+        />,
+      ),
     );
 
     expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
@@ -758,36 +762,36 @@ describe('InterlinearizerLoader', () => {
       mockSendCommand.mockResolvedValueOnce(
         JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }),
       );
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-        />,
+      await act(async () =>
+        render(
+          <InterlinearizerLoader
+            projectId={testProjectId}
+            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+          />,
+        ),
       );
 
-      await waitFor(() =>
-        expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(STUB_TEXT_ANALYSIS),
-      );
+      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(STUB_TEXT_ANALYSIS);
       expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getProject', 'proj-1');
     });
 
     it('logs an error and leaves initialAnalysis undefined when getProject rejects', async () => {
       const error = new Error('network error');
       mockSendCommand.mockRejectedValueOnce(error);
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-        />,
+      await act(async () =>
+        render(
+          <InterlinearizerLoader
+            projectId={testProjectId}
+            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+          />,
+        ),
       );
 
-      await waitFor(() =>
-        expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-          'Interlinearizer: failed to load project analysis',
-          error,
-        ),
+      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
+        'Interlinearizer: failed to load project analysis',
+        error,
       );
       expect(capturedInterlinearizerProps?.initialAnalysis).toBeUndefined();
     });
@@ -818,17 +822,17 @@ describe('InterlinearizerLoader', () => {
 
   describe('handleSaveAnalysis', () => {
     it('calls saveAnalysis command with the project id and serialized analysis', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-        />,
+      await act(async () =>
+        render(
+          <InterlinearizerLoader
+            projectId={testProjectId}
+            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+          />,
+        ),
       );
 
-      await waitFor(() => expect(capturedInterlinearizerProps?.onSaveAnalysis).toBeDefined());
       capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
-
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',

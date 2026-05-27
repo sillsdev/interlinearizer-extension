@@ -47,9 +47,11 @@
     "react-dom": ">=19.0.0"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.12.0",
     "@sillsdev/scripture": "^2.0.5",
     "fast-xml-parser": "^5.3.4",
-    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils"
+    "platform-bible-utils": "file:../paranext-core/lib/platform-bible-utils",
+    "react-redux": "^9.3.0"
   },
   "devDependencies": {
     "@dreamsicle.io/stylelint-config-tailwindcss": "^1.2.2",

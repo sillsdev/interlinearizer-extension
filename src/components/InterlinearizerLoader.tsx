@@ -1,10 +1,11 @@
 import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -66,6 +67,91 @@ export default function InterlinearizerLoader({
    */
   const analysisLanguage = activeProject?.analysisLanguages[0] ?? platformLanguage;
 
+  /**
+   * `TextAnalysis` loaded from storage for the currently active interlinear project, or `undefined`
+   * when no project is active or the load is still in flight. Passed to {@link Interlinearizer} as
+   * `initialAnalysis` to seed the Redux store on mount.
+   */
+  const [activeProjectAnalysis, setActiveProjectAnalysis] = useState<TextAnalysis | undefined>(
+    undefined,
+  );
+
+  /**
+   * `true` while the `interlinearizer.getProject` command is in flight for the current
+   * `activeProject`. Blocks rendering {@link Interlinearizer} until the analysis is ready so the
+   * store is never seeded with stale data from a previous project.
+   */
+  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activeProject) {
+      setActiveProjectAnalysis(undefined);
+      setIsAnalysisLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsAnalysisLoading(true);
+
+    /**
+     * Fetches the stored `TextAnalysis` for the active project and updates component state.
+     *
+     * Writes `activeProjectAnalysis` on success (or `undefined` when the project record is absent)
+     * and clears `isAnalysisLoading` in the `finally` block. Both state updates are suppressed when
+     * `cancelled` is `true` (i.e. the effect was cleaned up before the fetch completed).
+     *
+     * @returns Promise that resolves to void once state has been updated or the update has been
+     *   suppressed due to cancellation.
+     * @throws Never — errors are caught internally and logged; `activeProjectAnalysis` is set to
+     *   `undefined` on failure.
+     */
+    const loadAnalysis = async () => {
+      try {
+        const json = await papi.commands.sendCommand(
+          'interlinearizer.getProject',
+          activeProject.id,
+        );
+        if (cancelled) return;
+        if (json) {
+          const project: InterlinearProject = JSON.parse(json);
+          setActiveProjectAnalysis(project.analysis);
+        } else {
+          setActiveProjectAnalysis(undefined);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          logger.error('Interlinearizer: failed to load project analysis', e);
+          setActiveProjectAnalysis(undefined);
+        }
+      } finally {
+        if (!cancelled) setIsAnalysisLoading(false);
+      }
+    };
+
+    loadAnalysis().catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /**
+   * Persists an updated analysis to the backend after each gloss write. No-ops when no project is
+   * active. Errors are logged but not surfaced — the backend already sends an error notification.
+   *
+   * @param analysis - The updated `TextAnalysis` to persist.
+   * @returns Void — the underlying command is fire-and-forget; errors are caught and logged.
+   */
+  const handleSaveAnalysis = useCallback(
+    (analysis: TextAnalysis) => {
+      if (!activeProject) return;
+      papi.commands
+        .sendCommand('interlinearizer.saveAnalysis', activeProject.id, JSON.stringify(analysis))
+        .catch((e) => logger.error('Interlinearizer: failed to save analysis', e));
+    },
+    [activeProject],
+  );
+
   const {
     isLoading: isSettingLoading,
     onChange: handleContinuousScrollChange,
@@ -77,7 +163,7 @@ export default function InterlinearizerLoader({
   );
 
   const hasError = !!bookError || !!tokenizeError;
-  const showLoading = isLoading || isSettingLoading;
+  const showLoading = isLoading || isSettingLoading || isAnalysisLoading;
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
@@ -195,12 +281,15 @@ export default function InterlinearizerLoader({
         </div>
       ) : (
         <Interlinearizer
+          key={activeProject?.id ?? ''}
           book={book}
           chapterSegments={chapterSegments}
           continuousScroll={continuousScroll}
           scrRef={scrRef}
           setScrRef={setScrRef}
           analysisLanguage={analysisLanguage}
+          initialAnalysis={activeProjectAnalysis}
+          onSaveAnalysis={handleSaveAnalysis}
         />
       )}
 

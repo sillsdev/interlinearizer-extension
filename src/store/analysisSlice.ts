@@ -89,17 +89,19 @@ const analysisSlice = createSlice({
             existingAnalysis.surfaceText = surfaceText;
             if (!existingAnalysis.gloss) existingAnalysis.gloss = {};
             existingAnalysis.gloss[lang] = value;
+            return;
           }
-        } else {
-          const newAnalysis: TokenAnalysis = { id, surfaceText, gloss: { [lang]: value } };
-          const newLink: TokenAnalysisLink = {
-            analysisId: id,
-            status: 'approved',
-            token: { tokenRef, surfaceText },
-          };
-          state.analysis.tokenAnalyses.push(newAnalysis);
-          state.analysis.tokenAnalysisLinks.push(newLink);
         }
+
+        // No approved link exists, or the link's analysis is missing — create a new one.
+        const newAnalysis: TokenAnalysis = { id, surfaceText, gloss: { [lang]: value } };
+        const newLink: TokenAnalysisLink = {
+          analysisId: id,
+          status: 'approved',
+          token: { tokenRef, surfaceText },
+        };
+        state.analysis.tokenAnalyses.push(newAnalysis);
+        state.analysis.tokenAnalysisLinks.push(newLink);
       },
     },
   },

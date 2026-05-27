@@ -10,6 +10,7 @@ import type {
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
+import { isTextAnalysis } from './types/typeGuards';
 
 /**
  * WebView type identifier for the Interlinearizer. Used when registering the provider and when
@@ -264,6 +265,9 @@ async function saveInterlinearAnalysis(
 ): Promise<void> {
   try {
     const analysis = JSON.parse(analysisJson);
+    if (!isTextAnalysis(analysis)) {
+      throw new TypeError('saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis');
+    }
     await projectStorage.updateAnalysis(executionToken, interlinearProjectId, analysis);
   } catch (e) {
     logger.error('Interlinearizer: failed to save analysis', e);

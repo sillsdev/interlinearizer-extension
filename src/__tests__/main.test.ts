@@ -1057,6 +1057,36 @@ describe('main', () => {
         expect.objectContaining({ severity: 'error' }),
       );
     });
+
+    it('logs the error, sends an error notification, and rethrows when analysisJson is not valid JSON', async () => {
+      const handler = await getSaveAnalysisHandler();
+
+      await expect(handler('proj-id', 'not-json')).rejects.toThrow(SyntaxError);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save analysis',
+        expect.any(SyntaxError),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+    });
+
+    it('logs the error, sends an error notification, and rethrows when analysisJson does not conform to TextAnalysis', async () => {
+      const handler = await getSaveAnalysisHandler();
+
+      await expect(handler('proj-id', JSON.stringify({ segmentAnalyses: [] }))).rejects.toThrow(
+        TypeError,
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save analysis',
+        expect.any(TypeError),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+    });
   });
 
   describe('deactivate', () => {

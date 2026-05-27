@@ -37,7 +37,6 @@ const config: Config = {
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
     '!src/types/**',
-    '!src/utils/interlinear-project-summary.ts',
     '!src/components/component-types.ts',
   ],
 

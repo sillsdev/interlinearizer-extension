@@ -117,6 +117,7 @@ declare module 'papi-shared-types' {
      *
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param analysisJson JSON-stringified `TextAnalysis` to persist.
+     * @returns Promise that resolves to void once the analysis has been written to storage.
      * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
      *   before rethrowing so callers do not need to send a second notification.
      */

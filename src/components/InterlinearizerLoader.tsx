@@ -93,6 +93,18 @@ export default function InterlinearizerLoader({
     let cancelled = false;
     setIsAnalysisLoading(true);
 
+    /**
+     * Fetches the stored `TextAnalysis` for the active project and updates component state.
+     *
+     * Writes `activeProjectAnalysis` on success (or `undefined` when the project record is absent)
+     * and clears `isAnalysisLoading` in the `finally` block. Both state updates are suppressed when
+     * `cancelled` is `true` (i.e. the effect was cleaned up before the fetch completed).
+     *
+     * @returns Promise that resolves to void once state has been updated or the update has been
+     *   suppressed due to cancellation.
+     * @throws Never — errors are caught internally and logged; `activeProjectAnalysis` is set to
+     *   `undefined` on failure.
+     */
     const loadAnalysis = async () => {
       try {
         const json = await papi.commands.sendCommand(
@@ -128,6 +140,7 @@ export default function InterlinearizerLoader({
    * active. Errors are logged but not surfaced — the backend already sends an error notification.
    *
    * @param analysis - The updated `TextAnalysis` to persist.
+   * @returns Void — the underlying command is fire-and-forget; errors are caught and logged.
    */
   const handleSaveAnalysis = useCallback(
     (analysis: TextAnalysis) => {

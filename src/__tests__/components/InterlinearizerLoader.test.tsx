@@ -851,11 +851,9 @@ describe('InterlinearizerLoader', () => {
 
       capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
 
-      expect(mockSendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.saveAnalysis',
-        expect.anything(),
-        expect.anything(),
-      );
+      expect(
+        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveAnalysis'),
+      ).toHaveLength(0);
     });
   });
 });

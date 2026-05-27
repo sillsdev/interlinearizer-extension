@@ -17,7 +17,7 @@ import * as projectStorage from './services/projectStorage';
  */
 const mainWebViewType = 'interlinearizer.mainWebView';
 
-/** Options passed to `openWebView` when opening the Interlinearizer. */
+/** Options passed to `papi.webViews.openWebView` when opening the Interlinearizer. */
 export interface InterlinearizerOpenOptions extends OpenWebViewOptions {
   /** Paratext project ID to load in the Interlinearizer WebView. */
   projectId?: string;

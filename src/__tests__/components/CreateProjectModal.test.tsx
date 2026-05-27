@@ -54,6 +54,29 @@ describe('CreateProjectModal', () => {
     );
   });
 
+  it('pre-populates the language field from defaultAnalysisLanguage and submits it', async () => {
+    render(
+      <CreateProjectModal
+        projectId={testProjectId}
+        defaultAnalysisLanguage="fr"
+        onClose={() => {}}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /^create$/i }));
+
+    await waitFor(() =>
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        testProjectId,
+        ['fr'],
+        undefined,
+        undefined,
+        undefined,
+      ),
+    );
+  });
+
   it('sends the createProject command with entered name and description when submitted', async () => {
     render(<CreateProjectModal projectId={testProjectId} onClose={() => {}} />);
 

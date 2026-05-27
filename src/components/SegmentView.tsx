@@ -1,7 +1,8 @@
 import type { ScriptureRef, Segment } from 'interlinearizer';
-import { memo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
+import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
-import MemoizedTokenChip from './TokenChip';
+import { MemoizedInertTokenChip } from './TokenChip';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -13,57 +14,125 @@ import MemoizedTokenChip from './TokenChip';
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
+/** Props for {@link SegmentView}. */
+type SegmentViewProps = Readonly<{
+  /** Controls whether tokens are rendered as chips or as raw baseline text. */
+  displayMode: SegmentDisplayMode;
+  /** Token ref of the word token that should appear focused; `undefined` clears focus. */
+  focusedTokenRef: string | undefined;
+  /** Whether this segment corresponds to the currently active verse. */
+  isActive: boolean;
+  /**
+   * Called when the segment or one of its word tokens is selected. In `baseline-text` mode the
+   * whole segment is clickable and `tokenRef` is omitted; in `token-chip` mode only word tokens
+   * trigger this and `tokenRef` is always provided.
+   */
+  onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  /** The segment to render. */
+  segment: Segment;
+}>;
+
 /**
  * Renders a single segment as either inline token chips or plain baseline text.
  *
  * @param props - Component props
- * @param props.displayMode - Controls how segment content is rendered; defaults to `'token-chip'`
+ * @param props.displayMode - Controls how segment content is rendered
+ * @param props.focusedTokenRef - When set, the matching word token's `PhraseBox` is rendered in the
+ *   focused state; only meaningful in `token-chip` mode.
  * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onClick - Callback invoked when the segment button is clicked
+ * @param props.onSelect - Required callback invoked when the segment or one of its word tokens is
+ *   interacted with. In `baseline-text` mode the whole segment is clickable and `tokenRef` is
+ *   omitted. In `token-chip` mode only word tokens trigger this callback and `tokenRef` is always
+ *   provided.
  * @param props.segment - The segment to render
- * @returns A button containing the segment's verse label and content
+ * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
+ *   segment content
  */
 export function SegmentView({
-  displayMode = 'token-chip',
+  displayMode,
+  focusedTokenRef,
   isActive,
-  onClick,
+  onSelect,
   segment,
-}: Readonly<{
-  displayMode?: SegmentDisplayMode;
-  isActive?: boolean;
-  onClick?: (ref: ScriptureRef) => void;
-  segment: Segment;
-}>) {
+}: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
+  const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
-  return (
-    <button
-      aria-current={isActive ? 'true' : undefined}
-      className={
-        isActive
-          ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2 tw:text-left'
-          : 'tw:w-full tw:rounded tw:p-2 tw:text-left tw:transition-colors tw:hover:bg-muted/30'
-      }
-      onClick={() => onClick?.({ book, chapter, verse })}
-      type="button"
-    >
-      <span className="tw:mb-2 tw:block tw:section-label">{verse}</span>
-      {displayMode === 'baseline-text' ? (
+  /**
+   * Forwards a token-chip click (identified by its index in `segment.tokens`) to the parent as a
+   * scripture reference + token id. Stable across renders so `MemoizedPhraseBox` can memoize.
+   *
+   * @param index - Index of the clicked token within `segment.tokens`.
+   */
+  const handleTokenClick = useCallback(
+    (index?: number) => {
+      if (index !== undefined) onSelect(ref, segment.tokens[index].ref);
+    },
+    [onSelect, ref, segment.tokens],
+  );
+
+  /**
+   * Stable single-token arrays for word tokens keyed by position, so `MemoizedPhraseBox` receives
+   * the same reference across renders.
+   */
+  const tokenArrays = useMemo(
+    () => segment.tokens.map((token) => (isWordToken(token) ? [token] : [])),
+    [segment.tokens],
+  );
+
+  const sharedClassName = isActive
+    ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
+    : 'tw:w-full tw:rounded tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+
+  const verseLabel = (
+    <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
+      {verse}
+    </span>
+  );
+
+  if (displayMode === 'baseline-text') {
+    return (
+      <button
+        aria-current={isActive ? 'true' : undefined}
+        className={`${sharedClassName} tw:text-left`}
+        data-testid="segment-container"
+        onClick={() => onSelect?.(ref)}
+        type="button"
+      >
+        {verseLabel}
         <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
-      ) : (
-        <span className="tw:flex tw:flex-wrap tw:gap-1">
-          {segment.tokens.map((token) =>
-            token.type === 'word' ? (
-              <MemoizedPhraseBox key={token.ref} tokens={[token]} />
-            ) : (
-              <MemoizedTokenChip key={token.ref} token={token} />
-            ),
-          )}
-        </span>
-      )}
-    </button>
+      </button>
+    );
+  }
+
+  // Intentional: token-chip mode renders a div, not a button. In this mode individual word tokens
+  // (via PhraseBox gloss inputs) are the interactive elements, so the outer container does not need
+  // to be focusable. Keyboard access goes through the gloss inputs inside PhraseBox, not here.
+  return (
+    <div
+      aria-current={isActive ? 'true' : undefined}
+      className={sharedClassName}
+      data-testid="segment-container"
+    >
+      {verseLabel}
+      <span className="tw:flex tw:flex-wrap tw:gap-1">
+        {segment.tokens.map((token, index) => {
+          if (!isWordToken(token)) return <MemoizedInertTokenChip key={token.ref} token={token} />;
+          return (
+            <MemoizedPhraseBox
+              key={token.ref}
+              index={index}
+              isFocused={focusedTokenRef === token.ref}
+              onFocusPhrase={handleTokenClick}
+              tokens={tokenArrays[index]}
+            />
+          );
+        })}
+      </span>
+    </div>
   );
 }
 
+/** Memoized version of {@link SegmentView}; use in render-stable segment lists. */
 const MemoizedSegmentView = memo(SegmentView);
 export default MemoizedSegmentView;

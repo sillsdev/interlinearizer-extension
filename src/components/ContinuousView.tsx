@@ -1,15 +1,55 @@
 import type { Book, ScriptureRef, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isWordToken } from './component-types';
 import MemoizedPhraseBox from './PhraseBox';
-import MemoizedTokenChip from './TokenChip';
+import { MemoizedInertTokenChip } from './TokenChip';
 
-/** CSS easing for the strip opacity fade-in/out animation. */
+/**
+ * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
+ *
+ * @param index - The raw index to clamp.
+ * @param len - Length of the target array.
+ * @returns A safe index guaranteed to be within bounds.
+ */
+function clampIndex(index: number, len: number): number {
+  if (len === 0) return 0;
+  return Math.max(0, Math.min(index, len - 1));
+}
+
+/**
+ * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
+ * at both ends of the transition.
+ */
 const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+
 /**
  * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
  * pending-jump effect.
  */
 const STRIP_FADE_MS = 500;
+
+/**
+ * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
+ * realistic viewport can ever render all tokens simultaneously.
+ */
+const PHRASE_WINDOW_HALF = 100;
+
+/** Props for {@link ContinuousView}. */
+type ContinuousViewProps = Readonly<{
+  /**
+   * When set, the strip jumps to this phrase index. Used to carry over a focused token when
+   * switching from segment view.
+   */
+  activePhraseIndex: number | undefined;
+  /** Verse coordinate; when it changes the strip scrolls to the first token of that segment. */
+  activeVerse: ScriptureRef;
+  /** The full tokenized book whose tokens are streamed into the strip. */
+  book: Book;
+  /** Called whenever the focused phrase index changes so the parent can mirror the strip position. */
+  onFocusPhraseIndexChange: (index: number) => void;
+  /** Called when arrow navigation moves the focus into a new verse. */
+  onVerseChange: (verse: ScriptureRef) => void;
+}>;
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
@@ -26,21 +66,23 @@ const STRIP_FADE_MS = 500;
  * navigation crosses a verse boundary `onVerseChange` is called with the new verse coordinate.
  *
  * @param props - Component props
- * @param props.activeVerse - Optional verse coordinate; when it changes the strip scrolls to the
- *   first token of the matching segment
+ * @param props.activePhraseIndex - When set, the strip jumps to this phrase index; used to carry
+ *   over a focused token when switching from segment view
+ * @param props.activeVerse - Verse coordinate; when it changes the strip scrolls to the first token
+ *   of the matching segment
  * @param props.book - The full tokenized book whose tokens should be streamed
+ * @param props.onFocusPhraseIndexChange - Called whenever the focused phrase index changes so the
+ *   parent can mirror the strip position
  * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
  * @returns A horizontal token strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
+  activePhraseIndex,
   activeVerse,
   book,
+  onFocusPhraseIndexChange,
   onVerseChange,
-}: Readonly<{
-  activeVerse?: ScriptureRef;
-  book: Book;
-  onVerseChange?: (verse: ScriptureRef) => void;
-}>) {
+}: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
 
   const allTokens: Token[] = useMemo(
@@ -69,6 +111,20 @@ export default function ContinuousView({
         .filter((entry) => entry.token.type === 'word'),
     [allTokens],
   );
+
+  /**
+   * Stable single-token arrays indexed by position in `allTokens`, so `MemoizedPhraseBox` receives
+   * the same array reference across renders and shallow memo comparison holds.
+   */
+  const tokenArrays = useMemo(
+    () => allTokens.map((token) => (isWordToken(token) ? [token] : [])),
+    [allTokens],
+  );
+
+  /**
+   * Ref mirror of `phraseEntries`. Read inside effects and callbacks that need the latest list
+   * without declaring it as a dependency (which would cause spurious re-runs).
+   */
   const phraseEntriesRef = useRef(phraseEntries);
   phraseEntriesRef.current = phraseEntries;
 
@@ -125,9 +181,10 @@ export default function ContinuousView({
   );
 
   // Lazy-initialize to the target verse so on first render the strip is already positioned
-  // correctly before the initial-load fade-in fires.
+  // correctly before the initial-load fade-in fires. Prefer activePhraseIndex (e.g. a focused token
+  // carried over from segment view) so there is no flash to the verse-start position on mount.
   const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
-    if (!activeVerse) return 0;
+    if (activePhraseIndex !== undefined) return clampIndex(activePhraseIndex, phraseEntries.length);
 
     const seg = book.segments.find(
       (s) =>
@@ -146,14 +203,28 @@ export default function ContinuousView({
     return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
   });
 
+  /**
+   * The phrase index of the most recent external jump (prop-driven). Read inside the
+   * `focusPhraseIndex` effect to suppress the echo-back verse-change notification that would
+   * otherwise fire when the strip repositions itself in response to an incoming prop.
+   */
   const jumpTargetRef = useRef<number | undefined>(undefined);
   const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
     number | undefined
   >();
   const [isVisible, setIsVisible] = useState(false);
 
+  /** True while an externally triggered jump (prop change) is in progress; suppresses smooth scroll. */
   const isExternalJumpInProgressRef = useRef(false);
+  /** True until the first scroll-into-view completes; suppresses smooth scroll on initial mount. */
   const isInitialLoadInProgressRef = useRef(true);
+
+  /**
+   * True when the lazy `useState` initializer already positioned the strip at `activePhraseIndex`,
+   * so the first run of the `activePhraseIndex` effect should be skipped to avoid a redundant
+   * jump.
+   */
+  const activePhraseIndexAppliedRef = useRef(activePhraseIndex !== undefined);
 
   /**
    * Records the verse most recently reported via `onVerseChange`. When the parent echoes that verse
@@ -163,10 +234,33 @@ export default function ContinuousView({
    */
   const lastInternalVerseRef = useRef<ScriptureRef | undefined>(activeVerse);
 
+  // These two effects (activePhraseIndex and activeVerse) could theoretically race: if both props
+  // changed in one render, the activeVerse effect would overwrite the activePhraseIndex jump,
+  // scrolling to verse-start rather than the exact token. This is safe because Interlinearizer
+  // only passes activePhraseIndex when continuousScroll is false (segment mode), where ContinuousView
+  // is unmounted. When continuousScroll is true, SegmentView renders in baseline-text mode and
+  // onSelect is called without a tokenId, so activePhraseIndex is never set from within continuous
+  // mode. Any future change that adds token-level clicks in continuous mode must revisit this.
+
+  // Jump to a specific phrase index when activePhraseIndex changes.
+  useEffect(() => {
+    if (activePhraseIndex === undefined) return;
+
+    // Skip the first run when the lazy initializer already positioned the strip here.
+    if (activePhraseIndexAppliedRef.current) {
+      activePhraseIndexAppliedRef.current = false;
+      return;
+    }
+
+    const clamped = clampIndex(activePhraseIndex, phraseEntriesRef.current.length);
+    jumpTargetRef.current = clamped;
+    isExternalJumpInProgressRef.current = true;
+    setIsVisible(false);
+    setPendingExternalJumpPhraseIndex(clamped);
+  }, [activePhraseIndex]);
+
   // Jump to the first token of the matching segment when the active verse changes.
   useEffect(() => {
-    if (!activeVerse) return;
-
     // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
     const lastInternal = lastInternalVerseRef.current;
     if (
@@ -202,13 +296,17 @@ export default function ContinuousView({
   }, [pendingExternalJumpPhraseIndex]);
 
   // Fire onVerseChange when arrow navigation crosses into a new verse.
-  // Initialise to the segment that owns the initial focusPhraseIndex so the initial render does not trigger the callback.
+  // Initialize to the segment that owns the initial focusPhraseIndex so the initial render does not trigger the callback.
   const firstVisibleSegId =
     phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined;
   const initialFocusedPhrase = phraseEntries[focusPhraseIndex];
   const initialSegId = initialFocusedPhrase
     ? tokenSegment[initialFocusedPhrase.tokenIndex]?.id
     : firstVisibleSegId;
+  /**
+   * Segment id of the last verse reported via `onVerseChange`. Compared against the current focused
+   * segment to avoid firing the callback redundantly when focus stays within the same verse.
+   */
   const lastReportedSegIdRef = useRef<string | undefined>(initialSegId);
 
   // Keep the reported-segment baseline in sync when switching to a different book.
@@ -238,18 +336,46 @@ export default function ContinuousView({
       verse: seg.startRef.verse,
     };
     lastInternalVerseRef.current = verse;
-    onVerseChange?.(verse);
+    onVerseChange(verse);
     // onVerseChange and tokenSegmentRef are intentionally excluded — callers must stabilize the
     // reference (useCallback) and tokenSegmentRef is a ref so changes are always current.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusPhraseIndex]);
 
-  // One ref slot per phrase so we can call scrollIntoView on the focused one.
+  /** Ref mirror of `onFocusPhraseIndexChange` so the notification effect never needs it as a dep. */
+  const onFocusPhraseIndexChangeRef = useRef(onFocusPhraseIndexChange);
+  onFocusPhraseIndexChangeRef.current = onFocusPhraseIndexChange;
+  // Intentionally fires on mount with the lazy-initialized focusPhraseIndex. This notifies the
+  // parent of the initial strip position so the segment list scrolls the active verse into view
+  // on first render. The coupling is load-bearing — do not add an early-return guard here.
+  useEffect(() => {
+    onFocusPhraseIndexChangeRef.current(focusPhraseIndex);
+  }, [focusPhraseIndex]);
+
+  /** DOM ref array indexed by phrase index; used to scroll the focused chip into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
   const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
+
+  /** The inclusive phrase-index bounds of the rendered window. */
+  const windowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
+  const windowEnd = Math.min(phraseEntries.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
+
+  /** Token index of the first token in the rendered window. */
+  const windowStartTokenIndex =
+    phraseEntries.length > 0 && windowStart > 0 ? phraseEntries[windowStart].tokenIndex : 0;
+
+  // windowEndTokenIndex stops at the last word token in the window, so punctuation tokens that
+  // trail it (before the next word) are excluded from the rendered slice. Punctuation before the
+  // window's first word IS included (windowStartTokenIndex points at the word itself). This
+  // asymmetry is invisible with PHRASE_WINDOW_HALF=100 but would matter if the window shrinks.
+  /** Token index one past the last token in the rendered window. */
+  const windowEndTokenIndex =
+    phraseEntries.length > 0 && windowEnd < phraseEntries.length - 1
+      ? phraseEntries[windowEnd].tokenIndex + 1
+      : allTokens.length;
 
   /**
    * Advances the focused phrase by `delta` positions, clamping to valid bounds.
@@ -307,9 +433,10 @@ export default function ContinuousView({
 
     return () => {
       cancelAnimationFrame(rafId);
-      // If the RAF was cancelled (another focus change fired before the first frame),
-      // still reveal the strip so it is not left invisible.
-      setIsVisible(true);
+      // Only reveal the strip on cleanup if no new external jump is about to take over.
+      // When a second click arrives before this RAF fires, isExternalJumpInProgressRef is already
+      // true for the new jump — revealing here would make the strip visible before it has scrolled.
+      if (!isExternalJumpInProgressRef.current) setIsVisible(true);
     };
   }, [focusPhraseIndex]);
 
@@ -346,14 +473,17 @@ export default function ContinuousView({
 
         {/* Inner flex row */}
         <div
-          className={`tw:no-scrollbar tw:flex tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
+          data-testid="token-strip"
+          className={`tw:no-scrollbar tw:flex tw:w-max tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
           style={{
             transitionDuration: `${STRIP_FADE_MS}ms`,
             transitionTimingFunction: STRIP_FADE_EASING,
           }}
         >
-          {allTokens.map((token, tokenIndex) => {
-            if (token.type !== 'word') return <MemoizedTokenChip key={token.ref} token={token} />;
+          {allTokens.slice(windowStartTokenIndex, windowEndTokenIndex).map((token, i) => {
+            const tokenIndex = windowStartTokenIndex + i;
+            if (!isWordToken(token))
+              return <MemoizedInertTokenChip key={token.ref} token={token} />;
 
             const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
             const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
@@ -367,8 +497,8 @@ export default function ContinuousView({
                 <MemoizedPhraseBox
                   index={phraseIndex}
                   isFocused={isFocusedPhrase}
-                  onClick={handlePhraseSelect}
-                  tokens={[token]}
+                  onFocusPhrase={handlePhraseSelect}
+                  tokens={tokenArrays[tokenIndex]}
                 />
               </span>
             );

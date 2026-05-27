@@ -5,7 +5,7 @@ import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 
-/** Which modal is currently visible. Only one can be open at a time. */
+/** Which project-related modal is currently open; `'none'` means no modal is visible. */
 export type ModalState = 'none' | 'select' | 'create' | 'metadata';
 
 /**
@@ -16,6 +16,8 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata';
  * @param props - Component props
  * @param props.activeProject - The currently active interlinear project, read from WebView state by
  *   the parent.
+ * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
+ *   initial value of the analysis language field; should be the platform UI language.
  * @param props.modal - Which modal is currently open
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.setModal - Setter for which modal is open
@@ -25,12 +27,14 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata';
  */
 export default function ProjectModals({
   activeProject,
+  defaultAnalysisLanguage,
   modal,
   projectId,
   setModal,
   useWebViewState,
 }: Readonly<{
   activeProject: InterlinearProjectSummary | undefined;
+  defaultAnalysisLanguage?: string;
   modal: ModalState;
   projectId: string;
   setModal: (modal: ModalState) => void;
@@ -182,6 +186,7 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           projectId={projectId}
+          defaultAnalysisLanguage={defaultAnalysisLanguage}
           onClose={handleCreateClose}
           onProjectCreated={handleProjectCreated}
         />

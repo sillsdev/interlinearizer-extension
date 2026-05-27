@@ -6,11 +6,11 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book } from 'interlinearizer';
+import type { Book, Segment } from 'interlinearizer';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
-import { makeWebViewState } from '../test-helpers';
+import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -48,7 +48,12 @@ jest.mock('../../components/ContinuousView', () => ({
 }));
 
 type CapturedInterlinearizerProps = {
+  book: Book;
+  chapterSegments: Segment[];
   continuousScroll: boolean;
+  scrRef: SerializedVerseRef;
+  setScrRef: (newScrRef: SerializedVerseRef) => void;
+  analysisLanguage: string;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -99,11 +104,13 @@ jest.mock('../../components/ProjectModals', () => ({
     modal,
     setModal,
     activeProject,
+    defaultAnalysisLanguage,
     useWebViewState,
   }: {
     modal: string;
     setModal: (m: string) => void;
     activeProject: MockProject | undefined;
+    defaultAnalysisLanguage?: string;
     useWebViewState: (
       key: string,
       def: MockProject | undefined,
@@ -112,7 +119,11 @@ jest.mock('../../components/ProjectModals', () => ({
   }) {
     const [, setActiveProject] = useWebViewState('activeProject', undefined);
     return (
-      <div data-testid="project-modals" data-modal={modal}>
+      <div
+        data-testid="project-modals"
+        data-modal={modal}
+        data-default-lang={defaultAnalysisLanguage}
+      >
         {modal === 'select' && (
           <div data-testid="select-modal">
             <button
@@ -194,33 +205,6 @@ jest.mock('../../components/ProjectModals', () => ({
   },
 }));
 
-const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
-
-/** Pre-built Book with one GEN 1:1 segment. */
-const GEN_1_1_BOOK: Book = {
-  id: 'GEN',
-  bookRef: 'GEN',
-  textVersion: 'v1',
-  segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
-  ],
-};
-
 /** Returns a `useWebViewScrollGroupScrRef` hook stub fixed to GEN 1:1. */
 function makeScrollGroupHook() {
   return (): [
@@ -271,6 +255,27 @@ function mockOptimisticSetting(
   return onChange;
 }
 
+/**
+ * Configures `useSetting` to return per-key values for the two settings consumed by
+ * `InterlinearizerLoader`: `platform.interfaceMode` and `platform.interfaceLanguage`.
+ *
+ * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
+ * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.
+ * @throws {Error} When `useSetting` is called with any key other than `platform.interfaceMode` or
+ *   `platform.interfaceLanguage` (message: `useSetting mock: unexpected key "<key>"`).
+ */
+function mockSettings(
+  interfaceMode: 'simple' | 'power' = 'simple',
+  interfaceLanguage: string[] = [],
+): void {
+  jest.mocked(useSetting).mockImplementation((key: string) => {
+    if (key === 'platform.interfaceMode') return [interfaceMode, jest.fn(), jest.fn(), false];
+    if (key === 'platform.interfaceLanguage')
+      return [interfaceLanguage, jest.fn(), jest.fn(), false];
+    throw new Error(`useSetting mock: unexpected key "${key}"`);
+  });
+}
+
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
@@ -282,11 +287,11 @@ describe('InterlinearizerLoader', () => {
         new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
       );
     jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
-    jest.mocked(useSetting).mockReturnValue(['simple', jest.fn(), jest.fn(), false]);
+    mockSettings();
   });
 
   it('shows nav controls when interface mode is power', () => {
-    jest.mocked(useSetting).mockReturnValue(['power', jest.fn(), jest.fn(), false]);
+    mockSettings('power');
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -427,6 +432,71 @@ describe('InterlinearizerLoader', () => {
 
     expect(capturedInterlinearizerProps?.continuousScroll).toBe(false);
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+  });
+
+  it('passes the first analysisLanguages tag from the active project as analysisLanguage', () => {
+    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={state}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
+  });
+
+  it('prefers the project analysisLanguage over the platform interface language', () => {
+    mockSettings('simple', ['fr']);
+    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={state}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
+  });
+
+  it('falls back to the first interfaceLanguage tag when no project is active', () => {
+    mockSettings('simple', ['fr', 'en']);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('passes the platform language to ProjectModals as defaultAnalysisLanguage', () => {
+    mockSettings('simple', ['de']);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(screen.getByTestId('project-modals')).toHaveAttribute('data-default-lang', 'de');
+  });
+
+  it('falls back to "und" as analysisLanguage when no project is active and interfaceLanguage is empty', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('und');
   });
 
   describe('modal interactions', () => {

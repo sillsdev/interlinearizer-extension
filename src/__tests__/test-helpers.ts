@@ -1,9 +1,11 @@
 /**
  * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- *   ExecutionActivationContext that satisfies @papi/core types, and a `useWebViewState` hook stub
- *   for component tests.
+ *   ExecutionActivationContext that satisfies @papi/core types, a `useWebViewState` hook stub for
+ *   component tests, and shared Book fixtures.
  */
+import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
+import type { Book } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -26,17 +28,21 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
  * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
  * persists across re-renders within the same test without requiring any type assertions.
  *
+ * @param seed - Optional map of key → initial value. When a key is present in `seed` the slot is
+ *   pre-populated with that value instead of using the hook's `defaultValue` argument.
  * @returns A hook function with the signature `(key, defaultValue) => [value, setter, reset]` where
- *   `value` is the current stored value for `key` (initially `defaultValue`), `setter` updates it,
- *   and `reset` removes the slot so the next call re-initializes from `defaultValue`.
+ *   `value` is the current stored value for `key` (initially `defaultValue` or the seeded value),
+ *   `setter` updates it, and `reset` removes the slot so the next call re-initializes from
+ *   `defaultValue`.
  */
-export function makeWebViewState() {
+export function makeWebViewState(seed: Record<string, unknown> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const slots = new Map<string, StateSlot<any>>();
   return <T>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => {
     let slot: StateSlot<T> | undefined = slots.get(key);
     if (slot === undefined) {
-      let stored = defaultValue;
+      // eslint-disable-next-line no-type-assertion/no-type-assertion
+      let stored: T = Object.hasOwn(seed, key) ? (seed[key] as T) : defaultValue;
       slot = {
         get: () => stored,
         set: (v) => {
@@ -55,6 +61,34 @@ export function makeWebViewState() {
     ];
   };
 }
+
+/** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
+export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+
+/** Pre-built Book with one GEN 1:1 segment and a single word token. */
+export const GEN_1_1_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+      ],
+    },
+  ],
+};
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */
 const mockElevatedPrivileges = {

@@ -13,6 +13,7 @@ import Interlinearizer from './Interlinearizer';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
 
+/** Localized string keys used by {@link InterlinearizerLoader}. */
 const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
 
 /**
@@ -24,10 +25,10 @@ const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
  *   reference and its setter
- * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
- *   saved state (survives tab restores)
- * @returns The interlinearizer layout: tab toolbar, loading/error states or main view, and any
- *   currently open project modal.
+ * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
+ *   by the PAPI host
+ * @returns The toolbar and either an error/loading state or the fully rendered
+ *   {@link Interlinearizer}
  */
 export default function InterlinearizerLoader({
   projectId,
@@ -41,6 +42,29 @@ export default function InterlinearizerLoader({
   const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
+  const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
+  /* v8 ignore next 3 -- useSetting never returns PlatformError for this key in practice */
+  const platformLanguage = isPlatformError(interfaceLanguages)
+    ? 'und'
+    : interfaceLanguages[0] || 'und';
+
+  /**
+   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
+   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
+   * key; this component reads the value to decide which menu items to show and which analysis
+   * language to use.
+   */
+  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
+    'activeProject',
+    undefined,
+  );
+
+  /**
+   * BCP 47 tag used for reading and writing gloss values. Prefers the active project's first
+   * configured analysis language; falls back to the platform UI language when no project is
+   * active.
+   */
+  const analysisLanguage = activeProject?.analysisLanguages[0] ?? platformLanguage;
 
   const {
     isLoading: isSettingLoading,
@@ -58,16 +82,6 @@ export default function InterlinearizerLoader({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [modal, setModal] = useState<ModalState>('none');
-
-  /**
-   * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
-   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
-   * key; this component reads the value to decide which menu items to show.
-   */
-  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
-    'activeProject',
-    undefined,
-  );
 
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
@@ -182,15 +196,17 @@ export default function InterlinearizerLoader({
       ) : (
         <Interlinearizer
           book={book}
-          bookSegments={chapterSegments}
+          chapterSegments={chapterSegments}
           continuousScroll={continuousScroll}
           scrRef={scrRef}
           setScrRef={setScrRef}
+          analysisLanguage={analysisLanguage}
         />
       )}
 
       <ProjectModals
         activeProject={activeProject}
+        defaultAnalysisLanguage={platformLanguage}
         modal={modal}
         projectId={projectId}
         setModal={setModal}

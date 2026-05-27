@@ -181,7 +181,10 @@ function handleParaNode(node: UsjNode, state: TraversalState): void {
   if (node.content) traverse(node.content, state);
 }
 
-/** Dispatch table mapping USJ node `type` strings to their traversal handlers. */
+/**
+ * Dispatch table mapping USJ node `type` strings to their traversal handler functions. Node types
+ * absent from this table (e.g. `char`) are handled generically by recursing into their `content`.
+ */
 const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalState) => void>> = {
   book: handleBookNode,
   chapter: handleChapterNode,

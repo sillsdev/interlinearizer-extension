@@ -38,6 +38,7 @@ const config: Config = {
     '!src/**/*.spec.{ts,tsx}',
     '!src/types/**',
     '!src/utils/interlinear-project-summary.ts',
+    '!src/components/component-types.ts',
   ],
 
   /** Directory for coverage output. */

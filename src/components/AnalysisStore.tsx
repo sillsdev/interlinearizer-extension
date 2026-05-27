@@ -1,6 +1,6 @@
 /** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
 import type { TextAnalysis } from 'interlinearizer';
-import { createContext, useCallback, useContext, useRef } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
@@ -88,7 +88,7 @@ export function AnalysisStoreProvider({
   const onGlossChangeRef = useRef(onGlossChange);
   onGlossChangeRef.current = onGlossChange;
 
-  const callbackRefs = useRef<CallbackRefs>({ onSaveRef, onGlossChangeRef }).current;
+  const callbackRefs = useMemo(() => ({ onSaveRef, onGlossChangeRef }), []);
 
   return (
     <ReduxProvider store={store}>

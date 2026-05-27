@@ -101,6 +101,31 @@ declare module 'papi-shared-types' {
     'interlinearizer.openProjectInfoModal': () => Promise<void>;
 
     /**
+     * Returns the interlinearizer project with the given UUID as a JSON string, including its full
+     * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
+     * analysis.
+     *
+     * @param interlinearProjectId UUID of the interlinearizer project to fetch.
+     * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
+     * @throws If storage fails (logged before rethrowing).
+     */
+    'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
+
+    /**
+     * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView
+     * after each gloss write so that analysis changes survive tab restores and project switches.
+     *
+     * @param interlinearProjectId UUID of the interlinearizer project to update.
+     * @param analysisJson JSON-stringified `TextAnalysis` to persist.
+     * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
+     *   before rethrowing so callers do not need to send a second notification.
+     */
+    'interlinearizer.saveAnalysis': (
+      interlinearProjectId: string,
+      analysisJson: string,
+    ) => Promise<void>;
+
+    /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a
      * JSON string, or `undefined` if no project with the given ID exists.
      *

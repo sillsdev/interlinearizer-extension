@@ -298,6 +298,8 @@ describe('main', () => {
         expect.arrayContaining([
           'interlinearizer.openForWebView',
           'interlinearizer.createProject',
+          'interlinearizer.getProject',
+          'interlinearizer.saveAnalysis',
           'interlinearizer.getProjectsForSource',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
@@ -312,12 +314,12 @@ describe('main', () => {
       );
     });
 
-    it('adds all twelve registrations to the activation context', async () => {
+    it('adds all registrations to the activation context', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(12);
+      expect(context.registrations.unsubscribers.size).toBe(14);
     });
 
     it('logs activation start and finish', async () => {
@@ -903,6 +905,152 @@ describe('main', () => {
       await expect(handler('proj-id', 'My Name', 'My Desc', ['en'])).rejects.toThrow('disk full');
       expect(__mockLogger.error).toHaveBeenCalledWith(
         'Interlinearizer: failed to update project metadata',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+    });
+  });
+
+  describe('interlinearizer.getProject command', () => {
+    const mockGetProject = jest.mocked(projectStorage.getProject);
+    const emptyAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    const stubProject = {
+      id: 'proj-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src-project',
+      analysisLanguages: ['en'],
+      analysis: emptyAnalysis,
+    };
+
+    /**
+     * Activates the extension and returns a typed wrapper around the `interlinearizer.getProject`
+     * command handler.
+     *
+     * @returns A function that invokes the handler with a project UUID and resolves to the
+     *   JSON-stringified project or `undefined`.
+     * @throws If the handler was not registered during `activate()`.
+     */
+    async function getGetProjectHandler(): Promise<(id: string) => Promise<string | undefined>> {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.getProject');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProject');
+      return async (id: string): Promise<string | undefined> => {
+        const result: unknown = await rawHandler(id);
+        return typeof result === 'string' ? result : undefined;
+      };
+    }
+
+    it('registers the interlinearizer.getProject command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.getProject',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('returns the JSON-stringified project when it exists', async () => {
+      mockGetProject.mockResolvedValue(stubProject);
+      const handler = await getGetProjectHandler();
+
+      const result = await handler('proj-id');
+
+      expect(mockGetProject).toHaveBeenCalledWith(expect.anything(), 'proj-id');
+      expect(result).toBe(JSON.stringify(stubProject));
+    });
+
+    it('returns undefined when the project does not exist', async () => {
+      mockGetProject.mockResolvedValue(undefined);
+      const handler = await getGetProjectHandler();
+
+      const result = await handler('missing-id');
+
+      expect(result).toBeUndefined();
+    });
+
+    it('logs the error and rethrows when storage throws', async () => {
+      mockGetProject.mockRejectedValue(new Error('disk full'));
+      const handler = await getGetProjectHandler();
+
+      await expect(handler('proj-id')).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to get project',
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe('interlinearizer.saveAnalysis command', () => {
+    const mockUpdateAnalysis = jest.mocked(projectStorage.updateAnalysis);
+    const stubAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    /**
+     * Activates the extension and returns a typed wrapper around the `interlinearizer.saveAnalysis`
+     * command handler.
+     *
+     * @returns A function that invokes the handler with a project UUID and analysis JSON.
+     * @throws If the handler was not registered during `activate()`.
+     */
+    async function getSaveAnalysisHandler(): Promise<
+      (id: string, analysisJson: string) => Promise<void>
+    > {
+      const context = createTestActivationContext();
+      await activate(context);
+      const rawHandler = findRegisteredHandler('interlinearizer.saveAnalysis');
+      if (!rawHandler) throw new Error('Handler not found for interlinearizer.saveAnalysis');
+      return async (id: string, analysisJson: string): Promise<void> => {
+        await rawHandler(id, analysisJson);
+      };
+    }
+
+    it('registers the interlinearizer.saveAnalysis command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveAnalysis',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('delegates to projectStorage.updateAnalysis with the parsed analysis', async () => {
+      mockUpdateAnalysis.mockResolvedValue(undefined);
+      const handler = await getSaveAnalysisHandler();
+
+      await handler('proj-id', JSON.stringify(stubAnalysis));
+
+      expect(mockUpdateAnalysis).toHaveBeenCalledWith(expect.anything(), 'proj-id', stubAnalysis);
+    });
+
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
+      mockUpdateAnalysis.mockRejectedValue(new Error('disk full'));
+      const handler = await getSaveAnalysisHandler();
+
+      await expect(handler('proj-id', JSON.stringify(stubAnalysis))).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save analysis',
         expect.any(Error),
       );
       expect(__mockNotificationsSend).toHaveBeenCalledWith(

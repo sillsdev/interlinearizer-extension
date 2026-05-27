@@ -2,14 +2,15 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import papi, { logger } from '@papi/frontend';
 import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, Segment } from 'interlinearizer';
+import type { Book, Segment, TextAnalysis } from 'interlinearizer';
+import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
-import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -54,6 +55,8 @@ type CapturedInterlinearizerProps = {
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
   analysisLanguage: string;
+  initialAnalysis?: TextAnalysis;
+  onSaveAnalysis?: (analysis: TextAnalysis) => void;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -75,7 +78,18 @@ type MockProject = {
   description?: string;
 };
 
+const mockSendCommand = jest.mocked(papi.commands.sendCommand);
+
 const testProjectId = 'test-project-id';
+
+const STUB_TEXT_ANALYSIS: TextAnalysis = {
+  segmentAnalyses: [],
+  segmentAnalysisLinks: [],
+  tokenAnalyses: [],
+  tokenAnalysisLinks: [],
+  phraseAnalyses: [],
+  phraseAnalysisLinks: [],
+};
 
 const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
@@ -281,6 +295,7 @@ describe('InterlinearizerLoader', () => {
     capturedInterlinearizerProps = undefined;
     mockBookData();
     mockOptimisticSetting();
+    mockSendCommand.mockResolvedValue(undefined);
     jest
       .mocked(useData)
       .mockReturnValue(
@@ -735,6 +750,108 @@ describe('InterlinearizerLoader', () => {
       );
 
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
+    });
+  });
+
+  describe('project analysis loading', () => {
+    it('passes the stored analysis as initialAnalysis when getProject returns valid JSON', async () => {
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }),
+      );
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(STUB_TEXT_ANALYSIS),
+      );
+      expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getProject', 'proj-1');
+    });
+
+    it('logs an error and leaves initialAnalysis undefined when getProject rejects', async () => {
+      const error = new Error('network error');
+      mockSendCommand.mockRejectedValueOnce(error);
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
+          'Interlinearizer: failed to load project analysis',
+          error,
+        ),
+      );
+      expect(capturedInterlinearizerProps?.initialAnalysis).toBeUndefined();
+    });
+
+    it('skips state updates when the component unmounts before getProject resolves', async () => {
+      let resolveGetProject: ((value: string | undefined) => void) | undefined;
+      mockSendCommand.mockReturnValueOnce(
+        new Promise<string | undefined>((resolve) => {
+          resolveGetProject = resolve;
+        }),
+      );
+
+      const { unmount } = render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+        />,
+      );
+
+      unmount();
+      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }));
+      await Promise.resolve();
+
+      expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleSaveAnalysis', () => {
+    it('calls saveAnalysis command with the project id and serialized analysis', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
+        />,
+      );
+
+      await waitFor(() => expect(capturedInterlinearizerProps?.onSaveAnalysis).toBeDefined());
+      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveAnalysis',
+        'proj-1',
+        JSON.stringify(STUB_TEXT_ANALYSIS),
+      );
+    });
+
+    it('does not call saveAnalysis when no active project is set', () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+
+      expect(mockSendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.saveAnalysis',
+        expect.anything(),
+        expect.anything(),
+      );
     });
   });
 });

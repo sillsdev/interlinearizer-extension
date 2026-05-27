@@ -227,6 +227,57 @@ async function updateProjectMetadata(
 }
 
 /**
+ * Returns the interlinearizer project with the given ID as a JSON string, including its full
+ * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
+ * analysis into the interlinearizer.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
+ * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
+ *   before rethrowing.
+ */
+async function getInterlinearProject(interlinearProjectId: string): Promise<string | undefined> {
+  try {
+    const project = await projectStorage.getProject(executionToken, interlinearProjectId);
+    return project ? JSON.stringify(project) : undefined;
+  } catch (e) {
+    logger.error('Interlinearizer: failed to get project', e);
+    throw e;
+  }
+}
+
+/**
+ * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView via
+ * `papi.commands.sendCommand` after each gloss write so that analysis changes survive tab restores
+ * and project switches.
+ *
+ * @param interlinearProjectId - UUID of the interlinearizer project to update.
+ * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
+ * @returns A promise that resolves when the analysis has been written to storage.
+ * @throws If JSON parsing or storage fails. The error is logged and an error notification is sent
+ *   before rethrowing so the frontend `catch` block can suppress it without a second notification.
+ */
+async function saveInterlinearAnalysis(
+  interlinearProjectId: string,
+  analysisJson: string,
+): Promise<void> {
+  try {
+    const analysis = JSON.parse(analysisJson);
+    await projectStorage.updateAnalysis(executionToken, interlinearProjectId, analysis);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to save analysis', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_save_analysis_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    throw e;
+  }
+}
+
+/**
  * Returns all interlinearizer projects for the given source project as a JSON string. The WebView
  * deserializes this to populate its project picker and to decide whether to prompt "create new" or
  * "select existing" when the user opens the project menu.
@@ -344,6 +395,54 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             'JSON-stringified InterlinearProject for the new project; rejects (throws) on storage failure',
           schema: { type: 'string' },
         },
+      },
+    },
+  );
+
+  const getProjectCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getProject',
+    getInterlinearProject,
+    {
+      method: {
+        summary: 'Return the interlinearizer project with the given UUID as a JSON string',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project to fetch',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified InterlinearProject, or undefined if not found',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const saveAnalysisCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveAnalysis',
+    saveInterlinearAnalysis,
+    {
+      method: {
+        summary: 'Persist an updated TextAnalysis for an interlinearizer project',
+        params: [
+          {
+            name: 'interlinearProjectId',
+            required: true,
+            summary: 'UUID of the interlinearizer project to update',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'analysisJson',
+            required: true,
+            summary: 'JSON-stringified TextAnalysis to persist',
+            schema: { type: 'string' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
     },
   );
@@ -496,6 +595,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
     createProjectCommandRegistration,
+    getProjectCommandRegistration,
+    saveAnalysisCommandRegistration,
     getProjectsForSourceCommandRegistration,
     updateProjectMetadataCommandRegistration,
     deleteProjectCommandRegistration,

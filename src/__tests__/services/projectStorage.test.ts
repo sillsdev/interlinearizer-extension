@@ -9,6 +9,7 @@ import {
   getProjectsForSource,
   listProjects,
   resetQueuesForTesting,
+  updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { createTestActivationContext } from '../test-helpers';
@@ -439,6 +440,59 @@ describe('projectStorage', () => {
       await deleteProject(token, 'nonexistent-id');
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
+    });
+  });
+
+  describe('updateAnalysis', () => {
+    const storedProject = {
+      id: 'proj-id',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      sourceProjectId: 'src',
+      analysisLanguages: ['en'],
+      analysis: EMPTY_ANALYSIS,
+    };
+    const newAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
+      tokenAnalysisLinks: [],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+
+    it('returns the updated project with the new analysis', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result).toMatchObject({ id: 'proj-id', analysis: newAnalysis });
+    });
+
+    it('writes the updated project to storage', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'project:proj-id',
+        JSON.stringify({ ...storedProject, analysis: newAnalysis }),
+      );
+    });
+
+    it('returns undefined when the project does not exist', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const result = await updateAnalysis(token, 'missing', newAnalysis);
+
+      expect(result).toBeUndefined();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('propagates non-ENOENT errors from storage', async () => {
+      __mockReadUserData.mockRejectedValue(new Error('disk full'));
+
+      await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow('disk full');
     });
   });
 

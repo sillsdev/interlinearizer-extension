@@ -233,6 +233,31 @@ export async function getProjectsForSource(
 }
 
 /**
+ * Replaces the analysis of an existing interlinearizer project.
+ *
+ * @param token - The execution token for storage access.
+ * @param id - The interlinearizer project UUID to update.
+ * @param analysis - The new `TextAnalysis` to persist.
+ * @returns The updated project record, or `undefined` if no project with the given ID exists.
+ * @throws {SyntaxError} If the project's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
+ *   reason.
+ */
+export async function updateAnalysis(
+  token: ExecutionToken,
+  id: string,
+  analysis: TextAnalysis,
+): Promise<InterlinearProject | undefined> {
+  return enqueueProjectOp(id, async () => {
+    const project = await getProject(token, id);
+    if (!project) return undefined;
+    const updated: InterlinearProject = { ...project, analysis };
+    await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
+    return updated;
+  });
+}
+
+/**
  * Updates the metadata of an existing interlinearizer project.
  *
  * @param token - The execution token for storage access.

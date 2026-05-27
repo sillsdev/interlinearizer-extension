@@ -76,11 +76,14 @@ export function AnalysisStoreProvider({
   onSave,
   onGlossChange,
 }: AnalysisStoreProviderProps) {
-  const store = useRef(
-    createAnalysisStore({
+  // Lazy initialization: useRef(createStore()) would create and discard a store on every render
+  const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
+  if (!storeRef.current) {
+    storeRef.current = createAnalysisStore({
       analysis: { analysis: initialAnalysis ?? defaultAnalysis, analysisLanguage },
-    }),
-  ).current;
+    });
+  }
+  const store = storeRef.current;
 
   // Use refs so the dispatch callback never needs to re-create when parent re-renders
   const onSaveRef = useRef(onSave);

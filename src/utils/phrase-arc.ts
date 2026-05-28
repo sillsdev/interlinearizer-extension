@@ -83,6 +83,71 @@ export function buildEffectiveLinkMap(
   return effective;
 }
 
+/** Stroke styling for a single phrase arc; consumed directly as SVG `<path>` attributes. */
+export type ArcStrokeProps = {
+  /** SVG `stroke` value — a CSS color expression. */
+  stroke: string;
+  /** SVG `stroke-opacity`. */
+  strokeOpacity: number;
+  /** SVG `stroke-width` in user units. */
+  strokeWidth: number;
+};
+
+/**
+ * Computes the stroke styling for a phrase arc so SegmentView and ContinuousView render lines
+ * identically across all phrase-interaction modes. The rules:
+ *
+ * - `confirm-unlink`: the target phrase's arc is drawn in the destructive color; all other arcs are
+ *   dimmed.
+ * - `create`: the draft phrase's arc is white (matches the white ring on its phrase box); other arcs
+ *   are dimmed and hover is suppressed.
+ * - `edit`: the edited phrase's arc is white (matches its phrase-box ring); other arcs are dimmed and
+ *   hover is suppressed.
+ * - `view`: the hovered or focused phrase's arc is white; other arcs are drawn in the same border
+ *   color as the unhighlighted phrase-box border so the line and box read as a single shape.
+ *
+ * @param phraseMode - Current phrase-interaction mode.
+ * @param phraseId - The phraseId of the arc being styled.
+ * @param hoveredPhraseId - The phraseId currently hovered, if any.
+ * @param focusedPhraseId - The phraseId of the focused token's phrase, if any.
+ * @returns Stroke styling props for the arc.
+ */
+export function getArcStrokeProps(
+  phraseMode: PhraseMode,
+  phraseId: string,
+  hoveredPhraseId: string | undefined,
+  focusedPhraseId: string | undefined,
+): ArcStrokeProps {
+  // Matches the unhighlighted phrase-box border (`tw:border-border/40`) so a line and the boxes it
+  // joins share the same visual weight. strokeWidth 2 keeps a 1px SVG line from disappearing once
+  // alpha-composited at 40% opacity. Uses `--border` (not `--color-border`) because Tailwind 4's
+  // `@theme inline` inlines the latter at build time and only the former is a runtime variable.
+  const dimmed: ArcStrokeProps = {
+    stroke: 'var(--border)',
+    strokeOpacity: 0.4,
+    strokeWidth: 2,
+  };
+  const destructive: ArcStrokeProps = {
+    stroke: 'var(--destructive)',
+    strokeOpacity: 1,
+    strokeWidth: 2,
+  };
+  const highlighted: ArcStrokeProps = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
+
+  if (phraseMode.kind === 'confirm-unlink') {
+    return phraseId === phraseMode.phraseId ? destructive : dimmed;
+  }
+  if (phraseMode.kind === 'create') {
+    return phraseId === DRAFT_PHRASE_ID ? highlighted : dimmed;
+  }
+  if (phraseMode.kind === 'edit') {
+    return phraseId === phraseMode.phraseId ? highlighted : dimmed;
+  }
+  // view mode
+  const isHighlighted = phraseId === hoveredPhraseId || phraseId === focusedPhraseId;
+  return isHighlighted ? highlighted : dimmed;
+}
+
 /**
  * Assigns nesting levels to phrases using a greedy interval-graph colouring algorithm. Phrases
  * whose x-spans overlap are assigned different levels so their arcs don't visually cross.

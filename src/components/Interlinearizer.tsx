@@ -4,9 +4,9 @@ import { LocateFixed } from 'lucide-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseLinkMap } from './AnalysisStore';
-import { computeAllArcPaths, type ArcPath } from '../utils/phrase-arc';
+import { computeAllArcPaths, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
 import ContinuousView from './ContinuousView';
-import type { PhraseMode } from './phrase-mode';
+import { type PhraseMode } from './phrase-mode';
 import MemoizedSegmentView from './SegmentView';
 import UnlinkPhraseConfirm from './UnlinkPhraseConfirm';
 
@@ -300,15 +300,20 @@ function InterlinearizerInner({
             style={{ height: '100%', overflow: 'visible', width: '100%' }}
           >
             {arcPaths.map(({ phraseId, d }) => {
-              const isHighlighted = hoveredPhraseId === phraseId || focusedPhraseId === phraseId;
+              const { stroke, strokeOpacity, strokeWidth } = getArcStrokeProps(
+                phraseMode,
+                phraseId,
+                hoveredPhraseId,
+                focusedPhraseId,
+              );
               return (
                 <path
                   key={`${phraseId}-${d}`}
                   d={d}
                   fill="none"
-                  stroke="currentColor"
-                  strokeOpacity={isHighlighted ? 1 : 0.5}
-                  strokeWidth={isHighlighted ? 2 : 1.5}
+                  strokeOpacity={strokeOpacity}
+                  strokeWidth={strokeWidth}
+                  style={{ stroke }}
                 />
               );
             })}

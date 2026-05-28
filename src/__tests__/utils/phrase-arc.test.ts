@@ -6,8 +6,10 @@ import {
   buildSameRowArcPath,
   buildCrossRowArcPath,
   computeAllArcPaths,
+  getArcStrokeProps,
   routeAroundBoxes,
 } from '../../utils/phrase-arc';
+import { DRAFT_PHRASE_ID } from '../../components/phrase-mode';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -326,5 +328,77 @@ describe('routeAroundBoxes', () => {
     const withObs = routeAroundBoxes(a, b, [a, b, above], ARC_BASE_STEM);
     const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
     expect(withObs).toBe(withoutObs);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getArcStrokeProps
+// ---------------------------------------------------------------------------
+
+describe('getArcStrokeProps', () => {
+  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.4, strokeWidth: 2 };
+  const whiteHighlight = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
+  const destructiveHighlight = {
+    stroke: 'var(--destructive)',
+    strokeOpacity: 1,
+    strokeWidth: 2,
+  };
+
+  it('dims non-highlighted arcs in view mode', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, undefined)).toEqual(dimmed);
+  });
+
+  it('whitens the hovered phrase arc in view mode', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', undefined)).toEqual(whiteHighlight);
+  });
+
+  it('whitens the focused phrase arc in view mode', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, 'p1')).toEqual(whiteHighlight);
+  });
+
+  it('whitens the draft arc in create mode regardless of hover', () => {
+    expect(
+      getArcStrokeProps(
+        { kind: 'create', draftTokenRefs: ['t1'] },
+        DRAFT_PHRASE_ID,
+        undefined,
+        undefined,
+      ),
+    ).toEqual(whiteHighlight);
+  });
+
+  it('dims non-draft arcs in create mode even when hovered', () => {
+    expect(getArcStrokeProps({ kind: 'create', draftTokenRefs: ['t1'] }, 'p1', 'p1', 'p1')).toEqual(
+      dimmed,
+    );
+  });
+
+  it('whitens the edited phrase arc in edit mode regardless of hover', () => {
+    expect(
+      getArcStrokeProps(
+        { kind: 'edit', phraseId: 'p1', originalTokens: [] },
+        'p1',
+        undefined,
+        undefined,
+      ),
+    ).toEqual(whiteHighlight);
+  });
+
+  it('dims non-target arcs in edit mode even when hovered', () => {
+    expect(
+      getArcStrokeProps({ kind: 'edit', phraseId: 'p1', originalTokens: [] }, 'p2', 'p2', 'p2'),
+    ).toEqual(dimmed);
+  });
+
+  it('uses destructive color for the target arc in confirm-unlink mode', () => {
+    expect(
+      getArcStrokeProps({ kind: 'confirm-unlink', phraseId: 'p1' }, 'p1', undefined, undefined),
+    ).toEqual(destructiveHighlight);
+  });
+
+  it('dims non-target arcs in confirm-unlink mode even when hovered', () => {
+    expect(getArcStrokeProps({ kind: 'confirm-unlink', phraseId: 'p1' }, 'p2', 'p2', 'p2')).toEqual(
+      dimmed,
+    );
   });
 });

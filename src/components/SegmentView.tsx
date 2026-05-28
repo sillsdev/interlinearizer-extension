@@ -248,11 +248,40 @@ export function SegmentView({
                 arcLevel > 0
                   ? ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
                   : CONTROLS_HALF_HEIGHT_PX;
+
+              // In create mode: only the draft phrase is highlighted (persistently); hover is suppressed.
+              // In edit/confirm-unlink mode: only the target phrase is highlighted; hover is suppressed for all.
+              const activeModeHighlightId = (() => {
+                if (phraseMode.kind === 'create') {
+                  return phraseMode.draftTokenRefs.includes(group.tokens[0].ref)
+                    ? 'draft'
+                    : undefined;
+                }
+                if (phraseMode.kind === 'edit' || phraseMode.kind === 'confirm-unlink') {
+                  return phraseMode.phraseId;
+                }
+                return undefined;
+              })();
+              const isHighlighted = (() => {
+                if (phraseMode.kind === 'view') {
+                  return (
+                    phraseId !== undefined &&
+                    (phraseId === hoveredPhraseId || phraseId === focusedPhraseId)
+                  );
+                }
+                if (phraseMode.kind === 'create') {
+                  return activeModeHighlightId === 'draft';
+                }
+                // edit or confirm-unlink: highlight only the target phrase
+                return phraseId !== undefined && phraseId === activeModeHighlightId;
+              })();
+              // Suppress hover propagation outside view mode so other phrases don't highlight on hover.
+              const allowHover = phraseMode.kind === 'view' && phraseId !== undefined;
               return (
                 <span
                   key={groupKey}
                   onMouseEnter={
-                    phraseId !== undefined
+                    allowHover
                       ? () => {
                           onHoverPhrase(phraseId);
                           setHoveredGroupKey(groupKey);
@@ -260,7 +289,7 @@ export function SegmentView({
                       : undefined
                   }
                   onMouseLeave={
-                    phraseId !== undefined
+                    allowHover
                       ? () => {
                           onHoverPhrase(undefined);
                           setHoveredGroupKey(undefined);
@@ -273,10 +302,7 @@ export function SegmentView({
                     editPhraseTokens={editPhraseTokens}
                     index={group.firstIndex}
                     isFocused={isFocused}
-                    isHighlighted={
-                      phraseId !== undefined &&
-                      (phraseId === hoveredPhraseId || phraseId === focusedPhraseId)
-                    }
+                    isHighlighted={isHighlighted}
                     onFocusPhrase={handleTokenClick}
                     phraseMode={phraseMode}
                     phraseLink={group.phraseLink}

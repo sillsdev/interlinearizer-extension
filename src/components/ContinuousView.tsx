@@ -13,6 +13,7 @@ import {
   CONTROLS_HALF_HEIGHT_PX,
   buildEffectiveLinkMap,
   computeAllArcPaths,
+  getArcStrokeProps,
   groupTokens,
   type ArcPath,
   type TokenGroup,
@@ -655,15 +656,20 @@ export default function ContinuousView({
               style={{ height: '100%', overflow: 'visible', width: '100%' }}
             >
               {arcPaths.map(({ phraseId, d }) => {
-                const isHighlighted = hoveredPhraseId === phraseId || focusPhraseId === phraseId;
+                const { stroke, strokeOpacity, strokeWidth } = getArcStrokeProps(
+                  phraseMode,
+                  phraseId,
+                  hoveredPhraseId,
+                  focusPhraseId,
+                );
                 return (
                   <path
                     key={`${phraseId}-${d}`}
                     d={d}
                     fill="none"
-                    stroke="currentColor"
-                    strokeOpacity={isHighlighted ? 1 : 0.5}
-                    strokeWidth={isHighlighted ? 2 : 1.5}
+                    strokeOpacity={strokeOpacity}
+                    strokeWidth={strokeWidth}
+                    style={{ stroke }}
                   />
                 );
               })}

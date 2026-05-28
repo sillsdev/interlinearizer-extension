@@ -77,6 +77,13 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
+  /** Maps every segment id to the segment; used to resolve a focused token's verse. */
+  const segmentById = useMemo(() => {
+    const map = new Map<string, Segment>();
+    book.segments.forEach((seg) => map.set(seg.id, seg));
+    return map;
+  }, [book.segments]);
+
   /** All word tokens in book order — index into this array is the phrase index. */
   const wordTokens = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens).filter(isWordToken),
@@ -140,6 +147,44 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuousScroll]);
 
+  // Reseed focusedTokenRef when scrRef changes externally (e.g. Paratext verse selector). Skip
+  // when focus is already inside the new verse — that case means the verse change came from a
+  // token click here, and we must not clobber the clicked token with the verse's first token.
+  useEffect(() => {
+    const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
+    if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
+    setFocusedTokenRef(activeSeg?.tokens.find((t) => t.type === 'word')?.ref);
+    // chapterSegments is intentionally excluded: it changes identity on every render and the
+    // verse-coordinate deps already capture the change we care about.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
+
+  // Update scrRef when focusedTokenRef moves into a different verse (e.g. arrow nav in the
+  // continuous strip). Skip when scrRef already matches — that case means scrRef and focus
+  // were set together by a click and no further work is needed.
+  useEffect(() => {
+    if (!focusedTokenRef) return;
+    const segId = tokenSegmentMap.get(focusedTokenRef);
+    if (!segId) return;
+    const seg = segmentById.get(segId);
+    if (!seg) return;
+    if (
+      seg.startRef.book === scrRef.book &&
+      seg.startRef.chapter === scrRef.chapterNum &&
+      seg.startRef.verse === scrRef.verseNum
+    ) {
+      return;
+    }
+    setScrRef({
+      book: seg.startRef.book,
+      chapterNum: seg.startRef.chapter,
+      verseNum: seg.startRef.verse,
+    });
+    // scrRef fields are intentionally excluded: they're guards against re-firing, not triggers.
+    // Adding them would re-run this effect on every external verse change without doing useful work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedTokenRef, tokenSegmentMap, segmentById, setScrRef]);
+
   /**
    * Updates the active scripture reference and, when a specific token was clicked, focuses that
    * token.
@@ -155,34 +200,14 @@ function InterlinearizerInner({
     [setScrRef],
   );
 
-  /**
-   * Updates the active scripture reference when ContinuousView reports a verse change via arrow
-   * navigation. A separate wrapper from `handleSegmentSelect` because verse changes from the strip
-   * never carry a token id.
-   *
-   * @param ref - The new verse coordinate reported by the strip.
-   */
-  const handleVerseChange = useCallback(
-    (ref: ScriptureRef) => {
-      handleSegmentSelect(ref);
-    },
-    [handleSegmentSelect],
-  );
-
   return (
     <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
       {continuousScroll && (
         <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
           <ContinuousView
-            activeVerse={{
-              book: scrRef.book,
-              chapter: scrRef.chapterNum,
-              verse: scrRef.verseNum,
-            }}
             book={book}
             focusedTokenRef={focusedTokenRef}
             onFocusedTokenRefChange={setFocusedTokenRef}
-            onVerseChange={handleVerseChange}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             tokenSegmentMap={tokenSegmentMap}

@@ -9,7 +9,6 @@ import {
   getArcStrokeProps,
   routeAroundBoxes,
 } from '../../utils/phrase-arc';
-import { DRAFT_PHRASE_ID } from '../../components/phrase-mode';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,17 +68,17 @@ function buildContainer(boxes: { phraseId: string; r: DOMRect }[]): Element {
 // ---------------------------------------------------------------------------
 
 describe('buildSameRowArcPath', () => {
-  it('returns a string starting with M', () => {
+  it('returns an SVG path string starting with M', () => {
     const a = { left: 10, right: 30, top: 100 };
     const b = { left: 60, right: 80, top: 100 };
-    const d = buildSameRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildSameRowArcPath(a, b, ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
   });
 
-  it('produces a symmetric path when boxes are equidistant left-to-right', () => {
+  it('produces a non-empty path when boxes are equidistant left-to-right', () => {
     const a = { left: 0, right: 20, top: 50 };
     const b = { left: 80, right: 100, top: 50 };
-    const d = buildSameRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildSameRowArcPath(a, b, ARC_BASE_STEM);
     expect(typeof d).toBe('string');
     expect(d.length).toBeGreaterThan(0);
   });
@@ -87,8 +86,17 @@ describe('buildSameRowArcPath', () => {
   it('handles right-to-left direction (x2 < x1)', () => {
     const a = { left: 80, right: 100, top: 50 };
     const b = { left: 0, right: 20, top: 50 };
-    const d = buildSameRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildSameRowArcPath(a, b, ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
+  });
+
+  it('returns a midpoint within the bounds of the two boxes', () => {
+    const a = { left: 0, right: 20, top: 50 };
+    const b = { left: 80, right: 100, top: 50 };
+    const { midX, midY } = buildSameRowArcPath(a, b, ARC_BASE_STEM);
+    expect(midX).toBeGreaterThanOrEqual(10);
+    expect(midX).toBeLessThanOrEqual(90);
+    expect(midY).toBeLessThan(50);
   });
 });
 
@@ -97,17 +105,17 @@ describe('buildSameRowArcPath', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildCrossRowArcPath', () => {
-  it('returns a string starting with M', () => {
+  it('returns an SVG path string starting with M', () => {
     const a = { left: 10, right: 30, bottom: 50 };
     const b = { left: 60, right: 80, top: 100 };
-    const d = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
   });
 
   it('handles right-to-left direction', () => {
     const a = { left: 80, right: 100, bottom: 50 };
     const b = { left: 0, right: 20, top: 100 };
-    const d = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
   });
 
@@ -115,7 +123,7 @@ describe('buildCrossRowArcPath', () => {
     // boxes so close horizontally that 2*r > |cx2 - cx1|, forcing nudge > 0
     const a = { left: 40, right: 60, bottom: 50 };
     const b = { left: 41, right: 61, top: 100 };
-    const d = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
   });
 });
@@ -248,19 +256,17 @@ describe('routeAroundBoxes', () => {
   it('returns a valid SVG path string', () => {
     const a = { left: 10, right: 30, top: 50, bottom: 70 };
     const b = { left: 10, right: 30, top: 150, bottom: 170 };
-    const d = routeAroundBoxes(a, b, [], ARC_BASE_STEM);
+    const { d } = routeAroundBoxes(a, b, [], ARC_BASE_STEM);
     expect(d).toMatch(/^M /);
   });
 
-  it('produces the same path as buildCrossRowArcPath when there are no obstacles', () => {
+  it('produces a path with the same shape as buildCrossRowArcPath when there are no obstacles', () => {
     const a = { left: 10, right: 30, top: 50, bottom: 70 };
     const b = { left: 60, right: 80, top: 150, bottom: 170 };
     const routed = routeAroundBoxes(a, b, [], ARC_BASE_STEM);
     const direct = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
-    // Without obstacles and with symmetric routing, midX = (cx1+cx2)/2 which may produce
-    // numerically identical or close paths. Just verify both are non-empty strings.
-    expect(typeof routed).toBe('string');
-    expect(typeof direct).toBe('string');
+    expect(typeof routed.d).toBe('string');
+    expect(typeof direct.d).toBe('string');
   });
 
   it('produces a different path when an obstacle straddles midX inside the arc vertical span', () => {
@@ -271,7 +277,7 @@ describe('routeAroundBoxes', () => {
     const obstacle = { left: 90, right: 110, top: 70, bottom: midY + 10 };
     const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
     const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    expect(routed).not.toBe(unobstructed);
+    expect(routed.d).not.toBe(unobstructed.d);
   });
 
   it('routes left when midX is closer to the left edge of the obstacle', () => {
@@ -282,8 +288,8 @@ describe('routeAroundBoxes', () => {
     const obstacle = { left: 96, right: 130, top: 20, bottom: midY + 10 };
     const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
     const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    // The path must change (routing moved midX left of the obstacle).
-    expect(routed).not.toBe(unobstructed);
+    expect(routed.d).not.toBe(unobstructed.d);
+    expect(routed.midX).toBeLessThan(unobstructed.midX);
   });
 
   it('routes right when midX is closer to the right edge of the obstacle', () => {
@@ -294,8 +300,8 @@ describe('routeAroundBoxes', () => {
     const obstacle = { left: 70, right: 104, top: 20, bottom: midY + 10 };
     const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
     const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    // The path must change (routing moved midX right of the obstacle).
-    expect(routed).not.toBe(unobstructed);
+    expect(routed.d).not.toBe(unobstructed.d);
+    expect(routed.midX).toBeGreaterThan(unobstructed.midX);
   });
 
   it('skips obstacles where midX is not strictly inside (midX equals left boundary)', () => {
@@ -306,7 +312,7 @@ describe('routeAroundBoxes', () => {
     const obstacle = { left: 100, right: 150, top: 20, bottom: midY + 10 };
     const withObs = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
     const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    expect(withObs).toBe(withoutObs);
+    expect(withObs.d).toBe(withoutObs.d);
   });
 
   it('skips obstacles where midX is not strictly inside (midX equals right boundary)', () => {
@@ -317,7 +323,7 @@ describe('routeAroundBoxes', () => {
     const obstacle = { left: 50, right: 100, top: 20, bottom: midY + 10 };
     const withObs = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
     const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    expect(withObs).toBe(withoutObs);
+    expect(withObs.d).toBe(withoutObs.d);
   });
 
   it('skips obstacles outside the arc vertical span', () => {
@@ -327,7 +333,7 @@ describe('routeAroundBoxes', () => {
     const above = { left: 90, right: 110, top: 0, bottom: 15 };
     const withObs = routeAroundBoxes(a, b, [a, b, above], ARC_BASE_STEM);
     const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
-    expect(withObs).toBe(withoutObs);
+    expect(withObs.d).toBe(withoutObs.d);
   });
 });
 
@@ -336,41 +342,29 @@ describe('routeAroundBoxes', () => {
 // ---------------------------------------------------------------------------
 
 describe('getArcStrokeProps', () => {
-  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.4, strokeWidth: 2 };
-  const whiteHighlight = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
-  const destructiveHighlight = {
+  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.5, strokeWidth: 2 };
+  const hovered = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
+  const highlighted = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
+  const destructive = {
     stroke: 'var(--destructive)',
     strokeOpacity: 1,
     strokeWidth: 2,
   };
 
-  it('dims non-highlighted arcs in view mode', () => {
+  it('dims arcs that are neither hovered nor focused in view mode', () => {
     expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, undefined)).toEqual(dimmed);
   });
 
-  it('whitens the hovered phrase arc in view mode', () => {
-    expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', undefined)).toEqual(whiteHighlight);
+  it('uses mid-level white for the hovered phrase arc in view mode', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', undefined)).toEqual(hovered);
   });
 
-  it('whitens the focused phrase arc in view mode', () => {
-    expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, 'p1')).toEqual(whiteHighlight);
+  it('uses full white for the focused phrase arc in view mode', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, 'p1')).toEqual(highlighted);
   });
 
-  it('whitens the draft arc in create mode regardless of hover', () => {
-    expect(
-      getArcStrokeProps(
-        { kind: 'create', draftTokenRefs: ['t1'] },
-        DRAFT_PHRASE_ID,
-        undefined,
-        undefined,
-      ),
-    ).toEqual(whiteHighlight);
-  });
-
-  it('dims non-draft arcs in create mode even when hovered', () => {
-    expect(getArcStrokeProps({ kind: 'create', draftTokenRefs: ['t1'] }, 'p1', 'p1', 'p1')).toEqual(
-      dimmed,
-    );
+  it('uses full white for the focused phrase even when it is also hovered', () => {
+    expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', 'p1')).toEqual(highlighted);
   });
 
   it('whitens the edited phrase arc in edit mode regardless of hover', () => {
@@ -381,7 +375,7 @@ describe('getArcStrokeProps', () => {
         undefined,
         undefined,
       ),
-    ).toEqual(whiteHighlight);
+    ).toEqual(highlighted);
   });
 
   it('dims non-target arcs in edit mode even when hovered', () => {
@@ -393,7 +387,7 @@ describe('getArcStrokeProps', () => {
   it('uses destructive color for the target arc in confirm-unlink mode', () => {
     expect(
       getArcStrokeProps({ kind: 'confirm-unlink', phraseId: 'p1' }, 'p1', undefined, undefined),
-    ).toEqual(destructiveHighlight);
+    ).toEqual(destructive);
   });
 
   it('dims non-target arcs in confirm-unlink mode even when hovered', () => {

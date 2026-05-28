@@ -1,4 +1,4 @@
-import type { Book, ScriptureRef, Token } from 'interlinearizer';
+import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
@@ -59,24 +59,20 @@ const PHRASE_WINDOW_HALF = 100;
 
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
-  /** Verse coordinate; when it changes the strip scrolls to the first token of that segment. */
-  activeVerse: ScriptureRef;
   /** The full tokenized book whose tokens are streamed into the strip. */
   book: Book;
   /**
-   * Token ref of the currently focused word token, or `undefined` when nothing is focused. When
-   * set, the strip jumps to the group containing this token; also drives highlight rules across the
-   * view.
+   * Token ref of the currently focused word token, or `undefined` when nothing is focused. The
+   * strip jumps to the group containing this token and uses it as the single source of truth for
+   * highlight + slot rules. All scroll position is derived from this value.
    */
   focusedTokenRef: string | undefined;
   /**
-   * Called when arrow navigation in the strip should change which token is focused. The parent
-   * propagates this back through `focusedTokenRef`. This keeps the strip's link-target logic and
-   * highlight logic reading the same source — both come from `focusedTokenRef`.
+   * Called when arrow navigation or a click in the strip should change which token is focused. The
+   * parent echoes the value back through `focusedTokenRef`; the strip then re-renders with the new
+   * focus and scrolls into view.
    */
   onFocusedTokenRefChange: (ref: string) => void;
-  /** Called when arrow navigation moves the focus into a new verse. */
-  onVerseChange: (verse: ScriptureRef) => void;
   /** Current phrase-interaction mode; controls token click behaviour in the strip. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -94,34 +90,23 @@ type ContinuousViewProps = Readonly<{
  * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
  * or chapter boundaries are shown — the strip is fully continuous.
  *
- * Edge behaviour:
- *
- * - Previous arrow is disabled (and previous fade suppressed) when the first phrase is focused.
- * - Next arrow is disabled (and next fade suppressed) when the last phrase is focused.
- *
- * When `activeVerse` changes the strip jumps to the first phrase of the matching segment. When
- * arrow navigation crosses a verse boundary `onVerseChange` is called with the new verse
- * coordinate.
+ * Scroll position is derived from `focusedTokenRef`: the strip always centres the group containing
+ * that token. Arrow buttons advance or retreat focus by one group and notify the parent; the parent
+ * echoes the new ref back through `focusedTokenRef`. The previous/next arrows are disabled when the
+ * first/last phrase is focused.
  *
  * @param props - Component props
- * @param props.activeVerse - Verse coordinate; when it changes the strip scrolls to the first
- *   phrase of the matching segment
  * @param props.book - The full tokenized book whose tokens should be streamed
- * @param props.focusedTokenRef - When set, the strip jumps to the group containing this token; also
- *   feeds the shared focus context that drives slot and highlight rules
- * @param props.onFocusedTokenRefChange - Called when arrow navigation in the strip should change
- *   which token is focused; the parent echoes it back via `focusedTokenRef`
- * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
+ * @param props.focusedTokenRef - Single source of truth for focus + scroll position
+ * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
-  activeVerse,
   book,
   focusedTokenRef,
   onFocusedTokenRefChange,
-  onVerseChange,
   phraseMode,
   setPhraseMode,
   tokenSegmentMap,
@@ -150,33 +135,6 @@ export default function ContinuousView({
     [allTokens, committedPhraseLinkByRef],
   );
 
-  /** Maps each segment id to the group index of its first phrase group. */
-  const segmentStartGroupIndex = useMemo(() => {
-    const map = new Map<string, number>();
-    // Build a quick lookup from flat token index to group index.
-    const groupByFirstTokenIndex = new Map<number, number>();
-    phraseGroups.forEach((g, gi) => groupByFirstTokenIndex.set(g.firstIndex, gi));
-
-    // For each segment, find its first word token's flat index, then find the group that starts
-    // at or after that index.
-    let offset = 0;
-    book.segments.forEach((seg) => {
-      const firstWordLocalIndex = seg.tokens.findIndex((t) => t.type === 'word');
-      if (firstWordLocalIndex >= 0) {
-        const flatIndex = offset + firstWordLocalIndex;
-        // Walk forward from flatIndex until we find a group that starts here or later.
-        for (let gi = 0; gi < phraseGroups.length; gi++) {
-          if (phraseGroups[gi].firstIndex >= flatIndex) {
-            map.set(seg.id, gi);
-            break;
-          }
-        }
-      }
-      offset += seg.tokens.length;
-    });
-    return map;
-  }, [book.segments, phraseGroups]);
-
   /** Maps each word token ref to the group index that contains it. */
   const groupIndexByTokenRef = useMemo(() => {
     const map = new Map<string, number>();
@@ -186,272 +144,61 @@ export default function ContinuousView({
     return map;
   }, [phraseGroups]);
 
-  /**
-   * Ref mirror of `phraseGroups`. Read inside effects and callbacks that need the latest list
-   * without declaring it as a dependency.
-   */
-  const phraseGroupsRef = useRef(phraseGroups);
-  phraseGroupsRef.current = phraseGroups;
-
-  /**
-   * Ref mirror of `groupIndexByTokenRef`. Read inside the `focusedTokenRef` effect so it never
-   * needs to be a dep (which would cause spurious re-runs whenever phrase membership changes
-   * without the parent's `focusedTokenRef` changing).
-   */
-  const groupIndexByTokenRefRef = useRef(groupIndexByTokenRef);
-  groupIndexByTokenRefRef.current = groupIndexByTokenRef;
-
-  /** Flat token index -> owning segment lookup. */
+  /** Flat token index -> owning segment lookup; used for per-slot segment resolution. */
   const tokenSegment = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens.map(() => seg)),
     [book.segments],
   );
 
   /**
-   * Maps a flat token index to the segment that owns it. Stored in a ref so that a new book object
-   * reference (same content) does not cause the verse-change effect to re-fire.
+   * Token ref that the strip is currently displaying as focused. Lags `focusedTokenRef` during the
+   * fade-out for external jumps so the window/scroll/highlight don't shift until the strip has
+   * faded out. For internal nav (arrow buttons, phrase clicks) this is updated immediately so the
+   * smooth scroll starts on the same frame.
    */
-  const tokenSegmentRef = useRef(tokenSegment);
-  tokenSegmentRef.current = tokenSegment;
-
-  /**
-   * Returns the group index of the first phrase group in the segment that matches `verse`, or
-   * `undefined` when `verse` is absent or does not match any known segment.
-   *
-   * @param verse - Target scripture reference to locate.
-   * @returns Zero-based group index, or `undefined` if the verse cannot be resolved.
-   */
-  const getGroupIndexForVerse = useCallback(
-    (verse?: ScriptureRef): number | undefined => {
-      /* v8 ignore next -- verse is always defined at the one call site */
-      if (!verse) return;
-
-      const seg = book.segments.find(
-        (s) =>
-          s.startRef.book === verse.book &&
-          s.startRef.chapter === verse.chapter &&
-          s.startRef.verse === verse.verse,
-      );
-      /* v8 ignore next -- only reachable when an external activeVerse references an unrecognized segment */
-      if (!seg) return;
-
-      return segmentStartGroupIndex.get(seg.id);
-    },
-    [book.segments, segmentStartGroupIndex],
+  const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
+    focusedTokenRef,
   );
 
   /**
-   * Ref mirror of `getGroupIndexForVerse` so the active-verse effect never needs it as a dep.
-   * Without this, any phrase-group re-indexing (e.g. toggling tokens during create/edit mode) would
-   * change `segmentStartGroupIndex` → new `getGroupIndexForVerse` identity → effect re-fires →
-   * spurious fade-out + jump on every token selection.
+   * Group index of the displayed focused token, or `0` when nothing is focused. Single source of
+   * truth for scroll position, windowing, arrow disabled state, and per-group focus highlighting.
    */
-  const getGroupIndexForVerseRef = useRef(getGroupIndexForVerse);
-  getGroupIndexForVerseRef.current = getGroupIndexForVerse;
+  const focusPhraseIndex = useMemo(() => {
+    if (displayFocusedTokenRef === undefined) return 0;
+    const gi = groupIndexByTokenRef.get(displayFocusedTokenRef);
+    return gi === undefined ? 0 : clampIndex(gi, phraseGroups.length);
+  }, [displayFocusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
 
-  // Lazy-initialize to the target verse so on first render the strip is already positioned
-  // correctly before the initial-load fade-in fires. Prefer focusedTokenRef (e.g. a focused token
-  // carried over from segment view) so there is no flash to the verse-start position on mount.
-  const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
-    if (focusedTokenRef !== undefined) {
-      const gi = groupIndexByTokenRef.get(focusedTokenRef);
-      if (gi !== undefined) return clampIndex(gi, phraseGroups.length);
-    }
-
-    const seg = book.segments.find(
-      (s) =>
-        s.startRef.book === activeVerse.book &&
-        s.startRef.chapter === activeVerse.chapter &&
-        s.startRef.verse === activeVerse.verse,
-    );
-    /* v8 ignore next -- V8 does not track branches inside useState lazy initializer */
-    if (!seg) return 0;
-
-    const gi = segmentStartGroupIndex.get(seg.id);
-    /* v8 ignore next -- V8 does not track branches inside useState lazy initializer */
-    return gi ?? 0;
-  });
-
-  /**
-   * The phrase index of the most recent external jump (prop-driven). Read inside the
-   * `focusPhraseIndex` effect to suppress the echo-back verse-change notification that would
-   * otherwise fire when the strip repositions itself in response to an incoming prop.
-   */
-  const jumpTargetRef = useRef<number | undefined>(undefined);
-  const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
-    number | undefined
-  >();
   const [isVisible, setIsVisible] = useState(false);
 
-  /** True while an externally triggered jump (prop change) is in progress; suppresses smooth scroll. */
-  const isExternalJumpInProgressRef = useRef(false);
   /** True until the first scroll-into-view completes; suppresses smooth scroll on initial mount. */
   const isInitialLoadInProgressRef = useRef(true);
 
   /**
-   * True when the lazy `useState` initializer already positioned the strip at `focusedTokenRef`, so
-   * the first run of the `focusedTokenRef` effect should be skipped to avoid a redundant jump.
-   */
-  const focusedTokenRefAppliedRef = useRef(focusedTokenRef !== undefined);
-
-  /**
-   * Token ref that the strip set via `onFocusedTokenRefChange` from internal arrow nav. When the
-   * parent echoes the same value back as `focusedTokenRef`, the fade-jump effect should skip — the
-   * strip already moved itself with smooth scroll.
+   * Token ref that the strip set via `onFocusedTokenRefChange` from internal arrow nav or click.
+   * When the parent echoes the same value back as `focusedTokenRef`, the focus-change effect
+   * applies the new ref immediately and smooth-scrolls instead of fade-then-snap.
    */
   const internalFocusedTokenRefRef = useRef<string | undefined>(undefined);
 
-  /**
-   * Records the verse most recently reported via `onVerseChange`. When the parent echoes that verse
-   * back as `activeVerse` we skip the jump — the change originated here, not externally.
-   * Initialized to `activeVerse` so the initial mount position (set by the lazy `useState`
-   * initializer) is treated as already handled, preventing a spurious jump on first render.
-   */
-  const lastInternalVerseRef = useRef<ScriptureRef | undefined>(activeVerse);
-
-  // The focusedTokenRef and activeVerse effects could theoretically race if both props change in
-  // one render — the verse effect would overwrite the token-level jump. In practice the parent
-  // only changes focusedTokenRef from segment-mode clicks (where ContinuousView is unmounted) or
-  // from the mode-switch reconcile, so the two never change together. Any future change that adds
-  // token-level clicks in continuous mode must revisit this.
-
-  // Jump to the group containing focusedTokenRef when it changes externally (segment-mode click,
-  // mode switch). Internal arrow nav goes through `step` which already updates focusPhraseIndex
-  // and notifies the parent; the echo-back is suppressed via internalFocusedTokenRefRef.
-  useEffect(() => {
-    if (focusedTokenRef === undefined) return;
-
-    // Skip the first run when the lazy initializer already positioned the strip here.
-    if (focusedTokenRefAppliedRef.current) {
-      focusedTokenRefAppliedRef.current = false;
-      return;
-    }
-
-    // Skip the echo-back of an internal arrow-nav update — the strip already smooth-scrolled.
-    if (internalFocusedTokenRefRef.current === focusedTokenRef) {
-      internalFocusedTokenRefRef.current = undefined;
-      return;
-    }
-
-    // Resolve token ref → group index via ref so this effect only re-runs when focusedTokenRef
-    // itself changes.
-    const gi = groupIndexByTokenRefRef.current.get(focusedTokenRef);
-    /* v8 ignore next -- focusedTokenRef always refers to a known word token while mounted */
-    if (gi === undefined) return;
-    const clamped = clampIndex(gi, phraseGroupsRef.current.length);
-    jumpTargetRef.current = clamped;
-    isExternalJumpInProgressRef.current = true;
-    setIsVisible(false);
-    setPendingExternalJumpPhraseIndex(clamped);
-    // groupIndexByTokenRefRef is intentionally excluded — it is a ref so changes are always current
-    // without needing to be declared as a dep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTokenRef]);
-
-  // Jump to the first group of the matching segment when the active verse changes.
-  useEffect(() => {
-    // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
-    const lastInternal = lastInternalVerseRef.current;
-    if (
-      lastInternal?.book === activeVerse.book &&
-      lastInternal.chapter === activeVerse.chapter &&
-      lastInternal.verse === activeVerse.verse
-    ) {
-      lastInternalVerseRef.current = undefined;
-      return;
-    }
-
-    const groupIndex = getGroupIndexForVerseRef.current(activeVerse);
-    if (groupIndex === undefined) return;
-
-    jumpTargetRef.current = groupIndex;
-    isExternalJumpInProgressRef.current = true;
-    setIsVisible(false);
-    setPendingExternalJumpPhraseIndex(groupIndex);
-    // Exclude activeVerse and getGroupIndexForVerseRef — verse fields capture the actual change,
-    // and the ref is always current without needing to be a dep.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse]);
-
-  // Let the fade-out complete before triggering the focus jump scroll.
-  useEffect(() => {
-    if (pendingExternalJumpPhraseIndex === undefined) return undefined;
-
-    const timeout = setTimeout(() => {
-      setFocusPhraseIndex(pendingExternalJumpPhraseIndex);
-      setPendingExternalJumpPhraseIndex(undefined);
-    }, STRIP_FADE_MS);
-
-    return () => clearTimeout(timeout);
-  }, [pendingExternalJumpPhraseIndex]);
-
-  // Fire onVerseChange when arrow navigation crosses into a new verse.
-  // Initialize to the segment that owns the initial focusPhraseIndex so the initial render does
-  // not trigger the callback.
-  const firstVisibleSegId =
-    phraseGroups.length > 0 ? tokenSegment[phraseGroups[0].firstIndex]?.id : undefined;
-  const initialFocusedGroup = phraseGroups[focusPhraseIndex];
-  const initialSegId = initialFocusedGroup
-    ? tokenSegment[initialFocusedGroup.firstIndex]?.id
-    : firstVisibleSegId;
-  /**
-   * Segment id of the last verse reported via `onVerseChange`. Compared against the current focused
-   * segment to avoid firing the callback redundantly when focus stays within the same verse.
-   */
-  const lastReportedSegIdRef = useRef<string | undefined>(initialSegId);
-
-  // Keep the reported-segment baseline in sync when switching to a different book.
-  useEffect(() => {
-    lastReportedSegIdRef.current = firstVisibleSegId;
-  }, [book.id, firstVisibleSegId]);
-
-  useEffect(() => {
-    // Suppress echo-back when the change was driven by an incoming activeVerse prop.
-    if (jumpTargetRef.current === focusPhraseIndex) {
-      jumpTargetRef.current = undefined;
-      return;
-    }
-
-    jumpTargetRef.current = undefined;
-    const focusedGroup = phraseGroupsRef.current[focusPhraseIndex];
-    /* v8 ignore next -- focusPhraseIndex is always within phraseGroups bounds when state changes */
-    if (!focusedGroup) return;
-
-    const seg = tokenSegmentRef.current[focusedGroup.firstIndex];
-    if (!seg || seg.id === lastReportedSegIdRef.current) return;
-
-    lastReportedSegIdRef.current = seg.id;
-    const verse = {
-      book: seg.startRef.book,
-      chapter: seg.startRef.chapter,
-      verse: seg.startRef.verse,
-    };
-    lastInternalVerseRef.current = verse;
-    onVerseChange(verse);
-    // onVerseChange and tokenSegmentRef are intentionally excluded — callers must stabilize the
-    // reference (useCallback) and tokenSegmentRef is a ref so changes are always current.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusPhraseIndex]);
+  /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
+  const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
   const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
   onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
 
-  // Notify the parent of the lazily-initialized focused token on mount so the segment list scrolls
-  // the active verse into view on first render. Subsequent focus changes already flow through
-  // focusedTokenRef directly — this is just the mount handshake.
+  // Notify the parent of the initially-focused token on mount so the segment list scrolls the
+  // active verse into view on first render. Only fires when no token was already focused.
   useEffect(() => {
-    const initialGroup = phraseGroupsRef.current[focusPhraseIndex];
+    if (focusedTokenRef !== undefined) return;
+    const initialGroup = phraseGroups[focusPhraseIndex];
     const initialRef = initialGroup?.tokens[0]?.ref;
-    if (initialRef !== undefined && focusedTokenRef === undefined) {
-      onFocusedTokenRefChangeRef.current(initialRef);
-    }
+    if (initialRef !== undefined) onFocusedTokenRefChangeRef.current(initialRef);
     // Intentionally runs only on mount; do not add deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
-  const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
   const atStart = phraseGroups.length === 0 || focusPhraseIndex === 0;
   const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
@@ -476,33 +223,27 @@ export default function ContinuousView({
       : allTokens.length;
 
   /**
-   * Advances the focused phrase by `delta` positions, clamping to valid bounds. Updates both the
-   * local scroll position (for smooth scroll) and the parent's `focusedTokenRef` (so link-button
-   * direction stays consistent with the centered phrase).
+   * Advances focus by `delta` phrases by notifying the parent of the new focused token ref. The
+   * parent echoes the change back through `focusedTokenRef`, which re-derives `focusPhraseIndex`
+   * and triggers the scroll effect. Marks the change as internal so the fade is suppressed.
    *
    * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
-  /** Ref mirror of `focusPhraseIndex` so `step` can read the current value without being a dep. */
-  const focusPhraseIndexRef = useRef(focusPhraseIndex);
-  focusPhraseIndexRef.current = focusPhraseIndex;
-
-  const step = useCallback((delta: number) => {
-    const groups = phraseGroupsRef.current;
-    if (groups.length === 0) return;
-    const { current } = focusPhraseIndexRef;
-    const nextIndex = current + delta;
-    /* v8 ignore next -- disabled buttons prevent under/overflow */
-    const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, groups.length - 1);
-    if (clamped === current) return;
-    const nextRef = groups[clamped]?.tokens[0]?.ref;
-    if (nextRef !== undefined) {
-      // Mark this token as an internal arrow-nav update so the focusedTokenRef effect skips its
-      // fade-jump; the smooth scroll triggered by the focusPhraseIndex change handles motion.
-      internalFocusedTokenRefRef.current = nextRef;
-      onFocusedTokenRefChangeRef.current(nextRef);
-    }
-    setFocusPhraseIndex(clamped);
-  }, []);
+  const step = useCallback(
+    (delta: number) => {
+      if (phraseGroups.length === 0) return;
+      const nextIndex = focusPhraseIndex + delta;
+      /* v8 ignore next -- disabled buttons prevent under/overflow */
+      const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, phraseGroups.length - 1);
+      if (clamped === focusPhraseIndex) return;
+      const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
+      if (nextRef !== undefined) {
+        internalFocusedTokenRefRef.current = nextRef;
+        onFocusedTokenRefChangeRef.current(nextRef);
+      }
+    },
+    [focusPhraseIndex, phraseGroups],
+  );
 
   /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
@@ -511,23 +252,22 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Sets the focused phrase to `index` when provided, ignoring calls with no argument. Mirrors
-   * `step` — updates both the local scroll position and the parent's `focusedTokenRef` so the
-   * highlight + slot logic stays consistent with any click-driven focus change.
+   * Notifies the parent that the user selected phrase at `index`. The parent echoes the new token
+   * ref back through `focusedTokenRef`; scroll + highlight follow automatically.
    *
    * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
    */
-  const handlePhraseSelect = useCallback((index?: number) => {
-    if (index === undefined) return;
-    const groups = phraseGroupsRef.current;
-    if (index === focusPhraseIndexRef.current) return;
-    const nextRef = groups[index]?.tokens[0]?.ref;
-    if (nextRef !== undefined) {
-      internalFocusedTokenRefRef.current = nextRef;
-      onFocusedTokenRefChangeRef.current(nextRef);
-    }
-    setFocusPhraseIndex(index);
-  }, []);
+  const handlePhraseSelect = useCallback(
+    (index?: number) => {
+      if (index === undefined || index === focusPhraseIndex) return;
+      const nextRef = phraseGroups[index]?.tokens[0]?.ref;
+      if (nextRef !== undefined) {
+        internalFocusedTokenRefRef.current = nextRef;
+        onFocusedTokenRefChangeRef.current(nextRef);
+      }
+    },
+    [focusPhraseIndex, phraseGroups],
+  );
 
   /**
    * Splits a discontiguous phrase at the boundary encoded in an arc path. Resolves the phrase from
@@ -552,52 +292,66 @@ export default function ContinuousView({
     [committedPhraseLinkByRef, createPhrase, updatePhrase, deletePhrase],
   );
 
+  // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
+  // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
+  // Paratext verse selector, mode switch), fade the strip out, wait for the fade to complete,
+  // then snap the displayed focus into place so the scroll happens behind the curtain.
   useEffect(() => {
-    const isExternalJump = isExternalJumpInProgressRef.current;
+    if (focusedTokenRef === displayFocusedTokenRef) return undefined;
+    const isInternal = internalFocusedTokenRefRef.current === focusedTokenRef;
+    internalFocusedTokenRefRef.current = undefined;
+    if (isInternal) {
+      setDisplayFocusedTokenRef(focusedTokenRef);
+      return undefined;
+    }
+    setIsVisible(false);
+    const timeout = setTimeout(() => {
+      setDisplayFocusedTokenRef(focusedTokenRef);
+    }, STRIP_FADE_MS);
+    return () => clearTimeout(timeout);
+  }, [focusedTokenRef, displayFocusedTokenRef]);
+
+  // Scroll the focused phrase into view whenever the displayed focus changes. Smooth-scroll for
+  // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
+  // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
+  useEffect(() => {
+    const isInternal = focusedTokenRef === displayFocusedTokenRef && isVisible;
     const isInitialLoad = isInitialLoadInProgressRef.current;
-    const shouldJumpInstantly = isExternalJump || isInitialLoad;
+    const shouldJumpInstantly = !isInternal || isInitialLoad;
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
       behavior: shouldJumpInstantly ? 'auto' : 'smooth',
       block: 'nearest',
       inline: 'center',
     });
 
-    if (!isExternalJump && !isInitialLoad) return undefined;
+    if (isInternal && !isInitialLoad) return undefined;
 
-    // Clear the flags now — scrollIntoView has already been called above.  Clearing here
-    // (rather than inside the RAF callback) keeps subsequent scroll behavior deterministic
-    // regardless of whether the RAF fires before the next focusPhraseIndex change.
-    if (isExternalJump) isExternalJumpInProgressRef.current = false;
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
     // Defer the fade-in until after the browser applies the instant scroll position.
     const rafId = requestAnimationFrame(() => setIsVisible(true));
-
     return () => {
       cancelAnimationFrame(rafId);
-      // Only reveal the strip on cleanup if no new external jump is about to take over.
-      // When a second click arrives before this RAF fires, isExternalJumpInProgressRef is already
-      // true for the new jump — revealing here would make the strip visible before it has scrolled.
-      if (!isExternalJumpInProgressRef.current) setIsVisible(true);
+      setIsVisible(true);
     };
+    // isVisible and focusedTokenRef are read for the isInternal decision but the effect is keyed on
+    // focusPhraseIndex — the only thing that should trigger a scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusPhraseIndex]);
 
-  // When entering edit or confirm-unlink mode, focus and smooth-scroll to the first group of the
-  // active phrase so it is centred in the strip.
+  // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
+  // phrase by notifying the parent of the new focused token. Scroll then follows automatically
+  // through focusedTokenRef → focusPhraseIndex.
   useEffect(() => {
     if (phraseMode.kind === 'view') return;
     const targetPhraseId = phraseMode.phraseId;
-    const groupIndex = phraseGroupsRef.current.findIndex(
-      (g) => g.phraseLink?.analysisId === targetPhraseId,
-    );
-    if (groupIndex < 0) return;
-    setFocusPhraseIndex(groupIndex);
-    phraseRefs.current[groupIndex]?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    });
-    // phraseGroupsRef and phraseRefs are refs — always current without needing to be deps.
+    const group = phraseGroups.find((g) => g.phraseLink?.analysisId === targetPhraseId);
+    const nextRef = group?.tokens[0]?.ref;
+    if (nextRef === undefined || nextRef === focusedTokenRef) return;
+    internalFocusedTokenRefRef.current = nextRef;
+    onFocusedTokenRefChangeRef.current(nextRef);
+    // phraseGroups and focusedTokenRef are read once per mode change; intentionally not deps so the
+    // effect only fires on actual mode transitions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);
 

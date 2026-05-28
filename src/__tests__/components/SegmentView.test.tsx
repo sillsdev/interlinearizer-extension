@@ -38,6 +38,16 @@ jest.mock('../../components/AnalysisStore', () => ({
 
 jest.mock('../../components/TokenChip');
 
+jest.mock('../../components/TokenLinkIcon', () => ({
+  __esModule: true,
+  default: () => undefined,
+}));
+
+jest.mock('../../components/ArcOverlay', () => ({
+  __esModule: true,
+  default: () => undefined,
+}));
+
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
@@ -119,30 +129,32 @@ const PUNCT_SEGMENT: Segment = {
  * @returns An object containing all required SegmentView props set to no-op stubs.
  */
 function requiredProps(): {
-  arcLevelByPhraseId: ReadonlyMap<string, number>;
   displayMode: 'token-chip';
+  editPhraseSegmentId: string | undefined;
   focusedTokenRef: string | undefined;
   hoveredPhraseId: string | undefined;
   isActive: boolean;
   onHoverPhrase: jest.Mock;
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
-  seenPhraseIds: ReadonlySet<string>;
   segment: Segment;
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
+  tokenSegmentMap: ReadonlyMap<string, string>;
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
   return {
-    arcLevelByPhraseId: new Map(),
     displayMode: 'token-chip',
+    editPhraseSegmentId: undefined,
     focusedTokenRef: undefined,
     hoveredPhraseId: undefined,
     isActive: false,
     onHoverPhrase: jest.fn(),
     onSelect: jest.fn(),
-    seenPhraseIds: new Set(),
     segment: WORD_SEGMENT,
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
+    tokenSegmentMap: new Map(),
+    wordTokenByRef: new Map(),
   };
 }
 
@@ -331,7 +343,7 @@ describe('SegmentView', () => {
         },
       ],
     };
-    const discontigLink: PhraseAnalysisLink = {
+    const discontiguousLink: PhraseAnalysisLink = {
       analysisId: 'phrase-dc',
       status: 'approved',
       tokens: [
@@ -341,8 +353,8 @@ describe('SegmentView', () => {
     };
     mockUsePhraseLinkMap.mockReturnValue(
       new Map([
-        ['tok-a', discontigLink],
-        ['tok-c', discontigLink],
+        ['tok-a', discontiguousLink],
+        ['tok-c', discontiguousLink],
       ]),
     );
 

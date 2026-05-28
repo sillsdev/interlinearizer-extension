@@ -34,3 +34,13 @@ export function Info(props: Readonly<{ size?: number; className?: string }>): Re
 export function Trash2(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="trash2-icon" {...props} />;
 }
+
+/**
+ * Stub for the X icon.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as an X icon stub in tests.
+ */
+export function X(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="x-icon" {...props} />;
+}

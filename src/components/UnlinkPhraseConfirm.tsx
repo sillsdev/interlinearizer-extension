@@ -1,7 +1,7 @@
 /** @file Confirmation popup for unlinking (deleting) a phrase. */
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
-import type { PhraseMode } from './phrase-mode';
+import type { PhraseMode } from '../types/phrase-mode';
 
 /** Props for {@link UnlinkPhraseConfirm}. */
 type UnlinkPhraseConfirmProps = Readonly<{

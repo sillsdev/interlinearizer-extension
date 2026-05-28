@@ -1,5 +1,6 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { Dispatch, KeyboardEvent, SetStateAction } from 'react';
 import {
@@ -8,8 +9,9 @@ import {
   usePhraseGlossDispatch,
   usePhraseLinkForToken,
 } from './AnalysisStore';
-import { DRAFT_PHRASE_ID, type PhraseMode } from './phrase-mode';
+import type { PhraseMode } from '../types/phrase-mode';
 import MemoizedTokenChip from './TokenChip';
+import MemoizedTokenLinkIcon from './TokenLinkIcon';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -41,7 +43,8 @@ function PhraseGlossInput({
       className="tw:mt-0.5 tw:block tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default"
       data-testid="phrase-gloss-input"
       disabled={disabled}
-      style={{ fieldSizing: 'content', minWidth: '5ch' }}
+      placeholder="gloss"
+      style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}
       onBlur={() => {
@@ -75,6 +78,16 @@ type PhraseBoxProps = Readonly<{
    */
   editPhraseTokens?: PhraseAnalysisLink['tokens'];
   /**
+   * In `edit` mode only: the segmentId of the phrase being edited. Tokens in any other segment are
+   * disabled to enforce the single-segment phrase invariant.
+   */
+  editPhraseSegmentId?: string;
+  /**
+   * Map from token ref to its owning segment id; used by `edit` mode to disable tokens outside the
+   * phrase's segment.
+   */
+  tokenSegmentMap?: ReadonlyMap<string, string>;
+  /**
    * Distance in pixels above the box top to push the controls pill, so it aligns with the arc's
    * flat top rather than floating directly above the box. Defaults to `0`.
    */
@@ -96,6 +109,11 @@ type PhraseBoxProps = Readonly<{
    * the view. All fragments of that phrase receive the highlighted style simultaneously.
    */
   isHighlighted?: boolean;
+  /**
+   * When `true`, this token/box would become a free (solo) token if the currently hovered
+   * split/unlink button were clicked. Renders with a destructive border as a preview.
+   */
+  isSplitFree?: boolean;
 }>;
 
 /**
@@ -106,13 +124,15 @@ type PhraseBoxProps = Readonly<{
  * - Real phrases (with a `phraseLink`) show "Edit phrase" and "Unlink phrase" icon buttons.
  * - Solo tokens render as the normal gloss-editable chip.
  *
- * In `create` or `edit` mode:
+ * In `edit` mode:
  *
- * - Tokens belonging to the active draft / target phrase render with a "selected" outline.
+ * - Tokens belonging to the active target phrase render with a "selected" outline.
  * - Tokens belonging to a _different_ phrase render disabled (greyed, `aria-disabled`, no click).
- * - Free tokens (not in any phrase) render as click targets for toggling draft membership.
- * - In `edit` mode, each token chip within the phrase is individually clickable to remove it; free
- *   tokens are clickable to add them to the phrase.
+ * - Tokens in segments other than the edited phrase's segment also render disabled, enforcing the
+ *   single-segment phrase invariant.
+ * - Free tokens (not in any phrase) in the same segment render as click targets for adding them to
+ *   the phrase.
+ * - Each token chip within the target phrase is individually clickable to remove it.
  *
  * In `confirm-unlink` mode:
  *
@@ -127,6 +147,8 @@ type PhraseBoxProps = Readonly<{
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.editPhraseTokens - Current token list of the phrase being edited (edit mode only)
+ * @param props.editPhraseSegmentId - Segment id of the phrase being edited (edit mode only)
+ * @param props.tokenSegmentMap - Token ref → segment id lookup used in edit mode
  * @param props.arcOffsetPx - Extra upward offset for the controls pill so it sits at the arc top
  * @param props.showControls - When true, edit/unlink buttons are shown above this fragment (parent
  *   sets for hovered fragment only)
@@ -136,21 +158,20 @@ export function PhraseBox({
   index,
   isFocused = false,
   isHighlighted = false,
+  isSplitFree = false,
   onFocusPhrase,
   tokens,
   phraseLink,
   phraseMode,
   setPhraseMode,
   editPhraseTokens,
+  editPhraseSegmentId,
+  tokenSegmentMap,
   arcOffsetPx = 0,
   showGlossInput = true,
   showControls = true,
 }: PhraseBoxProps) {
-  const { createPhrase: dispatchCreatePhrase, updatePhrase } = usePhraseDispatch();
-  const dispatchPhraseGloss = usePhraseGlossDispatch();
-
-  /** Gloss typed by the user before the draft phrase is committed. */
-  const [draftGloss, setDraftGloss] = useState('');
+  const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
   // For the first token: look up phrase membership to check if it's in any phrase (incl. another).
   // Solo boxes only have one token; multi-token boxes share a phraseLink so we look up tok[0].
@@ -176,21 +197,22 @@ export function PhraseBox({
   }, [phraseLink, setPhraseMode]);
 
   /**
-   * Toggles a specific token's membership in create mode (adds/removes from draft). In edit mode
-   * this is used only for the box-level click when the box is a single free token.
+   * Pops a single token out of the phrase in view mode. When only two tokens remain after removal
+   * the phrase is deleted entirely (the unlink button handles the two-token case explicitly).
    *
-   * @param tokenRef - Ref of the token to toggle.
+   * @param tokenRef - Ref of the token to remove.
    */
-  const handleCreateToggle = useCallback(
+  const handleViewPopOut = useCallback(
     (tokenRef: string) => {
-      if (phraseMode.kind !== 'create') return;
-      const alreadyInDraft = phraseMode.draftTokenRefs.includes(tokenRef);
-      const nextDraft = alreadyInDraft
-        ? phraseMode.draftTokenRefs.filter((r) => r !== tokenRef)
-        : [...phraseMode.draftTokenRefs, tokenRef];
-      setPhraseMode({ kind: 'create', draftTokenRefs: nextDraft });
+      if (!phraseLink) return;
+      const nextTokens = phraseLink.tokens.filter((t) => t.tokenRef !== tokenRef);
+      if (nextTokens.length <= 1) {
+        deletePhrase(phraseLink.analysisId);
+      } else {
+        updatePhrase(phraseLink.analysisId, nextTokens);
+      }
     },
-    [phraseMode, setPhraseMode],
+    [phraseLink, updatePhrase, deletePhrase],
   );
 
   /**
@@ -221,35 +243,6 @@ export function PhraseBox({
     [phraseMode, editPhraseTokens, updatePhrase],
   );
 
-  /** Commits the draft as a new phrase and returns to view mode. */
-  const handleDone = useCallback(() => {
-    /* v8 ignore next 4 -- Done button only renders when isInDraft; guard is defensive */
-    if (phraseMode.kind !== 'create' || phraseMode.draftTokenRefs.length < 2) {
-      setPhraseMode({ kind: 'view' });
-      return;
-    }
-    const newId = dispatchCreatePhrase(
-      phraseMode.draftTokenRefs.map((r) => ({
-        tokenRef: r,
-        /* v8 ignore next -- draft refs always match tokens in the owning PhraseBox */
-        surfaceText: tokens.find((t) => t.ref === r)?.surfaceText ?? r,
-      })),
-    );
-    if (draftGloss) dispatchPhraseGloss(newId, draftGloss);
-    setPhraseMode({ kind: 'view' });
-  }, [phraseMode, dispatchCreatePhrase, dispatchPhraseGloss, draftGloss, tokens, setPhraseMode]);
-
-  // When the toolbar sets commit:true, the first PhraseBox that contains a draft token fires handleDone.
-  const isFirstDraftToken =
-    phraseMode.kind === 'create' &&
-    phraseMode.commit === true &&
-    phraseMode.draftTokenRefs[0] === tokens[0].ref;
-  useEffect(() => {
-    if (isFirstDraftToken) handleDone();
-    // handleDone is stable; isFirstDraftToken captures the commit signal.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFirstDraftToken]);
-
   // When revert:true is set, the first token of the phrase being edited restores originalTokens.
   const isFirstEditToken =
     phraseMode.kind === 'edit' &&
@@ -264,22 +257,30 @@ export function PhraseBox({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFirstEditToken]);
 
-  const isRealPhrase = phraseLink !== undefined && phraseLink.analysisId !== DRAFT_PHRASE_ID;
+  const isRealPhrase = phraseLink !== undefined;
 
   // --- view mode ---
   if (phraseMode.kind === 'view') {
-    const baseClass =
-      isFocused || isHighlighted
-        ? 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-white tw:bg-muted/30 tw:px-0.5 tw:py-0.5'
-        : 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-0.5 tw:py-0.5';
+    const viewBorderClass = (() => {
+      if (isSplitFree) return 'tw:border-destructive tw:bg-muted/20';
+      if (isFocused) return 'tw:border-white tw:bg-muted/30';
+      if (isHighlighted) return 'tw:border-white/55 tw:bg-muted/25';
+      return 'tw:border-border/40 tw:bg-muted/20';
+    })();
+    const baseClass = `tw:inline-flex tw:flex-col tw:rounded tw:border ${viewBorderClass} tw:px-0.5 tw:py-0.5`;
+
+    // The pill is centred on the arc top. To keep controls reachable while the pointer moves up
+    // through the gap between the box and the pill, extend the transparent span all the way to the
+    // pill's top edge: arcOffsetPx (box-to-arc distance) + CONTROLS_HALF_HEIGHT_PX (half pill).
+    const hoverZoneHeightPx = arcOffsetPx + 10; // 10 = CONTROLS_HALF_HEIGHT_PX
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
         {isRealPhrase && showControls && (
           <span
             aria-hidden="true"
-            className="tw:absolute tw:left-1/2 tw:-translate-x-1/2 tw:w-8"
-            style={{ top: `-${arcOffsetPx}px`, height: `${arcOffsetPx}px` }}
+            className="tw:absolute tw:left-0 tw:right-0"
+            style={{ top: `-${hoverZoneHeightPx}px`, height: `${hoverZoneHeightPx}px` }}
           />
         )}
         {isRealPhrase && showControls && (
@@ -304,19 +305,48 @@ export function PhraseBox({
               onClick={handleUnlinkClick}
               type="button"
             >
-              ✕
+              <Trash2 className="tw:h-3 tw:w-3" />
             </button>
           </span>
         )}
         <label
           className={baseClass}
           data-focus-state={isFocused ? 'focused' : 'default'}
+          data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
           data-phrase-id={phraseLink?.analysisId}
         >
           <span className="tw:inline-flex tw:items-start tw:gap-1">
-            {tokens.map((token) => (
-              <MemoizedTokenChip key={token.ref} onFocus={handleFocus} token={token} />
+            {tokens.map((token, i) => (
+              <span key={token.ref} className="tw:inline-flex tw:items-start tw:gap-1">
+                {i > 0 && isRealPhrase && (
+                  <MemoizedTokenLinkIcon
+                    focusedFreeToken={undefined}
+                    focusedPhraseLink={undefined}
+                    focusedSideIsPrev={undefined}
+                    isSameSegmentAsFocus={false}
+                    isPhraseRevealed={isHighlighted}
+                    nextPhraseLink={phraseLink}
+                    nextToken={token}
+                    phraseMode={phraseMode}
+                    prevPhraseLink={phraseLink}
+                    prevToken={tokens[i - 1]}
+                  />
+                )}
+                <MemoizedTokenChip
+                  onFocus={handleFocus}
+                  onRemove={
+                    isRealPhrase &&
+                    isHighlighted &&
+                    phraseLink.tokens.length > 2 &&
+                    token.ref !== phraseLink.tokens[0].tokenRef &&
+                    token.ref !== phraseLink.tokens[phraseLink.tokens.length - 1].tokenRef
+                      ? () => handleViewPopOut(token.ref)
+                      : undefined
+                  }
+                  token={token}
+                />
+              </span>
             ))}
           </span>
           {isRealPhrase && showGlossInput && (
@@ -355,27 +385,24 @@ export function PhraseBox({
     );
   }
 
-  // --- create / edit mode ---
+  // --- edit mode ---
 
-  // In create mode: determine if this token is in the active draft.
-  const isInDraft =
-    phraseMode.kind === 'create' && phraseMode.draftTokenRefs.includes(tokens[0].ref);
+  const isInEditTarget = isThisPhrase && phraseLink?.analysisId === phraseMode.phraseId;
 
-  // In edit mode: determine if this token belongs to the phrase being edited.
-  const isInEditTarget =
-    phraseMode.kind === 'edit' && isThisPhrase && phraseLink?.analysisId === phraseMode.phraseId;
+  // Tokens in a different segment from the phrase being edited are disabled to enforce the
+  // single-segment phrase invariant.
+  const isInWrongSegment =
+    !isInEditTarget &&
+    editPhraseSegmentId !== undefined &&
+    tokenSegmentMap?.get(tokens[0].ref) !== editPhraseSegmentId;
 
-  // Tokens that belong to a *different* phrase are disabled.
-  const isDisabled =
-    isInAnyPhrase &&
-    !(
-      (phraseMode.kind === 'create' && isInDraft) ||
-      (phraseMode.kind === 'edit' && isInEditTarget)
-    );
+  // Tokens that belong to a *different* phrase, or are outside the edited phrase's segment, are
+  // disabled.
+  const isDisabled = (isInAnyPhrase && !isInEditTarget) || isInWrongSegment;
 
-  const isSelected = isInDraft || isInEditTarget;
+  const isSelected = isInEditTarget;
 
-  // Outer container style: disabled phrases fade out; selected (draft/edit-target) get a ring;
+  // Outer container style: disabled phrases fade out; selected (edit-target) gets a ring;
   // free tokens are clickable with a subtle border.
   const containerClass = (() => {
     if (isDisabled)
@@ -385,21 +412,10 @@ export function PhraseBox({
     return 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-0.5 tw:py-0.5 tw:cursor-pointer';
   })();
 
-  // In edit mode with the target phrase, or in create mode with a multi-token draft group:
-  // each token chip is individually clickable to remove it.
-  if (
-    (phraseMode.kind === 'edit' && isInEditTarget) ||
-    (phraseMode.kind === 'create' && isInDraft && tokens.length > 1)
-  ) {
+  // In edit mode with the target phrase: each token chip is individually clickable to remove it.
+  if (isInEditTarget) {
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        if (phraseMode.kind === 'edit') handleEditRemove(tokenRef);
-        else handleCreateToggle(tokenRef);
-      }
-    };
-    const handlePerTokenClick = (tokenRef: string) => {
-      if (phraseMode.kind === 'edit') handleEditRemove(tokenRef);
-      else handleCreateToggle(tokenRef);
+      if (e.key === 'Enter' || e.key === ' ') handleEditRemove(tokenRef);
     };
     return (
       <span
@@ -411,15 +427,11 @@ export function PhraseBox({
           {tokens.map((token) => (
             <span
               key={token.ref}
-              aria-label={
-                phraseMode.kind === 'edit'
-                  ? `Remove ${token.surfaceText} from phrase`
-                  : `Deselect ${token.surfaceText}`
-              }
+              aria-label={`Remove ${token.surfaceText} from phrase`}
               className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
               role="button"
               tabIndex={0}
-              onClick={() => handlePerTokenClick(token.ref)}
+              onClick={() => handleEditRemove(token.ref)}
               onKeyDown={handlePerTokenKeyDown(token.ref)}
             >
               <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
@@ -429,29 +441,14 @@ export function PhraseBox({
         {isRealPhrase && showGlossInput && (
           <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
         )}
-        {phraseMode.kind === 'create' && showGlossInput && (
-          <input
-            aria-label="Phrase gloss"
-            className="tw:mt-0.5 tw:block tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
-            data-testid="draft-phrase-gloss-input"
-            style={{ fieldSizing: 'content', minWidth: '5ch' }}
-            type="text"
-            value={draftGloss}
-            onChange={(e) => setDraftGloss(e.target.value)}
-          />
-        )}
       </span>
     );
   }
 
-  // Free token in edit mode, single draft token in create mode, or disabled phrase box.
+  // Free token in edit mode (or disabled phrase box).
   const handleBoxClick = () => {
     if (isDisabled) return;
-    if (phraseMode.kind === 'create') {
-      handleCreateToggle(tokens[0].ref);
-    } else if (phraseMode.kind === 'edit' && !isInAnyPhrase) {
-      handleEditAdd(tokens[0].ref, tokens[0].surfaceText);
-    }
+    if (!isInAnyPhrase) handleEditAdd(tokens[0].ref, tokens[0].surfaceText);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {

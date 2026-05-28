@@ -1,6 +1,5 @@
-import type { PhraseAnalysisLink, Token } from 'interlinearizer';
-import { isWordToken } from '../components/component-types';
-import { DRAFT_PHRASE_ID, type PhraseMode } from '../components/phrase-mode';
+import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
+import type { PhraseMode } from '../types/phrase-mode';
 
 /**
  * Half the height of a floating phrase-controls pill in pixels. The pill is centred on the arc top
@@ -18,69 +17,86 @@ export const ARC_LEVEL_STEP = 8;
 /** Corner radius (px) used in all arc bracket paths. */
 export const ARC_CORNER_RADIUS = 5;
 
-/** A grouped render unit: one or more adjacent tokens that share the same phrase (or no phrase). */
-export type TokenGroup = {
-  /** The tokens to render together in one `PhraseBox`. */
-  tokens: (Token & { type: 'word' })[];
-  /** The phrase link shared by all tokens in this group, or `undefined` for ungrouped solo tokens. */
-  phraseLink: PhraseAnalysisLink | undefined;
-  /**
-   * The index of the first token in the flat token array from which this group was built — passed
-   * as `index` to `PhraseBox`.
-   */
-  firstIndex: number;
+/**
+ * Subset of the phrase-store dispatch surface that {@link splitPhraseAtBoundary} needs. Kept local
+ * to the utils layer so this module doesn't depend on `components/AnalysisStore`; the real
+ * `PhraseDispatch` is structurally compatible.
+ */
+export type SplitPhraseDispatch = {
+  createPhrase: (tokens: TokenSnapshot[]) => string;
+  updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
+  deletePhrase: (phraseId: string) => void;
 };
 
 /**
- * Groups adjacent word tokens that share the same approved `PhraseAnalysisLink` (or draft link)
- * into single `TokenGroup` entries. Non-word tokens are skipped. Discontiguous phrase members
- * produce separate groups that share the same `phraseLink`.
+ * Splits `phraseLink` at the boundary immediately after `splitAfterTokenRef` and dispatches the
+ * resulting create/update/delete calls. Shared by ContinuousView's arc-split button, SegmentView's
+ * arc-split button, and TokenLinkIcon's between-token unlink button so all three paths can never
+ * drift apart.
  *
- * @param tokens - The flat token list to group.
- * @param phraseLinkByRef - Map from `tokenRef` to the `PhraseAnalysisLink` containing it.
- * @returns An ordered array of `TokenGroup`s ready for rendering.
+ * Outcomes (where `before` is the half up to and including `splitAfterTokenRef`, `after` is the
+ * remainder):
+ *
+ * - Both halves ≤ 1 token → the phrase is deleted entirely (only 2 tokens to begin with).
+ * - Both halves ≥ 2 tokens → the original phrase shrinks to `before`, a new phrase is created from
+ *   `after`.
+ * - Exactly one half has 1 token → the phrase shrinks to the larger half; the solo token becomes
+ *   free.
+ *
+ * If `splitAfterTokenRef` is not found in `phraseLink.tokens` the function is a no-op.
+ *
+ * @param phraseLink - The phrase link to split.
+ * @param splitAfterTokenRef - Token ref of the last token to keep in the earlier fragment.
+ * @param dispatch - Phrase create/update/delete callbacks.
  */
-export function groupTokens(
-  tokens: Token[],
-  phraseLinkByRef: Map<string, PhraseAnalysisLink>,
-): TokenGroup[] {
-  return tokens.reduce<TokenGroup[]>((groups, token, index) => {
-    if (!isWordToken(token)) return groups;
-    const link = phraseLinkByRef.get(token.ref);
-    const last = groups[groups.length - 1];
-    if (link && last?.phraseLink?.analysisId === link.analysisId) {
-      last.tokens.push(token);
-    } else {
-      groups.push({ tokens: [token], phraseLink: link, firstIndex: index });
-    }
-    return groups;
-  }, []);
+export function splitPhraseAtBoundary(
+  phraseLink: PhraseAnalysisLink,
+  splitAfterTokenRef: string,
+  dispatch: SplitPhraseDispatch,
+): void {
+  const idx = phraseLink.tokens.findIndex((t) => t.tokenRef === splitAfterTokenRef);
+  if (idx < 0) return;
+  const boundary = idx + 1;
+  const before = phraseLink.tokens.slice(0, boundary);
+  const after = phraseLink.tokens.slice(boundary);
+  if (before.length <= 1 && after.length <= 1) {
+    dispatch.deletePhrase(phraseLink.analysisId);
+    return;
+  }
+  if (before.length >= 2 && after.length >= 2) {
+    dispatch.updatePhrase(phraseLink.analysisId, before);
+    dispatch.createPhrase(after);
+    return;
+  }
+  dispatch.updatePhrase(phraseLink.analysisId, before.length >= 2 ? before : after);
 }
 
 /**
- * Builds an effective phrase-link map that overlays draft membership onto the committed map. In
- * create mode, selected draft token refs are mapped to a synthetic `PhraseAnalysisLink` with
- * `analysisId === DRAFT_PHRASE_ID`. Returns `committedMap` unchanged in other modes.
+ * Computes the top padding (in pixels) required by a token strip/row so that arcs and the floating
+ * phrase-controls pill both fit above the phrase boxes.
  *
- * @param committedMap - The committed phrase-link map from the Redux store.
- * @param phraseMode - Current phrase-interaction mode.
- * @returns Either `committedMap` unchanged or a new map with draft entries overlaid.
+ * Arc padding: `15` = `ARC_BASE_STEM` (6) + corner radius (5) + breathing room (4); each nesting
+ * level adds `ARC_LEVEL_STEP` (8) px. When there are no arcs this contribution is zero.
+ *
+ * Controls headroom: when any real phrase is visible, the floating controls pill sits centred on
+ * either the arc top (for discontiguous phrases) or the box top (for contiguous phrases). Its upper
+ * half (`CONTROLS_HALF_HEIGHT_PX`) extends above whichever line it rides; on box-top phrases the
+ * pill sits at `top: -CONTROLS_HALF_HEIGHT_PX`, so the strip needs `2 * CONTROLS_HALF_HEIGHT_PX` of
+ * headroom to keep the full pill visible.
+ *
+ * @param hasArcs - Whether at least one arc is currently drawn.
+ * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
+ * @param hasRealPhrase - Whether any committed phrase is rendered in the current window.
+ * @returns The required top padding in pixels, with a floor of 8.
  */
-export function buildEffectiveLinkMap(
-  committedMap: Map<string, PhraseAnalysisLink>,
-  phraseMode: PhraseMode,
-): Map<string, PhraseAnalysisLink> {
-  if (phraseMode.kind !== 'create' || phraseMode.draftTokenRefs.length === 0) return committedMap;
-
-  const draftLink: PhraseAnalysisLink = {
-    analysisId: DRAFT_PHRASE_ID,
-    status: 'approved',
-    tokens: phraseMode.draftTokenRefs.map((r) => ({ tokenRef: r, surfaceText: '' })),
-  };
-
-  const effective = new Map(committedMap);
-  phraseMode.draftTokenRefs.forEach((ref) => effective.set(ref, draftLink));
-  return effective;
+export function computeStripTopPadding(
+  hasArcs: boolean,
+  maxArcLevel: number,
+  hasRealPhrase: boolean,
+): number {
+  const arcPadding = hasArcs ? 15 + maxArcLevel * 8 : 0;
+  const controlsHeadroom = hasRealPhrase ? 2 * CONTROLS_HALF_HEIGHT_PX : 0;
+  return Math.max(8, arcPadding + controlsHeadroom);
 }
 
 /** Stroke styling for a single phrase arc; consumed directly as SVG `<path>` attributes. */
@@ -99,12 +115,10 @@ export type ArcStrokeProps = {
  *
  * - `confirm-unlink`: the target phrase's arc is drawn in the destructive color; all other arcs are
  *   dimmed.
- * - `create`: the draft phrase's arc is white (matches the white ring on its phrase box); other arcs
- *   are dimmed and hover is suppressed.
  * - `edit`: the edited phrase's arc is white (matches its phrase-box ring); other arcs are dimmed and
  *   hover is suppressed.
- * - `view`: the hovered or focused phrase's arc is white; other arcs are drawn in the same border
- *   color as the unhighlighted phrase-box border so the line and box read as a single shape.
+ * - `view`: the focused phrase's arc is full-white; the hovered phrase's arc is mid-level white; all
+ *   other arcs are drawn in the same border color as the unhighlighted phrase-box border.
  *
  * @param phraseMode - Current phrase-interaction mode.
  * @param phraseId - The phraseId of the arc being styled.
@@ -124,7 +138,7 @@ export function getArcStrokeProps(
   // `@theme inline` inlines the latter at build time and only the former is a runtime variable.
   const dimmed: ArcStrokeProps = {
     stroke: 'var(--border)',
-    strokeOpacity: 0.4,
+    strokeOpacity: 0.5,
     strokeWidth: 2,
   };
   const destructive: ArcStrokeProps = {
@@ -132,20 +146,19 @@ export function getArcStrokeProps(
     strokeOpacity: 1,
     strokeWidth: 2,
   };
+  const hovered: ArcStrokeProps = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
   const highlighted: ArcStrokeProps = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
 
   if (phraseMode.kind === 'confirm-unlink') {
     return phraseId === phraseMode.phraseId ? destructive : dimmed;
   }
-  if (phraseMode.kind === 'create') {
-    return phraseId === DRAFT_PHRASE_ID ? highlighted : dimmed;
-  }
   if (phraseMode.kind === 'edit') {
     return phraseId === phraseMode.phraseId ? highlighted : dimmed;
   }
   // view mode
-  const isHighlighted = phraseId === hoveredPhraseId || phraseId === focusedPhraseId;
-  return isHighlighted ? highlighted : dimmed;
+  if (phraseId === focusedPhraseId) return highlighted;
+  if (phraseId === hoveredPhraseId) return hovered;
+  return dimmed;
 }
 
 /**
@@ -175,7 +188,19 @@ export function assignPhraseLevels(
 }
 
 /** A computed arc path entry for a single segment between two phrase boxes. */
-export type ArcPath = { phraseId: string; d: string };
+export type ArcPath = {
+  phraseId: string;
+  d: string;
+  /** Scroll-space x coordinate of the arc's visual midpoint, used to position the split button. */
+  midX: number;
+  /** Scroll-space y coordinate of the arc's visual midpoint, used to position the split button. */
+  midY: number;
+  /**
+   * Token ref of the last token in the earlier box. Passed to the arc split button so it knows
+   * where to cut the phrase token list.
+   */
+  splitAfterTokenRef: string;
+};
 
 /**
  * Result of {@link computeAllArcPaths}: the three pieces of arc state the Interlinearizer needs
@@ -248,17 +273,19 @@ export function computeAllArcPaths(container: Element): ArcState {
         height: number;
       };
       viewportRect: DOMRect;
+      lastTokenRef: string;
     }[]
   >();
 
   container.querySelectorAll('[data-phrase-box="true"][data-phrase-id]').forEach((el) => {
     const id = el.getAttribute('data-phrase-id');
     if (!id) return;
+    const lastTokenRef = el.getAttribute('data-last-token-ref') ?? '';
     const viewportRect = el.getBoundingClientRect();
     const rect = toScrollSpace(viewportRect, containerRect, scrollLeft, scrollTop);
     allBoxRects.push(rect);
     const list = boxesByPhrase.get(id) ?? [];
-    list.push({ rect, viewportRect });
+    list.push({ rect, viewportRect, lastTokenRef });
     boxesByPhrase.set(id, list);
   });
 
@@ -283,10 +310,10 @@ export function computeAllArcPaths(container: Element): ArcState {
       const a = boxes[i].rect;
       const b = boxes[i + 1].rect;
       const sameRow = Math.abs(a.top - b.top) < a.height / 2;
-      const d = sameRow
+      const { d, midX, midY } = sameRow
         ? buildSameRowArcPath(a, b, stem)
         : routeAroundBoxes(a, b, allBoxRects, stem);
-      paths.push({ phraseId, d });
+      paths.push({ phraseId, d, midX, midY, splitAfterTokenRef: boxes[i].lastTokenRef });
     }
   });
 
@@ -296,19 +323,20 @@ export function computeAllArcPaths(container: Element): ArcState {
 }
 
 /**
- * Builds an SVG path string for a same-row upward bracket arc connecting two boxes. Coordinates are
- * expressed in scroll-space (relative to the scroll container's content origin).
+ * Builds an SVG path string and scroll-space midpoint for a same-row upward bracket arc connecting
+ * two boxes. Coordinates are expressed in scroll-space (relative to the scroll container's content
+ * origin).
  *
  * @param a - Scroll-space rect of the left/earlier box.
  * @param b - Scroll-space rect of the right/later box.
  * @param stem - Total stem height in pixels (base + level offset).
- * @returns SVG path `d` attribute string.
+ * @returns Object containing the SVG path `d` attribute string and the arc's visual midpoint.
  */
 export function buildSameRowArcPath(
   a: { left: number; right: number; top: number },
   b: { left: number; right: number; top: number },
   stem: number,
-): string {
+): { d: string; midX: number; midY: number } {
   const r = ARC_CORNER_RADIUS;
   const x1 = (a.left + a.right) / 2;
   const x2 = (b.left + b.right) / 2;
@@ -317,24 +345,26 @@ export function buildSameRowArcPath(
   const sw1 = ltr ? 1 : 0;
   const sw2 = ltr ? 1 : 0;
   const dx = ltr ? r : -r;
-  return `M ${x1} ${y} L ${x1} ${y - stem} a ${r} ${r} 0 0 ${sw1} ${dx} ${-r} L ${x2 - dx} ${y - stem - r} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${x2} ${y}`;
+  const d = `M ${x1} ${y} L ${x1} ${y - stem} a ${r} ${r} 0 0 ${sw1} ${dx} ${-r} L ${x2 - dx} ${y - stem - r} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${x2} ${y}`;
+  return { d, midX: (x1 + x2) / 2, midY: y - stem - r };
 }
 
 /**
- * Builds an SVG path string for a cross-row downward S-curve arc connecting two boxes in different
- * rows. Coordinates are expressed in scroll-space (relative to the scroll container's content
- * origin). The midpoint is bowed outward by `stem` pixels to give the arc visual separation.
+ * Builds an SVG path string and scroll-space midpoint for a cross-row downward S-curve arc
+ * connecting two boxes in different rows. Coordinates are expressed in scroll-space (relative to
+ * the scroll container's content origin). The midpoint is bowed outward by `stem` pixels to give
+ * the arc visual separation.
  *
  * @param a - Scroll-space rect of the earlier (upper) box.
  * @param b - Scroll-space rect of the later (lower) box.
  * @param stem - Vertical offset applied to the arc midpoint to bow the curve outward.
- * @returns SVG path `d` attribute string.
+ * @returns Object containing the SVG path `d` attribute string and the arc's visual midpoint.
  */
 export function buildCrossRowArcPath(
   a: { left: number; right: number; bottom: number },
   b: { left: number; right: number; top: number },
   stem: number,
-): string {
+): { d: string; midX: number; midY: number } {
   const r = ARC_CORNER_RADIUS;
   const cx1 = (a.left + a.right) / 2;
   const y1 = a.bottom;
@@ -348,7 +378,9 @@ export function buildCrossRowArcPath(
   const dx = ltr ? r : -r;
   const sw1 = ltr ? 0 : 1;
   const sw2 = ltr ? 1 : 0;
-  return `M ${cx1} ${y1} L ${tx1} ${mid - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${mid} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${y2}`;
+  const midX = (tx1 + tx2 + dx - dx) / 2;
+  const d = `M ${cx1} ${y1} L ${tx1} ${mid - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${mid} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${y2}`;
+  return { d, midX, midY: mid };
 }
 
 /**
@@ -364,14 +396,14 @@ export function buildCrossRowArcPath(
  * @param obstacles - All phrase-box rects in scroll-space (including `a` and `b`; they are filtered
  *   out internally because their y-range does not overlap the arc's interior).
  * @param stem - Vertical offset applied to the arc midpoint to bow the curve outward.
- * @returns SVG path `d` attribute string.
+ * @returns Object containing the SVG path `d` attribute string and the arc's visual midpoint.
  */
 export function routeAroundBoxes(
   a: { left: number; right: number; top: number; bottom: number },
   b: { left: number; right: number; top: number; bottom: number },
   obstacles: { left: number; right: number; top: number; bottom: number }[],
   stem: number,
-): string {
+): { d: string; midX: number; midY: number } {
   const r = ARC_CORNER_RADIUS;
   const cx1 = (a.left + a.right) / 2;
   const y1 = a.bottom;
@@ -415,5 +447,6 @@ export function routeAroundBoxes(
   const dx2 = ltr2 ? r : -r;
   const sw2 = ltr2 ? 1 : 0;
 
-  return `M ${cx1} ${y1} L ${tx1} ${midY - r} a ${r} ${r} 0 0 ${sw1} ${dx1} ${r} L ${tx2 - dx2} ${midY} a ${r} ${r} 0 0 ${sw2} ${dx2} ${r} L ${cx2} ${y2}`;
+  const d = `M ${cx1} ${y1} L ${tx1} ${midY - r} a ${r} ${r} 0 0 ${sw1} ${dx1} ${r} L ${tx2 - dx2} ${midY} a ${r} ${r} 0 0 ${sw2} ${dx2} ${r} L ${cx2} ${y2}`;
+  return { d, midX, midY };
 }

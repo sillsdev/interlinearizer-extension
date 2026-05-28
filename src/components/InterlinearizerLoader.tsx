@@ -11,6 +11,7 @@ import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
+import type { PhraseMode } from './phrase-mode';
 import ProjectModals, { type ModalState } from './ProjectModals';
 import ScriptureNavControls from './ScriptureNavControls';
 
@@ -163,11 +164,14 @@ export default function InterlinearizerLoader({
   );
 
   const hasError = !!bookError || !!tokenizeError;
-  const showLoading = isLoading || isSettingLoading || isAnalysisLoading;
+  const showLoading = isLoading || isAnalysisLoading;
+  const isLoaded = !hasError && !showLoading && !!book;
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [modal, setModal] = useState<ModalState>('none');
+
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
 
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
@@ -239,12 +243,67 @@ export default function InterlinearizerLoader({
           ) : undefined
         }
         endAreaChildren={
-          <ContinuousScrollToggle
-            checked={continuousScroll}
-            disabled={isSettingLoading}
-            label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
-            onCheckedChange={handleContinuousScrollChange}
-          />
+          <>
+            {isLoaded && (
+              <ContinuousScrollToggle
+                checked={continuousScroll}
+                disabled={isSettingLoading}
+                label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
+                onCheckedChange={handleContinuousScrollChange}
+              />
+            )}
+            {isLoaded && phraseMode.kind === 'view' && (
+              <button
+                className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:hover:bg-muted"
+                onClick={() => setPhraseMode({ kind: 'create', draftTokenRefs: [] })}
+                type="button"
+              >
+                Create phrase
+              </button>
+            )}
+            {isLoaded && (phraseMode.kind === 'create' || phraseMode.kind === 'edit') && (
+              <>
+                {phraseMode.kind === 'create' && phraseMode.draftTokenRefs.length > 1 && (
+                  <button
+                    className="tw:rounded tw:border tw:border-ring tw:bg-ring tw:px-2 tw:py-1 tw:text-sm tw:text-background tw:hover:opacity-90"
+                    data-testid="done-phrase-btn"
+                    onClick={() =>
+                      setPhraseMode({
+                        kind: 'create',
+                        draftTokenRefs: phraseMode.draftTokenRefs,
+                        commit: true,
+                      })
+                    }
+                    type="button"
+                  >
+                    Done
+                  </button>
+                )}
+                {phraseMode.kind === 'edit' && (
+                  <button
+                    className="tw:rounded tw:border tw:border-ring tw:bg-ring tw:px-2 tw:py-1 tw:text-sm tw:text-background tw:hover:opacity-90"
+                    data-testid="done-edit-btn"
+                    onClick={() => setPhraseMode({ kind: 'view' })}
+                    type="button"
+                  >
+                    Done
+                  </button>
+                )}
+                <button
+                  className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:hover:bg-muted"
+                  data-testid="cancel-phrase-btn"
+                  onClick={() =>
+                    phraseMode.kind === 'edit'
+                      ? setPhraseMode({ ...phraseMode, revert: true })
+                      : setPhraseMode({ kind: 'view' })
+                  }
+                  type="button"
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+          </>
         }
         onSelectProjectMenuItem={menuCommandHandler}
         /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
@@ -290,6 +349,8 @@ export default function InterlinearizerLoader({
           analysisLanguage={analysisLanguage}
           initialAnalysis={activeProjectAnalysis}
           onSaveAnalysis={handleSaveAnalysis}
+          phraseMode={phraseMode}
+          setPhraseMode={setPhraseMode}
         />
       )}
 

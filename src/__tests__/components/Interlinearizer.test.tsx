@@ -40,6 +40,8 @@ let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
 /** Props captured from SegmentView renders so tests can assert on what Interlinearizer passes down. */
 type CapturedSegmentViewProps = {
+  /** Nesting level per phraseId from the parent's unified arc computation. */
+  arcLevelByPhraseId: ReadonlyMap<string, number>;
   /** The segment the component is asked to render. */
   segment: Segment;
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
@@ -50,6 +52,12 @@ type CapturedSegmentViewProps = {
   isActive: boolean;
   /** Called when the user selects a token. */
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  /** PhraseId currently hovered anywhere in the interlinearizer. */
+  hoveredPhraseId: string | undefined;
+  /** Called when the pointer enters or leaves a phrase box. */
+  onHoverPhrase: (phraseId: string | undefined) => void;
+  /** PhraseIds whose gloss input has already been rendered in an earlier segment. */
+  seenPhraseIds: ReadonlySet<string>;
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
@@ -78,6 +86,12 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns A function that accepts any arguments and does nothing.
    */
   useGlossDispatch: () => () => {},
+  /**
+   * Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom.
+   *
+   * @returns An empty `Map`.
+   */
+  usePhraseLinkMap: () => new Map(),
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -101,13 +115,33 @@ jest.mock('../../components/SegmentView', () => ({
    * Named export stub for SegmentView; captures received props and renders a minimal div.
    *
    * @param props - The props passed by Interlinearizer.
+   * @param props.arcLevelByPhraseId - Arc nesting level map from the parent.
    * @param props.segment - The segment being rendered.
    * @param props.isActive - Whether this segment is the active verse.
+   * @param props.hoveredPhraseId - PhraseId currently hovered.
+   * @param props.onHoverPhrase - Hover callback.
+   * @param props.seenPhraseIds - Already-rendered phrase ids.
    * @param props.rest - Any additional props forwarded from the parent.
    * @returns A div with `data-testid="segment-view"` and the segment id.
    */
-  SegmentView: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
-    capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
+  SegmentView: ({
+    arcLevelByPhraseId,
+    segment,
+    isActive,
+    hoveredPhraseId,
+    onHoverPhrase,
+    seenPhraseIds,
+    ...rest
+  }: CapturedSegmentViewProps) => {
+    capturedSegmentViewPropsList.push({
+      arcLevelByPhraseId,
+      segment,
+      isActive,
+      hoveredPhraseId,
+      onHoverPhrase,
+      seenPhraseIds,
+      ...rest,
+    });
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
@@ -120,13 +154,33 @@ jest.mock('../../components/SegmentView', () => ({
    * Default export stub for SegmentView; captures received props and renders a minimal div.
    *
    * @param props - The props passed by Interlinearizer.
+   * @param props.arcLevelByPhraseId - Arc nesting level map from the parent.
    * @param props.segment - The segment being rendered.
    * @param props.isActive - Whether this segment is the active verse.
+   * @param props.hoveredPhraseId - PhraseId currently hovered.
+   * @param props.onHoverPhrase - Hover callback.
+   * @param props.seenPhraseIds - Already-rendered phrase ids.
    * @param props.rest - Any additional props forwarded from the parent.
    * @returns A div with `data-testid="segment-view"` and the segment id.
    */
-  default: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
-    capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
+  default: ({
+    arcLevelByPhraseId,
+    segment,
+    isActive,
+    hoveredPhraseId,
+    onHoverPhrase,
+    seenPhraseIds,
+    ...rest
+  }: CapturedSegmentViewProps) => {
+    capturedSegmentViewPropsList.push({
+      arcLevelByPhraseId,
+      segment,
+      isActive,
+      hoveredPhraseId,
+      onHoverPhrase,
+      seenPhraseIds,
+      ...rest,
+    });
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
@@ -209,6 +263,8 @@ function renderInterlinearizer({
       scrRef={scrRef}
       setScrRef={setScrRef}
       analysisLanguage="und"
+      phraseMode={{ kind: 'view' }}
+      setPhraseMode={() => {}}
     />,
   );
 }
@@ -242,6 +298,12 @@ describe('Interlinearizer', () => {
     expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
     expect(capturedSegmentViewPropsList[0].segment.id).toBe('GEN 1:1');
     expect(capturedSegmentViewPropsList[1].segment.id).toBe('GEN 1:2');
+  });
+
+  it('passes arcLevelByPhraseId to every SegmentView', () => {
+    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments });
+
+    capturedSegmentViewPropsList.forEach((p) => expect(p.arcLevelByPhraseId).toBeInstanceOf(Map));
   });
 
   it('passes isActive=true only to the segment matching the current verse', () => {
@@ -343,6 +405,8 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -391,6 +455,8 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -425,6 +491,8 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -452,6 +520,8 @@ describe('Interlinearizer', () => {
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -485,6 +555,8 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -498,6 +570,8 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 
@@ -553,6 +627,8 @@ describe('Interlinearizer', () => {
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
       />,
     );
 

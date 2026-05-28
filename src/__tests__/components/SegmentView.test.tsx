@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { SegmentView } from '../../components/SegmentView';
@@ -13,6 +13,11 @@ import { SegmentView } from '../../components/SegmentView';
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
 
+/** Stable mock fn for usePhraseLinkMap so individual tests can override the returned map. */
+const mockUsePhraseLinkMap = jest
+  .fn<Map<string, PhraseAnalysisLink>, []>()
+  .mockReturnValue(new Map());
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -20,6 +25,15 @@ jest.mock('../../components/AnalysisStore', () => ({
   },
   useGloss: () => '',
   useGlossDispatch: () => () => {},
+  usePhraseLinkMap: () => mockUsePhraseLinkMap(),
+  usePhraseLinkForToken: () => undefined,
+  usePhraseDispatch: () => ({
+    createPhrase: () => {},
+    updatePhrase: () => {},
+    deletePhrase: () => {},
+  }),
+  usePhraseGloss: () => '',
+  usePhraseGlossDispatch: () => () => {},
 }));
 
 jest.mock('../../components/TokenChip');
@@ -31,13 +45,18 @@ jest.mock('../../components/PhraseBox', () => ({
     isFocused = false,
     onFocusPhrase,
     tokens,
+    showGlossInput = true,
   }: Readonly<{
     index: number | undefined;
     isFocused: boolean;
     onFocusPhrase: (index?: number) => void;
     tokens: (Token & { type: 'word' })[];
+    phraseMode: unknown;
+    setPhraseMode: unknown;
+    phraseLink: unknown;
+    showGlossInput?: boolean;
   }>) => (
-    <span data-focus-state={isFocused ? 'focused' : 'default'}>
+    <span data-focus-state={isFocused ? 'focused' : 'default'} data-show-gloss={showGlossInput}>
       {tokens.map((t) => (
         <span key={t.ref}>
           <button onClick={() => onFocusPhrase(index)} type="button">
@@ -100,22 +119,38 @@ const PUNCT_SEGMENT: Segment = {
  * @returns An object containing all required SegmentView props set to no-op stubs.
  */
 function requiredProps(): {
+  arcLevelByPhraseId: ReadonlyMap<string, number>;
   displayMode: 'token-chip';
   focusedTokenRef: string | undefined;
+  hoveredPhraseId: string | undefined;
   isActive: boolean;
+  onHoverPhrase: jest.Mock;
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  seenPhraseIds: ReadonlySet<string>;
   segment: Segment;
+  phraseMode: { kind: 'view' };
+  setPhraseMode: jest.Mock;
 } {
   return {
+    arcLevelByPhraseId: new Map(),
     displayMode: 'token-chip',
     focusedTokenRef: undefined,
+    hoveredPhraseId: undefined,
     isActive: false,
+    onHoverPhrase: jest.fn(),
     onSelect: jest.fn(),
+    seenPhraseIds: new Set(),
     segment: WORD_SEGMENT,
+    phraseMode: { kind: 'view' },
+    setPhraseMode: jest.fn(),
   };
 }
 
 describe('SegmentView', () => {
+  beforeEach(() => {
+    mockUsePhraseLinkMap.mockReturnValue(new Map());
+  });
+
   it('renders word token chips in token-chip mode (default)', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
@@ -234,5 +269,150 @@ describe('SegmentView', () => {
     );
 
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
+  });
+
+  it('groups adjacent tokens that share the same phrase link into a single PhraseBox', () => {
+    const sharedLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    const phraseLinkMap = new Map<string, PhraseAnalysisLink>([
+      ['tok-0', sharedLink],
+      ['tok-1', sharedLink],
+    ]);
+    mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
+
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // Both tokens are grouped into one PhraseBox (the mock renders both as buttons)
+    expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'the' })).toBeInTheDocument();
+  });
+
+  it('passes showGlossInput=true to the first fragment of a discontiguous phrase', () => {
+    /** Segment with two tokens that share a phrase but are separated by a free token. */
+    const discontiguousSegment: Segment = {
+      id: 'GEN 1:3',
+      startRef: { book: 'GEN', chapter: 1, verse: 3 },
+      endRef: { book: 'GEN', chapter: 1, verse: 3 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          ref: 'tok-a',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+        {
+          ref: 'tok-b',
+          surfaceText: 'the',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 3,
+          charEnd: 6,
+        },
+        {
+          ref: 'tok-c',
+          surfaceText: 'beginning',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 7,
+          charEnd: 16,
+        },
+      ],
+    };
+    const discontigLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-dc',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-a', surfaceText: 'In' },
+        { tokenRef: 'tok-c', surfaceText: 'beginning' },
+      ],
+    };
+    mockUsePhraseLinkMap.mockReturnValue(
+      new Map([
+        ['tok-a', discontigLink],
+        ['tok-c', discontigLink],
+      ]),
+    );
+
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} segment={discontiguousSegment} />
+      </AnalysisStoreProvider>,
+    );
+
+    const boxes = document.querySelectorAll('[data-show-gloss]');
+    // tok-a is first occurrence → showGlossInput=true; tok-c is second → showGlossInput=false
+    expect(boxes[0]).toHaveAttribute('data-show-gloss', 'true');
+    expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
+  });
+
+  it('passes showGlossInput=false to the second fragment of a discontiguous phrase', () => {
+    const discontiguousSegment: Segment = {
+      id: 'GEN 1:4',
+      startRef: { book: 'GEN', chapter: 1, verse: 4 },
+      endRef: { book: 'GEN', chapter: 1, verse: 4 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          ref: 'tok-a',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+        {
+          ref: 'tok-b',
+          surfaceText: 'the',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 3,
+          charEnd: 6,
+        },
+        {
+          ref: 'tok-c',
+          surfaceText: 'beginning',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 7,
+          charEnd: 16,
+        },
+      ],
+    };
+    const discontigLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-dc',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-a', surfaceText: 'In' },
+        { tokenRef: 'tok-c', surfaceText: 'beginning' },
+      ],
+    };
+    mockUsePhraseLinkMap.mockReturnValue(
+      new Map([
+        ['tok-a', discontigLink],
+        ['tok-c', discontigLink],
+      ]),
+    );
+
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} segment={discontiguousSegment} />
+      </AnalysisStoreProvider>,
+    );
+
+    const boxes = document.querySelectorAll('[data-show-gloss]');
+    expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
   });
 });

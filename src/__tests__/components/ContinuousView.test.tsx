@@ -4,7 +4,7 @@
 
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, ScriptureRef, Token } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink, ScriptureRef, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import ContinuousView from '../../components/ContinuousView';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
@@ -12,6 +12,12 @@ import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
+
+/**
+ * Stable module-level phrase-link map returned by `usePhraseLinkMap` across renders. Mutated by
+ * individual tests to simulate phrase membership; reset in `beforeEach`.
+ */
+const phraseLinkMap = new Map<string, PhraseAnalysisLink>();
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
@@ -38,6 +44,21 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns A function that accepts any arguments and does nothing.
    */
   useGlossDispatch: () => () => {},
+  /**
+   * Returns the stable module-level phrase-link map so that tests can populate it without causing
+   * cascading re-renders from a new Map reference on every call.
+   *
+   * @returns The stable `phraseLinkMap` instance.
+   */
+  usePhraseLinkMap: () => phraseLinkMap,
+  usePhraseLinkForToken: () => undefined,
+  usePhraseDispatch: () => ({
+    createPhrase: () => {},
+    updatePhrase: () => {},
+    deletePhrase: () => {},
+  }),
+  usePhraseGloss: () => '',
+  usePhraseGlossDispatch: () => () => {},
 }));
 
 /** Render options that wrap every test render in a `AnalysisStoreProvider`. */
@@ -56,15 +77,23 @@ jest.mock('../../components/PhraseBox', () => ({
     isFocused = false,
     onFocusPhrase,
     tokens,
+    phraseLink,
+    showGlossInput = true,
   }: Readonly<{
     index: number | undefined;
     isFocused: boolean;
     onFocusPhrase: (index?: number) => void;
     tokens: (Token & { type: 'word' })[];
+    phraseMode: unknown;
+    setPhraseMode: unknown;
+    phraseLink: { analysisId: string } | undefined;
+    showGlossInput?: boolean;
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
+      data-phrase-id={phraseLink?.analysisId}
+      data-show-gloss={showGlossInput}
       onClick={() => onFocusPhrase(index)}
       type="button"
     >
@@ -346,12 +375,16 @@ function requiredProps(): {
   activeVerse: ScriptureRef;
   onFocusPhraseIndexChange: jest.Mock;
   onVerseChange: jest.Mock;
+  phraseMode: { kind: 'view' };
+  setPhraseMode: jest.Mock;
 } {
   return {
     activePhraseIndex: undefined,
     activeVerse: { book: 'GEN', chapter: 1, verse: 1 },
     onFocusPhraseIndexChange: jest.fn(),
     onVerseChange: jest.fn(),
+    phraseMode: { kind: 'view' },
+    setPhraseMode: jest.fn(),
   };
 }
 
@@ -362,6 +395,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   scrollIntoViewMock.mockClear();
+  phraseLinkMap.clear();
 });
 
 // ---------------------------------------------------------------------------
@@ -900,7 +934,7 @@ describe('ContinuousView activePhraseIndex', () => {
     rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
 
     // Strip should still be hidden while the second fade-out timer is pending.
-    expect(screen.getByTestId('token-strip')).toHaveClass('tw:opacity-0');
+    expect(screen.getByTestId('strip-fade-wrapper')).toHaveClass('tw:opacity-0');
   });
 
   it('jumps to the correct phrase when a second click arrives before the first jump resolves', () => {
@@ -1073,6 +1107,35 @@ describe('ContinuousView phrase window', () => {
     jest.useRealTimers();
   });
 
+  it('resolves activePhraseIndex that points to a non-first token in a phrase group', () => {
+    // makeBook(): tok-0 and tok-1 are in segment GEN 1:1, tok-2 and tok-3 in GEN 1:2.
+    // Link tok-0 and tok-1 into one phrase — they become group 0. tok-2 is group 1, tok-3 group 2.
+    // activePhraseIndex=1 (flat word-token index for tok-1) should resolve to group 0.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-ab',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+
+    render(
+      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />,
+      withAnalysisStore,
+    );
+    act(() => {
+      jest.advanceTimersByTime(500);
+    });
+
+    // Group 0 contains tok-0 and tok-1. activePhraseIndex=1 resolves to group 0, which is also
+    // the first group, so the Previous arrow stays disabled (at start).
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+  });
+
   it('activates both windowing branches when the focused phrase is deep inside a large book', () => {
     // A book with 250 tokens: focusing phrase 125 means windowStart = 25 (> 0) and
     // windowEnd = 225 (< 249), exercising both the windowStartTokenIndex and
@@ -1094,5 +1157,394 @@ describe('ContinuousView phrase window', () => {
     // Phrase 125 is not at the start or end, so both arrows are enabled.
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase grouping — adjacent same-phrase tokens joined into one PhraseBox
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView phrase grouping', () => {
+  it('renders adjacent same-phrase tokens as a single PhraseBox', () => {
+    // makeBook(): tok-0 and tok-1 are adjacent word tokens. Link them into one phrase.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-ab',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+
+    render(<ContinuousView book={book} {...requiredProps()} />, withAnalysisStore);
+
+    const phraseBtns = screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+    // tok-0 and tok-1 are merged → 3 groups total (phrase group, tok-2, tok-3)
+    expect(phraseBtns).toHaveLength(3);
+    // The first PhraseBox renders both tokens
+    expect(phraseBtns[0]).toHaveTextContent('In');
+    expect(phraseBtns[0]).toHaveTextContent('the');
+  });
+
+  it('navigation steps by phrase group, not by individual token', async () => {
+    // tok-0 and tok-1 merged into group 0; tok-2 is group 1; tok-3 is group 2.
+    // Clicking next twice from start reaches group 2 (last) and disables next arrow.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-ab',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+
+    render(<ContinuousView book={book} {...requiredProps()} />, withAnalysisStore);
+
+    const nextBtn = screen.getByRole('button', { name: 'Next token' });
+    await userEvent.click(nextBtn);
+    await userEvent.click(nextBtn);
+
+    // Now at group 2 (last), next should be disabled.
+    expect(nextBtn).toBeDisabled();
+  });
+
+  it('renders discontiguous same-phrase tokens as separate PhraseBoxes', () => {
+    // makeBook(): tok-0 (seg1), tok-1 (seg1), tok-2 (seg2), tok-3 (seg2).
+    // Link tok-0 and tok-2 (non-adjacent). They produce two separate groups with the same phraseLink.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-discontig',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    render(<ContinuousView book={book} {...requiredProps()} />, withAnalysisStore);
+
+    const phraseBtns = screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+    // tok-0, tok-1, tok-2, tok-3 → 4 groups (discontiguous phrase members remain separate)
+    expect(phraseBtns).toHaveLength(4);
+  });
+
+  it('groups draft tokens when phraseMode is create with draftTokenRefs', () => {
+    // In create mode, draftTokenRefs=[tok-0, tok-1] should merge them into one group.
+    const book = makeBook();
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        phraseMode={{ kind: 'create', draftTokenRefs: ['tok-0', 'tok-1'] }}
+      />,
+      withAnalysisStore,
+    );
+
+    const phraseBtns = screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+    // tok-0 and tok-1 become a draft group → 3 groups total
+    expect(phraseBtns).toHaveLength(3);
+    expect(phraseBtns[0]).toHaveTextContent('In');
+    expect(phraseBtns[0]).toHaveTextContent('the');
+  });
+
+  it('does not group tokens in create mode when draftTokenRefs is empty', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        phraseMode={{ kind: 'create', draftTokenRefs: [] }}
+      />,
+      withAnalysisStore,
+    );
+
+    const phraseBtns = screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+    // No drafts — 4 individual groups
+    expect(phraseBtns).toHaveLength(4);
+  });
+
+  it('passes editPhraseTokens to PhraseBox when phraseMode is edit and phrase is in the map', () => {
+    // The PhraseBox mock doesn't use editPhraseTokens, but this exercises the lookup so that the
+    // branch is covered.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-edit',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'phrase-edit',
+          originalTokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+        }}
+      />,
+      withAnalysisStore,
+    );
+
+    // The render completes without error — editPhraseTokens was computed and passed through.
+    expect(screen.getByText('In')).toBeInTheDocument();
+  });
+
+  it('builds correct groupIndexByWordTokenIndex when punctuation tokens sit between word tokens', () => {
+    // A book where segment GEN 1:1 has: word(tok-a), punct(tok-p), word(tok-b).
+    // The parent computes activePhraseIndex using word-token-only indices:
+    //   tok-a → word index 0, tok-b → word index 1.
+    // groupIndexByWordTokenIndex must use the same word-token-only numbering so that
+    // activePhraseIndex=1 resolves to group 1 (tok-b), not to an allTokens-based index.
+    const book: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: '1',
+      segments: [
+        {
+          id: 'GEN 1:1',
+          startRef: { book: 'GEN', chapter: 1, verse: 1 },
+          endRef: { book: 'GEN', chapter: 1, verse: 1 },
+          baselineText: 'Alpha, Beta',
+          tokens: [
+            {
+              ref: 'tok-a',
+              surfaceText: 'Alpha',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+            {
+              ref: 'tok-p',
+              surfaceText: ',',
+              writingSystem: 'en',
+              type: 'punctuation',
+              charStart: 5,
+              charEnd: 6,
+            },
+            {
+              ref: 'tok-b',
+              surfaceText: 'Beta',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 7,
+              charEnd: 11,
+            },
+          ],
+        },
+      ],
+    };
+
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
+        activePhraseIndex={1}
+      />,
+      withAnalysisStore,
+    );
+
+    // activePhraseIndex=1 (word-token index of tok-b) resolves to group 1 (the last group).
+    // Group 0 = tok-a, group 1 = tok-b → at the end, next arrow disabled, prev enabled.
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+
+  it('passes editPhraseTokens as undefined when phraseMode is edit but phraseId not in map', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView
+        book={book}
+        {...requiredProps()}
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'nonexistent-phrase',
+          originalTokens: [],
+        }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByText('In')).toBeInTheDocument();
+  });
+
+  it('passes showGlossInput=true to the first fragment of a discontiguous phrase', () => {
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-dc',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    render(<ContinuousView book={book} {...requiredProps()} />, withAnalysisStore);
+
+    const boxes = document.querySelectorAll('[data-phrase-box="true"]');
+    // tok-0 box is first occurrence → showGlossInput=true
+    expect(boxes[0]).toHaveAttribute('data-show-gloss', 'true');
+  });
+
+  it('passes showGlossInput=false to the second fragment of a discontiguous phrase', () => {
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-dc',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    render(<ContinuousView book={book} {...requiredProps()} />, withAnalysisStore);
+
+    const boxes = document.querySelectorAll('[data-phrase-box="true"]');
+    // tok-2 box is the second occurrence → showGlossInput=false
+    expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Arc drawing — discontiguous phrase boxes trigger SVG arc rendering
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView arc rendering', () => {
+  it('renders an SVG arc when a phrase has two discontiguous boxes in the strip', () => {
+    // Link tok-0 and tok-2 as a discontiguous phrase. The useLayoutEffect will find two elements
+    // with data-phrase-id="phrase-arc" and compute a cross-row arc (jsdom returns zero rects).
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-arc',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    const { container } = render(
+      <ContinuousView book={book} {...requiredProps()} />,
+      withAnalysisStore,
+    );
+
+    // jsdom computes zero rects → cross-row arc path is generated → SVG is rendered
+    expect(container.querySelector('svg[aria-hidden="true"]')).toBeInTheDocument();
+    expect(container.querySelector('path')).toBeInTheDocument();
+  });
+
+  it('skips arc computation for a phrase with only one visible box', () => {
+    // Adjacent phrase — both tokens in one PhraseBox → boxesByPhrase entry has length 1 → skipped.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-adjacent',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+
+    const { container } = render(
+      <ContinuousView book={book} {...requiredProps()} />,
+      withAnalysisStore,
+    );
+
+    // Adjacent tokens merge into one group → only one box with the phraseId → no arc SVG
+    expect(container.querySelector('svg[aria-hidden="true"]')).not.toBeInTheDocument();
+  });
+
+  it('draws an upward same-row arc when both discontiguous boxes have the same top offset', () => {
+    // Mock getBoundingClientRect so both phrase-box elements appear on the same row.
+    // sameRow = |a.top - b.top| < a.height / 2 → |20 - 20| < 15 = true → upward arc branch.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-samerow',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      () =>
+        ({
+          top: 20,
+          bottom: 50,
+          left: 10,
+          right: 60,
+          height: 30,
+          width: 50,
+          x: 10,
+          y: 20,
+          toJSON() {
+            return {};
+          },
+        }) satisfies DOMRect,
+    );
+
+    const { container } = render(
+      <ContinuousView book={book} {...requiredProps()} />,
+      withAnalysisStore,
+    );
+
+    // The SVG arc should exist; the path uses the bracket-arc formula.
+    // All elements share the mocked rect (row included), so coordinates are relative to the row:
+    // x1 = x2 = (10+60)/2 - 10 = 25; y = top - row.top = 20 - 20 = 0
+    // ltr = true (x2 >= x1), dx = 5, sw1 = 1, sw2 = 0, stem = 6, r = 5
+    const path = container.querySelector('path');
+    expect(path).toBeInTheDocument();
+    expect(path?.getAttribute('d')).toBe(
+      'M 25 0 L 25 -6 a 5 5 0 0 1 5 -5 L 20 -11 a 5 5 0 0 1 5 5 L 25 0',
+    );
+  });
+
+  it('does not re-render when arc paths are identical across re-renders', async () => {
+    // Moving focus should not change the arc paths for a discontiguous phrase, so no extra renders.
+    const book = makeBook();
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-stable',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+
+    const { container } = render(
+      <ContinuousView book={book} {...requiredProps()} />,
+      withAnalysisStore,
+    );
+
+    const pathBefore = container.querySelector('path')?.getAttribute('d');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    const pathAfter = container.querySelector('path')?.getAttribute('d');
+    expect(pathAfter).toBe(pathBefore);
   });
 });

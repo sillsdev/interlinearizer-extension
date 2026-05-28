@@ -1,13 +1,19 @@
 /** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
-import type { TextAnalysis } from 'interlinearizer';
+import type { PhraseAnalysisLink, TextAnalysis, TokenSnapshot } from 'interlinearizer';
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
+  createPhrase,
   defaultAnalysis,
+  deletePhrase,
   selectAnalysis,
   selectApprovedGloss,
+  selectPhraseLinkByTokenRef,
+  selectPhraseGloss,
+  updatePhrase,
   writeGloss,
+  writePhraseGloss,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 
@@ -156,5 +162,155 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
       callbacks.onGlossChangeRef.current?.(tokenRef, value);
     },
     [dispatch, store, callbacks],
+  );
+}
+
+/**
+ * Returns a `Map` from every token ref that belongs to an approved phrase to its
+ * `PhraseAnalysisLink`. Re-renders only when the phrase link map reference changes.
+ *
+ * @returns The current phrase link map.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkMap must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseLinkByTokenRef(state.analysis));
+}
+
+/**
+ * Returns the approved `PhraseAnalysisLink` whose token list contains `tokenRef`, or `undefined`
+ * when the token is not part of any phrase. Re-renders only when the phrase membership of this
+ * token changes.
+ *
+ * @param tokenRef - The `Token.ref` to look up.
+ * @returns The matching approved `PhraseAnalysisLink`, or `undefined`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkForToken must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectPhraseLinkByTokenRef(state.analysis).get(tokenRef),
+  );
+}
+
+/**
+ * Returns the gloss string for the given phrase in the store's active analysis language,
+ * re-rendering only when that phrase's gloss changes.
+ *
+ * @param phraseId - The `PhraseAnalysis.id` whose gloss to read.
+ * @returns The current gloss string, or `''` when absent.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseGloss(phraseId: string): string {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseGloss must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseGloss(state.analysis, phraseId));
+}
+
+/**
+ * Returns a stable callback that writes a gloss value for the given phrase, then calls `onSave`.
+ *
+ * @returns A function `(phraseId, value) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks)
+    throw new Error('usePhraseGlossDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (phraseId: string, value: string) => {
+      dispatch(writePhraseGloss({ phraseId, value }));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
+    },
+    [dispatch, store, callbacks],
+  );
+}
+
+/** Return value of {@link usePhraseDispatch}. */
+export type PhraseDispatch = {
+  /**
+   * Creates a new approved phrase from an ordered list of token snapshots.
+   *
+   * @param tokens - Ordered `TokenSnapshot`s in document order.
+   * @returns The UUID assigned to the new phrase.
+   */
+  createPhrase: (tokens: TokenSnapshot[]) => string;
+  /**
+   * Replaces the token list of an existing phrase link.
+   *
+   * @param phraseId - ID of the phrase to update.
+   * @param tokens - Replacement ordered `TokenSnapshot`s in document order.
+   */
+  updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
+  /**
+   * Deletes a phrase analysis and its link.
+   *
+   * @param phraseId - ID of the phrase to delete.
+   */
+  deletePhrase: (phraseId: string) => void;
+};
+
+/**
+ * Returns stable callbacks for creating, updating, and deleting phrases. Each callback dispatches
+ * the corresponding Redux action then calls `onSave` with the updated `TextAnalysis`, matching the
+ * pattern of {@link useGlossDispatch}.
+ *
+ * @returns An object with `createPhrase`, `updatePhrase`, and `deletePhrase` functions.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseDispatch(): PhraseDispatch {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks) throw new Error('usePhraseDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  const save = useCallback(() => {
+    const { analysis } = store.getState().analysis;
+    callbacks.onSaveRef.current?.(analysis);
+  }, [store, callbacks]);
+
+  const handleCreatePhrase = useCallback(
+    (tokens: TokenSnapshot[]): string => {
+      const action = dispatch(createPhrase(tokens));
+      save();
+      return action.payload.id;
+    },
+    [dispatch, save],
+  );
+
+  const handleUpdatePhrase = useCallback(
+    (phraseId: string, tokens: TokenSnapshot[]) => {
+      dispatch(updatePhrase({ phraseId, tokens }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const handleDeletePhrase = useCallback(
+    (phraseId: string) => {
+      dispatch(deletePhrase({ phraseId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(
+    () => ({
+      createPhrase: handleCreatePhrase,
+      updatePhrase: handleUpdatePhrase,
+      deletePhrase: handleDeletePhrase,
+    }),
+    [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase],
   );
 }

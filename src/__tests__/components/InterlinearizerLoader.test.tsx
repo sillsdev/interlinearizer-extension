@@ -7,10 +7,12 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink, Segment, TextAnalysis } from 'interlinearizer';
+import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import type { PhraseMode } from '../../components/phrase-mode';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -57,6 +59,8 @@ type CapturedInterlinearizerProps = {
   analysisLanguage: string;
   initialAnalysis?: TextAnalysis;
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
+  phraseMode: PhraseMode;
+  setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -854,6 +858,131 @@ describe('InterlinearizerLoader', () => {
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveAnalysis'),
       ).toHaveLength(0);
+    });
+  });
+
+  describe('phrase toolbar button', () => {
+    it('renders a Create phrase button in view mode', () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: 'Create phrase' })).toBeInTheDocument();
+    });
+
+    it('clicking Create phrase shows Cancel button', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Create phrase' }));
+
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Create phrase' })).not.toBeInTheDocument();
+    });
+
+    it('clicking Cancel returns to view mode with Create phrase button', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Create phrase' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      expect(screen.getByRole('button', { name: 'Create phrase' })).toBeInTheDocument();
+    });
+
+    it('shows Done and Cancel buttons in edit mode', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+
+      expect(screen.getByTestId('done-edit-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('cancel-phrase-btn')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Create phrase' })).not.toBeInTheDocument();
+    });
+
+    it('clicking Done in edit mode returns to view mode', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+
+      await userEvent.click(screen.getByTestId('done-edit-btn'));
+
+      expect(screen.getByRole('button', { name: 'Create phrase' })).toBeInTheDocument();
+      expect(screen.queryByTestId('done-edit-btn')).not.toBeInTheDocument();
+    });
+
+    it('clicking Cancel in edit mode sets revert:true on the phraseMode', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+
+      await userEvent.click(screen.getByTestId('cancel-phrase-btn'));
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens,
+        revert: true,
+      });
     });
   });
 });

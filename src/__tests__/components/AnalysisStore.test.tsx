@@ -10,6 +10,9 @@ import {
   useAnalysis,
   useGloss,
   useGlossDispatch,
+  usePhraseLinkForToken,
+  usePhraseLinkMap,
+  usePhraseDispatch,
 } from '../../components/AnalysisStore';
 
 // ---------------------------------------------------------------------------
@@ -363,6 +366,228 @@ describe('useGlossDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<DispatchUser />)).toThrow(
       'useGlossDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase hooks
+// ---------------------------------------------------------------------------
+
+/** Approved phrase analysis seed used across phrase hook tests. */
+const PHRASE_ANALYSIS: TextAnalysis = {
+  segmentAnalyses: [],
+  segmentAnalysisLinks: [],
+  tokenAnalyses: [],
+  tokenAnalysisLinks: [],
+  phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'Hello World' }],
+  phraseAnalysisLinks: [
+    {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-a', surfaceText: 'Hello' },
+        { tokenRef: 'tok-b', surfaceText: 'World' },
+      ],
+    },
+  ],
+};
+
+/**
+ * Renders a component that displays the phrase link map size, used to assert `usePhraseLinkMap`.
+ *
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseLinkMapReader() {
+  const map = usePhraseLinkMap();
+  return <span data-testid="map-size">{map.size}</span>;
+}
+
+/**
+ * Renders a component that displays the phrase link analysisId for a given token ref, used to
+ * assert `usePhraseLinkForToken`.
+ *
+ * @param props - Component props.
+ * @param props.tokenRef - Token ref to look up.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseLinkReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
+  const link = usePhraseLinkForToken(tokenRef);
+  return <span data-testid="link-id">{link?.analysisId ?? 'none'}</span>;
+}
+
+/**
+ * Renders buttons that exercise `usePhraseDispatch`, used to assert phrase dispatch callbacks.
+ *
+ * @param props - Component props.
+ * @param props.phraseId - The phrase id to use for update and delete operations.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseDispatchUser({ phraseId }: Readonly<{ phraseId: string }>) {
+  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+  return (
+    <>
+      <button onClick={() => createPhrase([{ tokenRef: 'tok-x', surfaceText: 'X' }])} type="button">
+        create
+      </button>
+      <button
+        onClick={() => updatePhrase(phraseId, [{ tokenRef: 'tok-a', surfaceText: 'A' }])}
+        type="button"
+      >
+        update
+      </button>
+      <button onClick={() => deletePhrase(phraseId)} type="button">
+        delete
+      </button>
+    </>
+  );
+}
+
+/**
+ * Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseLinkMapUser() {
+  usePhraseLinkMap();
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `usePhraseLinkForToken` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseLinkForTokenUser() {
+  usePhraseLinkForToken('tok-1');
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `usePhraseDispatch` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseDispatchOutsideProvider() {
+  usePhraseDispatch();
+  return undefined;
+}
+
+describe('usePhraseLinkMap', () => {
+  it('returns an empty map when no approved phrase links exist', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseLinkMapReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('map-size')).toHaveTextContent('0');
+  });
+
+  it('returns a map with entries for each token in approved phrase links', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
+        <PhraseLinkMapReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('map-size')).toHaveTextContent('2');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseLinkMapUser />)).toThrow(
+      'usePhraseLinkMap must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('usePhraseLinkForToken', () => {
+  it('returns undefined for a token not in any phrase', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseLinkReader tokenRef="tok-unknown" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('link-id')).toHaveTextContent('none');
+  });
+
+  it('returns the approved phrase link for a token that belongs to a phrase', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
+        <PhraseLinkReader tokenRef="tok-a" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('link-id')).toHaveTextContent('phrase-1');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseLinkForTokenUser />)).toThrow(
+      'usePhraseLinkForToken must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('usePhraseDispatch', () => {
+  it('createPhrase adds a new phrase and calls onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
+        <PhraseDispatchUser phraseId="phrase-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'create' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.phraseAnalyses).toHaveLength(1);
+    expect(saved.phraseAnalysisLinks).toHaveLength(1);
+  });
+
+  it('updatePhrase modifies the token list and calls onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={PHRASE_ANALYSIS}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <PhraseDispatchUser phraseId="phrase-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'update' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.phraseAnalysisLinks[0].tokens).toHaveLength(1);
+    expect(saved.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe('tok-a');
+  });
+
+  it('deletePhrase removes the phrase and calls onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={PHRASE_ANALYSIS}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <PhraseDispatchUser phraseId="phrase-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'delete' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.phraseAnalyses).toHaveLength(0);
+    expect(saved.phraseAnalysisLinks).toHaveLength(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseDispatchOutsideProvider />)).toThrow(
+      'usePhraseDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

@@ -1,10 +1,14 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
 import { LocateFixed } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AnalysisStoreProvider } from './AnalysisStore';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { AnalysisStoreProvider, usePhraseLinkMap } from './AnalysisStore';
+import { computeAllArcPaths, type ArcPath } from '../utils/phrase-arc';
 import ContinuousView from './ContinuousView';
+import type { PhraseMode } from './phrase-mode';
 import MemoizedSegmentView from './SegmentView';
+import UnlinkPhraseConfirm from './UnlinkPhraseConfirm';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -27,6 +31,10 @@ type InterlinearizerProps = Readonly<{
   initialAnalysis?: TextAnalysis;
   /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
+  /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
+  phraseMode: PhraseMode;
+  /** Setter for `phraseMode`; passed down so child components can transition modes. */
+  setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
 }>;
 
 /**
@@ -48,6 +56,8 @@ function InterlinearizerInner({
   continuousScroll,
   scrRef,
   setScrRef,
+  phraseMode,
+  setPhraseMode,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(undefined);
 
@@ -125,6 +135,71 @@ function InterlinearizerInner({
     active?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, []);
 
+  /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
+  const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
+
+  /**
+   * The phrase link map from the Redux store; used to trigger arc recomputation when phrases
+   * change.
+   */
+  const phraseLinkMap = usePhraseLinkMap();
+
+  /**
+   * PhraseId of the phrase containing the currently focused token; used to highlight cross-segment
+   * arcs.
+   */
+  const focusedPhraseId =
+    focusedTokenRef !== undefined ? phraseLinkMap.get(focusedTokenRef)?.analysisId : undefined;
+
+  /**
+   * Set of phraseIds that have already had their gloss input rendered in an earlier segment.
+   * Computed once per render from `chapterSegments` in order so the first fragment of each phrase
+   * (across all segments) shows the input and later fragments do not.
+   */
+  const seenPhraseIdsBySegment = useMemo(() => {
+    const seen = new Set<string>();
+    return chapterSegments.map((seg) => {
+      const snapshot: ReadonlySet<string> = new Set(seen);
+      seg.tokens.forEach((token) => {
+        const link = phraseLinkMap.get(token.ref);
+        if (link) seen.add(link.analysisId);
+      });
+      return snapshot;
+    });
+  }, [chapterSegments, phraseLinkMap]);
+
+  /** SVG arc paths for all discontiguous phrase arcs across all visible segments. */
+  const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
+
+  /** Nesting level per phraseId; passed to each SegmentView so controls pills align with arc tops. */
+  const [arcLevelByPhraseId, setArcLevelByPhraseId] = useState<Map<string, number>>(new Map());
+
+  /**
+   * After each render, measure all phrase boxes across all visible segments in one pass and compute
+   * unified arc paths in scroll-space coordinates. No-ops in continuous-scroll mode.
+   */
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || continuousScroll) {
+      setArcPaths((prev) => (prev.length === 0 ? prev : []));
+      setArcLevelByPhraseId((prev) => (prev.size === 0 ? prev : new Map()));
+      return;
+    }
+
+    const { paths, levelByPhraseId } = computeAllArcPaths(container);
+    setArcPaths((prev) => {
+      const prevKey = prev.map((p) => p.d).join('|');
+      const nextKey = paths.map((p) => p.d).join('|');
+      return prevKey === nextKey ? prev : paths;
+    });
+    setArcLevelByPhraseId((prev) => {
+      const changed =
+        prev.size !== levelByPhraseId.size ||
+        [...levelByPhraseId.entries()].some(([id, level]) => prev.get(id) !== level);
+      return changed ? new Map(levelByPhraseId) : prev;
+    });
+  }, [chapterSegments, phraseMode, phraseLinkMap, continuousScroll]);
+
   // When switching from continuous to segment view, carry over the focused phrase from the strip.
   // Only acts on the continuous→segment transition; leaving segment view does not overwrite focus.
   useEffect(() => {
@@ -201,6 +276,8 @@ function InterlinearizerInner({
             book={book}
             onFocusPhraseIndexChange={handleFocusPhraseIndexChange}
             onVerseChange={handleVerseChange}
+            phraseMode={phraseMode}
+            setPhraseMode={setPhraseMode}
           />
         </div>
       )}
@@ -209,6 +286,34 @@ function InterlinearizerInner({
         ref={setScrollContainer}
         className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
       >
+        {phraseMode.kind === 'confirm-unlink' && (
+          <div className="tw:sticky tw:top-0 tw:z-20 tw:h-0 tw:flex tw:justify-end tw:pointer-events-none">
+            <div className="tw:pointer-events-auto tw:translate-y-2">
+              <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
+            </div>
+          </div>
+        )}
+        {arcPaths.length > 0 && (
+          <svg
+            aria-hidden="true"
+            className="tw:pointer-events-none tw:absolute tw:inset-0"
+            style={{ height: '100%', overflow: 'visible', width: '100%' }}
+          >
+            {arcPaths.map(({ phraseId, d }) => {
+              const isHighlighted = hoveredPhraseId === phraseId || focusedPhraseId === phraseId;
+              return (
+                <path
+                  key={`${phraseId}-${d}`}
+                  d={d}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeOpacity={isHighlighted ? 1 : 0.5}
+                  strokeWidth={isHighlighted ? 2 : 1.5}
+                />
+              );
+            })}
+          </svg>
+        )}
         {chapterSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
             No verse data for {scrRef.book} {scrRef.chapterNum}.
@@ -229,13 +334,19 @@ function InterlinearizerInner({
             </div>
 
             <div className="tw:flex tw:flex-col tw:gap-2">
-              {chapterSegments.map((seg) => (
+              {chapterSegments.map((seg, segIndex) => (
                 <MemoizedSegmentView
                   key={seg.id}
+                  arcLevelByPhraseId={arcLevelByPhraseId}
                   displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
                   focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
+                  hoveredPhraseId={hoveredPhraseId}
                   isActive={seg.startRef.verse === scrRef.verseNum}
+                  onHoverPhrase={setHoveredPhraseId}
                   onSelect={handleSegmentSelect}
+                  phraseMode={phraseMode}
+                  seenPhraseIds={seenPhraseIdsBySegment[segIndex] ?? new Set()}
+                  setPhraseMode={setPhraseMode}
                   segment={seg}
                 />
               ))}
@@ -261,6 +372,8 @@ function InterlinearizerInner({
  * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
  * @param props.analysisLanguage - BCP 47 tag for gloss read/write
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
+ * @param props.phraseMode - Current phrase-interaction mode owned by the parent
+ * @param props.setPhraseMode - Setter for `phraseMode`
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({

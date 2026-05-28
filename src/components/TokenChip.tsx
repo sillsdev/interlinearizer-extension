@@ -12,12 +12,14 @@ import { useGloss, useGlossDispatch } from './AnalysisStore';
  * @param props - Component props
  * @param props.token - The word token to render.
  * @param props.onFocus - Called when the gloss input receives focus.
+ * @param props.disabled - When true, the gloss input is read-only and non-interactive.
  * @returns A styled label containing the surface text and a gloss input.
  */
 export function TokenChip({
   token,
   onFocus,
-}: Readonly<{ token: Token & { type: 'word' }; onFocus: () => void }>) {
+  disabled = false,
+}: Readonly<{ token: Token & { type: 'word' }; onFocus: () => void; disabled?: boolean }>) {
   const committedGloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
   const [draft, setDraft] = useState(committedGloss);
@@ -35,21 +37,25 @@ export function TokenChip({
   };
 
   return (
-    <label className="tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5">
+    <label
+      className={`tw:inline-flex tw:shrink-0 tw:flex-col tw:items-center tw:rounded tw:border tw:border-border tw:bg-muted tw:px-1.5 tw:py-0.5${disabled ? ' tw:pointer-events-none' : ''}`}
+    >
       <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
         {token.surfaceText}
       </span>
       <input
         aria-label={`Gloss for ${token.surfaceText}`}
-        className="tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
+        className="tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default"
+        disabled={disabled}
         style={{ fieldSizing: 'content', minWidth: '5ch' }}
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          if (draft !== committedGloss) onGlossChange(token.ref, token.surfaceText, draft);
+          if (!disabled && draft !== committedGloss)
+            onGlossChange(token.ref, token.surfaceText, draft);
         }}
-        onFocus={onFocus}
-        onMouseDown={handleMouseDown}
+        onFocus={disabled ? undefined : onFocus}
+        onMouseDown={disabled ? undefined : handleMouseDown}
         type="text"
       />
     </label>
@@ -65,7 +71,7 @@ export function TokenChip({
  */
 export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
   return (
-    <span className="tw:inline-block tw:font-mono tw:text-sm tw:text-muted-foreground">
+    <span className="tw:inline-block tw:font-mono tw:text-sm tw:text-muted-foreground tw:pt-0.5">
       {token.surfaceText}
     </span>
   );

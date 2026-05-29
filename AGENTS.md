@@ -144,3 +144,7 @@ Every function and method — exported or internal — must have a JSDoc block w
 - `@throws` for every error condition the caller must handle; omit if the function never throws.
 
 Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type.
+
+## UX decisions
+
+When key UX decisions are being made, discuss with a developer whether something should be added to `user-questions.md` for review with people outside the development team.

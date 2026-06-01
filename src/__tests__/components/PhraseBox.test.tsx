@@ -165,7 +165,7 @@ describe('PhraseBox', () => {
     });
   });
 
-  it('renders as a label', () => {
+  it('renders the box as a non-label div so clicks are not forwarded to the first labelable control', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox {...requiredProps()} />
@@ -173,7 +173,7 @@ describe('PhraseBox', () => {
     );
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox?.tagName).toBe('LABEL');
+    expect(phraseBox?.tagName).toBe('DIV');
   });
 
   it('renders one TokenChip per token in the tokens array', () => {
@@ -521,6 +521,168 @@ describe('PhraseBox', () => {
     expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-2', [
       { tokenRef: 'token-2', surfaceText: 'World' },
       { tokenRef: 'token-1', surfaceText: 'Hello' },
+    ]);
+  });
+
+  it('splits a discontiguous phrase at the last intra-box boundary in document order even when the stored token list is scrambled', async () => {
+    // Phrase displayed as [A,C,D,E] (A discontiguous, [C,D,E] a contiguous run) but STORED out of
+    // document order — the bug that frees the wrong tokens. The split must use document order, so
+    // clicking the last intra-box boundary (D|E) frees E and keeps [A,C,D].
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-x',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'A', surfaceText: 'A' },
+        { tokenRef: 'E', surfaceText: 'E' },
+        { tokenRef: 'D', surfaceText: 'D' },
+        { tokenRef: 'C', surfaceText: 'C' },
+      ],
+    };
+    const docOrder = new Map([
+      ['A', 0],
+      ['C', 1],
+      ['D', 2],
+      ['E', 3],
+    ]);
+    const mk = (ref: string): Token & { type: 'word' } => ({
+      ref,
+      surfaceText: ref,
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 1,
+    });
+    mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
+    const updatePhraseSpy = jest.fn();
+    const createPhraseSpy = jest.fn();
+    const deletePhraseSpy = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: createPhraseSpy,
+      updatePhrase: updatePhraseSpy,
+      deletePhrase: deletePhraseSpy,
+    });
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          isHighlighted
+          phraseLink={phraseLink}
+          tokenDocOrder={docOrder}
+          tokens={[mk('C'), mk('D'), mk('E')]}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
+    // Click the LAST intra-box button (boundary between D and E in document order).
+    await userEvent.click(unlinkBtns[unlinkBtns.length - 1]);
+
+    // Expect: phrase shrinks to [A,C,D] (document order), E freed — not the scrambled stored order.
+    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-x', [
+      { tokenRef: 'A', surfaceText: 'A' },
+      { tokenRef: 'C', surfaceText: 'C' },
+      { tokenRef: 'D', surfaceText: 'D' },
+    ]);
+    expect(createPhraseSpy).not.toHaveBeenCalled();
+  });
+
+  it('clicking an inline unlink button does not pop out any other token (no label click-forwarding)', async () => {
+    // The phrase box used to be a <label>, which forwards a click on any descendant to the box's
+    // first labelable control — the first token's remove-✕ — firing a phantom pop-out. With a plain
+    // <div>, clicking the unlink button between B and C must split there and never call deletePhrase
+    // (no token popped out) nor produce an updatePhrase that drops an unrelated token.
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-x',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'A', surfaceText: 'A' },
+        { tokenRef: 'B', surfaceText: 'B' },
+        { tokenRef: 'C', surfaceText: 'C' },
+        { tokenRef: 'D', surfaceText: 'D' },
+      ],
+    };
+    const docOrder = new Map([
+      ['A', 0],
+      ['B', 1],
+      ['C', 2],
+      ['D', 3],
+    ]);
+    const mk = (ref: string): Token & { type: 'word' } => ({
+      ref,
+      surfaceText: ref,
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 1,
+    });
+    mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
+    const updatePhraseSpy = jest.fn();
+    const deletePhraseSpy = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: updatePhraseSpy,
+      deletePhrase: deletePhraseSpy,
+    });
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          isHighlighted
+          phraseLink={phraseLink}
+          tokenDocOrder={docOrder}
+          tokens={[mk('A'), mk('B'), mk('C'), mk('D')]}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    // Click the B|C unlink button (second intra-box boundary). Both halves are length 2, so the
+    // split shrinks the phrase to [A,B] and creates [C,D]; crucially nothing is popped out.
+    const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
+    await userEvent.click(unlinkBtns[1]);
+
+    expect(deletePhraseSpy).not.toHaveBeenCalled();
+    expect(updatePhraseSpy).toHaveBeenCalledTimes(1);
+    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-x', [
+      { tokenRef: 'A', surfaceText: 'A' },
+      { tokenRef: 'B', surfaceText: 'B' },
+    ]);
+  });
+
+  it('inserts an added token in document order when tokenDocOrder places it before existing tokens', async () => {
+    // token-1 (the rendered free token) sits before token-2 in the document, so adding it to a
+    // phrase that already contains token-2 must produce [token-1, token-2], not [token-2, token-1].
+    const existingPhraseTokens: PhraseAnalysisLink['tokens'] = [
+      { tokenRef: 'token-2', surfaceText: 'World' },
+    ];
+    mockUsePhraseLinkForToken.mockReturnValue(undefined);
+    const updatePhraseSpy = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: updatePhraseSpy,
+      deletePhrase: jest.fn(),
+    });
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          editPhraseTokens={existingPhraseTokens}
+          phraseLink={undefined}
+          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
+          tokenDocOrder={
+            new Map([
+              ['token-1', 0],
+              ['token-2', 1],
+            ])
+          }
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
+
+    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-2', [
+      { tokenRef: 'token-1', surfaceText: 'Hello' },
+      { tokenRef: 'token-2', surfaceText: 'World' },
     ]);
   });
 

@@ -131,12 +131,25 @@ export function TokenLinkIcon({
   /** Splits the shared phrase at the boundary between `prevToken` and `nextToken`. */
   const handleUnlinkClick = useCallback(() => {
     if (!inSamePhrase || !prevPhraseLink || !prevToken) return;
-    splitPhraseAtBoundary(prevPhraseLink, prevToken.ref, {
-      createPhrase,
-      updatePhrase,
-      deletePhrase,
-    });
-  }, [inSamePhrase, prevPhraseLink, prevToken, updatePhrase, createPhrase, deletePhrase]);
+    splitPhraseAtBoundary(
+      prevPhraseLink,
+      prevToken.ref,
+      {
+        createPhrase,
+        updatePhrase,
+        deletePhrase,
+      },
+      tokenDocOrder,
+    );
+  }, [
+    inSamePhrase,
+    prevPhraseLink,
+    prevToken,
+    updatePhrase,
+    createPhrase,
+    deletePhrase,
+    tokenDocOrder,
+  ]);
 
   /**
    * Sorts a token snapshot list by document order using `tokenDocOrder`.
@@ -145,10 +158,11 @@ export function TokenLinkIcon({
    * @returns A new array sorted by ascending document index.
    */
   const sortByDocOrder = useCallback(
-    (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] =>
-      [...snapshots].sort(
+    (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] => {
+      return [...snapshots].sort(
         (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-      ),
+      );
+    },
     [tokenDocOrder],
   );
 
@@ -267,7 +281,9 @@ export function TokenLinkIcon({
     // leaves that token unattached, so we preview that with a red border.
     const splitFreeRefs = (() => {
       if (!prevPhraseLink || !prevToken) return undefined;
-      const { tokens } = prevPhraseLink;
+      const tokens = [...prevPhraseLink.tokens].sort(
+        (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+      );
       const boundaryIndex = tokens.findIndex((t) => t.tokenRef === prevToken.ref) + 1;
       const before = tokens.slice(0, boundaryIndex);
       const after = tokens.slice(boundaryIndex);

@@ -44,3 +44,23 @@ export function Trash2(props: Readonly<{ size?: number; className?: string }>): 
 export function X(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="x-icon" {...props} />;
 }
+
+/**
+ * Stub for the Link2 (link) icon used by the between-token link button.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a link icon stub in tests.
+ */
+export function Link2(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="link2-icon" {...props} />;
+}
+
+/**
+ * Stub for the Link2Off (unlink) icon used by the between-token unlink and arc-split buttons.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as an unlink icon stub in tests.
+ */
+export function Link2Off(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="link2off-icon" {...props} />;
+}

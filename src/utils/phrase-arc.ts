@@ -43,22 +43,33 @@ export type SplitPhraseDispatch = {
  * - Exactly one half has 1 token → the phrase shrinks to the larger half; the solo token becomes
  *   free.
  *
+ * The boundary is defined in **document order**, which is how the split buttons present it
+ * visually, so `phraseLink.tokens` is sorted by `tokenDocOrder` before slicing. This makes the
+ * split correct even if the stored token list happens to be out of document order. Tokens missing
+ * from `tokenDocOrder` sort to the front (index 0).
+ *
  * If `splitAfterTokenRef` is not found in `phraseLink.tokens` the function is a no-op.
  *
  * @param phraseLink - The phrase link to split.
  * @param splitAfterTokenRef - Token ref of the last token to keep in the earlier fragment.
  * @param dispatch - Phrase create/update/delete callbacks.
+ * @param tokenDocOrder - Map from token ref to flat document index, used to order the tokens before
+ *   slicing. Defaults to an empty map (preserves the stored order).
  */
 export function splitPhraseAtBoundary(
   phraseLink: PhraseAnalysisLink,
   splitAfterTokenRef: string,
   dispatch: SplitPhraseDispatch,
+  tokenDocOrder: ReadonlyMap<string, number> = new Map(),
 ): void {
-  const idx = phraseLink.tokens.findIndex((t) => t.tokenRef === splitAfterTokenRef);
+  const ordered = [...phraseLink.tokens].sort(
+    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+  );
+  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
   if (idx < 0) return;
   const boundary = idx + 1;
-  const before = phraseLink.tokens.slice(0, boundary);
-  const after = phraseLink.tokens.slice(boundary);
+  const before = ordered.slice(0, boundary);
+  const after = ordered.slice(boundary);
   if (before.length <= 1 && after.length <= 1) {
     dispatch.deletePhrase(phraseLink.analysisId);
     return;

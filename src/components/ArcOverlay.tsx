@@ -23,6 +23,11 @@ type ArcOverlayProps = Readonly<{
   splitHoveredArc: ArcSplitTarget | undefined;
   /** Map from token ref to phrase link; used to enumerate which tokens a split would free. */
   phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>;
+  /**
+   * Map from token ref to flat document index. Used to order a phrase's tokens before computing
+   * which tokens a split would free, so the preview matches the document-order split.
+   */
+  tokenDocOrder: ReadonlyMap<string, number>;
   /** Called when a split button is clicked. */
   onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
   /**
@@ -49,6 +54,7 @@ export function ArcOverlay({
   candidatePhraseIds,
   splitHoveredArc,
   phraseLinkByRef,
+  tokenDocOrder,
   onArcSplit,
   onSplitHoverChange,
 }: ArcOverlayProps) {
@@ -85,7 +91,11 @@ export function ArcOverlay({
           const isRevealed = phraseId === hoveredPhraseId || phraseId === focusedPhraseId;
           if (!isRevealed) return undefined;
           const phraseLink = [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseId);
-          const arcSplitFreeRefs = computeSplitFreeRefs(phraseLink, splitAfterTokenRef);
+          const arcSplitFreeRefs = computeSplitFreeRefs(
+            phraseLink,
+            splitAfterTokenRef,
+            tokenDocOrder,
+          );
           const willCreateFreeTokens = arcSplitFreeRefs !== undefined;
           return (
             <button
@@ -126,16 +136,22 @@ export function ArcOverlay({
  *
  * @param phraseLink - The phrase to split, or `undefined` when not found.
  * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
+ * @param tokenDocOrder - Map from token ref to flat document index; the tokens are ordered by this
+ *   before slicing so the preview matches the document-order split.
  * @returns The refs of tokens that would become free, or `undefined`.
  */
 function computeSplitFreeRefs(
   phraseLink: PhraseAnalysisLink | undefined,
   splitAfterTokenRef: string,
+  tokenDocOrder: ReadonlyMap<string, number>,
 ): string[] | undefined {
   if (!phraseLink) return undefined;
-  const boundaryIndex = phraseLink.tokens.findIndex((t) => t.tokenRef === splitAfterTokenRef) + 1;
-  const before = phraseLink.tokens.slice(0, boundaryIndex);
-  const after = phraseLink.tokens.slice(boundaryIndex);
+  const ordered = [...phraseLink.tokens].sort(
+    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+  );
+  const boundaryIndex = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef) + 1;
+  const before = ordered.slice(0, boundaryIndex);
+  const after = ordered.slice(boundaryIndex);
   const freeRefs: string[] = [];
   if (before.length === 1) freeRefs.push(before[0].tokenRef);
   if (after.length === 1) freeRefs.push(after[0].tokenRef);

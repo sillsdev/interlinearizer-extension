@@ -2,10 +2,8 @@ import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
-import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
-import { MemoizedInertTokenChip } from './TokenChip';
-import MemoizedTokenLinkIcon from './TokenLinkIcon';
+import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
 import {
   ARC_BASE_STEM,
   ARC_CORNER_RADIUS,
@@ -20,7 +18,6 @@ import {
   buildRenderUnits,
   groupTokens,
   resolveFocusContext,
-  resolveSlotFocus,
   type LinkSlot,
   type TokenGroup,
 } from '../utils/token-layout';
@@ -136,6 +133,19 @@ export default function ContinuousView({
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+
+  /**
+   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
+   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
+   */
+  const editPhraseTokens = useMemo(
+    () =>
+      phraseMode.kind === 'edit'
+        ? [...committedPhraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)
+            ?.tokens
+        : undefined,
+    [phraseMode, committedPhraseLinkByRef],
+  );
 
   /** Maps each word token ref to its flat document index for document-order phrase merges. */
   const tokenDocOrder = useMemo(() => {
@@ -296,13 +306,18 @@ export default function ContinuousView({
         (l) => l.analysisId === phraseId,
       );
       if (!phraseLink) return;
-      splitPhraseAtBoundary(phraseLink, splitAfterTokenRef, {
-        createPhrase,
-        updatePhrase,
-        deletePhrase,
-      });
+      splitPhraseAtBoundary(
+        phraseLink,
+        splitAfterTokenRef,
+        {
+          createPhrase,
+          updatePhrase,
+          deletePhrase,
+        },
+        tokenDocOrder,
+      );
     },
-    [committedPhraseLinkByRef, createPhrase, updatePhrase, deletePhrase],
+    [committedPhraseLinkByRef, createPhrase, updatePhrase, deletePhrase, tokenDocOrder],
   );
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
@@ -601,6 +616,7 @@ export default function ContinuousView({
             candidatePhraseIds={candidatePhraseIds}
             splitHoveredArc={splitHoveredArc}
             phraseLinkByRef={committedPhraseLinkByRef}
+            tokenDocOrder={tokenDocOrder}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
           />
@@ -619,21 +635,8 @@ export default function ContinuousView({
               const seenPhraseIds = new Set<string>();
               return renderItems.map((item) => {
                 if (item.kind === 'slot') {
-                  const { prevGroup, nextGroup, punctuation } = item.slot;
-                  if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
-                  const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
-                  const nextToken = nextGroup?.tokens[0];
-                  const prevPhraseId = prevGroup?.phraseLink?.analysisId;
-                  const nextPhraseId = nextGroup?.phraseLink?.analysisId;
-                  const phraseRevealed =
-                    prevPhraseId !== undefined &&
-                    prevPhraseId === nextPhraseId &&
-                    (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-                  // focusedSideIsPrev is precomputed per slot from the focused token's absolute
-                  // group index, so it always agrees with focus.focusedFreeToken /
-                  // focus.focusedPhraseLink. The link button's direction and target therefore can
-                  // never disagree.
-                  const focusedSideIsPrev = focusedSideIsPrevByItem.get(item);
+                  const { prevGroup, nextGroup } = item.slot;
+                  const slotKey = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
                   const prevSegId =
                     item.prevGroupIndex !== undefined &&
                     phraseGroups[item.prevGroupIndex] !== undefined
@@ -644,114 +647,84 @@ export default function ContinuousView({
                     phraseGroups[item.nextGroupIndex] !== undefined
                       ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
                       : undefined;
-                  const slotFocus = resolveSlotFocus(
-                    prevSegId,
-                    nextSegId,
-                    focus.focusedSegmentId,
-                    focusedSideIsPrev,
-                  );
-                  const slotKey = `slot-${prevToken?.ref ?? 'start'}-${nextToken?.ref ?? 'end'}`;
                   return (
-                    <span key={slotKey} className="tw:link-slot">
-                      <MemoizedTokenLinkIcon
-                        focusedFreeToken={focus.focusedFreeToken}
-                        focusedPhraseLink={focus.focusedPhraseLink}
-                        focusedSideIsPrev={slotFocus.focusedSideIsPrev}
-                        isSameSegmentAsFocus={slotFocus.isSameSegmentAsFocus}
-                        isPhraseRevealed={phraseRevealed}
-                        nextPhraseLink={nextGroup?.phraseLink}
-                        nextToken={nextToken}
-                        onHoverCandidatePhrase={setHoveredPhraseId}
-                        onHoverCandidateTokens={(refs) =>
-                          setCandidateTokenRefs(refs ? new Set(refs) : new Set())
-                        }
-                        onHoverSplitFreeTokens={(refs) =>
-                          setSplitFreeTokenRefs(refs ? new Set(refs) : new Set())
-                        }
-                        phraseMode={phraseMode}
-                        prevPhraseLink={prevGroup?.phraseLink}
-                        prevToken={prevToken}
-                        tokenDocOrder={tokenDocOrder}
-                      />
-                      {punctuation.map((punctToken) => (
-                        <MemoizedInertTokenChip key={punctToken.ref} token={punctToken} />
-                      ))}
-                    </span>
+                    <PhraseSlot
+                      key={slotKey}
+                      slot={item.slot}
+                      focus={focus}
+                      prevSegmentId={prevSegId}
+                      nextSegmentId={nextSegId}
+                      focusedSideIsPrev={focusedSideIsPrevByItem.get(item)}
+                      hoveredPhraseId={hoveredPhraseId}
+                      phraseMode={phraseMode}
+                      tokenDocOrder={tokenDocOrder}
+                      onHoverCandidatePhrase={setHoveredPhraseId}
+                      onHoverCandidateTokens={(refs) =>
+                        setCandidateTokenRefs(refs ? new Set(refs) : new Set())
+                      }
+                      onHoverSplitFreeTokens={(refs) =>
+                        setSplitFreeTokenRefs(refs ? new Set(refs) : new Set())
+                      }
+                    />
                   );
                 }
                 const { group, groupIndex } = item;
                 const groupKey = group.tokens[0].ref;
-                const isFocused = group.tokens.some((t) => t.ref === displayFocusedTokenRef);
-                const editPhraseTokens =
-                  phraseMode.kind === 'edit'
-                    ? [...committedPhraseLinkByRef.values()].find(
-                        (l) => l.analysisId === phraseMode.phraseId,
-                      )?.tokens
-                    : undefined;
                 const phraseId = group.phraseLink?.analysisId;
                 const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
                 if (phraseId !== undefined) seenPhraseIds.add(phraseId);
-                const showControls =
-                  phraseMode.kind === 'view' &&
-                  phraseId !== undefined &&
-                  groupKey === hoveredGroupKey;
                 const arcLevel =
                   phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
                 const arcOffsetPx =
                   arcLevel > 0
                     ? ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
                     : CONTROLS_HALF_HEIGHT_PX;
-                const isSplitFree =
-                  phraseMode.kind === 'view' &&
-                  group.tokens.some((t) => splitFreeTokenRefs.has(t.ref));
-                const allowHover = phraseMode.kind === 'view' && phraseId !== undefined;
+                const isHighlighted = resolveIsHighlighted(
+                  phraseMode,
+                  phraseId,
+                  group,
+                  hoveredPhraseId,
+                  focus.focusedPhraseId,
+                  candidateTokenRefs,
+                );
                 return (
-                  <span
+                  <PhraseGroup
                     key={groupKey}
-                    ref={(el) => {
+                    group={group}
+                    groupKey={groupKey}
+                    isFocused={group.tokens.some((t) => t.ref === displayFocusedTokenRef)}
+                    isHighlighted={isHighlighted}
+                    isSplitFree={
+                      phraseMode.kind === 'view' &&
+                      group.tokens.some((t) => splitFreeTokenRefs.has(t.ref))
+                    }
+                    showControls={
+                      phraseMode.kind === 'view' &&
+                      phraseId !== undefined &&
+                      groupKey === hoveredGroupKey
+                    }
+                    showGlossInput={showGlossInput}
+                    arcOffsetPx={arcOffsetPx}
+                    allowHover={phraseMode.kind === 'view' && phraseId !== undefined}
+                    onHoverEnter={() => {
+                      setHoveredPhraseId(phraseId);
+                      setHoveredGroupKey(groupKey);
+                    }}
+                    onHoverLeave={() => {
+                      setHoveredPhraseId(undefined);
+                      setHoveredGroupKey(undefined);
+                    }}
+                    onFocusPhrase={handlePhraseSelect}
+                    groupRef={(el) => {
                       phraseRefs.current[groupIndex] = el;
                     }}
-                    onMouseEnter={
-                      allowHover
-                        ? () => {
-                            setHoveredPhraseId(phraseId);
-                            setHoveredGroupKey(groupKey);
-                          }
-                        : undefined
-                    }
-                    onMouseLeave={
-                      allowHover
-                        ? () => {
-                            setHoveredPhraseId(undefined);
-                            setHoveredGroupKey(undefined);
-                          }
-                        : undefined
-                    }
-                  >
-                    <MemoizedPhraseBox
-                      arcOffsetPx={arcOffsetPx}
-                      editPhraseSegmentId={editPhraseSegmentId}
-                      editPhraseTokens={editPhraseTokens}
-                      focusRef={groupKey}
-                      isFocused={isFocused}
-                      isHighlighted={
-                        phraseId !== undefined
-                          ? phraseId === hoveredPhraseId ||
-                            phraseId === focus.focusedPhraseId ||
-                            group.tokens.some((t) => candidateTokenRefs.has(t.ref))
-                          : group.tokens.some((t) => candidateTokenRefs.has(t.ref))
-                      }
-                      isSplitFree={isSplitFree}
-                      onFocusPhrase={handlePhraseSelect}
-                      phraseLink={group.phraseLink}
-                      phraseMode={phraseMode}
-                      setPhraseMode={setPhraseMode}
-                      showControls={showControls}
-                      showGlossInput={showGlossInput}
-                      tokens={group.tokens}
-                      tokenSegmentMap={tokenSegmentMap}
-                    />
-                  </span>
+                    phraseMode={phraseMode}
+                    setPhraseMode={setPhraseMode}
+                    editPhraseTokens={editPhraseTokens}
+                    tokenDocOrder={tokenDocOrder}
+                    editPhraseSegmentId={editPhraseSegmentId}
+                    tokenSegmentMap={tokenSegmentMap}
+                  />
                 );
               });
             })()}

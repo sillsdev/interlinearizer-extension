@@ -2,7 +2,7 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
-import type { Dispatch, KeyboardEvent, SetStateAction } from 'react';
+import type { Dispatch, KeyboardEvent, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
 import {
   usePhraseDispatch,
   usePhraseGloss,
@@ -114,6 +114,12 @@ type PhraseBoxProps = Readonly<{
    * split/unlink button were clicked. Renders with a destructive border as a preview.
    */
   isSplitFree?: boolean;
+  /**
+   * Map from token ref to its flat document index. Used by `edit` mode to insert a newly added
+   * token in document order rather than appending it, so the stored phrase token list always
+   * matches document order. Defaults to an empty map; tokens absent from it sort to the front.
+   */
+  tokenDocOrder?: ReadonlyMap<string, number>;
 }>;
 
 /**
@@ -171,6 +177,7 @@ export function PhraseBox({
   arcOffsetPx = 0,
   showGlossInput = true,
   showControls = true,
+  tokenDocOrder = new Map(),
 }: PhraseBoxProps) {
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -183,6 +190,32 @@ export function PhraseBox({
 
   /** Notifies the parent when a child gloss input receives focus. */
   const handleFocus = useCallback(() => onFocusPhrase(focusRef), [onFocusPhrase, focusRef]);
+
+  /**
+   * Focuses the box's first gloss input when the bare container itself is clicked (not a descendant
+   * button or chip). Restores the old `<label>` click-to-focus convenience without a `<label>`'s
+   * indiscriminate click-forwarding to its first labelable control.
+   *
+   * @param e - The container's click event.
+   */
+  const focusFirstGlossOnSelfClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    e.currentTarget.querySelector('input')?.focus();
+  }, []);
+
+  /**
+   * Keyboard counterpart to {@link focusFirstGlossOnSelfClick} so the click-target container
+   * satisfies the interactive-element a11y rule. Enter/Space focus the first gloss input. The box
+   * itself is `tabIndex={-1}`, so this only fires for programmatic focus, never normal tabbing.
+   *
+   * @param e - The container's keydown event.
+   */
+  const focusFirstGlossOnSelfKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    e.currentTarget.querySelector('input')?.focus();
+  }, []);
 
   const handleEditClick = useCallback(() => {
     if (phraseLink)
@@ -231,7 +264,10 @@ export function PhraseBox({
   );
 
   /**
-   * Adds a free token to the phrase being edited.
+   * Adds a free token to the phrase being edited, inserting it in document order so the stored
+   * token list always matches the visual left-to-right order. Keeping the list sorted is required
+   * for `splitPhraseAtBoundary` (and its hover previews), which slice the stored array by position
+   * to determine the before/after fragments.
    *
    * @param tokenRef - Ref of the free token to add.
    * @param surfaceText - Surface text of that token.
@@ -239,9 +275,12 @@ export function PhraseBox({
   const handleEditAdd = useCallback(
     (tokenRef: string, surfaceText: string) => {
       if (phraseMode.kind !== 'edit' || !editPhraseTokens) return;
-      updatePhrase(phraseMode.phraseId, [...editPhraseTokens, { tokenRef, surfaceText }]);
+      const nextTokens = [...editPhraseTokens, { tokenRef, surfaceText }].sort(
+        (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+      );
+      updatePhrase(phraseMode.phraseId, nextTokens);
     },
-    [phraseMode, editPhraseTokens, updatePhrase],
+    [phraseMode, editPhraseTokens, updatePhrase, tokenDocOrder],
   );
 
   // When revert:true is set, the first token of the phrase being edited restores originalTokens.
@@ -310,12 +349,16 @@ export function PhraseBox({
             </button>
           </span>
         )}
-        <label
+        <div
           className={baseClass}
           data-focus-state={isFocused ? 'focused' : 'default'}
           data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
           data-phrase-id={phraseLink?.analysisId}
+          onClick={focusFirstGlossOnSelfClick}
+          onKeyDown={focusFirstGlossOnSelfKeyDown}
+          role="button"
+          tabIndex={-1}
         >
           <span className="tw:inline-flex tw:items-start tw:gap-1">
             {tokens.map((token, i) => (
@@ -332,6 +375,7 @@ export function PhraseBox({
                     phraseMode={phraseMode}
                     prevPhraseLink={phraseLink}
                     prevToken={tokens[i - 1]}
+                    tokenDocOrder={tokenDocOrder}
                   />
                 )}
                 <MemoizedTokenChip
@@ -353,7 +397,7 @@ export function PhraseBox({
           {isRealPhrase && showGlossInput && (
             <PhraseGlossInput onFocus={handleFocus} phraseId={phraseLink.analysisId} />
           )}
-        </label>
+        </div>
       </span>
     );
   }
@@ -367,7 +411,7 @@ export function PhraseBox({
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
-        <label
+        <div
           aria-disabled={isThisUnlinkTarget ? undefined : 'true'}
           className={baseClass}
           data-phrase-box="true"
@@ -381,7 +425,7 @@ export function PhraseBox({
           {isRealPhrase && showGlossInput && (
             <PhraseGlossInput phraseId={phraseLink.analysisId} disabled />
           )}
-        </label>
+        </div>
       </span>
     );
   }

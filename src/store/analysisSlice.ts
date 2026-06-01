@@ -168,7 +168,7 @@ const analysisSlice = createSlice({
       },
     },
     /**
-     * Replaces the token list of the matching approved `PhraseAnalysisLink`. Does not create a new
+     * Replaces the token list of the matching `PhraseAnalysisLink`. Does not create a new
      * `PhraseAnalysis` record — preserves the phrase id and any gloss already written on it.
      *
      * @param state - Current slice state (Immer draft).
@@ -329,6 +329,15 @@ export const selectPhraseLinkByTokenRef = createSelector(selectPhraseLinks, (lin
     }, map);
     return map;
   }, new Map<string, PhraseAnalysisLink>()),
+);
+
+/**
+ * Memoized selector that builds a `Map` from `analysisId` to approved `PhraseAnalysisLink` for O(1)
+ * phrase lookup by id. Recomputes only when approved phrase links change.
+ */
+export const selectPhraseLinkByAnalysisId = createSelector(
+  selectPhraseLinks,
+  (links) => new Map(links.map((link) => [link.analysisId, link])),
 );
 
 /**

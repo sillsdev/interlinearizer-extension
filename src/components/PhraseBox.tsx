@@ -13,6 +13,9 @@ import type { PhraseMode } from '../types/phrase-mode';
 import MemoizedTokenChip from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 
+/** Stable empty map used as the default for `tokenDocOrder` to avoid breaking memo on PhraseBox. */
+const EMPTY_TOKEN_DOC_ORDER: ReadonlyMap<string, number> = new Map();
+
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
  * Separated into its own component so hooks are always called unconditionally.
@@ -170,8 +173,16 @@ type PhraseBoxProps = Readonly<{
  * @param props.editPhraseSegmentId - Segment id of the phrase being edited (edit mode only)
  * @param props.tokenSegmentMap - Token ref → segment id lookup used in edit mode
  * @param props.arcOffsetPx - Extra upward offset for the controls pill so it sits at the arc top
+ * @param props.showGlossInput - When false, hides the gloss input; used for non-first fragments of
+ *   a discontiguous phrase so the input appears only once
  * @param props.showControls - When true, edit/unlink buttons are shown above this fragment (parent
  *   sets for hovered fragment only)
+ * @param props.isHighlighted - When true, all fragments of the hovered/focused phrase receive the
+ *   highlighted border style simultaneously
+ * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
+ *   matching chip renders with a destructive border as a preview
+ * @param props.tokenDocOrder - Token ref → flat document index; used in edit mode to insert tokens
+ *   in document order
  * @returns A bordered inline container
  */
 export function PhraseBox({
@@ -192,7 +203,7 @@ export function PhraseBox({
   arcOffsetPx = 0,
   showGlossInput = true,
   showControls = true,
-  tokenDocOrder = new Map(),
+  tokenDocOrder = EMPTY_TOKEN_DOC_ORDER,
 }: PhraseBoxProps) {
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -300,20 +311,6 @@ export function PhraseBox({
     },
     [phraseMode, editPhraseTokens, updatePhrase, tokenDocOrder],
   );
-
-  // When revert:true is set, the first token of the phrase being edited restores originalTokens.
-  const isFirstEditToken =
-    phraseMode.kind === 'edit' &&
-    phraseMode.revert === true &&
-    isThisPhrase &&
-    tokens[0].ref === phraseLink?.tokens[0]?.tokenRef;
-  useEffect(() => {
-    if (!isFirstEditToken || phraseMode.kind !== 'edit') return;
-    updatePhrase(phraseMode.phraseId, phraseMode.originalTokens);
-    setPhraseMode({ kind: 'view' });
-    // phraseMode identity changes on each revert signal; only re-run when the flag flips.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFirstEditToken]);
 
   const isRealPhrase = phraseLink !== undefined;
 

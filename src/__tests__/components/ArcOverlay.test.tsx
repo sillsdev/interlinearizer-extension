@@ -47,7 +47,7 @@ function requiredProps(): Parameters<typeof ArcOverlay>[0] {
     focusedPhraseId: undefined,
     candidatePhraseIds: new Set(),
     splitHoveredArc: undefined,
-    phraseLinkByRef: new Map(),
+    phraseLinkById: new Map(),
     tokenDocOrder: new Map(),
     onArcSplit: jest.fn(),
     onSplitHoverChange: jest.fn(),
@@ -87,13 +87,7 @@ describe('ArcOverlay', () => {
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         phraseMode={{ kind: 'edit', phraseId: 'p1', originalTokens: phraseLink.tokens }}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-            ['tok-c', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
       />,
     );
     expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
@@ -107,12 +101,7 @@ describe('ArcOverlay', () => {
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId={undefined}
         focusedPhraseId={undefined}
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
       />,
     );
     expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
@@ -125,12 +114,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -149,12 +133,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         focusedPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -175,13 +154,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-            ['tok-c', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -209,12 +182,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -241,12 +209,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -272,14 +235,7 @@ describe('ArcOverlay', () => {
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-b')]}
         hoveredPhraseId="p1"
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-            ['tok-c', phraseLink],
-            ['tok-d', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -310,12 +266,7 @@ describe('ArcOverlay', () => {
         hoveredPhraseId={undefined}
         focusedPhraseId={undefined}
         candidatePhraseIds={new Set(['p1'])}
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],
@@ -338,12 +289,7 @@ describe('ArcOverlay', () => {
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
         splitHoveredArc={{ phraseId: 'p1', splitAfterTokenRef: 'tok-a' }}
-        phraseLinkByRef={
-          new Map([
-            ['tok-a', phraseLink],
-            ['tok-b', phraseLink],
-          ])
-        }
+        phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
             ['tok-a', 0],

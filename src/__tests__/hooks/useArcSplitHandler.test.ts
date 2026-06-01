@@ -23,16 +23,14 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 /**
- * Builds a phrase link map keyed by each token ref, mirroring how {@link usePhraseLinkMap} indexes
- * its links so the hook's `.values()` lookup finds the link.
+ * Builds a phrase link map keyed by `analysisId`, mirroring how {@link usePhraseLinkByIdMap} indexes
+ * its links for O(1) lookup by phrase id.
  *
  * @param link - The phrase link to index.
- * @returns A map from every token ref in the link to the link itself.
+ * @returns A map from the link's `analysisId` to the link.
  */
 function linkMap(link: PhraseAnalysisLink): Map<string, PhraseAnalysisLink> {
-  const map = new Map<string, PhraseAnalysisLink>();
-  link.tokens.forEach((t) => map.set(t.tokenRef, link));
-  return map;
+  return new Map([[link.analysisId, link]]);
 }
 
 describe('useArcSplitHandler', () => {

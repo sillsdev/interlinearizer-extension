@@ -172,6 +172,8 @@ describe('PhraseBox', () => {
   beforeEach(() => {
     mockUseGloss.mockReturnValue('');
     mockUseGlossDispatch.mockReturnValue(jest.fn());
+    mockUsePhraseGloss.mockReturnValue('');
+    mockUsePhraseGlossDispatch.mockReturnValue(jest.fn());
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     mockUsePhraseDispatch.mockReturnValue({
       createPhrase: jest.fn(),
@@ -826,33 +828,6 @@ describe('PhraseBox', () => {
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
     expect(updatePhraseSpy).not.toHaveBeenCalled();
-  });
-
-  it('reverts phrase tokens and returns to view mode when revert:true is set', () => {
-    const updatePhraseSpy = jest.fn();
-    const setPhraseMode = jest.fn();
-    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    mockUsePhraseDispatch.mockReturnValue({
-      createPhrase: jest.fn(),
-      updatePhrase: updatePhraseSpy,
-      deletePhrase: jest.fn(),
-    });
-    const originalTokens: PhraseAnalysisLink['tokens'] = [
-      { tokenRef: 'token-1', surfaceText: 'Hello' },
-    ];
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
-          setPhraseMode={setPhraseMode}
-        />
-      </AnalysisStoreProvider>,
-    );
-
-    expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-1', originalTokens);
-    expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
   });
 
   it('calls Enter key on the box container to focus the first gloss input', async () => {

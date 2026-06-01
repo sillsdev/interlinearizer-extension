@@ -37,8 +37,6 @@ const config: Config = {
     '!src/**/*.test.{ts,tsx}',
     '!src/**/*.spec.{ts,tsx}',
     '!src/types/**',
-    '!src/components/component-types.ts',
-    '!src/components/phrase-mode.ts',
   ],
 
   /** Directory for coverage output. */

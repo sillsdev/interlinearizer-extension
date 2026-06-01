@@ -57,6 +57,9 @@ type CapturedSegmentViewProps = {
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
+/** Stable spy for `updatePhrase` — reset between tests via resetMocks. */
+const mockUpdatePhrase = jest.fn();
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   /**
@@ -88,9 +91,10 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns An empty `Map`.
    */
   usePhraseLinkMap: () => new Map(),
+  usePhraseLinkByIdMap: () => new Map(),
   usePhraseDispatch: () => ({
     createPhrase: () => {},
-    updatePhrase: () => {},
+    updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
     deletePhrase: () => {},
   }),
 }));
@@ -638,5 +642,42 @@ describe('Interlinearizer', () => {
       />,
     );
     expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
+  });
+
+  it('calls updatePhrase with originalTokens and resets to view mode when revert:true is set', () => {
+    const setPhraseMode = jest.fn();
+    const originalTokens = [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }];
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
+        setPhraseMode={setPhraseMode}
+      />,
+    );
+    expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', originalTokens);
+    expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
+  });
+
+  it('calls updatePhrase and resets to view mode even when the phrase has 0 tokens (all removed)', () => {
+    const setPhraseMode = jest.fn();
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
+        setPhraseMode={setPhraseMode}
+      />,
+    );
+    expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', []);
+    expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
   });
 });

@@ -40,10 +40,12 @@ export function TokenChip({
   const [isRemoveHovered, setIsRemoveHovered] = useState(false);
   // Reset remove-hover state when onRemove is cleared so the red border doesn't linger.
   const prevOnRemoveRef = useRef(onRemove);
-  if (prevOnRemoveRef.current !== onRemove) {
-    prevOnRemoveRef.current = onRemove;
-    if (!onRemove && isRemoveHovered) setIsRemoveHovered(false);
-  }
+  useEffect(() => {
+    if (prevOnRemoveRef.current !== onRemove) {
+      prevOnRemoveRef.current = onRemove;
+      if (!onRemove && isRemoveHovered) setIsRemoveHovered(false);
+    }
+  }, [onRemove, isRemoveHovered]);
 
   // Keep local draft in sync when the committed value changes externally (e.g. project switch).
   useEffect(() => {

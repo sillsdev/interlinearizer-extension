@@ -901,5 +901,38 @@ describe('InterlinearizerLoader', () => {
         originalTokens,
       });
     });
+
+    it('resets phraseMode to view when the active project changes', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      // Enter edit mode.
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+      expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
+
+      // Simulate a project change: open the select modal and choose a project. The project-modals
+      // stub calls setActiveProject (from useWebViewState) which updates the stored slot; the
+      // subsequent setModal('none') call triggers a React re-render so InterlinearizerLoader reads
+      // the new activeProject value. The useEffect that watches activeProject.id then fires and
+      // resets phraseMode to view.
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-select'));
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+    });
   });
 });

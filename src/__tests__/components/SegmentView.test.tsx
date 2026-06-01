@@ -26,6 +26,10 @@ jest.mock('../../components/AnalysisStore', () => ({
   useGloss: () => '',
   useGlossDispatch: () => () => {},
   usePhraseLinkMap: () => mockUsePhraseLinkMap(),
+  usePhraseLinkByIdMap: () => {
+    const map = mockUsePhraseLinkMap();
+    return new Map([...new Set(map.values())].map((l) => [l.analysisId, l]));
+  },
   usePhraseLinkForToken: () => undefined,
   usePhraseDispatch: () => ({
     createPhrase: () => {},
@@ -304,7 +308,8 @@ describe('SegmentView', () => {
       </AnalysisStoreProvider>,
     );
 
-    // Both tokens are grouped into one PhraseBox (the mock renders both as buttons)
+    // Both tokens are grouped into one PhraseBox (the mock renders both as buttons inside one wrapper)
+    expect(document.querySelectorAll('[data-focus-state]')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'the' })).toBeInTheDocument();
   });

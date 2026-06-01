@@ -5,10 +5,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import EditPhraseControls from '../../components/EditPhraseControls';
+import type { PhraseMode } from '../../types/phrase-mode';
 
 describe('EditPhraseControls', () => {
-  const PHRASE_MODE = {
-    kind: 'edit' as const,
+  const PHRASE_MODE: PhraseMode = {
+    kind: 'edit',
     phraseId: 'phrase-1',
     originalTokens: [{ tokenRef: 'tok-1', surfaceText: 'Hello' }],
   };

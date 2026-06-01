@@ -3,7 +3,7 @@ import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer'
 import { LocateFixed } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { AnalysisStoreProvider } from './AnalysisStore';
+import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './EditPhraseControls';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -49,6 +49,9 @@ type InterlinearizerProps = Readonly<{
  *   list.
  * @param props.scrRef - Current scripture reference used to highlight the active verse.
  * @param props.setScrRef - Called when the user navigates to a different verse.
+ * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
+ * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
+ *   transition modes.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
@@ -139,6 +142,20 @@ function InterlinearizerInner({
     if (firstTokenRef === undefined) return undefined;
     return tokenSegmentMap.get(firstTokenRef);
   }, [phraseMode, tokenSegmentMap]);
+
+  const { updatePhrase } = usePhraseDispatch();
+
+  // Revert handler: when Cancel is pressed (revert:true), restore the original tokens and return
+  // to view mode. Lives here rather than in PhraseBox so it fires even when all tokens have been
+  // removed from the phrase (leaving no PhraseBox with isThisPhrase=true to handle it).
+  const isRevert = phraseMode.kind === 'edit' && phraseMode.revert === true;
+  useEffect(() => {
+    if (phraseMode.kind !== 'edit' || !isRevert) return;
+    updatePhrase(phraseMode.phraseId, phraseMode.originalTokens);
+    setPhraseMode({ kind: 'view' });
+    // phraseMode identity changes on each revert signal; only re-run when the revert flag flips.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRevert]);
 
   // Snap the segment list to the active verse when switching modes.
   useEffect(() => {

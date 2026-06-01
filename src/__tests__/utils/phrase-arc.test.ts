@@ -1,6 +1,7 @@
 /** @file Unit tests for utils/phrase-arc.ts */
 /// <reference types="jest" />
 
+import type { PhraseAnalysisLink } from 'interlinearizer';
 import {
   ARC_BASE_STEM,
   buildSameRowArcPath,
@@ -409,10 +410,10 @@ describe('getArcStrokeProps', () => {
  * @param tokenRefs - Token refs in document order.
  * @returns An approved `PhraseAnalysisLink`.
  */
-function makePhraseLink(phraseId: string, tokenRefs: string[]) {
+function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
   return {
     analysisId: phraseId,
-    status: 'approved' as const,
+    status: 'approved',
     tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
   };
 }

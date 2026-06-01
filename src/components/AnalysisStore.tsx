@@ -9,6 +9,7 @@ import {
   deletePhrase,
   selectAnalysis,
   selectApprovedGloss,
+  selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   updatePhrase,
@@ -177,6 +178,20 @@ export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
   if (!ctx) throw new Error('usePhraseLinkMap must be used inside an AnalysisStoreProvider');
 
   return useSelector((state: AnalysisRootState) => selectPhraseLinkByTokenRef(state.analysis));
+}
+
+/**
+ * Returns a `Map` from `analysisId` to the approved `PhraseAnalysisLink` for O(1) phrase lookup by
+ * id. Re-renders only when the phrase link map reference changes.
+ *
+ * @returns The current phrase-link-by-id map.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkByIdMap must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseLinkByAnalysisId(state.analysis));
 }
 
 /**

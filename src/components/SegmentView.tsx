@@ -1,7 +1,7 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
 import {
@@ -113,6 +113,7 @@ export function SegmentView({
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
   const phraseLinkByRef = usePhraseLinkMap();
+  const phraseLinkById = usePhraseLinkByIdMap();
 
   /** Maps each token ref to its flat index within this segment for document-order phrase merges. */
   const tokenDocOrder = useMemo(() => {
@@ -121,7 +122,7 @@ export function SegmentView({
     return map;
   }, [segment.tokens]);
 
-  const handleArcSplit = useArcSplitHandler(phraseLinkByRef, tokenDocOrder);
+  const handleArcSplit = useArcSplitHandler(phraseLinkById, tokenDocOrder);
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
@@ -261,9 +262,9 @@ export function SegmentView({
     () =>
       phraseMode.kind === 'edit'
         ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)?.tokens
+          phraseLinkById.get(phraseMode.phraseId)?.tokens
         : undefined,
-    [phraseMode, phraseLinkByRef],
+    [phraseMode, phraseLinkById],
   );
 
   /** True when any committed phrase exists in this segment. */
@@ -314,7 +315,7 @@ export function SegmentView({
           focusedPhraseId={focus.focusedPhraseId}
           candidatePhraseIds={candidatePhraseIds}
           splitHoveredArc={splitHoveredArc}
-          phraseLinkByRef={phraseLinkByRef}
+          phraseLinkById={phraseLinkById}
           tokenDocOrder={tokenDocOrder}
           onArcSplit={handleArcSplit}
           onSplitHoverChange={handleSplitHoverChange}

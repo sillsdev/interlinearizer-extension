@@ -173,6 +173,12 @@ export default function InterlinearizerLoader({
 
   const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
 
+  // Reset phraseMode when the active project changes so stale edit/confirm-unlink state from a
+  // previous project is never passed to the newly mounted Interlinearizer.
+  useEffect(() => {
+    setPhraseMode({ kind: 'view' });
+  }, [activeProject?.id]);
+
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
    * modal; `openNewProjectModal` opens the create modal directly; `openProjectInfoModal` opens the

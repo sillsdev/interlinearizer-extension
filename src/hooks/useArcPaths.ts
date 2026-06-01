@@ -1,4 +1,4 @@
-import { type RefObject, useLayoutEffect, useState } from 'react';
+import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
 import { computeAllArcPaths, computeStripTopPadding, type ArcPath } from '../utils/phrase-arc';
 
 /** Resolved arc measurements for the phrase strip, recomputed after each render. */
@@ -53,6 +53,20 @@ export function useArcPaths(
 
   const stripTopPadding = computeStripTopPadding(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
 
+  // Collapse `deps` into a monotonically increasing version counter so the layout effect dep array
+  // is always fixed-length. The counter increments whenever any element of `deps` changes identity,
+  // triggering a re-measure without violating the rules of hooks.
+  const prevDepsRef = useRef<readonly unknown[]>(deps);
+  const depsVersionRef = useRef(0);
+  if (
+    prevDepsRef.current.length !== deps.length ||
+    deps.some((d, i) => d !== prevDepsRef.current[i])
+  ) {
+    prevDepsRef.current = deps;
+    depsVersionRef.current += 1;
+  }
+  const depsVersion = depsVersionRef.current;
+
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) {
@@ -63,8 +77,9 @@ export function useArcPaths(
     }
     const { paths, levelByPhraseId, maxLevel } = computeAllArcPaths(container);
     setArcPaths((prev) => {
-      const prevKey = prev.map((p) => p.d).join('|');
-      const nextKey = paths.map((p) => p.d).join('|');
+      const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
+      const prevKey = prev.map(key).join('|');
+      const nextKey = paths.map(key).join('|');
       return prevKey === nextKey ? prev : paths;
     });
     setArcLevelByPhraseId((prev) => {
@@ -76,8 +91,7 @@ export function useArcPaths(
     setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
     // stripTopPadding is intentionally a dep: see the hook doc comment. The loop stabilizes after
     // one extra pass because arc count doesn't change between passes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, stripTopPadding, ...deps]);
+  }, [containerRef, enabled, stripTopPadding, depsVersion]);
 
   return { arcPaths, arcLevelByPhraseId, maxArcLevel, stripTopPadding };
 }

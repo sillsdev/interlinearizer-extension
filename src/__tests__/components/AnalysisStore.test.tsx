@@ -10,6 +10,7 @@ import {
   useAnalysis,
   useGloss,
   useGlossDispatch,
+  usePhraseLinkByIdMap,
   usePhraseLinkForToken,
   usePhraseLinkMap,
   usePhraseDispatch,
@@ -525,6 +526,54 @@ describe('usePhraseLinkForToken', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<PhraseLinkForTokenUser />)).toThrow(
       'usePhraseLinkForToken must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+/**
+ * Renders a component that displays the phrase-link-by-id map size, used to assert
+ * `usePhraseLinkByIdMap`.
+ *
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseLinkByIdMapReader() {
+  const map = usePhraseLinkByIdMap();
+  return <span data-testid="id-map-size">{map.size}</span>;
+}
+
+/**
+ * Renders a component that calls `usePhraseLinkByIdMap` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseLinkByIdMapUser() {
+  usePhraseLinkByIdMap();
+  return undefined;
+}
+
+describe('usePhraseLinkByIdMap', () => {
+  it('returns an empty map when no approved phrase links exist', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseLinkByIdMapReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('id-map-size')).toHaveTextContent('0');
+  });
+
+  it('returns a map with one entry per approved phrase link (keyed by analysisId)', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
+        <PhraseLinkByIdMapReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('id-map-size')).toHaveTextContent('1');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseLinkByIdMapUser />)).toThrow(
+      'usePhraseLinkByIdMap must be used inside an AnalysisStoreProvider',
     );
   });
 });

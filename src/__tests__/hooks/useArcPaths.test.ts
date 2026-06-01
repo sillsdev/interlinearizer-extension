@@ -10,12 +10,14 @@ jest.mock('../../utils/phrase-arc', () => ({
   computeStripTopPadding: jest.fn(() => 8),
 }));
 
-const arcPathsMock: { computeAllArcPaths: jest.Mock } = jest.requireMock('../../utils/phrase-arc');
-const { computeAllArcPaths } = arcPathsMock;
+const arcPathsMock: { computeAllArcPaths: jest.Mock; computeStripTopPadding: jest.Mock } =
+  jest.requireMock('../../utils/phrase-arc');
+const { computeAllArcPaths, computeStripTopPadding } = arcPathsMock;
 
 describe('useArcPaths', () => {
   beforeEach(() => {
     computeAllArcPaths.mockReturnValue({ paths: [], levelByPhraseId: new Map(), maxLevel: 0 });
+    computeStripTopPadding.mockReturnValue(8);
   });
 
   it('returns empty results when enabled is false', () => {

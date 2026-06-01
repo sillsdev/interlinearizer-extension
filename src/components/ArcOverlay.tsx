@@ -21,8 +21,8 @@ type ArcOverlayProps = Readonly<{
   candidatePhraseIds: ReadonlySet<string>;
   /** The arc whose split button is currently hovered; renders that arc in the destructive colour. */
   splitHoveredArc: ArcSplitTarget | undefined;
-  /** Map from token ref to phrase link; used to enumerate which tokens a split would free. */
-  phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>;
+  /** Map from phrase `analysisId` to phrase link; used to enumerate which tokens a split would free. */
+  phraseLinkById: ReadonlyMap<string, PhraseAnalysisLink>;
   /**
    * Map from token ref to flat document index. Used to order a phrase's tokens before computing
    * which tokens a split would free, so the preview matches the document-order split.
@@ -53,7 +53,7 @@ export function ArcOverlay({
   focusedPhraseId,
   candidatePhraseIds,
   splitHoveredArc,
-  phraseLinkByRef,
+  phraseLinkById,
   tokenDocOrder,
   onArcSplit,
   onSplitHoverChange,
@@ -90,7 +90,7 @@ export function ArcOverlay({
         arcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
           const isRevealed = phraseId === hoveredPhraseId || phraseId === focusedPhraseId;
           if (!isRevealed) return undefined;
-          const phraseLink = [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseId);
+          const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
             phraseLink,
             splitAfterTokenRef,

@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { PhraseSlot, PhraseGroup, resolveIsHighlighted } from '../../components/PhraseStripParts';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
@@ -318,10 +318,22 @@ describe('PhraseGroup', () => {
 
   it('does not attach hover handlers when allowHover is false', () => {
     const onHoverEnter = jest.fn();
-    render(<PhraseGroup {...defaultGroupProps} allowHover={false} onHoverEnter={onHoverEnter} />);
-    // The wrapper span should have no onMouseEnter since allowHover=false
+    const onHoverLeave = jest.fn();
+    render(
+      <PhraseGroup
+        {...defaultGroupProps}
+        allowHover={false}
+        onHoverEnter={onHoverEnter}
+        onHoverLeave={onHoverLeave}
+      />,
+    );
     const wrapper = document.querySelector('span');
-    // We cannot call onMouseEnter directly, just verify no error was thrown.
     expect(wrapper).toBeInTheDocument();
+    if (wrapper) {
+      fireEvent.mouseEnter(wrapper);
+      fireEvent.mouseLeave(wrapper);
+    }
+    expect(onHoverEnter).not.toHaveBeenCalled();
+    expect(onHoverLeave).not.toHaveBeenCalled();
   });
 });

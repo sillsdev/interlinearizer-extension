@@ -1,7 +1,7 @@
 import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
 import {
@@ -134,6 +134,7 @@ export default function ContinuousView({
   );
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
+  const committedPhraseLinkById = usePhraseLinkByIdMap();
 
   /**
    * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
@@ -143,10 +144,9 @@ export default function ContinuousView({
     () =>
       phraseMode.kind === 'edit'
         ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          [...committedPhraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)
-            ?.tokens
+          committedPhraseLinkById.get(phraseMode.phraseId)?.tokens
         : undefined,
-    [phraseMode, committedPhraseLinkByRef],
+    [phraseMode, committedPhraseLinkById],
   );
 
   /** Maps each word token ref to its flat document index for document-order phrase merges. */
@@ -297,7 +297,7 @@ export default function ContinuousView({
     [focusedTokenRef],
   );
 
-  const handleArcSplit = useArcSplitHandler(committedPhraseLinkByRef, tokenDocOrder);
+  const handleArcSplit = useArcSplitHandler(committedPhraseLinkById, tokenDocOrder);
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
   // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
@@ -572,7 +572,7 @@ export default function ContinuousView({
             focusedPhraseId={focus.focusedPhraseId}
             candidatePhraseIds={candidatePhraseIds}
             splitHoveredArc={splitHoveredArc}
-            phraseLinkByRef={committedPhraseLinkByRef}
+            phraseLinkById={committedPhraseLinkById}
             tokenDocOrder={tokenDocOrder}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}

@@ -13,6 +13,8 @@ import {
   usePhraseLinkForToken,
   usePhraseLinkMap,
   usePhraseDispatch,
+  usePhraseGloss,
+  usePhraseGlossDispatch,
 } from '../../components/AnalysisStore';
 
 // ---------------------------------------------------------------------------
@@ -588,6 +590,136 @@ describe('usePhraseDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<PhraseDispatchOutsideProvider />)).toThrow(
       'usePhraseDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// usePhraseGloss
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders the phrase gloss for a given phraseId, used to assert on `usePhraseGloss`.
+ *
+ * @param props - Component props.
+ * @param props.phraseId - Phrase id to look up.
+ * @returns JSX element.
+ */
+function PhraseGlossReader({ phraseId }: Readonly<{ phraseId: string }>) {
+  const gloss = usePhraseGloss(phraseId);
+  return <span data-testid="phrase-gloss">{gloss}</span>;
+}
+
+/**
+ * Renders a component that calls `usePhraseGloss` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseGlossUser() {
+  usePhraseGloss('p1');
+  return undefined;
+}
+
+/** A `TextAnalysis` with a phrase that has a gloss in the `'und'` language. */
+const PHRASE_ANALYSIS_WITH_GLOSS: TextAnalysis = {
+  segmentAnalyses: [],
+  segmentAnalysisLinks: [],
+  tokenAnalyses: [],
+  tokenAnalysisLinks: [],
+  phraseAnalyses: [
+    { id: 'phrase-1', surfaceText: 'Hello World', gloss: { und: 'world beginning' } },
+  ],
+  phraseAnalysisLinks: [
+    {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }],
+    },
+  ],
+};
+
+describe('usePhraseGloss', () => {
+  it('returns empty string when phraseId is not found', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseGlossReader phraseId="missing" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('phrase-gloss')).toHaveTextContent('');
+  });
+
+  it('returns the gloss for the active analysis language', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS_WITH_GLOSS} analysisLanguage="und">
+        <PhraseGlossReader phraseId="phrase-1" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('phrase-gloss')).toHaveTextContent('world beginning');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseGlossUser />)).toThrow(
+      'usePhraseGloss must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// usePhraseGlossDispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders a button that writes a phrase gloss via `usePhraseGlossDispatch`.
+ *
+ * @param props - Component props.
+ * @param props.phraseId - Phrase id to write.
+ * @param props.value - Gloss value to write.
+ * @returns JSX element.
+ */
+function PhraseGlossWriter({ phraseId, value }: Readonly<{ phraseId: string; value: string }>) {
+  const dispatch = usePhraseGlossDispatch();
+  return (
+    <button onClick={() => dispatch(phraseId, value)} type="button">
+      write
+    </button>
+  );
+}
+
+/**
+ * Renders a component that calls `usePhraseGlossDispatch` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseGlossDispatchUser() {
+  usePhraseGlossDispatch();
+  return undefined;
+}
+
+describe('usePhraseGlossDispatch', () => {
+  it('writes the phrase gloss and triggers onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={PHRASE_ANALYSIS}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <PhraseGlossWriter phraseId="phrase-1" value="beginning" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.phraseAnalyses[0].gloss).toStrictEqual({ und: 'beginning' });
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseGlossDispatchUser />)).toThrow(
+      'usePhraseGlossDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

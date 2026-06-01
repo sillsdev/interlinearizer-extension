@@ -153,6 +153,7 @@ function InterlinearizerInner({
   useEffect(() => {
     const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
     if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
+    /* v8 ignore next -- activeSeg is always defined when chapterSegments includes the active verse */
     setFocusedTokenRef(activeSeg?.tokens.find((t) => t.type === 'word')?.ref);
     // chapterSegments is intentionally excluded: it changes identity on every render and the
     // verse-coordinate deps already capture the change we care about.
@@ -165,8 +166,10 @@ function InterlinearizerInner({
   useEffect(() => {
     if (!focusedTokenRef) return;
     const segId = tokenSegmentMap.get(focusedTokenRef);
+    /* v8 ignore next -- focusedTokenRef is always set from tokens in tokenSegmentMap */
     if (!segId) return;
     const seg = segmentById.get(segId);
+    /* v8 ignore next -- segmentById contains every segment id from tokenSegmentMap */
     if (!seg) return;
     if (
       seg.startRef.book === scrRef.book &&

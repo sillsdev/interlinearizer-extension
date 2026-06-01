@@ -175,4 +175,88 @@ describe('TokenChip', () => {
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
     expect(handleFocus).toHaveBeenCalledTimes(1);
   });
+
+  it('does not call onFocus when disabled', async () => {
+    const handleFocus = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} disabled onFocus={handleFocus} />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+    expect(handleFocus).not.toHaveBeenCalled();
+  });
+
+  it('renders remove button when onRemove is provided', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByRole('button', { name: 'Remove hello from phrase' })).toBeInTheDocument();
+  });
+
+  it('does not render remove button when onRemove is not provided', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    expect(
+      screen.queryByRole('button', { name: 'Remove hello from phrase' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('calls onRemove when the remove button is clicked', async () => {
+    const onRemove = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={onRemove} />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Remove hello from phrase' }));
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies destructive border on the remove button when hovered', async () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+      </AnalysisStoreProvider>,
+    );
+    const removeBtn = screen.getByRole('button', { name: 'Remove hello from phrase' });
+    await userEvent.hover(removeBtn);
+    expect(removeBtn.className).toContain('tw:border-destructive');
+  });
+
+  it('removes destructive border when pointer leaves the remove button', async () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={jest.fn()} />
+      </AnalysisStoreProvider>,
+    );
+    const removeBtn = screen.getByRole('button', { name: 'Remove hello from phrase' });
+    await userEvent.hover(removeBtn);
+    await userEvent.unhover(removeBtn);
+    expect(removeBtn.className).not.toContain('tw:border-destructive');
+  });
+
+  it('clears remove-hover state when onRemove changes from a function to undefined', async () => {
+    const onRemove = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={onRemove} />
+      </AnalysisStoreProvider>,
+    );
+    // Hover the remove button to set isRemoveHovered = true
+    await userEvent.hover(screen.getByRole('button', { name: 'Remove hello from phrase' }));
+    // Rerender without onRemove — the label border should revert to non-destructive
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} onRemove={undefined} />
+      </AnalysisStoreProvider>,
+    );
+    const label = screen.getByText('hello').closest('label');
+    expect(label?.className).not.toContain('tw:border-destructive');
+  });
 });

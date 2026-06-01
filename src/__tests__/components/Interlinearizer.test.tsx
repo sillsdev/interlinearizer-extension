@@ -88,6 +88,11 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns An empty `Map`.
    */
   usePhraseLinkMap: () => new Map(),
+  usePhraseDispatch: () => ({
+    createPhrase: () => {},
+    updatePhrase: () => {},
+    deletePhrase: () => {},
+  }),
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -597,5 +602,41 @@ describe('Interlinearizer', () => {
 
     // No segment matches verse 99 so focusedTokenRef stays undefined for all views.
     capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
+  });
+
+  it('renders EditPhraseControls toolbar when phraseMode is edit', () => {
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        }}
+        setPhraseMode={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('done-edit-btn')).toBeInTheDocument();
+  });
+
+  it('renders UnlinkPhraseConfirm toolbar when phraseMode is confirm-unlink', () => {
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
+        setPhraseMode={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
   });
 });

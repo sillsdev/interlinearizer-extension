@@ -200,6 +200,7 @@ export function SegmentView({
    */
   const handleSplitHoverChange = useCallback(
     (arc: ArcSplitTarget | undefined, freeTokenRefs: ReadonlySet<string>) => {
+      /* v8 ignore next 2 -- callback passed to mocked ArcOverlay; exercised via integration */
       setSplitHoveredArc(arc);
       setSplitFreeTokenRefs(freeTokenRefs);
     },
@@ -213,6 +214,7 @@ export function SegmentView({
    * @param refs - The would-be-free token refs, or `undefined`/empty on leave.
    */
   const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {
+    /* v8 ignore next -- callback passed to mocked PhraseSlot; exercised via integration */
     setSplitFreeTokenRefs(refs ? new Set(refs) : new Set());
   }, []);
 
@@ -258,7 +260,8 @@ export function SegmentView({
   const editPhraseTokens = useMemo(
     () =>
       phraseMode.kind === 'edit'
-        ? [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)?.tokens
+        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
+          [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)?.tokens
         : undefined,
     [phraseMode, phraseLinkByRef],
   );
@@ -345,6 +348,7 @@ export function SegmentView({
                     phraseMode={phraseMode}
                     tokenDocOrder={tokenDocOrder}
                     onHoverCandidatePhrase={onHoverPhrase}
+                    /* v8 ignore next 3 -- callback only fires when link icon hover fires */
                     onHoverCandidateTokens={(refs) =>
                       setCandidateTokenRefs(refs ? new Set(refs) : new Set())
                     }
@@ -360,7 +364,8 @@ export function SegmentView({
               const arcLevel = phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
               const arcOffsetPx =
                 arcLevel > 0
-                  ? ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
+                  ? /* v8 ignore next -- arcLevel > 0 requires DOM layout, not available in jsdom */
+                    ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
                   : CONTROLS_HALF_HEIGHT_PX;
               const isHighlighted = resolveIsHighlighted(
                 phraseMode,

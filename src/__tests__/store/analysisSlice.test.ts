@@ -17,10 +17,12 @@ import {
   selectApprovedGloss,
   selectPhraseLinkByTokenRef,
   selectPhraseAnalysisById,
+  selectPhraseGloss,
   selectPhraseLinks,
   setAnalysis,
   updatePhrase,
   writeGloss,
+  writePhraseGloss,
 } from '../../store/analysisSlice';
 
 /**
@@ -311,5 +313,55 @@ describe('selectPhraseAnalysisById', () => {
     const result = selectPhraseAnalysisById(store.getState().analysis, 'nonexistent');
 
     expect(result).toBeUndefined();
+  });
+});
+
+describe('writePhraseGloss', () => {
+  it('writes the gloss for the active language on a phrase', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writePhraseGloss({ phraseId: 'phrase-1', value: 'beginning' }));
+
+    const pa = store.getState().analysis.analysis.phraseAnalyses[0];
+    expect(pa.gloss).toStrictEqual({ und: 'beginning' });
+  });
+
+  it('no-ops when the phrase id is not found', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writePhraseGloss({ phraseId: 'nonexistent', value: 'hi' }));
+
+    expect(store.getState().analysis.analysis.phraseAnalyses).toHaveLength(0);
+  });
+});
+
+describe('selectPhraseGloss', () => {
+  it('returns the gloss string for a phrase in the active language', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+    store.dispatch(writePhraseGloss({ phraseId: 'phrase-1', value: 'beginning' }));
+
+    const gloss = selectPhraseGloss(store.getState().analysis, 'phrase-1');
+
+    expect(gloss).toBe('beginning');
+  });
+
+  it('returns empty string when the phrase has no gloss in the active language', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    expect(selectPhraseGloss(store.getState().analysis, 'phrase-1')).toBe('');
+  });
+
+  it('returns empty string when the phrase id is not found', () => {
+    const store = createAnalysisStore();
+    expect(selectPhraseGloss(store.getState().analysis, 'nonexistent')).toBe('');
   });
 });

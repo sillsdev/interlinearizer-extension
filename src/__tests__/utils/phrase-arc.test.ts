@@ -8,6 +8,7 @@ import {
   computeAllArcPaths,
   getArcStrokeProps,
   routeAroundBoxes,
+  splitPhraseAtBoundary,
 } from '../../utils/phrase-arc';
 
 // ---------------------------------------------------------------------------
@@ -394,5 +395,109 @@ describe('getArcStrokeProps', () => {
     expect(getArcStrokeProps({ kind: 'confirm-unlink', phraseId: 'p1' }, 'p2', 'p2', 'p2')).toEqual(
       dimmed,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// splitPhraseAtBoundary
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a minimal `PhraseAnalysisLink` fixture.
+ *
+ * @param phraseId - Analysis id for the phrase.
+ * @param tokenRefs - Token refs in document order.
+ * @returns An approved `PhraseAnalysisLink`.
+ */
+function makePhraseLink(phraseId: string, tokenRefs: string[]) {
+  return {
+    analysisId: phraseId,
+    status: 'approved' as const,
+    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
+  };
+}
+
+describe('splitPhraseAtBoundary', () => {
+  it('no-ops when splitAfterTokenRef is not found in the phrase', () => {
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(makePhraseLink('p1', ['tok-a', 'tok-b']), 'nonexistent', dispatch);
+    expect(dispatch.deletePhrase).not.toHaveBeenCalled();
+    expect(dispatch.updatePhrase).not.toHaveBeenCalled();
+    expect(dispatch.createPhrase).not.toHaveBeenCalled();
+  });
+
+  it('deletes the phrase when both halves would have exactly 1 token', () => {
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(makePhraseLink('p1', ['tok-a', 'tok-b']), 'tok-a', dispatch);
+    expect(dispatch.deletePhrase).toHaveBeenCalledWith('p1');
+    expect(dispatch.updatePhrase).not.toHaveBeenCalled();
+    expect(dispatch.createPhrase).not.toHaveBeenCalled();
+  });
+
+  it('updates and creates when both halves have ≥ 2 tokens', () => {
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(
+      makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']),
+      'tok-b',
+      dispatch,
+      new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+        ['tok-c', 2],
+        ['tok-d', 3],
+      ]),
+    );
+    expect(dispatch.updatePhrase).toHaveBeenCalledWith('p1', [
+      { tokenRef: 'tok-a', surfaceText: 'tok-a' },
+      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+    ]);
+    expect(dispatch.createPhrase).toHaveBeenCalledWith([
+      { tokenRef: 'tok-c', surfaceText: 'tok-c' },
+      { tokenRef: 'tok-d', surfaceText: 'tok-d' },
+    ]);
+    expect(dispatch.deletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('updates with the "after" half when before has 1 token and after has ≥ 2', () => {
+    // Splitting after tok-a leaves before=[tok-a] (length 1) and after=[tok-b,tok-c] (length 2).
+    // The phrase keeps the longer half (after), and tok-a is freed (no separate call).
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(
+      makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']),
+      'tok-a',
+      dispatch,
+      new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+        ['tok-c', 2],
+      ]),
+    );
+    expect(dispatch.updatePhrase).toHaveBeenCalledWith('p1', [
+      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+      { tokenRef: 'tok-c', surfaceText: 'tok-c' },
+    ]);
+    expect(dispatch.createPhrase).not.toHaveBeenCalled();
+    expect(dispatch.deletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('updates with the "before" half when after has 1 token and before has ≥ 2', () => {
+    // Splitting after tok-b leaves before=[tok-a,tok-b] (length 2) and after=[tok-c] (length 1).
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(
+      makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']),
+      'tok-b',
+      dispatch,
+      new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+        ['tok-c', 2],
+      ]),
+    );
+    expect(dispatch.updatePhrase).toHaveBeenCalledWith('p1', [
+      { tokenRef: 'tok-a', surfaceText: 'tok-a' },
+      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+    ]);
+    expect(dispatch.createPhrase).not.toHaveBeenCalled();
+    expect(dispatch.deletePhrase).not.toHaveBeenCalled();
   });
 });

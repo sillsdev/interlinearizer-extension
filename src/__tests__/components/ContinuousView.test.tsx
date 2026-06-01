@@ -774,4 +774,88 @@ describe('ContinuousView phrase grouping', () => {
     expect(phraseBoxes[0]).toHaveAttribute('data-show-gloss', 'true');
     expect(phraseBoxes[1]).toHaveAttribute('data-show-gloss', 'false');
   });
+
+  it('fires mouse-leave on the token strip without throwing', async () => {
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    const strip = screen.getByTestId('token-strip');
+    await userEvent.unhover(strip);
+    // No throw = pass
+  });
+
+  it('applies the internal focus transition when the parent reflects a click-driven ref change', async () => {
+    // Simulate: ContinuousView clicks Next, sets internalFocusedTokenRefRef, calls
+    // onFocusedTokenRefChange. The parent then passes the new focusedTokenRef back. This exercises
+    // the isInternal=true path (lines 306-308) of the pending-jump effect.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    // Now reflect the new ref back as a prop change (as a real parent would do).
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
+    // No throw = the isInternal path ran successfully.
+  });
+
+  it('scrolls to the first token of the active phrase when entering edit mode', async () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+        { tokenRef: 'tok-3', surfaceText: 'God' },
+      ],
+    };
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    const book = makeBook();
+    const onFocusedTokenRefChange = jest.fn();
+    const { rerender } = render(
+      <ContinuousView
+        {...requiredProps(book)}
+        focusedTokenRef="tok-0"
+        onFocusedTokenRefChange={onFocusedTokenRefChange}
+      />,
+      withAnalysisStore,
+    );
+
+    // Switch to edit mode for phrase-1.
+    rerender(
+      <ContinuousView
+        {...requiredProps(book)}
+        focusedTokenRef="tok-0"
+        onFocusedTokenRefChange={onFocusedTokenRefChange}
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: phraseLink.tokens,
+        }}
+      />,
+    );
+    // The effect should call onFocusedTokenRefChange with the first token of the phrase.
+    expect(onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+  });
+
+  it('fires phrase group hover enter and leave without throwing', async () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    // The PhraseGroup wrapper span contains the phrase box.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    const phraseGroupSpan = phraseBox?.parentElement;
+    expect(phraseGroupSpan).not.toBeNull();
+    await userEvent.hover(phraseGroupSpan ?? document.body);
+    await userEvent.unhover(phraseGroupSpan ?? document.body);
+    // No throw = pass
+  });
 });

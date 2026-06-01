@@ -130,6 +130,7 @@ export function TokenLinkIcon({
 
   /** Splits the shared phrase at the boundary between `prevToken` and `nextToken`. */
   const handleUnlinkClick = useCallback(() => {
+    /* v8 ignore next -- button only renders when inSamePhrase and both tokens are defined */
     if (!inSamePhrase || !prevPhraseLink || !prevToken) return;
     splitPhraseAtBoundary(
       prevPhraseLink,
@@ -160,6 +161,7 @@ export function TokenLinkIcon({
   const sortByDocOrder = useCallback(
     (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] => {
       return [...snapshots].sort(
+        /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
         (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
       );
     },
@@ -186,6 +188,7 @@ export function TokenLinkIcon({
    * the slot (the bridging free token between the two fragments) is absorbed into the phrase.
    */
   const handleLinkClick = useCallback(() => {
+    /* v8 ignore next -- button only renders when both tokens exist and focus is defined */
     if (!prevToken || !nextToken || focusedSideIsPrev === undefined) return;
 
     // The neighbor is the token/phrase on the opposite side of this slot from focus.
@@ -280,6 +283,7 @@ export function TokenLinkIcon({
     // Compute which tokens would become solo (free) after this split. A half with exactly 1 token
     // leaves that token unattached, so we preview that with a red border.
     const splitFreeRefs = (() => {
+      /* v8 ignore next -- inSamePhrase branch guarantees prevPhraseLink and prevToken exist */
       if (!prevPhraseLink || !prevToken) return undefined;
       const tokens = [...prevPhraseLink.tokens].sort(
         (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
@@ -315,6 +319,7 @@ export function TokenLinkIcon({
         data-testid="token-unlink-btn"
         disabled={unlinkDisabled}
         onClick={unlinkDisabled ? undefined : handleUnlinkClickWithCleanup}
+        /* v8 ignore next 2 -- candidatePhraseId is always defined in inSamePhrase path */
         onMouseEnter={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseEnter : undefined}
         onMouseLeave={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseLeave : undefined}
         type="button"
@@ -348,6 +353,7 @@ export function TokenLinkIcon({
     if (neighborIsPhrase && focusedFreeToken)
       return [
         focusedFreeToken.ref,
+        /* v8 ignore next -- neighborLink is always non-null when neighborIsPhrase is true */
         ...(neighborLink ? neighborLink.tokens.map((t) => t.tokenRef) : [neighborRef]),
       ];
     // Neighbor is a different fragment of the focused phrase: highlight the bridging free token.

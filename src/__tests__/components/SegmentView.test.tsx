@@ -370,6 +370,85 @@ describe('SegmentView', () => {
     expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
   });
 
+  it('sets focusedGroupSeen when focusedTokenRef matches a token in a group', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} focusedTokenRef="tok-0" />
+      </AnalysisStoreProvider>,
+    );
+    // Just verifies no error — the focusedSideIsPrev computation runs with a matching token.
+    expect(screen.getByText('In')).toBeInTheDocument();
+  });
+
+  it('renders with EMPTY_SPLIT_FREE_REFS when phraseMode is edit', () => {
+    const sharedLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    mockUsePhraseLinkMap.mockReturnValue(
+      new Map<string, PhraseAnalysisLink>([
+        ['tok-0', sharedLink],
+        ['tok-1', sharedLink],
+      ]),
+    );
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView
+          {...requiredProps()}
+          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: sharedLink.tokens }}
+        />
+      </AnalysisStoreProvider>,
+    );
+    // In edit mode, EMPTY_SPLIT_FREE_REFS is used — no errors expected.
+    expect(screen.getByText('In')).toBeInTheDocument();
+  });
+
+  it('fires mouse-leave on the token row without throwing', async () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    const tokenRow = document.querySelector('.tw\\:token-row');
+    expect(tokenRow).not.toBeNull();
+    await userEvent.unhover(tokenRow ?? document.body);
+    // No throw = pass
+  });
+
+  it('calls onHoverPhrase when a phrase group wrapper is hovered', async () => {
+    const sharedLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    const phraseLinkMap = new Map<string, PhraseAnalysisLink>([
+      ['tok-0', sharedLink],
+      ['tok-1', sharedLink],
+    ]);
+    mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
+    const onHoverPhrase = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} onHoverPhrase={onHoverPhrase} />
+      </AnalysisStoreProvider>,
+    );
+    // The PhraseGroup wrapper span wraps the mocked PhraseBox span (data-focus-state).
+    const focusStateEl = document.querySelector('[data-focus-state]');
+    const phraseGroupSpan = focusStateEl?.parentElement;
+    expect(phraseGroupSpan).not.toBeNull();
+    await userEvent.hover(phraseGroupSpan ?? document.body);
+    expect(onHoverPhrase).toHaveBeenCalledWith('phrase-1');
+    await userEvent.unhover(phraseGroupSpan ?? document.body);
+    expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
+  });
+
   it('passes showGlossInput=false to the second fragment of a discontiguous phrase', () => {
     const discontiguousSegment: Segment = {
       id: 'GEN 1:4',

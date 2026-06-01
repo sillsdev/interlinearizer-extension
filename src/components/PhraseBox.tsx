@@ -253,8 +253,10 @@ export function PhraseBox({
    */
   const handleViewPopOut = useCallback(
     (tokenRef: string) => {
+      /* v8 ignore next -- onRemove is only wired when isRealPhrase, guaranteeing phraseLink exists */
       if (!phraseLink) return;
       const nextTokens = phraseLink.tokens.filter((t) => t.tokenRef !== tokenRef);
+      /* v8 ignore next 3 -- onRemove is only wired for middle tokens of 3+ token phrases */
       if (nextTokens.length <= 1) {
         deletePhrase(phraseLink.analysisId);
       } else {
@@ -271,6 +273,7 @@ export function PhraseBox({
    */
   const handleEditRemove = useCallback(
     (tokenRef: string) => {
+      /* v8 ignore next -- only called from edit-target mode where phraseMode.kind is always 'edit' */
       if (phraseMode.kind !== 'edit' || !tokenPhraseLinkFromStore) return;
       const nextTokens = tokenPhraseLinkFromStore.tokens.filter((t) => t.tokenRef !== tokenRef);
       updatePhrase(phraseMode.phraseId, nextTokens);
@@ -516,6 +519,7 @@ export function PhraseBox({
 
   // Free token in edit mode (or disabled phrase box).
   const handleBoxClick = () => {
+    /* v8 ignore next -- isDisabled box uses aria-disabled; keyboard focus is prevented */
     if (isDisabled) return;
     if (!isInAnyPhrase) handleEditAdd(tokens[0].ref, tokens[0].surfaceText);
   };

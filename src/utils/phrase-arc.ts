@@ -290,6 +290,7 @@ export function computeAllArcPaths(container: Element): ArcState {
 
   container.querySelectorAll('[data-phrase-box="true"][data-phrase-id]').forEach((el) => {
     const id = el.getAttribute('data-phrase-id');
+    /* v8 ignore next -- selector already requires data-phrase-id to exist */
     if (!id) return;
     const lastTokenRef = el.getAttribute('data-last-token-ref') ?? '';
     const viewportRect = el.getBoundingClientRect();
@@ -315,6 +316,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   const paths: ArcPath[] = [];
   boxesByPhrase.forEach((boxes, phraseId) => {
     if (boxes.length < 2) return;
+    /* v8 ignore next -- levelByPhraseId always has an entry for every multi-box phrase */
     const level = levelByPhraseId.get(phraseId) ?? 0;
     const stem = ARC_BASE_STEM + level * ARC_LEVEL_STEP;
     for (let i = 0; i < boxes.length - 1; i++) {

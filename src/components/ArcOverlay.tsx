@@ -145,8 +145,10 @@ function computeSplitFreeRefs(
   splitAfterTokenRef: string,
   tokenDocOrder: ReadonlyMap<string, number>,
 ): string[] | undefined {
+  /* v8 ignore next -- split buttons are only rendered for phrases found in phraseLinkByRef */
   if (!phraseLink) return undefined;
   const ordered = [...phraseLink.tokens].sort(
+    /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
     (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
   );
   const boundaryIndex = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef) + 1;

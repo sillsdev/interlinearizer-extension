@@ -249,7 +249,7 @@ describe('PhraseBox', () => {
     expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'true');
   });
 
-  it('reddens the whole box (not individual chips) when every token would become free', () => {
+  it('reddens both chips (not the box) for a multi-token box where every token would become free', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
         <PhraseBox
@@ -260,12 +260,30 @@ describe('PhraseBox', () => {
       </AnalysisStoreProvider>,
     );
 
-    // A fully-free box (e.g. a single-token fragment) reddens at the box level; per-chip flagging is
-    // suppressed so the border isn't drawn twice.
+    // A 2-token phrase splits into two free tokens; each is shown on its own chip, never as a
+    // whole-box border (that would draw a single border around both rather than per token).
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).not.toHaveClass('tw:border-destructive');
+    expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'true');
+    expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'true');
+  });
+
+  it('reddens the whole box (not the chip) for a lone single-token fragment that would become free', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          tokens={[TEST_TOKEN]}
+          splitFreeTokenRefs={new Set(['token-1'])}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    // A single-token fragment (e.g. one run of a discontiguous phrase) reddens at the box level;
+    // per-chip flagging is suppressed so the border isn't drawn twice.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveClass('tw:border-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
-    expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'false');
   });
 
   it('phrase box does not override cursor on gap areas', () => {

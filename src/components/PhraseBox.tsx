@@ -314,10 +314,11 @@ export function PhraseBox({
 
   const isRealPhrase = phraseLink !== undefined;
 
-  // The whole box previews as becoming free only when every token in it would. A single-token
-  // fragment reddens its box; a multi-token contiguous box reddens only the affected chips below.
-  const isBoxSplitFree =
-    splitFreeTokenRefs !== undefined && tokens.every((t) => splitFreeTokenRefs.has(t.ref));
+  // The whole box previews as becoming free only when it is a lone single-token fragment that would
+  // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box always reddens the
+  // affected chips individually below, even when every token would be freed (a 2-token phrase
+  // splits into two free tokens, but each is shown on its own chip rather than as a box).
+  const isBoxSplitFree = tokens.length === 1 && (splitFreeTokenRefs?.has(tokens[0].ref) ?? false);
 
   // --- view mode ---
   if (phraseMode.kind === 'view') {

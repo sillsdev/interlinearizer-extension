@@ -1,7 +1,7 @@
 import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
+import { usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
 import {
@@ -9,7 +9,6 @@ import {
   ARC_CORNER_RADIUS,
   ARC_LEVEL_STEP,
   CONTROLS_HALF_HEIGHT_PX,
-  splitPhraseAtBoundary,
 } from '../utils/phrase-arc';
 import {
   buildRenderUnits,
@@ -19,6 +18,7 @@ import {
   type TokenGroup,
 } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
+import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
 
@@ -133,7 +133,6 @@ export default function ContinuousView({
   );
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
   /**
    * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
@@ -293,33 +292,7 @@ export default function ContinuousView({
     [focusedTokenRef],
   );
 
-  /**
-   * Splits a discontiguous phrase at the boundary encoded in an arc path. Resolves the phrase from
-   * the committed link map and delegates the actual split to {@link splitPhraseAtBoundary}.
-   *
-   * @param phraseId - ID of the phrase to split.
-   * @param splitAfterTokenRef - Ref of the last token in the earlier fragment; the split occurs
-   *   immediately after this token.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = [...committedPhraseLinkByRef.values()].find(
-        (l) => l.analysisId === phraseId,
-      );
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        {
-          createPhrase,
-          updatePhrase,
-          deletePhrase,
-        },
-        tokenDocOrder,
-      );
-    },
-    [committedPhraseLinkByRef, createPhrase, updatePhrase, deletePhrase, tokenDocOrder],
-  );
+  const handleArcSplit = useArcSplitHandler(committedPhraseLinkByRef, tokenDocOrder);
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
   // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,

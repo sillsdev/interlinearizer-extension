@@ -1,7 +1,7 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
+import { usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
 import {
@@ -9,7 +9,6 @@ import {
   ARC_CORNER_RADIUS,
   ARC_LEVEL_STEP,
   CONTROLS_HALF_HEIGHT_PX,
-  splitPhraseAtBoundary,
 } from '../utils/phrase-arc';
 import {
   buildRenderUnits,
@@ -18,6 +17,7 @@ import {
   type RenderUnit,
 } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
+import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
 
@@ -113,7 +113,6 @@ export function SegmentView({
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
   const phraseLinkByRef = usePhraseLinkMap();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
   /** Maps each token ref to its flat index within this segment for document-order phrase merges. */
   const tokenDocOrder = useMemo(() => {
@@ -122,31 +121,7 @@ export function SegmentView({
     return map;
   }, [segment.tokens]);
 
-  /**
-   * Splits a discontiguous phrase at the arc boundary ending at `splitAfterTokenRef`. Resolves the
-   * phrase from the link map and delegates to {@link splitPhraseAtBoundary}, passing `tokenDocOrder`
-   * so the split slices the phrase in document order.
-   *
-   * @param phraseId - ID of the phrase to split.
-   * @param splitAfterTokenRef - Ref of the last token in the earlier fragment.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseId);
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        {
-          createPhrase,
-          updatePhrase,
-          deletePhrase,
-        },
-        tokenDocOrder,
-      );
-    },
-    [phraseLinkByRef, createPhrase, updatePhrase, deletePhrase, tokenDocOrder],
-  );
+  const handleArcSplit = useArcSplitHandler(phraseLinkByRef, tokenDocOrder);
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a

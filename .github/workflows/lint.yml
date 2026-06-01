@@ -40,6 +40,8 @@ jobs:
 
       - name: Install extension dependencies
         working-directory: extension-repo
+        # Cannot --omit=optional: @swc/core and lightningcss ship native binaries as optional deps
+        # required by the build toolchain (SWC for transpilation, lightningcss for Tailwind CSS).
         run: npm ci --ignore-scripts
 
       - name: Install core dependencies

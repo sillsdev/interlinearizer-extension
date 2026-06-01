@@ -57,10 +57,23 @@ const STRIP_FADE_MS = 500;
  */
 const PHRASE_WINDOW_HALF = 100;
 
+/** A between-group slot render item annotated with the absolute group indices on either side. */
+type SlotUnit = {
+  kind: 'slot';
+  slot: LinkSlot;
+  prevGroupIndex: number | undefined;
+  nextGroupIndex: number | undefined;
+};
+
+/** A phrase-group render item annotated with its window-absolute group index. */
+type GroupUnit = { kind: 'group'; group: TokenGroup; groupIndex: number };
+
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
   /** The full tokenized book whose tokens are streamed into the strip. */
   book: Book;
+  /** Segment id of the phrase being edited, or `undefined` outside edit mode. Passed to `PhraseBox`. */
+  editPhraseSegmentId: string | undefined;
   /**
    * Token ref of the currently focused word token, or `undefined` when nothing is focused. The
    * strip jumps to the group containing this token and uses it as the single source of truth for
@@ -97,6 +110,7 @@ type ContinuousViewProps = Readonly<{
  *
  * @param props - Component props
  * @param props.book - The full tokenized book whose tokens should be streamed
+ * @param props.editPhraseSegmentId - Segment id of the phrase being edited; passed to `PhraseBox`
  * @param props.focusedTokenRef - Single source of truth for focus + scroll position
  * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
@@ -105,6 +119,7 @@ type ContinuousViewProps = Readonly<{
  */
 export default function ContinuousView({
   book,
+  editPhraseSegmentId,
   focusedTokenRef,
   onFocusedTokenRefChange,
   phraseMode,
@@ -252,21 +267,19 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Notifies the parent that the user selected phrase at `index`. The parent echoes the new token
-   * ref back through `focusedTokenRef`; scroll + highlight follow automatically.
+   * Notifies the parent that the user selected the phrase whose first token is `ref`. The parent
+   * echoes the new token ref back through `focusedTokenRef`; scroll + highlight follow
+   * automatically.
    *
-   * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
+   * @param ref - First-token ref of the selected phrase, or `undefined` to do nothing.
    */
   const handlePhraseSelect = useCallback(
-    (index?: number) => {
-      if (index === undefined || index === focusPhraseIndex) return;
-      const nextRef = phraseGroups[index]?.tokens[0]?.ref;
-      if (nextRef !== undefined) {
-        internalFocusedTokenRefRef.current = nextRef;
-        onFocusedTokenRefChangeRef.current(nextRef);
-      }
+    (ref?: string) => {
+      if (ref === undefined || ref === focusedTokenRef) return;
+      internalFocusedTokenRefRef.current = ref;
+      onFocusedTokenRefChangeRef.current(ref);
     },
-    [focusPhraseIndex, phraseGroups],
+    [focusedTokenRef],
   );
 
   /**
@@ -376,8 +389,11 @@ export default function ContinuousView({
   /** The phraseId whose arc is currently highlighted due to a phrase box being hovered. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
 
-  /** The group index of the phrase box currently being hovered; drives controls placement. */
-  const [hoveredGroupIndex, setHoveredGroupIndex] = useState<number | undefined>();
+  /**
+   * The group key (first token ref) of the phrase box currently being hovered; drives controls
+   * placement. Keyed by ref rather than index to match SegmentView.
+   */
+  const [hoveredGroupKey, setHoveredGroupKey] = useState<string | undefined>();
 
   /**
    * Token refs of the two free tokens that a hovered link icon would join into a new phrase.
@@ -492,13 +508,6 @@ export default function ContinuousView({
     const rawUnits = buildRenderUnits(windowTokens, windowGroups);
     const groupIndexOffset = windowStart;
     const groupIndexByGroup = new Map(windowGroups.map((g, i) => [g, i + groupIndexOffset]));
-    type SlotUnit = {
-      kind: 'slot';
-      slot: LinkSlot;
-      prevGroupIndex: number | undefined;
-      nextGroupIndex: number | undefined;
-    };
-    type GroupUnit = { kind: 'group'; group: TokenGroup; groupIndex: number };
     const result: (SlotUnit | GroupUnit)[] = [];
     rawUnits.forEach((unit) => {
       if (unit.kind === 'slot') {
@@ -522,10 +531,26 @@ export default function ContinuousView({
   }, [allTokens, windowGroups, windowStartTokenIndex, windowEndTokenIndex, windowStart]);
 
   /**
-   * Token refs of phrases adjacent to the currently focused free token. When a free token is in
-   * focus, highlights the neighboring phrase boxes statically (without requiring hover), mirroring
-   * what the link icon hover would show.
+   * Per-slot `focusedSideIsPrev`, precomputed once from the focused token's absolute group index. A
+   * slot's value is `true` when the focused group is start-ward of the slot, `false` when end-ward,
+   * and `undefined` when nothing is focused or the slot is a leading/trailing boundary. Keyed by
+   * slot item so the render body can look it up instead of computing the comparison inline.
    */
+  const focusedSideIsPrevByItem = useMemo(() => {
+    const map = new Map<SlotUnit, boolean | undefined>();
+    renderItems.forEach((item) => {
+      if (item.kind !== 'slot') return;
+      map.set(
+        item,
+        focusedGroupIndex !== undefined &&
+          item.prevGroupIndex !== undefined &&
+          item.nextGroupIndex !== undefined
+          ? focusedGroupIndex <= item.prevGroupIndex
+          : undefined,
+      );
+    });
+    return map;
+  }, [renderItems, focusedGroupIndex]);
 
   return (
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
@@ -604,16 +629,11 @@ export default function ContinuousView({
                     prevPhraseId !== undefined &&
                     prevPhraseId === nextPhraseId &&
                     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-                  // focusedSideIsPrev: derived from the focused token's actual group index (not the
-                  // scroll-position state) so it always agrees with focus.focusedFreeToken /
+                  // focusedSideIsPrev is precomputed per slot from the focused token's absolute
+                  // group index, so it always agrees with focus.focusedFreeToken /
                   // focus.focusedPhraseLink. The link button's direction and target therefore can
                   // never disagree.
-                  const focusedSideIsPrev =
-                    focusedGroupIndex !== undefined &&
-                    item.prevGroupIndex !== undefined &&
-                    item.nextGroupIndex !== undefined
-                      ? focusedGroupIndex <= item.prevGroupIndex
-                      : undefined;
+                  const focusedSideIsPrev = focusedSideIsPrevByItem.get(item);
                   const prevSegId =
                     item.prevGroupIndex !== undefined &&
                     phraseGroups[item.prevGroupIndex] !== undefined
@@ -661,7 +681,7 @@ export default function ContinuousView({
                 }
                 const { group, groupIndex } = item;
                 const groupKey = group.tokens[0].ref;
-                const isFocused = groupIndex === focusPhraseIndex;
+                const isFocused = group.tokens.some((t) => t.ref === displayFocusedTokenRef);
                 const editPhraseTokens =
                   phraseMode.kind === 'edit'
                     ? [...committedPhraseLinkByRef.values()].find(
@@ -674,13 +694,17 @@ export default function ContinuousView({
                 const showControls =
                   phraseMode.kind === 'view' &&
                   phraseId !== undefined &&
-                  groupIndex === hoveredGroupIndex;
+                  groupKey === hoveredGroupKey;
                 const arcLevel =
                   phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
                 const arcOffsetPx =
                   arcLevel > 0
                     ? ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
                     : CONTROLS_HALF_HEIGHT_PX;
+                const isSplitFree =
+                  phraseMode.kind === 'view' &&
+                  group.tokens.some((t) => splitFreeTokenRefs.has(t.ref));
+                const allowHover = phraseMode.kind === 'view' && phraseId !== undefined;
                 return (
                   <span
                     key={groupKey}
@@ -688,26 +712,27 @@ export default function ContinuousView({
                       phraseRefs.current[groupIndex] = el;
                     }}
                     onMouseEnter={
-                      phraseId !== undefined
+                      allowHover
                         ? () => {
                             setHoveredPhraseId(phraseId);
-                            setHoveredGroupIndex(groupIndex);
+                            setHoveredGroupKey(groupKey);
                           }
                         : undefined
                     }
                     onMouseLeave={
-                      phraseId !== undefined
+                      allowHover
                         ? () => {
                             setHoveredPhraseId(undefined);
-                            setHoveredGroupIndex(undefined);
+                            setHoveredGroupKey(undefined);
                           }
                         : undefined
                     }
                   >
                     <MemoizedPhraseBox
                       arcOffsetPx={arcOffsetPx}
+                      editPhraseSegmentId={editPhraseSegmentId}
                       editPhraseTokens={editPhraseTokens}
-                      index={groupIndex}
+                      focusRef={groupKey}
                       isFocused={isFocused}
                       isHighlighted={
                         phraseId !== undefined
@@ -716,7 +741,7 @@ export default function ContinuousView({
                             group.tokens.some((t) => candidateTokenRefs.has(t.ref))
                           : group.tokens.some((t) => candidateTokenRefs.has(t.ref))
                       }
-                      isSplitFree={group.tokens.some((t) => splitFreeTokenRefs.has(t.ref))}
+                      isSplitFree={isSplitFree}
                       onFocusPhrase={handlePhraseSelect}
                       phraseLink={group.phraseLink}
                       phraseMode={phraseMode}
@@ -724,6 +749,7 @@ export default function ContinuousView({
                       showControls={showControls}
                       showGlossInput={showGlossInput}
                       tokens={group.tokens}
+                      tokenSegmentMap={tokenSegmentMap}
                     />
                   </span>
                 );

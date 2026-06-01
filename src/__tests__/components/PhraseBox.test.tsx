@@ -126,9 +126,9 @@ const TEST_PHRASE_LINK: PhraseAnalysisLink = {
 
 /** Shared props shape used by both helper functions. */
 type PhraseBoxTestProps = {
-  index: number | undefined;
+  focusRef: string | undefined;
   isFocused: boolean;
-  onFocusPhrase: (index?: number) => void;
+  onFocusPhrase: (focusRef?: string) => void;
   tokens: (Token & { type: 'word' })[];
   phraseLink: undefined;
   phraseMode: { kind: 'view' };
@@ -143,7 +143,7 @@ type PhraseBoxTestProps = {
  */
 function requiredProps(): PhraseBoxTestProps {
   return {
-    index: undefined,
+    focusRef: undefined,
     isFocused: false,
     onFocusPhrase: jest.fn(),
     tokens: [TEST_TOKEN],
@@ -287,17 +287,17 @@ describe('PhraseBox', () => {
     expect(spy).toHaveBeenNthCalledWith(2, 'token-1', 'Hello', 'i');
   });
 
-  it('calls onFocusPhrase with index when a gloss input receives focus', async () => {
+  it('calls onFocusPhrase with the focus ref when a gloss input receives focus', async () => {
     const handleFocus = jest.fn();
     render(
       <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} index={2} />
+        <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} focusRef="token-1" />
       </AnalysisStoreProvider>,
     );
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for Hello' }));
 
-    expect(handleFocus).toHaveBeenCalledWith(2);
+    expect(handleFocus).toHaveBeenCalledWith('token-1');
   });
 
   it('hides phrase gloss input when showGlossInput is false', () => {

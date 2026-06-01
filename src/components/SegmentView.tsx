@@ -21,6 +21,7 @@ import {
   groupTokens,
   resolveFocusContext,
   resolveSlotFocus,
+  type RenderUnit,
 } from '../utils/token-layout';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
@@ -137,16 +138,16 @@ export function SegmentView({
   );
 
   /**
-   * Forwards a token-chip click (identified by its index in `segment.tokens`) to the parent as a
+   * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
    * scripture reference + token id. Stable across renders so `MemoizedPhraseBox` can memoize.
    *
-   * @param index - Index of the clicked token within `segment.tokens`.
+   * @param tokenRef - Ref of the group's first token, supplied by `PhraseBox`.
    */
   const handleTokenClick = useCallback(
-    (index?: number) => {
-      if (index !== undefined) onSelect(ref, segment.tokens[index].ref);
+    (tokenRef?: string) => {
+      if (tokenRef !== undefined) onSelect(ref, tokenRef);
     },
-    [onSelect, ref, segment.tokens],
+    [onSelect, ref],
   );
 
   /** Groups of adjacent same-phrase tokens (or solo tokens) for rendering as `PhraseBox`es. */
@@ -234,6 +235,25 @@ export function SegmentView({
     () => buildRenderUnits(segment.tokens, tokenGroups),
     [segment.tokens, tokenGroups],
   );
+
+  /**
+   * Per-slot `focusedSideIsPrev`, precomputed once by walking the render units in document order. A
+   * slot's value is `true` once the focused group has been seen (focus is start-ward of the slot),
+   * `false` before it (focus is end-ward), and `undefined` when nothing is focused. Keyed by render
+   * unit so the render body can look it up instead of threading a cursor through the map.
+   */
+  const focusedSideIsPrevByUnit = useMemo(() => {
+    const map = new Map<RenderUnit, boolean | undefined>();
+    let focusedGroupSeen = false;
+    renderUnits.forEach((unit) => {
+      if (unit.kind === 'group') {
+        if (unit.group.tokens.some((t) => t.ref === focusedTokenRef)) focusedGroupSeen = true;
+      } else {
+        map.set(unit, focusedTokenRef === undefined ? undefined : focusedGroupSeen);
+      }
+    });
+    return map;
+  }, [renderUnits, focusedTokenRef]);
 
   /** Maps each token ref to its flat index within this segment for document-order phrase merges. */
   const tokenDocOrder = useMemo(() => {
@@ -340,10 +360,6 @@ export function SegmentView({
         >
           {(() => {
             const seenPhraseIds = new Set<string>();
-            // focusedGroupSeen tracks whether the focused group has been rendered yet.
-            // Before it: focusedSideIsPrev = false (focus is next-ward).
-            // After it: focusedSideIsPrev = true (focus is prev-ward).
-            let focusedGroupSeen = false;
             return renderUnits.map((unit) => {
               if (unit.kind === 'slot') {
                 const { prevGroup, nextGroup, punctuation } = unit.slot;
@@ -356,16 +372,13 @@ export function SegmentView({
                   prevPhraseId !== undefined &&
                   prevPhraseId === nextPhraseId &&
                   (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-                // focusedSideIsPrev is the one piece that legitimately differs per layout: in a
-                // single segment we track it with a cursor as we walk the render units.
-                const focusedSideIsPrev =
-                  focusedTokenRef === undefined ? undefined : focusedGroupSeen;
+                // focusedSideIsPrev is precomputed per slot by walking the render units once.
                 // Both slot neighbors are in this segment by construction (one segment per render).
                 const slotFocus = resolveSlotFocus(
                   segment.id,
                   segment.id,
                   focus.focusedSegmentId,
-                  focusedSideIsPrev,
+                  focusedSideIsPrevByUnit.get(unit),
                 );
                 const slotKey = `slot-${prevToken?.ref ?? 'start'}-${nextToken?.ref ?? 'end'}`;
                 return (
@@ -399,7 +412,6 @@ export function SegmentView({
               const { group } = unit;
               const groupKey = group.tokens[0].ref;
               const isFocused = group.tokens.some((t) => t.ref === focusedTokenRef);
-              if (isFocused) focusedGroupSeen = true;
               const editPhraseTokens =
                 phraseMode.kind === 'edit'
                   ? [...phraseLinkByRef.values()].find((l) => l.analysisId === phraseMode.phraseId)
@@ -461,7 +473,7 @@ export function SegmentView({
                     arcOffsetPx={arcOffsetPx}
                     editPhraseSegmentId={editPhraseSegmentId}
                     editPhraseTokens={editPhraseTokens}
-                    index={segment.tokens.findIndex((t) => t.ref === group.tokens[0].ref)}
+                    focusRef={groupKey}
                     isFocused={isFocused}
                     isHighlighted={isHighlighted}
                     isSplitFree={isSplitFree}

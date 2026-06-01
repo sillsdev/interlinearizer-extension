@@ -58,12 +58,12 @@ function PhraseGlossInput({
 
 /** Props for {@link PhraseBox}. */
 type PhraseBoxProps = Readonly<{
-  /** Index passed back to `onFocusPhrase` to identify which phrase gained focus. */
-  index: number | undefined;
+  /** Token ref passed back to `onFocusPhrase` to identify which phrase gained focus. */
+  focusRef: string | undefined;
   /** Whether this phrase is the current navigation focus. */
   isFocused: boolean;
-  /** Called with `index` when any child gloss input receives focus. */
-  onFocusPhrase: (index?: number) => void;
+  /** Called with `focusRef` when any child gloss input receives focus. */
+  onFocusPhrase: (focusRef?: string) => void;
   /** Word tokens belonging to this phrase; must all have `type: 'word'`. */
   tokens: (Token & { type: 'word' })[];
   /** The approved `PhraseAnalysisLink` shared by all tokens in this box, if any. */
@@ -139,9 +139,10 @@ type PhraseBoxProps = Readonly<{
  * - The phrase being unlinked is highlighted; all other phrase boxes are disabled.
  *
  * @param props - Component props
- * @param props.index - Index passed back to `onFocusPhrase` to identify which phrase was focused
+ * @param props.focusRef - Token ref passed back to `onFocusPhrase` to identify which phrase was
+ *   focused
  * @param props.isFocused - Whether this phrase is the current navigation focus
- * @param props.onFocusPhrase - Called with `index` when any child gloss input receives focus
+ * @param props.onFocusPhrase - Called with `focusRef` when any child gloss input receives focus
  * @param props.tokens - Tokens belonging to this phrase
  * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
  * @param props.phraseMode - Current phrase-interaction mode
@@ -155,7 +156,7 @@ type PhraseBoxProps = Readonly<{
  * @returns A bordered inline container
  */
 export function PhraseBox({
-  index,
+  focusRef,
   isFocused = false,
   isHighlighted = false,
   isSplitFree = false,
@@ -181,7 +182,7 @@ export function PhraseBox({
     phraseLink !== undefined && tokenPhraseLinkFromStore?.analysisId === phraseLink.analysisId;
 
   /** Notifies the parent when a child gloss input receives focus. */
-  const handleFocus = useCallback(() => onFocusPhrase(index), [onFocusPhrase, index]);
+  const handleFocus = useCallback(() => onFocusPhrase(focusRef), [onFocusPhrase, focusRef]);
 
   const handleEditClick = useCallback(() => {
     if (phraseLink)

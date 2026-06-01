@@ -1,5 +1,5 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -9,10 +9,7 @@ import {
   ARC_CORNER_RADIUS,
   ARC_LEVEL_STEP,
   CONTROLS_HALF_HEIGHT_PX,
-  computeAllArcPaths,
-  computeStripTopPadding,
   splitPhraseAtBoundary,
-  type ArcPath,
 } from '../utils/phrase-arc';
 import {
   buildRenderUnits,
@@ -20,6 +17,7 @@ import {
   resolveFocusContext,
   type RenderUnit,
 } from '../utils/token-layout';
+import { useArcPaths } from '../hooks/useArcPaths';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
 
@@ -32,6 +30,9 @@ import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
  *   fallback or debug display.
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
+
+/** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
+const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
 
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
@@ -231,6 +232,16 @@ export function SegmentView({
   );
 
   /**
+   * Sets (or clears) the would-become-free token refs previewed with a destructive border when a
+   * link/unlink icon is hovered. Stable so memoized phrase boxes don't re-render each pass.
+   *
+   * @param refs - The would-be-free token refs, or `undefined`/empty on leave.
+   */
+  const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {
+    setSplitFreeTokenRefs(refs ? new Set(refs) : new Set());
+  }, []);
+
+  /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
    * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
    * ContinuousView exactly.
@@ -277,54 +288,20 @@ export function SegmentView({
     [phraseMode, phraseLinkByRef],
   );
 
-  /** SVG arc paths for discontiguous phrases inside this segment. */
-  const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
-
-  /** Nesting level per phraseId; used to compute the controls pill offset per phrase box. */
-  const [arcLevelByPhraseId, setArcLevelByPhraseId] = useState<Map<string, number>>(new Map());
-
-  /** Maximum nesting level across all arcs; drives dynamic top padding for the token row. */
-  const [maxArcLevel, setMaxArcLevel] = useState(0);
-
   /** True when any committed phrase exists in this segment. */
   const hasRealPhraseInSegment = tokenGroups.some((g) => g.phraseLink !== undefined);
 
-  const tokenRowTopPadding = computeStripTopPadding(
-    arcPaths.length > 0,
-    maxArcLevel,
-    hasRealPhraseInSegment,
-  );
-
-  // After each render, measure phrase boxes inside this segment and compute arcs.
-  // No-op in baseline-text mode (the ref is unmounted).
-  useLayoutEffect(() => {
-    const container = arcContainerRef.current;
-    if (!container) {
-      setArcPaths((prev) => (prev.length === 0 ? prev : []));
-      setArcLevelByPhraseId((prev) => (prev.size === 0 ? prev : new Map()));
-      setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
-      return;
-    }
-    const { paths, levelByPhraseId, maxLevel } = computeAllArcPaths(container);
-    setArcPaths((prev) => {
-      const prevKey = prev.map((p) => p.d).join('|');
-      const nextKey = paths.map((p) => p.d).join('|');
-      return prevKey === nextKey ? prev : paths;
-    });
-    setArcLevelByPhraseId((prev) => {
-      const changed =
-        prev.size !== levelByPhraseId.size ||
-        [...levelByPhraseId.entries()].some(([id, level]) => prev.get(id) !== level);
-      return changed ? new Map(levelByPhraseId) : prev;
-    });
-    setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
-    // tokenRowTopPadding is intentionally a dep: its applied value affects the DOM layout that
-    // we measure arcs against. Without it, going from 0→1 arcs leaves the arc paths measured at
-    // the no-padding layout while the boxes shift to the with-padding position, drawing the arcs
-    // too high until the next unrelated state change re-runs the effect. The loop stabilizes
-    // after one extra pass because arc count doesn't change between passes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenGroups, phraseMode, displayMode, tokenRowTopPadding]);
+  // Measure phrase boxes inside this segment and compute arcs. Disabled in baseline-text mode,
+  // where the arc container is unmounted, so the result resets to empty.
+  const {
+    arcPaths,
+    arcLevelByPhraseId,
+    stripTopPadding: tokenRowTopPadding,
+  } = useArcPaths(arcContainerRef, displayMode !== 'baseline-text', hasRealPhraseInSegment, [
+    tokenGroups,
+    phraseMode,
+    displayMode,
+  ]);
 
   if (displayMode === 'baseline-text') {
     return (
@@ -396,9 +373,7 @@ export function SegmentView({
                     onHoverCandidateTokens={(refs) =>
                       setCandidateTokenRefs(refs ? new Set(refs) : new Set())
                     }
-                    onHoverSplitFreeTokens={(refs) =>
-                      setSplitFreeTokenRefs(refs ? new Set(refs) : new Set())
-                    }
+                    onHoverSplitFreeTokens={handleHoverSplitFreeTokens}
                   />
                 );
               }
@@ -427,9 +402,8 @@ export function SegmentView({
                   groupKey={groupKey}
                   isFocused={group.tokens.some((t) => t.ref === focusedTokenRef)}
                   isHighlighted={isHighlighted}
-                  isSplitFree={
-                    phraseMode.kind === 'view' &&
-                    group.tokens.some((t) => splitFreeTokenRefs.has(t.ref))
+                  splitFreeTokenRefs={
+                    phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS
                   }
                   showControls={
                     phraseMode.kind === 'view' &&
@@ -448,6 +422,8 @@ export function SegmentView({
                     setHoveredGroupKey(undefined);
                   }}
                   onFocusPhrase={handleTokenClick}
+                  onHoverCandidatePhrase={onHoverPhrase}
+                  onHoverSplitFreeTokens={handleHoverSplitFreeTokens}
                   phraseMode={phraseMode}
                   setPhraseMode={setPhraseMode}
                   editPhraseTokens={editPhraseTokens}

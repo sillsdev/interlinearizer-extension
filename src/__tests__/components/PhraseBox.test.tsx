@@ -42,11 +42,15 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 jest.mock('../../components/TokenChip', () => {
-  function MockTokenChip({ onFocus, token }: Readonly<{ onFocus?: () => void; token: Token }>) {
+  function MockTokenChip({
+    onFocus,
+    token,
+    isSplitFree,
+  }: Readonly<{ onFocus?: () => void; token: Token; isSplitFree?: boolean }>) {
     const gloss = mockUseGloss(token.ref);
     const dispatch = mockUseGlossDispatch();
     return (
-      <span data-testid={`token-${token.ref}`}>
+      <span data-testid={`token-${token.ref}`} data-split-free={isSplitFree ? 'true' : 'false'}>
         {token.surfaceText}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
@@ -224,6 +228,44 @@ describe('PhraseBox', () => {
     expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
     expect(phraseBox).toHaveClass('tw:border-border/40');
     expect(phraseBox).toHaveClass('tw:bg-muted/20');
+  });
+
+  it('reddens only the chips whose refs are in splitFreeTokenRefs, leaving the box border neutral', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+          splitFreeTokenRefs={new Set(['token-2'])}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    // Only one of the two tokens would become free, so the box border stays neutral and just the
+    // affected chip is flagged.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).not.toHaveClass('tw:border-destructive');
+    expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
+    expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'true');
+  });
+
+  it('reddens the whole box (not individual chips) when every token would become free', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+          splitFreeTokenRefs={new Set(['token-1', 'token-2'])}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    // A fully-free box (e.g. a single-token fragment) reddens at the box level; per-chip flagging is
+    // suppressed so the border isn't drawn twice.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:border-destructive');
+    expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
+    expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'false');
   });
 
   it('phrase box does not override cursor on gap areas', () => {
@@ -584,6 +626,52 @@ describe('PhraseBox', () => {
       { tokenRef: 'D', surfaceText: 'D' },
     ]);
     expect(createPhraseSpy).not.toHaveBeenCalled();
+  });
+
+  it('hovering an intra-phrase unlink button reports the would-be-free tokens to onHoverSplitFreeTokens', async () => {
+    // Splitting a two-token phrase leaves both halves length-1, so both tokens would become free.
+    // The intra-phrase icon must forward that preview up so the parent can redden the chips.
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-x',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'A', surfaceText: 'A' },
+        { tokenRef: 'B', surfaceText: 'B' },
+      ],
+    };
+    const docOrder = new Map([
+      ['A', 0],
+      ['B', 1],
+    ]);
+    const mk = (ref: string): Token & { type: 'word' } => ({
+      ref,
+      surfaceText: ref,
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 1,
+    });
+    mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
+    const onHoverSplitFreeTokens = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <PhraseBox
+          {...requiredProps()}
+          isHighlighted
+          phraseLink={phraseLink}
+          tokenDocOrder={docOrder}
+          tokens={[mk('A'), mk('B')]}
+          onHoverSplitFreeTokens={onHoverSplitFreeTokens}
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    const unlinkBtn = screen.getByTestId('token-unlink-btn');
+    await userEvent.hover(unlinkBtn);
+    expect(onHoverSplitFreeTokens).toHaveBeenCalledWith(['A', 'B']);
+
+    await userEvent.unhover(unlinkBtn);
+    expect(onHoverSplitFreeTokens).toHaveBeenLastCalledWith(undefined);
   });
 
   it('clicking an inline unlink button does not pop out any other token (no label click-forwarding)', async () => {

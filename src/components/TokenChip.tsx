@@ -16,6 +16,8 @@ import { useGloss, useGlossDispatch } from './AnalysisStore';
  * @param props.disabled - When true, the gloss input is read-only and non-interactive.
  * @param props.onRemove - When provided, renders a small ✕ button in the top-right corner of the
  *   chip; clicking it calls this callback to remove the token from its phrase.
+ * @param props.isSplitFree - When true, this token would become free (solo) if the currently
+ *   hovered split/unlink button were clicked; previewed with a destructive border on the chip.
  * @returns A styled label containing the surface text and a gloss input.
  */
 export function TokenChip({
@@ -23,11 +25,13 @@ export function TokenChip({
   onFocus,
   disabled = false,
   onRemove,
+  isSplitFree = false,
 }: Readonly<{
   token: Token & { type: 'word' };
   onFocus: () => void;
   disabled?: boolean;
   onRemove?: () => void;
+  isSplitFree?: boolean;
 }>) {
   const committedGloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
@@ -74,7 +78,7 @@ export function TokenChip({
         </button>
       )}
       <label
-        className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
+        className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
       >
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}

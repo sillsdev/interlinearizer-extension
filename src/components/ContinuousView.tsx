@@ -1,5 +1,5 @@
 import type { Book, Token } from 'interlinearizer';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkMap, usePhraseDispatch } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -9,10 +9,7 @@ import {
   ARC_CORNER_RADIUS,
   ARC_LEVEL_STEP,
   CONTROLS_HALF_HEIGHT_PX,
-  computeAllArcPaths,
-  computeStripTopPadding,
   splitPhraseAtBoundary,
-  type ArcPath,
 } from '../utils/phrase-arc';
 import {
   buildRenderUnits,
@@ -21,6 +18,7 @@ import {
   type LinkSlot,
   type TokenGroup,
 } from '../utils/token-layout';
+import { useArcPaths } from '../hooks/useArcPaths';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
 
@@ -35,6 +33,9 @@ function clampIndex(index: number, len: number): number {
   if (len === 0) return 0;
   return Math.max(0, Math.min(index, len - 1));
 }
+
+/** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
+const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
 
 /**
  * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
@@ -395,12 +396,6 @@ export default function ContinuousView({
   // eslint-disable-next-line no-null/no-null
   const arcContainerRef = useRef<HTMLDivElement | null>(null);
 
-  /** SVG arc path strings keyed by phraseId, drawn above the strip for discontiguous phrases. */
-  const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
-
-  /** Nesting level per phraseId; used to compute controls pill offset so it aligns with the arc top. */
-  const [arcLevelByPhraseId, setArcLevelByPhraseId] = useState<Map<string, number>>(new Map());
-
   /** The phraseId whose arc is currently highlighted due to a phrase box being hovered. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
 
@@ -457,6 +452,16 @@ export default function ContinuousView({
   );
 
   /**
+   * Sets (or clears) the would-become-free token refs previewed with a destructive border when a
+   * link/unlink icon is hovered. Stable so memoized phrase boxes don't re-render each pass.
+   *
+   * @param refs - The would-be-free token refs, or `undefined`/empty on leave.
+   */
+  const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {
+    setSplitFreeTokenRefs(refs ? new Set(refs) : new Set());
+  }, []);
+
+  /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
    * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
    * SegmentView exactly.
@@ -472,46 +477,16 @@ export default function ContinuousView({
     [focusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
   );
 
-  /** Maximum nesting level across all visible arcs; drives dynamic top padding. */
-  const [maxArcLevel, setMaxArcLevel] = useState(0);
-
   /** True when any committed phrase exists in the visible window. */
   const hasRealPhraseInWindow = windowGroups.some((g) => g.phraseLink !== undefined);
 
-  const stripTopPadding = computeStripTopPadding(
-    arcPaths.length > 0,
-    maxArcLevel,
+  // Measure phrase boxes after each render and compute arcs for discontiguous phrases.
+  const { arcPaths, arcLevelByPhraseId, stripTopPadding } = useArcPaths(
+    arcContainerRef,
+    true,
     hasRealPhraseInWindow,
+    [windowGroups, phraseMode],
   );
-
-  /**
-   * After each render, find all discontiguous phrase groups (same phraseId appearing on multiple
-   * `[data-phrase-box]` elements in the strip) and compute a cubic Bézier arc between consecutive
-   * runs. Same-row runs get an upward arc; cross-row runs get a downward arc. Only updates state
-   * when the serialized path strings actually change to avoid infinite loops.
-   */
-  useLayoutEffect(() => {
-    const container = arcContainerRef.current;
-    /* v8 ignore next -- ref is always populated when useLayoutEffect fires after DOM commit */
-    if (!container) return;
-    const { paths, levelByPhraseId, maxLevel } = computeAllArcPaths(container);
-    setArcPaths((prev) => {
-      const prevKey = prev.map((p) => p.d).join('|');
-      const nextKey = paths.map((p) => p.d).join('|');
-      return prevKey === nextKey ? prev : paths;
-    });
-    setArcLevelByPhraseId((prev) => {
-      const changed = [...levelByPhraseId.entries()].some(([id, level]) => prev.get(id) !== level);
-      return changed || prev.size !== levelByPhraseId.size ? new Map(levelByPhraseId) : prev;
-    });
-    setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
-    // stripTopPadding is intentionally a dep: its applied value affects the DOM layout that we
-    // measure arcs against. Without it, going from 0→1 arcs (or other padding transitions) leaves
-    // the arc paths measured at the old-padding layout while the boxes shift to the new-padding
-    // position, drawing the arcs at the wrong y until an unrelated state change re-runs the effect.
-    // The loop stabilizes after one extra pass because arc count doesn't change between passes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowGroups, phraseMode, stripTopPadding]);
 
   /**
    * Interleaved render units (groups + link slots) in document order across the window. Built from
@@ -662,9 +637,7 @@ export default function ContinuousView({
                       onHoverCandidateTokens={(refs) =>
                         setCandidateTokenRefs(refs ? new Set(refs) : new Set())
                       }
-                      onHoverSplitFreeTokens={(refs) =>
-                        setSplitFreeTokenRefs(refs ? new Set(refs) : new Set())
-                      }
+                      onHoverSplitFreeTokens={handleHoverSplitFreeTokens}
                     />
                   );
                 }
@@ -694,9 +667,8 @@ export default function ContinuousView({
                     groupKey={groupKey}
                     isFocused={group.tokens.some((t) => t.ref === displayFocusedTokenRef)}
                     isHighlighted={isHighlighted}
-                    isSplitFree={
-                      phraseMode.kind === 'view' &&
-                      group.tokens.some((t) => splitFreeTokenRefs.has(t.ref))
+                    splitFreeTokenRefs={
+                      phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS
                     }
                     showControls={
                       phraseMode.kind === 'view' &&
@@ -715,6 +687,8 @@ export default function ContinuousView({
                       setHoveredGroupKey(undefined);
                     }}
                     onFocusPhrase={handlePhraseSelect}
+                    onHoverCandidatePhrase={setHoveredPhraseId}
+                    onHoverSplitFreeTokens={handleHoverSplitFreeTokens}
                     groupRef={(el) => {
                       phraseRefs.current[groupIndex] = el;
                     }}

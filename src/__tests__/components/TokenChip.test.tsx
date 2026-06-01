@@ -73,6 +73,27 @@ describe('TokenChip', () => {
     expect(outer?.className).toContain('tw:border');
   });
 
+  it('applies a destructive border when isSplitFree is true', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} isSplitFree />
+      </AnalysisStoreProvider>,
+    );
+    const label = screen.getByText('hello').closest('label');
+    expect(label?.className).toContain('tw:border-destructive');
+  });
+
+  it('does not apply a destructive border when isSplitFree is false', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} isSplitFree={false} />
+      </AnalysisStoreProvider>,
+    );
+    const label = screen.getByText('hello').closest('label');
+    expect(label?.className).not.toContain('tw:border-destructive');
+    expect(label?.className).toContain('tw:border-border');
+  });
+
   it('renders a gloss input', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">

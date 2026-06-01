@@ -64,6 +64,16 @@ type PhraseBoxProps = Readonly<{
   isFocused: boolean;
   /** Called with `focusRef` when any child gloss input receives focus. */
   onFocusPhrase: (focusRef?: string) => void;
+  /**
+   * Called with this phrase's id (or `undefined`) when an intra-phrase unlink icon is hovered, so
+   * the parent can highlight the phrase's arcs. Only wired for real phrases in view mode.
+   */
+  onHoverCandidatePhrase?: (phraseId: string | undefined) => void;
+  /**
+   * Called with the would-be-free token refs (or `undefined`) when an intra-phrase unlink icon is
+   * hovered, so the parent can preview the affected chips with a destructive border.
+   */
+  onHoverSplitFreeTokens?: (refs: readonly string[] | undefined) => void;
   /** Word tokens belonging to this phrase; must all have `type: 'word'`. */
   tokens: (Token & { type: 'word' })[];
   /** The approved `PhraseAnalysisLink` shared by all tokens in this box, if any. */
@@ -110,10 +120,11 @@ type PhraseBoxProps = Readonly<{
    */
   isHighlighted?: boolean;
   /**
-   * When `true`, this token/box would become a free (solo) token if the currently hovered
-   * split/unlink button were clicked. Renders with a destructive border as a preview.
+   * Token refs that would become free (solo) if the currently hovered split/unlink button were
+   * clicked. Each matching chip renders with a destructive border as a preview; when every token in
+   * the box is free (e.g. a single-token fragment), the whole box border turns destructive too.
    */
-  isSplitFree?: boolean;
+  splitFreeTokenRefs?: ReadonlySet<string>;
   /**
    * Map from token ref to its flat document index. Used by `edit` mode to insert a newly added
    * token in document order rather than appending it, so the stored phrase token list always
@@ -149,6 +160,8 @@ type PhraseBoxProps = Readonly<{
  *   focused
  * @param props.isFocused - Whether this phrase is the current navigation focus
  * @param props.onFocusPhrase - Called with `focusRef` when any child gloss input receives focus
+ * @param props.onHoverCandidatePhrase - Called when an intra-phrase unlink icon is hovered
+ * @param props.onHoverSplitFreeTokens - Called when an intra-phrase unlink icon is hovered
  * @param props.tokens - Tokens belonging to this phrase
  * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
  * @param props.phraseMode - Current phrase-interaction mode
@@ -165,8 +178,10 @@ export function PhraseBox({
   focusRef,
   isFocused = false,
   isHighlighted = false,
-  isSplitFree = false,
+  splitFreeTokenRefs,
   onFocusPhrase,
+  onHoverCandidatePhrase,
+  onHoverSplitFreeTokens,
   tokens,
   phraseLink,
   phraseMode,
@@ -299,10 +314,15 @@ export function PhraseBox({
 
   const isRealPhrase = phraseLink !== undefined;
 
+  // The whole box previews as becoming free only when every token in it would. A single-token
+  // fragment reddens its box; a multi-token contiguous box reddens only the affected chips below.
+  const isBoxSplitFree =
+    splitFreeTokenRefs !== undefined && tokens.every((t) => splitFreeTokenRefs.has(t.ref));
+
   // --- view mode ---
   if (phraseMode.kind === 'view') {
     const viewBorderClass = (() => {
-      if (isSplitFree) return 'tw:border-destructive tw:bg-muted/20';
+      if (isBoxSplitFree) return 'tw:border-destructive tw:bg-muted/20';
       if (isFocused) return 'tw:border-white tw:bg-muted/30';
       if (isHighlighted) return 'tw:border-white/55 tw:bg-muted/25';
       return 'tw:border-border/40 tw:bg-muted/20';
@@ -372,6 +392,8 @@ export function PhraseBox({
                     isPhraseRevealed={isHighlighted}
                     nextPhraseLink={phraseLink}
                     nextToken={token}
+                    onHoverCandidatePhrase={onHoverCandidatePhrase}
+                    onHoverSplitFreeTokens={onHoverSplitFreeTokens}
                     phraseMode={phraseMode}
                     prevPhraseLink={phraseLink}
                     prevToken={tokens[i - 1]}
@@ -379,6 +401,7 @@ export function PhraseBox({
                   />
                 )}
                 <MemoizedTokenChip
+                  isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
                     isRealPhrase &&

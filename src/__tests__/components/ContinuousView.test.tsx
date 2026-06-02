@@ -2,10 +2,10 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import ContinuousView from '../../components/ContinuousView';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { isWordToken } from '../../types/typeGuards';
@@ -642,6 +642,45 @@ describe('ContinuousView scroll behaviour', () => {
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
+  });
+
+  it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
+    // The smooth-scroll path requires the displayed focus to already agree with the prop and the
+    // strip to be visible when the scroll effect runs. That only happens when a real (stateful)
+    // parent reflects the internal ref change straight back, so simulate one here rather than
+    // driving the ref via a jest.fn() that never updates the prop.
+    const book = makeBook();
+    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    function Parent() {
+      const [ref, setRef] = useState<string | undefined>('tok-0');
+      return (
+        <ContinuousView
+          book={book}
+          editPhraseSegmentId={undefined}
+          focusedTokenRef={ref}
+          onFocusedTokenRefChange={setRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={jest.fn()}
+          tokenSegmentMap={tokenSegmentMap}
+          wordTokenByRef={wordTokenByRef}
+        />
+      );
+    }
+    render(<Parent />, withAnalysisStore);
+    // Wait for the initial-load requestAnimationFrame fade-in to complete (strip becomes visible)
+    // before navigating; the smooth path is only taken while the strip is already visible.
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
+    );
+    scrollIntoViewMock.mockClear();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'smooth' }),
+      ),
+    );
   });
 
   it('scrolls with the nearest-block, centre-inline placement', () => {

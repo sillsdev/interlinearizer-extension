@@ -48,7 +48,8 @@ export type SplitPhraseDispatch = {
  * split correct even if the stored token list happens to be out of document order. Tokens missing
  * from `tokenDocOrder` sort to the front (index 0).
  *
- * If `splitAfterTokenRef` is not found in `phraseLink.tokens` the function is a no-op.
+ * If `splitAfterTokenRef` is not found in `phraseLink.tokens`, or is the last token in document
+ * order (which would leave the phrase unchanged), the function is a no-op.
  *
  * @param phraseLink - The phrase link to split.
  * @param splitAfterTokenRef - Token ref of the last token to keep in the earlier fragment.
@@ -67,6 +68,10 @@ export function splitPhraseAtBoundary(
   );
   const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
   if (idx < 0) return;
+  // Splitting after the last token would leave the phrase unchanged (all tokens `before`, none
+  // `after`) while still dispatching an update + triggering `onSave`. Callers only place split
+  // buttons between consecutive boxes, so this is defensive, but cheaper than a redundant write.
+  if (idx === ordered.length - 1) return;
   const boundary = idx + 1;
   const before = ordered.slice(0, boundary);
   const after = ordered.slice(boundary);

@@ -179,6 +179,32 @@ jest.mock('../../components/SegmentView', () => ({
   },
 }));
 
+jest.mock('../../components/EditPhraseControls', () => ({
+  __esModule: true,
+  /**
+   * Minimal EditPhraseControls stub exposing the done button the toolbar tests assert on.
+   *
+   * @returns A stub div carrying the `done-edit-btn` test id.
+   */
+  default: () => (
+    <div data-testid="edit-phrase-controls">
+      <button data-testid="done-edit-btn" type="button">
+        Done
+      </button>
+    </div>
+  ),
+}));
+
+jest.mock('../../components/UnlinkPhraseConfirm', () => ({
+  __esModule: true,
+  /**
+   * Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on.
+   *
+   * @returns A stub div carrying the `unlink-confirm` test id.
+   */
+  default: () => <div data-testid="unlink-confirm" />,
+}));
+
 /** Pre-built Book with no segments — used by the no-verse-data test. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 

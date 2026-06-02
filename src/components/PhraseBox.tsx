@@ -314,6 +314,16 @@ export function PhraseBox({
 
   const isRealPhrase = phraseLink !== undefined;
 
+  // The pop-out (✕) guard below must compare against the phrase's first/last token in *document*
+  // order, not stored order. The stored token list is kept sorted by all current write paths, but
+  // we sort defensively here (matching `splitPhraseAtBoundary`) so legacy/unsorted data still places
+  // the ✕ on the visually-first/last tokens rather than wherever they happen to sit in storage.
+  const orderedPhraseRefs = phraseLink
+    ? [...phraseLink.tokens]
+        .sort((a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0))
+        .map((t) => t.tokenRef)
+    : [];
+
   // The whole box previews as becoming free only when it is a lone single-token fragment that would
   // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box always reddens the
   // affected chips individually below, even when every token would be freed (a 2-token phrase
@@ -408,8 +418,8 @@ export function PhraseBox({
                     isRealPhrase &&
                     isHighlighted &&
                     phraseLink.tokens.length > 2 &&
-                    token.ref !== phraseLink.tokens[0].tokenRef &&
-                    token.ref !== phraseLink.tokens[phraseLink.tokens.length - 1].tokenRef
+                    token.ref !== orderedPhraseRefs[0] &&
+                    token.ref !== orderedPhraseRefs[orderedPhraseRefs.length - 1]
                       ? () => handleViewPopOut(token.ref)
                       : undefined
                   }
@@ -484,7 +494,10 @@ export function PhraseBox({
   // In edit mode with the target phrase: each token chip is individually clickable to remove it.
   if (isInEditTarget) {
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
-      if (e.key === 'Enter' || e.key === ' ') handleEditRemove(tokenRef);
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        handleEditRemove(tokenRef);
+      }
     };
     return (
       <span
@@ -522,7 +535,10 @@ export function PhraseBox({
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
-    if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) handleBoxClick();
+    if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      handleBoxClick();
+    }
   };
 
   return (

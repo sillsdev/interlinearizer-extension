@@ -427,6 +427,25 @@ describe('splitPhraseAtBoundary', () => {
     expect(dispatch.createPhrase).not.toHaveBeenCalled();
   });
 
+  it('no-ops when splitAfterTokenRef is the last token in document order', () => {
+    // Splitting after the last token would leave the phrase unchanged (before = all tokens, after =
+    // empty); the function must not dispatch a redundant update. tok-c is last by document order.
+    const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
+    splitPhraseAtBoundary(
+      makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']),
+      'tok-c',
+      dispatch,
+      new Map([
+        ['tok-a', 0],
+        ['tok-b', 1],
+        ['tok-c', 2],
+      ]),
+    );
+    expect(dispatch.deletePhrase).not.toHaveBeenCalled();
+    expect(dispatch.updatePhrase).not.toHaveBeenCalled();
+    expect(dispatch.createPhrase).not.toHaveBeenCalled();
+  });
+
   it('deletes the phrase when both halves would have exactly 1 token', () => {
     const dispatch = { createPhrase: jest.fn(), updatePhrase: jest.fn(), deletePhrase: jest.fn() };
     splitPhraseAtBoundary(makePhraseLink('p1', ['tok-a', 'tok-b']), 'tok-a', dispatch);

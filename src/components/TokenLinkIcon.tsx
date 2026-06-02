@@ -5,6 +5,7 @@ import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
+import type { SlotFocusInfo } from '../utils/token-layout';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -17,28 +18,12 @@ type TokenLinkIconProps = Readonly<{
   /** Phrase link containing `nextToken`'s group, if any. */
   nextPhraseLink: PhraseAnalysisLink | undefined;
   /**
-   * Whether the currently focused token/phrase is on the prev (start) side of this icon. `true` =
-   * focused group is start-ward of this slot; `false` = focused group is end-ward; `undefined` = no
-   * focus set. When `true`, clicking joins the end-side (next) token/phrase into the focused
-   * start-side. When `false`, clicking joins the start-side (prev) token/phrase into the focused
-   * end-side.
+   * The bundle of focus-derived inputs for this slot: link direction (`focusedSideIsPrev`),
+   * single-segment validity (`isSameSegmentAsFocus`), and the focused phrase/free token used to
+   * resolve cross-slot link targets. Built by `resolveSlotFocus` for real slots, or `NO_SLOT_FOCUS`
+   * for the in-phrase unlink icons rendered by `PhraseBox`.
    */
-  focusedSideIsPrev: boolean | undefined;
-  /**
-   * The phrase link of the currently focused token, if any. Used to correctly identify the focused
-   * phrase when the focus is not immediately adjacent to this slot.
-   */
-  focusedPhraseLink: PhraseAnalysisLink | undefined;
-  /**
-   * The focused word token itself (free token, not in any phrase), or `undefined` when the focused
-   * token is inside a phrase (use `focusedPhraseLink` instead) or there is no focus.
-   */
-  focusedFreeToken: (Token & { type: 'word' }) | undefined;
-  /**
-   * Whether both neighbors of this slot are in the same segment as the focused token/phrase. When
-   * `false`, the link button is disabled because phrases must stay within a single segment.
-   */
-  isSameSegmentAsFocus: boolean;
+  slotFocus: SlotFocusInfo;
   /**
    * Whether the surrounding phrase is currently hovered or focused — used to reveal the unlink
    * icon.
@@ -77,12 +62,11 @@ export function TokenLinkIcon({
   nextToken,
   prevPhraseLink,
   nextPhraseLink,
-  focusedSideIsPrev,
-  focusedPhraseLink,
-  focusedFreeToken,
-  isSameSegmentAsFocus,
+  slotFocus,
   isPhraseRevealed,
 }: TokenLinkIconProps) {
+  const { focusedSideIsPrev, focusedPhraseLink, focusedFreeToken, isSameSegmentAsFocus } =
+    slotFocus;
   const {
     phraseMode,
     tokenDocOrder,

@@ -4,7 +4,13 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
-import { PhraseSlot, PhraseGroup, resolveIsHighlighted } from '../../components/PhraseStripParts';
+import {
+  PhraseSlot,
+  PhraseGroup,
+  PhraseStrip,
+  resolveIsHighlighted,
+  type StripItem,
+} from '../../components/PhraseStripParts';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
@@ -28,6 +34,11 @@ jest.mock('../../components/PhraseBox', () => ({
     tokens,
     isFocused,
     isHighlighted,
+    showControls,
+    showGlossInput,
+    arcOffsetPx,
+    splitFreeTokenRefs,
+    onFocusPhrase,
   }: Readonly<{
     tokens: (Token & { type: 'word' })[];
     isFocused: boolean;
@@ -39,12 +50,18 @@ jest.mock('../../components/PhraseBox', () => ({
     arcOffsetPx: number;
     splitFreeTokenRefs: ReadonlySet<string>;
   }>) => (
-    <span
+    <button
+      type="button"
       data-focused={isFocused ? 'true' : 'false'}
       data-highlighted={isHighlighted ? 'true' : 'false'}
+      data-controls={showControls ? 'true' : 'false'}
+      data-gloss={showGlossInput ? 'true' : 'false'}
+      data-arc-offset={String(arcOffsetPx)}
+      data-split-free={[...splitFreeTokenRefs].join(',')}
+      onClick={onFocusPhrase}
     >
       {tokens.map((t) => t.surfaceText).join(' ')}
-    </span>
+    </button>
   ),
 }));
 
@@ -298,5 +315,145 @@ describe('PhraseGroup', () => {
     }
     expect(onHoverEnter).not.toHaveBeenCalled();
     expect(onHoverLeave).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PhraseStrip
+// ---------------------------------------------------------------------------
+
+describe('PhraseStrip', () => {
+  /**
+   * Builds default `PhraseStrip` props with the given items and overrides.
+   *
+   * @param items - The normalized strip items to render.
+   * @param overrides - Partial prop overrides.
+   * @returns A complete `PhraseStrip` props object.
+   */
+  function stripProps(
+    items: StripItem[],
+    overrides: Partial<Parameters<typeof PhraseStrip>[0]> = {},
+  ): Parameters<typeof PhraseStrip>[0] {
+    return {
+      items,
+      phraseMode: { kind: 'view' },
+      focus: NO_FOCUS,
+      hoveredPhraseId: undefined,
+      hoveredGroupKey: undefined,
+      candidateTokenRefs: new Set(),
+      splitFreeTokenRefs: new Set(),
+      arcLevelByPhraseId: new Map(),
+      onHoverPhrase: jest.fn(),
+      setHoveredGroupKey: jest.fn(),
+      onFocusPhrase: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  /**
+   * Builds a group strip item for a single phrase link.
+   *
+   * @param link - The phrase link (or `undefined` for a solo token).
+   * @param refs - Token refs in the group.
+   * @returns A group {@link StripItem}.
+   */
+  function groupItem(link: PhraseAnalysisLink | undefined, refs: string[]): StripItem {
+    const tokens = refs.map((r) => mkWord(r));
+    return {
+      kind: 'group',
+      key: refs[0],
+      group: { tokens, phraseLink: link, firstIndex: 0 },
+      isFocused: false,
+    };
+  }
+
+  it('renders a slot item', () => {
+    const slot: LinkSlot = {
+      prevGroup: undefined,
+      nextGroup: undefined,
+      punctuation: [mkPunct('p1')],
+    };
+    const items: StripItem[] = [
+      {
+        kind: 'slot',
+        key: 'slot-1',
+        slot,
+        prevSegmentId: 'seg-1',
+        nextSegmentId: 'seg-1',
+        focusedSideIsPrev: undefined,
+      },
+    ];
+    const { container } = render(<PhraseStrip {...stripProps(items)} />);
+    expect(container.firstChild).not.toBeNull();
+  });
+
+  it('shows the gloss input only on the first fragment of a discontiguous phrase', () => {
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const items = [groupItem(link, ['tok-a']), groupItem(link, ['tok-b'])];
+    render(<PhraseStrip {...stripProps(items)} />);
+    const boxes = screen.getAllByRole('button');
+    expect(boxes[0]).toHaveAttribute('data-gloss', 'true');
+    expect(boxes[1]).toHaveAttribute('data-gloss', 'false');
+  });
+
+  it('highlights a group whose token is a link candidate', () => {
+    const items = [groupItem(undefined, ['tok-a'])];
+    render(<PhraseStrip {...stripProps(items, { candidateTokenRefs: new Set(['tok-a']) })} />);
+    expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
+  });
+
+  it('shows controls only for the hovered real phrase in view mode', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    render(<PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a' })} />);
+    expect(document.querySelector('[data-controls="true"]')).toBeInTheDocument();
+  });
+
+  it('forwards split-free refs in view mode but suppresses them otherwise', () => {
+    const items = [groupItem(undefined, ['tok-a'])];
+    const splitFreeTokenRefs = new Set(['tok-a']);
+    const { rerender } = render(<PhraseStrip {...stripProps(items, { splitFreeTokenRefs })} />);
+    expect(document.querySelector('[data-split-free="tok-a"]')).toBeInTheDocument();
+
+    rerender(
+      <PhraseStrip
+        {...stripProps(items, {
+          splitFreeTokenRefs,
+          phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
+        })}
+      />,
+    );
+    expect(document.querySelector('[data-split-free="tok-a"]')).not.toBeInTheDocument();
+  });
+
+  it('uses a zero arc offset when the phrase has no arc level', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    render(<PhraseStrip {...stripProps(items)} />);
+    expect(document.querySelector('[data-arc-offset="0"]')).toBeInTheDocument();
+  });
+
+  it('wires hover and focus callbacks for real phrases', () => {
+    const onHoverPhrase = jest.fn();
+    const setHoveredGroupKey = jest.fn();
+    const onFocusPhrase = jest.fn();
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    render(
+      <PhraseStrip {...stripProps(items, { onHoverPhrase, setHoveredGroupKey, onFocusPhrase })} />,
+    );
+    const wrapper = document.querySelector('span');
+    expect(wrapper).toBeInTheDocument();
+    if (wrapper) {
+      fireEvent.mouseEnter(wrapper);
+      fireEvent.mouseLeave(wrapper);
+    }
+    expect(onHoverPhrase).toHaveBeenCalledWith('p1');
+    expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
+    expect(setHoveredGroupKey).toHaveBeenCalledWith('tok-a');
+    expect(setHoveredGroupKey).toHaveBeenCalledWith(undefined);
+
+    fireEvent.click(screen.getByRole('button'));
+    expect(onFocusPhrase).toHaveBeenCalledWith('tok-a');
   });
 });

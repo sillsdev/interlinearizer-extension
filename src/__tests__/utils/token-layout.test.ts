@@ -7,6 +7,8 @@ import {
   resolveSlotFocus,
   groupTokens,
   buildRenderUnits,
+  NO_SLOT_FOCUS,
+  type FocusContext,
 } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
@@ -91,29 +93,81 @@ describe('resolveFocusContext', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveSlotFocus', () => {
+  /**
+   * Builds a focus context with the given segment id and optional phrase/free token; all other
+   * fields default to undefined.
+   *
+   * @param focusedSegmentId - Segment id of the focused token, or `undefined`.
+   * @param overrides - Optional `focusedPhraseLink` / `focusedFreeToken` overrides.
+   * @returns A `FocusContext` for `resolveSlotFocus`.
+   */
+  function focusWithSegment(
+    focusedSegmentId: string | undefined,
+    overrides: Partial<FocusContext> = {},
+  ): FocusContext {
+    return {
+      focusedToken: undefined,
+      focusedPhraseLink: undefined,
+      focusedFreeToken: undefined,
+      focusedSegmentId,
+      focusedPhraseId: undefined,
+      ...overrides,
+    };
+  }
+
   it('marks isSameSegmentAsFocus true when all three segment ids agree', () => {
-    const result = resolveSlotFocus('seg-1', 'seg-1', 'seg-1', true);
+    const result = resolveSlotFocus('seg-1', 'seg-1', focusWithSegment('seg-1'), true);
     expect(result.isSameSegmentAsFocus).toBe(true);
   });
 
   it('marks isSameSegmentAsFocus false when focusedSegmentId is undefined', () => {
-    const result = resolveSlotFocus('seg-1', 'seg-1', undefined, undefined);
+    const result = resolveSlotFocus('seg-1', 'seg-1', focusWithSegment(undefined), undefined);
     expect(result.isSameSegmentAsFocus).toBe(false);
   });
 
   it('marks isSameSegmentAsFocus false when prev and next are in different segments', () => {
-    const result = resolveSlotFocus('seg-1', 'seg-2', 'seg-1', true);
+    const result = resolveSlotFocus('seg-1', 'seg-2', focusWithSegment('seg-1'), true);
     expect(result.isSameSegmentAsFocus).toBe(false);
   });
 
   it('passes focusedSideIsPrev through when false', () => {
-    expect(resolveSlotFocus('seg-1', 'seg-1', 'seg-1', false).focusedSideIsPrev).toBe(false);
+    expect(
+      resolveSlotFocus('seg-1', 'seg-1', focusWithSegment('seg-1'), false).focusedSideIsPrev,
+    ).toBe(false);
   });
 
   it('passes focusedSideIsPrev through when undefined', () => {
     expect(
-      resolveSlotFocus('seg-1', 'seg-1', 'seg-1', undefined).focusedSideIsPrev,
+      resolveSlotFocus('seg-1', 'seg-1', focusWithSegment('seg-1'), undefined).focusedSideIsPrev,
     ).toBeUndefined();
+  });
+
+  it('forwards focusedPhraseLink and focusedFreeToken from the focus context', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const freeToken = mkWord('tok-b');
+    const result = resolveSlotFocus(
+      'seg-1',
+      'seg-1',
+      focusWithSegment('seg-1', { focusedPhraseLink: link, focusedFreeToken: freeToken }),
+      true,
+    );
+    expect(result.focusedPhraseLink).toBe(link);
+    expect(result.focusedFreeToken).toBe(freeToken);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NO_SLOT_FOCUS
+// ---------------------------------------------------------------------------
+
+describe('NO_SLOT_FOCUS', () => {
+  it('represents an inert, unfocused slot', () => {
+    expect(NO_SLOT_FOCUS).toEqual({
+      focusedSideIsPrev: undefined,
+      isSameSegmentAsFocus: false,
+      focusedPhraseLink: undefined,
+      focusedFreeToken: undefined,
+    });
   });
 });
 

@@ -58,7 +58,12 @@ export function resolveFocusContext(
   };
 }
 
-/** Focus-derived inputs to `TokenLinkIcon` for a single between-group slot. */
+/**
+ * The complete bundle of focus-derived inputs `TokenLinkIcon` needs for a single between-group
+ * slot. Combines the slot-specific direction/segment flags with the two focus-context fields the
+ * icon reads directly (`focusedPhraseLink` / `focusedFreeToken`), so the icon takes one focus
+ * object instead of four separate props.
+ */
 export type SlotFocusInfo = {
   /**
    * `true` when the focused group is start-ward of this slot, `false` when end-ward, `undefined`
@@ -71,33 +76,54 @@ export type SlotFocusInfo = {
    * span segments, so the link button is disabled when this is `false`.
    */
   isSameSegmentAsFocus: boolean;
+  /** The phrase containing the focused token, or `undefined` when the focused token is free. */
+  focusedPhraseLink: PhraseAnalysisLink | undefined;
+  /** The focused token when it is not part of any phrase ("free"); `undefined` otherwise. */
+  focusedFreeToken: (Token & { type: 'word' }) | undefined;
 };
 
 /**
- * Computes the slot's focus-derived inputs to `TokenLinkIcon`. Pure function over segment ids and
- * the supplied focus context.
+ * Computes the slot's focus-derived inputs to `TokenLinkIcon`. Pure function over the slot's
+ * segment ids and the supplied focus context; bundles the slot-specific flags together with the
+ * focused phrase/token so the icon receives a single `slotFocus` object.
  *
  * @param prevSegmentId - Segment id of the group before the slot, or `undefined` for the leading
  *   slot.
  * @param nextSegmentId - Segment id of the group after the slot, or `undefined` for the trailing
  *   slot.
- * @param focusedSegmentId - Segment id of the focused token, or `undefined`.
+ * @param focus - Resolved focus context for the whole strip.
  * @param focusedSideIsPrev - The layout-specific bool indicating whether focus is start-ward of
  *   this slot.
- * @returns Slot focus info ready to pass through to `MemoizedTokenLinkIcon`.
+ * @returns Slot focus info ready to pass as `slotFocus` to `MemoizedTokenLinkIcon`.
  */
 export function resolveSlotFocus(
   prevSegmentId: string | undefined,
   nextSegmentId: string | undefined,
-  focusedSegmentId: string | undefined,
+  focus: FocusContext,
   focusedSideIsPrev: boolean | undefined,
 ): SlotFocusInfo {
   const isSameSegmentAsFocus =
-    focusedSegmentId !== undefined &&
-    prevSegmentId === focusedSegmentId &&
-    nextSegmentId === focusedSegmentId;
-  return { focusedSideIsPrev, isSameSegmentAsFocus };
+    focus.focusedSegmentId !== undefined &&
+    prevSegmentId === focus.focusedSegmentId &&
+    nextSegmentId === focus.focusedSegmentId;
+  return {
+    focusedSideIsPrev,
+    isSameSegmentAsFocus,
+    focusedPhraseLink: focus.focusedPhraseLink,
+    focusedFreeToken: focus.focusedFreeToken,
+  };
 }
+
+/**
+ * The "no focus" slot-focus bundle: nothing focused, so the link button is inert. Used by
+ * `PhraseBox` for the in-phrase unlink icons, which never participate in focus-driven linking.
+ */
+export const NO_SLOT_FOCUS: SlotFocusInfo = {
+  focusedSideIsPrev: undefined,
+  isSameSegmentAsFocus: false,
+  focusedPhraseLink: undefined,
+  focusedFreeToken: undefined,
+};
 
 /** A grouped render unit: one or more adjacent tokens that share the same phrase (or no phrase). */
 export type TokenGroup = {

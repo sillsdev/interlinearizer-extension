@@ -3,6 +3,7 @@ import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { MemoizedInertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
+import { ARC_BASE_STEM, ARC_CORNER_RADIUS, ARC_LEVEL_STEP } from '../utils/phrase-arc';
 import {
   resolveSlotFocus,
   type FocusContext,
@@ -102,19 +103,11 @@ export function PhraseSlot({
   // focusedSideIsPrev is precomputed per slot by the parent, so it always agrees with
   // focus.focusedFreeToken / focus.focusedPhraseLink. The link button's direction and target
   // therefore can never disagree.
-  const slotFocus = resolveSlotFocus(
-    prevSegmentId,
-    nextSegmentId,
-    focus.focusedSegmentId,
-    focusedSideIsPrev,
-  );
+  const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
   return (
     <span className="tw:link-slot">
       <MemoizedTokenLinkIcon
-        focusedFreeToken={focus.focusedFreeToken}
-        focusedPhraseLink={focus.focusedPhraseLink}
-        focusedSideIsPrev={slotFocus.focusedSideIsPrev}
-        isSameSegmentAsFocus={slotFocus.isSameSegmentAsFocus}
+        slotFocus={slotFocus}
         isPhraseRevealed={phraseRevealed}
         nextPhraseLink={nextGroup?.phraseLink}
         nextToken={nextToken}
@@ -211,4 +204,161 @@ export function PhraseGroup({
       />
     </span>
   );
+}
+
+/** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
+const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
+
+/**
+ * A normalized item in a phrase strip: either a between-group slot or a phrase group, carrying only
+ * the per-item data each view resolves differently. The shared {@link PhraseStrip} body owns
+ * everything common to both views (highlight, controls, arc offset, hover wiring); the views supply
+ * just these layout-specific fields.
+ */
+export type StripItem =
+  | {
+      kind: 'slot';
+      /** Stable React key for this slot. */
+      key: string;
+      /** The slot's neighboring groups and gap punctuation. */
+      slot: LinkSlot;
+      /** Segment id of the group before the slot (views resolve this differently). */
+      prevSegmentId: string | undefined;
+      /** Segment id of the group after the slot. */
+      nextSegmentId: string | undefined;
+      /** Whether focus is start-ward of this slot, precomputed by the view. */
+      focusedSideIsPrev: boolean | undefined;
+    }
+  | {
+      kind: 'group';
+      /** Stable React key for this group (its first token ref). */
+      key: string;
+      /** The phrase group to render. */
+      group: TokenGroup;
+      /** Whether this group is the navigation focus (views key this off different focus refs). */
+      isFocused: boolean;
+      /** Optional DOM-ref callback for the wrapper span; used by ContinuousView for scroll-in. */
+      groupRef?: (el: HTMLSpanElement | null) => void;
+    };
+
+/** Props for {@link PhraseStrip}. */
+type PhraseStripProps = Readonly<{
+  /** The normalized, ordered strip items built by the calling view. */
+  items: StripItem[];
+  /** Current phrase-interaction mode; gates controls, split previews, and highlight rules. */
+  phraseMode: PhraseMode;
+  /** Resolved focus context shared by both views. */
+  focus: FocusContext;
+  /** PhraseId currently hovered anywhere in the view. */
+  hoveredPhraseId: string | undefined;
+  /** Group key (first token ref) of the currently hovered phrase box, or `undefined`. */
+  hoveredGroupKey: string | undefined;
+  /** Token refs a hovered link icon would join into a new phrase. */
+  candidateTokenRefs: ReadonlySet<string>;
+  /** Token refs that would become free after a hovered split/unlink. */
+  splitFreeTokenRefs: ReadonlySet<string>;
+  /** PhraseId → arc nesting level, used to lift the controls pill above stacked arcs. */
+  arcLevelByPhraseId: ReadonlyMap<string, number>;
+  /** Called with the phraseId (or `undefined`) when a phrase box is entered/left. */
+  onHoverPhrase: (phraseId: string | undefined) => void;
+  /** Sets (or clears) the hovered group key when a phrase box is entered/left. */
+  setHoveredGroupKey: (key: string | undefined) => void;
+  /** Called with a group's first-token ref when its gloss input gains focus. */
+  onFocusPhrase: (groupKey: string) => void;
+}>;
+
+/**
+ * Renders a complete phrase strip from normalized {@link StripItem}s: the alternating sequence of
+ * {@link PhraseSlot}s and {@link PhraseGroup}s, with all per-group derivations (gloss-input
+ * deduplication, arc offset, highlight, controls visibility, hover handlers) computed here so both
+ * views ({@link SegmentView}, {@link ContinuousView}) share one body and can never drift apart. Each
+ * view supplies only the layout-specific fields baked into the items (segment ids, focus side,
+ * focus ref, scroll refs).
+ *
+ * @param props - Component props
+ * @param props.items - The normalized, ordered strip items
+ * @param props.phraseMode - Current phrase-interaction mode
+ * @param props.focus - Resolved focus context
+ * @param props.hoveredPhraseId - PhraseId hovered anywhere in the view
+ * @param props.hoveredGroupKey - Group key of the hovered phrase box
+ * @param props.candidateTokenRefs - Token refs a hovered link would join
+ * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split
+ * @param props.arcLevelByPhraseId - PhraseId → arc nesting level
+ * @param props.onHoverPhrase - Phrase-box enter/leave callback
+ * @param props.setHoveredGroupKey - Hovered-group-key setter
+ * @param props.onFocusPhrase - Gloss-input focus callback, by group key
+ * @returns The strip's ordered slot and group elements.
+ */
+export function PhraseStrip({
+  items,
+  phraseMode,
+  focus,
+  hoveredPhraseId,
+  hoveredGroupKey,
+  candidateTokenRefs,
+  splitFreeTokenRefs,
+  arcLevelByPhraseId,
+  onHoverPhrase,
+  setHoveredGroupKey,
+  onFocusPhrase,
+}: PhraseStripProps) {
+  const seenPhraseIds = new Set<string>();
+  return items.map((item) => {
+    if (item.kind === 'slot') {
+      return (
+        <PhraseSlot
+          key={item.key}
+          slot={item.slot}
+          focus={focus}
+          prevSegmentId={item.prevSegmentId}
+          nextSegmentId={item.nextSegmentId}
+          focusedSideIsPrev={item.focusedSideIsPrev}
+          hoveredPhraseId={hoveredPhraseId}
+        />
+      );
+    }
+    const { group, key: groupKey } = item;
+    const phraseId = group.phraseLink?.analysisId;
+    const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
+    if (phraseId !== undefined) seenPhraseIds.add(phraseId);
+    const arcLevel = phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
+    const arcOffsetPx =
+      arcLevel > 0
+        ? /* v8 ignore next -- arcLevel > 0 requires DOM layout, not available in jsdom */
+          ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
+        : 0;
+    const isHighlighted = resolveIsHighlighted(
+      phraseMode,
+      phraseId,
+      group,
+      hoveredPhraseId,
+      focus.focusedPhraseId,
+      candidateTokenRefs,
+    );
+    return (
+      <PhraseGroup
+        key={groupKey}
+        group={group}
+        isFocused={item.isFocused}
+        isHighlighted={isHighlighted}
+        splitFreeTokenRefs={phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS}
+        showControls={
+          phraseMode.kind === 'view' && phraseId !== undefined && groupKey === hoveredGroupKey
+        }
+        showGlossInput={showGlossInput}
+        arcOffsetPx={arcOffsetPx}
+        allowHover={phraseId !== undefined}
+        onHoverEnter={() => {
+          onHoverPhrase(phraseId);
+          setHoveredGroupKey(groupKey);
+        }}
+        onHoverLeave={() => {
+          onHoverPhrase(undefined);
+          setHoveredGroupKey(undefined);
+        }}
+        onFocusPhrase={() => onFocusPhrase(groupKey)}
+        groupRef={item.groupRef}
+      />
+    );
+  });
 }

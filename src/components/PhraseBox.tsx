@@ -13,6 +13,7 @@ import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
+import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -344,10 +345,7 @@ export function PhraseBox({
               <span key={token.ref} className="tw:inline-flex tw:items-start tw:gap-1">
                 {i > 0 && isRealPhrase && (
                   <MemoizedTokenLinkIcon
-                    focusedFreeToken={undefined}
-                    focusedPhraseLink={undefined}
-                    focusedSideIsPrev={undefined}
-                    isSameSegmentAsFocus={false}
+                    slotFocus={NO_SLOT_FOCUS}
                     isPhraseRevealed={isHighlighted}
                     nextPhraseLink={phraseLink}
                     nextToken={token}

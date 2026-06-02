@@ -5,8 +5,7 @@ import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
-import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
-import { ARC_BASE_STEM, ARC_CORNER_RADIUS, ARC_LEVEL_STEP } from '../utils/phrase-arc';
+import { PhraseStrip, type StripItem } from './PhraseStripParts';
 import {
   buildRenderUnits,
   groupTokens,
@@ -32,9 +31,6 @@ function clampIndex(index: number, len: number): number {
   if (len === 0) return 0;
   return Math.max(0, Math.min(index, len - 1));
 }
-
-/** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
-const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
 
 /**
  * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
@@ -531,6 +527,55 @@ export default function ContinuousView({
     return map;
   }, [renderItems, focusedGroupIndex]);
 
+  /**
+   * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot's segment ids
+   * are resolved from the absolute group indices, and each group carries the scroll-into-view ref
+   * by its absolute group index.
+   */
+  const stripItems = useMemo<StripItem[]>(
+    () =>
+      renderItems.map((item) => {
+        if (item.kind === 'slot') {
+          const { prevGroup, nextGroup } = item.slot;
+          const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
+          const prevSegmentId =
+            item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
+              ? tokenSegment[phraseGroups[item.prevGroupIndex].firstIndex]?.id
+              : undefined;
+          const nextSegmentId =
+            item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
+              ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
+              : undefined;
+          return {
+            kind: 'slot',
+            key,
+            slot: item.slot,
+            prevSegmentId,
+            nextSegmentId,
+            focusedSideIsPrev: focusedSideIsPrevByItem.get(item),
+          };
+        }
+        const { group, groupIndex } = item;
+        return {
+          kind: 'group',
+          key: group.tokens[0].ref,
+          group,
+          isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
+          groupRef: (el: HTMLSpanElement | null) => {
+            phraseRefs.current[groupIndex] = el;
+          },
+        };
+      }),
+    [
+      renderItems,
+      phraseGroups,
+      tokenSegment,
+      focusedSideIsPrevByItem,
+      displayFocusedTokenRef,
+      phraseRefs,
+    ],
+  );
+
   return (
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
       {/* Previous navigation arrow */}
@@ -595,87 +640,19 @@ export default function ContinuousView({
                 clearHoverState();
               }}
             >
-              {(() => {
-                const seenPhraseIds = new Set<string>();
-                return renderItems.map((item) => {
-                  if (item.kind === 'slot') {
-                    const { prevGroup, nextGroup } = item.slot;
-                    const slotKey = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
-                    const prevSegId =
-                      item.prevGroupIndex !== undefined &&
-                      phraseGroups[item.prevGroupIndex] !== undefined
-                        ? tokenSegment[phraseGroups[item.prevGroupIndex].firstIndex]?.id
-                        : undefined;
-                    const nextSegId =
-                      item.nextGroupIndex !== undefined &&
-                      phraseGroups[item.nextGroupIndex] !== undefined
-                        ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
-                        : undefined;
-                    return (
-                      <PhraseSlot
-                        key={slotKey}
-                        slot={item.slot}
-                        focus={focus}
-                        prevSegmentId={prevSegId}
-                        nextSegmentId={nextSegId}
-                        focusedSideIsPrev={focusedSideIsPrevByItem.get(item)}
-                        hoveredPhraseId={hoveredPhraseId}
-                      />
-                    );
-                  }
-                  const { group, groupIndex } = item;
-                  const groupKey = group.tokens[0].ref;
-                  const phraseId = group.phraseLink?.analysisId;
-                  const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
-                  if (phraseId !== undefined) seenPhraseIds.add(phraseId);
-                  const arcLevel =
-                    phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
-                  const arcOffsetPx =
-                    arcLevel > 0
-                      ? /* v8 ignore next -- arcLevel > 0 requires DOM layout, not available in jsdom */
-                        ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
-                      : 0;
-                  const isHighlighted = resolveIsHighlighted(
-                    phraseMode,
-                    phraseId,
-                    group,
-                    hoveredPhraseId,
-                    focus.focusedPhraseId,
-                    candidateTokenRefs,
-                  );
-                  return (
-                    <PhraseGroup
-                      key={groupKey}
-                      group={group}
-                      isFocused={group.tokens.some((t) => t.ref === displayFocusedTokenRef)}
-                      isHighlighted={isHighlighted}
-                      splitFreeTokenRefs={
-                        phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS
-                      }
-                      showControls={
-                        phraseMode.kind === 'view' &&
-                        phraseId !== undefined &&
-                        groupKey === hoveredGroupKey
-                      }
-                      showGlossInput={showGlossInput}
-                      arcOffsetPx={arcOffsetPx}
-                      allowHover={phraseId !== undefined}
-                      onHoverEnter={() => {
-                        setHoveredPhraseId(phraseId);
-                        setHoveredGroupKey(groupKey);
-                      }}
-                      onHoverLeave={() => {
-                        setHoveredPhraseId(undefined);
-                        setHoveredGroupKey(undefined);
-                      }}
-                      onFocusPhrase={() => handlePhraseSelect(groupKey)}
-                      groupRef={(el) => {
-                        phraseRefs.current[groupIndex] = el;
-                      }}
-                    />
-                  );
-                });
-              })()}
+              <PhraseStrip
+                items={stripItems}
+                phraseMode={phraseMode}
+                focus={focus}
+                hoveredPhraseId={hoveredPhraseId}
+                hoveredGroupKey={hoveredGroupKey}
+                candidateTokenRefs={candidateTokenRefs}
+                splitFreeTokenRefs={splitFreeTokenRefs}
+                arcLevelByPhraseId={arcLevelByPhraseId}
+                onHoverPhrase={setHoveredPhraseId}
+                setHoveredGroupKey={setHoveredGroupKey}
+                onFocusPhrase={handlePhraseSelect}
+              />
             </div>
           </PhraseStripProvider>
         </div>

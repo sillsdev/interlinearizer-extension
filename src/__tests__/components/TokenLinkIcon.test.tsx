@@ -11,6 +11,7 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
+import type { SlotFocusInfo } from '../../utils/token-layout';
 import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -45,6 +46,24 @@ function mkToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
 }
 
+/**
+ * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
+ * link-icon tests, which then layer on `focusedSideIsPrev` / `focusedPhraseLink` /
+ * `focusedFreeToken` as needed.
+ *
+ * @param overrides - Fields to override on the default bundle.
+ * @returns A `SlotFocusInfo`.
+ */
+function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
+  return {
+    focusedSideIsPrev: undefined,
+    isSameSegmentAsFocus: true,
+    focusedPhraseLink: undefined,
+    focusedFreeToken: undefined,
+    ...overrides,
+  };
+}
+
 /** Default no-op required props for `TokenLinkIcon`. */
 function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
   return {
@@ -52,10 +71,7 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
     nextToken: mkToken('tok-b'),
     prevPhraseLink: undefined,
     nextPhraseLink: undefined,
-    focusedSideIsPrev: undefined,
-    focusedPhraseLink: undefined,
-    focusedFreeToken: undefined,
-    isSameSegmentAsFocus: true,
+    slotFocus: slotFocus(),
     isPhraseRevealed: false,
   };
 }
@@ -252,7 +268,12 @@ describe('TokenLinkIcon', () => {
   });
 
   it('link button is disabled when focus is not set', () => {
-    renderIcon(<TokenLinkIcon {...requiredProps()} focusedSideIsPrev={undefined} />);
+    renderIcon(
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({ focusedSideIsPrev: undefined })}
+      />,
+    );
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
@@ -260,9 +281,11 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        focusedSideIsPrev
-        isSameSegmentAsFocus={false}
-        focusedFreeToken={mkToken('tok-a')}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          isSameSegmentAsFocus: false,
+          focusedFreeToken: mkToken('tok-a'),
+        })}
       />,
     );
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
@@ -271,7 +294,10 @@ describe('TokenLinkIcon', () => {
   it('creates a phrase when clicking link with two free tokens', async () => {
     const focusedFreeToken = mkToken('tok-a');
     renderIcon(
-      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedFreeToken={focusedFreeToken} />,
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedFreeToken })}
+      />,
       {
         tokenDocOrder: new Map([
           ['tok-a', 0],
@@ -289,7 +315,10 @@ describe('TokenLinkIcon', () => {
   it('merges neighbor free token into focused phrase when focus is a phrase', async () => {
     const focusedPhrase = makePhraseLink('p1', ['tok-a']);
     renderIcon(
-      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedPhraseLink={focusedPhrase} />,
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedPhraseLink: focusedPhrase })}
+      />,
       {
         tokenDocOrder: new Map([
           ['tok-a', 0],
@@ -310,8 +339,7 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        focusedSideIsPrev
-        focusedPhraseLink={focusedPhrase}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedPhraseLink: focusedPhrase })}
         nextPhraseLink={neighborPhrase}
       />,
       {
@@ -335,8 +363,7 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        focusedSideIsPrev
-        focusedFreeToken={focusedFreeToken}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedFreeToken })}
         nextPhraseLink={neighborPhrase}
       />,
       {
@@ -365,8 +392,7 @@ describe('TokenLinkIcon', () => {
         {...requiredProps()}
         prevToken={mkToken('tok-b')}
         nextToken={mkToken('tok-c')}
-        focusedSideIsPrev
-        focusedPhraseLink={focusedPhrase}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedPhraseLink: focusedPhrase })}
         nextPhraseLink={focusedPhrase}
       />,
       {
@@ -389,9 +415,11 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        focusedSideIsPrev
-        focusedFreeToken={undefined}
-        focusedPhraseLink={undefined}
+        slotFocus={slotFocus({
+          focusedSideIsPrev: true,
+          focusedFreeToken: undefined,
+          focusedPhraseLink: undefined,
+        })}
       />,
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
@@ -403,7 +431,10 @@ describe('TokenLinkIcon', () => {
     const onHoverCandidateTokens = jest.fn();
     const focusedFreeToken = mkToken('tok-a');
     renderIcon(
-      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedFreeToken={focusedFreeToken} />,
+      <TokenLinkIcon
+        {...requiredProps()}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedFreeToken })}
+      />,
       {
         onHoverCandidateTokens,
         tokenDocOrder: new Map([
@@ -428,8 +459,7 @@ describe('TokenLinkIcon', () => {
         {...requiredProps()}
         prevToken={mkToken('tok-a')}
         nextToken={mkToken('tok-b')}
-        focusedSideIsPrev={false}
-        focusedPhraseLink={focusedPhrase}
+        slotFocus={slotFocus({ focusedSideIsPrev: false, focusedPhraseLink: focusedPhrase })}
       />,
       {
         tokenDocOrder: new Map([
@@ -502,8 +532,7 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        focusedSideIsPrev
-        focusedFreeToken={focusedFreeToken}
+        slotFocus={slotFocus({ focusedSideIsPrev: true, focusedFreeToken })}
         nextPhraseLink={neighborPhrase}
       />,
       {

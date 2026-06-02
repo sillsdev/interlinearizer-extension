@@ -7,6 +7,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
 import type { Book, PhraseAnalysisLink } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
+import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -59,6 +60,31 @@ export function makeWebViewState(seed: Record<string, unknown> = {}) {
         slots.delete(key);
       },
     ];
+  };
+}
+
+/**
+ * Builds a {@link PhraseStripContextValue} for component tests, with no-op callbacks and empty
+ * lookups by default. Tests that consume strip context wrap their subject in `PhraseStripProvider`
+ * with this value (overriding only the fields they assert on).
+ *
+ * @param overrides - Partial context fields to override the defaults.
+ * @returns A complete `PhraseStripContextValue`.
+ */
+export function makePhraseStripContext(
+  overrides: Partial<PhraseStripContextValue> = {},
+): PhraseStripContextValue {
+  return {
+    phraseMode: { kind: 'view' },
+    setPhraseMode: () => {},
+    editPhraseTokens: undefined,
+    editPhraseSegmentId: undefined,
+    tokenSegmentMap: new Map(),
+    tokenDocOrder: new Map(),
+    onHoverPhrase: () => {},
+    onHoverCandidateTokens: () => {},
+    onHoverSplitFreeTokens: () => {},
+    ...overrides,
   };
 }
 

@@ -33,20 +33,11 @@ jest.mock('../../components/PhraseBox', () => ({
     isFocused: boolean;
     isHighlighted: boolean;
     phraseLink: PhraseAnalysisLink | undefined;
-    phraseMode: unknown;
-    setPhraseMode: unknown;
-    focusRef: string | undefined;
     onFocusPhrase: () => void;
     showControls: boolean;
     showGlossInput: boolean;
     arcOffsetPx: number;
     splitFreeTokenRefs: ReadonlySet<string>;
-    onHoverCandidatePhrase: () => void;
-    onHoverSplitFreeTokens: () => void;
-    tokenDocOrder: ReadonlyMap<string, number>;
-    tokenSegmentMap: ReadonlyMap<string, string>;
-    editPhraseTokens: PhraseAnalysisLink['tokens'] | undefined;
-    editPhraseSegmentId: string | undefined;
   }>) => (
     <span
       data-focused={isFocused ? 'true' : 'false'}
@@ -101,11 +92,6 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
     nextSegmentId: 'seg-1',
     focusedSideIsPrev: undefined,
     hoveredPhraseId: undefined,
-    phraseMode: { kind: 'view' },
-    tokenDocOrder: new Map(),
-    onHoverCandidatePhrase: jest.fn(),
-    onHoverCandidateTokens: jest.fn(),
-    onHoverSplitFreeTokens: jest.fn(),
   };
 }
 
@@ -266,7 +252,6 @@ describe('PhraseGroup', () => {
 
   const defaultGroupProps: Parameters<typeof PhraseGroup>[0] = {
     group,
-    groupKey: 'tok-a',
     isFocused: false,
     isHighlighted: false,
     splitFreeTokenRefs: new Set(),
@@ -277,14 +262,6 @@ describe('PhraseGroup', () => {
     onHoverEnter: jest.fn(),
     onHoverLeave: jest.fn(),
     onFocusPhrase: jest.fn(),
-    onHoverCandidatePhrase: jest.fn(),
-    onHoverSplitFreeTokens: jest.fn(),
-    phraseMode: { kind: 'view' },
-    setPhraseMode: jest.fn(),
-    editPhraseTokens: undefined,
-    editPhraseSegmentId: undefined,
-    tokenSegmentMap: new Map(),
-    tokenDocOrder: new Map(),
   };
 
   it('renders the group tokens via PhraseBox', () => {

@@ -4,9 +4,15 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactElement } from 'react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { PhraseBox } from '../../components/PhraseBox';
+import {
+  PhraseStripProvider,
+  type PhraseStripContextValue,
+} from '../../components/PhraseStripContext';
+import { makePhraseStripContext } from '../test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks — reset between tests via resetMocks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
@@ -139,15 +145,12 @@ const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   ],
 };
 
-/** Shared props shape used by both helper functions. */
+/** Shared props shape used by the helper function. */
 type PhraseBoxTestProps = {
-  focusRef: string | undefined;
   isFocused: boolean;
-  onFocusPhrase: (focusRef?: string) => void;
+  onFocusPhrase: () => void;
   tokens: (Token & { type: 'word' })[];
   phraseLink: undefined;
-  phraseMode: { kind: 'view' };
-  setPhraseMode: jest.Mock;
 };
 
 /**
@@ -158,14 +161,28 @@ type PhraseBoxTestProps = {
  */
 function requiredProps(): PhraseBoxTestProps {
   return {
-    focusRef: undefined,
     isFocused: false,
     onFocusPhrase: jest.fn(),
     tokens: [TEST_TOKEN],
     phraseLink: undefined,
-    phraseMode: { kind: 'view' },
-    setPhraseMode: jest.fn(),
   };
+}
+
+/**
+ * Renders a `PhraseBox` wrapped in both the analysis store and strip-context providers. Strip-wide
+ * state (phrase mode, edit context, hover callbacks) now comes from `PhraseStripContext`, so tests
+ * pass those as `context` overrides rather than as props.
+ *
+ * @param ui - The `PhraseBox` element to render.
+ * @param context - Partial strip-context overrides (phraseMode, edit context, hover callbacks).
+ * @returns The Testing Library render result.
+ */
+function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
+  return render(
+    <AnalysisStoreProvider analysisLanguage="und">
+      <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>
+    </AnalysisStoreProvider>,
+  );
 }
 
 describe('PhraseBox', () => {
@@ -183,33 +200,21 @@ describe('PhraseBox', () => {
   });
 
   it('renders the box as a non-label div so clicks are not forwarded to the first labelable control', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox?.tagName).toBe('DIV');
   });
 
   it('renders one TokenChip per token in the tokens array', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />);
 
     expect(screen.getByTestId('token-token-1')).toBeInTheDocument();
     expect(screen.getByTestId('token-token-2')).toBeInTheDocument();
   });
 
   it('clicking the outer container focuses the first gloss input', async () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     await userEvent.click(phraseBox ?? document.body);
@@ -218,11 +223,7 @@ describe('PhraseBox', () => {
   });
 
   it('applies focused border and background when isFocused is true', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} isFocused />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} isFocused />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'focused');
@@ -231,11 +232,7 @@ describe('PhraseBox', () => {
   });
 
   it('applies default border and background when isFocused is false', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} isFocused={false} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} isFocused={false} />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
@@ -244,14 +241,12 @@ describe('PhraseBox', () => {
   });
 
   it('reddens only the chips whose refs are in splitFreeTokenRefs, leaving the box border neutral', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          tokens={[TEST_TOKEN, TEST_TOKEN_2]}
-          splitFreeTokenRefs={new Set(['token-2'])}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        splitFreeTokenRefs={new Set(['token-2'])}
+      />,
     );
 
     // Only one of the two tokens would become free, so the box border stays neutral and just the
@@ -263,14 +258,12 @@ describe('PhraseBox', () => {
   });
 
   it('reddens both chips (not the box) for a multi-token box where every token would become free', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          tokens={[TEST_TOKEN, TEST_TOKEN_2]}
-          splitFreeTokenRefs={new Set(['token-1', 'token-2'])}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        splitFreeTokenRefs={new Set(['token-1', 'token-2'])}
+      />,
     );
 
     // A 2-token phrase splits into two free tokens; each is shown on its own chip, never as a
@@ -282,14 +275,12 @@ describe('PhraseBox', () => {
   });
 
   it('reddens the whole box (not the chip) for a lone single-token fragment that would become free', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          tokens={[TEST_TOKEN]}
-          splitFreeTokenRefs={new Set(['token-1'])}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        tokens={[TEST_TOKEN]}
+        splitFreeTokenRefs={new Set(['token-1'])}
+      />,
     );
 
     // A single-token fragment (e.g. one run of a discontiguous phrase) reddens at the box level;
@@ -300,22 +291,14 @@ describe('PhraseBox', () => {
   });
 
   it('phrase box does not override cursor on gap areas', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} isFocused />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} isFocused />);
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).not.toHaveClass('tw:cursor-text');
   });
 
   it('renders tokens in the order they appear in the tokens array', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />);
 
     const tokens = document.querySelectorAll('[data-testid^="token-"]');
     expect(tokens[0]).toHaveAttribute('data-testid', 'token-token-1');
@@ -324,22 +307,14 @@ describe('PhraseBox', () => {
 
   it('passes the gloss for each token from the store', () => {
     mockUseGloss.mockImplementation((ref) => (ref === 'token-1' ? 'hello' : 'world'));
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />);
 
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveValue('hello');
     expect(screen.getByRole('textbox', { name: 'Gloss for World' })).toHaveValue('world');
   });
 
   it('shows an empty string when the token id is absent from the store', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} />);
 
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveValue('');
   });
@@ -347,11 +322,7 @@ describe('PhraseBox', () => {
   it('updates the store when a gloss input changes', async () => {
     const spy = jest.fn();
     mockUseGlossDispatch.mockReturnValue(spy);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} />);
 
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for Hello' }), 'hi');
 
@@ -360,25 +331,19 @@ describe('PhraseBox', () => {
     expect(spy).toHaveBeenNthCalledWith(2, 'token-1', 'Hello', 'i');
   });
 
-  it('calls onFocusPhrase with the focus ref when a gloss input receives focus', async () => {
+  it('calls onFocusPhrase when a gloss input receives focus', async () => {
     const handleFocus = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} focusRef="token-1" />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} />);
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for Hello' }));
 
-    expect(handleFocus).toHaveBeenCalledWith('token-1');
+    expect(handleFocus).toHaveBeenCalledTimes(1);
   });
 
   it('hides phrase gloss input when showGlossInput is false', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} showGlossInput={false} />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} showGlossInput={false} />,
     );
 
     expect(screen.queryByTestId('phrase-gloss-input')).not.toBeInTheDocument();
@@ -386,33 +351,21 @@ describe('PhraseBox', () => {
 
   it('shows phrase gloss input when showGlossInput is true (default)', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
 
     expect(screen.getByTestId('phrase-gloss-input')).toBeInTheDocument();
   });
 
   it('shows edit and unlink buttons when phraseLink is set and mode is view', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
 
     expect(screen.getByTestId('edit-phrase-btn')).toBeInTheDocument();
     expect(screen.getByTestId('unlink-phrase-btn')).toBeInTheDocument();
   });
 
   it('does not show edit/unlink buttons when phraseLink is undefined', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={undefined} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />);
 
     expect(screen.queryByTestId('edit-phrase-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlink-phrase-btn')).not.toBeInTheDocument();
@@ -421,15 +374,9 @@ describe('PhraseBox', () => {
   it('clicking edit sets phraseMode to edit for this phrase', async () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     const setPhraseMode = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          setPhraseMode={setPhraseMode}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      setPhraseMode,
+    });
 
     await userEvent.click(screen.getByTestId('edit-phrase-btn'));
 
@@ -443,15 +390,9 @@ describe('PhraseBox', () => {
   it('clicking unlink sets phraseMode to confirm-unlink', async () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     const setPhraseMode = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          setPhraseMode={setPhraseMode}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      setPhraseMode,
+    });
 
     await userEvent.click(screen.getByTestId('unlink-phrase-btn'));
 
@@ -460,15 +401,9 @@ describe('PhraseBox', () => {
 
   it('renders phrase normally (not replaced) when phraseMode is confirm-unlink for this phrase', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: { kind: 'confirm-unlink', phraseId: 'phrase-1' },
+    });
 
     // UnlinkPhraseConfirm is now rendered at toolbar level, not inside PhraseBox.
     expect(screen.queryByTestId('unlink-confirm')).not.toBeInTheDocument();
@@ -477,15 +412,9 @@ describe('PhraseBox', () => {
 
   it('hides edit/unlink buttons in confirm-unlink mode', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{ kind: 'confirm-unlink', phraseId: 'other-phrase' }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: { kind: 'confirm-unlink', phraseId: 'other-phrase' },
+    });
 
     expect(screen.queryByTestId('edit-phrase-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('unlink-phrase-btn')).not.toBeInTheDocument();
@@ -494,19 +423,13 @@ describe('PhraseBox', () => {
 
   it('renders as selected when token is in edit target phrase', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{
-            kind: 'edit',
-            phraseId: 'phrase-1',
-            originalTokens: TEST_PHRASE_LINK.tokens,
-          }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: {
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: TEST_PHRASE_LINK.tokens,
+      },
+    });
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveClass('tw:border-ring');
@@ -520,19 +443,13 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{
-            kind: 'edit',
-            phraseId: 'phrase-1',
-            originalTokens: TEST_PHRASE_LINK.tokens,
-          }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: {
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: TEST_PHRASE_LINK.tokens,
+      },
+    });
 
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
@@ -551,15 +468,9 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{ kind: 'edit', phraseId: 'other-phrase', originalTokens: [] }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
+    });
 
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
@@ -578,16 +489,10 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          editPhraseTokens={existingPhraseTokens}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      editPhraseTokens: existingPhraseTokens,
+      phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
+    });
 
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
@@ -634,16 +539,14 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: deletePhraseSpy,
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          isHighlighted
-          phraseLink={phraseLink}
-          tokenDocOrder={docOrder}
-          tokens={[mk('C'), mk('D'), mk('E')]}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        phraseLink={phraseLink}
+        tokens={[mk('C'), mk('D'), mk('E')]}
+      />,
+      { tokenDocOrder: docOrder },
     );
 
     const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
@@ -684,17 +587,14 @@ describe('PhraseBox', () => {
     });
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const onHoverSplitFreeTokens = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          isHighlighted
-          phraseLink={phraseLink}
-          tokenDocOrder={docOrder}
-          tokens={[mk('A'), mk('B')]}
-          onHoverSplitFreeTokens={onHoverSplitFreeTokens}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        phraseLink={phraseLink}
+        tokens={[mk('A'), mk('B')]}
+      />,
+      { tokenDocOrder: docOrder, onHoverSplitFreeTokens },
     );
 
     const unlinkBtn = screen.getByTestId('token-unlink-btn');
@@ -742,16 +642,14 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: deletePhraseSpy,
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          isHighlighted
-          phraseLink={phraseLink}
-          tokenDocOrder={docOrder}
-          tokens={[mk('A'), mk('B'), mk('C'), mk('D')]}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        phraseLink={phraseLink}
+        tokens={[mk('A'), mk('B'), mk('C'), mk('D')]}
+      />,
+      { tokenDocOrder: docOrder },
     );
 
     // Click the B|C unlink button (second intra-box boundary). Both halves are length 2, so the
@@ -780,22 +678,14 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          editPhraseTokens={existingPhraseTokens}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
-          tokenDocOrder={
-            new Map([
-              ['token-1', 0],
-              ['token-2', 1],
-            ])
-          }
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      editPhraseTokens: existingPhraseTokens,
+      phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
+      tokenDocOrder: new Map([
+        ['token-1', 0],
+        ['token-2', 1],
+      ]),
+    });
 
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
@@ -815,15 +705,9 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [] }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: [] },
+    });
 
     await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
 
@@ -831,11 +715,7 @@ describe('PhraseBox', () => {
   });
 
   it('calls Enter key on the box container to focus the first gloss input', async () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} />);
     const box = document.querySelector('[data-phrase-box="true"]');
     expect(box).not.toBeNull();
     // Focus the box container, then press Enter → should focus the first input.
@@ -871,20 +751,18 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          isHighlighted
-          phraseLink={fourTokenPhrase}
-          tokens={[
-            mk('token-1', 'Hello'),
-            mk('token-2', 'World'),
-            mk('token-3', 'foo'),
-            mk('token-4', 'bar'),
-          ]}
-        />
-      </AnalysisStoreProvider>,
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        phraseLink={fourTokenPhrase}
+        tokens={[
+          mk('token-1', 'Hello'),
+          mk('token-2', 'World'),
+          mk('token-3', 'foo'),
+          mk('token-4', 'bar'),
+        ]}
+      />,
     );
     // token-2 is a middle token (not first, not last of the link) → its Remove button is rendered.
     const removeBtn = screen.getByRole('button', { name: 'Remove World' });
@@ -914,11 +792,7 @@ describe('PhraseBox', () => {
     const dispatchSpy = jest.fn();
     mockUsePhraseGlossDispatch.mockReturnValue(dispatchSpy);
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
     const glossInput = screen.getByTestId('phrase-gloss-input');
     await userEvent.type(glossInput, 'hello');
     await userEvent.tab();
@@ -927,11 +801,7 @@ describe('PhraseBox', () => {
 
   it('ignores non-Enter/Space keys on the box container', async () => {
     const setPhraseMode = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} setPhraseMode={setPhraseMode} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} />, { setPhraseMode });
     const box = document.querySelector('[data-phrase-box="true"]');
     if (box instanceof HTMLElement) box.focus();
     await userEvent.keyboard('{Tab}');
@@ -942,17 +812,11 @@ describe('PhraseBox', () => {
     const existingPhraseTokens: PhraseAnalysisLink['tokens'] = [
       { tokenRef: 'token-2', surfaceText: 'World' },
     ];
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
-          editPhraseSegmentId="seg-1"
-          tokenSegmentMap={new Map([['token-1', 'seg-2']])}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
+      editPhraseSegmentId: 'seg-1',
+      tokenSegmentMap: new Map([['token-1', 'seg-2']]),
+    });
     // token-1 is in seg-2, but editPhraseSegmentId is seg-1 → isInWrongSegment=true → isDisabled
     const btn = document.querySelector('[role="button"]');
     expect(btn).toHaveAttribute('aria-disabled', 'true');
@@ -967,19 +831,13 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{
-            kind: 'edit',
-            phraseId: 'phrase-1',
-            originalTokens: TEST_PHRASE_LINK.tokens,
-          }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: {
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: TEST_PHRASE_LINK.tokens,
+      },
+    });
     // In edit-target mode, each token has a role="button" wrapper with onKeyDown.
     const tokenWrapper = screen.getAllByRole('button')[0];
     await userEvent.type(tokenWrapper, '{Enter}');
@@ -994,19 +852,13 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          phraseLink={TEST_PHRASE_LINK}
-          phraseMode={{
-            kind: 'edit',
-            phraseId: 'phrase-1',
-            originalTokens: TEST_PHRASE_LINK.tokens,
-          }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {
+      phraseMode: {
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: TEST_PHRASE_LINK.tokens,
+      },
+    });
     const tokenWrapper = screen.getAllByRole('button')[0];
     await userEvent.type(tokenWrapper, ' ');
     expect(updatePhraseSpy).toHaveBeenCalled();
@@ -1023,16 +875,10 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          editPhraseTokens={existingPhraseTokens}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      editPhraseTokens: existingPhraseTokens,
+      phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
+    });
     const freeTokenBox = document.querySelector('[role="button"]');
     await userEvent.type(freeTokenBox ?? document.body, ' ');
     expect(updatePhraseSpy).toHaveBeenCalled();
@@ -1049,16 +895,10 @@ describe('PhraseBox', () => {
       updatePhrase: updatePhraseSpy,
       deletePhrase: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox
-          {...requiredProps()}
-          editPhraseTokens={existingPhraseTokens}
-          phraseLink={undefined}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens }}
-        />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={undefined} />, {
+      editPhraseTokens: existingPhraseTokens,
+      phraseMode: { kind: 'edit', phraseId: 'phrase-2', originalTokens: existingPhraseTokens },
+    });
     const freeTokenBox = document.querySelector('[role="button"]');
     expect(freeTokenBox).not.toBeNull();
     await userEvent.type(freeTokenBox ?? document.body, '{Enter}');
@@ -1070,11 +910,7 @@ describe('PhraseBox', () => {
     const dispatchSpy = jest.fn();
     mockUsePhraseGlossDispatch.mockReturnValue(dispatchSpy);
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />
-      </AnalysisStoreProvider>,
-    );
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />);
     await userEvent.click(screen.getByTestId('phrase-gloss-input'));
     await userEvent.tab();
     expect(dispatchSpy).not.toHaveBeenCalled();

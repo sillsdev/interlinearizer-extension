@@ -3,7 +3,7 @@ import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Link2Off } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
-import type { PhraseMode } from '../types/phrase-mode';
+import { usePhraseStripContext } from './PhraseStripContext';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /** Props for {@link TokenLinkIcon}. */
@@ -44,39 +44,6 @@ type TokenLinkIconProps = Readonly<{
    * icon.
    */
   isPhraseRevealed: boolean;
-  /** Current phrase-interaction mode; controls visibility and disabled state of the icons. */
-  phraseMode: PhraseMode;
-  /**
-   * Called when the pointer enters this icon with the phraseId of the phrase that would be affected
-   * (linked or unlinked), or `undefined` when the pointer leaves. The parent uses this to highlight
-   * the relevant phrase box and arcs.
-   */
-  onHoverCandidatePhrase?: (phraseId: string | undefined) => void;
-  /**
-   * Called when the pointer enters an active link icon that would create a new phrase from two free
-   * tokens, with the token refs of both tokens that would be joined. Called with `undefined` on
-   * mouse leave. Only fires when both sides are free tokens and the link would create a new
-   * phrase.
-   *
-   * @param tokenRefs - Refs of the two tokens that would be joined, or `undefined` on leave.
-   */
-  onHoverCandidateTokens?: (tokenRefs: readonly string[] | undefined) => void;
-  /**
-   * Called when the pointer enters an unlink icon that would leave one or more tokens solo (free),
-   * with the refs of those tokens. Called with `undefined` on mouse leave. Used by the parent to
-   * show a red (destructive) border on tokens that would become free after the split.
-   *
-   * @param tokenRefs - Refs of tokens that would become solo, or `undefined` on leave.
-   */
-  onHoverSplitFreeTokens?: (tokenRefs: readonly string[] | undefined) => void;
-  /**
-   * Map from token ref to its flat document index. Used to keep merged phrase token lists in
-   * document order after a link operation. Must cover every token that could appear in a phrase.
-   *
-   * Defaults to an empty map; only needed for slots that can trigger link (not intra-phrase
-   * unlink).
-   */
-  tokenDocOrder?: ReadonlyMap<string, number>;
 }>;
 
 /**
@@ -115,12 +82,14 @@ export function TokenLinkIcon({
   focusedFreeToken,
   isSameSegmentAsFocus,
   isPhraseRevealed,
-  phraseMode,
-  onHoverCandidatePhrase,
-  onHoverCandidateTokens,
-  onHoverSplitFreeTokens,
-  tokenDocOrder = new Map(),
 }: TokenLinkIconProps) {
+  const {
+    phraseMode,
+    tokenDocOrder,
+    onHoverPhrase: onHoverCandidatePhrase,
+    onHoverCandidateTokens,
+    onHoverSplitFreeTokens,
+  } = usePhraseStripContext();
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
   const inSamePhrase =
@@ -286,18 +255,18 @@ export function TokenLinkIcon({
     })();
 
     const handleUnlinkMouseEnter = () => {
-      if (candidatePhraseId) onHoverCandidatePhrase?.(candidatePhraseId);
-      if (splitFreeRefs) onHoverSplitFreeTokens?.(splitFreeRefs);
+      if (candidatePhraseId) onHoverCandidatePhrase(candidatePhraseId);
+      if (splitFreeRefs) onHoverSplitFreeTokens(splitFreeRefs);
     };
     // Only clear the split-free preview on leave; the phrase hover is owned by the PhraseGroup
     // wrapper span so hovering back over the box restores it without re-entry needed.
     const handleUnlinkMouseLeave = () => {
-      if (splitFreeRefs) onHoverSplitFreeTokens?.(undefined);
+      if (splitFreeRefs) onHoverSplitFreeTokens(undefined);
     };
     // Clear hover state synchronously with the click so the red "would become free" border doesn't
     // linger after the split until the next mouse move.
     const handleUnlinkClickWithCleanup = () => {
-      onHoverCandidatePhrase?.(undefined);
+      onHoverCandidatePhrase(undefined);
       handleUnlinkMouseLeave();
       handleUnlinkClick();
     };
@@ -356,11 +325,11 @@ export function TokenLinkIcon({
   })();
 
   const handleLinkMouseEnter = () => {
-    if (candidateTokenRefs) onHoverCandidateTokens?.(candidateTokenRefs);
+    if (candidateTokenRefs) onHoverCandidateTokens(candidateTokenRefs);
   };
 
   const handleLinkMouseLeave = () => {
-    if (candidateTokenRefs) onHoverCandidateTokens?.(undefined);
+    if (candidateTokenRefs) onHoverCandidateTokens(undefined);
   };
 
   return (

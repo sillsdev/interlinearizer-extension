@@ -4,10 +4,14 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactElement } from 'react';
 import type { Token } from 'interlinearizer';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
-import { makePhraseLink } from '../test-helpers';
+import {
+  PhraseStripProvider,
+  type PhraseStripContextValue,
+} from '../../components/PhraseStripContext';
+import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock
@@ -53,9 +57,21 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
     focusedFreeToken: undefined,
     isSameSegmentAsFocus: true,
     isPhraseRevealed: false,
-    phraseMode: { kind: 'view' },
-    tokenDocOrder: new Map<string, number>(),
   };
+}
+
+/**
+ * Renders a `TokenLinkIcon` inside a `PhraseStripProvider`. The phrase mode, document-order lookup,
+ * and hover callbacks now come from strip context rather than props.
+ *
+ * @param ui - The `TokenLinkIcon` element to render.
+ * @param context - Partial strip-context overrides (phraseMode, tokenDocOrder, hover callbacks).
+ * @returns The Testing Library render result.
+ */
+function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
+  return render(
+    <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -70,19 +86,19 @@ describe('TokenLinkIcon', () => {
   });
 
   it('returns undefined when both prevToken and nextToken are undefined', () => {
-    const { container } = render(
+    const { container } = renderIcon(
       <TokenLinkIcon {...requiredProps()} prevToken={undefined} nextToken={undefined} />,
     );
     expect(container.firstChild).toBeNull();
   });
 
   it('returns undefined when prevToken is undefined', () => {
-    const { container } = render(<TokenLinkIcon {...requiredProps()} prevToken={undefined} />);
+    const { container } = renderIcon(<TokenLinkIcon {...requiredProps()} prevToken={undefined} />);
     expect(container.firstChild).toBeNull();
   });
 
   it('returns undefined when nextToken is undefined', () => {
-    const { container } = render(<TokenLinkIcon {...requiredProps()} nextToken={undefined} />);
+    const { container } = renderIcon(<TokenLinkIcon {...requiredProps()} nextToken={undefined} />);
     expect(container.firstChild).toBeNull();
   });
 
@@ -92,7 +108,7 @@ describe('TokenLinkIcon', () => {
 
   it('renders an unlink button when both sides are in the same phrase', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
@@ -104,112 +120,112 @@ describe('TokenLinkIcon', () => {
 
   it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-unlink-btn'));
     expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
   });
 
-  it('clears onHoverCandidatePhrase when unlink button is clicked', async () => {
-    const onHoverCandidatePhrase = jest.fn();
+  it('clears onHoverPhrase when unlink button is clicked', async () => {
+    const onHoverPhrase = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        onHoverCandidatePhrase={onHoverCandidatePhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        onHoverPhrase,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-unlink-btn'));
-    expect(onHoverCandidatePhrase).toHaveBeenCalledWith(undefined);
+    expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
   });
 
   it('is disabled in confirm-unlink mode', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        phraseMode={{ kind: 'confirm-unlink', phraseId: 'p1' }}
       />,
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
     );
     expect(screen.getByTestId('token-unlink-btn')).toBeDisabled();
   });
 
   it('is disabled in edit mode for a different phrase', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        phraseMode={{ kind: 'edit', phraseId: 'other-phrase', originalTokens: [] }}
       />,
+      { phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] } },
     );
     expect(screen.getByTestId('token-unlink-btn')).toBeDisabled();
   });
 
-  it('calls onHoverCandidatePhrase with phraseId on mouse enter but not on leave', async () => {
-    const onHoverCandidatePhrase = jest.fn();
+  it('calls onHoverPhrase with phraseId on mouse enter but not on leave', async () => {
+    const onHoverPhrase = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        onHoverCandidatePhrase={onHoverCandidatePhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        onHoverPhrase,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     const btn = screen.getByTestId('token-unlink-btn');
     await userEvent.hover(btn);
-    expect(onHoverCandidatePhrase).toHaveBeenCalledWith('p1');
+    expect(onHoverPhrase).toHaveBeenCalledWith('p1');
 
     await userEvent.unhover(btn);
     // Phrase hover is cleared by the PhraseGroup wrapper span's onMouseLeave, not by the button.
-    expect(onHoverCandidatePhrase).not.toHaveBeenCalledWith(undefined);
+    expect(onHoverPhrase).not.toHaveBeenCalledWith(undefined);
   });
 
   it('calls onHoverSplitFreeTokens with free refs on enter and undefined on leave', async () => {
     const onHoverSplitFreeTokens = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        onHoverSplitFreeTokens={onHoverSplitFreeTokens}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        onHoverSplitFreeTokens,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     const btn = screen.getByTestId('token-unlink-btn');
     await userEvent.hover(btn);
@@ -224,27 +240,24 @@ describe('TokenLinkIcon', () => {
   // ---------------------------------------------------------------------------
 
   it('renders a link button when sides are in different phrases', () => {
-    render(<TokenLinkIcon {...requiredProps()} />);
+    renderIcon(<TokenLinkIcon {...requiredProps()} />);
     expect(screen.getByTestId('token-link-btn')).toBeInTheDocument();
   });
 
   it('link button is disabled when not in view mode', () => {
-    render(
-      <TokenLinkIcon
-        {...requiredProps()}
-        phraseMode={{ kind: 'confirm-unlink', phraseId: 'p1' }}
-      />,
-    );
+    renderIcon(<TokenLinkIcon {...requiredProps()} />, {
+      phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
+    });
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
   it('link button is disabled when focus is not set', () => {
-    render(<TokenLinkIcon {...requiredProps()} focusedSideIsPrev={undefined} />);
+    renderIcon(<TokenLinkIcon {...requiredProps()} focusedSideIsPrev={undefined} />);
     expect(screen.getByTestId('token-link-btn')).toBeDisabled();
   });
 
   it('link button is disabled when not same segment as focus', () => {
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         focusedSideIsPrev
@@ -257,18 +270,14 @@ describe('TokenLinkIcon', () => {
 
   it('creates a phrase when clicking link with two free tokens', async () => {
     const focusedFreeToken = mkToken('tok-a');
-    render(
-      <TokenLinkIcon
-        {...requiredProps()}
-        focusedSideIsPrev
-        focusedFreeToken={focusedFreeToken}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
-      />,
+    renderIcon(
+      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedFreeToken={focusedFreeToken} />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     expect(mockCreatePhrase).toHaveBeenCalledWith([
@@ -279,18 +288,14 @@ describe('TokenLinkIcon', () => {
 
   it('merges neighbor free token into focused phrase when focus is a phrase', async () => {
     const focusedPhrase = makePhraseLink('p1', ['tok-a']);
-    render(
-      <TokenLinkIcon
-        {...requiredProps()}
-        focusedSideIsPrev
-        focusedPhraseLink={focusedPhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
-      />,
+    renderIcon(
+      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedPhraseLink={focusedPhrase} />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
@@ -302,19 +307,19 @@ describe('TokenLinkIcon', () => {
   it('merges neighbor phrase into focused phrase and deletes neighbor', async () => {
     const focusedPhrase = makePhraseLink('p1', ['tok-a']);
     const neighborPhrase = makePhraseLink('p2', ['tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         focusedSideIsPrev
         focusedPhraseLink={focusedPhrase}
         nextPhraseLink={neighborPhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
@@ -327,19 +332,19 @@ describe('TokenLinkIcon', () => {
   it('absorbs free token into neighbor phrase when focus is free and neighbor is a phrase', async () => {
     const neighborPhrase = makePhraseLink('p2', ['tok-b']);
     const focusedFreeToken = mkToken('tok-a');
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         focusedSideIsPrev
         focusedFreeToken={focusedFreeToken}
         nextPhraseLink={neighborPhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     expect(mockUpdatePhrase).toHaveBeenCalledWith('p2', [
@@ -355,7 +360,7 @@ describe('TokenLinkIcon', () => {
     // When neighborLink.analysisId === focusedPhraseLink.analysisId, the bridging free token
     // (prevToken = tok-b) is absorbed into the phrase.
     const focusedPhrase = makePhraseLink('p1', ['tok-a', 'tok-c']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevToken={mkToken('tok-b')}
@@ -363,14 +368,14 @@ describe('TokenLinkIcon', () => {
         focusedSideIsPrev
         focusedPhraseLink={focusedPhrase}
         nextPhraseLink={focusedPhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-            ['tok-c', 2],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+          ['tok-c', 2],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     // bridgingToken is prevToken (tok-b) when focusedSideIsPrev=true
@@ -381,7 +386,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('does nothing when clicking link with no focused free token and no phrase', async () => {
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         focusedSideIsPrev
@@ -397,19 +402,15 @@ describe('TokenLinkIcon', () => {
   it('calls onHoverCandidateTokens with token refs on enter and undefined on leave', async () => {
     const onHoverCandidateTokens = jest.fn();
     const focusedFreeToken = mkToken('tok-a');
-    render(
-      <TokenLinkIcon
-        {...requiredProps()}
-        focusedSideIsPrev
-        focusedFreeToken={focusedFreeToken}
-        onHoverCandidateTokens={onHoverCandidateTokens}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
-      />,
+    renderIcon(
+      <TokenLinkIcon {...requiredProps()} focusedSideIsPrev focusedFreeToken={focusedFreeToken} />,
+      {
+        onHoverCandidateTokens,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     const btn = screen.getByTestId('token-link-btn');
     await userEvent.hover(btn);
@@ -422,20 +423,20 @@ describe('TokenLinkIcon', () => {
   it('uses the false branch of focusedSideIsPrev ternaries when focus is end-ward', async () => {
     // focusedSideIsPrev=false: neighbor is prevToken/prevPhraseLink, bridging is nextToken
     const focusedPhrase = makePhraseLink('p1', ['tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevToken={mkToken('tok-a')}
         nextToken={mkToken('tok-b')}
         focusedSideIsPrev={false}
         focusedPhraseLink={focusedPhrase}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+        ]),
+      },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
     // Neighbor is prevToken (tok-a, free), absorbed into focused phrase p1 (tok-b)
@@ -447,7 +448,7 @@ describe('TokenLinkIcon', () => {
 
   it('candidatePhraseId falls back to nextPhraseLink analysisId when prevPhraseLink is undefined', () => {
     const nextPhrase = makePhraseLink('p2', ['tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon {...requiredProps()} prevPhraseLink={undefined} nextPhraseLink={nextPhrase} />,
     );
     // Just verify it renders without errors — the candidatePhraseId uses ?? nextPhraseLink
@@ -457,7 +458,7 @@ describe('TokenLinkIcon', () => {
   it('candidatePhraseId uses prevPhraseLink analysisId when prevPhraseLink is defined and not inSamePhrase', () => {
     const prevPhrase = makePhraseLink('p1', ['tok-a']);
     const nextPhrase = makePhraseLink('p2', ['tok-b']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={prevPhrase}
@@ -475,20 +476,20 @@ describe('TokenLinkIcon', () => {
     // This is only possible when a phrase has ≥ 4 tokens and the boundary is in the middle
     // (both halves ≥ 2 tokens). Use a 4-token phrase split at tok-b (before=[tok-a,tok-b], after=[tok-c,tok-d]).
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-            ['tok-c', 2],
-            ['tok-d', 3],
-          ])
-        }
       />,
+      {
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+          ['tok-c', 2],
+          ['tok-d', 3],
+        ]),
+      },
     );
     // Both halves have 2 tokens — no tokens become free — so onMouseEnter is not wired
     expect(screen.getByTestId('token-unlink-btn')).toBeInTheDocument();
@@ -498,21 +499,21 @@ describe('TokenLinkIcon', () => {
     const neighborPhrase = makePhraseLink('p2', ['tok-b', 'tok-c']);
     const focusedFreeToken = mkToken('tok-a');
     const onHoverCandidateTokens = jest.fn();
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         focusedSideIsPrev
         focusedFreeToken={focusedFreeToken}
         nextPhraseLink={neighborPhrase}
-        onHoverCandidateTokens={onHoverCandidateTokens}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-            ['tok-c', 2],
-          ])
-        }
       />,
+      {
+        onHoverCandidateTokens,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+          ['tok-c', 2],
+        ]),
+      },
     );
     await userEvent.hover(screen.getByTestId('token-link-btn'));
     // All tokens of the neighbor phrase plus the focused free token
@@ -524,23 +525,23 @@ describe('TokenLinkIcon', () => {
     // before=[tok-a, tok-b] (length 2), after=[tok-c, tok-d] (length 2) — no free tokens.
     const onHoverSplitFreeTokens = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
-    render(
+    renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
         prevToken={mkToken('tok-b')}
         nextToken={mkToken('tok-c')}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
-        onHoverSplitFreeTokens={onHoverSplitFreeTokens}
-        tokenDocOrder={
-          new Map([
-            ['tok-a', 0],
-            ['tok-b', 1],
-            ['tok-c', 2],
-            ['tok-d', 3],
-          ])
-        }
       />,
+      {
+        onHoverSplitFreeTokens,
+        tokenDocOrder: new Map([
+          ['tok-a', 0],
+          ['tok-b', 1],
+          ['tok-c', 2],
+          ['tok-d', 3],
+        ]),
+      },
     );
     await userEvent.hover(screen.getByTestId('token-unlink-btn'));
     expect(onHoverSplitFreeTokens).not.toHaveBeenCalled();

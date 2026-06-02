@@ -2,20 +2,17 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
-import type { Dispatch, KeyboardEvent, MouseEvent as ReactMouseEvent, SetStateAction } from 'react';
+import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
   usePhraseLinkForToken,
 } from './AnalysisStore';
-import type { PhraseMode } from '../types/phrase-mode';
+import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
-
-/** Stable empty map used as the default for `tokenDocOrder` to avoid breaking memo on PhraseBox. */
-const EMPTY_TOKEN_DOC_ORDER: ReadonlyMap<string, number> = new Map();
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -62,45 +59,14 @@ function PhraseGlossInput({
 
 /** Props for {@link PhraseBox}. */
 type PhraseBoxProps = Readonly<{
-  /** Token ref passed back to `onFocusPhrase` to identify which phrase gained focus. */
-  focusRef: string | undefined;
   /** Whether this phrase is the current navigation focus. */
   isFocused: boolean;
-  /** Called with `focusRef` when any child gloss input receives focus. */
-  onFocusPhrase: (focusRef?: string) => void;
-  /**
-   * Called with this phrase's id (or `undefined`) when an intra-phrase unlink icon is hovered, so
-   * the parent can highlight the phrase's arcs. Only wired for real phrases in view mode.
-   */
-  onHoverCandidatePhrase?: (phraseId: string | undefined) => void;
-  /**
-   * Called with the would-be-free token refs (or `undefined`) when an intra-phrase unlink icon is
-   * hovered, so the parent can preview the affected chips with a destructive border.
-   */
-  onHoverSplitFreeTokens?: (refs: readonly string[] | undefined) => void;
+  /** Called when any child gloss input receives focus, so the parent can focus this phrase. */
+  onFocusPhrase: () => void;
   /** Word tokens belonging to this phrase; must all have `type: 'word'`. */
   tokens: (Token & { type: 'word' })[];
   /** The approved `PhraseAnalysisLink` shared by all tokens in this box, if any. */
   phraseLink: PhraseAnalysisLink | undefined;
-  /** Current phrase-interaction mode; controls rendering and click behavior. */
-  phraseMode: PhraseMode;
-  /** Setter for `phraseMode`; used to enter edit / confirm-unlink modes. */
-  setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
-  /**
-   * In `edit` mode only: the current token list of the phrase being edited, passed in from the
-   * parent so a free token can append itself to it without needing store access here.
-   */
-  editPhraseTokens?: PhraseAnalysisLink['tokens'];
-  /**
-   * In `edit` mode only: the segmentId of the phrase being edited. Tokens in any other segment are
-   * disabled to enforce the single-segment phrase invariant.
-   */
-  editPhraseSegmentId?: string;
-  /**
-   * Map from token ref to its owning segment id; used by `edit` mode to disable tokens outside the
-   * phrase's segment.
-   */
-  tokenSegmentMap?: ReadonlyMap<string, string>;
   /**
    * Distance in pixels above the box top to push the controls pill, so it aligns with the arc's
    * flat top rather than floating directly above the box. Defaults to `0`.
@@ -129,12 +95,6 @@ type PhraseBoxProps = Readonly<{
    * the box is free (e.g. a single-token fragment), the whole box border turns destructive too.
    */
   splitFreeTokenRefs?: ReadonlySet<string>;
-  /**
-   * Map from token ref to its flat document index. Used by `edit` mode to insert a newly added
-   * token in document order rather than appending it, so the stored phrase token list always
-   * matches document order. Defaults to an empty map; tokens absent from it sort to the front.
-   */
-  tokenDocOrder?: ReadonlyMap<string, number>;
 }>;
 
 /**
@@ -160,19 +120,10 @@ type PhraseBoxProps = Readonly<{
  * - The phrase being unlinked is highlighted; all other phrase boxes are disabled.
  *
  * @param props - Component props
- * @param props.focusRef - Token ref passed back to `onFocusPhrase` to identify which phrase was
- *   focused
  * @param props.isFocused - Whether this phrase is the current navigation focus
- * @param props.onFocusPhrase - Called with `focusRef` when any child gloss input receives focus
- * @param props.onHoverCandidatePhrase - Called when an intra-phrase unlink icon is hovered
- * @param props.onHoverSplitFreeTokens - Called when an intra-phrase unlink icon is hovered
+ * @param props.onFocusPhrase - Called when any child gloss input receives focus
  * @param props.tokens - Tokens belonging to this phrase
  * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
- * @param props.phraseMode - Current phrase-interaction mode
- * @param props.setPhraseMode - Setter for `phraseMode`
- * @param props.editPhraseTokens - Current token list of the phrase being edited (edit mode only)
- * @param props.editPhraseSegmentId - Segment id of the phrase being edited (edit mode only)
- * @param props.tokenSegmentMap - Token ref → segment id lookup used in edit mode
  * @param props.arcOffsetPx - Extra upward offset for the controls pill so it sits at the arc top
  * @param props.showGlossInput - When false, hides the gloss input; used for non-first fragments of
  *   a discontiguous phrase so the input appears only once
@@ -182,30 +133,27 @@ type PhraseBoxProps = Readonly<{
  *   highlighted border style simultaneously
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
  *   matching chip renders with a destructive border as a preview
- * @param props.tokenDocOrder - Token ref → flat document index; used in edit mode to insert tokens
- *   in document order
  * @returns A bordered inline container
  */
 export function PhraseBox({
-  focusRef,
   isFocused = false,
   isHighlighted = false,
   splitFreeTokenRefs,
   onFocusPhrase,
-  onHoverCandidatePhrase,
-  onHoverSplitFreeTokens,
   tokens,
   phraseLink,
-  phraseMode,
-  setPhraseMode,
-  editPhraseTokens,
-  editPhraseSegmentId,
-  tokenSegmentMap,
   arcOffsetPx = 0,
   showGlossInput = true,
   showControls = true,
-  tokenDocOrder = EMPTY_TOKEN_DOC_ORDER,
 }: PhraseBoxProps) {
+  const {
+    phraseMode,
+    setPhraseMode,
+    editPhraseTokens,
+    editPhraseSegmentId,
+    tokenSegmentMap,
+    tokenDocOrder,
+  } = usePhraseStripContext();
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
   // For the first token: look up phrase membership to check if it's in any phrase (incl. another).
@@ -216,7 +164,7 @@ export function PhraseBox({
     phraseLink !== undefined && tokenPhraseLinkFromStore?.analysisId === phraseLink.analysisId;
 
   /** Notifies the parent when a child gloss input receives focus. */
-  const handleFocus = useCallback(() => onFocusPhrase(focusRef), [onFocusPhrase, focusRef]);
+  const handleFocus = useCallback(() => onFocusPhrase(), [onFocusPhrase]);
 
   /**
    * Focuses the box's first gloss input when the bare container itself is clicked (not a descendant
@@ -403,12 +351,8 @@ export function PhraseBox({
                     isPhraseRevealed={isHighlighted}
                     nextPhraseLink={phraseLink}
                     nextToken={token}
-                    onHoverCandidatePhrase={onHoverCandidatePhrase}
-                    onHoverSplitFreeTokens={onHoverSplitFreeTokens}
-                    phraseMode={phraseMode}
                     prevPhraseLink={phraseLink}
                     prevToken={tokens[i - 1]}
-                    tokenDocOrder={tokenDocOrder}
                   />
                 )}
                 <MemoizedTokenChip
@@ -473,7 +417,7 @@ export function PhraseBox({
   const isInWrongSegment =
     !isInEditTarget &&
     editPhraseSegmentId !== undefined &&
-    tokenSegmentMap?.get(tokens[0].ref) !== editPhraseSegmentId;
+    tokenSegmentMap.get(tokens[0].ref) !== editPhraseSegmentId;
 
   // Tokens that belong to a *different* phrase, or are outside the edited phrase's segment, are
   // disabled.

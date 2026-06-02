@@ -4,12 +4,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseGroup, PhraseSlot, resolveIsHighlighted } from './PhraseStripParts';
-import {
-  ARC_BASE_STEM,
-  ARC_CORNER_RADIUS,
-  ARC_LEVEL_STEP,
-  CONTROLS_HALF_HEIGHT_PX,
-} from '../utils/phrase-arc';
+import { ARC_BASE_STEM, ARC_CORNER_RADIUS, ARC_LEVEL_STEP } from '../utils/phrase-arc';
 import {
   buildRenderUnits,
   groupTokens,
@@ -20,7 +15,7 @@ import {
 import { useArcPaths } from '../hooks/useArcPaths';
 import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
-import MemoizedArcOverlay, { type ArcSplitTarget } from './ArcOverlay';
+import MemoizedArcOverlay from './ArcOverlay';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -217,8 +212,13 @@ export default function ContinuousView({
    * group instead of two.
    */
   const pendingPhraseIndexRef = useRef(0);
-  // Keep in sync with the rendered value so external jumps reset the pending index.
-  pendingPhraseIndexRef.current = focusPhraseIndex;
+  // Keep in sync with the rendered value so external jumps reset the pending index. When an
+  // internal nav is still in flight (the parent hasn't echoed back yet), do not overwrite: a rapid
+  // second click needs to read the already-advanced pending index rather than the stale rendered
+  // focusPhraseIndex.
+  if (internalFocusedTokenRefRef.current === undefined) {
+    pendingPhraseIndexRef.current = focusPhraseIndex;
+  }
 
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
@@ -420,27 +420,16 @@ export default function ContinuousView({
   const [splitFreeTokenRefs, setSplitFreeTokenRefs] = useState<ReadonlySet<string>>(new Set());
 
   /**
-   * The specific arc boundary whose split button is currently hovered. While set, only that arc is
-   * drawn in the destructive color — other arcs of the same phrase remain unaffected.
-   */
-  const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
-
-  /**
-   * Updates the split-hover state in one call so the `<ArcOverlay>` doesn't need to know about the
-   * two underlying state slots.
+   * Receives the free token refs from `ArcOverlay`'s internal split-hover state and mirrors them
+   * here so the phrase boxes can show a destructive border preview.
    *
-   * @param arc - The hovered arc target, or `undefined` on leave.
    * @param freeTokenRefs - Token refs that would become solo after the split, or an empty set on
    *   leave.
    */
-  const handleSplitHoverChange = useCallback(
-    (arc: ArcSplitTarget | undefined, freeTokenRefs: ReadonlySet<string>) => {
-      /* v8 ignore next 2 -- callback passed to mocked ArcOverlay; exercised via integration */
-      setSplitHoveredArc(arc);
-      setSplitFreeTokenRefs(freeTokenRefs);
-    },
-    [],
-  );
+  const handleSplitHoverChange = useCallback((freeTokenRefs: ReadonlySet<string>) => {
+    /* v8 ignore next -- callback passed to mocked ArcOverlay; exercised via integration */
+    setSplitFreeTokenRefs(freeTokenRefs);
+  }, []);
 
   /**
    * Sets (or clears) the would-become-free token refs previewed with a destructive border when a
@@ -582,11 +571,11 @@ export default function ContinuousView({
             hoveredPhraseId={hoveredPhraseId}
             focusedPhraseId={focus.focusedPhraseId}
             candidatePhraseIds={candidatePhraseIds}
-            splitHoveredArc={splitHoveredArc}
             phraseLinkById={committedPhraseLinkById}
             tokenDocOrder={tokenDocOrder}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
+            onHoverPhrase={setHoveredPhraseId}
           />
           <div
             data-testid="token-strip"
@@ -594,9 +583,10 @@ export default function ContinuousView({
             ref={stripRowRef}
             style={{ paddingTop: `${stripTopPadding}px` }}
             onMouseLeave={() => {
+              setHoveredPhraseId(undefined);
+              setHoveredGroupKey(undefined);
               setCandidateTokenRefs(new Set());
               setSplitFreeTokenRefs(new Set());
-              setSplitHoveredArc(undefined);
             }}
           >
             {(() => {
@@ -646,7 +636,7 @@ export default function ContinuousView({
                   arcLevel > 0
                     ? /* v8 ignore next -- arcLevel > 0 requires DOM layout, not available in jsdom */
                       ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
-                    : CONTROLS_HALF_HEIGHT_PX;
+                    : 0;
                 const isHighlighted = resolveIsHighlighted(
                   phraseMode,
                   phraseId,
@@ -672,7 +662,7 @@ export default function ContinuousView({
                     }
                     showGlossInput={showGlossInput}
                     arcOffsetPx={arcOffsetPx}
-                    allowHover={phraseMode.kind === 'view' && phraseId !== undefined}
+                    allowHover={phraseId !== undefined}
                     onHoverEnter={() => {
                       setHoveredPhraseId(phraseId);
                       setHoveredGroupKey(groupKey);

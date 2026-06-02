@@ -1,4 +1,4 @@
-import { type RefObject, useLayoutEffect, useRef, useState } from 'react';
+import { type RefObject, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { computeAllArcPaths, computeStripTopPadding, type ArcPath } from '../utils/phrase-arc';
 
 /** Resolved arc measurements for the phrase strip, recomputed after each render. */
@@ -14,6 +14,12 @@ export type ArcPathsResult = {
   maxArcLevel: number;
   /** Top padding (px) the strip needs to clear the highest arc and the hover controls pill. */
   stripTopPadding: number;
+  /**
+   * Minimum row gap (px) needed to accommodate all cross-row arcs without overlapping. Zero when
+   * there are no cross-row arcs. The caller should apply this as `row-gap` / `gap-y` on the token
+   * row so the inter-row space expands dynamically.
+   */
+  requiredRowGapPx: number;
 };
 
 /**
@@ -50,6 +56,7 @@ export function useArcPaths(
   const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
   const [arcLevelByPhraseId, setArcLevelByPhraseId] = useState<Map<string, number>>(new Map());
   const [maxArcLevel, setMaxArcLevel] = useState(0);
+  const [requiredRowGapPx, setRequiredRowGapPx] = useState(0);
 
   const stripTopPadding = computeStripTopPadding(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
 
@@ -67,15 +74,21 @@ export function useArcPaths(
   }
   const depsVersion = depsVersionRef.current;
 
-  useLayoutEffect(() => {
-    const container = enabled ? containerRef.current : undefined;
-    if (!container) {
-      setArcPaths((prev) => (prev.length === 0 ? prev : []));
-      setArcLevelByPhraseId((prev) => (prev.size === 0 ? prev : new Map()));
-      setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
-      return;
-    }
-    const { paths, levelByPhraseId, maxLevel } = computeAllArcPaths(container);
+  /**
+   * Runs one measurement pass against `container` and flushes the results into state. Called from
+   * both the layout effect (for normal re-renders) and the ResizeObserver callback (for size
+   * changes), so resize redraws bypass the extra render cycle that bumping a version counter would
+   * require.
+   *
+   * @param container - The element to measure phrase boxes inside.
+   */
+  const measure = useCallback((container: Element) => {
+    const {
+      paths,
+      levelByPhraseId,
+      maxLevel,
+      requiredRowGapPx: rowGap,
+    } = computeAllArcPaths(container);
     setArcPaths((prev) => {
       const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
       const prevKey = prev.map(key).join('|');
@@ -89,9 +102,37 @@ export function useArcPaths(
       return changed ? new Map(levelByPhraseId) : prev;
     });
     setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
+    setRequiredRowGapPx((prev) => (prev === rowGap ? prev : rowGap));
+  }, []);
+
+  // Observe the container for size changes so arcs are redrawn when wrapping occurs. The observer
+  // calls `measure` directly instead of bumping a version counter, eliminating the extra render
+  // cycle that would otherwise delay the redraw.
+  useLayoutEffect(() => {
+    const container = enabled ? containerRef.current : undefined;
+    if (!container) return;
+    const observer = new ResizeObserver(() => {
+      measure(container);
+    });
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+    };
+  }, [containerRef, enabled, measure]);
+
+  useLayoutEffect(() => {
+    const container = enabled ? containerRef.current : undefined;
+    if (!container) {
+      setArcPaths((prev) => (prev.length === 0 ? prev : []));
+      setArcLevelByPhraseId((prev) => (prev.size === 0 ? prev : new Map()));
+      setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
+      setRequiredRowGapPx((prev) => (prev === 0 ? prev : 0));
+      return;
+    }
+    measure(container);
     // stripTopPadding is intentionally a dep: see the hook doc comment. The loop stabilizes after
     // one extra pass because arc count doesn't change between passes.
-  }, [containerRef, enabled, stripTopPadding, depsVersion]);
+  }, [containerRef, enabled, stripTopPadding, depsVersion, measure]);
 
-  return { arcPaths, arcLevelByPhraseId, maxArcLevel, stripTopPadding };
+  return { arcPaths, arcLevelByPhraseId, maxArcLevel, stripTopPadding, requiredRowGapPx };
 }

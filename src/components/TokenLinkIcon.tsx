@@ -301,13 +301,15 @@ export function TokenLinkIcon({
       if (candidatePhraseId) onHoverCandidatePhrase?.(candidatePhraseId);
       if (splitFreeRefs) onHoverSplitFreeTokens?.(splitFreeRefs);
     };
+    // Only clear the split-free preview on leave; the phrase hover is owned by the PhraseGroup
+    // wrapper span so hovering back over the box restores it without re-entry needed.
     const handleUnlinkMouseLeave = () => {
-      if (candidatePhraseId) onHoverCandidatePhrase?.(undefined);
       if (splitFreeRefs) onHoverSplitFreeTokens?.(undefined);
     };
     // Clear hover state synchronously with the click so the red "would become free" border doesn't
     // linger after the split until the next mouse move.
     const handleUnlinkClickWithCleanup = () => {
+      onHoverCandidatePhrase?.(undefined);
       handleUnlinkMouseLeave();
       handleUnlinkClick();
     };

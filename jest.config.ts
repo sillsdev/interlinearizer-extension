@@ -107,8 +107,8 @@ const config: Config = {
   /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */
   modulePathIgnorePatterns: ['<rootDir>/dist'],
 
-  /** Load @testing-library/jest-dom matchers for React component tests. */
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
+  /** Load @testing-library/jest-dom matchers and browser API stubs for React component tests. */
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.resize-observer.js', '<rootDir>/jest.setup.ts'],
 
   /** Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). */
   testEnvironment: 'jsdom',
@@ -127,7 +127,7 @@ const config: Config = {
    * ts-jest so other preprocessors can be added later without dropping TS support.
    */
   transform: {
-    '\\.[jt]sx?$': 'ts-jest',
+    '\\.tsx?$': 'ts-jest',
   },
 };
 

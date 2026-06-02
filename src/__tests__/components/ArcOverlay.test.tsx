@@ -31,11 +31,11 @@ function requiredProps(): Parameters<typeof ArcOverlay>[0] {
     hoveredPhraseId: undefined,
     focusedPhraseId: undefined,
     candidatePhraseIds: new Set(),
-    splitHoveredArc: undefined,
     phraseLinkById: new Map(),
     tokenDocOrder: new Map(),
     onArcSplit: jest.fn(),
     onSplitHoverChange: jest.fn(),
+    onHoverPhrase: jest.fn(),
   };
 }
 
@@ -78,7 +78,7 @@ describe('ArcOverlay', () => {
     expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
   });
 
-  it('does not render a split button in view mode when the arc phrase is neither hovered nor focused', () => {
+  it('renders a split button in view mode even when the arc phrase is neither hovered nor focused', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <ArcOverlay
@@ -89,7 +89,8 @@ describe('ArcOverlay', () => {
         phraseLinkById={new Map([['p1', phraseLink]])}
       />,
     );
-    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+    expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('split-arc-btn').className).not.toContain('text-muted-foreground');
   });
 
   it('renders a split button in view mode when the arc phrase is hovered', () => {
@@ -154,7 +155,7 @@ describe('ArcOverlay', () => {
 
     await userEvent.click(screen.getByTestId('split-arc-btn'));
 
-    expect(onSplitHoverChange).toHaveBeenCalledWith(undefined, new Set());
+    expect(onSplitHoverChange).toHaveBeenCalledWith(new Set());
     expect(onArcSplit).toHaveBeenCalledWith('p1', 'tok-a');
   });
 
@@ -180,10 +181,7 @@ describe('ArcOverlay', () => {
 
     await userEvent.hover(screen.getByTestId('split-arc-btn'));
 
-    expect(onSplitHoverChange).toHaveBeenCalledWith(
-      { phraseId: 'p1', splitAfterTokenRef: 'tok-a' },
-      new Set(['tok-a', 'tok-b']),
-    );
+    expect(onSplitHoverChange).toHaveBeenCalledWith(new Set(['tok-a', 'tok-b']));
   });
 
   it('calls onSplitHoverChange with undefined on mouse leave', async () => {
@@ -208,7 +206,7 @@ describe('ArcOverlay', () => {
     await userEvent.hover(screen.getByTestId('split-arc-btn'));
     await userEvent.unhover(screen.getByTestId('split-arc-btn'));
 
-    expect(onSplitHoverChange).toHaveBeenLastCalledWith(undefined, new Set());
+    expect(onSplitHoverChange).toHaveBeenLastCalledWith(new Set());
   });
 
   it('does not call onSplitHoverChange with free refs on enter when no token would become free (both halves ≥ 2)', async () => {
@@ -312,14 +310,174 @@ describe('ArcOverlay', () => {
     expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
   });
 
-  it('renders destructive stroke style when splitHoveredArc matches the arc', () => {
+  it('assigns focused-phrase priority to an arc whose phraseId matches focusedPhraseId but not the hovered split point', async () => {
+    // Two arcs for p1 (split at tok-a and tok-b). When tok-a's split button is hovered,
+    // splitHoveredArc.phraseId === 'p1' but splitHoveredArc.splitAfterTokenRef !== 'tok-b', so
+    // tok-b's arc falls through to the focusedPhraseId branch (line 84) — covering the false branch
+    // of the splitAfterTokenRef && condition and the true branch of phraseId === focusedPhraseId.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a'), makeArcPath('p1', 'tok-b')]}
+        focusedPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+          ])
+        }
+      />,
+    );
+    const btns = screen.getAllByTestId('split-arc-btn');
+    // Hover the first split button — tok-b's arc goes through focusedPhraseId branch (returns 2).
+    await userEvent.hover(btns[0]);
+    expect(document.querySelectorAll('path')).toHaveLength(2);
+  });
+
+  it('assigns candidate priority to an arc via candidatePhraseIds when split-hover misses its splitAfterTokenRef and focusedPhraseId does not match', async () => {
+    // Two arcs for p1 (split at tok-a and tok-b). No hoveredPhraseId, no focusedPhraseId, but
+    // candidatePhraseIds includes 'p1'. When tok-a's split button is hovered, tok-b's arc falls
+    // through: phraseId matches splitHoveredArc.phraseId but not splitAfterTokenRef → line 84
+    // (focusedPhraseId undefined → false) → line 85 candidatePhraseIds.has('p1') → true.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a'), makeArcPath('p1', 'tok-b')]}
+        candidatePhraseIds={new Set(['p1'])}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+          ])
+        }
+      />,
+    );
+    const btns = screen.getAllByTestId('split-arc-btn');
+    await userEvent.hover(btns[0]);
+    expect(document.querySelectorAll('path')).toHaveLength(2);
+  });
+
+  it('highlights the phrase via onHoverPhrase on enter when the split would not free any token', async () => {
+    const onHoverPhrase = jest.fn();
+    const onSplitHoverChange = jest.fn();
+    // Four-token phrase: splitting after tok-b leaves both halves ≥ 2, so no token is freed.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-b')]}
+        hoveredPhraseId={undefined}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+            ['tok-d', 3],
+          ])
+        }
+        onHoverPhrase={onHoverPhrase}
+        onSplitHoverChange={onSplitHoverChange}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+
+    expect(onHoverPhrase).toHaveBeenCalledWith('p1');
+    // No destructive preview is shown when nothing would be freed.
+    expect(onSplitHoverChange).not.toHaveBeenCalledWith(expect.objectContaining({ size: 1 }));
+  });
+
+  it('clears the phrase highlight via onHoverPhrase on leave for a non-freeing split', async () => {
+    const onHoverPhrase = jest.fn();
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-b')]}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+            ['tok-d', 3],
+          ])
+        }
+        onHoverPhrase={onHoverPhrase}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+    await userEvent.unhover(screen.getByTestId('split-arc-btn'));
+
+    expect(onHoverPhrase).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('clears the phrase highlight via onHoverPhrase when a non-freeing split button is clicked', async () => {
+    const onHoverPhrase = jest.fn();
+    const onArcSplit = jest.fn();
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-b')]}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+            ['tok-d', 3],
+          ])
+        }
+        onHoverPhrase={onHoverPhrase}
+        onArcSplit={onArcSplit}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('split-arc-btn'));
+
+    expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
+    expect(onArcSplit).toHaveBeenCalledWith('p1', 'tok-b');
+  });
+
+  it('does not call onHoverPhrase on enter when the split would free a token', async () => {
+    const onHoverPhrase = jest.fn();
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+          ])
+        }
+        onHoverPhrase={onHoverPhrase}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+
+    expect(onHoverPhrase).not.toHaveBeenCalled();
+  });
+
+  it('renders destructive stroke style when the split button is hovered', async () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <ArcOverlay
         {...requiredProps()}
         arcPaths={[makeArcPath('p1', 'tok-a')]}
         hoveredPhraseId="p1"
-        splitHoveredArc={{ phraseId: 'p1', splitAfterTokenRef: 'tok-a' }}
         phraseLinkById={new Map([['p1', phraseLink]])}
         tokenDocOrder={
           new Map([
@@ -329,7 +487,60 @@ describe('ArcOverlay', () => {
         }
       />,
     );
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
     const pathEl = document.querySelector('path');
     expect(pathEl?.getAttribute('style')).toContain('var(--destructive)');
+  });
+
+  it('dims the hovered segment (not destructive) when a non-freeing split button is hovered', async () => {
+    // Four-token phrase: splitting after tok-b leaves both halves ≥ 2, so it is a reshape, not a
+    // free. The hovered segment dims rather than turning destructive red.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-b')]}
+        hoveredPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+            ['tok-d', 3],
+          ])
+        }
+      />,
+    );
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+    const pathEl = document.querySelector('path');
+    expect(pathEl?.getAttribute('style')).toContain('var(--border)');
+    expect(pathEl?.getAttribute('style')).not.toContain('var(--destructive)');
+    expect(pathEl?.getAttribute('stroke-opacity')).toBe('0.25');
+  });
+
+  it('restores the standard stroke after a non-freeing split hover leaves', async () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-b')]}
+        focusedPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+            ['tok-c', 2],
+            ['tok-d', 3],
+          ])
+        }
+      />,
+    );
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+    await userEvent.unhover(screen.getByTestId('split-arc-btn'));
+    const pathEl = document.querySelector('path');
+    // Focused phrase falls back to the highlighted white stroke once the dim is cleared.
+    expect(pathEl?.getAttribute('style')).toContain('white');
   });
 });

@@ -1,11 +1,20 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
-import { memo } from 'react';
+import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
 
-/** Identifies one specific arc boundary by phrase id and the token immediately before the split. */
-export type ArcSplitTarget = { phraseId: string; splitAfterTokenRef: string };
+/**
+ * Identifies one specific arc boundary by phrase id and the token immediately before the split,
+ * plus whether splitting there would free a token. `kind` drives the hovered arc's stroke: a `free`
+ * split shows the destructive preview, while a `reshape` split (both halves stay ≥ 2 tokens) merely
+ * dims the hovered segment to communicate that this one connection would disappear.
+ */
+export type ArcSplitTarget = {
+  phraseId: string;
+  splitAfterTokenRef: string;
+  kind: 'free' | 'reshape';
+};
 
 /** Props for {@link ArcOverlay}. */
 type ArcOverlayProps = Readonly<{
@@ -19,8 +28,6 @@ type ArcOverlayProps = Readonly<{
   focusedPhraseId: string | undefined;
   /** Phrase ids whose arcs should be styled as hovered because a link-icon hover targets them. */
   candidatePhraseIds: ReadonlySet<string>;
-  /** The arc whose split button is currently hovered; renders that arc in the destructive colour. */
-  splitHoveredArc: ArcSplitTarget | undefined;
   /** Map from phrase `analysisId` to phrase link; used to enumerate which tokens a split would free. */
   phraseLinkById: ReadonlyMap<string, PhraseAnalysisLink>;
   /**
@@ -31,11 +38,17 @@ type ArcOverlayProps = Readonly<{
   /** Called when a split button is clicked. */
   onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
   /**
-   * Called when the split button hover state changes. `arc` identifies the hovered boundary or
-   * `undefined` on leave; `freeTokenRefs` lists tokens that would become solo after the split, or
-   * an empty set on leave.
+   * Called when the split button hover state changes. `freeTokenRefs` lists tokens that would
+   * become solo after the split, or an empty set on leave.
    */
-  onSplitHoverChange: (arc: ArcSplitTarget | undefined, freeTokenRefs: ReadonlySet<string>) => void;
+  onSplitHoverChange: (freeTokenRefs: ReadonlySet<string>) => void;
+  /**
+   * Called with a phrase id (or `undefined` on leave) when a split button that would _not_ free any
+   * token is hovered. The parent sets this as the hovered phrase so the arc and both connected
+   * phrase boxes light up exactly as if the box itself were hovered — the split here only reshapes
+   * the phrase, so there is no destructive preview to show.
+   */
+  onHoverPhrase: (phraseId: string | undefined) => void;
 }>;
 
 /**
@@ -52,47 +65,177 @@ export function ArcOverlay({
   hoveredPhraseId,
   focusedPhraseId,
   candidatePhraseIds,
-  splitHoveredArc,
   phraseLinkById,
   tokenDocOrder,
   onArcSplit,
   onSplitHoverChange,
+  onHoverPhrase,
 }: ArcOverlayProps) {
+  const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
+
+  const handleSplitHoverEnter = useCallback(
+    (phraseId: string, splitAfterTokenRef: string, freeRefs: string[]) => {
+      setSplitHoveredArc({ phraseId, splitAfterTokenRef, kind: 'free' });
+      onSplitHoverChange(new Set(freeRefs));
+    },
+    [onSplitHoverChange],
+  );
+
+  const handleSplitHoverLeave = useCallback(() => {
+    setSplitHoveredArc(undefined);
+    onSplitHoverChange(new Set());
+  }, [onSplitHoverChange]);
+
+  /**
+   * Marks the hovered arc segment as a non-freeing ("reshape") split so {@link renderArcPath} dims
+   * just that segment, and highlights the whole phrase like a box hover. Used when both halves keep
+   * ≥ 2 tokens, so there is nothing destructive to preview — only the disappearing connection.
+   *
+   * @param phraseId - The phrase whose arc segment is hovered.
+   * @param splitAfterTokenRef - Token ref marking the start of the hovered segment's split.
+   */
+  const handleReshapeHoverEnter = useCallback(
+    (phraseId: string, splitAfterTokenRef: string) => {
+      setSplitHoveredArc({ phraseId, splitAfterTokenRef, kind: 'reshape' });
+      onHoverPhrase(phraseId);
+    },
+    [onHoverPhrase],
+  );
+
+  /** Clears both the dimmed-segment state and the phrase highlight for a non-freeing split leave. */
+  const handleReshapeHoverLeave = useCallback(() => {
+    setSplitHoveredArc(undefined);
+    onHoverPhrase(undefined);
+  }, [onHoverPhrase]);
+
   if (arcPaths.length === 0) return undefined;
+
+  /**
+   * Assigns a paint-order priority so highlighted arcs render on top of dimmed ones inside the
+   * single SVG (last element wins). Split-hovered > focused > hovered/candidate > everything else.
+   */
+  const paintPriority = (phraseId: string, splitAfterTokenRef: string): number => {
+    if (
+      splitHoveredArc?.phraseId === phraseId &&
+      splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef
+    )
+      return 3;
+    if (phraseId === focusedPhraseId) return 2;
+    if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 1;
+    return 0;
+  };
+
+  const sortedArcPaths = [...arcPaths].sort(
+    (a, b) =>
+      paintPriority(a.phraseId, a.splitAfterTokenRef) -
+      paintPriority(b.phraseId, b.splitAfterTokenRef),
+  );
+
+  /**
+   * Renders a single arc `<path>`. When this exact segment's split button is hovered the stroke
+   * depends on the split kind: a `free` split shows the destructive preview, while a `reshape`
+   * split dims this one segment (it would simply disappear). All other arcs use the standard
+   * hover/focus stroke.
+   *
+   * @param arc - The arc path to render.
+   * @returns The SVG path element.
+   */
+  const renderArcPath = ({ phraseId, d, splitAfterTokenRef }: ArcPath) => {
+    const effectiveHoveredPhraseId =
+      hoveredPhraseId ?? (candidatePhraseIds.has(phraseId) ? phraseId : undefined);
+    const isHoveredSegment =
+      splitHoveredArc?.phraseId === phraseId &&
+      splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef;
+    let arcProps;
+    if (isHoveredSegment && splitHoveredArc?.kind === 'free') {
+      arcProps = { stroke: 'var(--destructive)', strokeOpacity: 1, strokeWidth: 2 };
+    } else if (isHoveredSegment) {
+      // Reshape split: dim just this segment so it reads as "this connection would go away".
+      arcProps = { stroke: 'var(--border)', strokeOpacity: 0.25, strokeWidth: 2 };
+    } else {
+      arcProps = getArcStrokeProps(phraseMode, phraseId, effectiveHoveredPhraseId, focusedPhraseId);
+    }
+    return (
+      <path
+        key={`${phraseId}-${d}`}
+        d={d}
+        fill="none"
+        strokeOpacity={arcProps.strokeOpacity}
+        strokeWidth={arcProps.strokeWidth}
+        style={{ stroke: arcProps.stroke }}
+      />
+    );
+  };
+
+  /**
+   * Classifies a phrase into one of three emphasis tiers. A phrase is `focused` when it is the
+   * focused phrase, `hovered` when it is hovered (directly or via a link-icon candidate) but not
+   * focused, and `unfocused` otherwise.
+   *
+   * @param phraseId - The phrase id to classify.
+   * @returns The emphasis tier.
+   */
+  const tierOf = (phraseId: string): 'focused' | 'hovered' | 'unfocused' => {
+    if (phraseId === focusedPhraseId) return 'focused';
+    if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 'hovered';
+    return 'unfocused';
+  };
+
+  // Split arcs across three SVG layers so the emphasis z-stack interleaves correctly with split
+  // buttons (top → bottom): hovered buttons > hovered arcs > focused buttons > focused arcs >
+  // unfocused buttons > unfocused arcs. Hover sits above focus so the phrase under the cursor is
+  // always fully visible. A single SVG would force every arc it contains to share one z-index,
+  // breaking the interleaving with the buttons.
+  const focusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'focused');
+  const hoveredArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'hovered');
+  const unfocusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'unfocused');
+
+  /**
+   * Maps an emphasis tier to the z-index class for its split button. Each button sits one z-index
+   * above its own arc layer (arcs at 24/34/44) so it is never obscured by its arc, keeping the
+   * tiers ordered hovered > focused > unfocused.
+   *
+   * @param tier - The emphasis tier of the button's phrase.
+   * @returns The Tailwind z-index class.
+   */
+  const buttonZClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
+    if (tier === 'hovered') return 'tw:z-45';
+    if (tier === 'focused') return 'tw:z-35';
+    return 'tw:z-25';
+  };
+
   return (
     <>
       <svg
         aria-hidden="true"
-        className="tw:pointer-events-none tw:absolute tw:inset-0"
+        className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-24"
         style={{ height: '100%', overflow: 'visible', width: '100%' }}
       >
-        {arcPaths.map(({ phraseId, d, splitAfterTokenRef }) => {
-          const effectiveHoveredPhraseId =
-            hoveredPhraseId ?? (candidatePhraseIds.has(phraseId) ? phraseId : undefined);
-          const arcProps =
-            splitHoveredArc?.phraseId === phraseId &&
-            splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef
-              ? { stroke: 'var(--destructive)', strokeOpacity: 1, strokeWidth: 2 }
-              : getArcStrokeProps(phraseMode, phraseId, effectiveHoveredPhraseId, focusedPhraseId);
-          return (
-            <path
-              key={`${phraseId}-${d}`}
-              d={d}
-              fill="none"
-              strokeOpacity={arcProps.strokeOpacity}
-              strokeWidth={arcProps.strokeWidth}
-              style={{ stroke: arcProps.stroke }}
-            />
-          );
-        })}
+        {unfocusedArcPaths.map(renderArcPath)}
       </svg>
+      {focusedArcPaths.length > 0 && (
+        <svg
+          aria-hidden="true"
+          className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-34"
+          style={{ height: '100%', overflow: 'visible', width: '100%' }}
+        >
+          {focusedArcPaths.map(renderArcPath)}
+        </svg>
+      )}
+      {hoveredArcPaths.length > 0 && (
+        <svg
+          aria-hidden="true"
+          className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-44"
+          style={{ height: '100%', overflow: 'visible', width: '100%' }}
+        >
+          {hoveredArcPaths.map(renderArcPath)}
+        </svg>
+      )}
       {phraseMode.kind === 'view' &&
-        arcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
-          const isRevealed =
-            phraseId === hoveredPhraseId ||
-            phraseId === focusedPhraseId ||
-            candidatePhraseIds.has(phraseId);
-          if (!isRevealed) return undefined;
+        sortedArcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
+          const tier = tierOf(phraseId);
+          const isRevealed = tier !== 'unfocused';
+          const buttonZClass = buttonZClassFor(tier);
           const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
             phraseLink,
@@ -104,7 +247,7 @@ export function ArcOverlay({
             <button
               key={`split-arc-${phraseId}-${d}`}
               aria-label="Split phrase here"
-              className={`tw:absolute tw:z-10 tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-0.5 tw:text-muted-foreground${willCreateFreeTokens ? ' tw:border-border/40 tw:hover:border-destructive tw:hover:text-destructive' : ' tw:border-border/40'}`}
+              className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-0.5 ${buttonZClass}${isRevealed ? ' tw:border-border/40 tw:text-muted-foreground' : ' tw:border-border/50 tw:text-border/50'}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
               data-testid="split-arc-btn"
               style={{ left: midX, top: midY }}
               type="button"
@@ -112,16 +255,25 @@ export function ArcOverlay({
                 // Clear the split-hover state synchronously with the click. The button is removed
                 // from the DOM by the resulting re-render, so no mouseLeave fires — without this
                 // the red "would become free" border would linger until the next mouse move.
-                onSplitHoverChange(undefined, new Set());
+                setSplitHoveredArc(undefined);
+                onSplitHoverChange(new Set());
+                // Also clear the phrase highlight applied for non-freeing splits, for the same
+                // reason: the button unmounts on click so its mouseLeave never fires.
+                if (!willCreateFreeTokens) onHoverPhrase(undefined);
                 onArcSplit(phraseId, splitAfterTokenRef);
               }}
               onMouseEnter={() => {
                 if (willCreateFreeTokens) {
-                  onSplitHoverChange({ phraseId, splitAfterTokenRef }, new Set(arcSplitFreeRefs));
+                  handleSplitHoverEnter(phraseId, splitAfterTokenRef, arcSplitFreeRefs);
+                } else {
+                  // No token would be freed, so there is nothing destructive to preview. Highlight
+                  // the phrase like a box hover and dim just this segment to show it would go away.
+                  handleReshapeHoverEnter(phraseId, splitAfterTokenRef);
                 }
               }}
               onMouseLeave={() => {
-                onSplitHoverChange(undefined, new Set());
+                if (willCreateFreeTokens) handleSplitHoverLeave();
+                else handleReshapeHoverLeave();
               }}
             >
               <Link2Off className="tw:h-3 tw:w-3" />

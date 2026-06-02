@@ -356,7 +356,7 @@ export function PhraseBox({
         )}
         {isRealPhrase && showControls && (
           <span
-            className="tw:absolute tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
+            className="tw:absolute tw:z-20 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
             style={{ top: `-${arcOffsetPx}px` }}
           >

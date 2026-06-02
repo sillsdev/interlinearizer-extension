@@ -6,7 +6,12 @@ import { useArcPaths } from '../../hooks/useArcPaths';
 
 // computeAllArcPaths reads DOM measurements; mock it to control output.
 jest.mock('../../utils/phrase-arc', () => ({
-  computeAllArcPaths: jest.fn(() => ({ paths: [], levelByPhraseId: new Map(), maxLevel: 0 })),
+  computeAllArcPaths: jest.fn(() => ({
+    paths: [],
+    levelByPhraseId: new Map(),
+    maxLevel: 0,
+    requiredRowGapPx: 0,
+  })),
   computeStripTopPadding: jest.fn(() => 8),
 }));
 
@@ -16,7 +21,12 @@ const { computeAllArcPaths, computeStripTopPadding } = arcPathsMock;
 
 describe('useArcPaths', () => {
   beforeEach(() => {
-    computeAllArcPaths.mockReturnValue({ paths: [], levelByPhraseId: new Map(), maxLevel: 0 });
+    computeAllArcPaths.mockReturnValue({
+      paths: [],
+      levelByPhraseId: new Map(),
+      maxLevel: 0,
+      requiredRowGapPx: 0,
+    });
     computeStripTopPadding.mockReturnValue(8);
   });
 
@@ -47,6 +57,7 @@ describe('useArcPaths', () => {
       paths: [arc],
       levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
+      requiredRowGapPx: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -56,7 +67,12 @@ describe('useArcPaths', () => {
     expect(result.current.arcPaths).toHaveLength(1);
 
     // Transition to disabled
-    computeAllArcPaths.mockReturnValue({ paths: [], levelByPhraseId: new Map(), maxLevel: 0 });
+    computeAllArcPaths.mockReturnValue({
+      paths: [],
+      levelByPhraseId: new Map(),
+      maxLevel: 0,
+      requiredRowGapPx: 0,
+    });
     act(() => {
       rerender({ enabled: false });
     });
@@ -69,6 +85,7 @@ describe('useArcPaths', () => {
       paths: [arc],
       levelByPhraseId: new Map([['p1', 1]]),
       maxLevel: 1,
+      requiredRowGapPx: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -78,11 +95,43 @@ describe('useArcPaths', () => {
     expect(result.current.maxArcLevel).toBe(1);
 
     // Transition to disabled — maxArcLevel must reset to 0.
-    computeAllArcPaths.mockReturnValue({ paths: [], levelByPhraseId: new Map(), maxLevel: 0 });
+    computeAllArcPaths.mockReturnValue({
+      paths: [],
+      levelByPhraseId: new Map(),
+      maxLevel: 0,
+      requiredRowGapPx: 0,
+    });
     act(() => {
       rerender({ enabled: false });
     });
     expect(result.current.maxArcLevel).toBe(0);
+  });
+
+  it('resets requiredRowGapPx to 0 when transitioning to disabled', () => {
+    const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
+    computeAllArcPaths.mockReturnValue({
+      paths: [arc],
+      levelByPhraseId: new Map([['p1', 0]]),
+      maxLevel: 0,
+      requiredRowGapPx: 20,
+    });
+    const containerRef = { current: document.createElement('div') };
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useArcPaths(containerRef, enabled, false, []),
+      { initialProps: { enabled: true } },
+    );
+    expect(result.current.requiredRowGapPx).toBe(20);
+
+    computeAllArcPaths.mockReturnValue({
+      paths: [],
+      levelByPhraseId: new Map(),
+      maxLevel: 0,
+      requiredRowGapPx: 0,
+    });
+    act(() => {
+      rerender({ enabled: false });
+    });
+    expect(result.current.requiredRowGapPx).toBe(0);
   });
 
   it('updates maxArcLevel when it changes between measurements', () => {
@@ -91,6 +140,7 @@ describe('useArcPaths', () => {
       paths: [arc],
       levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
+      requiredRowGapPx: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -104,11 +154,41 @@ describe('useArcPaths', () => {
       paths: [arc],
       levelByPhraseId: new Map([['p1', 1]]),
       maxLevel: 1,
+      requiredRowGapPx: 0,
     });
     act(() => {
       rerender({ dep: 2 });
     });
     expect(result.current.maxArcLevel).toBe(1);
+  });
+
+  it('re-measures when the ResizeObserver fires', () => {
+    let observerCallback: ResizeObserverCallback | undefined;
+    global.ResizeObserver = class implements ResizeObserver {
+      /** @param callback - Stored so tests can fire it on demand. */
+      constructor(callback: ResizeObserverCallback) {
+        observerCallback = callback;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      observe() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      unobserve() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      disconnect() {}
+    };
+    const containerEl = document.createElement('div');
+    const containerRef = { current: containerEl };
+    renderHook(() => useArcPaths(containerRef, true, false, []));
+    const callsBefore = computeAllArcPaths.mock.calls.length;
+
+    act(() => {
+      observerCallback?.([], new ResizeObserver(() => {}));
+    });
+
+    expect(computeAllArcPaths.mock.calls.length).toBeGreaterThan(callsBefore);
   });
 
   it('does not update state when arc paths have not changed', () => {
@@ -117,6 +197,7 @@ describe('useArcPaths', () => {
       paths: [arc],
       levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
+      requiredRowGapPx: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(

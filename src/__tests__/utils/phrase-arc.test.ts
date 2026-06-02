@@ -3,6 +3,7 @@
 
 import {
   ARC_BASE_STEM,
+  CROSS_ROW_ARC_CLEARANCE,
   buildSameRowArcPath,
   buildCrossRowArcPath,
   computeAllArcPaths,
@@ -110,14 +111,14 @@ describe('buildCrossRowArcPath', () => {
   it('returns an SVG path string starting with M', () => {
     const a = { left: 10, right: 30, bottom: 50 };
     const b = { left: 60, right: 80, top: 100 };
-    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b);
     expect(d).toMatch(/^M /);
   });
 
   it('handles right-to-left direction', () => {
     const a = { left: 80, right: 100, bottom: 50 };
     const b = { left: 0, right: 20, top: 100 };
-    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b);
     expect(d).toMatch(/^M /);
   });
 
@@ -125,8 +126,15 @@ describe('buildCrossRowArcPath', () => {
     // boxes so close horizontally that 2*r > |cx2 - cx1|, forcing nudge > 0
     const a = { left: 40, right: 60, bottom: 50 };
     const b = { left: 41, right: 61, top: 100 };
-    const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
+    const { d } = buildCrossRowArcPath(a, b);
     expect(d).toMatch(/^M /);
+  });
+
+  it('places the horizontal mid-section at the vertical centre of the gap between boxes', () => {
+    const a = { left: 10, right: 30, bottom: 60 };
+    const b = { left: 60, right: 80, top: 100 };
+    const { midY } = buildCrossRowArcPath(a, b);
+    expect(midY).toBe((60 + 100) / 2);
   });
 });
 
@@ -137,10 +145,11 @@ describe('buildCrossRowArcPath', () => {
 describe('computeAllArcPaths', () => {
   it('returns empty state when the container has no phrase boxes', () => {
     const container = buildContainer([]);
-    const { paths, levelByPhraseId, maxLevel } = computeAllArcPaths(container);
+    const { paths, levelByPhraseId, maxLevel, requiredRowGapPx } = computeAllArcPaths(container);
     expect(paths).toHaveLength(0);
     expect(levelByPhraseId.size).toBe(0);
     expect(maxLevel).toBe(0);
+    expect(requiredRowGapPx).toBe(0);
   });
 
   it('returns empty state when every phrase has only one box', () => {
@@ -210,6 +219,36 @@ describe('computeAllArcPaths', () => {
     expect(maxLevel).toBe(1);
   });
 
+  it('assigns the same level to two phrases with overlapping x-spans but on different rows', () => {
+    // p1 is on row y=0 and p2 is on row y=200 — their arcs cannot cross even if x-spans overlap,
+    // so both get level 0.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(200, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(50, 200, 40, 20) },
+      { phraseId: 'p2', r: rect(160, 200, 40, 20) },
+    ]);
+    const { levelByPhraseId, maxLevel } = computeAllArcPaths(container);
+    expect(levelByPhraseId.get('p1')).toBe(0);
+    expect(levelByPhraseId.get('p2')).toBe(0);
+    expect(maxLevel).toBe(0);
+  });
+
+  it('does not bump a same-row arc level for a cross-row arc whose bounding box overlaps it', () => {
+    // p1 is a same-row arc on the lower row (y=150). p2 is a cross-row arc spanning y=0→y=150
+    // whose x-span overlaps p1's. The cross-row arc is routed through the gap and never draws an
+    // upward bracket on the lower row, so it must NOT push p1's level (and stem height) up.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 150, 40, 20) },
+      { phraseId: 'p1', r: rect(200, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(100, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(100, 150, 40, 20) },
+    ]);
+    const { levelByPhraseId, maxLevel } = computeAllArcPaths(container);
+    expect(levelByPhraseId.get('p1')).toBe(0);
+    expect(maxLevel).toBe(0);
+  });
+
   it('uses a higher stem for higher nesting levels', () => {
     // Two overlapping phrases — the level-1 arc must rise higher (lower y-peak) than level-0.
     const container = buildContainer([
@@ -248,6 +287,148 @@ describe('computeAllArcPaths', () => {
     const { paths } = computeAllArcPaths(container);
     expect(paths).toHaveLength(0);
   });
+
+  it('returns requiredRowGapPx of 0 when all arcs are same-row', () => {
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 100, 40, 20) },
+      { phraseId: 'p1', r: rect(100, 100, 40, 20) },
+    ]);
+    const { requiredRowGapPx } = computeAllArcPaths(container);
+    expect(requiredRowGapPx).toBe(0);
+  });
+
+  it('returns a positive requiredRowGapPx for a single cross-row arc', () => {
+    // p1 has one box on row y=0 and another on row y=150 — a cross-row arc.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(10, 150, 40, 20) },
+    ]);
+    const { requiredRowGapPx } = computeAllArcPaths(container);
+    // One arc at level 0: a CLEARANCE margin above the arc plus a CLEARANCE separation slot below it
+    // (no lower-row arcs here) = 2*CLEARANCE.
+    expect(requiredRowGapPx).toBe(2 * CROSS_ROW_ARC_CLEARANCE);
+  });
+
+  it('produces different midY values for two cross-row arcs with overlapping x-spans in the same gap', () => {
+    // p1 goes left→right (cx path 30→230) and p2 goes right→left (cx path 230→30) — their center
+    // paths both span 30–230 and therefore conflict in the same gap.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(10, 150, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(2);
+    const [midY0, midY1] = paths.map((p) => p.midY);
+    expect(midY0).not.toBe(midY1);
+  });
+
+  it('produces the same midY for two cross-row arcs whose x-spans do not overlap', () => {
+    // p1 crosses entirely on the left (cx: 10→10) and p2 on the right (cx: 200→200) — no overlap.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(0, 0, 20, 20) },
+      { phraseId: 'p1', r: rect(0, 150, 20, 20) },
+      { phraseId: 'p2', r: rect(190, 0, 20, 20) },
+      { phraseId: 'p2', r: rect(190, 150, 20, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(2);
+    const [midY0, midY1] = paths.map((p) => p.midY);
+    expect(midY0).toBe(midY1);
+  });
+
+  it('produces a distinct midY for the third overlapping cross-row arc (even level)', () => {
+    // Three mutually-overlapping cross-row arcs in the same gap force levels 0, 1, and 2.
+    // Level 2 is even, triggering the negative-offset branch (offset = -(level/2)*CLEARANCE).
+    // All three arcs share the x-range 30–230 so they all overlap with each other.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(10, 150, 40, 20) },
+      { phraseId: 'p3', r: rect(100, 0, 40, 20) },
+      { phraseId: 'p3', r: rect(100, 150, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(3);
+    const midYs = paths.map((p) => p.midY);
+    // All three arcs must have distinct midY values.
+    expect(new Set(midYs).size).toBe(3);
+  });
+
+  it('caps cross-row arc midY above same-row arcs protruding from the lower row', () => {
+    // p1 has a same-row arc on the lower row (y=150), which populates maxLevelByRowTop for that
+    // row. p2 has a cross-row arc whose lower box is also on y=150, so lowerRowMaxLevel >= 0 and
+    // the true branch of the lowerRowProtrusion ternary is exercised.
+    const container = buildContainer([
+      // p1: two boxes on the lower row → same-row arc, sets maxLevelByRowTop[150]
+      { phraseId: 'p1', r: rect(200, 150, 40, 20) },
+      { phraseId: 'p1', r: rect(300, 150, 40, 20) },
+      // p2: cross-row arc landing on the same lower row
+      { phraseId: 'p2', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(10, 150, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    // p2's cross-row arc must still be produced and routed below its origin box; the lower-row
+    // protrusion only widens the reserved gap, it never suppresses or clamps the arc.
+    const p2 = paths.find((p) => p.phraseId === 'p2');
+    expect(p2).toBeDefined();
+    expect(p2?.midY).toBeGreaterThan(20);
+  });
+
+  it('keeps every cross-row arc midY below the bottom of its upper box', () => {
+    // Three mutually-overlapping cross-row arcs force levels 0–2 in one gap. The arc's horizontal
+    // segment must dip below the upper box bottom (y=20) for all of them, otherwise the arc renders
+    // above its own origin. Regression guard for upward-stacking that crossed the origin box.
+    const upperBottom = 20;
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, upperBottom) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, upperBottom) },
+      { phraseId: 'p2', r: rect(10, 150, 40, 20) },
+      { phraseId: 'p3', r: rect(100, 0, 40, upperBottom) },
+      { phraseId: 'p3', r: rect(100, 150, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(3);
+    paths.forEach((p) => expect(p.midY).toBeGreaterThan(upperBottom));
+  });
+
+  it('keeps overlapping cross-row arcs distinct and below their origins even in a tight gap', () => {
+    // Rows only 10px apart (upper bottom y=20, lower top y=30) — far tighter than requiredRowGapPx
+    // will eventually reserve. Two overlapping arcs must still get distinct midY (no clamp
+    // collapsing them onto each other) and both must sit below the upper box bottom.
+    const upperBottom = 20;
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, upperBottom) },
+      { phraseId: 'p1', r: rect(210, 30, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, upperBottom) },
+      { phraseId: 'p2', r: rect(10, 30, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(2);
+    const [midY0, midY1] = paths.map((p) => p.midY);
+    expect(midY0).not.toBe(midY1);
+    paths.forEach((p) => expect(p.midY).toBeGreaterThan(upperBottom));
+  });
+
+  it('increases requiredRowGapPx for two overlapping cross-row arcs vs one', () => {
+    // Single arc: p1 left→right. Overlapping: p1 left→right + p2 right→left (same x-span).
+    const single = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+    ]);
+    const overlapping = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(10, 150, 40, 20) },
+    ]);
+    const { requiredRowGapPx: gapSingle } = computeAllArcPaths(single);
+    const { requiredRowGapPx: gapOverlapping } = computeAllArcPaths(overlapping);
+    expect(gapOverlapping).toBeGreaterThan(gapSingle);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -258,50 +439,49 @@ describe('routeAroundBoxes', () => {
   it('returns a valid SVG path string', () => {
     const a = { left: 10, right: 30, top: 50, bottom: 70 };
     const b = { left: 10, right: 30, top: 150, bottom: 170 };
-    const { d } = routeAroundBoxes(a, b, [], ARC_BASE_STEM);
+    const { d } = routeAroundBoxes(a, b, []);
     expect(d).toMatch(/^M /);
   });
 
   it('produces a path with the same shape as buildCrossRowArcPath when there are no obstacles', () => {
     const a = { left: 10, right: 30, top: 50, bottom: 70 };
     const b = { left: 60, right: 80, top: 150, bottom: 170 };
-    const routed = routeAroundBoxes(a, b, [], ARC_BASE_STEM);
-    const direct = buildCrossRowArcPath(a, b, ARC_BASE_STEM);
-    expect(typeof routed.d).toBe('string');
-    expect(typeof direct.d).toBe('string');
+    const routed = routeAroundBoxes(a, b, []);
+    const direct = buildCrossRowArcPath(a, b);
+    expect(routed.d).toBe(direct.d);
   });
 
   it('produces a different path when an obstacle straddles midX inside the arc vertical span', () => {
     // cx1 = cx2 = 100, so midX = 100. Obstacle straddles midX (90–110) inside the arc span.
+    // midY = (70+200)/2. Obstacle must have top < 70 (y1) and bottom > 200 (y2) to be in range.
     const a = { left: 90, right: 110, top: 50, bottom: 70 };
     const b = { left: 90, right: 110, top: 200, bottom: 220 };
-    const midY = (70 + 200) / 2 + ARC_BASE_STEM;
-    const obstacle = { left: 90, right: 110, top: 70, bottom: midY + 10 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
-    const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    const obstacle = { left: 90, right: 110, top: 55, bottom: 210 };
+    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
+    const unobstructed = routeAroundBoxes(a, b, [a, b]);
     expect(routed.d).not.toBe(unobstructed.d);
   });
 
   it('routes left when midX is closer to the left edge of the obstacle', () => {
     // cx1 = cx2 = 100, midX = 100. Obstacle is 96–130: distLeft=4, distRight=30 → route left.
+    // Obstacle top must be < 20 (y1) and bottom > 200 (y2) to be in range.
     const a = { left: 80, right: 120, top: 0, bottom: 20 };
     const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const midY = (20 + 200) / 2 + ARC_BASE_STEM;
-    const obstacle = { left: 96, right: 130, top: 20, bottom: midY + 10 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
-    const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    const obstacle = { left: 96, right: 130, top: 10, bottom: 210 };
+    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
+    const unobstructed = routeAroundBoxes(a, b, [a, b]);
     expect(routed.d).not.toBe(unobstructed.d);
     expect(routed.midX).toBeLessThan(unobstructed.midX);
   });
 
   it('routes right when midX is closer to the right edge of the obstacle', () => {
     // cx1 = cx2 = 100, midX = 100. Obstacle is 70–104: distLeft=30, distRight=4 → route right.
+    // Obstacle top must be < 20 (y1) and bottom > 200 (y2) to be in range.
     const a = { left: 80, right: 120, top: 0, bottom: 20 };
     const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const midY = (20 + 200) / 2 + ARC_BASE_STEM;
-    const obstacle = { left: 70, right: 104, top: 20, bottom: midY + 10 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
-    const unobstructed = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    const obstacle = { left: 70, right: 104, top: 10, bottom: 210 };
+    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
+    const unobstructed = routeAroundBoxes(a, b, [a, b]);
     expect(routed.d).not.toBe(unobstructed.d);
     expect(routed.midX).toBeGreaterThan(unobstructed.midX);
   });
@@ -310,10 +490,9 @@ describe('routeAroundBoxes', () => {
     // midX = 100. Obstacle starts exactly at 100 — condition is midX > obs.left, so not triggered.
     const a = { left: 80, right: 120, top: 0, bottom: 20 };
     const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const midY = (20 + 200) / 2 + ARC_BASE_STEM;
-    const obstacle = { left: 100, right: 150, top: 20, bottom: midY + 10 };
-    const withObs = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
-    const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    const obstacle = { left: 100, right: 150, top: 10, bottom: 210 };
+    const withObs = routeAroundBoxes(a, b, [a, b, obstacle]);
+    const withoutObs = routeAroundBoxes(a, b, [a, b]);
     expect(withObs.d).toBe(withoutObs.d);
   });
 
@@ -321,20 +500,20 @@ describe('routeAroundBoxes', () => {
     // midX = 100. Obstacle ends exactly at 100 — condition is midX < obs.right, so not triggered.
     const a = { left: 80, right: 120, top: 0, bottom: 20 };
     const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const midY = (20 + 200) / 2 + ARC_BASE_STEM;
-    const obstacle = { left: 50, right: 100, top: 20, bottom: midY + 10 };
-    const withObs = routeAroundBoxes(a, b, [a, b, obstacle], ARC_BASE_STEM);
-    const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    const obstacle = { left: 50, right: 100, top: 10, bottom: 210 };
+    const withObs = routeAroundBoxes(a, b, [a, b, obstacle]);
+    const withoutObs = routeAroundBoxes(a, b, [a, b]);
     expect(withObs.d).toBe(withoutObs.d);
   });
 
   it('skips obstacles outside the arc vertical span', () => {
-    // midX = 100, obstacle straddles midX horizontally but sits above y1=20.
+    // midX = 100, obstacle straddles midX horizontally but does not span the full gap (top >= y1).
     const a = { left: 80, right: 120, top: 0, bottom: 20 };
     const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const above = { left: 90, right: 110, top: 0, bottom: 15 };
-    const withObs = routeAroundBoxes(a, b, [a, b, above], ARC_BASE_STEM);
-    const withoutObs = routeAroundBoxes(a, b, [a, b], ARC_BASE_STEM);
+    // Obstacle starts below y1=20, so obs.top < y1 is false → filtered out.
+    const outside = { left: 90, right: 110, top: 25, bottom: 210 };
+    const withObs = routeAroundBoxes(a, b, [a, b, outside]);
+    const withoutObs = routeAroundBoxes(a, b, [a, b]);
     expect(withObs.d).toBe(withoutObs.d);
   });
 });

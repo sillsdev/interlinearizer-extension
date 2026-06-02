@@ -121,6 +121,27 @@ describe('TokenLinkIcon', () => {
     expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
   });
 
+  it('clears onHoverCandidatePhrase when unlink button is clicked', async () => {
+    const onHoverCandidatePhrase = jest.fn();
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <TokenLinkIcon
+        {...requiredProps()}
+        prevPhraseLink={phraseLink}
+        nextPhraseLink={phraseLink}
+        onHoverCandidatePhrase={onHoverCandidatePhrase}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+          ])
+        }
+      />,
+    );
+    await userEvent.click(screen.getByTestId('token-unlink-btn'));
+    expect(onHoverCandidatePhrase).toHaveBeenCalledWith(undefined);
+  });
+
   it('is disabled in confirm-unlink mode', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
@@ -147,7 +168,7 @@ describe('TokenLinkIcon', () => {
     expect(screen.getByTestId('token-unlink-btn')).toBeDisabled();
   });
 
-  it('calls onHoverCandidatePhrase with phraseId on mouse enter and undefined on leave', async () => {
+  it('calls onHoverCandidatePhrase with phraseId on mouse enter but not on leave', async () => {
     const onHoverCandidatePhrase = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
@@ -169,7 +190,8 @@ describe('TokenLinkIcon', () => {
     expect(onHoverCandidatePhrase).toHaveBeenCalledWith('p1');
 
     await userEvent.unhover(btn);
-    expect(onHoverCandidatePhrase).toHaveBeenCalledWith(undefined);
+    // Phrase hover is cleared by the PhraseGroup wrapper span's onMouseLeave, not by the button.
+    expect(onHoverCandidatePhrase).not.toHaveBeenCalledWith(undefined);
   });
 
   it('calls onHoverSplitFreeTokens with free refs on enter and undefined on leave', async () => {

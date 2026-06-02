@@ -63,7 +63,7 @@ type ArcOverlayProps = Readonly<{
  * `arc-container` element that owns the coordinate space the arc paths were measured in.
  *
  * @param props - Component props.
- * @returns The SVG + split-button overlay, or `null` when there are no arcs to draw.
+ * @returns The SVG + split-button overlay, or `undefined` when there are no arcs to draw.
  */
 export function ArcOverlay({
   arcPaths,
@@ -79,6 +79,14 @@ export function ArcOverlay({
 }: ArcOverlayProps) {
   const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
 
+  /**
+   * Marks a free-split arc segment as hovered and notifies the parent of the token refs that would
+   * become free if the split were confirmed.
+   *
+   * @param phraseId - The id of the phrase whose arc segment is being hovered.
+   * @param splitAfterTokenRef - Token ref at whose right edge the split would occur.
+   * @param freeRefs - Token refs of the tokens that would become free after the split.
+   */
   const handleSplitHoverEnter = useCallback(
     (phraseId: string, splitAfterTokenRef: string, freeRefs: string[]) => {
       setSplitHoveredArc({ phraseId, splitAfterTokenRef, kind: 'free' });
@@ -87,6 +95,7 @@ export function ArcOverlay({
     [onSplitHoverChange],
   );
 
+  /** Clears the hovered free-split arc state and notifies the parent that no tokens are free. */
   const handleSplitHoverLeave = useCallback(() => {
     setSplitHoveredArc(undefined);
     onSplitHoverChange(new Set());

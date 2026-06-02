@@ -161,6 +161,7 @@ function requiredProps(): {
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
+  tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
   return {
@@ -175,6 +176,7 @@ function requiredProps(): {
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap: new Map(),
+    tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
   };
 }

@@ -241,11 +241,8 @@ describe('ArcOverlay', () => {
 
     await userEvent.hover(screen.getByTestId('split-arc-btn'));
 
-    // onSplitHoverChange should NOT be called with refs (no tokens freed)
-    expect(onSplitHoverChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ phraseId: 'p1' }),
-      expect.anything(),
-    );
+    // onSplitHoverChange should NOT be called (no tokens freed, reshape path taken instead)
+    expect(onSplitHoverChange).not.toHaveBeenCalled();
   });
 
   it('does not call onSplitHoverChange when splitAfterTokenRef is not found in the phrase', async () => {
@@ -270,10 +267,7 @@ describe('ArcOverlay', () => {
 
     await userEvent.hover(screen.getByTestId('split-arc-btn'));
 
-    expect(onSplitHoverChange).not.toHaveBeenCalledWith(
-      expect.objectContaining({ phraseId: 'p1' }),
-      expect.anything(),
-    );
+    expect(onSplitHoverChange).not.toHaveBeenCalled();
   });
 
   it('renders the arc path when a phrase is highlighted only via candidatePhraseIds', () => {

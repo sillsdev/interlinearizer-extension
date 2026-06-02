@@ -204,8 +204,9 @@ export function PhraseBox({
   }, [phraseLink, setPhraseMode]);
 
   /**
-   * Pops a single token out of the phrase in view mode. When only two tokens remain after removal
-   * the phrase is deleted entirely (the unlink button handles the two-token case explicitly).
+   * Pops a single token out of the phrase in view mode. When only one token remains after removal
+   * the phrase is deleted entirely (the unlink button handles the two-token case explicitly, so
+   * `onRemove` is only ever wired for middle tokens of 3+ token phrases).
    *
    * @param tokenRef - Ref of the token to remove.
    */

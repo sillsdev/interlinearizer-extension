@@ -68,7 +68,7 @@ export function usePhraseHoverState(): PhraseHoverState {
   }, []);
 
   const handleSplitHoverChange = useCallback((freeTokenRefs: ReadonlySet<string>) => {
-    setSplitFreeTokenRefs(freeTokenRefs);
+    setSplitFreeTokenRefs(new Set(freeTokenRefs));
   }, []);
 
   const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {

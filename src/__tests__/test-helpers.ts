@@ -143,13 +143,22 @@ export function createTestActivationContext(): ExecutionActivationContext {
  * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
  *
  * @param phraseId - The analysis id for both the link and its corresponding `PhraseAnalysis`.
- * @param tokenRefs - Token refs to include; each ref is also used as the token's `surfaceText`.
+ * @param tokenRefs - Token refs to include.
+ * @param surfaceTexts - Surface text for each token, parallel to `tokenRefs`. Defaults to the ref
+ *   string when omitted, which is only appropriate when drift detection is not under test.
  * @returns A `PhraseAnalysisLink` with `status: 'approved'`.
  */
-export function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
+export function makePhraseLink(
+  phraseId: string,
+  tokenRefs: string[],
+  surfaceTexts?: string[],
+): PhraseAnalysisLink {
   return {
     analysisId: phraseId,
     status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
+    tokens: tokenRefs.map((ref, i) => ({
+      tokenRef: ref,
+      surfaceText: surfaceTexts?.[i] ?? ref,
+    })),
   };
 }

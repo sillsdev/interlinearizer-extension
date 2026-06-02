@@ -59,6 +59,8 @@ type SegmentViewProps = Readonly<{
   onHoverPhrase: (phraseId: string | undefined) => void;
   /** Token ref → segment id lookup; passed through to `PhraseBox` for segment-scope edit. */
   tokenSegmentMap: ReadonlyMap<string, string>;
+  /** Word token ref → flat book-level index; used to sort phrase tokens in document order. */
+  tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 }>;
@@ -85,6 +87,8 @@ type SegmentViewProps = Readonly<{
  *   `undefined` when it leaves
  * @param props.tokenSegmentMap - Token ref → segment id lookup; passed through to `PhraseBox` for
  *   segment-scope edit.
+ * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
+ *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
@@ -101,6 +105,7 @@ export function SegmentView({
   hoveredPhraseId,
   onHoverPhrase,
   tokenSegmentMap,
+  tokenDocOrder,
   wordTokenByRef,
 }: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
@@ -108,13 +113,6 @@ export function SegmentView({
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
-
-  /** Maps each token ref to its flat index within this segment for document-order phrase merges. */
-  const tokenDocOrder = useMemo(() => {
-    const map = new Map<string, number>();
-    segment.tokens.forEach((t, i) => map.set(t.ref, i));
-    return map;
-  }, [segment.tokens]);
 
   const handleArcSplit = useArcSplitHandler(phraseLinkById, tokenDocOrder);
 

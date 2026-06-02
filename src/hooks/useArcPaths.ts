@@ -45,8 +45,8 @@ export type ArcPathsResult = {
  *   the top-padding calculation.
  * @param deps - Extra dependencies that should trigger a re-measure (token data, phrase mode,
  *   etc.). The effect always re-runs when `enabled` or the computed padding changes.
- * @returns The current arc paths, per-phrase nesting levels, maximum nesting level, and the strip
- *   top padding derived from them.
+ * @returns An {@link ArcPathsResult} containing the current arc paths, maximum nesting level, strip
+ *   top padding, and the required row gap in pixels needed to accommodate cross-row arcs.
  */
 export function useArcPaths(
   containerRef: RefObject<HTMLElement | null>,

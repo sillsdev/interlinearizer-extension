@@ -58,17 +58,14 @@ export function usePhraseHoverState(): PhraseHoverState {
   const [splitFreeTokenRefs, setSplitFreeTokenRefs] = useState<ReadonlySet<string>>(new Set());
 
   const setCandidateTokenRefs = useCallback((refs: readonly string[] | undefined) => {
-    /* v8 ignore next -- callback only fires when a link icon hover fires; exercised via integration */
     setCandidateTokenRefsState(refs ? new Set(refs) : new Set());
   }, []);
 
   const handleSplitHoverChange = useCallback((freeTokenRefs: ReadonlySet<string>) => {
-    /* v8 ignore next -- callback passed to mocked ArcOverlay; exercised via integration */
     setSplitFreeTokenRefs(freeTokenRefs);
   }, []);
 
   const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {
-    /* v8 ignore next -- callback passed to mocked PhraseSlot; exercised via integration */
     setSplitFreeTokenRefs(refs ? new Set(refs) : new Set());
   }, []);
 

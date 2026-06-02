@@ -40,6 +40,23 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGlossDispatch: () => () => {},
 }));
 
+// The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
+// SegmentView's tests don't redundantly re-exercise the hook's internals; the view only forwards its
+// handlers, which a no-op stub satisfies.
+jest.mock('../../hooks/usePhraseHoverState', () => ({
+  __esModule: true,
+  usePhraseHoverState: () => ({
+    hoveredGroupKey: undefined,
+    setHoveredGroupKey: () => {},
+    candidateTokenRefs: new Set<string>(),
+    setCandidateTokenRefs: () => {},
+    splitFreeTokenRefs: new Set<string>(),
+    handleSplitHoverChange: () => {},
+    handleHoverSplitFreeTokens: () => {},
+    clearAll: () => {},
+  }),
+}));
+
 jest.mock('../../components/TokenChip');
 
 jest.mock('../../components/TokenLinkIcon', () => ({

@@ -2,23 +2,8 @@
 /// <reference types="jest" />
 
 import { renderHook } from '@testing-library/react';
-import type { PhraseAnalysisLink } from 'interlinearizer';
 import { useCandidatePhraseIds } from '../../hooks/useCandidatePhraseIds';
-
-/**
- * Builds an approved `PhraseAnalysisLink` fixture.
- *
- * @param phraseId - Phrase id.
- * @param tokenRefs - Token refs in the phrase.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId: phraseId,
-    status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
-  };
-}
+import { makePhraseLink } from '../test-helpers';
 
 describe('useCandidatePhraseIds', () => {
   it('returns an empty set when candidateTokenRefs is empty', () => {

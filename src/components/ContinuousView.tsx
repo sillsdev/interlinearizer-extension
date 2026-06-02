@@ -210,6 +210,16 @@ export default function ContinuousView({
    */
   const internalFocusedTokenRefRef = useRef<string | undefined>(undefined);
 
+  /**
+   * Tracks the "pending" phrase index for sequential arrow-button presses. Written synchronously by
+   * `step()` so that a second click before re-render reads the already-advanced value instead of
+   * the stale rendered `focusPhraseIndex`, preventing rapid double-clicks from advancing only one
+   * group instead of two.
+   */
+  const pendingPhraseIndexRef = useRef(0);
+  // Keep in sync with the rendered value so external jumps reset the pending index.
+  pendingPhraseIndexRef.current = focusPhraseIndex;
+
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
@@ -261,18 +271,19 @@ export default function ContinuousView({
     (delta: number) => {
       /* v8 ignore next -- arrow buttons are disabled when phraseGroups is empty */
       if (phraseGroups.length === 0) return;
-      const nextIndex = focusPhraseIndex + delta;
+      const nextIndex = pendingPhraseIndexRef.current + delta;
       /* v8 ignore next -- disabled buttons prevent under/overflow */
       const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, phraseGroups.length - 1);
       /* v8 ignore next -- disabled buttons prevent clicking when already at boundary */
-      if (clamped === focusPhraseIndex) return;
+      if (clamped === pendingPhraseIndexRef.current) return;
+      pendingPhraseIndexRef.current = clamped;
       const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
       if (nextRef !== undefined) {
         internalFocusedTokenRefRef.current = nextRef;
         onFocusedTokenRefChangeRef.current(nextRef);
       }
     },
-    [focusPhraseIndex, phraseGroups],
+    [phraseGroups],
   );
 
   /** Moves focus one phrase backward. */

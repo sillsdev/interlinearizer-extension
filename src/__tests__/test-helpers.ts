@@ -1,11 +1,11 @@
 /**
  * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
  *   ExecutionActivationContext that satisfies @papi/core types, a `useWebViewState` hook stub for
- *   component tests, and shared Book fixtures.
+ *   component tests, and shared Book and analysis fixtures.
  */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
-import type { Book } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
@@ -110,5 +110,20 @@ export function createTestActivationContext(): ExecutionActivationContext {
     executionToken: mockExecutionToken,
     elevatedPrivileges: mockElevatedPrivileges,
     registrations: new UnsubscriberAsyncList('test'),
+  };
+}
+
+/**
+ * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
+ *
+ * @param phraseId - The analysis id for both the link and its corresponding `PhraseAnalysis`.
+ * @param tokenRefs - Token refs to include; each ref is also used as the token's `surfaceText`.
+ * @returns A `PhraseAnalysisLink` with `status: 'approved'`.
+ */
+export function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
+  return {
+    analysisId: phraseId,
+    status: 'approved',
+    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
   };
 }

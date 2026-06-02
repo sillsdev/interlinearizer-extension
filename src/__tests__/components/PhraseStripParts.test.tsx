@@ -6,6 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { PhraseSlot, PhraseGroup, resolveIsHighlighted } from '../../components/PhraseStripParts';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -80,21 +81,6 @@ function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
  */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
-}
-
-/**
- * Creates an approved phrase link fixture.
- *
- * @param id - Phrase id.
- * @param refs - Token refs.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function mkPhraseLink(id: string, refs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId: id,
-    status: 'approved',
-    tokens: refs.map((r) => ({ tokenRef: r, surfaceText: r })),
-  };
 }
 
 /** A minimal no-focus context. */
@@ -238,7 +224,7 @@ describe('PhraseSlot', () => {
   });
 
   it('sets phraseRevealed when both neighbors are in the same hovered phrase', () => {
-    const link = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: link, firstIndex: 0 };
     const nextGroup: TokenGroup = { tokens: [mkWord('tok-b')], phraseLink: link, firstIndex: 1 };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
@@ -249,7 +235,7 @@ describe('PhraseSlot', () => {
   });
 
   it('sets phraseRevealed via focusedPhraseId when both neighbors are in the same focused phrase', () => {
-    const link = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: link, firstIndex: 0 };
     const nextGroup: TokenGroup = { tokens: [mkWord('tok-b')], phraseLink: link, firstIndex: 1 };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };

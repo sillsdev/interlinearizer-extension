@@ -88,7 +88,10 @@ export function ArcOverlay({
       </svg>
       {phraseMode.kind === 'view' &&
         arcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
-          const isRevealed = phraseId === hoveredPhraseId || phraseId === focusedPhraseId;
+          const isRevealed =
+            phraseId === hoveredPhraseId ||
+            phraseId === focusedPhraseId ||
+            candidatePhraseIds.has(phraseId);
           if (!isRevealed) return undefined;
           const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
@@ -151,7 +154,9 @@ function computeSplitFreeRefs(
     /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
     (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
   );
-  const boundaryIndex = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef) + 1;
+  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
+  if (idx < 0) return undefined;
+  const boundaryIndex = idx + 1;
   const before = ordered.slice(0, boundaryIndex);
   const after = ordered.slice(boundaryIndex);
   const freeRefs: string[] = [];

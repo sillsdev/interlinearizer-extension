@@ -9,6 +9,7 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
+import { makePhraseLink } from '../test-helpers';
 import {
   createPhrase,
   defaultAnalysis,
@@ -71,6 +72,50 @@ describe('setAnalysis', () => {
 });
 
 describe('writeGloss', () => {
+  it('removes an orphaned approved link and creates a fresh one', () => {
+    // Orphaned state: an approved link whose analysisId has no matching TokenAnalysis.
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'old-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalysisLinks).toHaveLength(1);
+    expect(tokenAnalysisLinks[0].analysisId).not.toBe('old-uuid');
+  });
+
+  it('produces exactly one approved link after writing a gloss over an orphaned link', () => {
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'old-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    const approved = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter(
+        (l) => l.status === 'approved' && l.token.tokenRef === 'tok-1',
+      );
+    expect(approved).toHaveLength(1);
+  });
+
   it('initializes gloss when the existing approved analysis has none', () => {
     // Seed an approved TokenAnalysis with no gloss field, then update it via writeGloss.
     const store = createAnalysisStore({
@@ -104,18 +149,6 @@ describe('selectApprovedGloss', () => {
 // ---------------------------------------------------------------------------
 // Phrase reducers
 // ---------------------------------------------------------------------------
-
-/**
- * Builds a minimal approved `PhraseAnalysisLink` fixture for testing.
- *
- * @param phraseId - The ID for the `PhraseAnalysis` and its link.
- * @param tokenRefs - Token refs to include in the phrase.
- * @returns A `PhraseAnalysisLink` with `status: 'approved'`.
- */
-function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  const tokens: TokenSnapshot[] = tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref }));
-  return { analysisId: phraseId, status: 'approved', tokens };
-}
 
 /**
  * Builds a `TextAnalysis` seeded with the given approved phrase link.

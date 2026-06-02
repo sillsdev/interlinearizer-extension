@@ -1,13 +1,14 @@
 /** @file Unit tests for utils/token-layout.ts. */
 /// <reference types="jest" />
 
-import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { Token } from 'interlinearizer';
 import {
   resolveFocusContext,
   resolveSlotFocus,
   groupTokens,
   buildRenderUnits,
 } from '../../utils/token-layout';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -33,21 +34,6 @@ function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
  */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
-}
-
-/**
- * Creates an approved phrase link.
- *
- * @param analysisId - Phrase id.
- * @param tokenRefs - Token refs in the phrase.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function mkPhraseLink(analysisId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId,
-    status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -77,7 +63,7 @@ describe('resolveFocusContext', () => {
 
   it('resolves a focused token that is inside a phrase', () => {
     const tok = mkWord('tok-a');
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const tokensByRef = new Map<string, Token>([['tok-a', tok]]);
     const phraseLinkByRef = new Map([['tok-a', phraseLink]]);
     const ctx = resolveFocusContext('tok-a', tokensByRef, phraseLinkByRef, new Map());
@@ -120,8 +106,11 @@ describe('resolveSlotFocus', () => {
     expect(result.isSameSegmentAsFocus).toBe(false);
   });
 
-  it('passes focusedSideIsPrev through', () => {
+  it('passes focusedSideIsPrev through when false', () => {
     expect(resolveSlotFocus('seg-1', 'seg-1', 'seg-1', false).focusedSideIsPrev).toBe(false);
+  });
+
+  it('passes focusedSideIsPrev through when undefined', () => {
     expect(
       resolveSlotFocus('seg-1', 'seg-1', 'seg-1', undefined).focusedSideIsPrev,
     ).toBeUndefined();
@@ -150,7 +139,7 @@ describe('groupTokens', () => {
   });
 
   it('groups adjacent tokens in the same phrase into one group', () => {
-    const link = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const phraseLinkByRef = new Map([
       ['tok-a', link],
       ['tok-b', link],
@@ -162,7 +151,7 @@ describe('groupTokens', () => {
   });
 
   it('produces two groups for a discontiguous phrase', () => {
-    const link = mkPhraseLink('p1', ['tok-a', 'tok-c']);
+    const link = makePhraseLink('p1', ['tok-a', 'tok-c']);
     const phraseLinkByRef = new Map([
       ['tok-a', link],
       ['tok-c', link],

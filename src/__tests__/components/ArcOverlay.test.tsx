@@ -4,9 +4,9 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { PhraseAnalysisLink } from 'interlinearizer';
 import { ArcOverlay } from '../../components/ArcOverlay';
 import type { ArcPath } from '../../utils/phrase-arc';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,21 +21,6 @@ import type { ArcPath } from '../../utils/phrase-arc';
  */
 function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {
   return { phraseId, d: `M0 0 L100 0`, midX: 50, midY: 10, splitAfterTokenRef };
-}
-
-/**
- * Builds a minimal approved `PhraseAnalysisLink` fixture.
- *
- * @param phraseId - Analysis id for the phrase.
- * @param tokenRefs - Token refs in the phrase.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId: phraseId,
-    status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
-  };
 }
 
 /** Default no-op props for `ArcOverlay`. */
@@ -257,7 +242,35 @@ describe('ArcOverlay', () => {
     );
   });
 
-  it('uses candidatePhraseIds to style the arc stroke (does not show split button)', () => {
+  it('does not call onSplitHoverChange when splitAfterTokenRef is not found in the phrase', async () => {
+    const onSplitHoverChange = jest.fn();
+    // Arc refers to 'tok-stale' which is not in the phrase token list.
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-stale')]}
+        hoveredPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+          ])
+        }
+        onSplitHoverChange={onSplitHoverChange}
+      />,
+    );
+
+    await userEvent.hover(screen.getByTestId('split-arc-btn'));
+
+    expect(onSplitHoverChange).not.toHaveBeenCalledWith(
+      expect.objectContaining({ phraseId: 'p1' }),
+      expect.anything(),
+    );
+  });
+
+  it('renders the arc path when a phrase is highlighted only via candidatePhraseIds', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <ArcOverlay
@@ -275,10 +288,28 @@ describe('ArcOverlay', () => {
         }
       />,
     );
-    // candidatePhraseIds affects arc stroke colour only; the split button requires hovered/focused.
-    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
-    // The arc path is still rendered.
     expect(document.querySelector('path')).toBeInTheDocument();
+  });
+
+  it('renders a split button when a phrase is highlighted only via candidatePhraseIds', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        hoveredPhraseId={undefined}
+        focusedPhraseId={undefined}
+        candidatePhraseIds={new Set(['p1'])}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        tokenDocOrder={
+          new Map([
+            ['tok-a', 0],
+            ['tok-b', 1],
+          ])
+        }
+      />,
+    );
+    expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
   });
 
   it('renders destructive stroke style when splitHoveredArc matches the arc', () => {

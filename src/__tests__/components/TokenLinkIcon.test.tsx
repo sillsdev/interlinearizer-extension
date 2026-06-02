@@ -5,8 +5,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
-import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { Token } from 'interlinearizer';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock
@@ -38,21 +39,6 @@ jest.mock('../../components/AnalysisStore', () => ({
  */
 function mkToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
-}
-
-/**
- * Creates an approved phrase link.
- *
- * @param analysisId - Phrase id.
- * @param tokenRefs - Token refs in the phrase.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function mkPhraseLink(analysisId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId,
-    status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
-  };
 }
 
 /** Default no-op required props for `TokenLinkIcon`. */
@@ -105,7 +91,7 @@ describe('TokenLinkIcon', () => {
   // ---------------------------------------------------------------------------
 
   it('renders an unlink button when both sides are in the same phrase', () => {
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -117,7 +103,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('clicking unlink calls splitPhraseAtBoundary (deletePhrase for 2-token phrase)', async () => {
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -136,7 +122,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('is disabled in confirm-unlink mode', () => {
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -149,7 +135,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('is disabled in edit mode for a different phrase', () => {
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -163,7 +149,7 @@ describe('TokenLinkIcon', () => {
 
   it('calls onHoverCandidatePhrase with phraseId on mouse enter and undefined on leave', async () => {
     const onHoverCandidatePhrase = jest.fn();
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -188,7 +174,7 @@ describe('TokenLinkIcon', () => {
 
   it('calls onHoverSplitFreeTokens with free refs on enter and undefined on leave', async () => {
     const onHoverSplitFreeTokens = jest.fn();
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -270,7 +256,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('merges neighbor free token into focused phrase when focus is a phrase', async () => {
-    const focusedPhrase = mkPhraseLink('p1', ['tok-a']);
+    const focusedPhrase = makePhraseLink('p1', ['tok-a']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -292,8 +278,8 @@ describe('TokenLinkIcon', () => {
   });
 
   it('merges neighbor phrase into focused phrase and deletes neighbor', async () => {
-    const focusedPhrase = mkPhraseLink('p1', ['tok-a']);
-    const neighborPhrase = mkPhraseLink('p2', ['tok-b']);
+    const focusedPhrase = makePhraseLink('p1', ['tok-a']);
+    const neighborPhrase = makePhraseLink('p2', ['tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -317,7 +303,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('absorbs free token into neighbor phrase when focus is free and neighbor is a phrase', async () => {
-    const neighborPhrase = mkPhraseLink('p2', ['tok-b']);
+    const neighborPhrase = makePhraseLink('p2', ['tok-b']);
     const focusedFreeToken = mkToken('tok-a');
     render(
       <TokenLinkIcon
@@ -346,7 +332,7 @@ describe('TokenLinkIcon', () => {
     // neighborLink = nextPhraseLink (focus is prev → neighbor is next side).
     // When neighborLink.analysisId === focusedPhraseLink.analysisId, the bridging free token
     // (prevToken = tok-b) is absorbed into the phrase.
-    const focusedPhrase = mkPhraseLink('p1', ['tok-a', 'tok-c']);
+    const focusedPhrase = makePhraseLink('p1', ['tok-a', 'tok-c']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -413,7 +399,7 @@ describe('TokenLinkIcon', () => {
 
   it('uses the false branch of focusedSideIsPrev ternaries when focus is end-ward', async () => {
     // focusedSideIsPrev=false: neighbor is prevToken/prevPhraseLink, bridging is nextToken
-    const focusedPhrase = mkPhraseLink('p1', ['tok-b']);
+    const focusedPhrase = makePhraseLink('p1', ['tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -438,7 +424,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('candidatePhraseId falls back to nextPhraseLink analysisId when prevPhraseLink is undefined', () => {
-    const nextPhrase = mkPhraseLink('p2', ['tok-b']);
+    const nextPhrase = makePhraseLink('p2', ['tok-b']);
     render(
       <TokenLinkIcon {...requiredProps()} prevPhraseLink={undefined} nextPhraseLink={nextPhrase} />,
     );
@@ -447,8 +433,8 @@ describe('TokenLinkIcon', () => {
   });
 
   it('candidatePhraseId uses prevPhraseLink analysisId when prevPhraseLink is defined and not inSamePhrase', () => {
-    const prevPhrase = mkPhraseLink('p1', ['tok-a']);
-    const nextPhrase = mkPhraseLink('p2', ['tok-b']);
+    const prevPhrase = makePhraseLink('p1', ['tok-a']);
+    const nextPhrase = makePhraseLink('p2', ['tok-b']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -466,7 +452,7 @@ describe('TokenLinkIcon', () => {
     // Set candidatePhraseId to undefined and splitFreeRefs to [] (no tokens to free).
     // This is only possible when a phrase has ≥ 4 tokens and the boundary is in the middle
     // (both halves ≥ 2 tokens). Use a 4-token phrase split at tok-b (before=[tok-a,tok-b], after=[tok-c,tok-d]).
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
     render(
       <TokenLinkIcon
         {...requiredProps()}
@@ -487,7 +473,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('highlights all tokens in a multi-token neighbor phrase when focus is free and neighbor is phrase', async () => {
-    const neighborPhrase = mkPhraseLink('p2', ['tok-b', 'tok-c']);
+    const neighborPhrase = makePhraseLink('p2', ['tok-b', 'tok-c']);
     const focusedFreeToken = mkToken('tok-a');
     const onHoverCandidateTokens = jest.fn();
     render(
@@ -515,7 +501,7 @@ describe('TokenLinkIcon', () => {
     // 4-token phrase: prevToken=tok-b, so split is after tok-b.
     // before=[tok-a, tok-b] (length 2), after=[tok-c, tok-d] (length 2) — no free tokens.
     const onHoverSplitFreeTokens = jest.fn();
-    const phraseLink = mkPhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
     render(
       <TokenLinkIcon
         {...requiredProps()}

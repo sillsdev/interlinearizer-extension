@@ -91,8 +91,8 @@ export function splitPhraseAtBoundary(
  * Computes the top padding (in pixels) required by a token strip/row so that arcs and the floating
  * phrase-controls pill both fit above the phrase boxes.
  *
- * Arc padding: `15` = `ARC_BASE_STEM` (6) + corner radius (5) + breathing room (4); each nesting
- * level adds `ARC_LEVEL_STEP` (8) px. When there are no arcs this contribution is zero.
+ * Arc padding: `ARC_BASE_STEM + ARC_CORNER_RADIUS + 4` per row plus `ARC_LEVEL_STEP` px per nesting
+ * level. When there are no arcs this contribution is zero.
  *
  * Controls headroom: when any real phrase is visible, the floating controls pill sits centred on
  * either the arc top (for discontiguous phrases) or the box top (for contiguous phrases). Its upper
@@ -110,9 +110,11 @@ export function computeStripTopPadding(
   maxArcLevel: number,
   hasRealPhrase: boolean,
 ): number {
-  const arcPadding = hasArcs ? 15 + maxArcLevel * 8 : 0;
+  const arcPadding = hasArcs
+    ? ARC_BASE_STEM + ARC_CORNER_RADIUS + 4 + maxArcLevel * ARC_LEVEL_STEP
+    : 0;
   const controlsHeadroom = hasRealPhrase ? 2 * CONTROLS_HALF_HEIGHT_PX : 0;
-  return Math.max(8, arcPadding + controlsHeadroom);
+  return Math.max(ARC_LEVEL_STEP, arcPadding + controlsHeadroom);
 }
 
 /** Stroke styling for a single phrase arc; consumed directly as SVG `<path>` attributes. */
@@ -396,7 +398,7 @@ export function buildCrossRowArcPath(
   const dx = ltr ? r : -r;
   const sw1 = ltr ? 0 : 1;
   const sw2 = ltr ? 1 : 0;
-  const midX = (tx1 + tx2 + dx - dx) / 2;
+  const midX = (tx1 + tx2) / 2;
   const d = `M ${cx1} ${y1} L ${tx1} ${mid - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${mid} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${y2}`;
   return { d, midX, midY: mid };
 }

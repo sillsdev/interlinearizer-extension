@@ -128,9 +128,14 @@ const analysisSlice = createSlice({
             existingAnalysis.gloss[lang] = value;
             return;
           }
+          // The approved link references a missing analysis (orphaned link from corruption or a
+          // migration). Remove it so we don't accumulate duplicate approved links below.
+          state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+            (l) => l !== existingLink,
+          );
         }
 
-        // No approved link exists, or the link's analysis is missing — create a new one.
+        // No approved link exists, or the orphaned link was removed above — create a new one.
         const newAnalysis: TokenAnalysis = { id, surfaceText, gloss: { [lang]: value } };
         const newLink: TokenAnalysisLink = {
           analysisId: id,

@@ -1,7 +1,6 @@
 /** @file Unit tests for utils/phrase-arc.ts */
 /// <reference types="jest" />
 
-import type { PhraseAnalysisLink } from 'interlinearizer';
 import {
   ARC_BASE_STEM,
   buildSameRowArcPath,
@@ -11,6 +10,7 @@ import {
   routeAroundBoxes,
   splitPhraseAtBoundary,
 } from '../../utils/phrase-arc';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -402,21 +402,6 @@ describe('getArcStrokeProps', () => {
 // ---------------------------------------------------------------------------
 // splitPhraseAtBoundary
 // ---------------------------------------------------------------------------
-
-/**
- * Builds a minimal `PhraseAnalysisLink` fixture.
- *
- * @param phraseId - Analysis id for the phrase.
- * @param tokenRefs - Token refs in document order.
- * @returns An approved `PhraseAnalysisLink`.
- */
-function makePhraseLink(phraseId: string, tokenRefs: string[]): PhraseAnalysisLink {
-  return {
-    analysisId: phraseId,
-    status: 'approved',
-    tokens: tokenRefs.map((ref) => ({ tokenRef: ref, surfaceText: ref })),
-  };
-}
 
 describe('splitPhraseAtBoundary', () => {
   it('no-ops when splitAfterTokenRef is not found in the phrase', () => {

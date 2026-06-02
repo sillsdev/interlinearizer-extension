@@ -608,6 +608,19 @@ describe('ContinuousView arrow navigation', () => {
 
     expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('ch2-tok-0');
   });
+
+  it('advances two groups on rapid double-click before re-render', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+    const next = screen.getByRole('button', { name: 'Next token' });
+
+    await userEvent.click(next);
+    await userEvent.click(next);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
+  });
 });
 
 // ---------------------------------------------------------------------------

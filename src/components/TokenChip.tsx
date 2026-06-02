@@ -87,7 +87,7 @@ export function TokenChip({
         </span>
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
-          className="tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default"
+          className="tw:gloss-input"
           disabled={disabled}
           placeholder="gloss"
           style={{ fieldSizing: 'content', minWidth: '5ch' }}

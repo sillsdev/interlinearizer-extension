@@ -18,10 +18,6 @@ import {
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 
-// ---------------------------------------------------------------------------
-// Internal callback context — holds refs so useGlossDispatch stays stable
-// ---------------------------------------------------------------------------
-
 /**
  * Stable ref-container passed through context so {@link useGlossDispatch} can call the latest
  * `onSave` / `onGlossChange` callbacks without recreating its returned function on every parent
@@ -36,10 +32,6 @@ type CallbackRefs = {
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
 const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
-
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
@@ -106,10 +98,6 @@ export function AnalysisStoreProvider({
     </ReduxProvider>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Hooks
-// ---------------------------------------------------------------------------
 
 /**
  * Returns the approved gloss string for the given token in the store's active analysis language,

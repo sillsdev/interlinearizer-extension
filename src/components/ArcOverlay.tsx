@@ -208,7 +208,7 @@ export function ArcOverlay({
     <>
       <svg
         aria-hidden="true"
-        className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-24"
+        className="tw:arc-svg-layer tw:z-24"
         style={{ height: '100%', overflow: 'visible', width: '100%' }}
       >
         {unfocusedArcPaths.map(renderArcPath)}
@@ -216,7 +216,7 @@ export function ArcOverlay({
       {focusedArcPaths.length > 0 && (
         <svg
           aria-hidden="true"
-          className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-34"
+          className="tw:arc-svg-layer tw:z-34"
           style={{ height: '100%', overflow: 'visible', width: '100%' }}
         >
           {focusedArcPaths.map(renderArcPath)}
@@ -225,7 +225,7 @@ export function ArcOverlay({
       {hoveredArcPaths.length > 0 && (
         <svg
           aria-hidden="true"
-          className="tw:pointer-events-none tw:absolute tw:inset-0 tw:z-44"
+          className="tw:arc-svg-layer tw:z-44"
           style={{ height: '100%', overflow: 'visible', width: '100%' }}
         >
           {hoveredArcPaths.map(renderArcPath)}

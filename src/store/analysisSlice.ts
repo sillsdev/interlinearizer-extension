@@ -227,10 +227,6 @@ export const {
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 
-// ---------------------------------------------------------------------------
-// Selectors
-// ---------------------------------------------------------------------------
-
 /**
  * Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input.
  *

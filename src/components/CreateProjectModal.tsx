@@ -128,7 +128,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="project-name"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3"
+          className="tw:modal-form-input tw:mb-3"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
@@ -138,7 +138,7 @@ export function CreateProjectModal({
         </label>
         <textarea
           id="project-description"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-3 tw:resize-none"
+          className="tw:modal-form-input tw:mb-3 tw:resize-none"
           rows={2}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -149,7 +149,7 @@ export function CreateProjectModal({
         </label>
         <input
           id="analysis-language"
-          className="tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm tw:mb-4"
+          className="tw:modal-form-input tw:mb-4"
           value={analysisLanguages}
           onChange={(e) => setAnalysisLanguages(e.target.value)}
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}

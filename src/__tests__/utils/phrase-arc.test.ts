@@ -8,7 +8,6 @@ import {
   buildCrossRowArcPath,
   computeAllArcPaths,
   getArcStrokeProps,
-  routeAroundBoxes,
   splitPhraseAtBoundary,
 } from '../../utils/phrase-arc';
 import { makePhraseLink } from '../test-helpers';
@@ -428,93 +427,6 @@ describe('computeAllArcPaths', () => {
     const { requiredRowGapPx: gapSingle } = computeAllArcPaths(single);
     const { requiredRowGapPx: gapOverlapping } = computeAllArcPaths(overlapping);
     expect(gapOverlapping).toBeGreaterThan(gapSingle);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// routeAroundBoxes
-// ---------------------------------------------------------------------------
-
-describe('routeAroundBoxes', () => {
-  it('returns a valid SVG path string', () => {
-    const a = { left: 10, right: 30, top: 50, bottom: 70 };
-    const b = { left: 10, right: 30, top: 150, bottom: 170 };
-    const { d } = routeAroundBoxes(a, b, []);
-    expect(d).toMatch(/^M /);
-  });
-
-  it('produces a path with the same shape as buildCrossRowArcPath when there are no obstacles', () => {
-    const a = { left: 10, right: 30, top: 50, bottom: 70 };
-    const b = { left: 60, right: 80, top: 150, bottom: 170 };
-    const routed = routeAroundBoxes(a, b, []);
-    const direct = buildCrossRowArcPath(a, b);
-    expect(routed.d).toBe(direct.d);
-  });
-
-  it('produces a different path when an obstacle straddles midX inside the arc vertical span', () => {
-    // cx1 = cx2 = 100, so midX = 100. Obstacle straddles midX (90–110) inside the arc span.
-    // midY = (70+200)/2. Obstacle must have top < 70 (y1) and bottom > 200 (y2) to be in range.
-    const a = { left: 90, right: 110, top: 50, bottom: 70 };
-    const b = { left: 90, right: 110, top: 200, bottom: 220 };
-    const obstacle = { left: 90, right: 110, top: 55, bottom: 210 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
-    const unobstructed = routeAroundBoxes(a, b, [a, b]);
-    expect(routed.d).not.toBe(unobstructed.d);
-  });
-
-  it('routes left when midX is closer to the left edge of the obstacle', () => {
-    // cx1 = cx2 = 100, midX = 100. Obstacle is 96–130: distLeft=4, distRight=30 → route left.
-    // Obstacle top must be < 20 (y1) and bottom > 200 (y2) to be in range.
-    const a = { left: 80, right: 120, top: 0, bottom: 20 };
-    const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const obstacle = { left: 96, right: 130, top: 10, bottom: 210 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
-    const unobstructed = routeAroundBoxes(a, b, [a, b]);
-    expect(routed.d).not.toBe(unobstructed.d);
-    expect(routed.midX).toBeLessThan(unobstructed.midX);
-  });
-
-  it('routes right when midX is closer to the right edge of the obstacle', () => {
-    // cx1 = cx2 = 100, midX = 100. Obstacle is 70–104: distLeft=30, distRight=4 → route right.
-    // Obstacle top must be < 20 (y1) and bottom > 200 (y2) to be in range.
-    const a = { left: 80, right: 120, top: 0, bottom: 20 };
-    const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const obstacle = { left: 70, right: 104, top: 10, bottom: 210 };
-    const routed = routeAroundBoxes(a, b, [a, b, obstacle]);
-    const unobstructed = routeAroundBoxes(a, b, [a, b]);
-    expect(routed.d).not.toBe(unobstructed.d);
-    expect(routed.midX).toBeGreaterThan(unobstructed.midX);
-  });
-
-  it('skips obstacles where midX is not strictly inside (midX equals left boundary)', () => {
-    // midX = 100. Obstacle starts exactly at 100 — condition is midX > obs.left, so not triggered.
-    const a = { left: 80, right: 120, top: 0, bottom: 20 };
-    const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const obstacle = { left: 100, right: 150, top: 10, bottom: 210 };
-    const withObs = routeAroundBoxes(a, b, [a, b, obstacle]);
-    const withoutObs = routeAroundBoxes(a, b, [a, b]);
-    expect(withObs.d).toBe(withoutObs.d);
-  });
-
-  it('skips obstacles where midX is not strictly inside (midX equals right boundary)', () => {
-    // midX = 100. Obstacle ends exactly at 100 — condition is midX < obs.right, so not triggered.
-    const a = { left: 80, right: 120, top: 0, bottom: 20 };
-    const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    const obstacle = { left: 50, right: 100, top: 10, bottom: 210 };
-    const withObs = routeAroundBoxes(a, b, [a, b, obstacle]);
-    const withoutObs = routeAroundBoxes(a, b, [a, b]);
-    expect(withObs.d).toBe(withoutObs.d);
-  });
-
-  it('skips obstacles outside the arc vertical span', () => {
-    // midX = 100, obstacle straddles midX horizontally but does not span the full gap (top >= y1).
-    const a = { left: 80, right: 120, top: 0, bottom: 20 };
-    const b = { left: 80, right: 120, top: 200, bottom: 220 };
-    // Obstacle starts below y1=20, so obs.top < y1 is false → filtered out.
-    const outside = { left: 90, right: 110, top: 25, bottom: 210 };
-    const withObs = routeAroundBoxes(a, b, [a, b, outside]);
-    const withoutObs = routeAroundBoxes(a, b, [a, b]);
-    expect(withObs.d).toBe(withoutObs.d);
   });
 });
 

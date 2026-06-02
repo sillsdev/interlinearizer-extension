@@ -42,7 +42,7 @@ function PhraseGlossInput({
   return (
     <input
       aria-label="Phrase gloss"
-      className="tw:mt-0.5 tw:block tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default"
+      className="tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
       placeholder="gloss"
@@ -68,11 +68,6 @@ type PhraseBoxProps = Readonly<{
   tokens: (Token & { type: 'word' })[];
   /** The approved `PhraseAnalysisLink` shared by all tokens in this box, if any. */
   phraseLink: PhraseAnalysisLink | undefined;
-  /**
-   * Distance in pixels above the box top to push the controls pill, so it aligns with the arc's
-   * flat top rather than floating directly above the box. Defaults to `0`.
-   */
-  arcOffsetPx?: number;
   /**
    * When `false`, the phrase gloss input is hidden even if this box has a real phrase link. Used
    * for non-first fragments of a discontiguous phrase so the gloss input appears only once.
@@ -125,7 +120,6 @@ type PhraseBoxProps = Readonly<{
  * @param props.onFocusPhrase - Called when any child gloss input receives focus
  * @param props.tokens - Tokens belonging to this phrase
  * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
- * @param props.arcOffsetPx - Extra upward offset for the controls pill so it sits at the arc top
  * @param props.showGlossInput - When false, hides the gloss input; used for non-first fragments of
  *   a discontiguous phrase so the input appears only once
  * @param props.showControls - When true, edit/unlink buttons are shown above this fragment (parent
@@ -143,7 +137,6 @@ export function PhraseBox({
   onFocusPhrase,
   tokens,
   phraseLink,
-  arcOffsetPx = 0,
   showGlossInput = true,
   showControls = true,
 }: PhraseBoxProps) {
@@ -157,8 +150,6 @@ export function PhraseBox({
   } = usePhraseStripContext();
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
-  // For the first token: look up phrase membership to check if it's in any phrase (incl. another).
-  // Solo boxes only have one token; multi-token boxes share a phraseLink so we look up tok[0].
   const tokenPhraseLinkFromStore = usePhraseLinkForToken(tokens[0].ref);
   const isInAnyPhrase = tokenPhraseLinkFromStore !== undefined;
   const isThisPhrase =
@@ -279,7 +270,6 @@ export function PhraseBox({
   // splits into two free tokens, but each is shown on its own chip rather than as a box).
   const isBoxSplitFree = tokens.length === 1 && (splitFreeTokenRefs?.has(tokens[0].ref) ?? false);
 
-  // --- view mode ---
   if (phraseMode.kind === 'view') {
     const viewBorderClass = (() => {
       if (isBoxSplitFree) return 'tw:border-destructive tw:bg-muted/20';
@@ -287,27 +277,14 @@ export function PhraseBox({
       if (isHighlighted) return 'tw:border-white/55 tw:bg-muted/25';
       return 'tw:border-border/40 tw:bg-muted/20';
     })();
-    const baseClass = `tw:inline-flex tw:flex-col tw:rounded tw:border ${viewBorderClass} tw:px-0.5 tw:py-0.5`;
-
-    // The pill is centred on the arc top. To keep controls reachable while the pointer moves up
-    // through the gap between the box and the pill, extend the transparent span all the way to the
-    // pill's top edge: arcOffsetPx (box-to-arc distance) + CONTROLS_HALF_HEIGHT_PX (half pill).
-    const hoverZoneHeightPx = arcOffsetPx + 10; // 10 = CONTROLS_HALF_HEIGHT_PX
+    const baseClass = `tw:phrase-box-base ${viewBorderClass}`;
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
         {isRealPhrase && showControls && (
           <span
-            aria-hidden="true"
-            className="tw:absolute tw:left-0 tw:right-0"
-            style={{ top: `-${hoverZoneHeightPx}px`, height: `${hoverZoneHeightPx}px` }}
-          />
-        )}
-        {isRealPhrase && showControls && (
-          <span
-            className="tw:absolute tw:z-20 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
+            className="tw:absolute tw:top-0 tw:z-50 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
-            style={{ top: `-${arcOffsetPx}px` }}
           >
             <button
               aria-label="Edit phrase"
@@ -340,9 +317,9 @@ export function PhraseBox({
           role="button"
           tabIndex={-1}
         >
-          <span className="tw:inline-flex tw:items-start tw:gap-1">
+          <span className="tw:phrase-token-row">
             {tokens.map((token, i) => (
-              <span key={token.ref} className="tw:inline-flex tw:items-start tw:gap-1">
+              <span key={token.ref} className="tw:phrase-token-row">
                 {i > 0 && isRealPhrase && (
                   <MemoizedTokenLinkIcon
                     slotFocus={NO_SLOT_FOCUS}
@@ -378,12 +355,11 @@ export function PhraseBox({
     );
   }
 
-  // --- confirm-unlink mode ---
   if (phraseMode.kind === 'confirm-unlink') {
     const isThisUnlinkTarget = isRealPhrase && phraseLink.analysisId === phraseMode.phraseId;
     const baseClass = isThisUnlinkTarget
-      ? 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-destructive tw:bg-muted/30 tw:px-0.5 tw:py-0.5'
-      : 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-0.5 tw:py-0.5 tw:opacity-40';
+      ? 'tw:phrase-box-base tw:border-destructive tw:bg-muted/30'
+      : 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/20 tw:opacity-40';
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
@@ -393,7 +369,7 @@ export function PhraseBox({
           data-phrase-box="true"
           data-phrase-id={phraseLink?.analysisId}
         >
-          <span className="tw:inline-flex tw:items-start tw:gap-1">
+          <span className="tw:phrase-token-row">
             {tokens.map((token) => (
               <MemoizedTokenChip key={token.ref} disabled onFocus={handleFocus} token={token} />
             ))}
@@ -406,34 +382,23 @@ export function PhraseBox({
     );
   }
 
-  // --- edit mode ---
-
   const isInEditTarget = isThisPhrase && phraseLink?.analysisId === phraseMode.phraseId;
 
-  // Tokens in a different segment from the phrase being edited are disabled to enforce the
-  // single-segment phrase invariant.
   const isInWrongSegment =
     !isInEditTarget &&
     editPhraseSegmentId !== undefined &&
     tokenSegmentMap.get(tokens[0].ref) !== editPhraseSegmentId;
 
-  // Tokens that belong to a *different* phrase, or are outside the edited phrase's segment, are
-  // disabled.
   const isDisabled = (isInAnyPhrase && !isInEditTarget) || isInWrongSegment;
 
   const isSelected = isInEditTarget;
 
-  // Outer container style: disabled phrases fade out; selected (edit-target) gets a ring;
-  // free tokens are clickable with a subtle border.
   const containerClass = (() => {
-    if (isDisabled)
-      return 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-border/40 tw:bg-muted/10 tw:px-0.5 tw:py-0.5 tw:opacity-40';
-    if (isSelected)
-      return 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-ring tw:bg-muted/30 tw:px-0.5 tw:py-0.5';
-    return 'tw:inline-flex tw:flex-col tw:rounded tw:border tw:border-border/40 tw:bg-muted/20 tw:px-0.5 tw:py-0.5 tw:cursor-pointer';
+    if (isDisabled) return 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/10 tw:opacity-40';
+    if (isSelected) return 'tw:phrase-box-base tw:border-ring tw:bg-muted/30';
+    return 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/20 tw:cursor-pointer';
   })();
 
-  // In edit mode with the target phrase: each token chip is individually clickable to remove it.
   if (isInEditTarget) {
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -447,7 +412,7 @@ export function PhraseBox({
         data-phrase-box="true"
         data-phrase-id={phraseLink?.analysisId}
       >
-        <span className="tw:inline-flex tw:items-start tw:gap-1">
+        <span className="tw:phrase-token-row">
           {tokens.map((token) => (
             <span
               key={token.ref}
@@ -469,7 +434,6 @@ export function PhraseBox({
     );
   }
 
-  // Free token in edit mode (or disabled phrase box).
   const handleBoxClick = () => {
     /* v8 ignore next -- isDisabled box uses aria-disabled; keyboard focus is prevented */
     if (isDisabled) return;
@@ -494,7 +458,7 @@ export function PhraseBox({
       role="button"
       tabIndex={isDisabled ? -1 : 0}
     >
-      <span className="tw:inline-flex tw:items-start tw:gap-1">
+      <span className="tw:phrase-token-row">
         {tokens.map((token) => (
           <MemoizedTokenChip key={token.ref} disabled onFocus={handleFocus} token={token} />
         ))}

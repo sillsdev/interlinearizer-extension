@@ -36,7 +36,6 @@ jest.mock('../../components/PhraseBox', () => ({
     isHighlighted,
     showControls,
     showGlossInput,
-    arcOffsetPx,
     splitFreeTokenRefs,
     onFocusPhrase,
   }: Readonly<{
@@ -47,7 +46,6 @@ jest.mock('../../components/PhraseBox', () => ({
     onFocusPhrase: () => void;
     showControls: boolean;
     showGlossInput: boolean;
-    arcOffsetPx: number;
     splitFreeTokenRefs: ReadonlySet<string>;
   }>) => (
     <button
@@ -56,7 +54,6 @@ jest.mock('../../components/PhraseBox', () => ({
       data-highlighted={isHighlighted ? 'true' : 'false'}
       data-controls={showControls ? 'true' : 'false'}
       data-gloss={showGlossInput ? 'true' : 'false'}
-      data-arc-offset={String(arcOffsetPx)}
       data-split-free={[...splitFreeTokenRefs].join(',')}
       onClick={onFocusPhrase}
     >
@@ -274,7 +271,6 @@ describe('PhraseGroup', () => {
     splitFreeTokenRefs: new Set(),
     showControls: false,
     showGlossInput: true,
-    arcOffsetPx: 0,
     allowHover: false,
     onHoverEnter: jest.fn(),
     onHoverLeave: jest.fn(),
@@ -342,7 +338,6 @@ describe('PhraseStrip', () => {
       hoveredGroupKey: undefined,
       candidateTokenRefs: new Set(),
       splitFreeTokenRefs: new Set(),
-      arcLevelByPhraseId: new Map(),
       onHoverPhrase: jest.fn(),
       setHoveredGroupKey: jest.fn(),
       onFocusPhrase: jest.fn(),
@@ -424,13 +419,6 @@ describe('PhraseStrip', () => {
       />,
     );
     expect(document.querySelector('[data-split-free="tok-a"]')).not.toBeInTheDocument();
-  });
-
-  it('uses a zero arc offset when the phrase has no arc level', () => {
-    const link = makePhraseLink('p1', ['tok-a']);
-    const items = [groupItem(link, ['tok-a'])];
-    render(<PhraseStrip {...stripProps(items)} />);
-    expect(document.querySelector('[data-arc-offset="0"]')).toBeInTheDocument();
   });
 
   it('wires hover and focus callbacks for real phrases', () => {

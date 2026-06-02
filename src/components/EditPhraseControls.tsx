@@ -22,12 +22,9 @@ type EditPhraseControlsProps = Readonly<{
  */
 export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPhraseControlsProps) {
   return (
-    <div
-      className="tw:inline-flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:shadow"
-      data-testid="edit-phrase-controls"
-    >
+    <div className="tw:overlay-pill" data-testid="edit-phrase-controls">
       <button
-        className="tw:rounded tw:border tw:border-ring tw:bg-ring tw:px-2 tw:py-0.5 tw:text-background tw:hover:opacity-90"
+        className="tw:pill-btn-primary"
         data-testid="done-edit-btn"
         onClick={() => setPhraseMode({ kind: 'view' })}
         type="button"
@@ -35,7 +32,7 @@ export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPh
         Done
       </button>
       <button
-        className="tw:rounded tw:border tw:border-border tw:bg-muted tw:px-2 tw:py-0.5 tw:text-foreground tw:hover:bg-muted/80"
+        className="tw:pill-btn-secondary"
         data-testid="cancel-phrase-btn"
         onClick={() => setPhraseMode({ ...phraseMode, revert: true })}
         type="button"

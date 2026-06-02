@@ -5,11 +5,6 @@ import { computeAllArcPaths, computeStripTopPadding, type ArcPath } from '../uti
 export type ArcPathsResult = {
   /** SVG arc path strings keyed by phraseId, drawn above the strip for discontiguous phrases. */
   arcPaths: ArcPath[];
-  /**
-   * Nesting level per phraseId; used to compute the controls pill offset so it aligns with the arc
-   * top.
-   */
-  arcLevelByPhraseId: Map<string, number>;
   /** Maximum nesting level across all visible arcs; drives dynamic top padding. */
   maxArcLevel: number;
   /** Top padding (px) the strip needs to clear the highest arc and the hover controls pill. */
@@ -54,7 +49,6 @@ export function useArcPaths(
   deps: readonly unknown[],
 ): ArcPathsResult {
   const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
-  const [arcLevelByPhraseId, setArcLevelByPhraseId] = useState<Map<string, number>>(new Map());
   const [maxArcLevel, setMaxArcLevel] = useState(0);
   const [requiredRowGapPx, setRequiredRowGapPx] = useState(0);
 
@@ -83,23 +77,12 @@ export function useArcPaths(
    * @param container - The element to measure phrase boxes inside.
    */
   const measure = useCallback((container: Element) => {
-    const {
-      paths,
-      levelByPhraseId,
-      maxLevel,
-      requiredRowGapPx: rowGap,
-    } = computeAllArcPaths(container);
+    const { paths, maxLevel, requiredRowGapPx: rowGap } = computeAllArcPaths(container);
     setArcPaths((prev) => {
       const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
       const prevKey = prev.map(key).join('|');
       const nextKey = paths.map(key).join('|');
       return prevKey === nextKey ? prev : paths;
-    });
-    setArcLevelByPhraseId((prev) => {
-      const changed =
-        prev.size !== levelByPhraseId.size ||
-        [...levelByPhraseId.entries()].some(([id, level]) => prev.get(id) !== level);
-      return changed ? new Map(levelByPhraseId) : prev;
     });
     setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
     setRequiredRowGapPx((prev) => (prev === rowGap ? prev : rowGap));
@@ -124,7 +107,6 @@ export function useArcPaths(
     const container = enabled ? containerRef.current : undefined;
     if (!container) {
       setArcPaths((prev) => (prev.length === 0 ? prev : []));
-      setArcLevelByPhraseId((prev) => (prev.size === 0 ? prev : new Map()));
       setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
       setRequiredRowGapPx((prev) => (prev === 0 ? prev : 0));
       return;
@@ -134,5 +116,5 @@ export function useArcPaths(
     // one extra pass because arc count doesn't change between passes.
   }, [containerRef, enabled, stripTopPadding, depsVersion, measure]);
 
-  return { arcPaths, arcLevelByPhraseId, maxArcLevel, stripTopPadding, requiredRowGapPx };
+  return { arcPaths, maxArcLevel, stripTopPadding, requiredRowGapPx };
 }

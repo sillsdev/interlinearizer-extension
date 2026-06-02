@@ -208,10 +208,6 @@ export function getArcStrokeProps(
   hoveredPhraseId: string | undefined,
   focusedPhraseId: string | undefined,
 ): ArcStrokeProps {
-  // Matches the unhighlighted phrase-box border (`tw:border-border/40`) so a line and the boxes it
-  // joins share the same visual weight. strokeWidth 2 keeps a 1px SVG line from disappearing once
-  // alpha-composited at 40% opacity. Uses `--border` (not `--color-border`) because Tailwind 4's
-  // `@theme inline` inlines the latter at build time and only the former is a runtime variable.
   const dimmed: ArcStrokeProps = {
     stroke: 'var(--border)',
     strokeOpacity: 0.5,
@@ -370,15 +366,6 @@ export function computeAllArcPaths(container: Element): ArcState {
   const containerRect = container.getBoundingClientRect();
   const { scrollLeft, scrollTop } = container;
 
-  // Collect all phrase-box elements and their scroll-space rects.
-  const allBoxRects: {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-    width: number;
-    height: number;
-  }[] = [];
   const boxesByPhrase = new Map<
     string,
     {
@@ -402,7 +389,6 @@ export function computeAllArcPaths(container: Element): ArcState {
     const lastTokenRef = el.getAttribute('data-last-token-ref') ?? '';
     const viewportRect = el.getBoundingClientRect();
     const rect = toScrollSpace(viewportRect, containerRect, scrollLeft, scrollTop);
-    allBoxRects.push(rect);
     const list = boxesByPhrase.get(id) ?? [];
     list.push({ rect, viewportRect, lastTokenRef });
     boxesByPhrase.set(id, list);
@@ -489,7 +475,7 @@ export function computeAllArcPaths(container: Element): ArcState {
         const { d, midX, midY } = buildSameRowArcPath(a, b, stem);
         paths.push({ phraseId, d, midX, midY, splitAfterTokenRef: boxes[i].lastTokenRef });
       } else {
-        const { midX } = routeAroundBoxes(a, b, allBoxRects, (a.bottom + b.top) / 2);
+        const midX = ((a.left + a.right) / 2 + (b.left + b.right) / 2) / 2;
         // The lower row's highest same-row arc peaks at b.top minus its protrusion height. The
         // cross-row arc must sit one ARC_LEVEL_STEP above that peak so they don't overlap.
         const lowerRowMaxLevel = maxLevelByRowTop.get(Math.round(b.top)) ?? -1;
@@ -575,29 +561,20 @@ export function computeAllArcPaths(container: Element): ArcState {
     /* v8 ignore next -- gapArcs is non-empty; Math.min over a non-empty array always yields a number */
     const gapUpperBottom = Math.min(...gapArcs.map((d) => d.upperBottom));
 
-    // Deepest arc sits this far below the upper boxes. Below it the gap must still fit one
-    // CROSS_ROW_ARC_CLEARANCE separation slot plus the lower row's protruding same-row arcs.
-    // Measuring from gapUpperBottom keeps requiredRowGapPx in sync with where the stack is actually
-    // drawn, so once the CSS gap widens to this value no arc ever needs clamping above its origin
-    // box. The single uniform clearance below the stack also matches the spacing between stacked
-    // arcs, so there's no leftover empty slot between the cross-row stack and the lower-row arcs.
     const deepestMidY = gapMinMidY + maxGapLevel * CROSS_ROW_ARC_CLEARANCE;
     const neededGap =
       deepestMidY - gapUpperBottom + CROSS_ROW_ARC_CLEARANCE + gapLowerRowProtrusion;
     if (neededGap > requiredRowGapPx) requiredRowGapPx = neededGap;
 
-    // Spread midY values: start from gapMinMidY (just below the upper boxes) and step downward
-    // (increasing y) per level so arcs stack within the gap without rising above their origins. No
-    // upper clamp — requiredRowGapPx reserves enough room that the whole stack fits below b.top.
     gapArcs.forEach((desc) => {
       /* v8 ignore next -- levels.set is called for every desc above, so get() never returns undefined */
       const level = levels.get(desc) ?? 0;
       const spreadMidY = gapMinMidY + level * CROSS_ROW_ARC_CLEARANCE;
-      const { d, midX, midY } = routeAroundBoxes(desc.a, desc.b, allBoxRects, spreadMidY);
+      const { d, midY } = buildCrossRowArcPath(desc.a, desc.b, desc.midX, spreadMidY);
       paths.push({
         phraseId: desc.phraseId,
         d,
-        midX,
+        midX: desc.midX,
         midY,
         splitAfterTokenRef: desc.splitAfterTokenRef,
       });
@@ -637,25 +614,27 @@ export function buildSameRowArcPath(
 }
 
 /**
- * Builds an SVG path string and scroll-space midpoint for a cross-row downward S-curve arc
- * connecting two boxes in different rows. Coordinates are expressed in scroll-space (relative to
- * the scroll container's content origin). The horizontal mid-section sits at the vertical centre of
- * the gap between rows so it never overlaps the boxes above or below.
+ * Builds an SVG path string for a cross-row downward S-curve arc connecting two boxes in different
+ * rows. Coordinates are expressed in scroll-space (relative to the scroll container's content
+ * origin).
  *
  * @param a - Scroll-space rect of the earlier (upper) box.
  * @param b - Scroll-space rect of the later (lower) box.
+ * @param midX - Horizontal midpoint for the crossing segment. Defaults to the average of the two
+ *   box centres.
+ * @param midY - Vertical midpoint for the crossing segment. Defaults to the centre of the gap
+ *   between `a` and `b`. Pass an explicit value to spread multiple arcs through the same gap.
  * @returns Object containing the SVG path `d` attribute string and the arc's visual midpoint.
  */
 export function buildCrossRowArcPath(
   a: { left: number; right: number; bottom: number },
   b: { left: number; right: number; top: number },
+  midX: number = ((a.left + a.right) / 2 + (b.left + b.right) / 2) / 2,
+  midY: number = (a.bottom + b.top) / 2,
 ): { d: string; midX: number; midY: number } {
   const r = ARC_CORNER_RADIUS;
   const cx1 = (a.left + a.right) / 2;
-  const y1 = a.bottom;
   const cx2 = (b.left + b.right) / 2;
-  const y2 = b.top;
-  const mid = (y1 + y2) / 2;
   const ltr = cx2 >= cx1;
   const nudge = Math.max(0, 2 * r - Math.abs(cx2 - cx1)) / 2;
   const tx1 = cx1 + (ltr ? -nudge : nudge);
@@ -663,76 +642,6 @@ export function buildCrossRowArcPath(
   const dx = ltr ? r : -r;
   const sw1 = ltr ? 0 : 1;
   const sw2 = ltr ? 1 : 0;
-  const midX = (tx1 + tx2) / 2;
-  const d = `M ${cx1} ${y1} L ${tx1} ${mid - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${mid} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${y2}`;
-  return { d, midX, midY: mid };
-}
-
-/**
- * Builds a cross-row/cross-segment arc path that routes around obstacle phrase boxes whose y-ranges
- * overlap the arc's vertical span. For each obstacle, the arc's mid-x control point is nudged left
- * or right — choosing the side that requires less horizontal deviation — so the arc passes to the
- * side of the box rather than through it. Multiple obstacles are processed in top-to-bottom order
- * with the nudges accumulated. If there are no relevant obstacles the result is identical to
- * {@link buildCrossRowArcPath}.
- *
- * @param a - Scroll-space rect of the earlier (upper) box.
- * @param b - Scroll-space rect of the later (lower) box.
- * @param obstacles - All phrase-box rects in scroll-space (including `a` and `b`; they are filtered
- *   out internally because their y-range does not overlap the arc's interior).
- * @param midY - Vertical midpoint for the horizontal crossing segment. Defaults to the centre of
- *   the gap between `a` and `b`. Pass an explicit value to spread multiple arcs through the same
- *   gap so they don't overlap.
- * @returns Object containing the SVG path `d` attribute string and the arc's visual midpoint.
- */
-export function routeAroundBoxes(
-  a: { left: number; right: number; top: number; bottom: number },
-  b: { left: number; right: number; top: number; bottom: number },
-  obstacles: { left: number; right: number; top: number; bottom: number }[],
-  midY: number = (a.bottom + b.top) / 2,
-): { d: string; midX: number; midY: number } {
-  const r = ARC_CORNER_RADIUS;
-  const cx1 = (a.left + a.right) / 2;
-  const y1 = a.bottom;
-  const cx2 = (b.left + b.right) / 2;
-  const y2 = b.top;
-
-  // Boxes whose vertical range overlaps the arc's interior span (exclusive of a and b themselves).
-  const relevant = obstacles
-    .filter((obs) => obs !== a && obs !== b && obs.top < y1 && obs.bottom > y2)
-    .sort((p, q) => p.top - q.top);
-
-  let midX = (cx1 + cx2) / 2;
-
-  relevant.forEach((obs) => {
-    // Only act when midX falls inside the obstacle's horizontal extent.
-    if (midX > obs.left && midX < obs.right) {
-      // midX is inside the obstacle — choose the side that requires less deviation.
-      const distLeft = midX - obs.left;
-      const distRight = obs.right - midX;
-      if (distLeft <= distRight) {
-        // Route to the left: push midX past the left edge of the obstacle.
-        midX = obs.left - r;
-      } else {
-        // Route to the right: push midX past the right edge of the obstacle.
-        midX = obs.right + r;
-      }
-    }
-  });
-
-  // Build the S-curve via midX: first leg cx1→midX, second leg midX→cx2.
-  const ltr1 = midX >= cx1;
-  const nudge1 = Math.max(0, 2 * r - Math.abs(midX - cx1)) / 2;
-  const tx1 = cx1 + (ltr1 ? -nudge1 : nudge1);
-  const dx1 = ltr1 ? r : -r;
-  const sw1 = ltr1 ? 0 : 1;
-
-  const ltr2 = cx2 >= midX;
-  const nudge2 = Math.max(0, 2 * r - Math.abs(cx2 - midX)) / 2;
-  const tx2 = cx2 + (ltr2 ? nudge2 : -nudge2);
-  const dx2 = ltr2 ? r : -r;
-  const sw2 = ltr2 ? 1 : 0;
-
-  const d = `M ${cx1} ${y1} L ${tx1} ${midY - r} a ${r} ${r} 0 0 ${sw1} ${dx1} ${r} L ${tx2 - dx2} ${midY} a ${r} ${r} 0 0 ${sw2} ${dx2} ${r} L ${cx2} ${y2}`;
+  const d = `M ${cx1} ${a.bottom} L ${tx1} ${midY - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${midY} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${b.top}`;
   return { d, midX, midY };
 }

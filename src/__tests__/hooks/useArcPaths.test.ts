@@ -8,7 +8,6 @@ import { useArcPaths } from '../../hooks/useArcPaths';
 jest.mock('../../utils/phrase-arc', () => ({
   computeAllArcPaths: jest.fn(() => ({
     paths: [],
-    levelByPhraseId: new Map(),
     maxLevel: 0,
     requiredRowGapPx: 0,
   })),
@@ -23,7 +22,6 @@ describe('useArcPaths', () => {
   beforeEach(() => {
     computeAllArcPaths.mockReturnValue({
       paths: [],
-      levelByPhraseId: new Map(),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -55,7 +53,6 @@ describe('useArcPaths', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -69,7 +66,6 @@ describe('useArcPaths', () => {
     // Transition to disabled
     computeAllArcPaths.mockReturnValue({
       paths: [],
-      levelByPhraseId: new Map(),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -83,7 +79,6 @@ describe('useArcPaths', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 1]]),
       maxLevel: 1,
       requiredRowGapPx: 0,
     });
@@ -97,7 +92,6 @@ describe('useArcPaths', () => {
     // Transition to disabled — maxArcLevel must reset to 0.
     computeAllArcPaths.mockReturnValue({
       paths: [],
-      levelByPhraseId: new Map(),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -111,7 +105,6 @@ describe('useArcPaths', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
       requiredRowGapPx: 20,
     });
@@ -124,7 +117,6 @@ describe('useArcPaths', () => {
 
     computeAllArcPaths.mockReturnValue({
       paths: [],
-      levelByPhraseId: new Map(),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -138,7 +130,6 @@ describe('useArcPaths', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });
@@ -152,7 +143,6 @@ describe('useArcPaths', () => {
     // Second measurement produces a different maxLevel.
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 1]]),
       maxLevel: 1,
       requiredRowGapPx: 0,
     });
@@ -195,7 +185,6 @@ describe('useArcPaths', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
-      levelByPhraseId: new Map([['p1', 0]]),
       maxLevel: 0,
       requiredRowGapPx: 0,
     });

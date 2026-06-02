@@ -22,7 +22,13 @@ import { makePhraseLink } from '../test-helpers';
 function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {
   // `d` is derived from splitAfterTokenRef so distinct split points yield distinct
   // path data — matching real arcs, where the React key `${phraseId}-${d}` stays unique.
-  return { phraseId, d: `M0 0 L100 0 ${splitAfterTokenRef}`, midX: 50, midY: 10, splitAfterTokenRef };
+  return {
+    phraseId,
+    d: `M0 0 L100 0 ${splitAfterTokenRef}`,
+    midX: 50,
+    midY: 10,
+    splitAfterTokenRef,
+  };
 }
 
 /** Default no-op props for `ArcOverlay`. */

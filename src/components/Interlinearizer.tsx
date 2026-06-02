@@ -153,14 +153,12 @@ function InterlinearizerInner({
     if (phraseMode.kind !== 'edit' || !isRevert) return;
     updatePhrase(phraseMode.phraseId, phraseMode.originalTokens);
     setPhraseMode({ kind: 'view' });
-    // phraseMode identity changes on each revert signal; only re-run when the revert flag flips.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRevert]);
 
   // Snap the segment list to the active verse when switching modes.
   useEffect(() => {
     snapToActive();
-    // snapToActive is stable (useCallback with no changing deps), so this only re-runs on mode switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuousScroll]);
 

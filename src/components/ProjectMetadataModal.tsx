@@ -186,7 +186,7 @@ export function ProjectMetadataModal({
             </label>
             <input
               id="metadata-edit-name"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground"
+              className="tw:modal-metadata-input"
               value={editName}
               placeholder={localizedStrings['%interlinearizer_modal_metadata_name_placeholder%']}
               onChange={(e) => setEditName(e.target.value)}
@@ -199,7 +199,7 @@ export function ProjectMetadataModal({
             </label>
             <textarea
               id="metadata-edit-description"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:resize-none"
+              className="tw:modal-metadata-input tw:resize-none"
               rows={2}
               value={editDescription}
               placeholder={
@@ -215,7 +215,7 @@ export function ProjectMetadataModal({
             </label>
             <input
               id="metadata-edit-language"
-              className="tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:font-mono"
+              className="tw:modal-metadata-input tw:font-mono"
               value={editLanguages}
               placeholder={
                 localizedStrings['%interlinearizer_modal_metadata_language_placeholder%']

@@ -292,7 +292,6 @@ export function SegmentView({
   // where the arc container is unmounted, so the result resets to empty.
   const {
     arcPaths,
-    arcLevelByPhraseId,
     stripTopPadding: tokenRowTopPadding,
     requiredRowGapPx,
   } = useArcPaths(arcContainerRef, displayMode !== 'baseline-text', hasRealPhraseInSegment, [
@@ -361,7 +360,6 @@ export function SegmentView({
               hoveredGroupKey={hoveredGroupKey}
               candidateTokenRefs={candidateTokenRefs}
               splitFreeTokenRefs={splitFreeTokenRefs}
-              arcLevelByPhraseId={arcLevelByPhraseId}
               onHoverPhrase={onHoverPhrase}
               setHoveredGroupKey={setHoveredGroupKey}
               onFocusPhrase={handleTokenClick}

@@ -465,12 +465,10 @@ export default function ContinuousView({
   const hasRealPhraseInWindow = windowGroups.some((g) => g.phraseLink !== undefined);
 
   // Measure phrase boxes after each render and compute arcs for discontiguous phrases.
-  const { arcPaths, arcLevelByPhraseId, stripTopPadding } = useArcPaths(
-    arcContainerRef,
-    true,
-    hasRealPhraseInWindow,
-    [windowGroups, phraseMode],
-  );
+  const { arcPaths, stripTopPadding } = useArcPaths(arcContainerRef, true, hasRealPhraseInWindow, [
+    windowGroups,
+    phraseMode,
+  ]);
 
   /**
    * Interleaved render units (groups + link slots) in document order across the window. Built from
@@ -648,7 +646,6 @@ export default function ContinuousView({
                 hoveredGroupKey={hoveredGroupKey}
                 candidateTokenRefs={candidateTokenRefs}
                 splitFreeTokenRefs={splitFreeTokenRefs}
-                arcLevelByPhraseId={arcLevelByPhraseId}
                 onHoverPhrase={setHoveredPhraseId}
                 setHoveredGroupKey={setHoveredGroupKey}
                 onFocusPhrase={handlePhraseSelect}

@@ -34,13 +34,10 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
   };
 
   return (
-    <div
-      className="tw:inline-flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:shadow"
-      data-testid="unlink-confirm"
-    >
+    <div className="tw:overlay-pill" data-testid="unlink-confirm">
       <span>Unlink this phrase?</span>
       <button
-        className="tw:rounded tw:border tw:border-destructive tw:bg-destructive tw:px-2 tw:py-0.5 tw:text-destructive-foreground tw:hover:opacity-90"
+        className="tw:pill-btn-destructive"
         data-testid="unlink-confirm-yes"
         onClick={handleConfirm}
         type="button"
@@ -48,7 +45,7 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
         Unlink
       </button>
       <button
-        className="tw:rounded tw:border tw:border-border tw:bg-muted tw:px-2 tw:py-0.5 tw:text-foreground tw:hover:bg-muted/80"
+        className="tw:pill-btn-secondary"
         data-testid="unlink-confirm-cancel"
         onClick={handleCancel}
         type="button"

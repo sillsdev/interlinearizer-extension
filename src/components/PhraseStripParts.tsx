@@ -3,7 +3,6 @@ import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { MemoizedInertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import { ARC_BASE_STEM, ARC_CORNER_RADIUS, ARC_LEVEL_STEP } from '../utils/phrase-arc';
 import {
   resolveSlotFocus,
   type FocusContext,
@@ -135,8 +134,6 @@ type PhraseGroupProps = Readonly<{
   showControls: boolean;
   /** Whether the phrase gloss input should show (false for non-first discontiguous fragments). */
   showGlossInput: boolean;
-  /** Upward offset in px for the controls pill so it aligns with the arc top. */
-  arcOffsetPx: number;
   /** Whether hover handlers are wired (only in view mode for real phrases). */
   allowHover: boolean;
   /** Called on pointer enter when `allowHover` is true. */
@@ -163,7 +160,6 @@ type PhraseGroupProps = Readonly<{
  * @param props.splitFreeTokenRefs - Token refs in this group that preview as becoming free
  * @param props.showControls - Whether to show the controls pill
  * @param props.showGlossInput - Whether to show the gloss input
- * @param props.arcOffsetPx - Upward offset for the controls pill
  * @param props.allowHover - Whether hover handlers are wired
  * @param props.onHoverEnter - Pointer-enter handler
  * @param props.onHoverLeave - Pointer-leave handler
@@ -178,7 +174,6 @@ export function PhraseGroup({
   splitFreeTokenRefs,
   showControls,
   showGlossInput,
-  arcOffsetPx,
   allowHover,
   onHoverEnter,
   onHoverLeave,
@@ -192,7 +187,6 @@ export function PhraseGroup({
       onMouseLeave={allowHover ? onHoverLeave : undefined}
     >
       <MemoizedPhraseBox
-        arcOffsetPx={arcOffsetPx}
         isFocused={isFocused}
         isHighlighted={isHighlighted}
         splitFreeTokenRefs={splitFreeTokenRefs}
@@ -257,8 +251,6 @@ type PhraseStripProps = Readonly<{
   candidateTokenRefs: ReadonlySet<string>;
   /** Token refs that would become free after a hovered split/unlink. */
   splitFreeTokenRefs: ReadonlySet<string>;
-  /** PhraseId → arc nesting level, used to lift the controls pill above stacked arcs. */
-  arcLevelByPhraseId: ReadonlyMap<string, number>;
   /** Called with the phraseId (or `undefined`) when a phrase box is entered/left. */
   onHoverPhrase: (phraseId: string | undefined) => void;
   /** Sets (or clears) the hovered group key when a phrase box is entered/left. */
@@ -283,7 +275,6 @@ type PhraseStripProps = Readonly<{
  * @param props.hoveredGroupKey - Group key of the hovered phrase box
  * @param props.candidateTokenRefs - Token refs a hovered link would join
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split
- * @param props.arcLevelByPhraseId - PhraseId → arc nesting level
  * @param props.onHoverPhrase - Phrase-box enter/leave callback
  * @param props.setHoveredGroupKey - Hovered-group-key setter
  * @param props.onFocusPhrase - Gloss-input focus callback, by group key
@@ -297,7 +288,6 @@ export function PhraseStrip({
   hoveredGroupKey,
   candidateTokenRefs,
   splitFreeTokenRefs,
-  arcLevelByPhraseId,
   onHoverPhrase,
   setHoveredGroupKey,
   onFocusPhrase,
@@ -321,12 +311,6 @@ export function PhraseStrip({
     const phraseId = group.phraseLink?.analysisId;
     const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
     if (phraseId !== undefined) seenPhraseIds.add(phraseId);
-    const arcLevel = phraseId !== undefined ? (arcLevelByPhraseId.get(phraseId) ?? 0) : 0;
-    const arcOffsetPx =
-      arcLevel > 0
-        ? /* v8 ignore next -- arcLevel > 0 requires DOM layout, not available in jsdom */
-          ARC_BASE_STEM + arcLevel * ARC_LEVEL_STEP + ARC_CORNER_RADIUS
-        : 0;
     const isHighlighted = resolveIsHighlighted(
       phraseMode,
       phraseId,
@@ -346,7 +330,6 @@ export function PhraseStrip({
           phraseMode.kind === 'view' && phraseId !== undefined && groupKey === hoveredGroupKey
         }
         showGlossInput={showGlossInput}
-        arcOffsetPx={arcOffsetPx}
         allowHover={phraseId !== undefined}
         onHoverEnter={() => {
           onHoverPhrase(phraseId);

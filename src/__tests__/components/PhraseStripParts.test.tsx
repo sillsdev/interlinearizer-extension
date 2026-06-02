@@ -6,7 +6,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import {
   PhraseSlot,
-  PhraseGroup,
+  MemoizedPhraseGroup,
   PhraseStrip,
   resolveIsHighlighted,
   type StripItem,
@@ -257,14 +257,14 @@ describe('PhraseSlot', () => {
 // PhraseGroup
 // ---------------------------------------------------------------------------
 
-describe('PhraseGroup', () => {
+describe('MemoizedPhraseGroup', () => {
   const group: TokenGroup = {
     tokens: [mkWord('tok-a', 'Hello')],
     phraseLink: undefined,
     firstIndex: 0,
   };
 
-  const defaultGroupProps: Parameters<typeof PhraseGroup>[0] = {
+  const defaultGroupProps: Parameters<typeof MemoizedPhraseGroup>[0] = {
     group,
     isFocused: false,
     isHighlighted: false,
@@ -272,35 +272,37 @@ describe('PhraseGroup', () => {
     showControls: false,
     showGlossInput: true,
     allowHover: false,
-    onHoverEnter: jest.fn(),
-    onHoverLeave: jest.fn(),
+    phraseId: undefined,
+    groupKey: 'tok-a',
+    onHoverPhrase: jest.fn(),
+    setHoveredGroupKey: jest.fn(),
     onFocusPhrase: jest.fn(),
   };
 
   it('renders the group tokens via PhraseBox', () => {
-    render(<PhraseGroup {...defaultGroupProps} />);
+    render(<MemoizedPhraseGroup {...defaultGroupProps} />);
     expect(screen.getByText('Hello')).toBeInTheDocument();
   });
 
   it('passes isFocused=true to PhraseBox when set', () => {
-    render(<PhraseGroup {...defaultGroupProps} isFocused />);
+    render(<MemoizedPhraseGroup {...defaultGroupProps} isFocused />);
     expect(document.querySelector('[data-focused="true"]')).toBeInTheDocument();
   });
 
   it('passes isHighlighted=true to PhraseBox when set', () => {
-    render(<PhraseGroup {...defaultGroupProps} isHighlighted />);
+    render(<MemoizedPhraseGroup {...defaultGroupProps} isHighlighted />);
     expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
   });
 
   it('does not attach hover handlers when allowHover is false', () => {
-    const onHoverEnter = jest.fn();
-    const onHoverLeave = jest.fn();
+    const onHoverPhrase = jest.fn();
+    const setHoveredGroupKey = jest.fn();
     render(
-      <PhraseGroup
+      <MemoizedPhraseGroup
         {...defaultGroupProps}
         allowHover={false}
-        onHoverEnter={onHoverEnter}
-        onHoverLeave={onHoverLeave}
+        onHoverPhrase={onHoverPhrase}
+        setHoveredGroupKey={setHoveredGroupKey}
       />,
     );
     const wrapper = document.querySelector('span');
@@ -309,8 +311,8 @@ describe('PhraseGroup', () => {
       fireEvent.mouseEnter(wrapper);
       fireEvent.mouseLeave(wrapper);
     }
-    expect(onHoverEnter).not.toHaveBeenCalled();
-    expect(onHoverLeave).not.toHaveBeenCalled();
+    expect(onHoverPhrase).not.toHaveBeenCalled();
+    expect(setHoveredGroupKey).not.toHaveBeenCalled();
   });
 });
 

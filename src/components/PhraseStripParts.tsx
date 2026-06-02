@@ -1,4 +1,5 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
+import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { MemoizedInertTokenChip } from './TokenChip';
@@ -146,12 +147,22 @@ type PhraseGroupProps = Readonly<{
   showGlossInput: boolean;
   /** Whether hover handlers are wired (only in view mode for real phrases). */
   allowHover: boolean;
-  /** Called on pointer enter when `allowHover` is true. */
-  onHoverEnter: () => void;
-  /** Called on pointer leave when `allowHover` is true. */
-  onHoverLeave: () => void;
-  /** Called when this group's gloss input gains focus. */
-  onFocusPhrase: () => void;
+  /**
+   * PhraseId of this group's phrase, or `undefined` for a solo token. Passed as a data value so
+   * hover callbacks can be stable references rather than per-render closures.
+   */
+  phraseId: string | undefined;
+  /**
+   * First-token ref of this group; identifies it to the parent's hover and focus handlers. Passed
+   * as a data value so hover callbacks can be stable references rather than per-render closures.
+   */
+  groupKey: string;
+  /** Called with the phraseId (or `undefined`) on pointer enter/leave when `allowHover` is true. */
+  onHoverPhrase: (phraseId: string | undefined) => void;
+  /** Sets (or clears) the hovered group key on pointer enter/leave when `allowHover` is true. */
+  setHoveredGroupKey: (key: string | undefined) => void;
+  /** Called with this group's key when its gloss input gains focus. */
+  onFocusPhrase: (groupKey: string) => void;
   /** Optional DOM-ref callback for the wrapper span; used by ContinuousView for scroll-into-view. */
   groupRef?: (el: HTMLSpanElement | null) => void;
 }>;
@@ -163,6 +174,10 @@ type PhraseGroupProps = Readonly<{
  * results in; strip-wide state (phrase mode, edit context, hover callbacks) reaches the box through
  * {@link PhraseStripContext}.
  *
+ * Accepts `phraseId` and `groupKey` as data props and calls the stable `onHoverPhrase`,
+ * `setHoveredGroupKey`, and `onFocusPhrase` callbacks with them so the parent never needs to create
+ * per-render closures, preserving the `memo()` bail-out on unchanged props.
+ *
  * @param props - Component props
  * @param props.group - The phrase group to render
  * @param props.isFocused - Whether this group is the navigation focus
@@ -171,13 +186,15 @@ type PhraseGroupProps = Readonly<{
  * @param props.showControls - Whether to show the controls pill
  * @param props.showGlossInput - Whether to show the gloss input
  * @param props.allowHover - Whether hover handlers are wired
- * @param props.onHoverEnter - Pointer-enter handler
- * @param props.onHoverLeave - Pointer-leave handler
- * @param props.onFocusPhrase - Called when this group's gloss input gains focus
+ * @param props.phraseId - PhraseId passed to hover callbacks
+ * @param props.groupKey - Group key passed to hover/focus callbacks
+ * @param props.onHoverPhrase - Called with phraseId on pointer enter/leave
+ * @param props.setHoveredGroupKey - Called with groupKey on pointer enter/leave
+ * @param props.onFocusPhrase - Called with groupKey when this group's gloss input gains focus
  * @param props.groupRef - Optional DOM-ref callback for the wrapper span
  * @returns A wrapper span containing the phrase box.
  */
-export function PhraseGroup({
+export const MemoizedPhraseGroup = memo(function PhraseGroup({
   group,
   isFocused,
   isHighlighted,
@@ -185,22 +202,38 @@ export function PhraseGroup({
   showControls,
   showGlossInput,
   allowHover,
-  onHoverEnter,
-  onHoverLeave,
+  phraseId,
+  groupKey,
+  onHoverPhrase,
+  setHoveredGroupKey,
   onFocusPhrase,
   groupRef,
 }: PhraseGroupProps) {
   return (
     <span
       ref={groupRef}
-      onMouseEnter={allowHover ? onHoverEnter : undefined}
-      onMouseLeave={allowHover ? onHoverLeave : undefined}
+      onMouseEnter={
+        allowHover
+          ? () => {
+              onHoverPhrase(phraseId);
+              setHoveredGroupKey(groupKey);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        allowHover
+          ? () => {
+              onHoverPhrase(undefined);
+              setHoveredGroupKey(undefined);
+            }
+          : undefined
+      }
     >
       <MemoizedPhraseBox
         isFocused={isFocused}
         isHighlighted={isHighlighted}
         splitFreeTokenRefs={splitFreeTokenRefs}
-        onFocusPhrase={onFocusPhrase}
+        onFocusPhrase={() => onFocusPhrase(groupKey)}
         phraseLink={group.phraseLink}
         showControls={showControls}
         showGlossInput={showGlossInput}
@@ -208,7 +241,7 @@ export function PhraseGroup({
       />
     </span>
   );
-}
+});
 
 // #endregion
 
@@ -334,7 +367,7 @@ export function PhraseStrip({
       candidateTokenRefs,
     );
     return (
-      <PhraseGroup
+      <MemoizedPhraseGroup
         key={groupKey}
         group={group}
         isFocused={item.isFocused}
@@ -345,15 +378,11 @@ export function PhraseStrip({
         }
         showGlossInput={showGlossInput}
         allowHover={phraseId !== undefined}
-        onHoverEnter={() => {
-          onHoverPhrase(phraseId);
-          setHoveredGroupKey(groupKey);
-        }}
-        onHoverLeave={() => {
-          onHoverPhrase(undefined);
-          setHoveredGroupKey(undefined);
-        }}
-        onFocusPhrase={() => onFocusPhrase(groupKey)}
+        phraseId={phraseId}
+        groupKey={groupKey}
+        onHoverPhrase={onHoverPhrase}
+        setHoveredGroupKey={setHoveredGroupKey}
+        onFocusPhrase={onFocusPhrase}
         groupRef={item.groupRef}
       />
     );

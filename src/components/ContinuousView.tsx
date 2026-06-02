@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
+import { isWordToken } from '../types/typeGuards';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
 import { PhraseStrip, type StripItem } from './PhraseStripParts';
@@ -146,7 +147,7 @@ export default function ContinuousView({
   /** Maps each word token ref to its flat document index for document-order phrase merges. */
   const tokenDocOrder = useMemo(() => {
     const map = new Map<string, number>();
-    allTokens.forEach((t, i) => map.set(t.ref, i));
+    allTokens.filter(isWordToken).forEach((t, i) => map.set(t.ref, i));
     return map;
   }, [allTokens]);
 
@@ -430,6 +431,7 @@ export default function ContinuousView({
       editPhraseSegmentId,
       tokenSegmentMap,
       tokenDocOrder,
+      setHoveredPhraseId,
       setCandidateTokenRefs,
       handleHoverSplitFreeTokens,
     ],

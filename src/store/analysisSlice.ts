@@ -184,13 +184,24 @@ const analysisSlice = createSlice({
     },
     /**
      * Replaces the token list of the matching `PhraseAnalysisLink`. Does not create a new
-     * `PhraseAnalysis` record — preserves the phrase id and any gloss already written on it.
+     * `PhraseAnalysis` record — preserves the phrase id and any gloss already written on it. When
+     * `tokens` is empty the phrase is removed entirely (both the analysis record and its link) so a
+     * zero-token phrase can never persist in the store.
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the `UpdatePhrasePayload`.
      */
     updatePhrase(state, action: PayloadAction<UpdatePhrasePayload>) {
       const { phraseId, tokens } = action.payload;
+      if (tokens.length === 0) {
+        state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
+          (pa) => pa.id !== phraseId,
+        );
+        state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
+          (pl) => pl.analysisId !== phraseId,
+        );
+        return;
+      }
       const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
       if (link) link.tokens = tokens;
     },

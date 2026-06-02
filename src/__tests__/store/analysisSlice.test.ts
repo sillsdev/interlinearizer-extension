@@ -213,7 +213,20 @@ describe('updatePhrase', () => {
     );
   });
 
-  it('preserves the phrase analysis id', () => {
+  it('preserves the phrase analysis id when tokens is non-empty', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(
+      updatePhrase({ phraseId: 'phrase-1', tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }] }),
+    );
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
+  });
+
+  it('removes the phrase entirely when tokens becomes empty', () => {
     const existing = makePhraseLink('phrase-1', ['tok-a']);
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
@@ -221,7 +234,9 @@ describe('updatePhrase', () => {
 
     store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: [] }));
 
-    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(0);
+    expect(phraseAnalysisLinks).toHaveLength(0);
   });
 
   it('does nothing when the phraseId does not match any link', () => {

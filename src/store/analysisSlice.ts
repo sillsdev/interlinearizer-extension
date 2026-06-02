@@ -8,6 +8,8 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 
+// #region Types
+
 /** Redux state slice for the active `TextAnalysis` and its working language. */
 export type AnalysisState = {
   /** The active `TextAnalysis` being read and mutated. */
@@ -58,6 +60,10 @@ interface WritePhraseGlossPayload {
   value: string;
 }
 
+// #endregion
+
+// #region Default state
+
 /** Empty `TextAnalysis` used when no `initialAnalysis` is provided to the store. */
 export const defaultAnalysis: TextAnalysis = {
   segmentAnalyses: [],
@@ -73,6 +79,10 @@ export const defaultState: AnalysisState = {
   analysis: { ...defaultAnalysis },
   analysisLanguage: 'und',
 };
+
+// #endregion
+
+// #region Slice
 
 const analysisSlice = createSlice({
   name: 'analysis',
@@ -227,6 +237,10 @@ export const {
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 
+// #endregion
+
+// #region Selectors
+
 /**
  * Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input.
  *
@@ -367,3 +381,5 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
   return pa?.gloss?.[state.analysisLanguage] ?? '';
 }
+
+// #endregion

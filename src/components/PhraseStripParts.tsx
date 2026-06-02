@@ -10,6 +10,8 @@ import {
   type TokenGroup,
 } from '../utils/token-layout';
 
+// #region resolveIsHighlighted
+
 /**
  * Computes whether a phrase group should render highlighted, with identical rules in both views.
  *
@@ -45,6 +47,10 @@ export function resolveIsHighlighted(
   }
   return phraseId !== undefined && phraseId === phraseMode.phraseId;
 }
+
+// #endregion
+
+// #region PhraseSlot
 
 /** Props for {@link PhraseSlot}. */
 type PhraseSlotProps = Readonly<{
@@ -119,6 +125,10 @@ export function PhraseSlot({
     </span>
   );
 }
+
+// #endregion
+
+// #region PhraseGroup
 
 /** Props for {@link PhraseGroup}. */
 type PhraseGroupProps = Readonly<{
@@ -199,6 +209,10 @@ export function PhraseGroup({
     </span>
   );
 }
+
+// #endregion
+
+// #region PhraseStrip
 
 /** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
 const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
@@ -345,3 +359,5 @@ export function PhraseStrip({
     );
   });
 }
+
+// #endregion

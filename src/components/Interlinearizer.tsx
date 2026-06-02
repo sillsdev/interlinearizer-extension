@@ -93,6 +93,16 @@ function InterlinearizerInner({
     [book.segments],
   );
 
+  /**
+   * Maps every word token ref to its flat book-level index; used to sort phrase tokens in document
+   * order.
+   */
+  const tokenDocOrder = useMemo(() => {
+    const map = new Map<string, number>();
+    wordTokens.forEach((t, i) => map.set(t.ref, i));
+    return map;
+  }, [wordTokens]);
+
   /** Maps every token ref to the id of the segment that contains it. */
   const tokenSegmentMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -284,6 +294,7 @@ function InterlinearizerInner({
                   setPhraseMode={setPhraseMode}
                   segment={seg}
                   tokenSegmentMap={tokenSegmentMap}
+                  tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}
                 />
               ))}

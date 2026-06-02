@@ -4,6 +4,8 @@ import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
 
+// #region Types
+
 /**
  * Identifies one specific arc boundary by phrase id and the token immediately before the split,
  * plus whether splitting there would free a token. `kind` drives the hovered arc's stroke: a `free`
@@ -15,6 +17,10 @@ export type ArcSplitTarget = {
   splitAfterTokenRef: string;
   kind: 'free' | 'reshape';
 };
+
+// #endregion
+
+// #region ArcOverlay
 
 /** Props for {@link ArcOverlay}. */
 type ArcOverlayProps = Readonly<{
@@ -283,6 +289,8 @@ export function ArcOverlay({
     </>
   );
 }
+
+// #endregion
 
 /** Memoized version of {@link ArcOverlay}. */
 const MemoizedArcOverlay = memo(ArcOverlay);

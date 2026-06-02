@@ -15,6 +15,8 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
+// #region PhraseGlossInput
+
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
  * Separated into its own component so hooks are always called unconditionally.
@@ -57,6 +59,10 @@ function PhraseGlossInput({
     />
   );
 }
+
+// #endregion
+
+// #region PhraseBox
 
 /** Props for {@link PhraseBox}. */
 type PhraseBoxProps = Readonly<{
@@ -469,6 +475,8 @@ export function PhraseBox({
     </span>
   );
 }
+
+// #endregion
 
 /** Memoized version of {@link PhraseBox}; use in render-stable phrase lists. */
 const MemoizedPhraseBox = memo(PhraseBox);

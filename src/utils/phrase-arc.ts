@@ -1,6 +1,8 @@
 import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
 import type { PhraseMode } from '../types/phrase-mode';
 
+// #region Constants
+
 /**
  * Half the height of a floating phrase-controls pill in pixels. The pill is centred on the arc top
  * line (or on the box top when no arc exists), so only this half extends above it into the
@@ -24,6 +26,10 @@ export const ARC_CORNER_RADIUS = 5;
  */
 export const CROSS_ROW_ARC_CLEARANCE = 10;
 
+// #endregion
+
+// #region Types
+
 /**
  * Subset of the phrase-store dispatch surface that {@link splitPhraseAtBoundary} needs. Kept local
  * to the utils layer so this module doesn't depend on `components/AnalysisStore`; the real
@@ -34,6 +40,10 @@ export type SplitPhraseDispatch = {
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
   deletePhrase: (phraseId: string) => void;
 };
+
+// #endregion
+
+// #region Phrase split utilities
 
 /**
  * Sorts token snapshots by their flat document index so a stored phrase token list always reflects
@@ -145,6 +155,10 @@ export function splitPhraseAtBoundary(
   dispatch.updatePhrase(phraseLink.analysisId, before.length >= 2 ? before : after);
 }
 
+// #endregion
+
+// #region Arc styling
+
 /**
  * Computes the top padding (in pixels) required by a token strip/row so that arcs and the floating
  * phrase-controls pill both fit above the phrase boxes.
@@ -232,6 +246,10 @@ export function getArcStrokeProps(
   if (phraseId === hoveredPhraseId) return hovered;
   return dimmed;
 }
+
+// #endregion
+
+// #region Arc path computation
 
 /** A single same-row upward-bracket arc segment, used for nesting-level assignment. */
 export type SameRowArcSegment = {
@@ -586,6 +604,10 @@ export function computeAllArcPaths(container: Element): ArcState {
   return { paths, levelByPhraseId, maxLevel, requiredRowGapPx };
 }
 
+// #endregion
+
+// #region Arc path builders
+
 /**
  * Builds an SVG path string and scroll-space midpoint for a same-row upward bracket arc connecting
  * two boxes. Coordinates are expressed in scroll-space (relative to the scroll container's content
@@ -645,3 +667,5 @@ export function buildCrossRowArcPath(
   const d = `M ${cx1} ${a.bottom} L ${tx1} ${midY - r} a ${r} ${r} 0 0 ${sw1} ${dx} ${r} L ${tx2 - dx} ${midY} a ${r} ${r} 0 0 ${sw2} ${dx} ${r} L ${cx2} ${b.top}`;
   return { d, midX, midY };
 }
+
+// #endregion

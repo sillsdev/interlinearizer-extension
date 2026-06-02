@@ -18,6 +18,8 @@ import {
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 
+// #region Internal context
+
 /**
  * Stable ref-container passed through context so {@link useGlossDispatch} can call the latest
  * `onSave` / `onGlossChange` callbacks without recreating its returned function on every parent
@@ -32,6 +34,10 @@ type CallbackRefs = {
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
 const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
+
+// #endregion
+
+// #region Provider
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
@@ -99,6 +105,10 @@ export function AnalysisStoreProvider({
   );
 }
 
+// #endregion
+
+// #region Token hooks
+
 /**
  * Returns the approved gloss string for the given token in the store's active analysis language,
  * re-rendering only when that token's approved analysis changes.
@@ -153,6 +163,10 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
     [dispatch, store, callbacks],
   );
 }
+
+// #endregion
+
+// #region Phrase hooks
 
 /**
  * Returns a `Map` from every token ref that belongs to an approved phrase to its
@@ -317,3 +331,5 @@ export function usePhraseDispatch(): PhraseDispatch {
     [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase],
   );
 }
+
+// #endregion

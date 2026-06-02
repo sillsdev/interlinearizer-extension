@@ -1,6 +1,8 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { isWordToken } from '../types/typeGuards';
 
+// #region Focus context
+
 /**
  * Resolved focus state shared by SegmentView and ContinuousView so both views derive their
  * highlight / link-icon rules from the same source. Built once per render from the parent's
@@ -125,6 +127,10 @@ export const NO_SLOT_FOCUS: SlotFocusInfo = {
   focusedFreeToken: undefined,
 };
 
+// #endregion
+
+// #region Token grouping
+
 /** A grouped render unit: one or more adjacent tokens that share the same phrase (or no phrase). */
 export type TokenGroup = {
   /** The tokens to render together in one `PhraseBox`. */
@@ -163,6 +169,10 @@ export function groupTokens(
     return groups;
   }, []);
 }
+
+// #endregion
+
+// #region Render units
 
 /** A slot between two adjacent token groups, carrying the link icon and any punctuation in the gap. */
 export type LinkSlot = {
@@ -220,3 +230,5 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
   emitSlot(undefined);
   return units;
 }
+
+// #endregion

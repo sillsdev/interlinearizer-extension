@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 
+// #region Types
+
 /** Hover-driven preview state shared by SegmentView and ContinuousView. */
 export type PhraseHoverState = {
   /**
@@ -39,6 +41,10 @@ export type PhraseHoverState = {
   /** Clears every hover preview at once; wired to the token row's `onMouseLeave`. */
   clearAll: () => void;
 };
+
+// #endregion
+
+// #region usePhraseHoverState
 
 /**
  * Owns the hover-preview state that both phrase strips ({@link SegmentView} and
@@ -86,3 +92,5 @@ export function usePhraseHoverState(): PhraseHoverState {
     clearAll,
   };
 }
+
+// #endregion

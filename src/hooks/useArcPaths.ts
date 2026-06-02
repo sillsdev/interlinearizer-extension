@@ -1,6 +1,8 @@
 import { type RefObject, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { computeAllArcPaths, computeStripTopPadding, type ArcPath } from '../utils/phrase-arc';
 
+// #region Types
+
 /** Resolved arc measurements for the phrase strip, recomputed after each render. */
 export type ArcPathsResult = {
   /** SVG arc path strings keyed by phraseId, drawn above the strip for discontiguous phrases. */
@@ -16,6 +18,10 @@ export type ArcPathsResult = {
    */
   requiredRowGapPx: number;
 };
+
+// #endregion
+
+// #region useArcPaths
 
 /**
  * Measures the rendered phrase boxes inside `containerRef` after each layout commit and computes
@@ -118,3 +124,5 @@ export function useArcPaths(
 
   return { arcPaths, maxArcLevel, stripTopPadding, requiredRowGapPx };
 }
+
+// #endregion

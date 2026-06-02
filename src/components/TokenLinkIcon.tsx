@@ -4,7 +4,7 @@ import { Link2, Link2Off } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -153,18 +153,15 @@ export function TokenLinkIcon({
   ]);
 
   /**
-   * Sorts a token snapshot list by document order using `tokenDocOrder`.
+   * Sorts a token snapshot list into document order using `tokenDocOrder`. Thin wrapper over the
+   * shared {@link sortByDocOrder} helper, memoized so `handleLinkClick` keeps a stable identity.
    *
    * @param snapshots - Token snapshots to sort.
    * @returns A new array sorted by ascending document index.
    */
-  const sortByDocOrder = useCallback(
-    (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] => {
-      return [...snapshots].sort(
-        /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
-        (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-      );
-    },
+  const sortSnapshots = useCallback(
+    (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] =>
+      sortByDocOrder(snapshots, tokenDocOrder),
     [tokenDocOrder],
   );
 
@@ -208,7 +205,7 @@ export function TokenLinkIcon({
         };
         updatePhrase(
           focusedPhraseLink.analysisId,
-          sortByDocOrder([...focusedPhraseLink.tokens, bridgingSnapshot]),
+          sortSnapshots([...focusedPhraseLink.tokens, bridgingSnapshot]),
         );
         return;
       }
@@ -220,7 +217,7 @@ export function TokenLinkIcon({
         : [{ tokenRef: neighborToken.ref, surfaceText: neighborToken.surfaceText }];
       updatePhrase(
         focusedPhraseLink.analysisId,
-        sortByDocOrder([...focusedPhraseLink.tokens, ...neighborSnapshots]),
+        sortSnapshots([...focusedPhraseLink.tokens, ...neighborSnapshots]),
       );
       if (neighborLink) deletePhrase(neighborLink.analysisId);
       return;
@@ -238,7 +235,7 @@ export function TokenLinkIcon({
       // Neighbor is a phrase: absorb the focused free token into it, sorted by document order.
       updatePhrase(
         neighborLink.analysisId,
-        sortByDocOrder([...neighborLink.tokens, focusedSnapshot]),
+        sortSnapshots([...neighborLink.tokens, focusedSnapshot]),
       );
       return;
     }
@@ -248,7 +245,7 @@ export function TokenLinkIcon({
       tokenRef: neighborToken.ref,
       surfaceText: neighborToken.surfaceText,
     };
-    createPhrase(sortByDocOrder([focusedSnapshot, neighborSnapshot]));
+    createPhrase(sortSnapshots([focusedSnapshot, neighborSnapshot]));
   }, [
     prevToken,
     nextToken,
@@ -257,7 +254,7 @@ export function TokenLinkIcon({
     focusedSideIsPrev,
     focusedPhraseLink,
     focusedFreeToken,
-    sortByDocOrder,
+    sortSnapshots,
     createPhrase,
     updatePhrase,
     deletePhrase,
@@ -285,16 +282,7 @@ export function TokenLinkIcon({
     const splitFreeRefs = (() => {
       /* v8 ignore next -- inSamePhrase branch guarantees prevPhraseLink and prevToken exist */
       if (!prevPhraseLink || !prevToken) return undefined;
-      const tokens = [...prevPhraseLink.tokens].sort(
-        (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-      );
-      const boundaryIndex = tokens.findIndex((t) => t.tokenRef === prevToken.ref) + 1;
-      const before = tokens.slice(0, boundaryIndex);
-      const after = tokens.slice(boundaryIndex);
-      const freeRefs: string[] = [];
-      if (before.length === 1) freeRefs.push(before[0].tokenRef);
-      if (after.length === 1) freeRefs.push(after[0].tokenRef);
-      return freeRefs.length > 0 ? freeRefs : undefined;
+      return computeSplitFreeRefs(prevPhraseLink, prevToken.ref, tokenDocOrder);
     })();
 
     const handleUnlinkMouseEnter = () => {

@@ -1,5 +1,5 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -14,6 +14,7 @@ import {
 import { useArcPaths } from '../hooks/useArcPaths';
 import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
 import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
+import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';
 
 /**
@@ -161,47 +162,22 @@ export function SegmentView({
   const arcContainerRef = useRef<HTMLDivElement | null>(null);
 
   /**
-   * The group key (first token ref) of the phrase box currently being hovered; drives controls
-   * placement. Local because controls float above whichever fragment the pointer is over.
+   * Hover-preview state shared with ContinuousView: the hovered group key (controls float above
+   * whichever fragment the pointer is over), link-candidate token refs, and would-become-free token
+   * refs, plus their stable handlers.
    */
-  const [hoveredGroupKey, setHoveredGroupKey] = useState<string | undefined>();
-
-  /**
-   * Token refs of the two free tokens that a hovered link icon would join into a new phrase.
-   * `undefined` when no such hover is active.
-   */
-  const [candidateTokenRefs, setCandidateTokenRefs] = useState<ReadonlySet<string>>(new Set());
+  const {
+    hoveredGroupKey,
+    setHoveredGroupKey,
+    candidateTokenRefs,
+    setCandidateTokenRefs,
+    splitFreeTokenRefs,
+    handleSplitHoverChange,
+    handleHoverSplitFreeTokens,
+    clearAll: clearHoverState,
+  } = usePhraseHoverState();
 
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, phraseLinkByRef);
-
-  /**
-   * Token refs that would become solo (free) after a hovered split/unlink action completes. Shown
-   * with a red (destructive) border to preview the effect.
-   */
-  const [splitFreeTokenRefs, setSplitFreeTokenRefs] = useState<ReadonlySet<string>>(new Set());
-
-  /**
-   * Receives the free token refs from `ArcOverlay`'s internal split-hover state and mirrors them
-   * here so the phrase boxes can show a destructive border preview.
-   *
-   * @param freeTokenRefs - Token refs that would become solo after the split, or an empty set on
-   *   leave.
-   */
-  const handleSplitHoverChange = useCallback((freeTokenRefs: ReadonlySet<string>) => {
-    /* v8 ignore next -- callback passed to mocked ArcOverlay; exercised via integration */
-    setSplitFreeTokenRefs(freeTokenRefs);
-  }, []);
-
-  /**
-   * Sets (or clears) the would-become-free token refs previewed with a destructive border when a
-   * link/unlink icon is hovered. Stable so memoized phrase boxes don't re-render each pass.
-   *
-   * @param refs - The would-be-free token refs, or `undefined`/empty on leave.
-   */
-  const handleHoverSplitFreeTokens = useCallback((refs: readonly string[] | undefined) => {
-    /* v8 ignore next -- callback passed to mocked PhraseSlot; exercised via integration */
-    setSplitFreeTokenRefs(refs ? new Set(refs) : new Set());
-  }, []);
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
@@ -313,10 +289,8 @@ export function SegmentView({
             rowGap: requiredRowGapPx > 0 ? `${requiredRowGapPx}px` : /* v8 ignore next */ undefined,
           }}
           onMouseLeave={() => {
-            setHoveredGroupKey(undefined);
             onHoverPhrase(undefined);
-            setCandidateTokenRefs(new Set());
-            setSplitFreeTokenRefs(new Set());
+            clearHoverState();
           }}
         >
           {(() => {
@@ -338,10 +312,7 @@ export function SegmentView({
                     phraseMode={phraseMode}
                     tokenDocOrder={tokenDocOrder}
                     onHoverCandidatePhrase={onHoverPhrase}
-                    /* v8 ignore next 3 -- callback only fires when link icon hover fires */
-                    onHoverCandidateTokens={(refs) =>
-                      setCandidateTokenRefs(refs ? new Set(refs) : new Set())
-                    }
+                    onHoverCandidateTokens={setCandidateTokenRefs}
                     onHoverSplitFreeTokens={handleHoverSplitFreeTokens}
                   />
                 );

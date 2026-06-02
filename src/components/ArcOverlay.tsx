@@ -2,7 +2,7 @@ import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
 import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
-import { getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
+import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
 
 /**
  * Identifies one specific arc boundary by phrase id and the token immediately before the split,
@@ -282,39 +282,6 @@ export function ArcOverlay({
         })}
     </>
   );
-}
-
-/**
- * Enumerates the tokens in `phraseLink` that would become solo (free) after splitting at the
- * boundary immediately after `splitAfterTokenRef`. Returns `undefined` when no token would be left
- * solo (both halves have ≥ 2 tokens) or when the phrase cannot be resolved.
- *
- * @param phraseLink - The phrase to split, or `undefined` when not found.
- * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
- * @param tokenDocOrder - Map from token ref to flat document index; the tokens are ordered by this
- *   before slicing so the preview matches the document-order split.
- * @returns The refs of tokens that would become free, or `undefined`.
- */
-function computeSplitFreeRefs(
-  phraseLink: PhraseAnalysisLink | undefined,
-  splitAfterTokenRef: string,
-  tokenDocOrder: ReadonlyMap<string, number>,
-): string[] | undefined {
-  /* v8 ignore next -- split buttons are only rendered for phrases found in phraseLinkByRef */
-  if (!phraseLink) return undefined;
-  const ordered = [...phraseLink.tokens].sort(
-    /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
-    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-  );
-  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
-  if (idx < 0) return undefined;
-  const boundaryIndex = idx + 1;
-  const before = ordered.slice(0, boundaryIndex);
-  const after = ordered.slice(boundaryIndex);
-  const freeRefs: string[] = [];
-  if (before.length === 1) freeRefs.push(before[0].tokenRef);
-  if (after.length === 1) freeRefs.push(after[0].tokenRef);
-  return freeRefs.length > 0 ? freeRefs : undefined;
 }
 
 /** Memoized version of {@link ArcOverlay}. */

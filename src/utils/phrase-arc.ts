@@ -36,6 +36,59 @@ export type SplitPhraseDispatch = {
 };
 
 /**
+ * Sorts token snapshots by their flat document index so a stored phrase token list always reflects
+ * the visual left-to-right order. Shared by every path that slices a phrase (split previews,
+ * splits, and edit-mode inserts) so document order is computed identically everywhere. Tokens
+ * missing from `tokenDocOrder` sort to the front (index 0).
+ *
+ * @param tokens - Token snapshots to sort. Not mutated; a new array is returned.
+ * @param tokenDocOrder - Map from token ref to flat document index.
+ * @returns A new array sorted by ascending document index.
+ */
+export function sortByDocOrder<T extends { tokenRef: string }>(
+  tokens: readonly T[],
+  tokenDocOrder: ReadonlyMap<string, number>,
+): T[] {
+  return [...tokens].sort(
+    /* v8 ignore next -- ?? 0 fallback for tokens not in tokenDocOrder; always provided in practice */
+    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+  );
+}
+
+/**
+ * Enumerates the tokens of `phraseLink` that would become solo (free) after splitting at the
+ * boundary immediately after `splitAfterTokenRef`. A half with exactly one token leaves that token
+ * unattached; this is what the link/unlink and arc-split hovers preview with a destructive border.
+ * Mirrors the slicing in {@link splitPhraseAtBoundary} so the preview always matches the resulting
+ * split.
+ *
+ * @param phraseLink - The phrase to split, or `undefined` when it cannot be resolved.
+ * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
+ * @param tokenDocOrder - Map from token ref to flat document index; the tokens are ordered by this
+ *   before slicing so the preview matches the document-order split.
+ * @returns The refs of tokens that would become free, or `undefined` when no token would be left
+ *   solo (both halves ≥ 2 tokens), the phrase is absent, or the boundary token is not found.
+ */
+export function computeSplitFreeRefs(
+  phraseLink: PhraseAnalysisLink | undefined,
+  splitAfterTokenRef: string,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): string[] | undefined {
+  /* v8 ignore next -- split buttons are only rendered for phrases found in the link map */
+  if (!phraseLink) return undefined;
+  const ordered = sortByDocOrder(phraseLink.tokens, tokenDocOrder);
+  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
+  if (idx < 0) return undefined;
+  const boundary = idx + 1;
+  const before = ordered.slice(0, boundary);
+  const after = ordered.slice(boundary);
+  const freeRefs: string[] = [];
+  if (before.length === 1) freeRefs.push(before[0].tokenRef);
+  if (after.length === 1) freeRefs.push(after[0].tokenRef);
+  return freeRefs.length > 0 ? freeRefs : undefined;
+}
+
+/**
  * Splits `phraseLink` at the boundary immediately after `splitAfterTokenRef` and dispatches the
  * resulting create/update/delete calls. Shared by ContinuousView's arc-split button, SegmentView's
  * arc-split button, and TokenLinkIcon's between-token unlink button so all three paths can never
@@ -70,9 +123,7 @@ export function splitPhraseAtBoundary(
   dispatch: SplitPhraseDispatch,
   tokenDocOrder: ReadonlyMap<string, number> = new Map(),
 ): void {
-  const ordered = [...phraseLink.tokens].sort(
-    (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
-  );
+  const ordered = sortByDocOrder(phraseLink.tokens, tokenDocOrder);
   const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
   if (idx < 0) return;
   // Splitting after the last token would leave the phrase unchanged (all tokens `before`, none

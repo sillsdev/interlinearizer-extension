@@ -12,6 +12,7 @@ import {
 import type { PhraseMode } from '../types/phrase-mode';
 import MemoizedTokenChip from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
+import { sortByDocOrder } from '../utils/phrase-arc';
 
 /** Stable empty map used as the default for `tokenDocOrder` to avoid breaking memo on PhraseBox. */
 const EMPTY_TOKEN_DOC_ORDER: ReadonlyMap<string, number> = new Map();
@@ -304,8 +305,9 @@ export function PhraseBox({
   const handleEditAdd = useCallback(
     (tokenRef: string, surfaceText: string) => {
       if (phraseMode.kind !== 'edit' || !editPhraseTokens) return;
-      const nextTokens = [...editPhraseTokens, { tokenRef, surfaceText }].sort(
-        (a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0),
+      const nextTokens = sortByDocOrder(
+        [...editPhraseTokens, { tokenRef, surfaceText }],
+        tokenDocOrder,
       );
       updatePhrase(phraseMode.phraseId, nextTokens);
     },
@@ -319,9 +321,7 @@ export function PhraseBox({
   // we sort defensively here (matching `splitPhraseAtBoundary`) so legacy/unsorted data still places
   // the ✕ on the visually-first/last tokens rather than wherever they happen to sit in storage.
   const orderedPhraseRefs = phraseLink
-    ? [...phraseLink.tokens]
-        .sort((a, b) => (tokenDocOrder.get(a.tokenRef) ?? 0) - (tokenDocOrder.get(b.tokenRef) ?? 0))
-        .map((t) => t.tokenRef)
+    ? sortByDocOrder(phraseLink.tokens, tokenDocOrder).map((t) => t.tokenRef)
     : [];
 
   // The whole box previews as becoming free only when it is a lone single-token fragment that would

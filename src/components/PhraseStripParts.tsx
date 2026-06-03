@@ -338,7 +338,7 @@ export function PhraseStrip({
           phraseMode.kind === 'view' && phraseId !== undefined && groupKey === hoveredGroupKey
         }
         showGlossInput={showGlossInput}
-        allowHover={phraseId !== undefined}
+        allowHover={phraseMode.kind === 'view' && phraseId !== undefined}
         phraseId={phraseId}
         groupKey={groupKey}
         onHoverPhrase={onHoverPhrase}

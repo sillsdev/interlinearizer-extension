@@ -12,3 +12,5 @@ import type { Token } from 'interlinearizer';
 export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
   return <span>{token.surfaceText}</span>;
 }
+
+export default InertTokenChip;

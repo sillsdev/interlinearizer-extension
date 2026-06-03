@@ -33,7 +33,7 @@ export const GUTTER_LANE_STEP = 10;
 
 // #endregion
 
-// #region Types
+// #region Phrase split utilities
 
 /**
  * Subset of the phrase-store dispatch surface that {@link splitPhraseAtBoundary} needs. Kept local
@@ -45,10 +45,6 @@ export type SplitPhraseDispatch = {
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
   deletePhrase: (phraseId: string) => void;
 };
-
-// #endregion
-
-// #region Phrase split utilities
 
 /**
  * Sorts token snapshots by flat document index so a stored phrase token list reflects visual
@@ -70,9 +66,35 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
 }
 
 /**
+ * Sorts a phrase's tokens into document order and slices them at the boundary just after
+ * `splitAfterTokenRef`. The single source of this slice, read by both {@link computeSplitFreeRefs}
+ * and {@link splitPhraseAtBoundary}, so the destructive-border preview can't drift from the split it
+ * previews.
+ *
+ * @param tokens - The phrase's token snapshots. Not mutated.
+ * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment (`before`).
+ * @param tokenDocOrder - Map from token ref to flat document index; tokens are ordered by this
+ *   before slicing.
+ * @returns The `before` half (up to and including the boundary token) and the `after` remainder, or
+ *   `undefined` when the boundary token is not found.
+ */
+function sliceAtBoundary(
+  tokens: readonly TokenSnapshot[],
+  splitAfterTokenRef: string,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): { before: TokenSnapshot[]; after: TokenSnapshot[] } | undefined {
+  const ordered = sortByDocOrder(tokens, tokenDocOrder);
+  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
+  if (idx < 0) return undefined;
+  const boundary = idx + 1;
+  return { before: ordered.slice(0, boundary), after: ordered.slice(boundary) };
+}
+
+/**
  * Enumerates the tokens of `phraseLink` that would become solo (free) after splitting just after
- * `splitAfterTokenRef` — a half with exactly one token leaves it unattached. Mirrors the slicing in
- * {@link splitPhraseAtBoundary} so the destructive-border preview matches the resulting split.
+ * `splitAfterTokenRef` — a half with exactly one token leaves it unattached. Shares
+ * {@link sliceAtBoundary} with {@link splitPhraseAtBoundary} so the destructive-border preview
+ * matches the resulting split.
  *
  * @param phraseLink - The phrase to split, or `undefined` when it cannot be resolved.
  * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
@@ -88,12 +110,9 @@ export function computeSplitFreeRefs(
 ): string[] | undefined {
   /* v8 ignore next -- split buttons are only rendered for phrases found in the link map */
   if (!phraseLink) return undefined;
-  const ordered = sortByDocOrder(phraseLink.tokens, tokenDocOrder);
-  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
-  if (idx < 0) return undefined;
-  const boundary = idx + 1;
-  const before = ordered.slice(0, boundary);
-  const after = ordered.slice(boundary);
+  const slice = sliceAtBoundary(phraseLink.tokens, splitAfterTokenRef, tokenDocOrder);
+  if (!slice) return undefined;
+  const { before, after } = slice;
   const freeRefs: string[] = [];
   if (before.length === 1) freeRefs.push(before[0].tokenRef);
   if (after.length === 1) freeRefs.push(after[0].tokenRef);
@@ -127,15 +146,12 @@ export function splitPhraseAtBoundary(
   dispatch: SplitPhraseDispatch,
   tokenDocOrder: ReadonlyMap<string, number> = new Map(),
 ): void {
-  const ordered = sortByDocOrder(phraseLink.tokens, tokenDocOrder);
-  const idx = ordered.findIndex((t) => t.tokenRef === splitAfterTokenRef);
-  if (idx < 0) return;
+  const slice = sliceAtBoundary(phraseLink.tokens, splitAfterTokenRef, tokenDocOrder);
+  if (!slice) return;
+  const { before, after } = slice;
   // Splitting after the last token leaves the phrase unchanged but still dispatches an update +
   // triggers `onSave`. Defensive (callers only place buttons between boxes) but avoids a stray write.
-  if (idx === ordered.length - 1) return;
-  const boundary = idx + 1;
-  const before = ordered.slice(0, boundary);
-  const after = ordered.slice(boundary);
+  if (after.length === 0) return;
   if (before.length <= 1 && after.length <= 1) {
     dispatch.deletePhrase(phraseLink.analysisId);
     return;
@@ -150,18 +166,31 @@ export function splitPhraseAtBoundary(
 
 // #endregion
 
-// #region Arc styling
+// #region Arc geometry and strip sizing
 
 /**
- * Vertical room (px) the topmost arc run at `maxArcLevel` needs above the line it rises from: base
- * stem, corner, margin, and one {@link ARC_LEVEL_STEP} per level. Shared by
+ * Stem height (px) an arc run rises above its box top at a given nesting level: the base stem plus
+ * one {@link ARC_LEVEL_STEP} per level. The single source of this formula, so same-row and cross-row
+ * runs at the same level share a channel (see {@link buildSameRowArcPath} /
+ * {@link buildCrossRowArcPath}).
+ *
+ * @param level - The run's nesting level (0 = outermost).
+ * @returns The stem height in pixels.
+ */
+function stemForLevel(level: number): number {
+  return ARC_BASE_STEM + level * ARC_LEVEL_STEP;
+}
+
+/**
+ * Vertical room (px) the topmost arc run at `maxArcLevel` needs above the line it rises from: its
+ * stem ({@link stemForLevel}), the corner, and the clearance margin. Shared by
  * {@link computeStripTopPadding} and {@link computeStripRowGap} so both grow with arc depth alike.
  *
  * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
  * @returns The clearance height in pixels.
  */
 function arcClearancePx(maxArcLevel: number): number {
-  return ARC_BASE_STEM + ARC_CORNER_RADIUS + ARC_CLEARANCE_MARGIN_PX + maxArcLevel * ARC_LEVEL_STEP;
+  return stemForLevel(maxArcLevel) + ARC_CORNER_RADIUS + ARC_CLEARANCE_MARGIN_PX;
 }
 
 /**
@@ -217,6 +246,10 @@ export function computeStripRowGap(
   return Math.max(BASE_ROW_GAP_PX, arcClearancePx(maxArcLevel) + controlsHeadroom);
 }
 
+// #endregion
+
+// #region Arc stroke styling
+
 /** Stroke styling for a single phrase arc; consumed directly as SVG `<path>` attributes. */
 export type ArcStrokeProps = {
   /** SVG `stroke` value — a CSS color expression. */
@@ -225,6 +258,30 @@ export type ArcStrokeProps = {
   strokeOpacity: number;
   /** SVG `stroke-width` in user units. */
   strokeWidth: number;
+};
+
+/** Faint border-color stroke for an arc that is neither focused nor hovered. */
+const DIMMED_ARC_STROKE: ArcStrokeProps = {
+  stroke: 'var(--border)',
+  strokeOpacity: 0.5,
+  strokeWidth: 2,
+};
+
+/** Destructive stroke for the targeted arc in `confirm-unlink` mode. */
+const DESTRUCTIVE_ARC_STROKE: ArcStrokeProps = {
+  stroke: 'var(--destructive)',
+  strokeOpacity: 1,
+  strokeWidth: 2,
+};
+
+/** Mid-white stroke for a hovered-but-not-focused arc in `view` mode. */
+const HOVERED_ARC_STROKE: ArcStrokeProps = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
+
+/** Full-white stroke for the focused (or edited) arc. */
+const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
+  stroke: 'white',
+  strokeOpacity: 1,
+  strokeWidth: 2,
 };
 
 /**
@@ -246,29 +303,16 @@ export function getArcStrokeProps(
   hoveredPhraseId: string | undefined,
   focusedPhraseId: string | undefined,
 ): ArcStrokeProps {
-  const dimmed: ArcStrokeProps = {
-    stroke: 'var(--border)',
-    strokeOpacity: 0.5,
-    strokeWidth: 2,
-  };
-  const destructive: ArcStrokeProps = {
-    stroke: 'var(--destructive)',
-    strokeOpacity: 1,
-    strokeWidth: 2,
-  };
-  const hovered: ArcStrokeProps = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
-  const highlighted: ArcStrokeProps = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
-
   if (phraseMode.kind === 'confirm-unlink') {
-    return phraseId === phraseMode.phraseId ? destructive : dimmed;
+    return phraseId === phraseMode.phraseId ? DESTRUCTIVE_ARC_STROKE : DIMMED_ARC_STROKE;
   }
   if (phraseMode.kind === 'edit') {
-    return phraseId === phraseMode.phraseId ? highlighted : dimmed;
+    return phraseId === phraseMode.phraseId ? HIGHLIGHTED_ARC_STROKE : DIMMED_ARC_STROKE;
   }
   // view mode
-  if (phraseId === focusedPhraseId) return highlighted;
-  if (phraseId === hoveredPhraseId) return hovered;
-  return dimmed;
+  if (phraseId === focusedPhraseId) return HIGHLIGHTED_ARC_STROKE;
+  if (phraseId === hoveredPhraseId) return HOVERED_ARC_STROKE;
+  return DIMMED_ARC_STROKE;
 }
 
 // #endregion
@@ -306,7 +350,8 @@ export type ArcSegment = {
  *
  * @param items - The items to colour, pre-sorted into the order they should be assigned.
  * @param conflicts - Returns whether two items overlap and so must take different levels.
- * @returns Map from each item to its assigned level (0 = outermost / nearest the edge).
+ * @returns Map from each item to its assigned level. 0 is the level nearest the boxes — outermost
+ *   nesting for segments, the lane nearest the content edge for descents.
  */
 function assignLevels<T>(items: readonly T[], conflicts: (a: T, b: T) => boolean): Map<T, number> {
   const levels = new Map<T, number>();
@@ -377,7 +422,9 @@ export function assignGutterLanes(descents: GutterDescent[]): Map<GutterDescent,
 
 /** A computed arc path entry for a single segment between two phrase boxes. */
 export type ArcPath = {
+  /** The phrase this arc segment belongs to. */
   phraseId: string;
+  /** SVG `<path>` `d` attribute drawing the arc in scroll-space coordinates. */
   d: string;
   /** Scroll-space x coordinate of the arc's visual midpoint, used to position the split button. */
   midX: number;
@@ -446,21 +493,116 @@ function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect 
 }
 
 /**
- * Measures all `[data-phrase-box]` elements inside `container` and computes SVG arc paths (in
- * container-relative coordinates) connecting each phrase's discontiguous boxes — same-row upward
- * brackets and cross-row brackets. Same-row arcs are levelled so they don't overlap; cross-row arcs
- * rise into the upper row's top channel then drop down a side gutter (the side nearer the arc's
- * average x, ties left), one lane further out per descent overlap so legs never cross a box.
+ * One box-pair of a phrase, resolved enough to assign nesting levels, as a discriminated union on
+ * `sameRow`. A same-row bracket has a single run between the two box centres on their shared row
+ * (`seg`); a cross-row bracket has two independently-levelled runs — one on each row, each reaching
+ * from that row's box centre out to the chosen side gutter (`upperSeg`/`lowerSeg`) — plus the side
+ * it routes down (`nearerLeft`, computed from the arc's average x, independent of level). The
+ * second pass reads each run's own assigned level from these stored segments.
+ */
+type PairDescriptor = {
+  phraseId: string;
+  a: ContainerRect;
+  b: ContainerRect;
+  splitAfterTokenRef: string;
+} & (
+  | { sameRow: true; seg: ArcSegment }
+  | { sameRow: false; nearerLeft: boolean; upperSeg: ArcSegment; lowerSeg: ArcSegment }
+);
+
+/**
+ * Resolves one consecutive box-pair of a phrase into a {@link PairDescriptor}, deciding same-row vs.
+ * cross-row and emitting the level-assignment segment(s) the second pass will read back. A
+ * cross-row run's extent is box centre → side gutter, NOT across to the other box's column, so an
+ * arc nested inside a wider phrase but routed out the opposite side doesn't conflict.
+ *
+ * @param phraseId - The phrase the pair belongs to.
+ * @param a - Container-space rect of the earlier box.
+ * @param b - Container-space rect of the later box.
+ * @param splitAfterTokenRef - Token ref of the last token in box `a` (where a split would cut).
+ * @param contentLeft - Container-space x of the strip's left content edge (left gutter anchor).
+ * @param contentRight - Container-space x of the strip's right content edge (right gutter anchor).
+ * @returns The resolved descriptor, with its segment(s) embedded for later level lookup.
+ */
+function describeBoxPair(
+  phraseId: string,
+  a: ContainerRect,
+  b: ContainerRect,
+  splitAfterTokenRef: string,
+  contentLeft: number,
+  contentRight: number,
+): PairDescriptor {
+  const x1 = (a.left + a.right) / 2;
+  const x2 = (b.left + b.right) / 2;
+  if (Math.abs(a.top - b.top) < a.height / 2) {
+    const seg: ArcSegment = {
+      phraseId,
+      row: Math.round(a.top),
+      left: Math.min(x1, x2),
+      right: Math.max(x1, x2),
+    };
+    return { phraseId, a, b, splitAfterTokenRef, sameRow: true, seg };
+  }
+  // Side is geometric (average x vs content edges) and independent of level, so it can be fixed
+  // here, before levels exist. Tie favours the left.
+  const midpointX = (x1 + x2) / 2;
+  const nearerLeft = midpointX - contentLeft <= contentRight - midpointX;
+  // A cross-row bracket has TWO runs — one per row's top channel — joined by a gutter descent. Each
+  // can collide independently on its own row, so emit a segment for both and level them separately;
+  // otherwise the bottom run's height would track the upper run's overlaps. Each run spans from its
+  // box centre to the chosen side edge (the lane sits just past it).
+  const sideX = nearerLeft ? contentLeft : contentRight;
+  const upperSeg: ArcSegment = {
+    phraseId,
+    row: Math.round(Math.min(a.top, b.top)),
+    left: Math.min(x1, sideX),
+    right: Math.max(x1, sideX),
+  };
+  const lowerSeg: ArcSegment = {
+    phraseId,
+    row: Math.round(Math.max(a.top, b.top)),
+    left: Math.min(x2, sideX),
+    right: Math.max(x2, sideX),
+  };
+  return { phraseId, a, b, splitAfterTokenRef, sameRow: false, nearerLeft, upperSeg, lowerSeg };
+}
+
+/**
+ * Container-relative measurements of every phrase box in the strip, read once up front so the two
+ * arc-building passes share a single layout snapshot.
+ */
+type PhraseBoxMeasurements = {
+  /** Each phrase's boxes (left-to-right) with the ref of its last token, keyed by phrase id. */
+  boxesByPhrase: Map<string, { rect: ContainerRect; lastTokenRef: string }[]>;
+  /** Container-space x of the strip's left content edge (left gutter anchor); 0 when no boxes. */
+  contentLeft: number;
+  /** Container-space x of the strip's right content edge (right gutter anchor); 0 when no boxes. */
+  contentRight: number;
+  /**
+   * Maps a box's top edge to its row's top line — the highest (minimum) top among boxes sharing the
+   * box's row band. Cross-row arcs anchor each endpoint here rather than at its own box top, so a
+   * gloss-less box of differing height still meets the channel shared by its row-mates.
+   *
+   * @param boxTop - The top edge of the box whose row top line is wanted.
+   * @param height - The box height, defining the half-band tolerance for matching the row.
+   * @returns The minimum top across boxes on the same row, never greater than `boxTop`.
+   */
+  rowTopFor: (boxTop: number, height: number) => number;
+};
+
+/**
+ * Reads every `[data-phrase-box]` element inside `container` once and projects it into the
+ * container-relative measurements both arc passes need: per-phrase box lists, the strip's content
+ * extent, and the row-top lookup. Splitting this off keeps {@link computeAllArcPaths} a pipeline of
+ * named phases (measure → describe → level → build) rather than one long function.
  *
  * @param container - The arc container element to search.
- * @returns The arc paths, max nesting level, and the left/right padding to reserve for gutter
- *   lanes.
+ * @returns The measured phrase boxes, content edges, and row-top lookup.
  */
-export function computeAllArcPaths(container: Element): ArcState {
+function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
   const containerRect = container.getBoundingClientRect();
 
   const boxesByPhrase = new Map<string, { rect: ContainerRect; lastTokenRef: string }[]>();
-
   container.querySelectorAll('[data-phrase-box="true"][data-phrase-id]').forEach((el) => {
     const id = el.getAttribute('data-phrase-id');
     /* v8 ignore next -- selector already requires data-phrase-id to exist */
@@ -472,15 +614,6 @@ export function computeAllArcPaths(container: Element): ArcState {
     boxesByPhrase.set(id, list);
   });
 
-  /**
-   * The highest (minimum) visual top among phrase boxes sharing a box's row band. Cross-row arcs
-   * anchor each endpoint at its row's top line rather than its own box top, so a gloss-less box of
-   * differing height still meets the channel shared by its row-mates.
-   *
-   * @param boxTop - The top edge of the box whose row top line is wanted.
-   * @param height - The box height, defining the half-band tolerance for matching the row.
-   * @returns The minimum top across boxes on the same row, never greater than `boxTop`.
-   */
   const allBoxRects = [...container.querySelectorAll('[data-phrase-box="true"]')].map((el) =>
     el.getBoundingClientRect(),
   );
@@ -506,81 +639,42 @@ export function computeAllArcPaths(container: Element): ArcState {
     ? Math.max(...allBoxRects.map((r) => r.right - containerRect.left))
     : 0;
 
-  /**
-   * One box-pair of a phrase, resolved enough to assign nesting levels, as a discriminated union on
-   * `sameRow`. A same-row bracket has a single run between the two box centres on their shared row
-   * (`seg`); a cross-row bracket has two independently-levelled runs — one on each row, each
-   * reaching from that row's box centre out to the chosen side gutter (`upperSeg`/`lowerSeg`) —
-   * plus the side it routes down (`nearerLeft`, computed from the arc's average x, independent of
-   * level). The second pass reads each run's own assigned level from these stored segments.
-   */
-  type PairDescriptor = {
-    phraseId: string;
-    a: ContainerRect;
-    b: ContainerRect;
-    splitAfterTokenRef: string;
-  } & (
-    | { sameRow: true; seg: ArcSegment }
-    | { sameRow: false; nearerLeft: boolean; upperSeg: ArcSegment; lowerSeg: ArcSegment }
-  );
+  return { boxesByPhrase, contentLeft, contentRight, rowTopFor };
+}
 
-  // First pass: resolve each consecutive box-pair into a descriptor and emit its level-assignment
-  // segment(s). A cross-row run's extent is box centre → side gutter, NOT across to the other box's
-  // column, so an arc nested inside a wider phrase but routed out the opposite side doesn't conflict.
+/**
+ * Measures all `[data-phrase-box]` elements inside `container` and computes SVG arc paths (in
+ * container-relative coordinates) connecting each phrase's discontiguous boxes — same-row upward
+ * brackets and cross-row brackets. Same-row arcs are levelled so they don't overlap; cross-row arcs
+ * rise into the upper row's top channel then drop down a side gutter (the side nearer the arc's
+ * average x, ties left), one lane further out per descent overlap so legs never cross a box.
+ *
+ * @param container - The arc container element to search.
+ * @returns The arc paths, max nesting level, and the left/right padding to reserve for gutter
+ *   lanes.
+ */
+export function computeAllArcPaths(container: Element): ArcState {
+  const { boxesByPhrase, contentLeft, contentRight, rowTopFor } = measurePhraseBoxes(container);
+
+  // First pass: resolve each consecutive box-pair into a descriptor and collect the segment(s) it
+  // emits for level assignment — one for a same-row bracket, two (upper + lower run) for a cross-row
+  // one. See {@link describeBoxPair} for how each segment's extent is chosen.
   const descriptors: PairDescriptor[] = [];
   const segments: ArcSegment[] = [];
   boxesByPhrase.forEach((boxes, phraseId) => {
     if (boxes.length < 2) return;
     for (let i = 0; i < boxes.length - 1; i++) {
-      const a = boxes[i].rect;
-      const b = boxes[i + 1].rect;
-      const x1 = (a.left + a.right) / 2;
-      const x2 = (b.left + b.right) / 2;
-      const splitAfterTokenRef = boxes[i].lastTokenRef;
-      const sameRow = Math.abs(a.top - b.top) < a.height / 2;
-      if (sameRow) {
-        const seg: ArcSegment = {
-          phraseId,
-          row: Math.round(a.top),
-          left: Math.min(x1, x2),
-          right: Math.max(x1, x2),
-        };
-        segments.push(seg);
-        descriptors.push({ phraseId, a, b, splitAfterTokenRef, sameRow: true, seg });
-      } else {
-        // Side is geometric (average x vs content edges) and independent of level, so it can be
-        // fixed here, before levels exist. Tie favours the left.
-        const midpointX = (x1 + x2) / 2;
-        const nearerLeft = midpointX - contentLeft <= contentRight - midpointX;
-        // A cross-row bracket has TWO runs — one per row's top channel — joined by a gutter descent.
-        // Each can collide independently on its own row, so emit a segment for both and level them
-        // separately; otherwise the bottom run's height would track the upper run's overlaps. Each
-        // run spans from its box centre to the chosen side edge (the lane sits just past it).
-        const sideX = nearerLeft ? contentLeft : contentRight;
-        const upperSeg: ArcSegment = {
-          phraseId,
-          row: Math.round(Math.min(a.top, b.top)),
-          left: Math.min(x1, sideX),
-          right: Math.max(x1, sideX),
-        };
-        const lowerSeg: ArcSegment = {
-          phraseId,
-          row: Math.round(Math.max(a.top, b.top)),
-          left: Math.min(x2, sideX),
-          right: Math.max(x2, sideX),
-        };
-        segments.push(upperSeg, lowerSeg);
-        descriptors.push({
-          phraseId,
-          a,
-          b,
-          splitAfterTokenRef,
-          sameRow: false,
-          nearerLeft,
-          upperSeg,
-          lowerSeg,
-        });
-      }
+      const descriptor = describeBoxPair(
+        phraseId,
+        boxes[i].rect,
+        boxes[i + 1].rect,
+        boxes[i].lastTokenRef,
+        contentLeft,
+        contentRight,
+      );
+      descriptors.push(descriptor);
+      if (descriptor.sameRow) segments.push(descriptor.seg);
+      else segments.push(descriptor.upperSeg, descriptor.lowerSeg);
     }
   });
 
@@ -607,7 +701,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   descriptors.forEach((descriptor) => {
     if (!descriptor.sameRow) return;
     const { phraseId, a, b, splitAfterTokenRef } = descriptor;
-    const stem = ARC_BASE_STEM + levelOf(descriptor.seg) * ARC_LEVEL_STEP;
+    const stem = stemForLevel(levelOf(descriptor.seg));
     const { d, midX, midY, runLeft, runRight } = buildSameRowArcPath(a, b, stem);
     paths.push({ phraseId, d, midX, midY, runLeft, runRight, splitAfterTokenRef });
   });
@@ -619,8 +713,8 @@ export function computeAllArcPaths(container: Element): ArcState {
   const crossRowGeometries = descriptors.flatMap((descriptor) => {
     if (descriptor.sameRow) return [];
     const { phraseId, a, b, splitAfterTokenRef, nearerLeft, upperSeg, lowerSeg } = descriptor;
-    const aStem = ARC_BASE_STEM + levelOf(upperSeg) * ARC_LEVEL_STEP;
-    const bStem = ARC_BASE_STEM + levelOf(lowerSeg) * ARC_LEVEL_STEP;
+    const aStem = stemForLevel(levelOf(upperSeg));
+    const bStem = stemForLevel(levelOf(lowerSeg));
     const aTop = rowTopFor(a.top, a.height);
     const bTop = rowTopFor(b.top, b.height);
     // The descent spans from the upper run line down to the lower run line.

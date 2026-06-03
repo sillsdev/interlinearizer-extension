@@ -18,9 +18,47 @@ export type ArcSplitTarget = {
   kind: 'free' | 'reshape';
 };
 
+/**
+ * Visual emphasis of a phrase's arc and split button. `focused` is the focused phrase, `hovered` is
+ * hovered (directly or via a link-icon candidate) but not focused, and `unfocused` is everything
+ * else. Drives both the arc's SVG layer and its button's z-index/colour.
+ */
+type EmphasisTier = 'focused' | 'hovered' | 'unfocused';
+
 // #endregion
 
 // #region ArcOverlay
+
+/**
+ * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered (6) > focused
+ * (4) > dimmed (2) — above each tier's own arc line but below the token row — so the button under
+ * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The colour matches
+ * the arc: focused white like its full-white arc, hovered in muted foreground, unfocused faint
+ * until its phrase is hovered or focused.
+ */
+const TIER_BUTTON_CLASSES: Record<EmphasisTier, { z: string; color: string }> = {
+  focused: { z: 'tw:z-4', color: 'tw:border-white tw:text-white' },
+  hovered: { z: 'tw:z-6', color: 'tw:border-border/40 tw:text-muted-foreground' },
+  unfocused: { z: 'tw:z-2', color: 'tw:border-border/50 tw:text-border/50' },
+};
+
+/**
+ * Stroke for a `free`-split arc segment while its split button is hovered: the destructive preview
+ * warning that confirming would unlink a token. Distinct from the `view`-mode strokes in
+ * {@link getArcStrokeProps} because it applies only to the one hovered segment.
+ */
+const SPLIT_PREVIEW_DESTRUCTIVE_STROKE = {
+  stroke: 'var(--destructive)',
+  strokeOpacity: 1,
+  strokeWidth: 2,
+};
+
+/**
+ * Stroke for a `reshape`-split arc segment while its split button is hovered: faded harder than the
+ * standard dim so the segment reads as "this connection would go away" without the destructive
+ * cue.
+ */
+const SPLIT_PREVIEW_FADED_STROKE = { stroke: 'var(--border)', strokeOpacity: 0.25, strokeWidth: 2 };
 
 /** Props for {@link ArcOverlay}. */
 type ArcOverlayProps = Readonly<{
@@ -126,15 +164,24 @@ export function ArcOverlay({
   if (arcPaths.length === 0) return undefined;
 
   /**
+   * Whether this exact arc segment (phrase + split boundary) is the one whose split button is
+   * currently hovered. Both an arc's `phraseId` and `splitAfterTokenRef` must match, since a phrase
+   * with several boundaries draws one arc segment per boundary.
+   *
+   * @param phraseId - The arc segment's phrase id.
+   * @param splitAfterTokenRef - The token ref at the segment's split boundary.
+   * @returns `true` when this segment's split button is hovered.
+   */
+  const isSplitHovered = (phraseId: string, splitAfterTokenRef: string): boolean =>
+    splitHoveredArc?.phraseId === phraseId &&
+    splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef;
+
+  /**
    * Assigns a paint-order priority so highlighted arcs render on top of dimmed ones inside the
    * single SVG (last element wins). Split-hovered > focused > hovered/candidate > everything else.
    */
   const paintPriority = (phraseId: string, splitAfterTokenRef: string): number => {
-    if (
-      splitHoveredArc?.phraseId === phraseId &&
-      splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef
-    )
-      return 3;
+    if (isSplitHovered(phraseId, splitAfterTokenRef)) return 3;
     if (phraseId === focusedPhraseId) return 2;
     if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 1;
     return 0;
@@ -158,15 +205,13 @@ export function ArcOverlay({
   const renderArcPath = ({ phraseId, d, splitAfterTokenRef }: ArcPath) => {
     const effectiveHoveredPhraseId =
       hoveredPhraseId ?? (candidatePhraseIds.has(phraseId) ? phraseId : undefined);
-    const isHoveredSegment =
-      splitHoveredArc?.phraseId === phraseId &&
-      splitHoveredArc?.splitAfterTokenRef === splitAfterTokenRef;
+    const isHoveredSegment = isSplitHovered(phraseId, splitAfterTokenRef);
     let arcProps;
     if (isHoveredSegment && splitHoveredArc?.kind === 'free') {
-      arcProps = { stroke: 'var(--destructive)', strokeOpacity: 1, strokeWidth: 2 };
+      arcProps = SPLIT_PREVIEW_DESTRUCTIVE_STROKE;
     } else if (isHoveredSegment) {
       // Reshape split: dim just this segment so it reads as "this connection would go away".
-      arcProps = { stroke: 'var(--border)', strokeOpacity: 0.25, strokeWidth: 2 };
+      arcProps = SPLIT_PREVIEW_FADED_STROKE;
     } else {
       arcProps = getArcStrokeProps(phraseMode, phraseId, effectiveHoveredPhraseId, focusedPhraseId);
     }
@@ -183,14 +228,12 @@ export function ArcOverlay({
   };
 
   /**
-   * Classifies a phrase into one of three emphasis tiers. A phrase is `focused` when it is the
-   * focused phrase, `hovered` when it is hovered (directly or via a link-icon candidate) but not
-   * focused, and `unfocused` otherwise.
+   * Classifies a phrase into one of three emphasis tiers (see {@link EmphasisTier}).
    *
    * @param phraseId - The phrase id to classify.
    * @returns The emphasis tier.
    */
-  const tierOf = (phraseId: string): 'focused' | 'hovered' | 'unfocused' => {
+  const tierOf = (phraseId: string): EmphasisTier => {
     if (phraseId === focusedPhraseId) return 'focused';
     if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 'hovered';
     return 'unfocused';
@@ -209,34 +252,6 @@ export function ArcOverlay({
   const focusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'focused');
   const hoveredArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'hovered');
   const unfocusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'unfocused');
-
-  /**
-   * Maps an emphasis tier to the z-index class for its split button. Buttons sit above their own
-   * arc line but below the token row, ordered hovered (6) > focused (4) > dimmed (2) so the button
-   * under the cursor is always on top. See the layering comment above for the full stack.
-   *
-   * @param tier - The emphasis tier of the button's phrase.
-   * @returns The Tailwind z-index class.
-   */
-  const buttonZClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
-    if (tier === 'hovered') return 'tw:z-6';
-    if (tier === 'focused') return 'tw:z-4';
-    return 'tw:z-2';
-  };
-
-  /**
-   * Maps an emphasis tier to the split button's border + text colour classes. The focused button is
-   * white to match its full-white arc; the hovered button reveals in muted foreground; the
-   * unfocused button stays faint until its phrase is hovered or focused.
-   *
-   * @param tier - The emphasis tier of the button's phrase.
-   * @returns The Tailwind border and text colour classes.
-   */
-  const buttonColorClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
-    if (tier === 'focused') return 'tw:border-white tw:text-white';
-    if (tier === 'hovered') return 'tw:border-border/40 tw:text-muted-foreground';
-    return 'tw:border-border/50 tw:text-border/50';
-  };
 
   return (
     <>
@@ -267,9 +282,8 @@ export function ArcOverlay({
       )}
       {phraseMode.kind === 'view' &&
         sortedArcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
-          const tier = tierOf(phraseId);
-          const buttonZClass = buttonZClassFor(tier);
-          const buttonColorClass = buttonColorClassFor(tier);
+          const { z: buttonZClass, color: buttonColorClass } =
+            TIER_BUTTON_CLASSES[tierOf(phraseId)];
           const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
             phraseLink,

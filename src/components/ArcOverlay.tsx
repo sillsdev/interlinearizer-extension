@@ -249,9 +249,16 @@ export function ArcOverlay({
   // to share one z-index, breaking the ordering. The token row sits on top so the phrase boxes and
   // their controls pill always stay above every arc and button; the split buttons sit below the row
   // (but above the arcs) and remain hoverable and clickable in the gap below the boxes.
-  const focusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'focused');
-  const hoveredArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'hovered');
-  const unfocusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'unfocused');
+  // Destructive-hovered arc segments are promoted to the hovered layer so the red stroke is never
+  // occluded by arcs above it, matching the hovered-tier button at z-6.
+  const effectiveTierOf = (arc: ArcPath): EmphasisTier => {
+    if (isSplitHovered(arc.phraseId, arc.splitAfterTokenRef) && splitHoveredArc?.kind === 'free')
+      return 'hovered';
+    return tierOf(arc.phraseId);
+  };
+  const focusedArcPaths = sortedArcPaths.filter((p) => effectiveTierOf(p) === 'focused');
+  const hoveredArcPaths = sortedArcPaths.filter((p) => effectiveTierOf(p) === 'hovered');
+  const unfocusedArcPaths = sortedArcPaths.filter((p) => effectiveTierOf(p) === 'unfocused');
 
   return (
     <>
@@ -282,8 +289,10 @@ export function ArcOverlay({
       )}
       {phraseMode.kind === 'view' &&
         sortedArcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
+          const isDestructiveHovered =
+            isSplitHovered(phraseId, splitAfterTokenRef) && splitHoveredArc?.kind === 'free';
           const { z: buttonZClass, color: buttonColorClass } =
-            TIER_BUTTON_CLASSES[tierOf(phraseId)];
+            TIER_BUTTON_CLASSES[isDestructiveHovered ? 'hovered' : tierOf(phraseId)];
           const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
             phraseLink,

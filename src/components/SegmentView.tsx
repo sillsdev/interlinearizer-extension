@@ -114,6 +114,16 @@ export function SegmentView({
   const phraseLinkById = usePhraseLinkByIdMap();
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
+  /**
+   * Bridges an {@link ArcOverlay} split-button click into phrase-store writes via
+   * {@link splitPhraseAtBoundary}, which calls {@link createPhrase}, {@link updatePhrase}, and
+   * {@link deletePhrase} to divide the phrase at the chosen boundary. Early-returns when `phraseId`
+   * has no corresponding link in the store.
+   *
+   * @param phraseId - The id of the phrase to split.
+   * @param splitAfterTokenRef - Token ref after which the phrase is divided; tokens at or before
+   *   this ref go to the first half, tokens after go to the second.
+   */
   const handleArcSplit = useCallback(
     (phraseId: string, splitAfterTokenRef: string) => {
       const phraseLink = phraseLinkById.get(phraseId);

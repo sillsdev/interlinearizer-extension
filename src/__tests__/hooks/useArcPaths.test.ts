@@ -194,44 +194,52 @@ describe('useArcPaths', () => {
     expect(result.current.stripRightPadding).toBe(0);
   });
 
-  it('re-measures when the ResizeObserver fires', () => {
+  describe('re-measures when the ResizeObserver fires', () => {
     // The observer callback defers its measurement to the next animation frame to avoid a
     // synchronous setState-in-observer loop, so drive rAF manually to flush it.
-    const rafCallbacks: FrameRequestCallback[] = [];
-    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafCallbacks.push(cb);
-      return rafCallbacks.length;
-    });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    const originalResizeObserver = global.ResizeObserver;
 
-    let observerCallback: ResizeObserverCallback | undefined;
-    global.ResizeObserver = class implements ResizeObserver {
-      /** @param callback - Stored so tests can fire it on demand. */
-      constructor(callback: ResizeObserverCallback) {
-        observerCallback = callback;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      observe() {}
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      unobserve() {}
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      disconnect() {}
-    };
-    const containerEl = document.createElement('div');
-    const containerRef = { current: containerEl };
-    renderHook(() => useArcPaths(containerRef, true, false, []));
-    const callsBefore = computeAllArcPaths.mock.calls.length;
-
-    act(() => {
-      observerCallback?.([], new ResizeObserver(() => {}));
-      // Flush the scheduled animation frame so the deferred measurement runs.
-      rafCallbacks.forEach((cb) => cb(0));
+    afterEach(() => {
+      global.ResizeObserver = originalResizeObserver;
     });
 
-    expect(computeAllArcPaths.mock.calls.length).toBeGreaterThan(callsBefore);
+    it('triggers computeAllArcPaths after the rAF fires', () => {
+      const rafCallbacks: FrameRequestCallback[] = [];
+      jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+        rafCallbacks.push(cb);
+        return rafCallbacks.length;
+      });
+      jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
+      let observerCallback: ResizeObserverCallback | undefined;
+      global.ResizeObserver = class implements ResizeObserver {
+        /** @param callback - Stored so tests can fire it on demand. */
+        constructor(callback: ResizeObserverCallback) {
+          observerCallback = callback;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        observe() {}
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        unobserve() {}
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        disconnect() {}
+      };
+      const containerEl = document.createElement('div');
+      const containerRef = { current: containerEl };
+      renderHook(() => useArcPaths(containerRef, true, false, []));
+      const callsBefore = computeAllArcPaths.mock.calls.length;
+
+      act(() => {
+        observerCallback?.([], new ResizeObserver(() => {}));
+        // Flush the scheduled animation frame so the deferred measurement runs.
+        rafCallbacks.forEach((cb) => cb(0));
+      });
+
+      expect(computeAllArcPaths.mock.calls.length).toBeGreaterThan(callsBefore);
+    });
   });
 
   it('does not update state when arc paths have not changed', () => {

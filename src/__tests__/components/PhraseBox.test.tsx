@@ -459,9 +459,9 @@ describe('PhraseBox', () => {
     );
   });
 
-  it('does not remove the last remaining token of the edited phrase (would delete the phrase)', async () => {
-    // A single-token phrase: removing its only token would empty the phrase, which updatePhrase
-    // treats as a deletion — leaving no edit target to re-add to and nothing for Cancel to restore.
+  it('does not remove the last remaining token of the edited phrase (would empty it)', async () => {
+    // A single-token phrase: removing its only token would leave zero tokens — the early-return
+    // guard keeps the phrase alive so the user can add more tokens before committing.
     const singleTokenLink: PhraseAnalysisLink = {
       analysisId: 'phrase-1',
       status: 'approved',

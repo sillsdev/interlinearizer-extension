@@ -206,17 +206,18 @@ export function ArcOverlay({
   const unfocusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'unfocused');
 
   /**
-   * Maps an emphasis tier to the z-index class for its split button. Each button sits one z-index
-   * above its own arc layer (arcs at 24/34/44) so it is never obscured by its arc, keeping the
-   * tiers ordered hovered > focused > unfocused.
+   * Maps an emphasis tier to the z-index class for its split button. Buttons must sit above the
+   * token row (z-50 in segment view) so they remain hoverable and clickable; a row that overlaps
+   * them would otherwise swallow every pointer event. Within that, the tiers stay ordered hovered >
+   * focused > unfocused so the button under the cursor is always on top.
    *
    * @param tier - The emphasis tier of the button's phrase.
    * @returns The Tailwind z-index class.
    */
   const buttonZClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
-    if (tier === 'hovered') return 'tw:z-45';
-    if (tier === 'focused') return 'tw:z-35';
-    return 'tw:z-25';
+    if (tier === 'hovered') return 'tw:z-75';
+    if (tier === 'focused') return 'tw:z-65';
+    return 'tw:z-55';
   };
 
   return (

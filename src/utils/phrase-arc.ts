@@ -406,10 +406,9 @@ export function computeAllArcPaths(container: Element): ArcState {
     boxesByPhrase.set(id, list);
   });
 
-  // Collect every same-row upward-bracket arc segment. Only these drive nesting levels: cross-row
-  // arcs are routed through the gap and never occupy bracket space on a row, so including them would
-  // bump same-row arcs higher for no visual reason. Each segment's x-span runs between the box
-  // midpoints, matching the bracket geometry in buildSameRowArcPath.
+  // Collect every same-row upward-bracket arc segment; only these drive nesting levels. Each
+  // segment's x-span runs between the box midpoints, matching buildSameRowArcPath. (Cross-row arcs
+  // route through the gap and occupy no bracket space, so they're excluded — see assignPhraseLevels.)
   const sameRowSegments: SameRowArcSegment[] = [];
   boxesByPhrase.forEach((boxes, phraseId) => {
     if (boxes.length < 2) return;
@@ -431,9 +430,8 @@ export function computeAllArcPaths(container: Element): ArcState {
 
   const levelByPhraseId = assignPhraseLevels(sameRowSegments);
 
-  // Build a map from rounded row-top to the maximum same-row arc level on that row. Used to
-  // ensure cross-row arc midY values stay clear of same-row arcs that protrude into the gap from
-  // the lower row.
+  // Max same-row arc level per row top. A cross-row arc landing on a row must clear that row's
+  // same-row brackets, which protrude upward into the gap above it.
   const maxLevelByRowTop = new Map<number, number>();
   boxesByPhrase.forEach((boxes, phraseId) => {
     if (boxes.length < 2) return;
@@ -443,7 +441,6 @@ export function computeAllArcPaths(container: Element): ArcState {
       const a = boxes[i].rect;
       const b = boxes[i + 1].rect;
       if (Math.abs(a.top - b.top) < a.height / 2) {
-        // Same-row arc — record the level against this row's top.
         const rowKey = Math.round(a.top);
         const prev = maxLevelByRowTop.get(rowKey) ?? -1;
         if (level > prev) maxLevelByRowTop.set(rowKey, level);
@@ -452,22 +449,35 @@ export function computeAllArcPaths(container: Element): ArcState {
   });
 
   // First pass: build same-row arcs and collect cross-row arc descriptors (without final midY).
+  /** A cross-row arc collected in the first pass, before its final midY is spread within its band. */
   type CrossRowDescriptor = {
+    /** The phrase this arc belongs to. */
     phraseId: string;
+    /** Scroll-space rect of the earlier (upper) box. */
     a: { left: number; right: number; top: number; bottom: number };
+    /** Scroll-space rect of the later (lower) box. */
     b: { left: number; right: number; top: number; bottom: number };
+    /** Horizontal midpoint of the crossing segment. */
     midX: number;
+    /** Token ref of the last token in the earlier box; drives the split button. */
     splitAfterTokenRef: string;
-    // Key identifying this inter-row gap: rounded bottom of upper box and top of lower box.
+    /**
+     * Groups arcs that share a horizontal-segment band for level assignment. Keyed on the upper box
+     * bottom only: every arc leaving a row routes through the band just below it, so arcs from the
+     * same row (e.g. 1→2 and 1→3) deconflict together even when they land on different lower rows.
+     */
     gapKey: string;
-    // Minimum y-coordinate (scroll-space) for this arc's midY: just below the bottom edge of the
-    // upper box so the arc's horizontal segment never rides above its own origin. Level-0 arcs sit
-    // here and deeper levels step downward from it.
+    /**
+     * Floor for this arc's midY — just below the upper box's bottom edge so the arc never rides
+     * above its own origin. Level 0 sits here; deeper levels step downward from it.
+     */
     minMidY: number;
-    // Bottom edge (scroll-space) of the upper box; the gap's reserved height is measured from here.
+    /** Bottom edge (scroll-space) of the upper box; the gap's reserved height is measured from here. */
     upperBottom: number;
-    // Height (px) that the lower row's tallest same-row arc protrudes upward from b.top. The cross-
-    // row arc stack must end at least one ARC_LEVEL_STEP above this so it never overlaps those arcs.
+    /**
+     * How far the lower row's tallest same-row arc protrudes up from b.top; the stack must clear
+     * it.
+     */
     lowerRowProtrusion: number;
   };
 
@@ -488,8 +498,6 @@ export function computeAllArcPaths(container: Element): ArcState {
         paths.push({ phraseId, d, midX, midY, splitAfterTokenRef: boxes[i].lastTokenRef });
       } else {
         const midX = ((a.left + a.right) / 2 + (b.left + b.right) / 2) / 2;
-        // The lower row's highest same-row arc peaks at b.top minus its protrusion height. The
-        // cross-row arc must sit one ARC_LEVEL_STEP above that peak so they don't overlap.
         const lowerRowMaxLevel = maxLevelByRowTop.get(Math.round(b.top)) ?? -1;
         const lowerRowProtrusion =
           lowerRowMaxLevel >= 0
@@ -501,10 +509,7 @@ export function computeAllArcPaths(container: Element): ArcState {
           b,
           midX,
           splitAfterTokenRef: boxes[i].lastTokenRef,
-          gapKey: `${Math.round(a.bottom)}_${Math.round(b.top)}`,
-          // Floor for this arc's horizontal segment: it must dip below the bottom edge of the upper
-          // box it springs from, otherwise the arc's top renders above its own origin. Stacking
-          // starts here and steps downward per nesting level.
+          gapKey: `${Math.round(a.bottom)}`,
           minMidY: a.bottom + CROSS_ROW_ARC_CLEARANCE,
           upperBottom: a.bottom,
           lowerRowProtrusion,
@@ -513,11 +518,9 @@ export function computeAllArcPaths(container: Element): ArcState {
     }
   });
 
-  // Second pass: assign a vertical level within each inter-row gap so arcs don't overlap, then
-  // build final paths with spread midY values.
-  //
-  // Within a gap, two cross-row arcs conflict when their x-spans (from cx_a to cx_b) overlap. Use
-  // the same greedy coloring approach as assignPhraseLevels.
+  // Second pass: within each gap, assign a vertical level to every cross-row arc so they don't
+  // overlap (two conflict when their x-spans overlap — same greedy coloring as assignPhraseLevels),
+  // then build the final paths with spread midY values.
   const crossRowByGap = new Map<string, CrossRowDescriptor[]>();
   crossRowDescriptors.forEach((desc) => {
     const list = crossRowByGap.get(desc.gapKey) ?? [];
@@ -528,7 +531,6 @@ export function computeAllArcPaths(container: Element): ArcState {
   let requiredRowGapPx = 0;
 
   crossRowByGap.forEach((gapArcs) => {
-    // Assign levels within this gap by greedy interval coloring on x-span overlap.
     const levels = new Map<CrossRowDescriptor, number>();
     gapArcs.forEach((desc) => {
       const dLeft = Math.min((desc.a.left + desc.a.right) / 2, (desc.b.left + desc.b.right) / 2);
@@ -554,25 +556,19 @@ export function computeAllArcPaths(container: Element): ArcState {
       levels.set(desc, level);
     });
 
-    // gapArcs is always non-empty here (the map only contains keys with ≥ 1 entry), so the
-    // fallback branch is unreachable — defensive guard only.
+    // gapArcs is always non-empty (the map only holds keys with ≥ 1 entry), so the `: 0` fallback
+    // and the empty-array branches of Math.min/max below are unreachable defensive guards.
     /* v8 ignore next */
     const maxGapLevel = gapArcs.length > 0 ? Math.max(...[...levels.values()]) : 0;
-
-    // The floor for all midY values in this gap: the lowest minMidY across all arcs sharing it (so
-    // every arc clears the bottom edge of its own upper box). Level-0 arcs sit here; deeper levels
-    // step downward (increasing y) from it so the arc always springs out below its origin box.
     /* v8 ignore next -- gapArcs is non-empty; Math.max over a non-empty array always yields a number */
     const gapMinMidY = Math.max(...gapArcs.map((d) => d.minMidY));
-
-    // Tallest same-row arc protruding up from the lower row across this gap's arcs. These arcs
-    // occupy the bottom `gapLowerRowProtrusion` band of the gap; the cross-row stack must stay one
-    // CROSS_ROW_ARC_CLEARANCE above that band so the two never touch.
     /* v8 ignore next -- gapArcs is non-empty; Math.max over a non-empty array always yields a number */
     const gapLowerRowProtrusion = Math.max(...gapArcs.map((d) => d.lowerRowProtrusion));
     /* v8 ignore next -- gapArcs is non-empty; Math.min over a non-empty array always yields a number */
     const gapUpperBottom = Math.min(...gapArcs.map((d) => d.upperBottom));
 
+    // Reserve enough row gap for the full stack: from the upper box bottom down to the deepest arc,
+    // plus one clearance, plus the band the lower row's same-row brackets occupy.
     const deepestMidY = gapMinMidY + maxGapLevel * CROSS_ROW_ARC_CLEARANCE;
     const neededGap =
       deepestMidY - gapUpperBottom + CROSS_ROW_ARC_CLEARANCE + gapLowerRowProtrusion;

@@ -337,6 +337,24 @@ describe('computeAllArcPaths', () => {
     expect(midY0).toBe(midY1);
   });
 
+  it('spreads two arcs that spring from the same row but land on different lower rows', () => {
+    // Both arcs leave row y=0: p1 goes to row y=150, p2 goes to row y=300. Their horizontal
+    // segments both route through the band just below row 0 and their x-spans overlap (both span
+    // 30–230), so they must receive distinct midY values. Regression guard for keying the level
+    // band on both endpoints, which split 0→1 and 0→2 into separate buckets and let their
+    // horizontal segments overlap at the shared level-0 floor.
+    const container = buildContainer([
+      { phraseId: 'p1', r: rect(10, 0, 40, 20) },
+      { phraseId: 'p1', r: rect(210, 150, 40, 20) },
+      { phraseId: 'p2', r: rect(210, 0, 40, 20) },
+      { phraseId: 'p2', r: rect(10, 300, 40, 20) },
+    ]);
+    const { paths } = computeAllArcPaths(container);
+    expect(paths).toHaveLength(2);
+    const [midY0, midY1] = paths.map((p) => p.midY);
+    expect(midY0).not.toBe(midY1);
+  });
+
   it('produces a distinct midY for the third overlapping cross-row arc (even level)', () => {
     // Three mutually-overlapping cross-row arcs in the same gap force levels 0, 1, and 2.
     // Level 2 is even, triggering the negative-offset branch (offset = -(level/2)*CLEARANCE).

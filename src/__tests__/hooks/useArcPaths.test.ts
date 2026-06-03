@@ -9,23 +9,30 @@ jest.mock('../../utils/phrase-arc', () => ({
   computeAllArcPaths: jest.fn(() => ({
     paths: [],
     maxLevel: 0,
-    requiredRowGapPx: 0,
+    leftPadding: 0,
+    rightPadding: 0,
   })),
   computeStripTopPadding: jest.fn(() => 8),
+  computeStripRowGap: jest.fn(() => 24),
 }));
 
-const arcPathsMock: { computeAllArcPaths: jest.Mock; computeStripTopPadding: jest.Mock } =
-  jest.requireMock('../../utils/phrase-arc');
-const { computeAllArcPaths, computeStripTopPadding } = arcPathsMock;
+const arcPathsMock: {
+  computeAllArcPaths: jest.Mock;
+  computeStripTopPadding: jest.Mock;
+  computeStripRowGap: jest.Mock;
+} = jest.requireMock('../../utils/phrase-arc');
+const { computeAllArcPaths, computeStripTopPadding, computeStripRowGap } = arcPathsMock;
 
 describe('useArcPaths', () => {
   beforeEach(() => {
     computeAllArcPaths.mockReturnValue({
       paths: [],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     computeStripTopPadding.mockReturnValue(8);
+    computeStripRowGap.mockReturnValue(24);
   });
 
   it('returns empty results when enabled is false', () => {
@@ -54,7 +61,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -67,7 +75,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     act(() => {
       rerender({ enabled: false });
@@ -80,7 +89,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 1,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -93,7 +103,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     act(() => {
       rerender({ enabled: false });
@@ -101,37 +112,13 @@ describe('useArcPaths', () => {
     expect(result.current.maxArcLevel).toBe(0);
   });
 
-  it('resets requiredRowGapPx to 0 when transitioning to disabled', () => {
-    const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
-    computeAllArcPaths.mockReturnValue({
-      paths: [arc],
-      maxLevel: 0,
-      requiredRowGapPx: 20,
-    });
-    const containerRef = { current: document.createElement('div') };
-    const { result, rerender } = renderHook(
-      ({ enabled }) => useArcPaths(containerRef, enabled, false, []),
-      { initialProps: { enabled: true } },
-    );
-    expect(result.current.requiredRowGapPx).toBe(20);
-
-    computeAllArcPaths.mockReturnValue({
-      paths: [],
-      maxLevel: 0,
-      requiredRowGapPx: 0,
-    });
-    act(() => {
-      rerender({ enabled: false });
-    });
-    expect(result.current.requiredRowGapPx).toBe(0);
-  });
-
   it('updates maxArcLevel when it changes between measurements', () => {
     const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(
@@ -144,7 +131,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 1,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     act(() => {
       rerender({ dep: 2 });
@@ -152,7 +140,70 @@ describe('useArcPaths', () => {
     expect(result.current.maxArcLevel).toBe(1);
   });
 
+  it('updates stripLeftPadding and stripRightPadding when they change between measurements', () => {
+    const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
+    computeAllArcPaths.mockReturnValue({
+      paths: [arc],
+      maxLevel: 0,
+      leftPadding: 0,
+      rightPadding: 0,
+    });
+    const containerRef = { current: document.createElement('div') };
+    const { result, rerender } = renderHook(
+      ({ dep }: { dep: number }) => useArcPaths(containerRef, true, false, [dep]),
+      { initialProps: { dep: 1 } },
+    );
+    expect(result.current.stripLeftPadding).toBe(0);
+    expect(result.current.stripRightPadding).toBe(0);
+
+    // A later measurement reserves gutter padding on both sides.
+    computeAllArcPaths.mockReturnValue({
+      paths: [arc],
+      maxLevel: 0,
+      leftPadding: 8,
+      rightPadding: 16,
+    });
+    act(() => {
+      rerender({ dep: 2 });
+    });
+    expect(result.current.stripLeftPadding).toBe(8);
+    expect(result.current.stripRightPadding).toBe(16);
+  });
+
+  it('resets stripLeftPadding and stripRightPadding to 0 when transitioning to disabled', () => {
+    const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
+    computeAllArcPaths.mockReturnValue({
+      paths: [arc],
+      maxLevel: 0,
+      leftPadding: 8,
+      rightPadding: 16,
+    });
+    const containerRef = { current: document.createElement('div') };
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useArcPaths(containerRef, enabled, false, []),
+      { initialProps: { enabled: true } },
+    );
+    expect(result.current.stripLeftPadding).toBe(8);
+    expect(result.current.stripRightPadding).toBe(16);
+
+    // Transition to disabled — both paddings must reset to 0.
+    act(() => {
+      rerender({ enabled: false });
+    });
+    expect(result.current.stripLeftPadding).toBe(0);
+    expect(result.current.stripRightPadding).toBe(0);
+  });
+
   it('re-measures when the ResizeObserver fires', () => {
+    // The observer callback defers its measurement to the next animation frame to avoid a
+    // synchronous setState-in-observer loop, so drive rAF manually to flush it.
+    const rafCallbacks: FrameRequestCallback[] = [];
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
     let observerCallback: ResizeObserverCallback | undefined;
     global.ResizeObserver = class implements ResizeObserver {
       /** @param callback - Stored so tests can fire it on demand. */
@@ -176,6 +227,8 @@ describe('useArcPaths', () => {
 
     act(() => {
       observerCallback?.([], new ResizeObserver(() => {}));
+      // Flush the scheduled animation frame so the deferred measurement runs.
+      rafCallbacks.forEach((cb) => cb(0));
     });
 
     expect(computeAllArcPaths.mock.calls.length).toBeGreaterThan(callsBefore);
@@ -186,7 +239,8 @@ describe('useArcPaths', () => {
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 0,
-      requiredRowGapPx: 0,
+      leftPadding: 0,
+      rightPadding: 0,
     });
     const containerRef = { current: document.createElement('div') };
     const { result, rerender } = renderHook(

@@ -196,35 +196,53 @@ export function ArcOverlay({
     return 'unfocused';
   };
 
-  // Split arcs across three SVG layers so the emphasis z-stack interleaves correctly with split
-  // buttons (top → bottom): hovered buttons > hovered arcs > focused buttons > focused arcs >
-  // unfocused buttons > unfocused arcs. Hover sits above focus so the phrase under the cursor is
-  // always fully visible. A single SVG would force every arc it contains to share one z-index,
-  // breaking the interleaving with the buttons.
+  // Split arcs across three SVG layers so the emphasis z-stack interleaves correctly with the split
+  // buttons. All these z-indices live inside `.tw:arc-container`, which is an isolated stacking
+  // context, so they only compete with each other and stay small. Top → bottom the stack is:
+  //   token row + controls pill (z-7) > hovered button (z-6) > hovered arc (z-5) > focused button
+  //   (z-4) > focused arc (z-3) > dimmed button (z-2) > dimmed arc (z-1).
+  // Each tier's button sits just above its own arc line, with hover above focus above dimmed so the
+  // phrase under the cursor is always fully visible. A single SVG would force every arc it contains
+  // to share one z-index, breaking the ordering. The token row sits on top so the phrase boxes and
+  // their controls pill always stay above every arc and button; the split buttons sit below the row
+  // (but above the arcs) and remain hoverable and clickable in the gap below the boxes.
   const focusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'focused');
   const hoveredArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'hovered');
   const unfocusedArcPaths = sortedArcPaths.filter((p) => tierOf(p.phraseId) === 'unfocused');
 
   /**
-   * Maps an emphasis tier to the z-index class for its split button. Buttons must sit above the
-   * token row (z-50 in segment view) so they remain hoverable and clickable; a row that overlaps
-   * them would otherwise swallow every pointer event. Within that, the tiers stay ordered hovered >
-   * focused > unfocused so the button under the cursor is always on top.
+   * Maps an emphasis tier to the z-index class for its split button. Buttons sit above their own
+   * arc line but below the token row, ordered hovered (6) > focused (4) > dimmed (2) so the button
+   * under the cursor is always on top. See the layering comment above for the full stack.
    *
    * @param tier - The emphasis tier of the button's phrase.
    * @returns The Tailwind z-index class.
    */
   const buttonZClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
-    if (tier === 'hovered') return 'tw:z-75';
-    if (tier === 'focused') return 'tw:z-65';
-    return 'tw:z-55';
+    if (tier === 'hovered') return 'tw:z-6';
+    if (tier === 'focused') return 'tw:z-4';
+    return 'tw:z-2';
+  };
+
+  /**
+   * Maps an emphasis tier to the split button's border + text colour classes. The focused button is
+   * white to match its full-white arc; the hovered button reveals in muted foreground; the
+   * unfocused button stays faint until its phrase is hovered or focused.
+   *
+   * @param tier - The emphasis tier of the button's phrase.
+   * @returns The Tailwind border and text colour classes.
+   */
+  const buttonColorClassFor = (tier: 'focused' | 'hovered' | 'unfocused'): string => {
+    if (tier === 'focused') return 'tw:border-white tw:text-white';
+    if (tier === 'hovered') return 'tw:border-border/40 tw:text-muted-foreground';
+    return 'tw:border-border/50 tw:text-border/50';
   };
 
   return (
     <>
       <svg
         aria-hidden="true"
-        className="tw:arc-svg-layer tw:z-24"
+        className="tw:arc-svg-layer tw:z-1"
         style={{ height: '100%', overflow: 'visible', width: '100%' }}
       >
         {unfocusedArcPaths.map(renderArcPath)}
@@ -232,7 +250,7 @@ export function ArcOverlay({
       {focusedArcPaths.length > 0 && (
         <svg
           aria-hidden="true"
-          className="tw:arc-svg-layer tw:z-34"
+          className="tw:arc-svg-layer tw:z-3"
           style={{ height: '100%', overflow: 'visible', width: '100%' }}
         >
           {focusedArcPaths.map(renderArcPath)}
@@ -241,7 +259,7 @@ export function ArcOverlay({
       {hoveredArcPaths.length > 0 && (
         <svg
           aria-hidden="true"
-          className="tw:arc-svg-layer tw:z-44"
+          className="tw:arc-svg-layer tw:z-5"
           style={{ height: '100%', overflow: 'visible', width: '100%' }}
         >
           {hoveredArcPaths.map(renderArcPath)}
@@ -250,8 +268,8 @@ export function ArcOverlay({
       {phraseMode.kind === 'view' &&
         sortedArcPaths.map(({ phraseId, d, midX, midY, splitAfterTokenRef }) => {
           const tier = tierOf(phraseId);
-          const isRevealed = tier !== 'unfocused';
           const buttonZClass = buttonZClassFor(tier);
+          const buttonColorClass = buttonColorClassFor(tier);
           const phraseLink = phraseLinkById.get(phraseId);
           const arcSplitFreeRefs = computeSplitFreeRefs(
             phraseLink,
@@ -263,7 +281,7 @@ export function ArcOverlay({
             <button
               key={`split-arc-${phraseId}-${d}`}
               aria-label="Split phrase here"
-              className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-0.5 ${buttonZClass}${isRevealed ? ' tw:border-border/40 tw:text-muted-foreground' : ' tw:border-border/50 tw:text-border/50'}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+              className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
               data-testid="split-arc-btn"
               style={{ left: midX, top: midY }}
               type="button"
@@ -292,7 +310,7 @@ export function ArcOverlay({
                 else handleReshapeHoverLeave();
               }}
             >
-              <Link2Off className="tw:h-3 tw:w-3" />
+              <Link2Off className="tw:h-2.5 tw:w-2.5" />
             </button>
           );
         })}

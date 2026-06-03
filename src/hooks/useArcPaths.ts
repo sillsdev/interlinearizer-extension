@@ -1,22 +1,27 @@
 import { type RefObject, useLayoutEffect, useRef, useState, useCallback } from 'react';
-import { computeAllArcPaths, computeStripTopPadding, type ArcPath } from '../utils/phrase-arc';
+import {
+  computeAllArcPaths,
+  computeStripTopPadding,
+  computeStripRowGap,
+  type ArcPath,
+} from '../utils/phrase-arc';
 
 // #region Types
 
 /** Resolved arc measurements for the phrase strip, recomputed after each render. */
 export type ArcPathsResult = {
-  /** SVG arc path strings keyed by phraseId, drawn above the strip for discontiguous phrases. */
+  /** SVG arc paths for discontiguous phrases, drawn above the strip. */
   arcPaths: ArcPath[];
   /** Maximum nesting level across all visible arcs; drives dynamic top padding. */
   maxArcLevel: number;
-  /** Top padding (px) the strip needs to clear the highest arc and the hover controls pill. */
+  /** Top padding (px) to clear the highest arc and the controls pill. */
   stripTopPadding: number;
-  /**
-   * Minimum row gap (px) needed to accommodate all cross-row arcs without overlapping. Zero when
-   * there are no cross-row arcs. The caller should apply this as `row-gap` / `gap-y` on the token
-   * row so the inter-row space expands dynamically.
-   */
-  requiredRowGapPx: number;
+  /** Vertical gap (px) between wrapped rows, grown so a lower row's arcs clear the row above. */
+  stripRowGap: number;
+  /** Left padding (px) reserved for cross-row arcs routed down the left gutter. */
+  stripLeftPadding: number;
+  /** Right padding (px) reserved for cross-row arcs routed down the right gutter. */
+  stripRightPadding: number;
 };
 
 // #endregion
@@ -25,28 +30,22 @@ export type ArcPathsResult = {
 
 /**
  * Measures the rendered phrase boxes inside `containerRef` after each layout commit and computes
- * the cubic Bézier arcs that connect the runs of every discontiguous phrase. Shared by SegmentView
- * and ContinuousView so the two strip layouts can never drift apart in how arcs are derived.
+ * the arcs connecting every discontiguous phrase's runs. Shared by SegmentView and ContinuousView
+ * so the two strip layouts can't drift apart. State is only replaced when the serialized arc shape
+ * changes, so the layout effect settles after one extra pass; when `enabled` is `false` the result
+ * is reset to empty instead of measured.
  *
- * State is only replaced when the serialized arc shape actually changes, so the layout effect
- * settles after at most one extra pass rather than looping. When `enabled` is `false` (e.g.
- * SegmentView's baseline-text mode, where the container is unmounted) the result is reset to empty
- * instead of measuring.
- *
- * The hook owns `stripTopPadding` and re-measures whenever it changes: the applied padding shifts
- * the layout that arcs are measured against, so without it a 0→1 arc transition would leave the
- * paths positioned for the old padding until an unrelated render. Owning it here keeps that
- * self-referential dependency inside the hook rather than forcing callers to thread it back in.
+ * The hook owns its top/left/right padding and re-measures when any changes, because the applied
+ * padding shifts the layout the arcs are measured against — otherwise a 0→1 arc transition would
+ * leave paths positioned for the old padding until an unrelated render.
  *
  * @param containerRef - Ref to the element wrapping the `[data-phrase-box]` elements to measure.
  * @param enabled - Whether the container is mounted and should be measured; `false` resets to
  *   empty.
- * @param hasRealPhrase - Whether any committed phrase is rendered; feeds the controls headroom in
- *   the top-padding calculation.
+ * @param hasRealPhrase - Whether any committed phrase is rendered; feeds the controls headroom.
  * @param deps - Extra dependencies that should trigger a re-measure (token data, phrase mode,
- *   etc.). The effect always re-runs when `enabled` or the computed padding changes.
- * @returns An {@link ArcPathsResult} containing the current arc paths, maximum nesting level, strip
- *   top padding, and the required row gap in pixels needed to accommodate cross-row arcs.
+ *   etc.).
+ * @returns The current arc paths, max nesting level, and the strip's top/left/right padding.
  */
 export function useArcPaths(
   containerRef: RefObject<HTMLElement | null>,
@@ -56,13 +55,14 @@ export function useArcPaths(
 ): ArcPathsResult {
   const [arcPaths, setArcPaths] = useState<ArcPath[]>([]);
   const [maxArcLevel, setMaxArcLevel] = useState(0);
-  const [requiredRowGapPx, setRequiredRowGapPx] = useState(0);
+  const [stripLeftPadding, setStripLeftPadding] = useState(0);
+  const [stripRightPadding, setStripRightPadding] = useState(0);
 
   const stripTopPadding = computeStripTopPadding(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
+  const stripRowGap = computeStripRowGap(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
 
-  // Collapse `deps` into a monotonically increasing version counter so the layout effect dep array
-  // is always fixed-length. The counter increments whenever any element of `deps` changes identity,
-  // triggering a re-measure without violating the rules of hooks.
+  // Collapse `deps` into a version counter so the layout effect's dep array stays fixed-length. It
+  // increments whenever any element of `deps` changes identity, triggering a re-measure.
   const prevDepsRef = useRef<readonly unknown[]>(deps);
   const depsVersionRef = useRef(0);
   if (
@@ -76,14 +76,14 @@ export function useArcPaths(
 
   /**
    * Runs one measurement pass against `container` and flushes the results into state. Called from
-   * both the layout effect (for normal re-renders) and the ResizeObserver callback (for size
-   * changes), so resize redraws bypass the extra render cycle that bumping a version counter would
-   * require.
+   * both the layout effect and the ResizeObserver, so resize redraws skip the extra render cycle a
+   * version-counter bump would need. Per-field equality guards keep stable measurements from
+   * churning state.
    *
    * @param container - The element to measure phrase boxes inside.
    */
   const measure = useCallback((container: Element) => {
-    const { paths, maxLevel, requiredRowGapPx: rowGap } = computeAllArcPaths(container);
+    const { paths, maxLevel, leftPadding, rightPadding } = computeAllArcPaths(container);
     setArcPaths((prev) => {
       const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
       const prevKey = prev.map(key).join('|');
@@ -91,20 +91,28 @@ export function useArcPaths(
       return prevKey === nextKey ? prev : paths;
     });
     setMaxArcLevel((prev) => (prev === maxLevel ? prev : maxLevel));
-    setRequiredRowGapPx((prev) => (prev === rowGap ? prev : rowGap));
+    setStripLeftPadding((prev) => (prev === leftPadding ? prev : leftPadding));
+    setStripRightPadding((prev) => (prev === rightPadding ? prev : rightPadding));
   }, []);
 
-  // Observe the container for size changes so arcs are redrawn when wrapping occurs. The observer
-  // calls `measure` directly instead of bumping a version counter, eliminating the extra render
-  // cycle that would otherwise delay the redraw.
+  // Observe the container so arcs redraw on wrap, calling `measure` directly to skip a render cycle.
+  //
+  // The callback is deferred to the next frame, not run synchronously: measuring sets the strip's
+  // padding, which resizes the wrapping row, which the observer reports as a new resize. Measuring
+  // synchronously turns that into a same-tick setState storm React escalates to "Maximum update
+  // depth exceeded" (the crash when shrinking enough to wrap many cross-row arcs). One measurement
+  // per frame lets layout settle between passes (and silences the "ResizeObserver loop" warning).
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) return;
+    let rafId = 0;
     const observer = new ResizeObserver(() => {
-      measure(container);
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => measure(container));
     });
     observer.observe(container);
     return () => {
+      cancelAnimationFrame(rafId);
       observer.disconnect();
     };
   }, [containerRef, enabled, measure]);
@@ -114,15 +122,32 @@ export function useArcPaths(
     if (!container) {
       setArcPaths((prev) => (prev.length === 0 ? prev : []));
       setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
-      setRequiredRowGapPx((prev) => (prev === 0 ? prev : 0));
+      setStripLeftPadding((prev) => (prev === 0 ? prev : 0));
+      setStripRightPadding((prev) => (prev === 0 ? prev : 0));
       return;
     }
     measure(container);
-    // stripTopPadding is intentionally a dep: see the hook doc comment. The loop stabilizes after
-    // one extra pass because arc count doesn't change between passes.
-  }, [containerRef, enabled, stripTopPadding, depsVersion, measure]);
+    // The padding values are intentionally deps: applying them shifts the measured layout (see the
+    // hook doc), so a padding change must trigger a re-measure. Stabilizes after one extra pass.
+  }, [
+    containerRef,
+    enabled,
+    stripTopPadding,
+    stripRowGap,
+    stripLeftPadding,
+    stripRightPadding,
+    depsVersion,
+    measure,
+  ]);
 
-  return { arcPaths, maxArcLevel, stripTopPadding, requiredRowGapPx };
+  return {
+    arcPaths,
+    maxArcLevel,
+    stripTopPadding,
+    stripRowGap,
+    stripLeftPadding,
+    stripRightPadding,
+  };
 }
 
 // #endregion

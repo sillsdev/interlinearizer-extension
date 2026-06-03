@@ -487,10 +487,12 @@ export default function ContinuousView({
   const hasRealPhraseInWindow = windowGroups.some((g) => g.phraseLink !== undefined);
 
   // Measure phrase boxes after each render and compute arcs for discontiguous phrases.
-  const { arcPaths, stripTopPadding } = useArcPaths(arcContainerRef, true, hasRealPhraseInWindow, [
-    windowGroups,
-    phraseMode,
-  ]);
+  const { arcPaths, stripTopPadding, stripLeftPadding, stripRightPadding } = useArcPaths(
+    arcContainerRef,
+    true,
+    hasRealPhraseInWindow,
+    [windowGroups, phraseMode],
+  );
 
   /**
    * Interleaved render units (groups + link slots) in document order across the window. Built from
@@ -652,9 +654,13 @@ export default function ContinuousView({
           <PhraseStripProvider value={stripContext}>
             <div
               data-testid="token-strip"
-              className="tw:no-scrollbar tw:flex tw:w-max tw:items-start tw:gap-1 tw:overflow-x-scroll tw:pb-2"
+              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:overflow-x-scroll tw:pb-2"
               ref={stripRowRef}
-              style={{ paddingTop: `${stripTopPadding}px` }}
+              style={{
+                paddingTop: `${stripTopPadding}px`,
+                paddingLeft: `${stripLeftPadding}px`,
+                paddingRight: `${stripRightPadding}px`,
+              }}
               onMouseLeave={() => {
                 setHoveredPhraseId(undefined);
                 clearHoverState();

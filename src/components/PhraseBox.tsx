@@ -291,7 +291,7 @@ export function PhraseBox({
       <span className="tw:relative tw:inline-flex tw:flex-col">
         {isRealPhrase && showControls && (
           <span
-            className="tw:absolute tw:top-0 tw:z-50 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
+            className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
           >
             <button

@@ -71,7 +71,7 @@ export function PhraseSlot({
   // therefore can never disagree.
   const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
   return (
-    <span className="tw:link-slot">
+    <span className="tw:link-slot tw:pointer-events-auto">
       <MemoizedTokenLinkIcon
         slotFocus={slotFocus}
         isPhraseRevealed={phraseRevealed}
@@ -172,6 +172,9 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
   return (
     <span
       ref={groupRef}
+      // The strip wrapper is `pointer-events-none` so its padding gaps let arc-split button clicks
+      // through to the buttons beneath; re-enable events on the actual phrase content here.
+      className="tw:pointer-events-auto"
       onMouseEnter={
         allowHover
           ? () => {

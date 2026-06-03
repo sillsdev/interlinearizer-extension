@@ -27,6 +27,8 @@ function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {
     d: `M0 0 L100 0 ${splitAfterTokenRef}`,
     midX: 50,
     midY: 10,
+    runLeft: 0,
+    runRight: 100,
     splitAfterTokenRef,
   };
 }
@@ -137,6 +139,7 @@ describe('ArcOverlay', () => {
       />,
     );
     expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('split-arc-btn').className).toContain('border-white');
   });
 
   it('calls onArcSplit and clears hover state when split button is clicked', async () => {

@@ -56,11 +56,11 @@
 }
 
 @utility token-row {
-  @apply tw:relative tw:z-50 tw:flex tw:flex-wrap tw:gap-x-1 tw:gap-y-6 tw:items-start tw:pt-4;
+  @apply tw:relative tw:z-7 tw:flex tw:flex-wrap tw:gap-x-1 tw:gap-y-6 tw:items-start tw:pt-4;
 }
 
 @utility arc-container {
-  @apply tw:relative tw:overflow-visible;
+  @apply tw:relative tw:isolate tw:overflow-visible;
 }
 
 @utility confirm-bar {

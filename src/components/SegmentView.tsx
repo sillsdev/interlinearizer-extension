@@ -310,7 +310,9 @@ export function SegmentView({
   const {
     arcPaths,
     stripTopPadding: tokenRowTopPadding,
-    requiredRowGapPx,
+    stripRowGap,
+    stripLeftPadding,
+    stripRightPadding,
   } = useArcPaths(arcContainerRef, displayMode !== 'baseline-text', hasRealPhraseInSegment, [
     tokenGroups,
     phraseMode,
@@ -357,12 +359,13 @@ export function SegmentView({
         />
         <PhraseStripProvider value={stripContext}>
           <span
-            className="tw:token-row"
+            className="tw:token-row tw:pointer-events-none"
             ref={tokenRowRef}
             style={{
               paddingTop: `${tokenRowTopPadding}px`,
-              rowGap:
-                requiredRowGapPx > 0 ? `${requiredRowGapPx}px` : /* v8 ignore next */ undefined,
+              paddingLeft: `${stripLeftPadding}px`,
+              paddingRight: `${stripRightPadding}px`,
+              rowGap: `${stripRowGap}px`,
             }}
             onMouseLeave={() => {
               onHoverPhrase(undefined);

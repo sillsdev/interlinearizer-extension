@@ -106,19 +106,6 @@ export function TokenLinkIcon({
   ]);
 
   /**
-   * Sorts a token snapshot list into document order using `tokenDocOrder`. Thin wrapper over the
-   * shared {@link sortByDocOrder} helper, memoized so `handleLinkClick` keeps a stable identity.
-   *
-   * @param snapshots - Token snapshots to sort.
-   * @returns A new array sorted by ascending document index.
-   */
-  const sortSnapshots = useCallback(
-    (snapshots: PhraseAnalysisLink['tokens']): PhraseAnalysisLink['tokens'] =>
-      sortByDocOrder(snapshots, tokenDocOrder),
-    [tokenDocOrder],
-  );
-
-  /**
    * Joins the neighbor on the far side of this slot into the focused phrase (or free token).
    *
    * `focusedSideIsPrev = true`: focus is prev-ward; the neighbor to join is
@@ -158,7 +145,7 @@ export function TokenLinkIcon({
         };
         updatePhrase(
           focusedPhraseLink.analysisId,
-          sortSnapshots([...focusedPhraseLink.tokens, bridgingSnapshot]),
+          sortByDocOrder([...focusedPhraseLink.tokens, bridgingSnapshot], tokenDocOrder),
         );
         return;
       }
@@ -170,7 +157,7 @@ export function TokenLinkIcon({
         : [{ tokenRef: neighborToken.ref, surfaceText: neighborToken.surfaceText }];
       updatePhrase(
         focusedPhraseLink.analysisId,
-        sortSnapshots([...focusedPhraseLink.tokens, ...neighborSnapshots]),
+        sortByDocOrder([...focusedPhraseLink.tokens, ...neighborSnapshots], tokenDocOrder),
       );
       if (neighborLink) deletePhrase(neighborLink.analysisId);
       return;
@@ -188,7 +175,7 @@ export function TokenLinkIcon({
       // Neighbor is a phrase: absorb the focused free token into it, sorted by document order.
       updatePhrase(
         neighborLink.analysisId,
-        sortSnapshots([...neighborLink.tokens, focusedSnapshot]),
+        sortByDocOrder([...neighborLink.tokens, focusedSnapshot], tokenDocOrder),
       );
       return;
     }
@@ -198,7 +185,7 @@ export function TokenLinkIcon({
       tokenRef: neighborToken.ref,
       surfaceText: neighborToken.surfaceText,
     };
-    createPhrase(sortSnapshots([focusedSnapshot, neighborSnapshot]));
+    createPhrase(sortByDocOrder([focusedSnapshot, neighborSnapshot], tokenDocOrder));
   }, [
     prevToken,
     nextToken,
@@ -207,7 +194,7 @@ export function TokenLinkIcon({
     focusedSideIsPrev,
     focusedPhraseLink,
     focusedFreeToken,
-    sortSnapshots,
+    tokenDocOrder,
     createPhrase,
     updatePhrase,
     deletePhrase,

@@ -2,7 +2,7 @@
 import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
-import { MemoizedInertTokenChip } from './TokenChip';
+import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import {
   resolveSlotFocus,
@@ -10,46 +10,6 @@ import {
   type LinkSlot,
   type TokenGroup,
 } from '../utils/token-layout';
-
-// #region resolveIsHighlighted
-
-/**
- * Computes whether a phrase group should render highlighted, with identical rules in both views.
- *
- * In `view` mode a group is highlighted when its phrase is the one hovered anywhere, when its
- * phrase is the focused phrase (so all discontiguous fragments group visually with the focused
- * box), or when any of its tokens is a candidate for a hovered link. In `edit`/`confirm-unlink`
- * mode only the group belonging to the active mode phrase is highlighted; other phrases are never
- * highlighted.
- *
- * @param phraseMode - Current phrase-interaction mode.
- * @param phraseId - The group's phraseId, or `undefined` for a solo token.
- * @param group - The phrase group being rendered.
- * @param hoveredPhraseId - PhraseId currently hovered anywhere in the view.
- * @param focusedPhraseId - PhraseId of the focused token's phrase, or `undefined`.
- * @param candidateTokenRefs - Token refs a hovered link icon would join into a new phrase.
- * @returns `true` when the group should render with the highlighted style.
- */
-export function resolveIsHighlighted(
-  phraseMode: PhraseMode,
-  phraseId: string | undefined,
-  group: TokenGroup,
-  hoveredPhraseId: string | undefined,
-  focusedPhraseId: string | undefined,
-  candidateTokenRefs: ReadonlySet<string>,
-): boolean {
-  if (phraseMode.kind === 'view') {
-    if (phraseId !== undefined && phraseId === hoveredPhraseId) return true;
-    // Highlight all boxes of the focused phrase, even when not directly hovered, so discontiguous
-    // fragments are visually grouped with the focused box.
-    if (phraseId !== undefined && phraseId === focusedPhraseId) return true;
-    if (group.tokens.some((t) => candidateTokenRefs.has(t.ref))) return true;
-    return false;
-  }
-  return phraseId !== undefined && phraseId === phraseMode.phraseId;
-}
-
-// #endregion
 
 // #region PhraseSlot
 
@@ -121,7 +81,7 @@ export function PhraseSlot({
         prevToken={prevToken}
       />
       {punctuation.map((punctToken) => (
-        <MemoizedInertTokenChip key={punctToken.ref} token={punctToken} />
+        <InertTokenChip key={punctToken.ref} token={punctToken} />
       ))}
     </span>
   );
@@ -358,14 +318,15 @@ export function PhraseStrip({
     const phraseId = group.phraseLink?.analysisId;
     const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
     if (phraseId !== undefined) seenPhraseIds.add(phraseId);
-    const isHighlighted = resolveIsHighlighted(
-      phraseMode,
-      phraseId,
-      group,
-      hoveredPhraseId,
-      focus.focusedPhraseId,
-      candidateTokenRefs,
-    );
+    const isHighlighted = (() => {
+      if (phraseMode.kind === 'view') {
+        if (phraseId !== undefined && phraseId === hoveredPhraseId) return true;
+        if (phraseId !== undefined && phraseId === focus.focusedPhraseId) return true;
+        if (group.tokens.some((t) => candidateTokenRefs.has(t.ref))) return true;
+        return false;
+      }
+      return phraseId !== undefined && phraseId === phraseMode.phraseId;
+    })();
     return (
       <MemoizedPhraseGroup
         key={groupKey}

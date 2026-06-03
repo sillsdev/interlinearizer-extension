@@ -20,6 +20,13 @@ import { isWordToken } from '../../types/typeGuards';
  */
 const phraseLinkMap = new Map<string, PhraseAnalysisLink>();
 
+type PhraseDispatch = { createPhrase: jest.Mock; updatePhrase: jest.Mock; deletePhrase: jest.Mock };
+const mockUsePhraseDispatch = jest.fn<PhraseDispatch, []>().mockReturnValue({
+  createPhrase: jest.fn(),
+  updatePhrase: jest.fn(),
+  deletePhrase: jest.fn(),
+});
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -31,11 +38,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseLinkByIdMap: () =>
     new Map([...new Set(phraseLinkMap.values())].map((l) => [l.analysisId, l])),
   usePhraseLinkForToken: () => undefined,
-  usePhraseDispatch: () => ({
-    createPhrase: () => {},
-    updatePhrase: () => {},
-    deletePhrase: () => {},
-  }),
+  usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',
   usePhraseGlossDispatch: () => () => {},
 }));
@@ -50,12 +53,13 @@ const withAnalysisStore = {
 // The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
 // ContinuousView's tests don't redundantly re-exercise the hook's internals; the view only forwards
 // its handlers, which a no-op stub satisfies.
+const mockCandidateTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
   __esModule: true,
   usePhraseHoverState: () => ({
     hoveredGroupKey: undefined,
     setHoveredGroupKey: () => {},
-    candidateTokenRefs: new Set<string>(),
+    candidateTokenRefs: mockCandidateTokenRefs.current,
     setCandidateTokenRefs: () => {},
     splitFreeTokenRefs: new Set<string>(),
     handleSplitHoverChange: () => {},
@@ -73,7 +77,17 @@ jest.mock('../../components/TokenLinkIcon', () => ({
 
 jest.mock('../../components/ArcOverlay', () => ({
   __esModule: true,
-  default: () => undefined,
+  default: ({
+    onArcSplit,
+  }: Readonly<{ onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void }>) => (
+    <button
+      type="button"
+      data-testid="arc-split-btn"
+      onClick={() => onArcSplit('phrase-1', 'tok-0')}
+    >
+      split
+    </button>
+  ),
 }));
 
 jest.mock('../../components/PhraseBox', () => ({
@@ -407,6 +421,12 @@ beforeAll(() => {
 beforeEach(() => {
   scrollIntoViewMock.mockClear();
   phraseLinkMap.clear();
+  mockUsePhraseDispatch.mockReturnValue({
+    createPhrase: jest.fn(),
+    updatePhrase: jest.fn(),
+    deletePhrase: jest.fn(),
+  });
+  mockCandidateTokenRefs.current = new Set();
 });
 
 // ---------------------------------------------------------------------------
@@ -928,5 +948,55 @@ describe('ContinuousView phrase grouping', () => {
     await userEvent.hover(phraseGroupSpan ?? document.body);
     await userEvent.unhover(phraseGroupSpan ?? document.body);
     // No throw = pass
+  });
+
+  it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+    });
+    // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+  });
+
+  it('does nothing when the arc split button fires for an unknown phrase id', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+    });
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    mockCandidateTokenRefs.current = new Set(['tok-0']);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
   });
 });

@@ -18,6 +18,13 @@ const mockUsePhraseLinkMap = jest
   .fn<Map<string, PhraseAnalysisLink>, []>()
   .mockReturnValue(new Map());
 
+type PhraseDispatch = { createPhrase: jest.Mock; updatePhrase: jest.Mock; deletePhrase: jest.Mock };
+const mockUsePhraseDispatch = jest.fn<PhraseDispatch, []>().mockReturnValue({
+  createPhrase: jest.fn(),
+  updatePhrase: jest.fn(),
+  deletePhrase: jest.fn(),
+});
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -31,11 +38,7 @@ jest.mock('../../components/AnalysisStore', () => ({
     return new Map([...new Set(map.values())].map((l) => [l.analysisId, l]));
   },
   usePhraseLinkForToken: () => undefined,
-  usePhraseDispatch: () => ({
-    createPhrase: () => {},
-    updatePhrase: () => {},
-    deletePhrase: () => {},
-  }),
+  usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',
   usePhraseGlossDispatch: () => () => {},
 }));
@@ -43,12 +46,13 @@ jest.mock('../../components/AnalysisStore', () => ({
 // The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
 // SegmentView's tests don't redundantly re-exercise the hook's internals; the view only forwards its
 // handlers, which a no-op stub satisfies.
+const mockCandidateTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
   __esModule: true,
   usePhraseHoverState: () => ({
     hoveredGroupKey: undefined,
     setHoveredGroupKey: () => {},
-    candidateTokenRefs: new Set<string>(),
+    candidateTokenRefs: mockCandidateTokenRefs.current,
     setCandidateTokenRefs: () => {},
     splitFreeTokenRefs: new Set<string>(),
     handleSplitHoverChange: () => {},
@@ -66,7 +70,17 @@ jest.mock('../../components/TokenLinkIcon', () => ({
 
 jest.mock('../../components/ArcOverlay', () => ({
   __esModule: true,
-  default: () => undefined,
+  default: ({
+    onArcSplit,
+  }: Readonly<{ onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void }>) => (
+    <button
+      type="button"
+      data-testid="arc-split-btn"
+      onClick={() => onArcSplit('phrase-1', 'tok-0')}
+    >
+      split
+    </button>
+  ),
 }));
 
 jest.mock('../../components/PhraseBox', () => ({
@@ -184,6 +198,12 @@ function requiredProps(): {
 describe('SegmentView', () => {
   beforeEach(() => {
     mockUsePhraseLinkMap.mockReturnValue(new Map());
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase: jest.fn(),
+    });
+    mockCandidateTokenRefs.current = new Set();
   });
 
   it('renders word token chips in token-chip mode (default)', () => {
@@ -529,5 +549,79 @@ describe('SegmentView', () => {
 
     const boxes = document.querySelectorAll('[data-show-gloss]');
     expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
+  });
+
+  it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+    });
+    // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
+    mockUsePhraseLinkMap.mockReturnValue(
+      new Map([
+        [
+          'tok-0',
+          {
+            analysisId: 'phrase-1',
+            status: 'approved' as const,
+            tokens: [
+              { tokenRef: 'tok-0', surfaceText: 'In' },
+              { tokenRef: 'tok-1', surfaceText: 'the' },
+            ],
+          },
+        ],
+      ]),
+    );
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView
+          {...requiredProps()}
+          tokenDocOrder={
+            new Map([
+              ['tok-0', 0],
+              ['tok-1', 1],
+            ])
+          }
+        />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+  });
+
+  it('does nothing when the arc split button fires for an unknown phrase id', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+    });
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+    };
+    mockUsePhraseLinkMap.mockReturnValue(new Map([['tok-0', phraseLink]]));
+    mockCandidateTokenRefs.current = new Set(['tok-0']);
+    // No throw and correct render = the candidatePhraseIds memo ran without error
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+    // ArcOverlay receives candidatePhraseIds; it renders so no assertion needed beyond no crash
+    expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
   });
 });

@@ -347,42 +347,36 @@ export type ArcState = {
 };
 
 /**
- * Converts a viewport-relative `DOMRect` to scroll-space coordinates relative to the container's
- * content origin.
+ * Converts a viewport-relative `DOMRect` to container-relative coordinates.
  *
  * @param rect - The viewport-relative bounding rect of a phrase-box element.
- * @param containerRect - The viewport-relative bounding rect of the scroll container.
- * @param scrollLeft - Current `scrollLeft` of the scroll container.
- * @param scrollTop - Current `scrollTop` of the scroll container.
- * @returns A plain object with `left`, `right`, `top`, `bottom`, `width`, and `height` in
- *   scroll-space.
+ * @param containerRect - The viewport-relative bounding rect of the arc container.
+ * @returns A plain object with `left`, `right`, `top`, `bottom`, `width`, and `height` relative to
+ *   the container's top-left corner.
  */
-function toScrollSpace(
+function toContainerSpace(
   rect: DOMRect,
   containerRect: DOMRect,
-  scrollLeft: number,
-  scrollTop: number,
 ): { left: number; right: number; top: number; bottom: number; width: number; height: number } {
-  const left = rect.left - containerRect.left + scrollLeft;
-  const right = rect.right - containerRect.left + scrollLeft;
-  const top = rect.top - containerRect.top + scrollTop;
-  const bottom = rect.bottom - containerRect.top + scrollTop;
+  const left = rect.left - containerRect.left;
+  const right = rect.right - containerRect.left;
+  const top = rect.top - containerRect.top;
+  const bottom = rect.bottom - containerRect.top;
   return { left, right, top, bottom, width: right - left, height: bottom - top };
 }
 
 /**
  * Measures all `[data-phrase-box]` elements inside `container`, groups them by phrase id, and
- * computes SVG arc paths in scroll-space coordinates connecting discontiguous boxes — both same-row
- * upward brackets and cross-row/cross-segment S-curves. Phrases are assigned nesting levels so
- * their arcs don't overlap. Cross-row arcs are routed around intervening phrase boxes and spread
- * vertically within each inter-row gap so they don't overlap each other.
+ * computes SVG arc paths in container-relative coordinates connecting discontiguous boxes — both
+ * same-row upward brackets and cross-row/cross-segment S-curves. Phrases are assigned nesting
+ * levels so their arcs don't overlap. Cross-row arcs are routed around intervening phrase boxes and
+ * spread vertically within each inter-row gap so they don't overlap each other.
  *
- * @param container - The scroll container element to search.
+ * @param container - The arc container element to search.
  * @returns The computed arc paths, level map, maximum nesting level, and required row gap.
  */
 export function computeAllArcPaths(container: Element): ArcState {
   const containerRect = container.getBoundingClientRect();
-  const { scrollLeft, scrollTop } = container;
 
   const boxesByPhrase = new Map<
     string,
@@ -406,7 +400,7 @@ export function computeAllArcPaths(container: Element): ArcState {
     if (!id) return;
     const lastTokenRef = el.getAttribute('data-last-token-ref') ?? '';
     const viewportRect = el.getBoundingClientRect();
-    const rect = toScrollSpace(viewportRect, containerRect, scrollLeft, scrollTop);
+    const rect = toContainerSpace(viewportRect, containerRect);
     const list = boxesByPhrase.get(id) ?? [];
     list.push({ rect, viewportRect, lastTokenRef });
     boxesByPhrase.set(id, list);

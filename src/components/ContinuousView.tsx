@@ -1,7 +1,8 @@
 import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/typeGuards';
 import { PhraseStripProvider } from './PhraseStripContext';
@@ -15,8 +16,6 @@ import {
   type TokenGroup,
 } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
-import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
-import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';
 
@@ -308,7 +307,21 @@ export default function ContinuousView({
     [focusedTokenRef],
   );
 
-  const handleArcSplit = useArcSplitHandler(committedPhraseLinkById, tokenDocOrder);
+  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+
+  const handleArcSplit = useCallback(
+    (phraseId: string, splitAfterTokenRef: string) => {
+      const phraseLink = committedPhraseLinkById.get(phraseId);
+      if (!phraseLink) return;
+      splitPhraseAtBoundary(
+        phraseLink,
+        splitAfterTokenRef,
+        { createPhrase, updatePhrase, deletePhrase },
+        tokenDocOrder,
+      );
+    },
+    [committedPhraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
+  );
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
   // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
@@ -405,7 +418,14 @@ export default function ContinuousView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
+  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
+    if (candidateTokenRefs.size === 0) return new Set();
+    const ids = new Set<string>();
+    committedPhraseLinkByRef.forEach((link) => {
+      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
+    });
+    return ids;
+  }, [candidateTokenRefs, committedPhraseLinkByRef]);
 
   /**
    * Strip-wide context value shared by every phrase group and link slot. Memoized so the leaf

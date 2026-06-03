@@ -8,7 +8,6 @@ import {
   PhraseSlot,
   MemoizedPhraseGroup,
   PhraseStrip,
-  resolveIsHighlighted,
   type StripItem,
 } from '../../components/PhraseStripParts';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
@@ -25,7 +24,7 @@ jest.mock('../../components/TokenLinkIcon', () => ({
 
 jest.mock('../../components/TokenChip', () => ({
   __esModule: true,
-  MemoizedInertTokenChip: () => undefined,
+  InertTokenChip: () => undefined,
 }));
 
 jest.mock('../../components/PhraseBox', () => ({
@@ -108,92 +107,6 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
     hoveredPhraseId: undefined,
   };
 }
-
-// ---------------------------------------------------------------------------
-// resolveIsHighlighted
-// ---------------------------------------------------------------------------
-
-describe('resolveIsHighlighted', () => {
-  const group: TokenGroup = {
-    tokens: [mkWord('tok-a')],
-    phraseLink: undefined,
-    firstIndex: 0,
-  };
-
-  it('returns false in view mode when phraseId is undefined and no candidate tokens', () => {
-    expect(
-      resolveIsHighlighted({ kind: 'view' }, undefined, group, undefined, undefined, new Set()),
-    ).toBe(false);
-  });
-
-  it('returns true in view mode when phraseId matches hoveredPhraseId', () => {
-    expect(resolveIsHighlighted({ kind: 'view' }, 'p1', group, 'p1', undefined, new Set())).toBe(
-      true,
-    );
-  });
-
-  it('returns true in view mode when phraseId matches focusedPhraseId', () => {
-    expect(resolveIsHighlighted({ kind: 'view' }, 'p1', group, undefined, 'p1', new Set())).toBe(
-      true,
-    );
-  });
-
-  it('returns true in view mode when a group token is in candidateTokenRefs', () => {
-    expect(
-      resolveIsHighlighted(
-        { kind: 'view' },
-        undefined,
-        group,
-        undefined,
-        undefined,
-        new Set(['tok-a']),
-      ),
-    ).toBe(true);
-  });
-
-  it('returns false in view mode when none of the highlight conditions are met', () => {
-    expect(resolveIsHighlighted({ kind: 'view' }, 'p1', group, 'p2', 'p2', new Set())).toBe(false);
-  });
-
-  it('returns true in edit mode when phraseId matches phraseMode.phraseId', () => {
-    expect(
-      resolveIsHighlighted(
-        { kind: 'edit', phraseId: 'p1', originalTokens: [] },
-        'p1',
-        group,
-        undefined,
-        undefined,
-        new Set(),
-      ),
-    ).toBe(true);
-  });
-
-  it('returns false in edit mode when phraseId does not match phraseMode.phraseId', () => {
-    expect(
-      resolveIsHighlighted(
-        { kind: 'edit', phraseId: 'p1', originalTokens: [] },
-        'p2',
-        group,
-        undefined,
-        undefined,
-        new Set(),
-      ),
-    ).toBe(false);
-  });
-
-  it('returns false in confirm-unlink mode when phraseId does not match phraseMode.phraseId', () => {
-    expect(
-      resolveIsHighlighted(
-        { kind: 'confirm-unlink', phraseId: 'p1' },
-        'p2',
-        group,
-        undefined,
-        undefined,
-        new Set(),
-      ),
-    ).toBe(false);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // PhraseSlot
@@ -396,6 +309,20 @@ describe('PhraseStrip', () => {
   it('highlights a group whose token is a link candidate', () => {
     const items = [groupItem(undefined, ['tok-a'])];
     render(<PhraseStrip {...stripProps(items, { candidateTokenRefs: new Set(['tok-a']) })} />);
+    expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
+  });
+
+  it('highlights a group whose phraseId matches the focused phrase', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    const focus: FocusContext = {
+      focusedToken: undefined,
+      focusedPhraseLink: undefined,
+      focusedFreeToken: undefined,
+      focusedSegmentId: undefined,
+      focusedPhraseId: 'p1',
+    };
+    render(<PhraseStrip {...stripProps(items, { focus })} />);
     expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
   });
 

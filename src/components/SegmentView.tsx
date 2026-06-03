@@ -1,7 +1,8 @@
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
@@ -13,8 +14,6 @@ import {
   type RenderUnit,
 } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
-import { useArcSplitHandler } from '../hooks/useArcSplitHandler';
-import { useCandidatePhraseIds } from '../hooks/useCandidatePhraseIds';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';
 
@@ -113,8 +112,21 @@ export function SegmentView({
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
+  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
-  const handleArcSplit = useArcSplitHandler(phraseLinkById, tokenDocOrder);
+  const handleArcSplit = useCallback(
+    (phraseId: string, splitAfterTokenRef: string) => {
+      const phraseLink = phraseLinkById.get(phraseId);
+      if (!phraseLink) return;
+      splitPhraseAtBoundary(
+        phraseLink,
+        splitAfterTokenRef,
+        { createPhrase, updatePhrase, deletePhrase },
+        tokenDocOrder,
+      );
+    },
+    [phraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
+  );
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
@@ -173,7 +185,14 @@ export function SegmentView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, phraseLinkByRef);
+  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
+    if (candidateTokenRefs.size === 0) return new Set();
+    const ids = new Set<string>();
+    phraseLinkByRef.forEach((link) => {
+      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
+    });
+    return ids;
+  }, [candidateTokenRefs, phraseLinkByRef]);
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built

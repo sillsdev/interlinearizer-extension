@@ -124,6 +124,3 @@ export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
 /** Memoized version of {@link TokenChip}; use in render-stable token lists. */
 const MemoizedTokenChip = memo(TokenChip);
 export default MemoizedTokenChip;
-
-/** Memoized version of {@link InertTokenChip}; use in render-stable token lists. */
-export const MemoizedInertTokenChip = memo(InertTokenChip);

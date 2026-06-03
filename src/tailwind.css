@@ -63,8 +63,12 @@
   @apply tw:relative tw:overflow-visible;
 }
 
-@utility overlay-pill {
-  @apply tw:inline-flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground tw:shadow;
+@utility confirm-bar {
+  @apply tw:shrink-0 tw:flex tw:justify-end tw:border-b tw:border-border tw:bg-background tw:px-4 tw:py-2;
+}
+
+@utility confirm-controls {
+  @apply tw:inline-flex tw:items-center tw:gap-2 tw:text-sm tw:text-foreground;
 }
 
 @utility pill-btn-primary {

@@ -459,6 +459,34 @@ describe('PhraseBox', () => {
     );
   });
 
+  it('does not remove the last remaining token of the edited phrase (would delete the phrase)', async () => {
+    // A single-token phrase: removing its only token would empty the phrase, which updatePhrase
+    // treats as a deletion — leaving no edit target to re-add to and nothing for Cancel to restore.
+    const singleTokenLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'token-1', surfaceText: 'Hello' }],
+    };
+    mockUsePhraseLinkForToken.mockReturnValue(singleTokenLink);
+    const updatePhraseSpy = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: updatePhraseSpy,
+      deletePhrase: jest.fn(),
+    });
+    renderBox(<PhraseBox {...requiredProps()} phraseLink={singleTokenLink} />, {
+      phraseMode: {
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens: singleTokenLink.tokens,
+      },
+    });
+
+    await userEvent.click(document.querySelector('[role="button"]') ?? document.body);
+
+    expect(updatePhraseSpy).not.toHaveBeenCalled();
+  });
+
   it('does not call updatePhrase in edit mode when token is not in the target phrase', async () => {
     // token-1 belongs to TEST_PHRASE_LINK (phrase-1), but phraseMode targets a different phrase
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);

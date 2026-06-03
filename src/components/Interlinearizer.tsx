@@ -230,6 +230,15 @@ function InterlinearizerInner({
 
   return (
     <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
+      {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
+        <div className="tw:confirm-bar">
+          {phraseMode.kind === 'confirm-unlink' ? (
+            <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
+          ) : (
+            <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
+          )}
+        </div>
+      )}
       {continuousScroll && (
         <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
           <ContinuousView
@@ -249,17 +258,6 @@ function InterlinearizerInner({
         ref={setScrollContainer}
         className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
       >
-        {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
-          <div className="tw:sticky tw:top-0 tw:z-20 tw:h-0 tw:flex tw:justify-end tw:pointer-events-none">
-            <div className="tw:pointer-events-auto tw:translate-y-2">
-              {phraseMode.kind === 'confirm-unlink' ? (
-                <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
-              ) : (
-                <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
-              )}
-            </div>
-          </div>
-        )}
         {chapterSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
             No verse data for {scrRef.book} {scrRef.chapterNum}.

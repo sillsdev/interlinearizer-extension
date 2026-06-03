@@ -235,6 +235,7 @@ export function PhraseBox({
       /* v8 ignore next -- only called from edit-target mode where phraseMode.kind is always 'edit' */
       if (phraseMode.kind !== 'edit' || !tokenPhraseLinkFromStore) return;
       const nextTokens = tokenPhraseLinkFromStore.tokens.filter((t) => t.tokenRef !== tokenRef);
+      if (nextTokens.length === 0) return;
       updatePhrase(phraseMode.phraseId, nextTokens);
     },
     [phraseMode, tokenPhraseLinkFromStore, updatePhrase],

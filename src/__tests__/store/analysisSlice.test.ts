@@ -213,6 +213,21 @@ describe('updatePhrase', () => {
     );
   });
 
+  it('re-derives surfaceText from the new tokens', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+    const newTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
+    ];
+
+    store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: newTokens }));
+
+    expect(store.getState().analysis.analysis.phraseAnalyses[0].surfaceText).toBe('foo bar');
+  });
+
   it('preserves the phrase analysis id when tokens is non-empty', () => {
     const existing = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
     const store = createAnalysisStore({

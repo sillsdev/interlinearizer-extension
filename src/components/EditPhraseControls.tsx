@@ -1,4 +1,4 @@
-/** @file Done/Cancel overlay shown while editing a phrase. */
+/** @file Done/Cancel controls shown in the confirm bar while editing a phrase. */
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 
@@ -18,11 +18,13 @@ type EditPhraseControlsProps = Readonly<{
  * @param props - Component props
  * @param props.phraseMode - The current edit-mode phrase mode value
  * @param props.setPhraseMode - Setter used to commit or revert the edit
- * @returns An inline row containing Done / Cancel buttons
+ * @returns Done / Cancel buttons laid out inline; the host bar supplies the surrounding container
+ *   chrome.
  */
 export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPhraseControlsProps) {
   return (
-    <div className="tw:overlay-pill" data-testid="edit-phrase-controls">
+    <div className="tw:confirm-controls" data-testid="edit-phrase-controls">
+      <span>Editing Phrase</span>
       <button
         className="tw:pill-btn-primary"
         data-testid="done-edit-btn"

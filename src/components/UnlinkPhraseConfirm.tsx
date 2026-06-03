@@ -1,4 +1,4 @@
-/** @file Confirmation popup for unlinking (deleting) a phrase. */
+/** @file Confirmation controls shown in the confirm bar for unlinking (deleting) a phrase. */
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -19,7 +19,8 @@ type UnlinkPhraseConfirmProps = Readonly<{
  * @param props - Component props
  * @param props.phraseId - ID of the phrase to delete on confirmation
  * @param props.setPhraseMode - Setter used to exit confirm-unlink mode
- * @returns An inline row containing a label and Confirm / Cancel buttons
+ * @returns A label and Confirm / Cancel buttons laid out inline; the host bar supplies the
+ *   surrounding container chrome.
  */
 export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkPhraseConfirmProps) {
   const { deletePhrase } = usePhraseDispatch();
@@ -34,7 +35,7 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
   };
 
   return (
-    <div className="tw:overlay-pill" data-testid="unlink-confirm">
+    <div className="tw:confirm-controls" data-testid="unlink-confirm">
       <span>Unlink this phrase?</span>
       <button
         className="tw:pill-btn-destructive"

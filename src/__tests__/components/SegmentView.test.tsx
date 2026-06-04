@@ -86,15 +86,15 @@ jest.mock('../../components/ArcOverlay', () => ({
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
-    focusRef,
+    groupKey,
     isFocused = false,
     onFocusPhrase,
     tokens,
     showGlossInput = true,
   }: Readonly<{
-    focusRef: string | undefined;
+    groupKey: string;
     isFocused: boolean;
-    onFocusPhrase: (focusRef?: string) => void;
+    onFocusPhrase: (groupKey: string) => void;
     tokens: (Token & { type: 'word' })[];
     phraseMode: unknown;
     setPhraseMode: unknown;
@@ -104,7 +104,7 @@ jest.mock('../../components/PhraseBox', () => ({
     <span data-focus-state={isFocused ? 'focused' : 'default'} data-show-gloss={showGlossInput}>
       {tokens.map((t) => (
         <span key={t.ref}>
-          <button onClick={() => onFocusPhrase(focusRef)} type="button">
+          <button onClick={() => onFocusPhrase(groupKey)} type="button">
             {t.surfaceText}
           </button>
         </span>

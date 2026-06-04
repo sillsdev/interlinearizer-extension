@@ -196,7 +196,8 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
         isFocused={isFocused}
         isHighlighted={isHighlighted}
         splitFreeTokenRefs={splitFreeTokenRefs}
-        onFocusPhrase={() => onFocusPhrase(groupKey)}
+        groupKey={groupKey}
+        onFocusPhrase={onFocusPhrase}
         phraseLink={group.phraseLink}
         showControls={showControls}
         showGlossInput={showGlossInput}

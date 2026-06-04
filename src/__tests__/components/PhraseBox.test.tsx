@@ -148,7 +148,8 @@ const TEST_PHRASE_LINK: PhraseAnalysisLink = {
 /** Shared props shape used by the helper function. */
 type PhraseBoxTestProps = {
   isFocused: boolean;
-  onFocusPhrase: () => void;
+  groupKey: string;
+  onFocusPhrase: (groupKey: string) => void;
   tokens: (Token & { type: 'word' })[];
   phraseLink: undefined;
 };
@@ -162,6 +163,7 @@ type PhraseBoxTestProps = {
 function requiredProps(): PhraseBoxTestProps {
   return {
     isFocused: false,
+    groupKey: 'test-group',
     onFocusPhrase: jest.fn(),
     tokens: [TEST_TOKEN],
     phraseLink: undefined,
@@ -331,13 +333,14 @@ describe('PhraseBox', () => {
     expect(spy).toHaveBeenNthCalledWith(2, 'token-1', 'Hello', 'i');
   });
 
-  it('calls onFocusPhrase when a gloss input receives focus', async () => {
+  it('calls onFocusPhrase with groupKey when a gloss input receives focus', async () => {
     const handleFocus = jest.fn();
-    renderBox(<PhraseBox {...requiredProps()} onFocusPhrase={handleFocus} />);
+    renderBox(<PhraseBox {...requiredProps()} groupKey="my-group" onFocusPhrase={handleFocus} />);
 
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for Hello' }));
 
     expect(handleFocus).toHaveBeenCalledTimes(1);
+    expect(handleFocus).toHaveBeenCalledWith('my-group');
   });
 
   it('hides phrase gloss input when showGlossInput is false', () => {

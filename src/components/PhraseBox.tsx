@@ -68,8 +68,13 @@ function PhraseGlossInput({
 type PhraseBoxProps = Readonly<{
   /** Whether this phrase is the current navigation focus. */
   isFocused: boolean;
-  /** Called when any child gloss input receives focus, so the parent can focus this phrase. */
-  onFocusPhrase: () => void;
+  /** Key identifying this phrase group, forwarded to `onFocusPhrase`. */
+  groupKey: string;
+  /**
+   * Called with `groupKey` when any child gloss input receives focus, so the parent can focus this
+   * phrase.
+   */
+  onFocusPhrase: (groupKey: string) => void;
   /** Word tokens belonging to this phrase; must all have `type: 'word'`. */
   tokens: (Token & { type: 'word' })[];
   /** The approved `PhraseAnalysisLink` shared by all tokens in this box, if any. */
@@ -123,7 +128,8 @@ type PhraseBoxProps = Readonly<{
  *
  * @param props - Component props
  * @param props.isFocused - Whether this phrase is the current navigation focus
- * @param props.onFocusPhrase - Called when any child gloss input receives focus
+ * @param props.groupKey - Key identifying this phrase group, forwarded to `onFocusPhrase`
+ * @param props.onFocusPhrase - Called with `groupKey` when any child gloss input receives focus
  * @param props.tokens - Tokens belonging to this phrase
  * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
  * @param props.showGlossInput - When false, hides the gloss input; used for non-first fragments of
@@ -140,6 +146,7 @@ export function PhraseBox({
   isFocused = false,
   isHighlighted = false,
   splitFreeTokenRefs,
+  groupKey,
   onFocusPhrase,
   tokens,
   phraseLink,
@@ -162,7 +169,7 @@ export function PhraseBox({
     phraseLink !== undefined && tokenPhraseLinkFromStore?.analysisId === phraseLink.analysisId;
 
   /** Notifies the parent when a child gloss input receives focus. */
-  const handleFocus = useCallback(() => onFocusPhrase(), [onFocusPhrase]);
+  const handleFocus = useCallback(() => onFocusPhrase(groupKey), [groupKey, onFocusPhrase]);
 
   /**
    * Focuses the box's first gloss input when the bare container itself is clicked (not a descendant

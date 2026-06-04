@@ -36,13 +36,15 @@ jest.mock('../../components/PhraseBox', () => ({
     showControls,
     showGlossInput,
     splitFreeTokenRefs,
+    groupKey,
     onFocusPhrase,
   }: Readonly<{
     tokens: (Token & { type: 'word' })[];
     isFocused: boolean;
     isHighlighted: boolean;
     phraseLink: PhraseAnalysisLink | undefined;
-    onFocusPhrase: () => void;
+    groupKey: string;
+    onFocusPhrase: (groupKey: string) => void;
     showControls: boolean;
     showGlossInput: boolean;
     splitFreeTokenRefs: ReadonlySet<string>;
@@ -54,7 +56,7 @@ jest.mock('../../components/PhraseBox', () => ({
       data-controls={showControls ? 'true' : 'false'}
       data-gloss={showGlossInput ? 'true' : 'false'}
       data-split-free={[...splitFreeTokenRefs].join(',')}
-      onClick={onFocusPhrase}
+      onClick={() => onFocusPhrase(groupKey)}
     >
       {tokens.map((t) => t.surfaceText).join(' ')}
     </button>

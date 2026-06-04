@@ -493,6 +493,12 @@ function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect 
 /**
  * Constructs an {@link ArcSegment} whose `left`/`right` span is `[min(x1, x2), max(x1, x2)]`, so
  * callers pass the two x values in any order without worrying which is smaller.
+ *
+ * @param phraseId - The phrase this segment belongs to.
+ * @param row - Rounded scroll-space top of the row whose top channel the horizontal run occupies.
+ * @param x1 - One endpoint x of the run (scroll-space).
+ * @param x2 - Other endpoint x of the run (scroll-space).
+ * @returns An {@link ArcSegment} with `left`/`right` normalized so `left ≤ right`.
  */
 function makeArcSegment(phraseId: string, row: number, x1: number, x2: number): ArcSegment {
   return { phraseId, row, left: Math.min(x1, x2), right: Math.max(x1, x2) };

@@ -3,7 +3,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ViewOptionsDropdown from '../../components/controls/ViewOptionsDropdown';
 
@@ -76,6 +76,43 @@ describe('ViewOptionsDropdown', () => {
       screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
     ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
+  });
+
+  describe('panel positioning', () => {
+    it('repositions the panel when the window resizes while open', async () => {
+      let bottom = 30;
+      let right = 200;
+      jest.spyOn(HTMLButtonElement.prototype, 'getBoundingClientRect').mockImplementation(() => {
+        const rect = { top: 10, bottom, left: 100, right, width: 100, height: 20, x: 100, y: 10 };
+        return { ...rect, toJSON: () => rect };
+      });
+      Object.defineProperty(window, 'innerWidth', { value: 1000, configurable: true });
+
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      const panel = screen.getByTestId('view-options-panel');
+      expect(panel).toHaveStyle({ top: '34px', right: '800px' });
+
+      // Simulate a layout shift, then fire resize: the panel should re-anchor to the button.
+      bottom = 50;
+      right = 300;
+      act(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      expect(panel).toHaveStyle({ top: '54px', right: '700px' });
+    });
+
+    it('removes the resize listener when the panel closes', async () => {
+      const removeSpy = jest.spyOn(window, 'removeEventListener');
+
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(removeSpy).toHaveBeenCalledWith('resize', expect.any(Function));
+    });
   });
 
   describe('continuous scroll toggle', () => {

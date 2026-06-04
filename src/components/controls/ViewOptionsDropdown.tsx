@@ -110,15 +110,21 @@ export default function ViewOptionsDropdown({
     buttonRef.current?.focus();
   };
 
-  // Recompute panel position whenever the dropdown opens so it tracks the button even after layout
-  // changes (e.g. window resize).
+  // Position the panel under the button when the dropdown opens, then keep it anchored if the window
+  // resizes while it stays open (a resize shifts the button without remounting this effect).
   useEffect(() => {
-    if (!open || !buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    setPanelStyle({
-      top: rect.bottom + 4,
-      right: window.innerWidth - rect.right,
-    });
+    const button = buttonRef.current;
+    if (!open || !button) return undefined;
+    const updatePosition = () => {
+      const rect = button.getBoundingClientRect();
+      setPanelStyle({
+        top: rect.bottom + 4,
+        right: window.innerWidth - rect.right,
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    return () => window.removeEventListener('resize', updatePosition);
   }, [open]);
 
   return (

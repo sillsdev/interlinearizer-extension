@@ -245,7 +245,7 @@ export function TokenLinkIcon({
     return (
       <button
         aria-label="Unlink tokens"
-        className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:pointer-events-none tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/20 tw:opacity-100'}`}
+        className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:pointer-events-none tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/50 tw:opacity-100'}`}
         data-testid="token-unlink-btn"
         disabled={unlinkDisabled}
         onClick={unlinkDisabled ? undefined : handleUnlinkClickWithCleanup}
@@ -306,7 +306,7 @@ export function TokenLinkIcon({
   return (
     <button
       aria-label="Link tokens"
-      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-muted-foreground/50 tw:hover:text-foreground' : 'tw:text-muted-foreground/20 tw:cursor-default'}`}
+      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-muted-foreground tw:hover:text-foreground' : 'tw:text-muted-foreground/50 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       onClick={isActive ? handleLinkClick : undefined}

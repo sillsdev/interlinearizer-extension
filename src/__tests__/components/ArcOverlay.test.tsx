@@ -139,7 +139,7 @@ describe('ArcOverlay', () => {
       />,
     );
     expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
-    expect(screen.getByTestId('split-arc-btn').className).toContain('border-white');
+    expect(screen.getByTestId('split-arc-btn').className).toContain('phrase-focused');
   });
 
   it('calls onArcSplit and clears hover state when split button is clicked', async () => {
@@ -521,7 +521,7 @@ describe('ArcOverlay', () => {
     const pathEl = document.querySelector('path');
     expect(pathEl?.getAttribute('style')).toContain('var(--border)');
     expect(pathEl?.getAttribute('style')).not.toContain('var(--destructive)');
-    expect(pathEl?.getAttribute('stroke-opacity')).toBe('0.25');
+    expect(pathEl?.getAttribute('stroke-opacity')).toBe('0.3');
   });
 
   it('restores the standard stroke after a non-freeing split hover leaves', async () => {
@@ -545,7 +545,7 @@ describe('ArcOverlay', () => {
     await userEvent.hover(screen.getByTestId('split-arc-btn'));
     await userEvent.unhover(screen.getByTestId('split-arc-btn'));
     const pathEl = document.querySelector('path');
-    // Focused phrase falls back to the highlighted white stroke once the dim is cleared.
-    expect(pathEl?.getAttribute('style')).toContain('white');
+    // Focused phrase falls back to the highlighted foreground stroke once the dim is cleared.
+    expect(pathEl?.getAttribute('style')).toContain('var(--foreground)');
   });
 });

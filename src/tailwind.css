@@ -95,6 +95,37 @@
   @apply tw:inline-flex tw:flex-col tw:rounded tw:border tw:px-0.5 tw:py-0.5;
 }
 
+/*
+ * Phrase interaction tiers — applied to phrase boxes, arc split buttons, and controls pills.
+ * Each utility sets both Tailwind border/bg classes and the CSS custom properties
+ * --phrase-stroke / --phrase-stroke-opacity consumed by SVG arc <path> elements, so all four
+ * surfaces stay in sync from a single source of truth.
+ */
+
+@utility phrase-focused {
+  --phrase-stroke: var(--foreground);
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-foreground tw:bg-muted/30;
+}
+
+@utility phrase-hovered {
+  --phrase-stroke: var(--foreground);
+  --phrase-stroke-opacity: 0.55;
+  @apply tw:border-foreground/55 tw:bg-muted/25;
+}
+
+@utility phrase-dimmed {
+  --phrase-stroke: var(--border);
+  --phrase-stroke-opacity: 0.8;
+  @apply tw:border-border/80 tw:bg-muted/20;
+}
+
+@utility phrase-destructive {
+  --phrase-stroke: var(--destructive);
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-destructive tw:bg-muted/20;
+}
+
 @utility phrase-token-row {
   @apply tw:inline-flex tw:items-start tw:gap-1;
 }

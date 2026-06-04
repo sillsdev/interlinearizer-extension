@@ -7,7 +7,7 @@ import type { PhraseMode } from '../types/phrase-mode';
  * Half the height of a floating phrase-controls pill (px). The pill is centred on the line it rides
  * (arc top, or box top when no arc), so only this half extends above into the top-padding zone.
  */
-const CONTROLS_HALF_HEIGHT_PX = 10;
+const CONTROLS_HALF_HEIGHT_PX = 12;
 
 /** Base stem height (px) for arc connectors at nesting level 0. */
 export const ARC_BASE_STEM = 10;
@@ -260,26 +260,36 @@ export type ArcStrokeProps = {
   strokeWidth: number;
 };
 
-/** Faint border-color stroke for an arc that is neither focused nor hovered. */
+/**
+ * Arc stroke constants mirror the `phrase-*` Tailwind utilities in `tailwind.css`. If you change
+ * the opacity values here, update the matching `--phrase-stroke-opacity` in the CSS too, and
+ * vice-versa.
+ */
+
+/** Matches `phrase-dimmed`: border-color at 80% opacity. */
 const DIMMED_ARC_STROKE: ArcStrokeProps = {
   stroke: 'var(--border)',
-  strokeOpacity: 0.5,
+  strokeOpacity: 0.8,
   strokeWidth: 2,
 };
 
-/** Destructive stroke for the targeted arc in `confirm-unlink` mode. */
+/** Matches `phrase-destructive`: destructive color at full opacity. */
 const DESTRUCTIVE_ARC_STROKE: ArcStrokeProps = {
   stroke: 'var(--destructive)',
   strokeOpacity: 1,
   strokeWidth: 2,
 };
 
-/** Mid-white stroke for a hovered-but-not-focused arc in `view` mode. */
-const HOVERED_ARC_STROKE: ArcStrokeProps = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
+/** Matches `phrase-hovered`: foreground at 55% opacity. */
+const HOVERED_ARC_STROKE: ArcStrokeProps = {
+  stroke: 'var(--foreground)',
+  strokeOpacity: 0.55,
+  strokeWidth: 2,
+};
 
-/** Full-white stroke for the focused (or edited) arc. */
+/** Matches `phrase-focused`: foreground at full opacity. */
 const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
-  stroke: 'white',
+  stroke: 'var(--foreground)',
   strokeOpacity: 1,
   strokeWidth: 2,
 };
@@ -288,8 +298,8 @@ const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
  * Stroke styling for a phrase arc, so both views render lines identically across interaction modes:
  *
  * - `confirm-unlink`: target arc destructive, others dimmed.
- * - `edit`: edited arc white (matches its box ring), others dimmed, hover suppressed.
- * - `view`: focused arc full-white, hovered arc mid-white, others border-color.
+ * - `edit`: edited arc foreground (matches its box ring), others dimmed, hover suppressed.
+ * - `view`: focused arc full-foreground, hovered arc mid-foreground, others border-color.
  *
  * @param phraseMode - Current phrase-interaction mode.
  * @param phraseId - The phraseId of the arc being styled.

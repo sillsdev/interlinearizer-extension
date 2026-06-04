@@ -287,10 +287,10 @@ export function PhraseBox({
 
   if (phraseMode.kind === 'view') {
     const viewBorderClass = (() => {
-      if (isBoxSplitFree) return 'tw:border-destructive tw:bg-muted/20';
-      if (isFocused) return 'tw:border-white tw:bg-muted/30';
-      if (isHighlighted) return 'tw:border-white/55 tw:bg-muted/25';
-      return 'tw:border-border/40 tw:bg-muted/20';
+      if (isBoxSplitFree) return 'tw:phrase-destructive';
+      if (isFocused) return 'tw:phrase-focused';
+      if (isHighlighted) return 'tw:phrase-hovered';
+      return 'tw:phrase-dimmed';
     })();
     const baseClass = `tw:phrase-box-base ${viewBorderClass}`;
 
@@ -298,7 +298,7 @@ export function PhraseBox({
       <span className="tw:relative tw:inline-flex tw:flex-col">
         {isRealPhrase && showControls && (
           <span
-            className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:border-border/40 tw:bg-background tw:px-0.5 tw:py-px"
+            className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:phrase-hovered tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
           >
             <button
@@ -373,8 +373,8 @@ export function PhraseBox({
   if (phraseMode.kind === 'confirm-unlink') {
     const isThisUnlinkTarget = isRealPhrase && phraseLink.analysisId === phraseMode.phraseId;
     const baseClass = isThisUnlinkTarget
-      ? 'tw:phrase-box-base tw:border-destructive tw:bg-muted/30'
-      : 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/20 tw:opacity-40';
+      ? 'tw:phrase-box-base tw:phrase-destructive'
+      : 'tw:phrase-box-base tw:phrase-dimmed tw:opacity-40';
 
     return (
       <span className="tw:relative tw:inline-flex tw:flex-col">
@@ -409,9 +409,9 @@ export function PhraseBox({
   const isSelected = isInEditTarget;
 
   const containerClass = (() => {
-    if (isDisabled) return 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/10 tw:opacity-40';
+    if (isDisabled) return 'tw:phrase-box-base tw:phrase-dimmed tw:opacity-40';
     if (isSelected) return 'tw:phrase-box-base tw:border-ring tw:bg-muted/30';
-    return 'tw:phrase-box-base tw:border-border/40 tw:bg-muted/20 tw:cursor-pointer';
+    return 'tw:phrase-box-base tw:phrase-dimmed tw:cursor-pointer';
   })();
 
   if (isInEditTarget) {

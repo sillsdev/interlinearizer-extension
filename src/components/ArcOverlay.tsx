@@ -33,13 +33,13 @@ type EmphasisTier = 'focused' | 'hovered' | 'unfocused';
  * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered (6) > focused
  * (4) > dimmed (2) — above each tier's own arc line but below the token row — so the button under
  * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The colour matches
- * the arc: focused white like its full-white arc, hovered in muted foreground, unfocused faint
- * until its phrase is hovered or focused.
+ * the arc: focused foreground like its full-foreground arc, hovered in muted foreground, unfocused
+ * faint until its phrase is hovered or focused.
  */
 const TIER_BUTTON_CLASSES: Record<EmphasisTier, { z: string; color: string }> = {
-  focused: { z: 'tw:z-4', color: 'tw:border-white tw:text-white' },
-  hovered: { z: 'tw:z-6', color: 'tw:border-border/40 tw:text-muted-foreground' },
-  unfocused: { z: 'tw:z-2', color: 'tw:border-border/50 tw:text-border/50' },
+  focused: { z: 'tw:z-4', color: 'tw:phrase-focused tw:text-foreground' },
+  hovered: { z: 'tw:z-6', color: 'tw:phrase-hovered tw:text-muted-foreground' },
+  unfocused: { z: 'tw:z-2', color: 'tw:phrase-dimmed tw:text-border' },
 };
 
 /**
@@ -58,7 +58,7 @@ const SPLIT_PREVIEW_DESTRUCTIVE_STROKE = {
  * standard dim so the segment reads as "this connection would go away" without the destructive
  * cue.
  */
-const SPLIT_PREVIEW_FADED_STROKE = { stroke: 'var(--border)', strokeOpacity: 0.25, strokeWidth: 2 };
+const SPLIT_PREVIEW_FADED_STROKE = { stroke: 'var(--border)', strokeOpacity: 0.3, strokeWidth: 2 };
 
 /** Props for {@link ArcOverlay}. */
 type ArcOverlayProps = Readonly<{

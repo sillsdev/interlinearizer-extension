@@ -229,8 +229,7 @@ describe('PhraseBox', () => {
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'focused');
-    expect(phraseBox).toHaveClass('tw:border-white');
-    expect(phraseBox).toHaveClass('tw:bg-muted/30');
+    expect(phraseBox).toHaveClass('tw:phrase-focused');
   });
 
   it('applies default border and background when isFocused is false', () => {
@@ -238,8 +237,7 @@ describe('PhraseBox', () => {
 
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveAttribute('data-focus-state', 'default');
-    expect(phraseBox).toHaveClass('tw:border-border/40');
-    expect(phraseBox).toHaveClass('tw:bg-muted/20');
+    expect(phraseBox).toHaveClass('tw:phrase-dimmed');
   });
 
   it('reddens only the chips whose refs are in splitFreeTokenRefs, leaving the box border neutral', () => {
@@ -254,7 +252,7 @@ describe('PhraseBox', () => {
     // Only one of the two tokens would become free, so the box border stays neutral and just the
     // affected chip is flagged.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).not.toHaveClass('tw:border-destructive');
+    expect(phraseBox).not.toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
     expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'true');
   });
@@ -271,7 +269,7 @@ describe('PhraseBox', () => {
     // A 2-token phrase splits into two free tokens; each is shown on its own chip, never as a
     // whole-box border (that would draw a single border around both rather than per token).
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).not.toHaveClass('tw:border-destructive');
+    expect(phraseBox).not.toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'true');
     expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-split-free', 'true');
   });
@@ -288,7 +286,7 @@ describe('PhraseBox', () => {
     // A single-token fragment (e.g. one run of a discontiguous phrase) reddens at the box level;
     // per-chip flagging is suppressed so the border isn't drawn twice.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
-    expect(phraseBox).toHaveClass('tw:border-destructive');
+    expect(phraseBox).toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
   });
 

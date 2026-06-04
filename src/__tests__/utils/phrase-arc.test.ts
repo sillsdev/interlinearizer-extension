@@ -103,7 +103,7 @@ describe('computeStripRowGap', () => {
   it('clears the highest arc stem plus controls headroom when a real phrase is present', () => {
     const maxArcLevel = 3;
     const arcClearance = ARC_BASE_STEM + 5 + 4 + maxArcLevel * ARC_LEVEL_STEP;
-    expect(computeStripRowGap(true, maxArcLevel, true)).toBe(arcClearance + 10);
+    expect(computeStripRowGap(true, maxArcLevel, true)).toBe(arcClearance + 12);
   });
 
   it('omits the controls headroom when no real phrase is present', () => {
@@ -808,9 +808,9 @@ describe('computeAllArcPaths', () => {
 // ---------------------------------------------------------------------------
 
 describe('getArcStrokeProps', () => {
-  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.5, strokeWidth: 2 };
-  const hovered = { stroke: 'white', strokeOpacity: 0.55, strokeWidth: 2 };
-  const highlighted = { stroke: 'white', strokeOpacity: 1, strokeWidth: 2 };
+  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.8, strokeWidth: 2 };
+  const hovered = { stroke: 'var(--foreground)', strokeOpacity: 0.55, strokeWidth: 2 };
+  const highlighted = { stroke: 'var(--foreground)', strokeOpacity: 1, strokeWidth: 2 };
   const destructive = {
     stroke: 'var(--destructive)',
     strokeOpacity: 1,

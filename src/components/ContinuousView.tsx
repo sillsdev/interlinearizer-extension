@@ -204,6 +204,9 @@ export default function ContinuousView({
    */
   const internalFocusedTokenRefRef = useRef<string | undefined>(undefined);
 
+  /** True when the last displayFocusedTokenRef update was triggered by internal navigation. */
+  const lastDisplayUpdateWasInternalRef = useRef(false);
+
   /**
    * Tracks the "pending" phrase index for sequential arrow-button presses. Written synchronously by
    * `step()` so that a second click before re-render reads the already-advanced value instead of
@@ -332,9 +335,11 @@ export default function ContinuousView({
     const isInternal = internalFocusedTokenRefRef.current === focusedTokenRef;
     internalFocusedTokenRefRef.current = undefined;
     if (isInternal) {
+      lastDisplayUpdateWasInternalRef.current = true;
       setDisplayFocusedTokenRef(focusedTokenRef);
       return undefined;
     }
+    lastDisplayUpdateWasInternalRef.current = false;
     setIsVisible(false);
     const timeout = setTimeout(() => {
       setDisplayFocusedTokenRef(focusedTokenRef);
@@ -346,7 +351,8 @@ export default function ContinuousView({
   // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
   // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
   useEffect(() => {
-    const isInternal = focusedTokenRef === displayFocusedTokenRef && isVisible;
+    const isInternal = lastDisplayUpdateWasInternalRef.current;
+    lastDisplayUpdateWasInternalRef.current = false;
     const isInitialLoad = isInitialLoadInProgressRef.current;
     const shouldJumpInstantly = !isInternal || isInitialLoad;
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
@@ -365,9 +371,6 @@ export default function ContinuousView({
       cancelAnimationFrame(rafId);
       setIsVisible(true);
     };
-    // isVisible and focusedTokenRef are read for the isInternal decision but the effect is keyed on
-    // focusPhraseIndex — the only thing that should trigger a scroll.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusPhraseIndex]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active

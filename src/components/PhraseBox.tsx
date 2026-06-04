@@ -10,7 +10,7 @@ import {
   usePhraseLinkForToken,
 } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
-import MemoizedTokenChip from './TokenChip';
+import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
@@ -96,6 +96,12 @@ type PhraseBoxProps = Readonly<{
    * the box is free (e.g. a single-token fragment), the whole box border turns destructive too.
    */
   splitFreeTokenRefs?: ReadonlySet<string>;
+  /**
+   * Punctuation tokens that appear between adjacent word tokens within this group, in document
+   * order. `punctuationBetween[i]` contains punctuation between `tokens[i]` and `tokens[i+1]`. When
+   * omitted or empty, no intra-phrase punctuation is rendered.
+   */
+  punctuationBetween?: Token[][];
 }>;
 
 /**
@@ -140,6 +146,7 @@ export function PhraseBox({
   isFocused = false,
   isHighlighted = false,
   splitFreeTokenRefs,
+  punctuationBetween,
   groupKey,
   onFocusPhrase,
   tokens,
@@ -336,15 +343,26 @@ export function PhraseBox({
           <span className="tw:phrase-token-row">
             {tokens.map((token, i) => (
               <span key={token.ref} className="tw:phrase-token-row">
-                {i > 0 && isRealPhrase && !controlsSuppressed && (
-                  <MemoizedTokenLinkIcon
-                    slotFocus={NO_SLOT_FOCUS}
-                    isPhraseRevealed={isHighlighted}
-                    nextPhraseLink={phraseLink}
-                    nextToken={token}
-                    prevPhraseLink={phraseLink}
-                    prevToken={tokens[i - 1]}
-                  />
+                {i > 0 && (
+                  <span className="tw:inline-flex tw:flex-col tw:items-center">
+                    {isRealPhrase && !controlsSuppressed && (
+                      <MemoizedTokenLinkIcon
+                        slotFocus={NO_SLOT_FOCUS}
+                        isPhraseRevealed={isHighlighted}
+                        nextPhraseLink={phraseLink}
+                        nextToken={token}
+                        prevPhraseLink={phraseLink}
+                        prevToken={tokens[i - 1]}
+                      />
+                    )}
+                    {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
+                      <span className="tw:inline-flex tw:flex-row tw:items-center">
+                        {punctuationBetween[i - 1].map((p) => (
+                          <InertTokenChip key={p.ref} token={p} />
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 )}
                 <MemoizedTokenChip
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
@@ -387,8 +405,17 @@ export function PhraseBox({
           data-phrase-id={phraseLink?.analysisId}
         >
           <span className="tw:phrase-token-row">
-            {tokens.map((token) => (
-              <MemoizedTokenChip key={token.ref} disabled onFocus={handleFocus} token={token} />
+            {tokens.map((token, i) => (
+              <span key={token.ref} className="tw:phrase-token-row">
+                {i > 0 && punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
+                  <span className="tw:inline-flex tw:flex-row tw:items-center">
+                    {punctuationBetween[i - 1].map((p) => (
+                      <InertTokenChip key={p.ref} token={p} />
+                    ))}
+                  </span>
+                )}
+                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+              </span>
             ))}
           </span>
           {isRealPhrase && showGlossInput && (
@@ -430,17 +457,20 @@ export function PhraseBox({
         data-phrase-id={phraseLink?.analysisId}
       >
         <span className="tw:phrase-token-row">
-          {tokens.map((token) => (
-            <span
-              key={token.ref}
-              aria-label={`Remove ${token.surfaceText} from phrase`}
-              className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
-              role="button"
-              tabIndex={-1}
-              onClick={() => handleEditRemove(token.ref)}
-              onKeyDown={handlePerTokenKeyDown(token.ref)}
-            >
-              <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+          {tokens.map((token, i) => (
+            <span key={token.ref} className="tw:phrase-token-row">
+              {i > 0 &&
+                punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
+              <span
+                aria-label={`Remove ${token.surfaceText} from phrase`}
+                className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
+                role="button"
+                tabIndex={-1}
+                onClick={() => handleEditRemove(token.ref)}
+                onKeyDown={handlePerTokenKeyDown(token.ref)}
+              >
+                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+              </span>
             </span>
           ))}
         </span>
@@ -476,8 +506,12 @@ export function PhraseBox({
       tabIndex={-1}
     >
       <span className="tw:phrase-token-row">
-        {tokens.map((token) => (
-          <MemoizedTokenChip key={token.ref} disabled onFocus={handleFocus} token={token} />
+        {tokens.map((token, i) => (
+          <span key={token.ref} className="tw:phrase-token-row">
+            {i > 0 &&
+              punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
+            <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+          </span>
         ))}
       </span>
       {isRealPhrase && showGlossInput && (

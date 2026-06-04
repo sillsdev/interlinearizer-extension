@@ -91,9 +91,13 @@ export function PhraseSlot({
           prevToken={prevToken}
         />
       )}
-      {punctuation.map((punctToken) => (
-        <InertTokenChip key={punctToken.ref} token={punctToken} />
-      ))}
+      {punctuation.length > 0 && (
+        <span className="tw:inline-flex tw:flex-row tw:items-center">
+          {punctuation.map((punctToken) => (
+            <InertTokenChip key={punctToken.ref} token={punctToken} />
+          ))}
+        </span>
+      )}
     </span>
   );
 }
@@ -207,6 +211,7 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
         isFocused={isFocused}
         isHighlighted={isHighlighted}
         splitFreeTokenRefs={splitFreeTokenRefs}
+        punctuationBetween={group.punctuationBetween}
         groupKey={groupKey}
         onFocusPhrase={onFocusPhrase}
         phraseLink={group.phraseLink}

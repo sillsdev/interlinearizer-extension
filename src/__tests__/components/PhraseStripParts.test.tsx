@@ -145,7 +145,12 @@ describe('PhraseSlot', () => {
   });
 
   it('renders when the slot has two neighbors', () => {
-    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const group: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} />));
     expect(container.firstChild).not.toBeNull();
@@ -153,8 +158,18 @@ describe('PhraseSlot', () => {
 
   it('sets phraseRevealed when both neighbors are in the same hovered phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    const prevGroup: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: link, firstIndex: 0 };
-    const nextGroup: TokenGroup = { tokens: [mkWord('tok-b')], phraseLink: link, firstIndex: 1 };
+    const prevGroup: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: link,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const nextGroup: TokenGroup = {
+      tokens: [mkWord('tok-b')],
+      phraseLink: link,
+      firstIndex: 1,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     // PhrasedRevealed means the unlink button is shown — but TokenLinkIcon is mocked to undefined,
     // so just check no errors are thrown when hoveredPhraseId matches.
@@ -166,8 +181,18 @@ describe('PhraseSlot', () => {
 
   it('sets phraseRevealed via focusedPhraseId when both neighbors are in the same focused phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
-    const prevGroup: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: link, firstIndex: 0 };
-    const nextGroup: TokenGroup = { tokens: [mkWord('tok-b')], phraseLink: link, firstIndex: 1 };
+    const prevGroup: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: link,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const nextGroup: TokenGroup = {
+      tokens: [mkWord('tok-b')],
+      phraseLink: link,
+      firstIndex: 1,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     const focusedContext: FocusContext = {
       focusedToken: mkWord('tok-a'),
@@ -185,7 +210,12 @@ describe('PhraseSlot', () => {
   });
 
   it('renders the link icon when hideInactiveLinkButtons is off', () => {
-    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const group: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     render(
       withProvider(<PhraseSlot {...slotProps(slot)} />),
@@ -195,7 +225,12 @@ describe('PhraseSlot', () => {
   });
 
   it('hides the link icon when hideInactiveLinkButtons is on and neither neighbor is in the active segment', () => {
-    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const group: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     render(
       <PhraseStripProvider
@@ -211,7 +246,12 @@ describe('PhraseSlot', () => {
   });
 
   it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
-    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const group: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     render(
       <PhraseStripProvider
@@ -227,7 +267,12 @@ describe('PhraseSlot', () => {
   });
 
   it('hides the cross-verse-boundary link icon when only one neighbor is in the active segment', () => {
-    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const group: TokenGroup = {
+      tokens: [mkWord('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
     render(
       <PhraseStripProvider
@@ -253,6 +298,7 @@ describe('MemoizedPhraseGroup', () => {
     tokens: [mkWord('tok-a', 'Hello')],
     phraseLink: undefined,
     firstIndex: 0,
+    punctuationBetween: [],
   };
 
   const defaultGroupProps: Parameters<typeof MemoizedPhraseGroup>[0] = {
@@ -350,7 +396,7 @@ describe('PhraseStrip', () => {
     return {
       kind: 'group',
       key: refs[0],
-      group: { tokens, phraseLink: link, firstIndex: 0 },
+      group: { tokens, phraseLink: link, firstIndex: 0, punctuationBetween: [] },
       isFocused: false,
     };
   }

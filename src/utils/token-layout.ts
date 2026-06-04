@@ -142,12 +142,21 @@ export type TokenGroup = {
    * as `index` to `PhraseBox`.
    */
   firstIndex: number;
+  /**
+   * Punctuation tokens that appear between adjacent word tokens within this group, in document
+   * order. `punctuationBetween[i]` contains punctuation that falls between `tokens[i]` and
+   * `tokens[i+1]`. Always has length `tokens.length - 1`; entries are empty arrays when no
+   * punctuation sits between that pair.
+   */
+  punctuationBetween: Token[][];
 };
 
 /**
  * Groups adjacent word tokens that share the same approved `PhraseAnalysisLink` into single
  * `TokenGroup` entries. Non-word tokens are skipped. Discontiguous phrase members produce separate
- * groups that share the same `phraseLink`.
+ * groups that share the same `phraseLink`. `punctuationBetween` is initialized to empty arrays
+ * here; {@link buildRenderUnits} fills it in with any punctuation tokens that appear between the
+ * word tokens in document order.
  *
  * @param tokens - The flat token list to group.
  * @param phraseLinkByRef - Map from `tokenRef` to the `PhraseAnalysisLink` containing it.
@@ -163,8 +172,9 @@ export function groupTokens(
     const last = groups[groups.length - 1];
     if (link && last?.phraseLink?.analysisId === link.analysisId) {
       last.tokens.push(token);
+      last.punctuationBetween.push([]);
     } else {
-      groups.push({ tokens: [token], phraseLink: link, firstIndex: index });
+      groups.push({ tokens: [token], phraseLink: link, firstIndex: index, punctuationBetween: [] });
     }
     return groups;
   }, []);
@@ -194,6 +204,11 @@ export type RenderUnit = { kind: 'group'; group: TokenGroup } | { kind: 'slot'; 
  * `prevGroup` and `nextGroup`. Unlink icons between tokens within a multi-token phrase are rendered
  * inside `PhraseBox`, not as separate slots here.
  *
+ * Punctuation that appears between two word tokens of the same group is stored in the group's
+ * `punctuationBetween` array (at the index corresponding to the gap between those tokens) so
+ * `PhraseBox` can render it inline between the token chips, rather than pushing it into the
+ * following inter-group slot.
+ *
  * @param tokens - Flat token list from the segment or strip.
  * @param tokenGroups - Pre-built phrase groups produced by {@link groupTokens}.
  * @returns An ordered list of render units interleaving groups and slots.
@@ -201,9 +216,19 @@ export type RenderUnit = { kind: 'group'; group: TokenGroup } | { kind: 'slot'; 
 export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): RenderUnit[] {
   const units: RenderUnit[] = [];
   const groupByFirstRef = new Map(tokenGroups.map((g) => [g.tokens[0].ref, g]));
-  const nonFirstWordRefs = new Set(tokenGroups.flatMap((g) => g.tokens.slice(1).map((t) => t.ref)));
+
+  // Map from each non-first token ref to its group and its position within that group, so
+  // punctuation encountered between two tokens of the same group can be routed into
+  // punctuationBetween rather than pendingPunctuation.
+  const nonFirstWordRefToGroup = new Map<string, { group: TokenGroup; tokenIndex: number }>(
+    tokenGroups.flatMap((g) =>
+      g.tokens.slice(1).map((t, j) => [t.ref, { group: g, tokenIndex: j + 1 }] as const),
+    ),
+  );
 
   let pendingPunctuation: Token[] = [];
+  // When non-null, punctuation belongs to the gap inside a multi-token group.
+  let pendingIntraGroup: { group: TokenGroup; gapIndex: number } | undefined;
   let lastGroup: TokenGroup | undefined;
 
   const emitSlot = (nextGroup: TokenGroup | undefined) => {
@@ -216,10 +241,30 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
 
   tokens.forEach((token) => {
     if (!isWordToken(token)) {
-      pendingPunctuation.push(token);
+      if (pendingIntraGroup) {
+        // Punctuation between two tokens of the same group: route into the group.
+        pendingIntraGroup.group.punctuationBetween[pendingIntraGroup.gapIndex].push(token);
+      } else {
+        pendingPunctuation.push(token);
+      }
       return;
     }
-    if (nonFirstWordRefs.has(token.ref)) return;
+
+    const intraEntry = nonFirstWordRefToGroup.get(token.ref);
+    if (intraEntry) {
+      // This is a subsequent token of an already-open group. The gap index is tokenIndex - 1
+      // (the gap between tokens[tokenIndex-1] and tokens[tokenIndex]).
+      const gapIndex = intraEntry.tokenIndex - 1;
+      // Flush any punctuation already buffered since the previous group token — it belongs to
+      // this intra-group gap, not to the upcoming inter-group slot.
+      intraEntry.group.punctuationBetween[gapIndex].push(...pendingPunctuation);
+      pendingPunctuation = [];
+      pendingIntraGroup = { group: intraEntry.group, gapIndex };
+      return;
+    }
+
+    // First token of a new group: close the intra-group tracker and emit the inter-group slot.
+    pendingIntraGroup = undefined;
     const group = groupByFirstRef.get(token.ref);
     /* v8 ignore next -- groupByFirstRef always contains a group for every first-word ref */
     if (!group) return;

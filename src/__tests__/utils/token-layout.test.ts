@@ -236,7 +236,7 @@ describe('groupTokens', () => {
 describe('buildRenderUnits', () => {
   it('produces a leading and trailing slot when there is one group', () => {
     const tok = mkWord('tok-a');
-    const group = { tokens: [tok], phraseLink: undefined, firstIndex: 0 };
+    const group = { tokens: [tok], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] };
     const units = buildRenderUnits([tok], [group]);
     // leading slot, group, trailing slot
     expect(units).toHaveLength(3);
@@ -250,8 +250,8 @@ describe('buildRenderUnits', () => {
     const punct = mkPunct('p1', ',');
     const b = mkWord('tok-b');
     const groups = [
-      { tokens: [a], phraseLink: undefined, firstIndex: 0 },
-      { tokens: [b], phraseLink: undefined, firstIndex: 2 },
+      { tokens: [a], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] },
+      { tokens: [b], phraseLink: undefined, firstIndex: 2, punctuationBetween: [] },
     ];
     const units = buildRenderUnits([a, punct, b], groups);
     const slotUnit = units.find(
@@ -262,5 +262,41 @@ describe('buildRenderUnits', () => {
       expect(slotUnit.slot.punctuation).toHaveLength(1);
       expect(slotUnit.slot.punctuation[0].ref).toBe('p1');
     }
+  });
+
+  it('routes punctuation between tokens of the same group into punctuationBetween', () => {
+    const a = mkWord('tok-a');
+    const punct = mkPunct('p1', ',');
+    const b = mkWord('tok-b');
+    const link = makePhraseLink('ph1', ['tok-a', 'tok-b']);
+    const groups = groupTokens(
+      [a, punct, b],
+      new Map([
+        ['tok-a', link],
+        ['tok-b', link],
+      ]),
+    );
+    buildRenderUnits([a, punct, b], groups);
+    expect(groups[0].punctuationBetween).toHaveLength(1);
+    expect(groups[0].punctuationBetween[0]).toHaveLength(1);
+    expect(groups[0].punctuationBetween[0][0].ref).toBe('p1');
+  });
+
+  it('does not put intra-group punctuation into any slot', () => {
+    const a = mkWord('tok-a');
+    const punct = mkPunct('p1', ',');
+    const b = mkWord('tok-b');
+    const link = makePhraseLink('ph1', ['tok-a', 'tok-b']);
+    const groups = groupTokens(
+      [a, punct, b],
+      new Map([
+        ['tok-a', link],
+        ['tok-b', link],
+      ]),
+    );
+    const units = buildRenderUnits([a, punct, b], groups);
+    const allSlots = units.filter((u) => u.kind === 'slot');
+    const allPunctuation = allSlots.flatMap((u) => (u.kind === 'slot' ? u.slot.punctuation : []));
+    expect(allPunctuation).toHaveLength(0);
   });
 });

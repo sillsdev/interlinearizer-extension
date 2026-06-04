@@ -620,7 +620,8 @@ export function computeAllArcPaths(container: Element): ArcState {
 
   /**
    * Builds a {@link SameRowPair} for two boxes that share a row. The single arc run spans between
-   * their centres on the shared row's top channel.
+   * their centres, anchored to the row's normalised top channel (minimum box top on the row) so it
+   * conflicts correctly with cross-row runs on the same channel.
    *
    * @param phraseId - The phrase the pair belongs to.
    * @param a - Container-space rect of the earlier (document-order) box.
@@ -637,7 +638,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   ): SameRowPair => {
     const x1 = (a.left + a.right) / 2;
     const x2 = (b.left + b.right) / 2;
-    const seg = makeArcSegment(phraseId, Math.round(a.top), x1, x2);
+    const seg = makeArcSegment(phraseId, Math.round(rowTopFor(a.top, a.bottom)), x1, x2);
     return { phraseId, a, b, splitAfterTokenRef, seg };
   };
 

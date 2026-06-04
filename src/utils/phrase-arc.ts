@@ -7,7 +7,7 @@ import type { PhraseMode } from '../types/phrase-mode';
  * Half the height of a floating phrase-controls pill (px). The pill is centred on the line it rides
  * (arc top, or box top when no arc), so only this half extends above into the top-padding zone.
  */
-export const CONTROLS_HALF_HEIGHT_PX = 10;
+const CONTROLS_HALF_HEIGHT_PX = 10;
 
 /** Base stem height (px) for arc connectors at nesting level 0. */
 export const ARC_BASE_STEM = 10;
@@ -19,7 +19,7 @@ export const ARC_LEVEL_STEP = 10;
 export const ARC_CORNER_RADIUS = 5;
 
 /** Extra breathing room (px) above the topmost arc run so its corner doesn't graze the boundary. */
-export const ARC_CLEARANCE_MARGIN_PX = 4;
+const ARC_CLEARANCE_MARGIN_PX = 4;
 
 /**
  * Horizontal distance (px) from the content edge to the first gutter lane, where cross-row arcs
@@ -40,7 +40,7 @@ export const GUTTER_LANE_STEP = 10;
  * to the utils layer so this module doesn't depend on `components/AnalysisStore`; the real
  * `PhraseDispatch` is structurally compatible.
  */
-export type SplitPhraseDispatch = {
+type SplitPhraseDispatch = {
   createPhrase: (tokens: TokenSnapshot[]) => string;
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
   deletePhrase: (phraseId: string) => void;
@@ -328,7 +328,7 @@ export function getArcStrokeProps(
  * A same-row run spans between the two box centres; a cross-row run spans only from its box centre
  * out to the side gutter (the descent happens off in the gutter, not across to the other column).
  */
-export type ArcSegment = {
+type ArcSegment = {
   /** The phrase this segment belongs to. */
   phraseId: string;
   /**
@@ -383,7 +383,7 @@ function assignLevels<T>(items: readonly T[], conflicts: (a: T, b: T) => boolean
  * @param segments - All arc segments across every phrase.
  * @returns Map from each segment to its assigned nesting level (0 = outermost).
  */
-export function assignSegmentLevels(segments: ArcSegment[]): Map<ArcSegment, number> {
+function assignSegmentLevels(segments: ArcSegment[]): Map<ArcSegment, number> {
   const ordered = [...segments].sort((a, b) => a.left - b.left || a.right - b.right);
   return assignLevels(ordered, (a, b) => a.row === b.row && a.left < b.right && a.right > b.left);
 }
@@ -397,7 +397,7 @@ export function assignSegmentLevels(segments: ArcSegment[]): Map<ArcSegment, num
  * A descent nested vertically inside a wider one (e.g. C..D inside A..F) shares no run row with it,
  * so segment levels never separate them — only this lane assignment does.
  */
-export type GutterDescent = {
+type GutterDescent = {
   /** Which side gutter the descent travels down; descents on different sides never conflict. */
   side: 'left' | 'right';
   /** Topmost y the descent occupies (the upper run line). */
@@ -415,7 +415,7 @@ export type GutterDescent = {
  * @param descents - All cross-row gutter descents across every phrase.
  * @returns Map from each descent to its assigned lane (0 = nearest the content edge).
  */
-export function assignGutterLanes(descents: GutterDescent[]): Map<GutterDescent, number> {
+function assignGutterLanes(descents: GutterDescent[]): Map<GutterDescent, number> {
   const ordered = [...descents].sort((a, b) => a.top - b.top || a.bottom - b.bottom);
   return assignLevels(ordered, (a, b) => a.side === b.side && a.top < b.bottom && a.bottom > b.top);
 }
@@ -449,7 +449,7 @@ export type ArcPath = {
  * Result of {@link computeAllArcPaths}: the arc state the Interlinearizer needs after each layout
  * measurement.
  */
-export type ArcState = {
+type ArcState = {
   /** SVG path strings for all discontiguous phrase arcs. */
   paths: ArcPath[];
   /** Maximum nesting level across all visible arcs; drives dynamic top padding. */
@@ -755,7 +755,7 @@ export function computeAllArcPaths(container: Element): ArcState {
 export const SPLIT_BUTTON_WIDTH_PX = 16;
 
 /** Approximate rendered height (px) of a split button (10px icon + padding + borders). */
-export const SPLIT_BUTTON_HEIGHT_PX = 14;
+const SPLIT_BUTTON_HEIGHT_PX = 14;
 
 /**
  * Nudges split-button x positions apart so no two rendered boxes overlap. Two buttons conflict only

@@ -6,8 +6,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
 import { SegmentView } from '../../components/SegmentView';
+import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -18,8 +19,7 @@ const mockUsePhraseLinkMap = jest
   .fn<Map<string, PhraseAnalysisLink>, []>()
   .mockReturnValue(new Map());
 
-type PhraseDispatch = { createPhrase: jest.Mock; updatePhrase: jest.Mock; deletePhrase: jest.Mock };
-const mockUsePhraseDispatch = jest.fn<PhraseDispatch, []>().mockReturnValue({
+const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
   createPhrase: jest.fn(),
   updatePhrase: jest.fn(),
   deletePhrase: jest.fn(),
@@ -560,19 +560,7 @@ describe('SegmentView', () => {
     });
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     mockUsePhraseLinkMap.mockReturnValue(
-      new Map([
-        [
-          'tok-0',
-          {
-            analysisId: 'phrase-1',
-            status: 'approved' as const,
-            tokens: [
-              { tokenRef: 'tok-0', surfaceText: 'In' },
-              { tokenRef: 'tok-1', surfaceText: 'the' },
-            ],
-          },
-        ],
-      ]),
+      new Map([['tok-0', makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the'])]]),
     );
     render(
       <AnalysisStoreProvider analysisLanguage="und">

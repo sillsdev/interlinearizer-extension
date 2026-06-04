@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
 import ContinuousView from '../../components/ContinuousView';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
 import { isWordToken } from '../../types/typeGuards';
 
 // ---------------------------------------------------------------------------
@@ -20,8 +20,7 @@ import { isWordToken } from '../../types/typeGuards';
  */
 const phraseLinkMap = new Map<string, PhraseAnalysisLink>();
 
-type PhraseDispatch = { createPhrase: jest.Mock; updatePhrase: jest.Mock; deletePhrase: jest.Mock };
-const mockUsePhraseDispatch = jest.fn<PhraseDispatch, []>().mockReturnValue({
+const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
   createPhrase: jest.fn(),
   updatePhrase: jest.fn(),
   deletePhrase: jest.fn(),

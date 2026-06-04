@@ -133,7 +133,11 @@ export function useArcPaths(
       ? [signature]
       : [signature, ...recentArcSignaturesRef.current].slice(0, 2);
     setArcPaths((prev) => {
-      const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
+      // Include the split-button geometry (midX/midY and run bounds) so that a deconfliction-only
+      // shift — which mutates midX without touching `d` — still replaces the paths rather than
+      // reusing the stale array and leaving the button in its pre-shift position.
+      const key = (p: ArcPath) =>
+        `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}:${p.midX}:${p.midY}:${p.runLeft}:${p.runRight}`;
       const prevKey = prev.map(key).join('|');
       const nextKey = paths.map(key).join('|');
       return prevKey === nextKey ? prev : paths;

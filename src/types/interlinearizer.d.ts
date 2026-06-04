@@ -17,8 +17,9 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.hideInactiveLinkButtons': boolean;
     /**
-     * When true, non-active verse segments are rendered in a reduced state: only phrase boxes and
-     * arcs are shown, with all interactive controls and hover effects suppressed.
+     * When true, phrases are rendered in a reduced state keyed to phrase focus rather than verse
+     * activity: every phrase except the focused one shows only its box and arc, with interactive
+     * controls (split buttons, intra-phrase unlink icons) and hover effects suppressed.
      */
     'interlinearizer.simplifyPhrases': boolean;
   }

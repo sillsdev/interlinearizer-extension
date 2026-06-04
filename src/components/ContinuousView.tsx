@@ -1,5 +1,6 @@
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -45,10 +46,30 @@ const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
 const STRIP_FADE_MS = 500;
 
 /**
+ * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an
+ * internal-nav smooth scroll. The relayout normally fires on the scroll container's `scrollend`
+ * event (adaptive to however long the animation actually takes); this timeout only fires when
+ * `scrollend` is unavailable or never emitted (the target was already centred, so no scroll
+ * occurred). Sized to comfortably outlast a one-phrase smooth scroll on slow hardware so it never
+ * pre-empts a real `scrollend`.
+ */
+const SCROLL_SETTLE_FALLBACK_MS = 600;
+
+/**
  * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
  * realistic viewport can ever render all tokens simultaneously.
  */
 const PHRASE_WINDOW_HALF = 100;
+
+/**
+ * Localized string keys this view needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders. A fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, escalating into an infinite update loop that freezes
+ * the WebView.
+ */
+const STRING_KEYS = [
+  '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+] as const satisfies `%${string}%`[];
 
 /** A between-group slot render item annotated with the absolute group indices on either side. */
 type SlotUnit = {
@@ -87,6 +108,16 @@ type ContinuousViewProps = Readonly<{
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /**
+   * When `true`, link/unlink buttons between phrases are hidden except in the segment containing
+   * the focused token (the active verse within the strip).
+   */
+  hideInactiveLinkButtons: boolean;
+  /**
+   * When `true`, phrase-level controls (split, intra-phrase unlink, remove-token) are hidden on
+   * every phrase except the focused one.
+   */
+  simplifyPhrases: boolean;
 }>;
 
 /**
@@ -108,6 +139,10 @@ type ContinuousViewProps = Readonly<{
  * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
+ * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
+ *   the focused token's segment.
+ * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
+ *   the focused one.
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
@@ -119,8 +154,12 @@ export default function ContinuousView({
   setPhraseMode,
   tokenSegmentMap,
   wordTokenByRef,
+  hideInactiveLinkButtons,
+  simplifyPhrases,
 }: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
+
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const allTokens: Token[] = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens),
@@ -225,6 +264,47 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /** Ref to the token-strip row; the content row and mouse-leave target. */
+  // eslint-disable-next-line no-null/no-null
+  const stripRowRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Ref to the fixed-width clipping viewport that wraps the content row. Because the inner row is
+   * `w-max` (sized to its content), this outer element is the one that actually scrolls when
+   * `scrollIntoView` centres a phrase, so its `scrollend` event is what signals the animation has
+   * settled.
+   */
+  // eslint-disable-next-line no-null/no-null
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Segment id whose link buttons are currently treated as active, lagging `focusedTokenRef` during
+   * internal navigation. Toggling this adds/removes inactive link icons, which re-lays out the
+   * whole strip; deferring it until the smooth scroll settles keeps the animation a pure one-token
+   * glide with no mid-flight box shifts. For external jumps and the initial mount it tracks the
+   * focus immediately (the strip is faded out or static, so there is no animation to disturb).
+   */
+  const [committedActiveSegmentId, setCommittedActiveSegmentId] = useState<string | undefined>(
+    () => (focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined),
+  );
+
+  /**
+   * The active segment the focus currently implies, recomputed every render. The lagging
+   * {@link committedActiveSegmentId} is reconciled toward this value either immediately (external
+   * jumps) or after the scroll animation (internal nav).
+   */
+  const targetActiveSegmentId =
+    focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined;
+
+  /** Ref mirror of the target so the post-scroll timeout reads the latest value without a dep. */
+  const targetActiveSegmentIdRef = useRef(targetActiveSegmentId);
+  targetActiveSegmentIdRef.current = targetActiveSegmentId;
+
+  /** Snaps the committed active segment to the current target; runs after an internal-nav scroll. */
+  const commitPendingActiveSegment = useCallback(() => {
+    setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
+  }, []);
+
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
   const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
   onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
@@ -248,8 +328,17 @@ export default function ContinuousView({
   const windowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
   const windowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
 
-  /** The groups in the rendered window. */
-  const windowGroups = phraseGroups.slice(windowStart, windowEnd + 1);
+  /**
+   * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
+   * identity is stable while the window is unchanged. This matters because `windowGroups` feeds the
+   * `useArcPaths` dependency list: a fresh `.slice()` every render would bump the hook's internal
+   * version counter every render, forcing a re-measure on each pass and defeating the arc hook's
+   * own loop-damping (which keys off whether a real input changed).
+   */
+  const windowGroups = useMemo(
+    () => phraseGroups.slice(windowStart, windowEnd + 1),
+    [phraseGroups, windowStart, windowEnd],
+  );
 
   /**
    * The flat token-index range spanned by the window groups, used to slice `allTokens` for
@@ -355,13 +444,58 @@ export default function ContinuousView({
     lastDisplayUpdateWasInternalRef.current = false;
     const isInitialLoad = isInitialLoadInProgressRef.current;
     const shouldJumpInstantly = !isInternal || isInitialLoad;
-    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: shouldJumpInstantly ? 'auto' : 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    });
 
-    if (isInternal && !isInitialLoad) return undefined;
+    if (shouldJumpInstantly) {
+      // External jumps fade the strip out and the initial mount is static, so there is no animation
+      // to disturb — commit the active segment now alongside the instant scroll.
+      commitPendingActiveSegment();
+      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
+
+    if (isInternal && !isInitialLoad) {
+      // Defer the smooth scroll one frame so the window re-render (groups mounting/unmounting as the
+      // window slides) has settled into its final layout before the animation computes its target.
+      // Scrolling synchronously here animates toward a position that then shifts, producing a visible
+      // overshoot-and-return ("yank") when crossing a verse boundary.
+      const navRafId = requestAnimationFrame(() => {
+        phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+      });
+      // Commit the active-segment change (which toggles inactive link-icon visibility, re-laying out
+      // the strip) only once the smooth scroll has actually settled. Updating it mid-scroll would
+      // add/remove icons while the strip is moving, shifting every box and turning the smooth glide
+      // into a jump-and-settle.
+      //
+      // Prefer the browser's `scrollend` event so the relayout lands the instant the animation
+      // finishes — adaptive to hardware, no guessed duration. `scrollend` is not universal and never
+      // fires when the target was already centred (no scroll happens), so a timeout backstops both
+      // cases. Whichever fires first wins; the other is torn down.
+      // `scrollIntoView` scrolls the nearest scrollable ancestor. Depending on layout that can be
+      // either the fixed-width clipping viewport or the content row, so listen on both — whichever
+      // actually scrolls fires `scrollend`. Commit on the first signal, then tear everything down so
+      // the relayout runs exactly once.
+      const scrollers = [scrollViewportRef.current, stripRowRef.current];
+      let fallbackTimeout: ReturnType<typeof setTimeout>;
+      const onSettled = () => {
+        clearTimeout(fallbackTimeout);
+        scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        commitPendingActiveSegment();
+      };
+      fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
+      scrollers.forEach((el) => el?.addEventListener('scrollend', onSettled, { once: true }));
+      return () => {
+        cancelAnimationFrame(navRafId);
+        clearTimeout(fallbackTimeout);
+        scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+      };
+    }
 
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
@@ -371,7 +505,48 @@ export default function ContinuousView({
       cancelAnimationFrame(rafId);
       setIsVisible(true);
     };
-  }, [focusPhraseIndex]);
+  }, [focusPhraseIndex, commitPendingActiveSegment]);
+
+  // Keep the centre anchored across the deferred inactive-link relayout. When `committedActiveSegmentId`
+  // flips (after an internal-nav scroll settles), inactive link icons appear/disappear, shifting
+  // every box. Re-centring the focused group synchronously — before the browser paints — cancels the
+  // shift at the centre, so the icons change only on either side and the focused phrase stays put. A
+  // `useLayoutEffect` (not rAF) is essential: it runs in the same frame as the relayout, so the shift
+  // never paints. The first run is skipped because the initial centre is established by the scroll
+  // effect's instant jump.
+  const skipActiveSegmentRecentreRef = useRef(true);
+  useLayoutEffect(() => {
+    if (skipActiveSegmentRecentreRef.current) {
+      skipActiveSegmentRecentreRef.current = false;
+      return;
+    }
+    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+      behavior: 'auto',
+      block: 'nearest',
+      inline: 'center',
+    });
+    // Only the active-segment flip should trigger this re-anchor; focusPhraseIndex has its own scroll
+    // effect. Reading it here is a snapshot, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedActiveSegmentId]);
+
+  // Re-centre the focused group when a view option toggles. Hiding/showing link buttons and phrase
+  // controls changes the strip's layout, so the previously-centred group drifts off-centre; snap it
+  // back into view after the layout settles. Deferred via rAF so the measurement reflects the new
+  // (post-toggle) widths rather than the pre-toggle ones.
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => {
+      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    });
+    return () => cancelAnimationFrame(rafId);
+    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
+    // only re-centres in response to layout-affecting option toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hideInactiveLinkButtons, simplifyPhrases]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically
@@ -389,10 +564,6 @@ export default function ContinuousView({
     // effect only fires on actual mode transitions.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);
-
-  /** Ref to the token-strip row so we can handle mouse-leave events. */
-  // eslint-disable-next-line no-null/no-null
-  const stripRowRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * Ref to the outer `tw:relative tw:overflow-visible` strip-fade-wrapper div that is both the SVG
@@ -446,6 +617,14 @@ export default function ContinuousView({
       onHoverPhrase: setHoveredPhraseId,
       onHoverCandidateTokens: setCandidateTokenRefs,
       onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      // The "active verse" within the flat strip is the segment containing the focused token. It
+      // lags the focus during internal nav so its link-icon relayout lands after the scroll, not
+      // during it.
+      activeSegmentId: committedActiveSegmentId,
+      crossSegmentLinkTooltip:
+        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     }),
     [
       phraseMode,
@@ -457,6 +636,10 @@ export default function ContinuousView({
       setHoveredPhraseId,
       setCandidateTokenRefs,
       handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      committedActiveSegmentId,
+      localizedStrings,
     ],
   );
 
@@ -611,6 +794,7 @@ export default function ContinuousView({
         aria-label="Previous token"
         className="tw:icon-button"
         disabled={atStart}
+        tabIndex={-1}
         onClick={stepPrev}
         type="button"
       >
@@ -618,7 +802,12 @@ export default function ContinuousView({
       </button>
 
       {/* Scrollable token strip */}
-      <div className="tw:relative tw:flex-1" style={{ overflowX: 'hidden', overflowY: 'visible' }}>
+      <div
+        data-testid="strip-scroll-viewport"
+        ref={scrollViewportRef}
+        className="tw:relative tw:flex-1"
+        style={{ overflowX: 'hidden', overflowY: 'visible' }}
+      >
         {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (
           <div
@@ -656,6 +845,7 @@ export default function ContinuousView({
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={setHoveredPhraseId}
+            simplifyPhrases={simplifyPhrases}
           />
           <PhraseStripProvider value={stripContext}>
             <div
@@ -694,6 +884,7 @@ export default function ContinuousView({
         aria-label="Next token"
         className="tw:icon-button"
         disabled={atEnd}
+        tabIndex={-1}
         onClick={stepNext}
         type="button"
       >

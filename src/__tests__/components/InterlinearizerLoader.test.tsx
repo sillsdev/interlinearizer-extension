@@ -18,29 +18,53 @@ import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 
-jest.mock('../../components/ContinuousScrollToggle', () => ({
+jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   __esModule: true,
   default: ({
-    checked,
-    disabled,
-    onCheckedChange,
+    continuousScroll,
+    continuousScrollDisabled,
+    onContinuousScrollChange,
+    hideInactiveLinkButtons,
+    onHideInactiveLinkButtonsChange,
+    simplifyPhrases,
+    onSimplifyPhrasesChange,
   }: {
-    checked: boolean;
-    disabled: boolean;
-    onCheckedChange: (v: boolean) => void;
+    continuousScroll: boolean;
+    continuousScrollDisabled: boolean;
+    onContinuousScrollChange: (v: boolean) => void;
+    hideInactiveLinkButtons: boolean;
+    onHideInactiveLinkButtonsChange: (v: boolean) => void;
+    simplifyPhrases: boolean;
+    onSimplifyPhrasesChange: (v: boolean) => void;
   }) => (
-    <button
-      aria-label="continuous scroll"
-      data-testid="continuous-scroll-toggle"
-      data-checked={String(checked)}
-      data-disabled={String(disabled)}
-      onClick={() => onCheckedChange(!checked)}
-      type="button"
-    />
+    <div data-testid="view-options-dropdown">
+      <button
+        aria-label="continuous scroll"
+        data-testid="continuous-scroll-toggle"
+        data-checked={String(continuousScroll)}
+        data-disabled={String(continuousScrollDisabled)}
+        onClick={() => onContinuousScrollChange(!continuousScroll)}
+        type="button"
+      />
+      <button
+        aria-label="hide inactive link buttons"
+        data-testid="hide-inactive-link-buttons-toggle"
+        data-checked={String(hideInactiveLinkButtons)}
+        onClick={() => onHideInactiveLinkButtonsChange(!hideInactiveLinkButtons)}
+        type="button"
+      />
+      <button
+        aria-label="dim inactive segments"
+        data-testid="dim-inactive-segments-toggle"
+        data-checked={String(simplifyPhrases)}
+        onClick={() => onSimplifyPhrasesChange(!simplifyPhrases)}
+        type="button"
+      />
+    </div>
   ),
 }));
 
-jest.mock('../../components/ScriptureNavControls', () => ({
+jest.mock('../../components/controls/ScriptureNavControls', () => ({
   __esModule: true,
   default: () => <div data-testid="scripture-nav-controls" />,
 }));
@@ -61,6 +85,8 @@ type CapturedInterlinearizerProps = {
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
+  hideInactiveLinkButtons: boolean;
+  simplifyPhrases: boolean;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -103,7 +129,7 @@ const STUB_ACTIVE_PROJECT: MockProject = {
   name: 'My Project',
 };
 
-jest.mock('../../components/ProjectModals', () => ({
+jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
   /**
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
@@ -397,7 +423,7 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
-  it('passes checked and disabled from useOptimisticBooleanSetting to ContinuousScrollToggle', () => {
+  it('passes checked and disabled from useOptimisticBooleanSetting to ViewOptionsDropdown', () => {
     mockOptimisticSetting(true, jest.fn(), true);
     render(
       <InterlinearizerLoader
@@ -412,7 +438,7 @@ describe('InterlinearizerLoader', () => {
     expect(toggle).toHaveAttribute('data-disabled', 'true');
   });
 
-  it('wires ContinuousScrollToggle onCheckedChange to the onChange from useOptimisticBooleanSetting', async () => {
+  it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {
     const mockOnChange = jest.fn();
     mockOptimisticSetting(false, mockOnChange);
     render(
@@ -424,6 +450,58 @@ describe('InterlinearizerLoader', () => {
     );
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
+    expect(mockOnChange).toHaveBeenCalledWith(true);
+  });
+
+  it('passes hideInactiveLinkButtons=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.hideInactiveLinkButtons).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
+    const mockOnChange = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('hide-inactive-link-buttons-toggle'));
+    expect(mockOnChange).toHaveBeenCalledWith(true);
+  });
+
+  it('passes simplifyPhrases=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.simplifyPhrases).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
+    const mockOnChange = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
     expect(mockOnChange).toHaveBeenCalledWith(true);
   });
 

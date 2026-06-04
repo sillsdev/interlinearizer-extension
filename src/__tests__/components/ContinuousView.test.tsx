@@ -2,7 +2,8 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
@@ -69,9 +70,18 @@ jest.mock('../../hooks/usePhraseHoverState', () => ({
 
 jest.mock('../../components/TokenChip');
 
+/**
+ * Spy invoked once per mounted (non-suppressed) link icon. Rendering `undefined` keeps the DOM
+ * light (so userEvent stays fast) while letting tests count how many link icons are live via the
+ * mock's call records. Cleared in `beforeEach`.
+ */
+const tokenLinkIconSpy = jest.fn();
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
-  default: () => undefined,
+  default: (props: Readonly<{ prevToken?: { ref: string }; nextToken?: { ref: string } }>) => {
+    tokenLinkIconSpy(props);
+    return undefined;
+  },
 }));
 
 jest.mock('../../components/ArcOverlay', () => ({
@@ -398,6 +408,8 @@ function requiredProps(
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  hideInactiveLinkButtons: boolean;
+  simplifyPhrases: boolean;
 } {
   const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
   return {
@@ -409,6 +421,8 @@ function requiredProps(
     setPhraseMode: jest.fn(),
     tokenSegmentMap,
     wordTokenByRef,
+    hideInactiveLinkButtons: false,
+    simplifyPhrases: false,
   };
 }
 
@@ -418,7 +432,14 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  jest
+    .mocked(useLocalizedStrings)
+    .mockImplementation((keys: readonly string[]) => [
+      Object.fromEntries(keys.map((k) => [k, k])),
+      false,
+    ]);
   scrollIntoViewMock.mockClear();
+  tokenLinkIconSpy.mockClear();
   phraseLinkMap.clear();
   mockUsePhraseDispatch.mockReturnValue({
     createPhrase: jest.fn(),
@@ -712,6 +733,8 @@ describe('ContinuousView scroll behaviour', () => {
           setPhraseMode={jest.fn()}
           tokenSegmentMap={tokenSegmentMap}
           wordTokenByRef={wordTokenByRef}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
         />
       );
     }
@@ -732,6 +755,117 @@ describe('ContinuousView scroll behaviour', () => {
     );
   });
 
+  /**
+   * Renders ContinuousView with `hideInactiveLinkButtons` on, focused at tok-1 (the last phrase of
+   * GEN 1:1) so a single Next step crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in
+   * GEN 1:1 and shows a link icon only while that segment is active, so it's a clean probe for
+   * whether the active-segment relayout has committed.
+   *
+   * @returns A predicate reporting whether that in-segment link icon mounted in the latest render.
+   */
+  function renderHideInactiveCrossing(): () => boolean {
+    const book = makeBook();
+    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    function Parent() {
+      const [ref, setRef] = useState<string | undefined>('tok-1');
+      return (
+        <ContinuousView
+          book={book}
+          editPhraseSegmentId={undefined}
+          focusedTokenRef={ref}
+          onFocusedTokenRefChange={setRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={jest.fn()}
+          tokenSegmentMap={tokenSegmentMap}
+          wordTokenByRef={wordTokenByRef}
+          hideInactiveLinkButtons
+          simplifyPhrases={false}
+        />
+      );
+    }
+    render(<Parent />, withAnalysisStore);
+    return () =>
+      tokenLinkIconSpy.mock.calls.some(
+        ([props]) => props?.prevToken?.ref === 'tok-0' && props?.nextToken?.ref === 'tok-1',
+      );
+  }
+
+  it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
+    // With hideInactiveLinkButtons on, crossing a boundary wants to add/remove icons — but doing so
+    // mid-scroll shifts every box and breaks the smooth glide. The view defers the active-segment
+    // switch until the scroll settles (signalled by the container's `scrollend`), so the old segment
+    // keeps its icon during the animation and only loses it once the scroll finishes.
+    const inSegmentIconMounted = renderHideInactiveCrossing();
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
+    );
+    // GEN 1:1 is active, so its in-segment slot (between tok-0 and tok-1) shows a link icon.
+    expect(inSegmentIconMounted()).toBe(true);
+
+    // Step into GEN 1:2. The GEN 1:1 link icon must remain while the scroll animates (no relayout).
+    tokenLinkIconSpy.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(inSegmentIconMounted()).toBe(true);
+
+    // The scroll settles → `scrollend` fires on the clipping viewport (the element that actually
+    // scrolls) → the active segment switches to GEN 1:2 and the GEN 1:1 icon disappears (its
+    // in-segment slot is now inactive and suppressed).
+    tokenLinkIconSpy.mockClear();
+    act(() => {
+      screen.getByTestId('strip-scroll-viewport').dispatchEvent(new Event('scrollend'));
+    });
+    expect(inSegmentIconMounted()).toBe(false);
+  });
+
+  it('also commits when scrollend fires on the inner content row', async () => {
+    // The listener is attached to both the viewport and the content row, so whichever the browser
+    // treats as the scroller settles the relayout. Covers the content-row path.
+    const inSegmentIconMounted = renderHideInactiveCrossing();
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(inSegmentIconMounted()).toBe(true);
+
+    tokenLinkIconSpy.mockClear();
+    act(() => {
+      screen.getByTestId('token-strip').dispatchEvent(new Event('scrollend'));
+    });
+    expect(inSegmentIconMounted()).toBe(false);
+  });
+
+  it('commits the deferred relayout via the fallback timeout when scrollend never fires', () => {
+    // Browsers without `scrollend` (or when the target was already centred, so no scroll happens)
+    // must still commit the deferred relayout. A backstop timeout covers that case. Fake timers are
+    // installed before render so every scheduled timer is captured, then advanced past the fallback.
+    jest.useFakeTimers();
+    try {
+      const inSegmentIconMounted = renderHideInactiveCrossing();
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      // GEN 1:1 is active, so its in-segment link icon shows.
+      expect(inSegmentIconMounted()).toBe(true);
+
+      tokenLinkIconSpy.mockClear();
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+      });
+      // Still present while the (fake-timer) scroll is mid-flight; no scrollend is dispatched.
+      expect(inSegmentIconMounted()).toBe(true);
+
+      tokenLinkIconSpy.mockClear();
+      act(() => {
+        // Advance past the 600ms fallback so the backstop commits the relayout.
+        jest.advanceTimersByTime(700);
+      });
+      expect(inSegmentIconMounted()).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('scrolls with the nearest-block, centre-inline placement', () => {
     const book = makeBook();
     render(
@@ -741,6 +875,30 @@ describe('ContinuousView scroll behaviour', () => {
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith(
       expect.objectContaining({ block: 'nearest', inline: 'center' }),
+    );
+  });
+
+  it('re-centres the focused group when a view option toggles', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+    scrollIntoViewMock.mockClear();
+
+    // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centres.
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto' }),
+      ),
+    );
+
+    scrollIntoViewMock.mockClear();
+    // Toggling simplifyPhrases likewise re-centres.
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto' }),
+      ),
     );
   });
 });

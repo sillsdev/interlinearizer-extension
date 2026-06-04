@@ -103,6 +103,36 @@ describe('ArcOverlay', () => {
     expect(screen.getByTestId('split-arc-btn').className).not.toContain('text-muted-foreground');
   });
 
+  it('with simplifyPhrases on, hides the split button for a non-focused phrase but keeps its arc', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        focusedPhraseId="p2"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        simplifyPhrases
+      />,
+    );
+    expect(screen.queryByTestId('split-arc-btn')).not.toBeInTheDocument();
+    // The arc itself is still drawn.
+    expect(document.querySelector('path')).toBeInTheDocument();
+  });
+
+  it('with simplifyPhrases on, keeps the split button for the focused phrase', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        focusedPhraseId="p1"
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        simplifyPhrases
+      />,
+    );
+    expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
+  });
+
   it('renders a split button in view mode when the arc phrase is hovered', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     render(

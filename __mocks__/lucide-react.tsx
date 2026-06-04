@@ -64,3 +64,13 @@ export function Link2(props: Readonly<{ size?: number; className?: string }>): R
 export function Link2Off(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="link2off-icon" {...props} />;
 }
+
+/**
+ * Stub for the Settings gear icon used by the view-options dropdown button.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a settings icon stub in tests.
+ */
+export function Settings(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="settings-icon" {...props} />;
+}

@@ -6,7 +6,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import type { TextAnalysis } from 'interlinearizer';
-import EditPhraseControls from '../../components/EditPhraseControls';
+import EditPhraseControls from '../../components/controls/EditPhraseControls';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { defaultAnalysis } from '../../store/analysisSlice';
 import type { PhraseMode } from '../../types/phrase-mode';

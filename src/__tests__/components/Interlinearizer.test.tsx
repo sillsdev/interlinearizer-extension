@@ -179,7 +179,7 @@ jest.mock('../../components/SegmentView', () => ({
   },
 }));
 
-jest.mock('../../components/EditPhraseControls', () => ({
+jest.mock('../../components/controls/EditPhraseControls', () => ({
   __esModule: true,
   /**
    * Minimal EditPhraseControls stub exposing the done button the toolbar tests assert on.
@@ -195,7 +195,7 @@ jest.mock('../../components/EditPhraseControls', () => ({
   ),
 }));
 
-jest.mock('../../components/UnlinkPhraseConfirm', () => ({
+jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
   /**
    * Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on.
@@ -262,12 +262,16 @@ function renderInterlinearizer({
   continuousScroll = false,
   scrRef = defaultScrRef,
   setScrRef = () => {},
+  hideInactiveLinkButtons = false,
+  simplifyPhrases = false,
 }: {
   book?: Book;
   chapterSegments?: Book['segments'];
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
   setScrRef?: (r: SerializedVerseRef) => void;
+  hideInactiveLinkButtons?: boolean;
+  simplifyPhrases?: boolean;
 } = {}) {
   return render(
     <Interlinearizer
@@ -279,6 +283,8 @@ function renderInterlinearizer({
       analysisLanguage="und"
       phraseMode={{ kind: 'view' }}
       setPhraseMode={() => {}}
+      hideInactiveLinkButtons={hideInactiveLinkButtons}
+      simplifyPhrases={simplifyPhrases}
     />,
   );
 }
@@ -414,6 +420,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -492,6 +500,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -520,6 +530,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -555,6 +567,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -570,6 +584,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -627,6 +643,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -649,6 +667,8 @@ describe('Interlinearizer', () => {
           originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
         }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
     expect(screen.getByTestId('done-edit-btn')).toBeInTheDocument();
@@ -665,6 +685,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
         setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
     expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
@@ -683,6 +705,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
         setPhraseMode={setPhraseMode}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
     expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', originalTokens);
@@ -701,6 +725,8 @@ describe('Interlinearizer', () => {
         analysisLanguage="und"
         phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
         setPhraseMode={setPhraseMode}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
     expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', []);

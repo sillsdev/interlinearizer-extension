@@ -203,7 +203,15 @@ describe('useArcPaths', () => {
       global.ResizeObserver = originalResizeObserver;
     });
 
-    it('triggers computeAllArcPaths after the rAF fires', () => {
+    /**
+     * Installs a stubbed `ResizeObserver` that records its callback and a manual rAF queue, then
+     * returns helpers to fire one observer notification and flush its deferred measurement. Shared
+     * by both tests so only a single mock class is defined in this file.
+     *
+     * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
+     *   `computeAllArcPaths` calls it triggered.
+     */
+    const installObserverHarness = (): { pump: () => number } => {
       const rafCallbacks: FrameRequestCallback[] = [];
       jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
         rafCallbacks.push(cb);
@@ -213,7 +221,7 @@ describe('useArcPaths', () => {
 
       let observerCallback: ResizeObserverCallback | undefined;
       global.ResizeObserver = class implements ResizeObserver {
-        /** @param callback - Stored so tests can fire it on demand. */
+        /** @param callback - Stored so the test can fire it on demand. */
         constructor(callback: ResizeObserverCallback) {
           observerCallback = callback;
         }
@@ -227,18 +235,56 @@ describe('useArcPaths', () => {
         // eslint-disable-next-line @typescript-eslint/class-methods-use-this
         disconnect() {}
       };
-      const containerEl = document.createElement('div');
-      const containerRef = { current: containerEl };
-      renderHook(() => useArcPaths(containerRef, true, false, []));
-      const callsBefore = computeAllArcPaths.mock.calls.length;
 
-      act(() => {
-        observerCallback?.([], new ResizeObserver(() => {}));
-        // Flush the scheduled animation frame so the deferred measurement runs.
-        rafCallbacks.forEach((cb) => cb(0));
+      const pump = (): number => {
+        const before = computeAllArcPaths.mock.calls.length;
+        act(() => {
+          observerCallback?.([], new ResizeObserver(() => {}));
+          const pending = rafCallbacks.splice(0);
+          pending.forEach((cb) => cb(0));
+        });
+        return computeAllArcPaths.mock.calls.length - before;
+      };
+
+      return { pump };
+    };
+
+    it('triggers computeAllArcPaths after the rAF fires', () => {
+      const { pump } = installObserverHarness();
+      const containerRef = { current: document.createElement('div') };
+      renderHook(() => useArcPaths(containerRef, true, false, []));
+
+      expect(pump()).toBeGreaterThan(0);
+    });
+
+    it('stops an oscillating observer-driven re-measure once a signature repeats', () => {
+      // Reproduces the cross-row gutter feedback loop: applying the hook's padding re-wraps the
+      // strip, which the ResizeObserver reports, which re-measures to a *different* padding, which
+      // re-wraps again, … Without the echo guard every observer pass commits new state and the
+      // WebView freezes. With the guard, a re-measure whose signature matches one of the last two
+      // passes is dropped, so a period-2 oscillation terminates after a bounded number of passes.
+      const { pump } = installObserverHarness();
+
+      // Alternate the measured gutter padding between two values on every call so, left unchecked,
+      // the layout never reaches a fixed point.
+      const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
+      let toggle = false;
+      computeAllArcPaths.mockImplementation(() => {
+        toggle = !toggle;
+        return { paths: [arc], maxLevel: 0, leftPadding: toggle ? 8 : 16, rightPadding: 0 };
       });
 
-      expect(computeAllArcPaths.mock.calls.length).toBeGreaterThan(callsBefore);
+      const containerRef = { current: document.createElement('div') };
+      const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
+
+      // Because the guard drops the repeated signature instead of committing fresh padding, the
+      // strip's padding settles to one of the two values and then never changes again, even though
+      // the mocked measurement keeps alternating. The key property is termination: the value is
+      // stable across many further pumps rather than flipping on every one.
+      for (let i = 0; i < 4; i += 1) pump();
+      const settled = result.current.stripLeftPadding;
+      for (let i = 0; i < 20; i += 1) pump();
+      expect(result.current.stripLeftPadding).toBe(settled);
     });
   });
 

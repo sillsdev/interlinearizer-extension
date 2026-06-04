@@ -81,7 +81,7 @@ jest.mock('../../components/TokenChip', () => {
   return { __esModule: true, default: MockTokenChip };
 });
 
-jest.mock('../../components/UnlinkPhraseConfirm', () => ({
+jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
   /**
    * Minimal UnlinkPhraseConfirm stub that renders confirm/cancel buttons.
@@ -801,6 +801,84 @@ describe('PhraseBox', () => {
       { tokenRef: 'token-3', surfaceText: 'foo' },
       { tokenRef: 'token-4', surfaceText: 'bar' },
     ]);
+  });
+
+  it('with simplifyPhrases on, hides intra-phrase unlink icons and remove-token buttons on a non-focused phrase', () => {
+    const fourTokenPhrase: PhraseAnalysisLink = {
+      analysisId: 'phrase-big',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'token-1', surfaceText: 'Hello' },
+        { tokenRef: 'token-2', surfaceText: 'World' },
+        { tokenRef: 'token-3', surfaceText: 'foo' },
+        { tokenRef: 'token-4', surfaceText: 'bar' },
+      ],
+    };
+    const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
+      ref,
+      surfaceText,
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 1,
+    });
+    mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        isFocused={false}
+        phraseLink={fourTokenPhrase}
+        tokens={[
+          mk('token-1', 'Hello'),
+          mk('token-2', 'World'),
+          mk('token-3', 'foo'),
+          mk('token-4', 'bar'),
+        ]}
+      />,
+      { simplifyPhrases: true },
+    );
+    expect(screen.queryByTestId('token-unlink-btn')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Remove World' })).not.toBeInTheDocument();
+  });
+
+  it('with simplifyPhrases on, keeps intra-phrase unlink icons and remove-token buttons on the focused phrase', () => {
+    const fourTokenPhrase: PhraseAnalysisLink = {
+      analysisId: 'phrase-big',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'token-1', surfaceText: 'Hello' },
+        { tokenRef: 'token-2', surfaceText: 'World' },
+        { tokenRef: 'token-3', surfaceText: 'foo' },
+        { tokenRef: 'token-4', surfaceText: 'bar' },
+      ],
+    };
+    const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
+      ref,
+      surfaceText,
+      writingSystem: 'en',
+      type: 'word',
+      charStart: 0,
+      charEnd: 1,
+    });
+    mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        isHighlighted
+        isFocused
+        phraseLink={fourTokenPhrase}
+        tokens={[
+          mk('token-1', 'Hello'),
+          mk('token-2', 'World'),
+          mk('token-3', 'foo'),
+          mk('token-4', 'bar'),
+        ]}
+      />,
+      { simplifyPhrases: true },
+    );
+    expect(screen.getAllByTestId('token-unlink-btn').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Remove World' })).toBeInTheDocument();
   });
 
   it('pops out a token from a 3-token phrase by deleting when only 1 would remain (edge case)', async () => {

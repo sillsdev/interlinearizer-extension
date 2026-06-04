@@ -11,6 +11,16 @@ declare module 'papi-shared-types' {
      * chapter segments. When false, only chapter segments are shown in token-chip mode.
      */
     'interlinearizer.continuousScroll': boolean;
+    /**
+     * When true, link/unlink buttons between tokens are hidden in segments that are not the
+     * currently active verse.
+     */
+    'interlinearizer.hideInactiveLinkButtons': boolean;
+    /**
+     * When true, non-active verse segments are rendered in a reduced state: only phrase boxes and
+     * arcs are shown, with all interactive controls and hover effects suppressed.
+     */
+    'interlinearizer.simplifyPhrases': boolean;
   }
 
   /**

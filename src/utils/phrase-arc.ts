@@ -319,7 +319,6 @@ export function getArcStrokeProps(
   if (phraseMode.kind === 'edit') {
     return phraseId === phraseMode.phraseId ? HIGHLIGHTED_ARC_STROKE : DIMMED_ARC_STROKE;
   }
-  // view mode
   if (phraseId === focusedPhraseId) return HIGHLIGHTED_ARC_STROKE;
   if (phraseId === hoveredPhraseId) return HOVERED_ARC_STROKE;
   return DIMMED_ARC_STROKE;

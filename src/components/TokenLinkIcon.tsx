@@ -73,6 +73,7 @@ export function TokenLinkIcon({
     onHoverPhrase: onHoverCandidatePhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
+    crossSegmentLinkTooltip,
   } = usePhraseStripContext();
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -248,6 +249,7 @@ export function TokenLinkIcon({
         className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:pointer-events-none tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/50 tw:opacity-100'}`}
         data-testid="token-unlink-btn"
         disabled={unlinkDisabled}
+        tabIndex={-1}
         onClick={unlinkDisabled ? undefined : handleUnlinkClickWithCleanup}
         /* v8 ignore next 2 -- candidatePhraseId is always defined in inSamePhrase path */
         onMouseEnter={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseEnter : undefined}
@@ -263,6 +265,11 @@ export function TokenLinkIcon({
   const isActive =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && isSameSegmentAsFocus;
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
+  // Show a tooltip only when inactive because the slot is outside the focused segment (not when
+  // disabled for other reasons like unlink/edit mode where the reason is already visible in the UI).
+  const crossSegmentDisabled =
+    phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
+  const linkTitle = crossSegmentDisabled ? crossSegmentLinkTooltip : undefined;
 
   // Highlight exactly what would be absorbed if the button were clicked — mirrors handleLinkClick.
   // Uses onHoverCandidateTokens (token-ref based) in all cases so only the directly adjacent
@@ -309,6 +316,8 @@ export function TokenLinkIcon({
       className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-muted-foreground tw:hover:text-foreground' : 'tw:text-muted-foreground/50 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
+      tabIndex={-1}
+      title={linkTitle}
       onClick={isActive ? handleLinkClick : undefined}
       onMouseEnter={isActive ? handleLinkMouseEnter : undefined}
       onMouseLeave={isActive ? handleLinkMouseLeave : undefined}

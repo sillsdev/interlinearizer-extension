@@ -68,6 +68,7 @@ export function TokenChip({
         <button
           aria-label={`Remove ${token.surfaceText} from phrase`}
           className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
+          tabIndex={-1}
           type="button"
           onClick={(e) => {
             e.preventDefault();

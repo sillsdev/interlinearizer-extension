@@ -1,6 +1,6 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import { useCallback, useState } from 'react';
-import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
+import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { CreateProjectModal } from './CreateProjectModal';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
 import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';

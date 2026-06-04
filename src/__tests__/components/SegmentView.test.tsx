@@ -2,6 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
@@ -177,6 +178,8 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  hideInactiveLinkButtons: boolean;
+  simplifyPhrases: boolean;
 } {
   return {
     displayMode: 'token-chip',
@@ -192,11 +195,19 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
+    hideInactiveLinkButtons: false,
+    simplifyPhrases: false,
   };
 }
 
 describe('SegmentView', () => {
   beforeEach(() => {
+    jest
+      .mocked(useLocalizedStrings)
+      .mockImplementation((keys: readonly string[]) => [
+        Object.fromEntries(keys.map((k) => [k, k])),
+        false,
+      ]);
     mockUsePhraseLinkMap.mockReturnValue(new Map());
     mockUsePhraseDispatch.mockReturnValue({
       createPhrase: jest.fn(),

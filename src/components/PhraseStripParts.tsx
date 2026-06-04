@@ -2,6 +2,7 @@
 import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
+import { usePhraseStripContext } from './PhraseStripContext';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import {
@@ -56,6 +57,7 @@ export function PhraseSlot({
   focusedSideIsPrev,
   hoveredPhraseId,
 }: PhraseSlotProps) {
+  const { hideInactiveLinkButtons, activeSegmentId } = usePhraseStripContext();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -66,20 +68,29 @@ export function PhraseSlot({
     prevPhraseId !== undefined &&
     prevPhraseId === nextPhraseId &&
     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-  // focusedSideIsPrev is precomputed per slot by the parent, so it always agrees with
-  // focus.focusedFreeToken / focus.focusedPhraseLink. The link button's direction and target
-  // therefore can never disagree.
   const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
+  // The slot is "in the active segment" only when both neighbouring phrases belong to it. A link
+  // that crosses a verse boundary (one side in the active verse, the other in an adjacent verse) is
+  // therefore treated as inactive and hidden too. When hideInactiveLinkButtons is on, link buttons
+  // outside the active verse are suppressed in both strips. (A link slot sits between phrases, so
+  // segment — not phrase focus — governs it.)
+  const slotInActiveSegment =
+    activeSegmentId !== undefined &&
+    prevSegmentId === activeSegmentId &&
+    nextSegmentId === activeSegmentId;
+  const suppressLinkIcon = hideInactiveLinkButtons && !slotInActiveSegment;
   return (
     <span className="tw:link-slot tw:pointer-events-auto">
-      <MemoizedTokenLinkIcon
-        slotFocus={slotFocus}
-        isPhraseRevealed={phraseRevealed}
-        nextPhraseLink={nextGroup?.phraseLink}
-        nextToken={nextToken}
-        prevPhraseLink={prevGroup?.phraseLink}
-        prevToken={prevToken}
-      />
+      {!suppressLinkIcon && (
+        <MemoizedTokenLinkIcon
+          slotFocus={slotFocus}
+          isPhraseRevealed={phraseRevealed}
+          nextPhraseLink={nextGroup?.phraseLink}
+          nextToken={nextToken}
+          prevPhraseLink={prevGroup?.phraseLink}
+          prevToken={prevToken}
+        />
+      )}
       {punctuation.map((punctToken) => (
         <InertTokenChip key={punctToken.ref} token={punctToken} />
       ))}
@@ -303,6 +314,7 @@ export function PhraseStrip({
   setHoveredGroupKey,
   onFocusPhrase,
 }: PhraseStripProps) {
+  const { simplifyPhrases } = usePhraseStripContext();
   const seenPhraseIds = new Set<string>();
   return items.map((item) => {
     if (item.kind === 'slot') {
@@ -322,6 +334,11 @@ export function PhraseStrip({
     const phraseId = group.phraseLink?.analysisId;
     const showGlossInput = phraseId === undefined || !seenPhraseIds.has(phraseId);
     if (phraseId !== undefined) seenPhraseIds.add(phraseId);
+    // When simplifyPhrases is on, only the focused phrase exposes interactive controls; every other
+    // phrase still highlights on hover but shows no split/unlink/remove affordances. When off,
+    // controls follow the usual hover rules on any phrase.
+    const phraseControlsAllowed =
+      !simplifyPhrases || (phraseId !== undefined && phraseId === focus.focusedPhraseId);
     const isHighlighted = (() => {
       if (phraseMode.kind === 'view') {
         if (phraseId !== undefined && phraseId === hoveredPhraseId) return true;
@@ -337,9 +354,16 @@ export function PhraseStrip({
         group={group}
         isFocused={item.isFocused}
         isHighlighted={isHighlighted}
-        splitFreeTokenRefs={phraseMode.kind === 'view' ? splitFreeTokenRefs : EMPTY_SPLIT_FREE_REFS}
+        splitFreeTokenRefs={
+          phraseControlsAllowed && phraseMode.kind === 'view'
+            ? splitFreeTokenRefs
+            : EMPTY_SPLIT_FREE_REFS
+        }
         showControls={
-          phraseMode.kind === 'view' && phraseId !== undefined && groupKey === hoveredGroupKey
+          phraseControlsAllowed &&
+          phraseMode.kind === 'view' &&
+          phraseId !== undefined &&
+          groupKey === hoveredGroupKey
         }
         showGlossInput={showGlossInput}
         allowHover={phraseMode.kind === 'view' && phraseId !== undefined}

@@ -75,15 +75,63 @@ export function useArcPaths(
   const depsVersion = depsVersionRef.current;
 
   /**
+   * Serialized signatures of the hook's two most recent self-induced (observer-driven)
+   * measurements, most-recent first. A measurement whose signature matches either entry means the
+   * observed resize was just the layout settling around padding the hook already applied — the echo
+   * that closes the feedback loop — so the redraw is skipped. Two entries (not one) are kept so a
+   * true period-2 oscillation (padding A → re-wrap → padding B → re-wrap → padding A → …) is caught
+   * as well as a plain period-1 echo. Without this guard the cross-row gutter padding (which shifts
+   * where tokens wrap, which changes the arcs, which changes the padding) never reaches a fixed
+   * point and the ResizeObserver spins at frame rate, freezing the WebView. Empty so the first
+   * measure always runs; cleared whenever a genuine input change forces a measure.
+   */
+  const recentArcSignaturesRef = useRef<string[]>([]);
+
+  /**
+   * Serializes a measurement's padding-affecting outputs into a stable key. Arc level and the
+   * gutter paddings are what feed back into layout, so two measurements with the same signature
+   * produce the same applied padding and cannot represent genuine progress.
+   *
+   * @param paths - The measured arc paths.
+   * @param maxLevel - The measured max nesting level.
+   * @param leftPadding - The measured left gutter padding.
+   * @param rightPadding - The measured right gutter padding.
+   * @returns A signature string that is equal iff the layout-affecting outputs match.
+   */
+  const signatureOf = (
+    paths: ArcPath[],
+    maxLevel: number,
+    leftPadding: number,
+    rightPadding: number,
+  ): string =>
+    `${maxLevel}:${leftPadding}:${rightPadding}:${paths
+      .map((p) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`)
+      .join('|')}`;
+
+  /**
    * Runs one measurement pass against `container` and flushes the results into state. Called from
    * both the layout effect and the ResizeObserver, so resize redraws skip the extra render cycle a
    * version-counter bump would need. Per-field equality guards keep stable measurements from
    * churning state.
    *
    * @param container - The element to measure phrase boxes inside.
+   * @param force - When `true`, measure even if the signature was recently seen, and reset the
+   *   recent-signature history afterward. Used for genuine input changes (token data, phrase mode,
+   *   enabled); the ResizeObserver passes `false` so a self-induced echo or oscillation that
+   *   reproduces a recent signature is ignored.
    */
-  const measure = useCallback((container: Element) => {
+  const measure = useCallback((container: Element, force: boolean) => {
     const { paths, maxLevel, leftPadding, rightPadding } = computeAllArcPaths(container);
+    const signature = signatureOf(paths, maxLevel, leftPadding, rightPadding);
+    // Self-induced echo/oscillation: the resize merely re-settled the layout around padding the
+    // hook already applied, reproducing a signature from one of the last two passes. Re-measuring
+    // would loop, so skip — unless a genuine input change forces the pass.
+    if (!force && recentArcSignaturesRef.current.includes(signature)) return;
+    // A forced (input-driven) measure starts a fresh convergence, so drop the stale history;
+    // observer-driven measures prepend onto a 2-deep window to detect period-1 and period-2 loops.
+    recentArcSignaturesRef.current = force
+      ? [signature]
+      : [signature, ...recentArcSignaturesRef.current].slice(0, 2);
     setArcPaths((prev) => {
       const key = (p: ArcPath) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`;
       const prevKey = prev.map(key).join('|');
@@ -102,13 +150,17 @@ export function useArcPaths(
   // synchronously turns that into a same-tick setState storm React escalates to "Maximum update
   // depth exceeded" (the crash when shrinking enough to wrap many cross-row arcs). One measurement
   // per frame lets layout settle between passes (and silences the "ResizeObserver loop" warning).
+  //
+  // `force: false` makes the observer skip a re-measure whose result matches the last one — the
+  // self-induced echo from our own padding application — so the cross-row gutter feedback loop
+  // (padding → re-wrap → new padding → …) terminates instead of spinning at frame rate.
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) return;
     let rafId = 0;
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(rafId);
-      rafId = requestAnimationFrame(() => measure(container));
+      rafId = requestAnimationFrame(() => measure(container, false));
     });
     observer.observe(container);
     return () => {
@@ -117,18 +169,34 @@ export function useArcPaths(
     };
   }, [containerRef, enabled, measure]);
 
+  // Input-driven measure: runs when the container, the enabled flag, or the caller's `deps`
+  // (token data, phrase mode, …) change. These are genuine content changes, so `force: true`
+  // always re-measures. Also owns the reset-to-empty path when disabled or unmounted.
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) {
+      // Reset the echo guard so re-enabling re-measures from scratch rather than matching a stale
+      // signature left over from before the container unmounted.
+      recentArcSignaturesRef.current = [];
       setArcPaths((prev) => (prev.length === 0 ? prev : []));
       setMaxArcLevel((prev) => (prev === 0 ? prev : 0));
       setStripLeftPadding((prev) => (prev === 0 ? prev : 0));
       setStripRightPadding((prev) => (prev === 0 ? prev : 0));
       return;
     }
-    measure(container);
-    // The padding values are intentionally deps: applying them shifts the measured layout (see the
-    // hook doc), so a padding change must trigger a re-measure. Stabilizes after one extra pass.
+    measure(container, true);
+  }, [containerRef, enabled, depsVersion, measure]);
+
+  // Padding-driven re-measure: applying the hook's own top/row/left/right padding shifts the
+  // layout the arcs are measured against (see the hook doc), so a padding change must re-measure
+  // once to reposition the paths. `force: false` applies the echo guard: if the re-measure
+  // reproduces the last signature — the common case, and the only outcome when the gutter padding
+  // would otherwise oscillate (pad → re-wrap → pad → …) — it stops here instead of looping. A
+  // padding change that yields genuinely new geometry still flows through and settles next pass.
+  useLayoutEffect(() => {
+    const container = enabled ? containerRef.current : undefined;
+    if (!container) return;
+    measure(container, false);
   }, [
     containerRef,
     enabled,
@@ -136,7 +204,6 @@ export function useArcPaths(
     stripRowGap,
     stripLeftPadding,
     stripRightPadding,
-    depsVersion,
     measure,
   ]);
 

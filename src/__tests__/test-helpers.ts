@@ -84,6 +84,10 @@ export function makePhraseStripContext(
     onHoverPhrase: () => {},
     onHoverCandidateTokens: () => {},
     onHoverSplitFreeTokens: () => {},
+    hideInactiveLinkButtons: false,
+    simplifyPhrases: false,
+    activeSegmentId: undefined,
+    crossSegmentLinkTooltip: '',
     ...overrides,
   };
 }

@@ -15,8 +15,6 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
-// #region PhraseGlossInput
-
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
  * Separated into its own component so hooks are always called unconditionally.
@@ -59,10 +57,6 @@ function PhraseGlossInput({
     />
   );
 }
-
-// #endregion
-
-// #region PhraseBox
 
 /** Props for {@link PhraseBox}. */
 type PhraseBoxProps = Readonly<{
@@ -160,7 +154,12 @@ export function PhraseBox({
     editPhraseSegmentId,
     tokenSegmentMap,
     tokenDocOrder,
+    simplifyPhrases,
   } = usePhraseStripContext();
+  // When simplifyPhrases is on, a phrase exposes its interactive controls (intra-phrase unlink
+  // icons, remove-token ✕) only while it is the focused phrase. Non-focused phrases keep their
+  // hover style but render no controls.
+  const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
   const tokenPhraseLinkFromStore = usePhraseLinkForToken(tokens[0].ref);
@@ -305,6 +304,7 @@ export function PhraseBox({
               aria-label="Edit phrase"
               className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
               data-testid="edit-phrase-btn"
+              tabIndex={-1}
               onClick={handleEditClick}
               type="button"
             >
@@ -314,6 +314,7 @@ export function PhraseBox({
               aria-label="Unlink phrase"
               className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-destructive"
               data-testid="unlink-phrase-btn"
+              tabIndex={-1}
               onClick={handleUnlinkClick}
               type="button"
             >
@@ -335,7 +336,7 @@ export function PhraseBox({
           <span className="tw:phrase-token-row">
             {tokens.map((token, i) => (
               <span key={token.ref} className="tw:phrase-token-row">
-                {i > 0 && isRealPhrase && (
+                {i > 0 && isRealPhrase && !controlsSuppressed && (
                   <MemoizedTokenLinkIcon
                     slotFocus={NO_SLOT_FOCUS}
                     isPhraseRevealed={isHighlighted}
@@ -349,6 +350,7 @@ export function PhraseBox({
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
+                    !controlsSuppressed &&
                     isRealPhrase &&
                     isHighlighted &&
                     phraseLink.tokens.length > 2 &&
@@ -434,7 +436,7 @@ export function PhraseBox({
               aria-label={`Remove ${token.surfaceText} from phrase`}
               className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
               role="button"
-              tabIndex={0}
+              tabIndex={-1}
               onClick={() => handleEditRemove(token.ref)}
               onKeyDown={handlePerTokenKeyDown(token.ref)}
             >
@@ -471,7 +473,7 @@ export function PhraseBox({
       onClick={isDisabled ? undefined : handleBoxClick}
       onKeyDown={handleKeyDown}
       role="button"
-      tabIndex={isDisabled ? -1 : 0}
+      tabIndex={-1}
     >
       <span className="tw:phrase-token-row">
         {tokens.map((token) => (
@@ -484,8 +486,6 @@ export function PhraseBox({
     </span>
   );
 }
-
-// #endregion
 
 /** Memoized version of {@link PhraseBox}; use in render-stable phrase lists. */
 const MemoizedPhraseBox = memo(PhraseBox);

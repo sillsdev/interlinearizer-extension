@@ -5,8 +5,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { makeWebViewState } from '../test-helpers';
-import type { ModalState } from '../../components/ProjectModals';
-import ProjectModals from '../../components/ProjectModals';
+import type { ModalState } from '../../components/modals/ProjectModals';
+import ProjectModals from '../../components/modals/ProjectModals';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 
 /** Minimal project summary used in tests. */
@@ -26,7 +26,7 @@ const MOCK_PROJECT_2: InterlinearProjectSummary = {
   name: 'French Project',
 };
 
-jest.mock('../../components/SelectInterlinearProjectModal', () => ({
+jest.mock('../../components/modals/SelectInterlinearProjectModal', () => ({
   __esModule: true,
   SelectInterlinearProjectModal: ({
     onSelect,
@@ -66,7 +66,7 @@ jest.mock('../../components/SelectInterlinearProjectModal', () => ({
   ),
 }));
 
-jest.mock('../../components/CreateProjectModal', () => ({
+jest.mock('../../components/modals/CreateProjectModal', () => ({
   __esModule: true,
   CreateProjectModal: ({
     defaultAnalysisLanguage,
@@ -95,7 +95,7 @@ jest.mock('../../components/CreateProjectModal', () => ({
   ),
 }));
 
-jest.mock('../../components/ProjectMetadataModal', () => ({
+jest.mock('../../components/modals/ProjectMetadataModal', () => ({
   __esModule: true,
   ProjectMetadataModal: ({
     onClose,

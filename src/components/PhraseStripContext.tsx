@@ -44,6 +44,32 @@ export type PhraseStripContextValue = Readonly<{
   onHoverCandidateTokens: (refs: readonly string[] | undefined) => void;
   /** Called with the would-be-free token refs (or `undefined`) when a split/unlink icon is hovered. */
   onHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;
+  /**
+   * When `true`, the link/unlink buttons in the slots between phrase boxes are hidden in segments
+   * other than the active verse (see {@link activeSegmentId}). These buttons sit _between_ phrases,
+   * so they are governed by segment, not by phrase focus. Works the same in both strips.
+   */
+  hideInactiveLinkButtons: boolean;
+  /**
+   * When `true`, the interactive controls that belong to a phrase — the split-arc button, the
+   * intra-phrase unlink icons between a phrase's own tokens, the remove-token (✕) button, and the
+   * floating edit/unlink controls pill — are hidden on every phrase except the focused one.
+   * Non-focused phrases still change style on hover but expose no interactive controls. Keyed off
+   * phrase focus, not segment, so it behaves identically in both strips.
+   */
+  simplifyPhrases: boolean;
+  /**
+   * Segment id of the currently active verse, or `undefined` when nothing is active. A link slot
+   * counts as "in the active segment" when either neighbouring phrase box belongs to this segment.
+   * Used together with {@link hideInactiveLinkButtons} to suppress link buttons outside the active
+   * verse in both strips.
+   */
+  activeSegmentId: string | undefined;
+  /**
+   * Tooltip shown on link buttons that are disabled because they are outside the currently focused
+   * segment. Explains that cross-segment phrases are not yet supported.
+   */
+  crossSegmentLinkTooltip: string;
 }>;
 
 /** The phrase-strip context. `undefined` outside a provider so consumers can fail loudly. */

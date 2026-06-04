@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import UnlinkPhraseConfirm from '../../components/UnlinkPhraseConfirm';
+import UnlinkPhraseConfirm from '../../components/modals/UnlinkPhraseConfirm';
 
 /** Stable mock fns for AnalysisStore phrase dispatch — reset between tests via resetMocks. */
 const mockDeletePhrase = jest.fn();

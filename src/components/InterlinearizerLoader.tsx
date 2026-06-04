@@ -1,6 +1,6 @@
 import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useSetting } from '@papi/frontend/react';
 import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
@@ -9,14 +9,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
-import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
+import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
-import ProjectModals, { type ModalState } from './ProjectModals';
-import ScriptureNavControls from './ScriptureNavControls';
-
-/** Localized string keys used by {@link InterlinearizerLoader}. */
-const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
+import ProjectModals, { type ModalState } from './modals/ProjectModals';
+import ScriptureNavControls from './controls/ScriptureNavControls';
 
 /**
  * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
@@ -159,6 +156,12 @@ export default function InterlinearizerLoader({
     value: continuousScroll,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
+  const { onChange: handleHideInactiveLinkButtonsChange, value: hideInactiveLinkButtons } =
+    useOptimisticBooleanSetting(projectId, 'interlinearizer.hideInactiveLinkButtons', false);
+
+  const { onChange: handleSimplifyPhrasesChange, value: simplifyPhrases } =
+    useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
+
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     { projectId, scrRef },
   );
@@ -166,8 +169,6 @@ export default function InterlinearizerLoader({
   const hasError = !!bookError || !!tokenizeError;
   const showLoading = isLoading || isAnalysisLoading;
   const isLoaded = !hasError && !showLoading && !!book;
-
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -250,11 +251,14 @@ export default function InterlinearizerLoader({
         }
         endAreaChildren={
           isLoaded ? (
-            <ContinuousScrollToggle
-              checked={continuousScroll}
-              disabled={isSettingLoading}
-              label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
-              onCheckedChange={handleContinuousScrollChange}
+            <ViewOptionsDropdown
+              continuousScroll={continuousScroll}
+              continuousScrollDisabled={isSettingLoading}
+              onContinuousScrollChange={handleContinuousScrollChange}
+              hideInactiveLinkButtons={hideInactiveLinkButtons}
+              onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
+              simplifyPhrases={simplifyPhrases}
+              onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
             />
           ) : undefined
         }
@@ -298,6 +302,8 @@ export default function InterlinearizerLoader({
           onSaveAnalysis={handleSaveAnalysis}
           phraseMode={phraseMode}
           setPhraseMode={setPhraseMode}
+          hideInactiveLinkButtons={hideInactiveLinkButtons}
+          simplifyPhrases={simplifyPhrases}
         />
       )}
 

@@ -1,3 +1,4 @@
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -26,6 +27,16 @@ import MemoizedArcOverlay from './ArcOverlay';
  *   fallback or debug display.
  */
 export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
+
+/**
+ * Localized string keys this view needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders. A fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, which (with one SegmentView per verse) escalates
+ * into an infinite update loop that freezes the WebView.
+ */
+const STRING_KEYS = [
+  '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+] as const satisfies `%${string}%`[];
 
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
@@ -62,6 +73,16 @@ type SegmentViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /**
+   * When `true`, the link/unlink buttons between phrase boxes are hidden unless this segment is the
+   * active verse. Passed through to {@link PhraseStripContextValue}.
+   */
+  hideInactiveLinkButtons: boolean;
+  /**
+   * When `true`, phrase-level controls (split, intra-phrase unlink, remove-token) are hidden on
+   * every phrase except the focused one. Passed through to {@link PhraseStripContextValue}.
+   */
+  simplifyPhrases: boolean;
 }>;
 
 /**
@@ -89,6 +110,10 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
+ * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden unless
+ *   this segment is the active verse.
+ * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
+ *   the focused one.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
  */
@@ -106,9 +131,13 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
+  hideInactiveLinkButtons,
+  simplifyPhrases,
 }: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
+
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -298,6 +327,12 @@ export function SegmentView({
       onHoverPhrase,
       onHoverCandidateTokens: setCandidateTokenRefs,
       onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      // This strip renders a single segment, so it is the active segment only when `isActive`.
+      activeSegmentId: isActive ? segment.id : undefined,
+      crossSegmentLinkTooltip:
+        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     }),
     [
       phraseMode,
@@ -309,6 +344,11 @@ export function SegmentView({
       onHoverPhrase,
       setCandidateTokenRefs,
       handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      isActive,
+      segment.id,
+      localizedStrings,
     ],
   );
 
@@ -335,6 +375,7 @@ export function SegmentView({
         aria-current={isActive ? 'true' : undefined}
         className={`${sharedClassName} tw:text-left`}
         data-testid="segment-container"
+        tabIndex={-1}
         onClick={() => onSelect?.(ref)}
         type="button"
       >
@@ -366,6 +407,7 @@ export function SegmentView({
           onArcSplit={handleArcSplit}
           onSplitHoverChange={handleSplitHoverChange}
           onHoverPhrase={onHoverPhrase}
+          simplifyPhrases={simplifyPhrases}
         />
         <PhraseStripProvider value={stripContext}>
           <span

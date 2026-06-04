@@ -3,8 +3,8 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../types/typeGuards';
+import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { isInterlinearProjectSummary } from '../../types/typeGuards';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [

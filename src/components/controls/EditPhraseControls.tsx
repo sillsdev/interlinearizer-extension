@@ -1,7 +1,7 @@
 /** @file Done/Cancel controls shown in the confirm bar while editing a phrase. */
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkByIdMap } from './AnalysisStore';
-import type { PhraseMode } from '../types/phrase-mode';
+import { usePhraseLinkByIdMap } from '../AnalysisStore';
+import type { PhraseMode } from '../../types/phrase-mode';
 
 /** Props for {@link EditPhraseControls}. */
 type EditPhraseControlsProps = Readonly<{

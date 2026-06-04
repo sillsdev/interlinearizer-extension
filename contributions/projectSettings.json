@@ -6,6 +6,16 @@
         "label": "%interlinearizer_projectSettings_continuousScroll%",
         "description": "%interlinearizer_projectSettings_continuousScrollDescription%",
         "default": true
+      },
+      "interlinearizer.hideInactiveLinkButtons": {
+        "label": "%interlinearizer_projectSettings_hideInactiveLinkButtons%",
+        "description": "%interlinearizer_projectSettings_hideInactiveLinkButtonsDescription%",
+        "default": false
+      },
+      "interlinearizer.simplifyPhrases": {
+        "label": "%interlinearizer_projectSettings_simplifyPhrases%",
+        "description": "%interlinearizer_projectSettings_simplifyPhrasesDescription%",
+        "default": false
       }
     }
   }

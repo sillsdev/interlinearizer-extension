@@ -5,11 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
-import EditPhraseControls from './EditPhraseControls';
+import EditPhraseControls from './controls/EditPhraseControls';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/typeGuards';
 import MemoizedSegmentView from './SegmentView';
-import UnlinkPhraseConfirm from './UnlinkPhraseConfirm';
+import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -36,6 +36,10 @@ type InterlinearizerProps = Readonly<{
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
+  /** When true, link buttons between phrases are hidden in segments other than the active verse. */
+  hideInactiveLinkButtons: boolean;
+  /** When true, phrase-level controls are hidden on every phrase except the focused one. */
+  simplifyPhrases: boolean;
 }>;
 
 /**
@@ -52,6 +56,10 @@ type InterlinearizerProps = Readonly<{
  * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
  *   transition modes.
+ * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden in
+ *   segments other than the active verse.
+ * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
+ *   the focused one.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
@@ -62,6 +70,8 @@ function InterlinearizerInner({
   setScrRef,
   phraseMode,
   setPhraseMode,
+  hideInactiveLinkButtons,
+  simplifyPhrases,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   // Seed focusedTokenRef from the active verse on first render so the views always see a defined
   // value. An undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
@@ -252,6 +262,8 @@ function InterlinearizerInner({
             setPhraseMode={setPhraseMode}
             tokenSegmentMap={tokenSegmentMap}
             wordTokenByRef={wordTokenByRef}
+            hideInactiveLinkButtons={hideInactiveLinkButtons}
+            simplifyPhrases={simplifyPhrases}
           />
         </div>
       )}
@@ -272,6 +284,7 @@ function InterlinearizerInner({
               <button
                 aria-label="Scroll to active verse"
                 className="tw:rounded tw:p-1 tw:text-foreground tw:hover:bg-muted/50 tw:pointer-events-auto"
+                tabIndex={-1}
                 onClick={snapToActive}
                 type="button"
               >
@@ -296,6 +309,8 @@ function InterlinearizerInner({
                   tokenSegmentMap={tokenSegmentMap}
                   tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}
+                  hideInactiveLinkButtons={hideInactiveLinkButtons}
+                  simplifyPhrases={simplifyPhrases}
                 />
               ))}
             </div>
@@ -322,6 +337,10 @@ function InterlinearizerInner({
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
  * @param props.phraseMode - Current phrase-interaction mode owned by the parent
  * @param props.setPhraseMode - Setter for `phraseMode`
+ * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden in
+ *   segments other than the active verse.
+ * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
+ *   the focused one.
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({

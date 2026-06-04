@@ -4,14 +4,16 @@
 
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { ReactElement } from 'react';
 import {
   PhraseSlot,
   MemoizedPhraseGroup,
   PhraseStrip,
   type StripItem,
 } from '../../components/PhraseStripParts';
+import { PhraseStripProvider } from '../../components/PhraseStripContext';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
-import { makePhraseLink } from '../test-helpers';
+import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -19,7 +21,7 @@ import { makePhraseLink } from '../test-helpers';
 
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
-  default: () => undefined,
+  default: () => <span data-testid="link-icon" />,
 }));
 
 jest.mock('../../components/TokenChip', () => ({
@@ -110,6 +112,17 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
   };
 }
 
+/**
+ * Wraps `ui` in a {@link PhraseStripProvider} with default context so components that call
+ * {@link usePhraseStripContext} can render without a provider in the tree.
+ *
+ * @param ui - The element to wrap.
+ * @returns The wrapped element.
+ */
+function withProvider(ui: ReactElement): ReactElement {
+  return <PhraseStripProvider value={makePhraseStripContext()}>{ui}</PhraseStripProvider>;
+}
+
 // ---------------------------------------------------------------------------
 // PhraseSlot
 // ---------------------------------------------------------------------------
@@ -117,7 +130,7 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
 describe('PhraseSlot', () => {
   it('returns undefined when the slot has no neighbors and no punctuation', () => {
     const slot: LinkSlot = { prevGroup: undefined, nextGroup: undefined, punctuation: [] };
-    const { container } = render(<PhraseSlot {...slotProps(slot)} />);
+    const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} />));
     expect(container.firstChild).toBeNull();
   });
 
@@ -127,14 +140,14 @@ describe('PhraseSlot', () => {
       nextGroup: undefined,
       punctuation: [mkPunct('p1')],
     };
-    const { container } = render(<PhraseSlot {...slotProps(slot)} />);
+    const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} />));
     expect(container.firstChild).not.toBeNull();
   });
 
   it('renders when the slot has two neighbors', () => {
     const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
     const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
-    const { container } = render(<PhraseSlot {...slotProps(slot)} />);
+    const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} />));
     expect(container.firstChild).not.toBeNull();
   });
 
@@ -145,7 +158,9 @@ describe('PhraseSlot', () => {
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     // PhrasedRevealed means the unlink button is shown — but TokenLinkIcon is mocked to undefined,
     // so just check no errors are thrown when hoveredPhraseId matches.
-    const { container } = render(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />);
+    const { container } = render(
+      withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />),
+    );
     expect(container.firstChild).not.toBeNull();
   });
 
@@ -162,9 +177,70 @@ describe('PhraseSlot', () => {
       focusedPhraseId: 'p1',
     };
     const { container } = render(
-      <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,
+      withProvider(
+        <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,
+      ),
     );
     expect(container.firstChild).not.toBeNull();
+  });
+
+  it('renders the link icon when hideInactiveLinkButtons is off', () => {
+    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(
+      withProvider(<PhraseSlot {...slotProps(slot)} />),
+      // default context: hideInactiveLinkButtons false
+    );
+    expect(screen.getByTestId('link-icon')).toBeInTheDocument();
+  });
+
+  it('hides the link icon when hideInactiveLinkButtons is on and neither neighbor is in the active segment', () => {
+    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(
+      <PhraseStripProvider
+        value={makePhraseStripContext({
+          hideInactiveLinkButtons: true,
+          activeSegmentId: 'other-seg',
+        })}
+      >
+        <PhraseSlot {...slotProps(slot)} />
+      </PhraseStripProvider>,
+    );
+    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
+  });
+
+  it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
+    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(
+      <PhraseStripProvider
+        value={makePhraseStripContext({
+          hideInactiveLinkButtons: true,
+          activeSegmentId: 'seg-1',
+        })}
+      >
+        <PhraseSlot {...slotProps(slot)} />
+      </PhraseStripProvider>,
+    );
+    expect(screen.getByTestId('link-icon')).toBeInTheDocument();
+  });
+
+  it('hides the cross-verse-boundary link icon when only one neighbor is in the active segment', () => {
+    const group: TokenGroup = { tokens: [mkWord('tok-a')], phraseLink: undefined, firstIndex: 0 };
+    const slot: LinkSlot = { prevGroup: group, nextGroup: group, punctuation: [] };
+    render(
+      <PhraseStripProvider
+        value={makePhraseStripContext({
+          hideInactiveLinkButtons: true,
+          activeSegmentId: 'seg-2',
+        })}
+      >
+        {/* prev is in the active seg-2, next is in seg-1 — the slot straddles a verse boundary. */}
+        <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
+      </PhraseStripProvider>,
+    );
+    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
   });
 });
 
@@ -295,14 +371,14 @@ describe('PhraseStrip', () => {
         focusedSideIsPrev: undefined,
       },
     ];
-    const { container } = render(<PhraseStrip {...stripProps(items)} />);
+    const { container } = render(withProvider(<PhraseStrip {...stripProps(items)} />));
     expect(container.firstChild).not.toBeNull();
   });
 
   it('shows the gloss input only on the first fragment of a discontiguous phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const items = [groupItem(link, ['tok-a']), groupItem(link, ['tok-b'])];
-    render(<PhraseStrip {...stripProps(items)} />);
+    render(withProvider(<PhraseStrip {...stripProps(items)} />));
     const boxes = screen.getAllByRole('button');
     expect(boxes[0]).toHaveAttribute('data-gloss', 'true');
     expect(boxes[1]).toHaveAttribute('data-gloss', 'false');
@@ -310,7 +386,11 @@ describe('PhraseStrip', () => {
 
   it('highlights a group whose token is a link candidate', () => {
     const items = [groupItem(undefined, ['tok-a'])];
-    render(<PhraseStrip {...stripProps(items, { candidateTokenRefs: new Set(['tok-a']) })} />);
+    render(
+      withProvider(
+        <PhraseStrip {...stripProps(items, { candidateTokenRefs: new Set(['tok-a']) })} />,
+      ),
+    );
     expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
   });
 
@@ -324,30 +404,71 @@ describe('PhraseStrip', () => {
       focusedSegmentId: undefined,
       focusedPhraseId: 'p1',
     };
-    render(<PhraseStrip {...stripProps(items, { focus })} />);
+    render(withProvider(<PhraseStrip {...stripProps(items, { focus })} />));
     expect(document.querySelector('[data-highlighted="true"]')).toBeInTheDocument();
   });
 
   it('shows controls only for the hovered real phrase in view mode', () => {
     const link = makePhraseLink('p1', ['tok-a']);
     const items = [groupItem(link, ['tok-a'])];
-    render(<PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a' })} />);
+    render(withProvider(<PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a' })} />));
+    expect(document.querySelector('[data-controls="true"]')).toBeInTheDocument();
+  });
+
+  it('with simplifyPhrases on, hides controls on a hovered non-focused phrase', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    render(
+      <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
+        <PhraseStrip
+          {...stripProps(items, {
+            hoveredGroupKey: 'tok-a',
+            splitFreeTokenRefs: new Set(['tok-a']),
+          })}
+        />
+      </PhraseStripProvider>,
+    );
+    // The phrase is hovered but not focused (focus is NO_FOCUS), so its controls are suppressed.
+    expect(document.querySelector('[data-controls="true"]')).not.toBeInTheDocument();
+    // Split-free previews are likewise suppressed for the non-focused phrase.
+    expect(document.querySelector('[data-split-free="tok-a"]')).not.toBeInTheDocument();
+  });
+
+  it('with simplifyPhrases on, keeps controls on the focused phrase when hovered', () => {
+    const link = makePhraseLink('p1', ['tok-a']);
+    const items = [groupItem(link, ['tok-a'])];
+    const focus: FocusContext = {
+      focusedToken: undefined,
+      focusedPhraseLink: undefined,
+      focusedFreeToken: undefined,
+      focusedSegmentId: undefined,
+      focusedPhraseId: 'p1',
+    };
+    render(
+      <PhraseStripProvider value={makePhraseStripContext({ simplifyPhrases: true })}>
+        <PhraseStrip {...stripProps(items, { hoveredGroupKey: 'tok-a', focus })} />
+      </PhraseStripProvider>,
+    );
     expect(document.querySelector('[data-controls="true"]')).toBeInTheDocument();
   });
 
   it('forwards split-free refs in view mode but suppresses them otherwise', () => {
     const items = [groupItem(undefined, ['tok-a'])];
     const splitFreeTokenRefs = new Set(['tok-a']);
-    const { rerender } = render(<PhraseStrip {...stripProps(items, { splitFreeTokenRefs })} />);
+    const { rerender } = render(
+      withProvider(<PhraseStrip {...stripProps(items, { splitFreeTokenRefs })} />),
+    );
     expect(document.querySelector('[data-split-free="tok-a"]')).toBeInTheDocument();
 
     rerender(
-      <PhraseStrip
-        {...stripProps(items, {
-          splitFreeTokenRefs,
-          phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
-        })}
-      />,
+      withProvider(
+        <PhraseStrip
+          {...stripProps(items, {
+            splitFreeTokenRefs,
+            phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' },
+          })}
+        />,
+      ),
     );
     expect(document.querySelector('[data-split-free="tok-a"]')).not.toBeInTheDocument();
   });
@@ -359,7 +480,11 @@ describe('PhraseStrip', () => {
     const link = makePhraseLink('p1', ['tok-a']);
     const items = [groupItem(link, ['tok-a'])];
     render(
-      <PhraseStrip {...stripProps(items, { onHoverPhrase, setHoveredGroupKey, onFocusPhrase })} />,
+      withProvider(
+        <PhraseStrip
+          {...stripProps(items, { onHoverPhrase, setHoveredGroupKey, onFocusPhrase })}
+        />,
+      ),
     );
     const wrapper = document.querySelector('span');
     expect(wrapper).toBeInTheDocument();

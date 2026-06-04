@@ -3,6 +3,7 @@
  * without extra transform configuration. This stub provides the subset used by the extension.
  */
 
+import { forwardRef } from 'react';
 import type { ReactElement, ReactNode } from 'react';
 
 export interface MenuItemContainingCommand {
@@ -188,8 +189,8 @@ export function ScrollGroupSelector({
 
 /**
  * Stub button that passes through `children`, `onClick`, `type`, `className`, `disabled`,
- * `aria-label`, and forwards them to a native `<button>` element; `variant` and `size` are
- * accepted but ignored.
+ * `aria-label`, `aria-expanded`, `aria-haspopup`, `data-testid`, and `ref` to a native `<button>`
+ * element; `variant` and `size` are accepted but ignored.
  *
  * @param props - Component props.
  * @param props.children - Button content.
@@ -199,39 +200,60 @@ export function ScrollGroupSelector({
  * @param props.disabled - Whether the button is disabled.
  * @param props.variant - Ignored styling variant.
  * @param props.size - Ignored size variant.
- * @returns A native `<button>` element with `aria-label` forwarded.
+ * @param props['aria-label'] - Accessible label.
+ * @param props['aria-expanded'] - Expanded state for popup triggers.
+ * @param props['aria-haspopup'] - Haspopup attribute.
+ * @param props['data-testid'] - Test identifier.
+ * @param ref - Forwarded ref to the underlying button element.
+ * @returns A native `<button>` element with standard attributes forwarded.
  */
-export function Button({
-  children,
-  onClick,
-  type,
-  className,
-  disabled,
-  variant: _variant,
-  size: _size,
-  'aria-label': ariaLabel,
-}: Readonly<{
-  children?: ReactNode;
-  onClick?: () => void;
-  type?: 'button' | 'submit' | 'reset';
-  className?: string;
-  disabled?: boolean;
-  variant?: 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline' | 'link';
-  size?: 'default' | 'sm' | 'lg' | 'icon';
-  'aria-label'?: string;
-}>): ReactElement {
+export const Button = forwardRef<
+  HTMLButtonElement,
+  Readonly<{
+    children?: ReactNode;
+    onClick?: () => void;
+    type?: 'button' | 'submit' | 'reset';
+    className?: string;
+    disabled?: boolean;
+    variant?: 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline' | 'link';
+    size?: 'default' | 'sm' | 'lg' | 'icon';
+    'aria-label'?: string;
+    'aria-expanded'?: boolean;
+    'aria-haspopup'?: boolean | 'true' | 'false' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
+    'data-testid'?: string;
+  }>
+>(function ButtonImpl(
+  {
+    children,
+    onClick,
+    type,
+    className,
+    disabled,
+    variant: _variant,
+    size: _size,
+    'aria-label': ariaLabel,
+    'aria-expanded': ariaExpanded,
+    'aria-haspopup': ariaHaspopup,
+    'data-testid': testId,
+  },
+  ref,
+) {
   return (
     <button
+      ref={ref}
       type={type ?? 'button'}
       onClick={onClick}
       className={className}
       aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHaspopup}
+      data-testid={testId}
       disabled={disabled}
     >
       {children}
     </button>
   );
-}
+});
 
 /**
  * Stub book/chapter control that displays the current reference as text and exposes a single

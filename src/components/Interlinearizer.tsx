@@ -163,8 +163,10 @@ function InterlinearizerInner({
     if (phraseMode.kind !== 'edit' || !isRevert) return;
     updatePhrase(phraseMode.phraseId, phraseMode.originalTokens);
     setPhraseMode({ kind: 'view' });
+    // phraseMode is intentionally omitted: adding it would re-fire on every edit
+    // keystroke; isRevert changing to true guarantees phraseMode holds the revert values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRevert]);
+  }, [isRevert, updatePhrase, setPhraseMode]);
 
   // Snap the segment list to the active verse when switching modes.
   useEffect(() => {

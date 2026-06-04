@@ -473,8 +473,6 @@ type ContainerRect = {
   right: number;
   top: number;
   bottom: number;
-  width: number;
-  height: number;
 };
 
 /**
@@ -489,7 +487,15 @@ function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect 
   const right = rect.right - containerRect.left;
   const top = rect.top - containerRect.top;
   const bottom = rect.bottom - containerRect.top;
-  return { left, right, top, bottom, width: right - left, height: bottom - top };
+  return { left, right, top, bottom };
+}
+
+/**
+ * Constructs an {@link ArcSegment} whose `left`/`right` span is `[min(x1, x2), max(x1, x2)]`, so
+ * callers pass the two x values in any order without worrying which is smaller.
+ */
+function makeArcSegment(phraseId: string, row: number, x1: number, x2: number): ArcSegment {
+  return { phraseId, row, left: Math.min(x1, x2), right: Math.max(x1, x2) };
 }
 
 /**
@@ -517,9 +523,11 @@ type PairDescriptor = {
  * arc nested inside a wider phrase but routed out the opposite side doesn't conflict.
  *
  * @param phraseId - The phrase the pair belongs to.
- * @param a - Container-space rect of the earlier box.
- * @param b - Container-space rect of the later box.
- * @param splitAfterTokenRef - Token ref of the last token in box `a` (where a split would cut).
+ * @param a - Container-space rect of the earlier (document-order) box; assumed upper (`a.top ≤
+ *   b.top`).
+ * @param b - Container-space rect of the later (document-order) box.
+ * @param splitAfterTokenRef - Token ref of the last token in box `a` in document order (where a
+ *   split would cut); determined by reading order, not visual position.
  * @param contentLeft - Container-space x of the strip's left content edge (left gutter anchor).
  * @param contentRight - Container-space x of the strip's right content edge (right gutter anchor).
  * @returns The resolved descriptor, with its segment(s) embedded for later level lookup.
@@ -534,13 +542,8 @@ function describeBoxPair(
 ): PairDescriptor {
   const x1 = (a.left + a.right) / 2;
   const x2 = (b.left + b.right) / 2;
-  if (Math.abs(a.top - b.top) < a.height / 2) {
-    const seg: ArcSegment = {
-      phraseId,
-      row: Math.round(a.top),
-      left: Math.min(x1, x2),
-      right: Math.max(x1, x2),
-    };
+  if (b.top - a.top < (a.bottom - a.top) / 2) {
+    const seg = makeArcSegment(phraseId, Math.round(a.top), x1, x2);
     return { phraseId, a, b, splitAfterTokenRef, sameRow: true, seg };
   }
   // Side is geometric (average x vs content edges) and independent of level, so it can be fixed
@@ -552,18 +555,8 @@ function describeBoxPair(
   // otherwise the bottom run's height would track the upper run's overlaps. Each run spans from its
   // box centre to the chosen side edge (the lane sits just past it).
   const sideX = nearerLeft ? contentLeft : contentRight;
-  const upperSeg: ArcSegment = {
-    phraseId,
-    row: Math.round(Math.min(a.top, b.top)),
-    left: Math.min(x1, sideX),
-    right: Math.max(x1, sideX),
-  };
-  const lowerSeg: ArcSegment = {
-    phraseId,
-    row: Math.round(Math.max(a.top, b.top)),
-    left: Math.min(x2, sideX),
-    right: Math.max(x2, sideX),
-  };
+  const upperSeg = makeArcSegment(phraseId, Math.round(a.top), x1, sideX);
+  const lowerSeg = makeArcSegment(phraseId, Math.round(b.top), x2, sideX);
   return { phraseId, a, b, splitAfterTokenRef, sameRow: false, nearerLeft, upperSeg, lowerSeg };
 }
 
@@ -584,10 +577,11 @@ type PhraseBoxMeasurements = {
    * gloss-less box of differing height still meets the channel shared by its row-mates.
    *
    * @param boxTop - The top edge of the box whose row top line is wanted.
-   * @param height - The box height, defining the half-band tolerance for matching the row.
+   * @param boxBottom - The bottom edge of the box; half the box height is the row-matching
+   *   tolerance.
    * @returns The minimum top across boxes on the same row, never greater than `boxTop`.
    */
-  rowTopFor: (boxTop: number, height: number) => number;
+  rowTopFor: (boxTop: number, boxBottom: number) => number;
 };
 
 /**
@@ -618,11 +612,11 @@ function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
     el.getBoundingClientRect(),
   );
   const allTops = allBoxRects.map((r) => r.top - containerRect.top);
-  const rowTopFor = (boxTop: number, height: number): number => {
-    const band = height / 2;
+  const rowTopFor = (boxTop: number, boxBottom: number): number => {
+    const band = (boxBottom - boxTop) / 2;
     let top = boxTop;
     allTops.forEach((t) => {
-      if (Math.abs(t - boxTop) < band && t < top) top = t;
+      if (t < top && boxTop - t < band) top = t;
     });
     return top;
   };
@@ -715,8 +709,8 @@ export function computeAllArcPaths(container: Element): ArcState {
     const { phraseId, a, b, splitAfterTokenRef, nearerLeft, upperSeg, lowerSeg } = descriptor;
     const aStem = stemForLevel(levelOf(upperSeg));
     const bStem = stemForLevel(levelOf(lowerSeg));
-    const aTop = rowTopFor(a.top, a.height);
-    const bTop = rowTopFor(b.top, b.height);
+    const aTop = rowTopFor(a.top, a.bottom);
+    const bTop = rowTopFor(b.top, b.bottom);
     // The descent spans from the upper run line down to the lower run line.
     const descent: GutterDescent = {
       side: nearerLeft ? 'left' : 'right',
@@ -826,7 +820,7 @@ export function buildSameRowArcPath(
 ): { d: string; midX: number; midY: number; runLeft: number; runRight: number } {
   const x1 = (a.left + a.right) / 2;
   const x2 = (b.left + b.right) / 2;
-  const y = a.top;
+  const y = Math.min(a.top, b.top);
   const runY = y - stem;
   const d = roundedPolyline(
     [

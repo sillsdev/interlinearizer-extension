@@ -606,6 +606,49 @@ describe('SegmentView', () => {
     expect(deletePhrase).not.toHaveBeenCalled();
   });
 
+  it('focuses the first word token and updates the verse when the background is clicked', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} onSelect={handleSelect} />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('segment-container'));
+
+    expect(handleSelect).toHaveBeenCalledTimes(1);
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+  });
+
+  it('does nothing on background click when the segment has no word token', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} onSelect={handleSelect} />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByTestId('segment-container'));
+
+    expect(handleSelect).not.toHaveBeenCalled();
+  });
+
+  it('ignores background clicks that bubble up from an interactive child', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} onSelect={handleSelect} />
+      </AnalysisStoreProvider>,
+    );
+
+    // Clicking the token button calls onSelect itself (with the clicked token), but the bubbled
+    // click on the container must not fire handleBackgroundClick a second time.
+    await userEvent.click(screen.getByRole('button', { name: 'the' }));
+
+    expect(handleSelect).toHaveBeenCalledTimes(1);
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-1');
+  });
+
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-1',

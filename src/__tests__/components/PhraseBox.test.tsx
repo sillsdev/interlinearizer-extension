@@ -78,7 +78,17 @@ jest.mock('../../components/TokenChip', () => {
       </span>
     );
   }
-  return { __esModule: true, default: MockTokenChip };
+  /**
+   * Minimal InertTokenChip stub rendering the token's surface text.
+   *
+   * @param props - Component props.
+   * @param props.token - The non-word token to render.
+   * @returns A span containing the surface text.
+   */
+  function MockInertTokenChip({ token }: Readonly<{ token: Token }>) {
+    return <span data-testid={`inert-${token.ref}`}>{token.surfaceText}</span>;
+  }
+  return { __esModule: true, default: MockTokenChip, InertTokenChip: MockInertTokenChip };
 });
 
 jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
@@ -131,6 +141,16 @@ const TEST_TOKEN_2 = {
   charStart: 6,
   charEnd: 11,
 } satisfies Token;
+
+/** Punctuation token rendered between the two word tokens of a phrase. */
+const TEST_PUNCT: Token = {
+  ref: 'punct-1',
+  surfaceText: ',',
+  writingSystem: 'en',
+  type: 'punctuation',
+  charStart: 5,
+  charEnd: 6,
+};
 
 /**
  * An approved phrase link fixture used by phrase-mode tests. Includes TEST_TOKEN so
@@ -398,6 +418,64 @@ describe('PhraseBox', () => {
     await userEvent.click(screen.getByTestId('unlink-phrase-btn'));
 
     expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'confirm-unlink', phraseId: 'phrase-1' });
+  });
+
+  it('renders punctuation between tokens in view mode', () => {
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        punctuationBetween={[[TEST_PUNCT]]}
+      />,
+    );
+
+    expect(screen.getByText(',')).toBeInTheDocument();
+  });
+
+  it('renders punctuation between tokens in edit-target mode', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        phraseLink={TEST_PHRASE_LINK}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        punctuationBetween={[[TEST_PUNCT]]}
+      />,
+      {
+        phraseMode: { kind: 'edit', phraseId: 'phrase-1', originalTokens: TEST_PHRASE_LINK.tokens },
+      },
+    );
+
+    expect(screen.getByTestId('inert-punct-1')).toBeInTheDocument();
+  });
+
+  it('renders punctuation between tokens for a non-edit-target box during edit mode', () => {
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        punctuationBetween={[[TEST_PUNCT]]}
+      />,
+      // Edit mode is active for a different phrase, so this free box renders via the fallback path.
+      { phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] } },
+    );
+
+    expect(screen.getByTestId('inert-punct-1')).toBeInTheDocument();
+  });
+
+  it('renders punctuation between tokens in confirm-unlink mode', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        phraseLink={TEST_PHRASE_LINK}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+        punctuationBetween={[[TEST_PUNCT]]}
+      />,
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'phrase-1' } },
+    );
+
+    expect(screen.getByText(',')).toBeInTheDocument();
   });
 
   it('renders phrase normally (not replaced) when phraseMode is confirm-unlink for this phrase', () => {

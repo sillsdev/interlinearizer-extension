@@ -5,12 +5,20 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
-import type { TextAnalysis } from 'interlinearizer';
+import type { PhraseAnalysisLink } from 'interlinearizer';
 import EditPhraseControls from '../../components/controls/EditPhraseControls';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
-import { defaultAnalysis } from '../../store/analysisSlice';
 import type { PhraseMode } from '../../types/phrase-mode';
 import { makePhraseLink } from '../test-helpers';
+
+const mockUsePhraseLinkByIdMap = jest.fn<Map<string, PhraseAnalysisLink>, []>();
+
+// AnalysisStore is exercised by its own dedicated suite. EditPhraseControls only reads the live
+// phrase's token count via usePhraseLinkByIdMap, so we stub that single hook rather than driving
+// the real provider (which would pull AnalysisStore into this suite's coverage).
+jest.mock('../../components/AnalysisStore', () => ({
+  __esModule: true,
+  usePhraseLinkByIdMap: () => mockUsePhraseLinkByIdMap(),
+}));
 
 describe('EditPhraseControls', () => {
   const PHRASE_MODE: Extract<PhraseMode, { kind: 'edit' }> = {
@@ -23,40 +31,29 @@ describe('EditPhraseControls', () => {
   };
 
   /**
-   * Builds a `TextAnalysis` seeded with an approved phrase link for `phrase-1` containing
-   * `tokenCount` tokens, so the live phrase the component reads has a known size. A `tokenCount` of
-   * `0` seeds no link at all, so the component sees the phrase as absent from the store.
+   * Builds the phrase-link map the component reads via `usePhraseLinkByIdMap`, seeded with a phrase
+   * link for `phrase-1` containing `tokenCount` tokens so the live phrase has a known size. A
+   * `tokenCount` of `0` returns an empty map, so the component sees the phrase as absent.
    *
    * @param tokenCount - Number of tokens to place in the seeded phrase link; `0` omits the link.
-   * @returns A `TextAnalysis` with one approved phrase link of the requested size, or no link.
+   * @returns A map from phrase id to its `PhraseAnalysisLink`, empty when `tokenCount` is `0`.
    */
-  function makeAnalysisWithPhraseSize(tokenCount: number): TextAnalysis {
-    if (tokenCount === 0) return defaultAnalysis;
+  function makePhraseLinkByIdMap(tokenCount: number): Map<string, PhraseAnalysisLink> {
+    if (tokenCount === 0) return new Map();
     const tokenRefs = Array.from({ length: tokenCount }, (_, i) => `tok-${i + 1}`);
-    return {
-      ...defaultAnalysis,
-      phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'phrase' }],
-      phraseAnalysisLinks: [makePhraseLink('phrase-1', tokenRefs)],
-    };
+    return new Map([['phrase-1', makePhraseLink('phrase-1', tokenRefs)]]);
   }
 
   /**
-   * Renders `EditPhraseControls` inside an `AnalysisStoreProvider` seeded with a phrase of the
-   * given size.
+   * Renders `EditPhraseControls` with the phrase-link map stubbed to a phrase of the given size.
    *
    * @param tokenCount - Number of tokens in the seeded phrase.
    * @param setPhraseMode - Setter spy passed to the component.
    * @returns The rendered element tree.
    */
   function renderWithPhraseSize(tokenCount: number, setPhraseMode: jest.Mock): ReactElement {
-    return (
-      <AnalysisStoreProvider
-        analysisLanguage="und"
-        initialAnalysis={makeAnalysisWithPhraseSize(tokenCount)}
-      >
-        <EditPhraseControls phraseMode={PHRASE_MODE} setPhraseMode={setPhraseMode} />
-      </AnalysisStoreProvider>
-    );
+    mockUsePhraseLinkByIdMap.mockReturnValue(makePhraseLinkByIdMap(tokenCount));
+    return <EditPhraseControls phraseMode={PHRASE_MODE} setPhraseMode={setPhraseMode} />;
   }
 
   it('renders Done and Cancel buttons', () => {

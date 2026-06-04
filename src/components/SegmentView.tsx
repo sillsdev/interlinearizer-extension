@@ -1,7 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useMemo, useRef } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -355,6 +355,40 @@ export function SegmentView({
   /** True when any committed phrase exists in this segment. */
   const hasRealPhraseInSegment = tokenGroups.some((g) => g.phraseLink !== undefined);
 
+  /**
+   * Ref of the first word token in this segment, used to focus its phrase when the background is
+   * clicked.
+   */
+  const firstWordTokenRef = useMemo(
+    () => segment.tokens.find((t) => t.type === 'word')?.ref,
+    [segment.tokens],
+  );
+
+  /**
+   * Brings this segment's first phrase into focus and updates the active verse when the click lands
+   * on segment background or structural wrappers rather than a genuinely interactive element. The
+   * token row and arc container fill most of the segment, so a strict `target === currentTarget`
+   * check would only catch the thin padding ring; instead we ignore the click only when it
+   * originated inside an interactive element (token button, gloss input, etc.), which handles its
+   * own selection. Everything else — padding, arc gutters, empty wrap space — focuses the first
+   * phrase.
+   *
+   * @param event - The click event on the segment container.
+   */
+  const handleBackgroundClick = useCallback(
+    (event: MouseEvent) => {
+      if (firstWordTokenRef === undefined) return;
+      if (
+        event.target instanceof Element &&
+        event.target.closest('button, a, input, textarea, select, [contenteditable="true"]')
+      ) {
+        return;
+      }
+      onSelect(ref, firstWordTokenRef);
+    },
+    [firstWordTokenRef, onSelect, ref],
+  );
+
   // Measure phrase boxes inside this segment and compute arcs. Disabled in baseline-text mode,
   // where the arc container is unmounted, so the result resets to empty.
   const {
@@ -386,13 +420,17 @@ export function SegmentView({
   }
 
   // Intentional: token-chip mode renders a div, not a button. In this mode individual word tokens
-  // (via PhraseBox gloss inputs) are the interactive elements, so the outer container does not need
-  // to be focusable.
+  // (via PhraseBox gloss inputs) are the interactive elements; the background click below only
+  // focuses the first phrase, which keyboard users reach through those token elements directly. A
+  // redundant key handler / role / tabIndex on the container would add a non-functional tab stop, so
+  // the click-events-have-key-events and no-static-element-interactions rules are disabled here.
   return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       aria-current={isActive ? 'true' : undefined}
       className={sharedClassName}
       data-testid="segment-container"
+      onClick={handleBackgroundClick}
     >
       {verseLabel}
       <div className="tw:arc-container" ref={arcContainerRef}>

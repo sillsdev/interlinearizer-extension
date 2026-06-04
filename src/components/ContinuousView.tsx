@@ -586,6 +586,9 @@ export default function ContinuousView({
           key: group.tokens[0].ref,
           group,
           isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
+          // New closure per recomputation; React briefly nulls and reassigns each ref, but the
+          // cycle is synchronous and harmless. If renders become hot, move the assignment into
+          // MemoizedPhraseGroup (pass phraseRefs + groupIndex as props instead of a callback).
           groupRef: (el: HTMLSpanElement | null) => {
             phraseRefs.current[groupIndex] = el;
           },

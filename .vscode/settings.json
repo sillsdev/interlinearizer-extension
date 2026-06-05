@@ -1,5 +1,6 @@
 {
   "css.customData": [".vscode/tailwindcss.json"],
+  "css.validate": false,
 
   "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.formatOnSave": true,
@@ -7,6 +8,8 @@
   "editor.wordWrapColumn": 100,
 
   "eslint.validate": ["html", "javascript", "javascriptreact", "typescript", "typescriptreact"],
+  "stylelint.validate": ["css", "less", "postcss", "scss", "tailwindcss"],
+  "tailwindCSS.validate": false,
 
   "files.associations": {
     "*.css": "tailwindcss",

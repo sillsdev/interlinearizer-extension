@@ -562,6 +562,45 @@ describe('ContinuousView focus changes', () => {
 
     expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
   });
+
+  it('does not notify the parent when clicking the group of an already-focused non-first token', async () => {
+    // Group tok-0 and tok-1 into one phrase box (keyed by tok-0), then focus tok-1 — the second
+    // token of the group, as a segment-view click on a middle token would. Clicking the box must
+    // stay a no-op even though its groupKey (tok-0) differs from focusedTokenRef (tok-1).
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    const groupedBox = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!groupedBox) throw new Error('Expected phrase box wrapper for grouped tokens');
+
+    await userEvent.click(groupedBox);
+
+    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+  });
+
+  it('notifies the parent when clicking a phrase box while nothing is focused', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: undefined });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
+
+    await userEvent.click(firstPhraseBox);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+  });
 });
 
 // ---------------------------------------------------------------------------

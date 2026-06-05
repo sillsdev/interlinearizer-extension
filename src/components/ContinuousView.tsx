@@ -401,15 +401,18 @@ export default function ContinuousView({
    * echoes the new token ref back through `focusedTokenRef`; scroll + highlight follow
    * automatically.
    *
-   * @param ref - First-token ref of the selected phrase, or `undefined` to do nothing.
+   * @param ref - First-token ref (group key) of the selected phrase.
    */
   const handlePhraseSelect = useCallback(
-    (ref?: string) => {
-      if (ref === undefined || ref === focusedTokenRef) return;
+    (ref: string) => {
+      const targetGroupIndex = groupIndexByTokenRef.get(ref);
+      const currentGroupIndex =
+        focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
+      if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
       internalFocusedTokenRefRef.current = ref;
       onFocusedTokenRefChangeRef.current(ref);
     },
-    [focusedTokenRef],
+    [focusedTokenRef, groupIndexByTokenRef],
   );
 
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();

@@ -140,23 +140,6 @@ describe('ViewOptionsDropdown', () => {
 
       expect(onContinuousScrollChange).toHaveBeenCalledWith(true);
     });
-
-    it('does not call onContinuousScrollChange when continuousScrollDisabled is true', async () => {
-      const onContinuousScrollChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          continuousScrollDisabled
-          onContinuousScrollChange={onContinuousScrollChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[0]);
-
-      expect(onContinuousScrollChange).not.toHaveBeenCalled();
-    });
   });
 
   describe('hide inactive link buttons toggle', () => {

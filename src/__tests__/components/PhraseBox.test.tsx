@@ -478,6 +478,18 @@ describe('PhraseBox', () => {
     expect(screen.getByText(',')).toBeInTheDocument();
   });
 
+  it('omits data-last-token-ref for a free (non-phrase) box in confirm-unlink mode', () => {
+    mockUsePhraseLinkForToken.mockReturnValue(undefined);
+    renderBox(
+      // A free box (no phraseLink) still renders dimmed during another phrase's confirm-unlink.
+      <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />,
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'other-phrase' } },
+    );
+
+    const box = document.querySelector('[data-phrase-box="true"]');
+    expect(box).not.toHaveAttribute('data-last-token-ref');
+  });
+
   it('renders phrase normally (not replaced) when phraseMode is confirm-unlink for this phrase', () => {
     mockUsePhraseLinkForToken.mockReturnValue(TEST_PHRASE_LINK);
     renderBox(<PhraseBox {...requiredProps()} phraseLink={TEST_PHRASE_LINK} />, {

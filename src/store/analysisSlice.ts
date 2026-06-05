@@ -52,6 +52,20 @@ interface DeletePhrasePayload {
   phraseId: string;
 }
 
+/** Payload for the {@link mergePhrases} action. */
+interface MergePhrasesPayload {
+  /** ID of the `PhraseAnalysis` to keep and grow; receives the merged token list. */
+  targetPhraseId: string;
+  /** The combined, document-ordered `TokenSnapshot`s for the target phrase. */
+  tokens: TokenSnapshot[];
+  /**
+   * ID of a neighboring phrase whose tokens were folded into `tokens` and that must be deleted in
+   * the same step. `undefined` when the absorbed neighbor was a free (unphrased) token, so there is
+   * no phrase record to remove.
+   */
+  absorbedPhraseId?: string;
+}
+
 /** Payload for the {@link writePhraseGloss} action. */
 interface WritePhraseGlossPayload {
   /** ID of the `PhraseAnalysis` to update. */
@@ -225,6 +239,32 @@ const analysisSlice = createSlice({
       );
     },
     /**
+     * Merges a neighboring phrase (or a free token) into the target phrase as a single atomic
+     * mutation: the target's tokens are replaced with the supplied merged list and, when an
+     * `absorbedPhraseId` is given, that neighbor's analysis record and link are removed in the same
+     * step. Doing both in one reducer avoids the transient state — produced when `updatePhrase` and
+     * `deletePhrase` were dispatched separately — where the neighbor's tokens briefly existed in
+     * two phrases at once, which a save between the two dispatches could persist.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `MergePhrasesPayload`.
+     */
+    mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
+      const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
+      const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
+      if (link) link.tokens = tokens;
+      const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
+      if (analysis) analysis.surfaceText = tokens.map((t) => t.surfaceText).join(' ');
+      if (absorbedPhraseId !== undefined) {
+        state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
+          (pa) => pa.id !== absorbedPhraseId,
+        );
+        state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
+          (pl) => pl.analysisId !== absorbedPhraseId,
+        );
+      }
+    },
+    /**
      * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no
      * matching `PhraseAnalysis` is found.
      *
@@ -248,6 +288,7 @@ export const {
   createPhrase,
   updatePhrase,
   deletePhrase,
+  mergePhrases,
   writePhraseGloss,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;

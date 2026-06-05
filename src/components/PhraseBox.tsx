@@ -401,6 +401,7 @@ export function PhraseBox({
         <div
           aria-disabled={isThisUnlinkTarget ? undefined : 'true'}
           className={baseClass}
+          data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
           data-phrase-box="true"
           data-phrase-id={phraseLink?.analysisId}
         >
@@ -453,6 +454,7 @@ export function PhraseBox({
     return (
       <span
         className={containerClass}
+        data-last-token-ref={tokens[tokens.length - 1].ref}
         data-phrase-box="true"
         data-phrase-id={phraseLink?.analysisId}
       >
@@ -498,6 +500,7 @@ export function PhraseBox({
     <span
       aria-disabled={isDisabled ? 'true' : undefined}
       className={containerClass}
+      data-last-token-ref={phraseLink ? tokens[tokens.length - 1].ref : undefined}
       data-phrase-box="true"
       data-phrase-id={phraseLink?.analysisId}
       onClick={isDisabled ? undefined : handleBoxClick}

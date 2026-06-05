@@ -325,30 +325,32 @@ export default function ContinuousView({
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
   /** The inclusive group-index bounds of the rendered window. */
-  const windowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
-  const windowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
+  const renderWindowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
+  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
-   * identity is stable while the window is unchanged. This matters because `windowGroups` feeds the
-   * `useArcPaths` dependency list: a fresh `.slice()` every render would bump the hook's internal
-   * version counter every render, forcing a re-measure on each pass and defeating the arc hook's
-   * own loop-damping (which keys off whether a real input changed).
+   * identity is stable while the window is unchanged. This matters because `renderWindowGroups`
+   * feeds the `useArcPaths` dependency list: a fresh `.slice()` every render would bump the hook's
+   * internal version counter every render, forcing a re-measure on each pass and defeating the arc
+   * hook's own loop-damping (which keys off whether a real input changed).
    */
-  const windowGroups = useMemo(
-    () => phraseGroups.slice(windowStart, windowEnd + 1),
-    [phraseGroups, windowStart, windowEnd],
+  const renderWindowGroups = useMemo(
+    () => phraseGroups.slice(renderWindowStart, renderWindowEnd + 1),
+    [phraseGroups, renderWindowStart, renderWindowEnd],
   );
 
   /**
-   * The flat token-index range spanned by the window groups, used to slice `allTokens` for
-   * rendering punctuation tokens that appear between phrase groups.
+   * The flat token-index range spanned by the mounted render-window groups, used to slice
+   * `allTokens` for rendering punctuation tokens that appear between phrase groups.
    */
-  const windowStartTokenIndex =
-    phraseGroups.length > 0 && windowStart > 0 ? phraseGroups[windowStart].firstIndex : 0;
-  const windowEndTokenIndex =
-    phraseGroups.length > 0 && windowEnd < phraseGroups.length - 1
-      ? phraseGroups[windowEnd].firstIndex + phraseGroups[windowEnd].tokens.length
+  const renderWindowStartTokenIndex =
+    phraseGroups.length > 0 && renderWindowStart > 0
+      ? phraseGroups[renderWindowStart].firstIndex
+      : 0;
+  const renderWindowEndTokenIndex =
+    phraseGroups.length > 0 && renderWindowEnd < phraseGroups.length - 1
+      ? phraseGroups[renderWindowEnd + 1].firstIndex
       : allTokens.length;
 
   /**
@@ -677,14 +679,14 @@ export default function ContinuousView({
   );
 
   /** True when any committed phrase exists in the visible window. */
-  const hasRealPhraseInWindow = windowGroups.some((g) => g.phraseLink !== undefined);
+  const hasRealPhraseInRenderWindow = renderWindowGroups.some((g) => g.phraseLink !== undefined);
 
   // Measure phrase boxes after each render and compute arcs for discontiguous phrases.
   const { arcPaths, stripTopPadding, stripLeftPadding, stripRightPadding } = useArcPaths(
     arcContainerRef,
     true,
-    hasRealPhraseInWindow,
-    [windowGroups, phraseMode],
+    hasRealPhraseInRenderWindow,
+    [renderWindowGroups, phraseMode],
   );
 
   /**
@@ -693,10 +695,13 @@ export default function ContinuousView({
    * is annotated with its absolute group index.
    */
   const renderItems = useMemo(() => {
-    const windowTokens = allTokens.slice(windowStartTokenIndex, windowEndTokenIndex);
-    const rawUnits = buildRenderUnits(windowTokens, windowGroups);
-    const groupIndexOffset = windowStart;
-    const groupIndexByGroup = new Map(windowGroups.map((g, i) => [g, i + groupIndexOffset]));
+    const renderWindowTokens = allTokens.slice(
+      renderWindowStartTokenIndex,
+      renderWindowEndTokenIndex,
+    );
+    const rawUnits = buildRenderUnits(renderWindowTokens, renderWindowGroups);
+    const groupIndexOffset = renderWindowStart;
+    const groupIndexByGroup = new Map(renderWindowGroups.map((g, i) => [g, i + groupIndexOffset]));
     const result: (SlotUnit | GroupUnit)[] = [];
     rawUnits.forEach((unit) => {
       if (unit.kind === 'slot') {
@@ -713,12 +718,19 @@ export default function ContinuousView({
       } else {
         const groupIndex =
           /* v8 ignore next -- all window groups are always indexed; fallback is a defensive guard */
-          groupIndexByGroup.get(unit.group) ?? windowGroups.indexOf(unit.group) + groupIndexOffset;
+          groupIndexByGroup.get(unit.group) ??
+          renderWindowGroups.indexOf(unit.group) + groupIndexOffset;
         result.push({ kind: 'group', group: unit.group, groupIndex });
       }
     });
     return result;
-  }, [allTokens, windowGroups, windowStartTokenIndex, windowEndTokenIndex, windowStart]);
+  }, [
+    allTokens,
+    renderWindowGroups,
+    renderWindowStartTokenIndex,
+    renderWindowEndTokenIndex,
+    renderWindowStart,
+  ]);
 
   /**
    * Per-slot `focusedSideIsPrev`, precomputed once from the focused token's absolute group index. A

@@ -7,6 +7,7 @@ import {
   createPhrase,
   defaultAnalysis,
   deletePhrase,
+  mergePhrases,
   selectAnalysis,
   selectApprovedGloss,
   selectPhraseLinkByAnalysisId,
@@ -275,6 +276,21 @@ export type PhraseDispatch = {
    * @param phraseId - ID of the phrase to delete.
    */
   deletePhrase: (phraseId: string) => void;
+  /**
+   * Merges a neighboring phrase (or free token) into a target phrase in a single atomic dispatch,
+   * then saves once. Prefer this over `updatePhrase` + `deletePhrase` when absorbing a neighbor so
+   * no save observes the intermediate state where the neighbor's tokens belong to two phrases.
+   *
+   * @param targetPhraseId - ID of the phrase to keep and grow.
+   * @param tokens - The combined, document-ordered token snapshots for the target phrase.
+   * @param absorbedPhraseId - ID of the neighbor phrase to delete, or `undefined` when the absorbed
+   *   neighbor was a free (unphrased) token.
+   */
+  mergePhrases: (
+    targetPhraseId: string,
+    tokens: TokenSnapshot[],
+    absorbedPhraseId: string | undefined,
+  ) => void;
 };
 
 /**
@@ -282,7 +298,8 @@ export type PhraseDispatch = {
  * the corresponding Redux action then calls `onSave` with the updated `TextAnalysis`, matching the
  * pattern of {@link useGlossDispatch}.
  *
- * @returns An object with `createPhrase`, `updatePhrase`, and `deletePhrase` functions.
+ * @returns An object with `createPhrase`, `updatePhrase`, `deletePhrase`, and `mergePhrases`
+ *   functions.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseDispatch(): PhraseDispatch {
@@ -322,13 +339,22 @@ export function usePhraseDispatch(): PhraseDispatch {
     [dispatch, save],
   );
 
+  const handleMergePhrases = useCallback(
+    (targetPhraseId: string, tokens: TokenSnapshot[], absorbedPhraseId: string | undefined) => {
+      dispatch(mergePhrases({ targetPhraseId, tokens, absorbedPhraseId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
   return useMemo(
     () => ({
       createPhrase: handleCreatePhrase,
       updatePhrase: handleUpdatePhrase,
       deletePhrase: handleDeletePhrase,
+      mergePhrases: handleMergePhrases,
     }),
-    [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase],
+    [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase, handleMergePhrases],
   );
 }
 

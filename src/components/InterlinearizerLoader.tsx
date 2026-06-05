@@ -151,23 +151,31 @@ export default function InterlinearizerLoader({
   );
 
   const {
-    isLoading: isSettingLoading,
+    isLoading: isContinuousScrollLoading,
     onChange: handleContinuousScrollChange,
     value: continuousScroll,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
 
-  const { onChange: handleHideInactiveLinkButtonsChange, value: hideInactiveLinkButtons } =
-    useOptimisticBooleanSetting(projectId, 'interlinearizer.hideInactiveLinkButtons', false);
+  const {
+    isLoading: isHideInactiveLinkButtonsLoading,
+    onChange: handleHideInactiveLinkButtonsChange,
+    value: hideInactiveLinkButtons,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.hideInactiveLinkButtons', false);
 
-  const { onChange: handleSimplifyPhrasesChange, value: simplifyPhrases } =
-    useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
+  const {
+    isLoading: isSimplifyPhrasesLoading,
+    onChange: handleSimplifyPhrasesChange,
+    value: simplifyPhrases,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     { projectId, scrRef },
   );
 
   const hasError = !!bookError || !!tokenizeError;
-  const showLoading = isLoading || isAnalysisLoading;
+  const isSettingLoading =
+    isContinuousScrollLoading || isHideInactiveLinkButtonsLoading || isSimplifyPhrasesLoading;
+  const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
   const isLoaded = !hasError && !showLoading && !!book;
 
   const [modal, setModal] = useState<ModalState>('none');
@@ -253,7 +261,6 @@ export default function InterlinearizerLoader({
           isLoaded ? (
             <ViewOptionsDropdown
               continuousScroll={continuousScroll}
-              continuousScrollDisabled={isSettingLoading}
               onContinuousScrollChange={handleContinuousScrollChange}
               hideInactiveLinkButtons={hideInactiveLinkButtons}
               onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}

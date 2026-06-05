@@ -44,8 +44,6 @@ function ViewToggle({
 type ViewOptionsDropdownProps = Readonly<{
   /** Current value of the continuous-scroll toggle. */
   continuousScroll: boolean;
-  /** Whether the continuous-scroll toggle should be disabled (setting is loading). */
-  continuousScrollDisabled?: boolean;
   /**
    * Called when the user flips the continuous-scroll switch. The caller is responsible for
    * persisting the new value; the component forwards the value directly.
@@ -67,7 +65,6 @@ type ViewOptionsDropdownProps = Readonly<{
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.
- * @param props.continuousScrollDisabled - Whether the continuous-scroll toggle is disabled.
  * @param props.onContinuousScrollChange - Continuous-scroll change callback.
  * @param props.hideInactiveLinkButtons - Current hide-inactive-link-buttons value.
  * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
@@ -77,7 +74,6 @@ type ViewOptionsDropdownProps = Readonly<{
  */
 export default function ViewOptionsDropdown({
   continuousScroll,
-  continuousScrollDisabled = false,
   onContinuousScrollChange,
   hideInactiveLinkButtons,
   onHideInactiveLinkButtonsChange,
@@ -164,9 +160,7 @@ export default function ViewOptionsDropdown({
               <ViewToggle
                 checked={continuousScroll}
                 label={localizedStrings['%interlinearizer_viewOption_continuousScroll%']}
-                onCheckedChange={(v) => {
-                  if (!continuousScrollDisabled) onContinuousScrollChange(v);
-                }}
+                onCheckedChange={onContinuousScrollChange}
               />
               <ViewToggle
                 checked={hideInactiveLinkButtons}

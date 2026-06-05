@@ -15,6 +15,7 @@ import {
   defaultAnalysis,
   defaultState,
   deletePhrase,
+  mergePhrases,
   selectApprovedGloss,
   selectPhraseLinkByTokenRef,
   selectPhraseAnalysisById,
@@ -305,6 +306,90 @@ describe('deletePhrase', () => {
     expect(phraseAnalyses[0].id).toBe('phrase-2');
     expect(phraseAnalysisLinks).toHaveLength(1);
     expect(phraseAnalysisLinks[0].analysisId).toBe('phrase-2');
+  });
+});
+
+describe('mergePhrases', () => {
+  it('replaces the target tokens, re-derives surfaceText, and deletes the absorbed phrase', () => {
+    const target = makePhraseLink('phrase-1', ['tok-a']);
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...defaultAnalysis,
+          phraseAnalyses: [
+            { id: 'phrase-1', surfaceText: 'A' },
+            { id: 'phrase-2', surfaceText: 'B' },
+          ],
+          phraseAnalysisLinks: [target, absorbed],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    const mergedTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
+    ];
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: mergedTokens,
+        absorbedPhraseId: 'phrase-2',
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].id).toBe('phrase-1');
+    expect(phraseAnalyses[0].surfaceText).toBe('A B');
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
+    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(mergedTokens);
+  });
+
+  it('grows the target without deleting anything when absorbedPhraseId is undefined', () => {
+    const target = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(target), analysisLanguage: 'und' },
+    });
+
+    const mergedTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
+    ];
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: mergedTokens,
+        absorbedPhraseId: undefined,
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].surfaceText).toBe('A B');
+    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(mergedTokens);
+  });
+
+  it('no-ops on the target updates when the target phrase id is not found', () => {
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(absorbed), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'missing',
+        tokens: [{ tokenRef: 'tok-b', surfaceText: 'B' }],
+        absorbedPhraseId: 'phrase-2',
+      }),
+    );
+
+    // The absorbed phrase is still removed; the missing target simply has no link/analysis to grow.
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(0);
+    expect(phraseAnalysisLinks).toHaveLength(0);
   });
 });
 

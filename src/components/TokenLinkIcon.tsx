@@ -75,7 +75,7 @@ export function TokenLinkIcon({
     onHoverSplitFreeTokens,
     crossSegmentLinkTooltip,
   } = usePhraseStripContext();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+  const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
 
   const inSamePhrase =
     prevPhraseLink !== undefined &&
@@ -151,16 +151,17 @@ export function TokenLinkIcon({
         return;
       }
 
-      // Focused token is in a phrase: merge the neighbor's token(s) into the focused phrase,
-      // then sort the combined list into document order.
+      // Focused token is in a phrase: merge the neighbor's token(s) into the focused phrase, then
+      // sort the combined list into document order. Use a single atomic merge so no save observes
+      // the intermediate state where an absorbed neighbor phrase's tokens belong to two phrases.
       const neighborSnapshots = neighborLink
         ? neighborLink.tokens
         : [{ tokenRef: neighborToken.ref, surfaceText: neighborToken.surfaceText }];
-      updatePhrase(
+      mergePhrases(
         focusedPhraseLink.analysisId,
         sortByDocOrder([...focusedPhraseLink.tokens, ...neighborSnapshots], tokenDocOrder),
+        neighborLink?.analysisId,
       );
-      if (neighborLink) deletePhrase(neighborLink.analysisId);
       return;
     }
 
@@ -198,7 +199,7 @@ export function TokenLinkIcon({
     tokenDocOrder,
     createPhrase,
     updatePhrase,
-    deletePhrase,
+    mergePhrases,
   ]);
 
   if (!prevToken || !nextToken) return undefined;

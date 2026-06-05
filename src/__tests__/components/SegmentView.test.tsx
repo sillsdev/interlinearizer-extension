@@ -24,6 +24,7 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
   createPhrase: jest.fn(),
   updatePhrase: jest.fn(),
   deletePhrase: jest.fn(),
+  mergePhrases: jest.fn(),
 });
 
 jest.mock('../../components/AnalysisStore', () => ({
@@ -213,6 +214,7 @@ describe('SegmentView', () => {
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
       deletePhrase: jest.fn(),
+      mergePhrases: jest.fn(),
     });
     mockCandidateTokenRefs.current = new Set();
   });
@@ -568,6 +570,7 @@ describe('SegmentView', () => {
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
       deletePhrase,
+      mergePhrases: jest.fn(),
     });
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     mockUsePhraseLinkMap.mockReturnValue(
@@ -596,6 +599,7 @@ describe('SegmentView', () => {
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
       deletePhrase,
+      mergePhrases: jest.fn(),
     });
     render(
       <AnalysisStoreProvider analysisLanguage="und">

@@ -25,6 +25,7 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
   createPhrase: jest.fn(),
   updatePhrase: jest.fn(),
   deletePhrase: jest.fn(),
+  mergePhrases: jest.fn(),
 });
 
 jest.mock('../../components/AnalysisStore', () => ({
@@ -445,6 +446,7 @@ beforeEach(() => {
     createPhrase: jest.fn(),
     updatePhrase: jest.fn(),
     deletePhrase: jest.fn(),
+    mergePhrases: jest.fn(),
   });
   mockCandidateTokenRefs.current = new Set();
 });
@@ -1113,6 +1115,7 @@ describe('ContinuousView phrase grouping', () => {
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
       deletePhrase,
+      mergePhrases: jest.fn(),
     });
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     const phraseLink: PhraseAnalysisLink = {
@@ -1137,6 +1140,7 @@ describe('ContinuousView phrase grouping', () => {
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
       deletePhrase,
+      mergePhrases: jest.fn(),
     });
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);

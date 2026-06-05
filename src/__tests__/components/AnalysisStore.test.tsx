@@ -427,7 +427,7 @@ function PhraseLinkReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
  * @returns JSX element suitable for passing to `render`.
  */
 function PhraseDispatchUser({ phraseId }: Readonly<{ phraseId: string }>) {
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+  const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
   return (
     <>
       <button onClick={() => createPhrase([{ tokenRef: 'tok-x', surfaceText: 'X' }])} type="button">
@@ -441,6 +441,21 @@ function PhraseDispatchUser({ phraseId }: Readonly<{ phraseId: string }>) {
       </button>
       <button onClick={() => deletePhrase(phraseId)} type="button">
         delete
+      </button>
+      <button
+        onClick={() =>
+          mergePhrases(
+            phraseId,
+            [
+              { tokenRef: 'tok-a', surfaceText: 'A' },
+              { tokenRef: 'tok-b', surfaceText: 'B' },
+            ],
+            'phrase-2',
+          )
+        }
+        type="button"
+      >
+        merge
       </button>
     </>
   );
@@ -633,6 +648,31 @@ describe('usePhraseDispatch', () => {
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalyses).toHaveLength(0);
     expect(saved.phraseAnalysisLinks).toHaveLength(0);
+  });
+
+  it('mergePhrases grows the target phrase in one dispatch and calls onSave once', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={PHRASE_ANALYSIS}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <PhraseDispatchUser phraseId="phrase-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'merge' }));
+
+    // A single dispatch means a single save — the intermediate state where tokens belonged to two
+    // phrases is never observed.
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.phraseAnalysisLinks[0].tokens.map((t) => t.tokenRef)).toStrictEqual([
+      'tok-a',
+      'tok-b',
+    ]);
+    expect(saved.phraseAnalyses[0].surfaceText).toBe('A B');
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

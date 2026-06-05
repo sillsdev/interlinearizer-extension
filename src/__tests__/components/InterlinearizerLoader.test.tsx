@@ -22,7 +22,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   __esModule: true,
   default: ({
     continuousScroll,
-    continuousScrollDisabled,
     onContinuousScrollChange,
     hideInactiveLinkButtons,
     onHideInactiveLinkButtonsChange,
@@ -30,7 +29,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onSimplifyPhrasesChange,
   }: {
     continuousScroll: boolean;
-    continuousScrollDisabled: boolean;
     onContinuousScrollChange: (v: boolean) => void;
     hideInactiveLinkButtons: boolean;
     onHideInactiveLinkButtonsChange: (v: boolean) => void;
@@ -42,7 +40,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         aria-label="continuous scroll"
         data-testid="continuous-scroll-toggle"
         data-checked={String(continuousScroll)}
-        data-disabled={String(continuousScrollDisabled)}
         onClick={() => onContinuousScrollChange(!continuousScroll)}
         type="button"
       />
@@ -423,8 +420,8 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
-  it('passes checked and disabled from useOptimisticBooleanSetting to ViewOptionsDropdown', () => {
-    mockOptimisticSetting(true, jest.fn(), true);
+  it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', () => {
+    mockOptimisticSetting(true);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -435,7 +432,23 @@ describe('InterlinearizerLoader', () => {
 
     const toggle = screen.getByTestId('continuous-scroll-toggle');
     expect(toggle).toHaveAttribute('data-checked', 'true');
-    expect(toggle).toHaveAttribute('data-disabled', 'true');
+  });
+
+  it('gates rendering until the persisted display settings have loaded', () => {
+    mockOptimisticSetting(false, jest.fn(), true);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    // The saved settings must arrive before the view renders so the user's stored choices apply on
+    // the first paint instead of flashing the hard-coded defaults.
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByTestId('continuous-scroll-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
 
   it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {

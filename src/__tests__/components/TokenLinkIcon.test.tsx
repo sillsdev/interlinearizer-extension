@@ -21,6 +21,7 @@ import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
 const mockCreatePhrase = jest.fn();
 const mockUpdatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
+const mockMergePhrases = jest.fn();
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
@@ -28,6 +29,7 @@ jest.mock('../../components/AnalysisStore', () => ({
     createPhrase: mockCreatePhrase,
     updatePhrase: mockUpdatePhrase,
     deletePhrase: mockDeletePhrase,
+    mergePhrases: mockMergePhrases,
   }),
 }));
 
@@ -99,6 +101,7 @@ describe('TokenLinkIcon', () => {
     mockCreatePhrase.mockClear();
     mockUpdatePhrase.mockClear();
     mockDeletePhrase.mockClear();
+    mockMergePhrases.mockClear();
   });
 
   it('returns undefined when both prevToken and nextToken are undefined', () => {
@@ -327,10 +330,14 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
-    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
-      { tokenRef: 'tok-a', surfaceText: 'tok-a' },
-      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
-    ]);
+    expect(mockMergePhrases).toHaveBeenCalledWith(
+      'p1',
+      [
+        { tokenRef: 'tok-a', surfaceText: 'tok-a' },
+        { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+      ],
+      undefined,
+    );
   });
 
   it('merges neighbor phrase into focused phrase and deletes neighbor', async () => {
@@ -350,11 +357,16 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
-    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
-      { tokenRef: 'tok-a', surfaceText: 'tok-a' },
-      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
-    ]);
-    expect(mockDeletePhrase).toHaveBeenCalledWith('p2');
+    expect(mockMergePhrases).toHaveBeenCalledWith(
+      'p1',
+      [
+        { tokenRef: 'tok-a', surfaceText: 'tok-a' },
+        { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+      ],
+      'p2',
+    );
+    expect(mockUpdatePhrase).not.toHaveBeenCalled();
+    expect(mockDeletePhrase).not.toHaveBeenCalled();
   });
 
   it('absorbs free token into neighbor phrase when focus is free and neighbor is a phrase', async () => {
@@ -469,11 +481,16 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
-    // Neighbor is prevToken (tok-a, free), absorbed into focused phrase p1 (tok-b)
-    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
-      { tokenRef: 'tok-a', surfaceText: 'tok-a' },
-      { tokenRef: 'tok-b', surfaceText: 'tok-b' },
-    ]);
+    // Neighbor is prevToken (tok-a, free), absorbed into focused phrase p1 (tok-b). No neighbor
+    // phrase to delete, so absorbedPhraseId is undefined.
+    expect(mockMergePhrases).toHaveBeenCalledWith(
+      'p1',
+      [
+        { tokenRef: 'tok-a', surfaceText: 'tok-a' },
+        { tokenRef: 'tok-b', surfaceText: 'tok-b' },
+      ],
+      undefined,
+    );
   });
 
   it('candidatePhraseId falls back to nextPhraseLink analysisId when prevPhraseLink is undefined', () => {

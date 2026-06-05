@@ -60,7 +60,7 @@ export type PhraseStripContextValue = Readonly<{
   simplifyPhrases: boolean;
   /**
    * Segment id of the currently active verse, or `undefined` when nothing is active. A link slot
-   * counts as "in the active segment" when either neighbouring phrase box belongs to this segment.
+   * counts as "in the active segment" when either neighboring phrase box belongs to this segment.
    * Used together with {@link hideInactiveLinkButtons} to suppress link buttons outside the active
    * verse in both strips.
    */

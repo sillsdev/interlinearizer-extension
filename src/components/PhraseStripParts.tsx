@@ -69,7 +69,7 @@ export function PhraseSlot({
     prevPhraseId === nextPhraseId &&
     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
   const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
-  // The slot is "in the active segment" only when both neighbouring phrases belong to it. A link
+  // The slot is "in the active segment" only when both neighboring phrases belong to it. A link
   // that crosses a verse boundary (one side in the active verse, the other in an adjacent verse) is
   // therefore treated as inactive and hidden too. When hideInactiveLinkButtons is on, link buttons
   // outside the active verse are suppressed in both strips. (A link slot sits between phrases, so

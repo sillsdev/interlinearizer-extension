@@ -88,7 +88,7 @@ export default function InterlinearizerLoader({
       return;
     }
 
-    let cancelled = false;
+    let canceled = false;
     setIsAnalysisLoading(true);
 
     /**
@@ -96,7 +96,7 @@ export default function InterlinearizerLoader({
      *
      * Writes `activeProjectAnalysis` on success (or `undefined` when the project record is absent)
      * and clears `isAnalysisLoading` in the `finally` block. Both state updates are suppressed when
-     * `cancelled` is `true` (i.e. the effect was cleaned up before the fetch completed).
+     * `canceled` is `true` (i.e. the effect was cleaned up before the fetch completed).
      *
      * @returns Promise that resolves to void once state has been updated or the update has been
      *   suppressed due to cancellation.
@@ -109,7 +109,7 @@ export default function InterlinearizerLoader({
           'interlinearizer.getProject',
           activeProject.id,
         );
-        if (cancelled) return;
+        if (canceled) return;
         if (json) {
           const project: InterlinearProject = JSON.parse(json);
           setActiveProjectAnalysis(project.analysis);
@@ -117,19 +117,19 @@ export default function InterlinearizerLoader({
           setActiveProjectAnalysis(undefined);
         }
       } catch (e) {
-        if (!cancelled) {
+        if (!canceled) {
           logger.error('Interlinearizer: failed to load project analysis', e);
           setActiveProjectAnalysis(undefined);
         }
       } finally {
-        if (!cancelled) setIsAnalysisLoading(false);
+        if (!canceled) setIsAnalysisLoading(false);
       }
     };
 
     loadAnalysis().catch(() => {});
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -270,7 +270,7 @@ export default function InterlinearizerLoader({
           ) : undefined
         }
         onSelectProjectMenuItem={menuCommandHandler}
-        /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+        /* v8 ignore next 3 -- stub required by TabToolbar API, no behavior to test */
         onSelectViewInfoMenuItem={() => {
           logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
         }}

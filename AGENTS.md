@@ -151,6 +151,14 @@ This means: when each field already carries its own JSDoc comment, the documenta
 
 Before reporting any documentation as missing, open the file and confirm the JSDoc is actually absent. Do not infer missing docs from a symbol name, a type signature, or an excerpt — read the declaration.
 
+## Spelling
+
+Use American English throughout — in code, comments, JSDoc, and documentation:
+
+- `center` not `centre`, `color` not `colour`, `behavior` not `behaviour`
+- `canceled`/`canceling` not `cancelled`/`cancelling`, `leveled`/`leveling` not `levelled`/`levelling`
+- `neighboring` not `neighbouring`, `favor` not `favour`, `signaled` not `signalled`
+
 ## UX decisions
 
 When key UX decisions are being made, discuss with a developer whether something should be added to `user-questions.md` for review with people outside the development team.

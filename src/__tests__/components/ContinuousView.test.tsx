@@ -683,10 +683,10 @@ describe('ContinuousView arrow navigation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Scroll behaviour
+// Scroll behavior
 // ---------------------------------------------------------------------------
 
-describe('ContinuousView scroll behaviour', () => {
+describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
@@ -795,7 +795,7 @@ describe('ContinuousView scroll behaviour', () => {
   it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
     // With hideInactiveLinkButtons on, crossing a boundary wants to add/remove icons — but doing so
     // mid-scroll shifts every box and breaks the smooth glide. The view defers the active-segment
-    // switch until the scroll settles (signalled by the container's `scrollend`), so the old segment
+    // switch until the scroll settles (signaled by the container's `scrollend`), so the old segment
     // keeps its icon during the animation and only loses it once the scroll finishes.
     const inSegmentIconMounted = renderHideInactiveCrossing();
     await waitFor(() =>
@@ -838,7 +838,7 @@ describe('ContinuousView scroll behaviour', () => {
   });
 
   it('commits the deferred relayout via the fallback timeout when scrollend never fires', () => {
-    // Browsers without `scrollend` (or when the target was already centred, so no scroll happens)
+    // Browsers without `scrollend` (or when the target was already centered, so no scroll happens)
     // must still commit the deferred relayout. A backstop timeout covers that case. Fake timers are
     // installed before render so every scheduled timer is captured, then advanced past the fallback.
     jest.useFakeTimers();
@@ -868,7 +868,7 @@ describe('ContinuousView scroll behaviour', () => {
     }
   });
 
-  it('scrolls with the nearest-block, centre-inline placement', () => {
+  it('scrolls with the nearest-block, center-inline placement', () => {
     const book = makeBook();
     render(
       <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
@@ -880,13 +880,13 @@ describe('ContinuousView scroll behaviour', () => {
     );
   });
 
-  it('re-centres the focused group when a view option toggles', async () => {
+  it('re-centers the focused group when a view option toggles', async () => {
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
     scrollIntoViewMock.mockClear();
 
-    // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centres.
+    // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centers.
     rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
     await waitFor(() =>
       expect(scrollIntoViewMock).toHaveBeenCalledWith(
@@ -895,7 +895,7 @@ describe('ContinuousView scroll behaviour', () => {
     );
 
     scrollIntoViewMock.mockClear();
-    // Toggling simplifyPhrases likewise re-centres.
+    // Toggling simplifyPhrases likewise re-centers.
     rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
     await waitFor(() =>
       expect(scrollIntoViewMock).toHaveBeenCalledWith(

@@ -57,7 +57,7 @@ type AnalysisStoreProviderProps = Readonly<{
   onSave?: (analysis: TextAnalysis) => void;
   /**
    * Optional spy called after each gloss write. Intended for test observability only — has no
-   * effect on store behaviour.
+   * effect on store behavior.
    */
   onGlossChange?: (tokenRef: string, value: string) => void;
 }>;

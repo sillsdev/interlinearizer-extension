@@ -19,14 +19,14 @@ export type ArcSplitTarget = {
 /**
  * Visual emphasis of a phrase's arc and split button. `focused` is the focused phrase, `hovered` is
  * hovered (directly or via a link-icon candidate) but not focused, and `unfocused` is everything
- * else. Drives both the arc's SVG layer and its button's z-index/colour.
+ * else. Drives both the arc's SVG layer and its button's z-index/color.
  */
 type EmphasisTier = 'focused' | 'hovered' | 'unfocused';
 
 /**
  * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered (6) > focused
  * (4) > dimmed (2) — above each tier's own arc line but below the token row — so the button under
- * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The colour matches
+ * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The color matches
  * the arc: focused foreground like its full-foreground arc, hovered in muted foreground, unfocused
  * faint until its phrase is hovered or focused.
  */
@@ -58,7 +58,7 @@ const SPLIT_PREVIEW_FADED_STROKE = { stroke: 'var(--border)', strokeOpacity: 0.3
 type ArcOverlayProps = Readonly<{
   /** SVG arc path strings to draw above the token row, plus their midpoints for the split button. */
   arcPaths: ArcPath[];
-  /** Current phrase-interaction mode; drives stroke colour and whether split buttons are rendered. */
+  /** Current phrase-interaction mode; drives stroke color and whether split buttons are rendered. */
   phraseMode: PhraseMode;
   /** PhraseId currently hovered anywhere in the interlinearizer, or `undefined` for none. */
   hoveredPhraseId: string | undefined;

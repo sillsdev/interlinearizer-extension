@@ -22,7 +22,7 @@ import { NO_SLOT_FOCUS } from '../utils/token-layout';
  * @param props - Component props
  * @param props.phraseId - ID of the `PhraseAnalysis` to read/write.
  * @param props.disabled - When true, the input is read-only.
- * @param props.onFocus - Called when the input receives focus; used to centre this phrase in the
+ * @param props.onFocus - Called when the input receives focus; used to center this phrase in the
  *   strip.
  * @returns An input element sized to its content.
  */

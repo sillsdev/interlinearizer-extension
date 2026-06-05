@@ -49,9 +49,9 @@ const STRIP_FADE_MS = 500;
  * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an
  * internal-nav smooth scroll. The relayout normally fires on the scroll container's `scrollend`
  * event (adaptive to however long the animation actually takes); this timeout only fires when
- * `scrollend` is unavailable or never emitted (the target was already centred, so no scroll
+ * `scrollend` is unavailable or never emitted (the target was already centered, so no scroll
  * occurred). Sized to comfortably outlast a one-phrase smooth scroll on slow hardware so it never
- * pre-empts a real `scrollend`.
+ * preempts a real `scrollend`.
  */
 const SCROLL_SETTLE_FALLBACK_MS = 600;
 
@@ -100,7 +100,7 @@ type ContinuousViewProps = Readonly<{
    * focus and scrolls into view.
    */
   onFocusedTokenRefChange: (ref: string) => void;
-  /** Current phrase-interaction mode; controls token click behaviour in the strip. */
+  /** Current phrase-interaction mode; controls token click behavior in the strip. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
@@ -127,7 +127,7 @@ type ContinuousViewProps = Readonly<{
  * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
  * or chapter boundaries are shown — the strip is fully continuous.
  *
- * Scroll position is derived from `focusedTokenRef`: the strip always centres the group containing
+ * Scroll position is derived from `focusedTokenRef`: the strip always centers the group containing
  * that token. Arrow buttons advance or retreat focus by one group and notify the parent; the parent
  * echoes the new ref back through `focusedTokenRef`. The previous/next arrows are disabled when the
  * first/last phrase is focused.
@@ -271,7 +271,7 @@ export default function ContinuousView({
   /**
    * Ref to the fixed-width clipping viewport that wraps the content row. Because the inner row is
    * `w-max` (sized to its content), this outer element is the one that actually scrolls when
-   * `scrollIntoView` centres a phrase, so its `scrollend` event is what signals the animation has
+   * `scrollIntoView` centers a phrase, so its `scrollend` event is what signals the animation has
    * settled.
    */
   // eslint-disable-next-line no-null/no-null
@@ -484,7 +484,7 @@ export default function ContinuousView({
       //
       // Prefer the browser's `scrollend` event so the relayout lands the instant the animation
       // finishes — adaptive to hardware, no guessed duration. `scrollend` is not universal and never
-      // fires when the target was already centred (no scroll happens), so a timeout backstops both
+      // fires when the target was already centered (no scroll happens), so a timeout backstops both
       // cases. Whichever fires first wins; the other is torn down.
       // `scrollIntoView` scrolls the nearest scrollable ancestor. Depending on layout that can be
       // either the fixed-width clipping viewport or the content row, so listen on both — whichever
@@ -516,17 +516,17 @@ export default function ContinuousView({
     };
   }, [focusPhraseIndex, commitPendingActiveSegment]);
 
-  // Keep the centre anchored across the deferred inactive-link relayout. When `committedActiveSegmentId`
+  // Keep the center anchored across the deferred inactive-link relayout. When `committedActiveSegmentId`
   // flips (after an internal-nav scroll settles), inactive link icons appear/disappear, shifting
-  // every box. Re-centring the focused group synchronously — before the browser paints — cancels the
-  // shift at the centre, so the icons change only on either side and the focused phrase stays put. A
+  // every box. Re-centering the focused group synchronously — before the browser paints — cancels the
+  // shift at the center, so the icons change only on either side and the focused phrase stays put. A
   // `useLayoutEffect` (not rAF) is essential: it runs in the same frame as the relayout, so the shift
-  // never paints. The first run is skipped because the initial centre is established by the scroll
+  // never paints. The first run is skipped because the initial center is established by the scroll
   // effect's instant jump.
-  const skipActiveSegmentRecentreRef = useRef(true);
+  const skipActiveSegmentRecenterRef = useRef(true);
   useLayoutEffect(() => {
-    if (skipActiveSegmentRecentreRef.current) {
-      skipActiveSegmentRecentreRef.current = false;
+    if (skipActiveSegmentRecenterRef.current) {
+      skipActiveSegmentRecenterRef.current = false;
       return;
     }
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
@@ -539,8 +539,8 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committedActiveSegmentId]);
 
-  // Re-centre the focused group when a view option toggles. Hiding/showing link buttons and phrase
-  // controls changes the strip's layout, so the previously-centred group drifts off-centre; snap it
+  // Re-center the focused group when a view option toggles. Hiding/showing link buttons and phrase
+  // controls changes the strip's layout, so the previously-centered group drifts off-center; snap it
   // back into view after the layout settles. Deferred via rAF so the measurement reflects the new
   // (post-toggle) widths rather than the pre-toggle ones.
   useEffect(() => {
@@ -553,7 +553,7 @@ export default function ContinuousView({
     });
     return () => cancelAnimationFrame(rafId);
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
-    // only re-centres in response to layout-affecting option toggles.
+    // only re-centers in response to layout-affecting option toggles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hideInactiveLinkButtons, simplifyPhrases]);
 

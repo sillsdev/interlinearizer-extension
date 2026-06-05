@@ -4,8 +4,9 @@ import type { PhraseMode } from '../types/phrase-mode';
 // #region Constants
 
 /**
- * Half the height of a floating phrase-controls pill (px). The pill is centred on the line it rides
- * (arc top, or box top when no arc), so only this half extends above into the top-padding zone.
+ * Half the height of a floating phrase-controls pill (px). The pill is centered on the line it
+ * rides (arc top, or box top when no arc), so only this half extends above into the top-padding
+ * zone.
  */
 const CONTROLS_HALF_HEIGHT_PX = 12;
 
@@ -334,7 +335,7 @@ export function getArcStrokeProps(
  * x-extent its run occupies there — that extent is what can collide with other runs on the
  * channel.
  *
- * A same-row run spans between the two box centres; a cross-row run spans only from its box centre
+ * A same-row run spans between the two box centers; a cross-row run spans only from its box center
  * out to the side gutter (the descent happens off in the gutter, not across to the other column).
  */
 type ArcSegment = {
@@ -352,12 +353,12 @@ type ArcSegment = {
 };
 
 /**
- * Greedy interval-graph colouring shared by {@link assignSegmentLevels} and
- * {@link assignGutterLanes}: walks `items` in order, giving each the lowest level not already taken
- * by an earlier item it `conflicts` with. The two wrappers differ only in their pre-sort and
- * conflict predicate (which axis they overlap on).
+ * Greedy interval-graph coloring shared by {@link assignSegmentLevels} and {@link assignGutterLanes}:
+ * walks `items` in order, giving each the lowest level not already taken by an earlier item it
+ * `conflicts` with. The two wrappers differ only in their pre-sort and conflict predicate (which
+ * axis they overlap on).
  *
- * @param items - The items to colour, pre-sorted into the order they should be assigned.
+ * @param items - The items to color, pre-sorted into the order they should be assigned.
  * @param conflicts - Returns whether two items overlap and so must take different levels.
  * @returns Map from each item to its assigned level. 0 is the level nearest the boxes — outermost
  *   nesting for segments, the lane nearest the content edge for descents.
@@ -383,11 +384,11 @@ function assignLevels<T>(items: readonly T[], conflicts: (a: T, b: T) => boolean
  * x-spans overlap, since arc runs only collide within a row's shared top channel; runs on different
  * rows never conflict even when their x-spans overlap.
  *
- * Each run is levelled on its own — a cross-row arc's upper and lower runs are coloured
- * independently against their respective rows — so an inter-row arc's bottom run rises only as far
- * as its own row's overlaps demand. Cross-row runs share the same top channel as same-row runs (not
- * an inter-row gap), so the two kinds do conflict when they share a row, keeping rerouted arcs
- * aware of the same-row brackets they cross.
+ * Each run is leveled on its own — a cross-row arc's upper and lower runs are colored independently
+ * against their respective rows — so an inter-row arc's bottom run rises only as far as its own
+ * row's overlaps demand. Cross-row runs share the same top channel as same-row runs (not an
+ * inter-row gap), so the two kinds do conflict when they share a row, keeping rerouted arcs aware
+ * of the same-row brackets they cross.
  *
  * @param segments - All arc segments across every phrase.
  * @returns Map from each segment to its assigned nesting level (0 = outermost).
@@ -402,8 +403,8 @@ function assignSegmentLevels(segments: ArcSegment[]): Map<ArcSegment, number> {
  * Two descents on the same `side` whose `[top, bottom]` spans overlap collide if routed down one
  * lane, so they get different lanes.
  *
- * This is a separate axis from {@link ArcSegment} levelling, which deconflicts the horizontal runs.
- * A descent nested vertically inside a wider one (e.g. C..D inside A..F) shares no run row with it,
+ * This is a separate axis from {@link ArcSegment} leveling, which deconflicts the horizontal runs. A
+ * descent nested vertically inside a wider one (e.g. C..D inside A..F) shares no run row with it,
  * so segment levels never separate them — only this lane assignment does.
  */
 type GutterDescent = {
@@ -465,7 +466,7 @@ type ArcState = {
   maxLevel: number;
   /**
    * Horizontal padding (px) the strip must reserve on its left so the leftmost cross-row gutter
-   * lane isn't clipped or crowded against neighbouring content. Zero when nothing routes down the
+   * lane isn't clipped or crowded against neighboring content. Zero when nothing routes down the
    * left.
    */
   leftPadding: number;
@@ -513,7 +514,7 @@ function makeArcSegment(phraseId: string, row: number, x1: number, x2: number): 
   return { phraseId, row, left: Math.min(x1, x2), right: Math.max(x1, x2) };
 }
 
-/** A same-row box-pair: one run between the two box centres, levelled to avoid overlaps. */
+/** A same-row box-pair: one run between the two box centers, leveled to avoid overlaps. */
 type SameRowPair = {
   phraseId: string;
   a: ContainerRect;
@@ -523,7 +524,7 @@ type SameRowPair = {
 };
 
 /**
- * A cross-row box-pair: two independently-levelled runs — one per row, each from box centre to the
+ * A cross-row box-pair: two independently-leveled runs — one per row, each from box center to the
  * chosen side gutter — plus the side (`nearerLeft`). The second pass reads each run's level from
  * `upperSeg`/`lowerSeg`.
  */
@@ -616,7 +617,7 @@ function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
 /**
  * Measures all `[data-phrase-box]` elements inside `container` and computes SVG arc paths (in
  * container-relative coordinates) connecting each phrase's discontiguous boxes — same-row upward
- * brackets and cross-row brackets. Same-row arcs are levelled so they don't overlap; cross-row arcs
+ * brackets and cross-row brackets. Same-row arcs are leveled so they don't overlap; cross-row arcs
  * rise into the upper row's top channel then drop down a side gutter (the side nearer the arc's
  * average x, ties left), one lane further out per descent overlap so legs never cross a box.
  *
@@ -629,7 +630,7 @@ export function computeAllArcPaths(container: Element): ArcState {
 
   /**
    * Builds a {@link SameRowPair} for two boxes that share a row. The single arc run spans between
-   * their centres, anchored to the row's normalised top channel (minimum box top on the row) so it
+   * their centers, anchored to the row's normalized top channel (minimum box top on the row) so it
    * conflicts correctly with cross-row runs on the same channel.
    *
    * @param phraseId - The phrase the pair belongs to.
@@ -652,8 +653,8 @@ export function computeAllArcPaths(container: Element): ArcState {
   };
 
   /**
-   * Builds a {@link CrossRowPair} for two boxes on different rows. Emits two independently-levelled
-   * segments — one per row's top channel, each spanning from its box centre to the chosen side
+   * Builds a {@link CrossRowPair} for two boxes on different rows. Emits two independently-leveled
+   * segments — one per row's top channel, each spanning from its box center to the chosen side
    * gutter — so a nested arc routed out the opposite side doesn't conflict. The side is fixed here
    * (average x vs content edges, ties left) before levels exist.
    *
@@ -675,13 +676,13 @@ export function computeAllArcPaths(container: Element): ArcState {
     const x1 = (a.left + a.right) / 2;
     const x2 = (b.left + b.right) / 2;
     // Side is geometric (average x vs content edges) and independent of level, so it can be fixed
-    // here, before levels exist. Tie favours the left.
+    // here, before levels exist. Tie favors the left.
     const midpointX = (x1 + x2) / 2;
     const nearerLeft = midpointX - contentLeft <= contentRight - midpointX;
     // A cross-row bracket has TWO runs — one per row's top channel — joined by a gutter descent. Each
     // can collide independently on its own row, so emit a segment for both and level them separately;
     // otherwise the bottom run's height would track the upper run's overlaps. Each run spans from its
-    // box centre to the chosen side edge (the lane sits just past it).
+    // box center to the chosen side edge (the lane sits just past it).
     const sideX = nearerLeft ? contentLeft : contentRight;
     const upperSeg = makeArcSegment(phraseId, Math.round(rowTopFor(a.top, a.bottom)), x1, sideX);
     const lowerSeg = makeArcSegment(phraseId, Math.round(rowTopFor(b.top, b.bottom)), x2, sideX);
@@ -718,7 +719,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   /**
    * Reads a segment's assigned nesting level.
    *
-   * @param seg - The segment whose level is wanted; always present, having been levelled above.
+   * @param seg - The segment whose level is wanted; always present, having been leveled above.
    * @returns The segment's nesting level (0 = outermost).
    */
   const levelOf = (seg: ArcSegment): number =>
@@ -739,7 +740,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   });
 
   // Cross-row arcs route down a side gutter. A descent's extent depends on each run's stem, so
-  // resolve the geometry first, build a GutterDescent per arc, then colour those into lanes. The
+  // resolve the geometry first, build a GutterDescent per arc, then color those into lanes. The
   // lane (not the run level) drives the gutter offset, so vertically-nested arcs (C..D inside A..F)
   // take different lanes. Endpoints anchor on each row's top line via rowTopFor.
   const crossRowGeometries = crossRowPairs.map(
@@ -924,8 +925,8 @@ export function roundedPolyline(points: { x: number; y: number }[], r: number): 
  * Builds the SVG path for a cross-row arc between two boxes on different rows, routed so it never
  * passes behind a box: up from the upper box into its row's top channel (`aStem` above the box),
  * across to the gutter at `gutterX`, down the gutter, across into the lower row's channel (`bStem`
- * above that box), then down into its top. Each run sits its own (independently-levelled) stem
- * above its box; keeping the whole descent in the gutter is what avoids the boxes between the rows.
+ * above that box), then down into its top. Each run sits its own (independently-leveled) stem above
+ * its box; keeping the whole descent in the gutter is what avoids the boxes between the rows.
  * Coordinates are scroll-space.
  *
  * @param a - Scroll-space rect (top edge) of the earlier (upper) box.
@@ -934,7 +935,7 @@ export function roundedPolyline(points: { x: number; y: number }[], r: number): 
  * @param bStem - Stem height (px) of the lower run above the lower box top.
  * @param gutterX - Scroll-space x of the box-free side gutter the descent travels down.
  * @returns The SVG path `d`, the midpoint on the upper run line (for the split button), and the
- *   x-extent of the upper run (box centre → gutter) the button slides along.
+ *   x-extent of the upper run (box center → gutter) the button slides along.
  */
 export function buildCrossRowArcPath(
   a: { left: number; right: number; top: number },

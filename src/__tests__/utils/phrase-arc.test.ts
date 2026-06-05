@@ -51,7 +51,7 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
 /**
  * Recovers a phrase arc's nesting level from its computed path. A run line sits at `rowTop -
  * (ARC_BASE_STEM + level * ARC_LEVEL_STEP)`, so inverting `midY` against the row top yields the
- * level the levelling assigned — the public stand-in for the removed `levelByPhraseId`.
+ * level the leveling assigned — the public stand-in for the removed `levelByPhraseId`.
  *
  * @param paths - Computed arc paths from {@link computeAllArcPaths}.
  * @param phraseId - The phrase whose level is wanted.
@@ -154,7 +154,7 @@ describe('buildSameRowArcPath', () => {
     expect(midY).toBeLessThan(50);
   });
 
-  it('reports the run extent as the span between the two box centres', () => {
+  it('reports the run extent as the span between the two box centers', () => {
     const a = { left: 0, right: 20, top: 50 };
     const b = { left: 80, right: 100, top: 50 };
     const { runLeft, runRight } = buildSameRowArcPath(a, b, ARC_BASE_STEM);
@@ -198,7 +198,7 @@ describe('buildCrossRowArcPath', () => {
     const a = { left: 10, right: 30, top: 100 };
     const b = { left: 60, right: 80, top: 200 };
     const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM, ARC_BASE_STEM, -10);
-    // The final L lands on box B's centre/top (cx2=70, top=200).
+    // The final L lands on box B's center/top (cx2=70, top=200).
     expect(d).toMatch(/L 70 200$/);
   });
 
@@ -216,7 +216,7 @@ describe('buildCrossRowArcPath', () => {
 
   it('drops the vertical leg down the gutter x, never through the box columns', () => {
     // Gutter sits left of both boxes at x=-10. The descent from the run line down to the lower row
-    // happens entirely at x=-10, so no vertical segment ever sits at the box centres (20 or 70).
+    // happens entirely at x=-10, so no vertical segment ever sits at the box centers (20 or 70).
     const a = { left: 10, right: 30, top: 100 };
     const b = { left: 60, right: 80, top: 200 };
     const { d } = buildCrossRowArcPath(a, b, ARC_BASE_STEM, ARC_BASE_STEM, -10);
@@ -248,8 +248,8 @@ describe('buildCrossRowArcPath', () => {
     expect(midY).toBe(100 - stem);
   });
 
-  it('reports the run extent from the upper box centre out to the gutter', () => {
-    // Upper box centre cx1=20, gutter to the left at x=-10: the button rides the upper run between.
+  it('reports the run extent from the upper box center out to the gutter', () => {
+    // Upper box center cx1=20, gutter to the left at x=-10: the button rides the upper run between.
     const a = { left: 10, right: 30, top: 100 };
     const b = { left: 60, right: 80, top: 200 };
     const { runLeft, runRight } = buildCrossRowArcPath(a, b, ARC_BASE_STEM, ARC_BASE_STEM, -10);
@@ -436,7 +436,7 @@ describe('computeAllArcPaths', () => {
     // Regression: p1 is a cross-row arc on the left of the strip (upper box cx=30) that routes down
     // the LEFT gutter, so its upper run only spans cx 30 → left edge. p2 is a cross-row arc whose
     // upper box (cx=330) sits to the RIGHT and routes down the RIGHT gutter (run spans cx 330 →
-    // right edge). Their box-centre spans overlap, but their actual runs occupy opposite sides of
+    // right edge). Their box-center spans overlap, but their actual runs occupy opposite sides of
     // row 0's channel, so they must NOT conflict — neither is bumped to level 1.
     const container = buildContainer([
       { phraseId: 'p1', r: rect(10, 0, 40, 20) },
@@ -535,7 +535,7 @@ describe('computeAllArcPaths', () => {
     expect(p1).toBeDefined();
     // The left gutter is content-left (10) minus the margin; the descent rides that x.
     expect(p1?.d).toContain(`${10 - GUTTER_MARGIN_PX} `);
-    // The run midpoint sits between the upper box centre (30) and the left gutter → left of 30.
+    // The run midpoint sits between the upper box center (30) and the left gutter → left of 30.
     expect(p1?.midX).toBeLessThan(30);
   });
 
@@ -551,14 +551,14 @@ describe('computeAllArcPaths', () => {
     expect(p1).toBeDefined();
     // Right gutter is content-right (250) plus the margin.
     expect(p1?.d).toContain(`${250 + GUTTER_MARGIN_PX}`);
-    // The run midpoint sits between the upper box centre (230) and the right gutter → right of 230.
+    // The run midpoint sits between the upper box center (230) and the right gutter → right of 230.
     expect(p1?.midX).toBeGreaterThan(230);
   });
 
   it('chooses the gutter side from the average of origin and target, not the origin alone', () => {
-    // An anchor box fixes the content to x≈[0,650]. p1's upper box sits left of centre (cx=300) and
+    // An anchor box fixes the content to x≈[0,650]. p1's upper box sits left of center (cx=300) and
     // its target is far right (cx=630); the average (465) is nearer the RIGHT edge, so even though
-    // the origin alone is past centre it routes down the RIGHT gutter from the averaged midpoint.
+    // the origin alone is past center it routes down the RIGHT gutter from the averaged midpoint.
     const container = buildContainer([
       { phraseId: 'anchor', r: rect(0, 0, 10, 20) },
       { phraseId: 'anchor', r: rect(200, 0, 10, 20) },
@@ -569,7 +569,7 @@ describe('computeAllArcPaths', () => {
     const p1 = paths.find((p) => p.phraseId === 'p1');
     // Right gutter is content-right (650) plus the level-0 margin.
     expect(p1?.d).toContain(`${650 + GUTTER_MARGIN_PX}`);
-    // The split-button midpoint rides the run between the upper box centre (300) and the gutter.
+    // The split-button midpoint rides the run between the upper box center (300) and the gutter.
     expect(p1?.midX).toBeGreaterThan(300);
   });
 
@@ -736,7 +736,7 @@ describe('computeAllArcPaths', () => {
     // on its row at level 0. Their lower runs both reach the left gutter on row 300 and overlap, so
     // they take distinct levels (0 and 1). p1's lower run is the wider one, so it is bumped to level
     // 1 while p1's own upper run stays at level 0 — proving the bottom horizontal levels on its own
-    // row, not its arc's upper run. A far-right box pulls the content centre right so both midpoints
+    // row, not its arc's upper run. A far-right box pulls the content center right so both midpoints
     // count as nearer-left.
     const container = buildContainer([
       { phraseId: 'p1', r: rect(90, 0, 20, 20) },
@@ -980,7 +980,7 @@ describe('deconflictSplitButtons', () => {
    * Builds an `ArcPath` whose button position and run extent are the only fields that matter to
    * {@link deconflictSplitButtons}; `d`/`phraseId`/`splitAfterTokenRef` are placeholders.
    *
-   * @param midX - Button x centre.
+   * @param midX - Button x center.
    * @param midY - Button y (channel line).
    * @param runLeft - Left bound of the arc run.
    * @param runRight - Right bound of the arc run.
@@ -1031,7 +1031,7 @@ describe('deconflictSplitButtons', () => {
     deconflictSplitButtons(paths);
     expect(shortRun.midX).toBe(50);
     expect(longRun.midX).not.toBe(50);
-    // The mover is pushed fully clear by the overlap (whole button width, since centres coincided).
+    // The mover is pushed fully clear by the overlap (whole button width, since centers coincided).
     expect(Math.abs(longRun.midX - shortRun.midX)).toBeGreaterThanOrEqual(SPLIT_BUTTON_WIDTH_PX);
   });
 

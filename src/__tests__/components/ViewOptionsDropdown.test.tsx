@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event';
 import ViewOptionsDropdown from '../../components/controls/ViewOptionsDropdown';
 
 beforeEach(() => {
-  // Restore key-as-value behaviour cleared by resetMocks: true.
+  // Restore key-as-value behavior cleared by resetMocks: true.
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [

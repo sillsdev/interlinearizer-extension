@@ -169,26 +169,36 @@ function InterlinearizerInner({
   }, []);
 
   /**
-   * Scrolls the element marked `aria-current="true"` inside the scroll container into view at the
-   * top of the list.
+   * Recenters the segment list on the active verse with the same fade-and-rebuild used for external
+   * navigation. Used by the LocateFixed button and the continuous-scroll mode switch. Always fades
+   * (even when the verse is already on screen) so the active verse is guaranteed to land in view —
+   * a plain `scrollIntoView` of an `aria-current` element silently no-ops when the verse is outside
+   * the render window, leaving the list parked wherever it was.
+   *
+   * `recenterOnActive` is captured via ref so this callback's identity stays stable.
    */
+  const recenterOnActiveRef = useRef<() => void>(() => undefined);
   const snapToActive = useCallback(() => {
-    const container = scrollContainerRef.current;
-    const active = container?.querySelector('[aria-current="true"]');
-    /* v8 ignore next -- active is always found when a verse is rendered; guard for empty lists */
-    active?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    recenterOnActiveRef.current();
   }, []);
 
   // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
   // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
   // outside the list.
-  const { windowSegments, isFaded, displayScrRef, topSentinelRef, bottomSentinelRef } =
-    useSegmentWindow({
-      book,
-      scrRef,
-      scrollContainerRef,
-      internalNavRef,
-    });
+  const {
+    windowSegments,
+    isFaded,
+    displayScrRef,
+    topSentinelRef,
+    bottomSentinelRef,
+    recenterOnActive,
+  } = useSegmentWindow({
+    book,
+    scrRef,
+    scrollContainerRef,
+    internalNavRef,
+  });
+  recenterOnActiveRef.current = recenterOnActive;
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
@@ -217,8 +227,15 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRevert, updatePhrase, setPhraseMode]);
 
-  // Snap the segment list to the active verse when switching modes.
+  // Recenter the segment list on the active verse when switching between continuous and segment
+  // modes. Skips the initial mount: the window is already built centered on the anchor there, so a
+  // recenter would needlessly fade. Only an actual mode toggle should fade-and-recenter.
+  const didMountModeSwitchRef = useRef(false);
   useEffect(() => {
+    if (!didMountModeSwitchRef.current) {
+      didMountModeSwitchRef.current = true;
+      return;
+    }
     snapToActive();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [continuousScroll]);
@@ -332,7 +349,7 @@ function InterlinearizerInner({
             <div className="tw:sticky tw:top-0 tw:z-10 tw:flex tw:justify-end tw:pointer-events-none">
               <button
                 aria-label="Scroll to active verse"
-                className="tw:rounded tw:p-1 tw:text-foreground tw:hover:bg-muted/50 tw:pointer-events-auto"
+                className="tw:rounded tw:p-1 tw:text-foreground tw:bg-background tw:hover:bg-muted/50 tw:pointer-events-auto"
                 tabIndex={-1}
                 onClick={snapToActive}
                 type="button"
@@ -358,6 +375,7 @@ function InterlinearizerInner({
                   focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
                   hoveredPhraseId={hoveredPhraseId}
                   isActive={
+                    seg.startRef.book === displayScrRef.book &&
                     seg.startRef.chapter === displayScrRef.chapterNum &&
                     seg.startRef.verse === displayScrRef.verseNum
                   }

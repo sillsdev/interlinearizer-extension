@@ -33,6 +33,19 @@ const MAX_WINDOW_SIZE = 30;
  */
 const SENTINEL_ROOT_MARGIN_PX = 400;
 
+/**
+ * Maximum number of animation frames the post-recenter re-snap loop will run before giving up.
+ * After a recenter the freshly-mounted segments don't reach their final heights in a single frame —
+ * `useArcPaths` measures and applies arc padding across several `requestAnimationFrame` passes — so
+ * one re-snap can land the active verse against stale heights (off screen, with the scroll position
+ * pinned to an edge so the user can't scroll back toward it). The loop re-snaps each frame until
+ * the resulting `scrollTop` stops changing (the layout has settled), which normally takes only a
+ * few frames; this cap backstops the loop so a layout that never quite settles can't spin forever.
+ * Sized to comfortably outlast arc-padding settling while staying well within the recenter fade so
+ * every correction lands behind the curtain.
+ */
+const RECENTER_RESNAP_MAX_FRAMES = 20;
+
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;
 
@@ -87,6 +100,12 @@ export interface UseSegmentWindowResult {
   topSentinelRef: (el: HTMLElement | null) => void;
   /** Ref callback for the invisible sentinel placed below the last segment. */
   bottomSentinelRef: (el: HTMLElement | null) => void;
+  /**
+   * Imperatively recenters the window on the active verse with a fade. Intended for the LocateFixed
+   * button: when the active verse is outside the render window `snapToActive` finds no
+   * `aria-current` element, so the button calls this instead.
+   */
+  recenterOnActive: () => void;
 }
 
 /**
@@ -202,6 +221,27 @@ export default function useSegmentWindow({
   const rangeRef = useRef(range);
   rangeRef.current = range;
 
+  // Latest recenter inputs, mirrored into refs so `triggerRecenter` can keep a stable identity. If
+  // these were closed over directly, `triggerRecenter` would get a new identity on every `anchorIndex`
+  // / `total` / `scrRef` change — and because the PAPI host hands `scrRef` back as a fresh object on
+  // many renders, that identity churn would re-run the recenter effect on renders where nothing
+  // recenter-worthy actually changed, whose cleanup would clear an in-flight fade timeout (and not
+  // reschedule it when `sameAnchor` holds), stranding the fade and leaving the window parked on its
+  // initial range. Reading through refs decouples the timer from that churn.
+  const anchorIndexRef = useRef(anchorIndex);
+  anchorIndexRef.current = anchorIndex;
+  const totalRef = useRef(total);
+  totalRef.current = total;
+  const scrRefRef = useRef(scrRef);
+  scrRefRef.current = scrRef;
+
+  /**
+   * Handle of the in-flight recenter fade timeout, or `undefined` when no recenter is mid-flight.
+   * Held in a ref (not cleared by effect cleanup) so an incidental re-render can never cancel a
+   * running fade — only a superseding recenter or unmount clears it.
+   */
+  const recenterTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   /**
    * Extends the window by {@link EXTEND_CHUNK} segments at one edge, culling the opposite edge back
    * to {@link MAX_WINDOW_SIZE}. When prepending, records the container's current `scrollHeight` so
@@ -260,21 +300,64 @@ export default function useSegmentWindow({
     }
   }, [range, scrollContainerRef, snapActiveToTop]);
 
-  // Re-snap after the browser has painted the recentered window. The freshly-mounted segments don't
-  // reach their final heights synchronously — arc padding is measured and applied on a later frame —
-  // so the layout-effect snap above can compute its target against stale heights and leave the verse
-  // off screen (above the viewport: you'd have to scroll up to find it). Deferring a second snap past
-  // paint re-anchors the verse against the settled layout. Behind the fade, so the correction is
-  // never seen. Skips the initial mount (epoch 0); only real recenters re-snap.
+  // Re-snap after the browser has painted the recentered window, repeatedly, until the layout
+  // settles. The freshly-mounted segments don't reach their final heights synchronously — arc
+  // padding is measured and applied by `useArcPaths` across *several* later frames (a ResizeObserver
+  // → rAF → setState chain, not a single frame) — so a one-shot re-snap can still compute its target
+  // against stale heights and leave the verse off screen, with the scroll position pinned to an edge
+  // so the user can't scroll back toward it (the reported "verse lands at the bottom / above the
+  // viewport, and scrolling one way does nothing" bugs). Snapping each frame until the resulting
+  // `scrollTop` stops changing re-anchors the verse against whatever the *final* settled heights turn
+  // out to be, however many frames that takes. The whole loop runs behind the fade, so none of the
+  // intermediate corrections are seen; a frame cap backstops a layout that never fully settles.
+  // Skips the initial mount (epoch 0); only real recenters re-snap.
   const isInitialEpochRef = useRef(true);
   useEffect(() => {
     if (isInitialEpochRef.current) {
       isInitialEpochRef.current = false;
       return undefined;
     }
-    const rafId = requestAnimationFrame(snapActiveToTop);
+    let rafId = 0;
+    let framesLeft = RECENTER_RESNAP_MAX_FRAMES;
+    let lastScrollTop = Number.NaN;
+    const step = () => {
+      snapActiveToTop();
+      const settledScrollTop =
+        /* v8 ignore next -- container is always mounted while the recentered window renders */
+        scrollContainerRef.current?.scrollTop ?? lastScrollTop;
+      framesLeft -= 1;
+      // Stop once a snap leaves the scroll position unchanged (layout has settled) or the frame cap
+      // is hit; otherwise schedule another snap against the next frame's (possibly taller) layout.
+      if (settledScrollTop === lastScrollTop || framesLeft <= 0) return;
+      lastScrollTop = settledScrollTop;
+      rafId = requestAnimationFrame(step);
+    };
+    rafId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(rafId);
-  }, [recenterEpoch, snapActiveToTop]);
+  }, [recenterEpoch, snapActiveToTop, scrollContainerRef]);
+
+  /**
+   * Rebuilds the window centered on the active verse and fades it into view. Shared by both the
+   * external-navigation effect and the imperative `recenterOnActive` callback.
+   *
+   * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
+   * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade
+   * (clearing the prior timer) rather than letting incidental effect cleanups cancel it. This keeps
+   * a running fade from being stranded by an unrelated re-render — the failure that left the list
+   * parked on its initial range and the strip on the book's first phrase.
+   */
+  const triggerRecenter = useCallback(() => {
+    if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
+    setIsFaded(true);
+    recenterTimeoutRef.current = setTimeout(() => {
+      recenterTimeoutRef.current = undefined;
+      pendingRecenterSnapRef.current = true;
+      setRange(buildCenteredRange(anchorIndexRef.current, totalRef.current));
+      setRecenterEpoch((n) => n + 1);
+      setDisplayScrRef(scrRefRef.current);
+      setIsFaded(false);
+    }, RECENTER_FADE_MS);
+  }, []);
 
   // Recenter on external navigation. An `scrRef` change the parent originated internally (a click in
   // this list, or strip arrow nav echoed back) keys `internalNavRef` to the new verse: consume it
@@ -283,29 +366,32 @@ export default function useSegmentWindow({
   // verse, snap that verse into view behind the fade, then fade back in — on the same clock as the
   // strip so the two views fade as one. The fade fires for every external nav, even one already
   // inside the window, so the two views can never disagree about whether a fade is happening.
-  const prevAnchorRef = useRef(anchorIndex);
+  //
+  // `prevAnchorRef` tracks both the anchor index AND the segments identity so that a book change
+  // (which can produce the same anchor index as the previous book) still triggers a recenter.
+  const prevAnchorRef = useRef<{ index: number; segments: readonly Segment[] }>({
+    index: anchorIndex,
+    segments,
+  });
   useEffect(() => {
-    if (anchorIndex === prevAnchorRef.current) return undefined;
-    prevAnchorRef.current = anchorIndex;
-    const isInternal = internalNavRef.current === verseKey(scrRef);
+    const sameAnchor =
+      anchorIndex === prevAnchorRef.current.index && segments === prevAnchorRef.current.segments;
+    if (sameAnchor) return;
+    prevAnchorRef.current = { index: anchorIndex, segments };
+    const currentScrRef = scrRefRef.current;
+    const isInternal = internalNavRef.current === verseKey(currentScrRef);
     internalNavRef.current = undefined;
     if (isInternal) {
-      setDisplayScrRef(scrRef);
-      return undefined;
+      setDisplayScrRef(currentScrRef);
+      return;
     }
-    setIsFaded(true);
-    const timeout = setTimeout(() => {
-      pendingRecenterSnapRef.current = true;
-      setRange(buildCenteredRange(anchorIndex, total));
-      setRecenterEpoch((n) => n + 1);
-      setDisplayScrRef(scrRef);
-      setIsFaded(false);
-    }, RECENTER_FADE_MS);
-    return () => clearTimeout(timeout);
-    // scrRef is read to key the internal-nav check; anchorIndex already captures every verse change
-    // we recenter on, so adding scrRef as a dep would only re-run this on no-op identity churn.
+    triggerRecenter();
+    // scrRef is read (via ref) only to key the internal-nav check; anchorIndex and segments already
+    // capture every verse/book change we recenter on, and triggerRecenter has a stable identity. The
+    // timeout is owned by triggerRecenter (recenterTimeoutRef), not torn down here, so an incidental
+    // re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchorIndex, total, internalNavRef]);
+  }, [anchorIndex, segments, internalNavRef, triggerRecenter]);
 
   // The mounted sentinel elements, held in state so the observer effect re-runs once they attach.
   // Ref callbacks only record the node; the actual observe happens in the effect below, which runs
@@ -363,5 +449,31 @@ export default function useSegmentWindow({
     [segments, range.start, range.end],
   );
 
-  return { windowSegments, isFaded, displayScrRef, topSentinelRef, bottomSentinelRef };
+  /**
+   * Imperative recenter for the LocateFixed button (and the continuous-scroll mode switch).
+   * Rebuilds the window centered on the active verse and fades it in, so the verse is brought into
+   * view even when it sits outside the current render window. Always fades — see the parent's
+   * `snapToActive`.
+   */
+  const recenterOnActive = useCallback(() => {
+    triggerRecenter();
+  }, [triggerRecenter]);
+
+  // Clear any in-flight recenter fade on unmount so the deferred range/snap/state updates don't run
+  // against a torn-down tree.
+  useEffect(
+    () => () => {
+      if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
+    },
+    [],
+  );
+
+  return {
+    windowSegments,
+    isFaded,
+    displayScrRef,
+    topSentinelRef,
+    bottomSentinelRef,
+    recenterOnActive,
+  };
 }

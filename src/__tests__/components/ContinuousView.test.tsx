@@ -524,6 +524,71 @@ describe('ContinuousView initial render', () => {
     const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
   });
+
+  it('falls back to focusedTokenRef when the lagging displayed ref is from another book', () => {
+    // During a book change displayFocusedTokenRef lags by one fade, so it briefly names a token from
+    // the previous book that no longer exists in the new book. The focus must follow the live
+    // focusedTokenRef (the new book's active verse) rather than collapsing to the book's first phrase.
+    const book = makeBook();
+    const { rerender } = render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
+      withAnalysisStore,
+    );
+
+    // Swap to a different book whose token refs share none of the previous book's. The displayed ref
+    // ('tok-2') is now absent; focusedTokenRef points at the new book's *second* phrase.
+    const otherBook: Book = {
+      id: 'MAT',
+      bookRef: 'MAT',
+      textVersion: '1',
+      segments: [
+        {
+          id: 'MAT 1:1',
+          startRef: { book: 'MAT', chapter: 1, verse: 1 },
+          endRef: { book: 'MAT', chapter: 1, verse: 1 },
+          baselineText: 'Alpha',
+          tokens: [
+            {
+              ref: 'mat-tok-0',
+              surfaceText: 'Alpha',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+          ],
+        },
+        {
+          id: 'MAT 1:2',
+          startRef: { book: 'MAT', chapter: 1, verse: 2 },
+          endRef: { book: 'MAT', chapter: 1, verse: 2 },
+          baselineText: 'Beta',
+          tokens: [
+            {
+              ref: 'mat-tok-1',
+              surfaceText: 'Beta',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 4,
+            },
+          ],
+        },
+      ],
+    };
+
+    scrollIntoViewMock.mockClear();
+    rerender(<ContinuousView {...requiredProps(otherBook, { focusedTokenRef: 'mat-tok-1' })} />);
+
+    // The scroll target is resolved through focusPhraseIndex, which falls back to focusedTokenRef
+    // ('mat-tok-1', the second phrase) rather than collapsing to phrase 0. So the element scrolled
+    // into view is the one containing "Beta", never "Alpha".
+    const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
+      el instanceof HTMLElement ? el.textContent : undefined,
+    );
+    expect(scrolledTexts.some((t) => t?.includes('Beta'))).toBe(true);
+    expect(scrolledTexts.some((t) => t?.includes('Alpha'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

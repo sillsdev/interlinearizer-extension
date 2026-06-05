@@ -231,13 +231,22 @@ export default function ContinuousView({
   /**
    * Group index of the displayed focused token, or `0` when nothing is focused. Single source of
    * truth for scroll position, windowing, arrow disabled state, and per-group focus highlighting.
+   *
+   * During a book change `displayFocusedTokenRef` lags the new book by one fade (it only catches up
+   * when the fade timeout fires), so for a few frames it names a token from the previous book that
+   * no longer exists in this book's `groupIndexByTokenRef`. Falling straight back to `0` then parks
+   * the strip on the new book's very first phrase instead of the verse the user navigated to. Fall
+   * back to the live `focusedTokenRef` first — the parent reseeds it to the new book's active verse
+   * on the book change — so the transient lands on the intended verse rather than book start.
    */
   const focusPhraseIndex = useMemo(() => {
-    if (displayFocusedTokenRef === undefined) return 0;
-    const gi = groupIndexByTokenRef.get(displayFocusedTokenRef);
-    /* v8 ignore next -- gi is always defined when displayFocusedTokenRef is set */
-    return gi === undefined ? 0 : clampIndex(gi, phraseGroups.length);
-  }, [displayFocusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
+    const resolved =
+      (displayFocusedTokenRef !== undefined
+        ? groupIndexByTokenRef.get(displayFocusedTokenRef)
+        : undefined) ??
+      (focusedTokenRef !== undefined ? groupIndexByTokenRef.get(focusedTokenRef) : undefined);
+    return resolved === undefined ? 0 : clampIndex(resolved, phraseGroups.length);
+  }, [displayFocusedTokenRef, focusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
 
   const [isVisible, setIsVisible] = useState(false);
 

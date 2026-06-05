@@ -654,17 +654,25 @@ describe('Interlinearizer', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('snap button calls scrollIntoView on the active segment', () => {
+  it('snap button fades, recenters, then scrolls the active segment to the top', () => {
+    jest.useFakeTimers();
     renderInterlinearizer({ book: GEN_1_1_BOOK });
 
     act(() => {
       screen.getByRole('button', { name: /scroll to active verse/i }).click();
     });
 
+    // The button always fade-recenters (so a verse outside the window still comes into view), so the
+    // snap only lands after the fade timeout rebuilds the window behind the curtain.
+    act(() => {
+      jest.advanceTimersByTime(RECENTER_FADE_MS);
+    });
+
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
       behavior: 'auto',
       block: 'start',
     });
+    jest.useRealTimers();
   });
 
   it('leaves focusedTokenRef undefined when switching off continuousScroll with no strip position and no matching segment', () => {

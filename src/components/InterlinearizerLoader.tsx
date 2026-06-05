@@ -38,7 +38,21 @@ export default function InterlinearizerLoader({
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+  const [rawScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+
+  /**
+   * `rawScrRef` with a chapter-level (verse 0) reference normalized to verse 1. Selecting a chapter
+   * in the scripture controls yields `verseNum: 0`, which names the chapter rather than a verse —
+   * no segment has verse 0, so the active-verse lookup, the `isActive` highlight, and the
+   * continuous strip's focus resolution would all miss, leaving the list parked on the book's first
+   * phrase with nothing highlighted. Mapping verse 0 to the chapter's first verse makes every
+   * downstream consumer resolve the intended verse. The raw reference still drives the editable nav
+   * controls so the user's chapter selection is reflected verbatim there.
+   */
+  const scrRef = useMemo(
+    () => (rawScrRef.verseNum === 0 ? { ...rawScrRef, verseNum: 1 } : rawScrRef),
+    [rawScrRef],
+  );
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -251,7 +265,7 @@ export default function InterlinearizerLoader({
         startAreaChildren={
           interfaceMode === 'power' ? (
             <ScriptureNavControls
-              scrRef={scrRef}
+              scrRef={rawScrRef}
               handleSubmit={setScrRef}
               scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}

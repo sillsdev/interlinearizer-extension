@@ -237,14 +237,19 @@ jest.mock('../../components/modals/ProjectModals', () => ({
   },
 }));
 
-/** Returns a `useWebViewScrollGroupScrRef` hook stub fixed to GEN 1:1. */
-function makeScrollGroupHook() {
+/**
+ * Returns a `useWebViewScrollGroupScrRef` hook stub fixed to a scripture reference.
+ *
+ * @param ref - The reference the stub reports; defaults to GEN 1:1.
+ * @returns A hook returning `[ref, noop setScrRef, undefined scrollGroupId, noop setter]`.
+ */
+function makeScrollGroupHook(ref: SerializedVerseRef = defaultScrRef) {
   return (): [
     SerializedVerseRef,
     (r: SerializedVerseRef) => void,
     number | undefined,
     (id: number | undefined) => void,
-  ] => [defaultScrRef, () => {}, undefined, () => {}];
+  ] => [ref, () => {}, undefined, () => {}];
 }
 
 /**
@@ -354,6 +359,46 @@ describe('InterlinearizerLoader', () => {
 
     expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+  });
+
+  it('normalizes a chapter-level (verse 0) reference to verse 1 before passing it to Interlinearizer', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        })}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 1,
+    });
+  });
+
+  it('passes a verse-level reference through to Interlinearizer unchanged', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 4,
+        })}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 4,
+    });
   });
 
   it('shows Loading when book data has not arrived', () => {

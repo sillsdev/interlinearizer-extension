@@ -393,12 +393,86 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    // The synchronous layout-effect snap has fired once; the post-paint re-snap is still pending.
+    // The synchronous layout-effect snap has fired once; the post-paint re-snap loop is still pending.
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-    // Flushing the requestAnimationFrame re-snaps against the now-settled layout.
+    // Flushing the first animation frame re-snaps against the now-painted layout.
     act(() => jest.advanceTimersByTime(16));
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps re-snapping across frames until the scroll position settles', () => {
+    const book = makeBook(60, 0);
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    // Layout-effect snap: 1.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // First frame: snaps (2) and records the resulting scrollTop, then schedules another frame
+    // because the position has not yet been observed twice.
+    act(() => jest.advanceTimersByTime(16));
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+
+    // Second frame: snaps (3); scrollTop is unchanged from the prior frame (jsdom has no layout), so
+    // the loop sees the position settled and stops scheduling further frames.
+    act(() => jest.advanceTimersByTime(16));
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+
+    // Further frames do not re-snap: the loop has terminated.
+    act(() => jest.advanceTimersByTime(16 * 5));
+    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops re-snapping at the frame cap when the scroll position never settles', () => {
+    const book = makeBook(60, 0);
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    // Make scrollTop change on every read so the settle check never short-circuits the loop; only
+    // the frame cap can stop it.
+    let scrollTop = 0;
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => {
+        scrollTop += 1;
+        return scrollTop;
+      },
+      set: () => {
+        // Ignore writes; the getter drives the ever-changing value.
+      },
+    });
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    // Layout-effect snap.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+
+    // Drive far more frames than the cap allows; the loop must stop after exactly the capped number
+    // of re-snaps rather than spinning forever.
+    act(() => jest.advanceTimersByTime(16 * 50));
+    // 1 layout-effect snap + the frame-capped re-snaps.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1 + 20);
   });
 
   it('does not re-snap on the initial mount, only after a recenter', () => {

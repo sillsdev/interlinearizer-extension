@@ -281,19 +281,27 @@ function mockBookData(
 }
 
 /**
- * Configures useOptimisticBooleanSetting to return the given state.
+ * Configures useOptimisticBooleanSetting to return the given state. Each setting key gets its own
+ * distinct `onChange` mock so wiring tests can verify that a given toggle is connected to the
+ * correct handler — a single shared mock would let a toggle wired to the wrong setting still pass.
  *
- * @param value - The current boolean value; defaults to `false`
- * @param onChange - The change handler; defaults to a jest.fn()
- * @param isLoading - Whether the setting is loading; defaults to `false`
+ * @param value - The current boolean value applied to every setting; defaults to `false`
+ * @param onChange - The change handler for every setting; defaults to a distinct jest.fn() per key
+ * @param isLoading - Whether the settings are loading; defaults to `false`
+ * @returns A map from setting key to that key's `onChange` mock.
  */
 function mockOptimisticSetting(
   value = false,
-  onChange: jest.Mock = jest.fn(),
+  onChange: jest.Mock | undefined = undefined,
   isLoading = false,
-): jest.Mock {
-  jest.mocked(useOptimisticBooleanSetting).mockReturnValue({ value, onChange, isLoading });
-  return onChange;
+): Map<string, jest.Mock> {
+  const onChangeByKey = new Map<string, jest.Mock>();
+  jest.mocked(useOptimisticBooleanSetting).mockImplementation((_projectId, key) => {
+    const handler = onChange ?? onChangeByKey.get(key) ?? jest.fn();
+    onChangeByKey.set(key, handler);
+    return { value, onChange: handler, isLoading };
+  });
+  return onChangeByKey;
 }
 
 /**
@@ -452,8 +460,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {
-    const mockOnChange = jest.fn();
-    mockOptimisticSetting(false, mockOnChange);
+    const onChangeByKey = mockOptimisticSetting();
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -463,7 +470,7 @@ describe('InterlinearizerLoader', () => {
     );
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
-    expect(mockOnChange).toHaveBeenCalledWith(true);
+    expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
   });
 
   it('passes hideInactiveLinkButtons=false to Interlinearizer by default', () => {
@@ -479,7 +486,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
-    const mockOnChange = mockOptimisticSetting();
+    const onChangeByKey = mockOptimisticSetting();
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -489,7 +496,7 @@ describe('InterlinearizerLoader', () => {
     );
 
     await userEvent.click(screen.getByTestId('hide-inactive-link-buttons-toggle'));
-    expect(mockOnChange).toHaveBeenCalledWith(true);
+    expect(onChangeByKey.get('interlinearizer.hideInactiveLinkButtons')).toHaveBeenCalledWith(true);
   });
 
   it('passes simplifyPhrases=false to Interlinearizer by default', () => {
@@ -505,7 +512,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
-    const mockOnChange = mockOptimisticSetting();
+    const onChangeByKey = mockOptimisticSetting();
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -515,7 +522,7 @@ describe('InterlinearizerLoader', () => {
     );
 
     await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
-    expect(mockOnChange).toHaveBeenCalledWith(true);
+    expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {

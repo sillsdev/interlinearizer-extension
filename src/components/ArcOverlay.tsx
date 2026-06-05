@@ -204,8 +204,7 @@ export function ArcOverlay({
    * @returns The SVG path element.
    */
   const renderArcPath = ({ phraseId, d, splitAfterTokenRef }: ArcPath) => {
-    const effectiveHoveredPhraseId =
-      hoveredPhraseId ?? (candidatePhraseIds.has(phraseId) ? phraseId : undefined);
+    const effectiveHoveredPhraseId = candidatePhraseIds.has(phraseId) ? phraseId : hoveredPhraseId;
     const isHoveredSegment = isSplitHovered(phraseId, splitAfterTokenRef);
     let arcProps;
     if (isHoveredSegment && splitHoveredArc?.kind === 'free') {

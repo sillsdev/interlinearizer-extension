@@ -189,12 +189,14 @@ function InterlinearizerInner({
     windowSegments,
     isFaded,
     displayScrRef,
+    displayFocusedTokenRef,
     topSentinelRef,
     bottomSentinelRef,
     recenterOnActive,
   } = useSegmentWindow({
     book,
     scrRef,
+    focusedTokenRef,
     scrollContainerRef,
     internalNavRef,
   });
@@ -372,7 +374,7 @@ function InterlinearizerInner({
                   key={seg.id}
                   displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
                   editPhraseSegmentId={editPhraseSegmentId}
-                  focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
+                  focusedTokenRef={continuousScroll ? undefined : displayFocusedTokenRef}
                   hoveredPhraseId={hoveredPhraseId}
                   isActive={
                     seg.startRef.book === displayScrRef.book &&

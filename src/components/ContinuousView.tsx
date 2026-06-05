@@ -250,6 +250,17 @@ export default function ContinuousView({
 
   const [isVisible, setIsVisible] = useState(false);
 
+  /**
+   * True for the single render in which an instant jump (external nav or initial mount) flips
+   * {@link committedActiveSegmentId}, so the link slots snap to their new widths instead of
+   * animating. `isVisible` alone can't gate this: the scroll effect's cleanup restores visibility
+   * before the new effect commits the segment, so by the time the slots want their new widths
+   * `isVisible` is already `true` and the transition would play — sliding the boxes (and yanking
+   * the recentered phrase) for ~200ms after the fade-in. Cleared in the deferred fade-in frame, one
+   * paint after the snap, so genuine in-view toggles still animate.
+   */
+  const [skipSlotTransitionForJump, setSkipSlotTransitionForJump] = useState(false);
+
   /** True until the first scroll-into-view completes; suppresses smooth scroll on initial mount. */
   const isInitialLoadInProgressRef = useRef(true);
 
@@ -477,6 +488,7 @@ export default function ContinuousView({
     if (shouldJumpInstantly) {
       // External jumps fade the strip out and the initial mount is static, so there is no animation
       // to disturb — commit the active segment now alongside the instant scroll.
+      setSkipSlotTransitionForJump(true);
       commitPendingActiveSegment();
       phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
         behavior: 'auto',
@@ -530,7 +542,11 @@ export default function ContinuousView({
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
     // Defer the fade-in until after the browser applies the instant scroll position.
-    const rafId = requestAnimationFrame(() => setIsVisible(true));
+    const rafId = requestAnimationFrame(() => {
+      setIsVisible(true);
+      // The snapped-slot paint has happened; re-enable the transition for later in-view toggles.
+      setSkipSlotTransitionForJump(false);
+    });
     return () => {
       cancelAnimationFrame(rafId);
       setIsVisible(true);
@@ -662,7 +678,7 @@ export default function ContinuousView({
       activeSegmentId: committedActiveSegmentId,
       crossSegmentLinkTooltip:
         localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: !isVisible,
+      skipLinkTransition: !isVisible || skipSlotTransitionForJump,
     }),
     [
       phraseMode,
@@ -678,6 +694,7 @@ export default function ContinuousView({
       simplifyPhrases,
       committedActiveSegmentId,
       isVisible,
+      skipSlotTransitionForJump,
       localizedStrings,
     ],
   );
@@ -694,18 +711,22 @@ export default function ContinuousView({
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
-   * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
-   * SegmentView exactly.
+   * from the fade-gated `displayFocusedTokenRef` (not the live `focusedTokenRef`) so every
+   * highlight and link-button active/disabled decision moves only at the recenter midpoint, behind
+   * the fade — never re-evaluating (and dimming the buttons) on the still-visible old strip the
+   * instant an external nav reseeds the live focus. The scroll target (`focusedGroupIndex`) still
+   * uses the live ref so the jump lands on the new verse behind the curtain. Mirrors SegmentView,
+   * which is fed the segment window's own gated display ref.
    */
   const focus = useMemo(
     () =>
       resolveFocusContext(
-        focusedTokenRef,
+        displayFocusedTokenRef,
         wordTokenByRef,
         committedPhraseLinkByRef,
         tokenSegmentMap,
       ),
-    [focusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
+    [displayFocusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
   );
 
   /** True when any committed phrase exists in the visible window. */

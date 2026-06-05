@@ -68,6 +68,13 @@ export interface UseSegmentWindowArgs {
   book: Book;
   /** Current scripture reference; the active verse it names is the recenter anchor. */
   scrRef: SerializedVerseRef;
+  /**
+   * Token ref of the currently focused word token, or `undefined` when nothing is focused. Gated
+   * alongside {@link UseSegmentWindowResult.displayScrRef} so the per-token focus highlight and the
+   * link-button active state only move behind the recenter fade on external nav — never on the old,
+   * still-visible content before the fade-out starts.
+   */
+  focusedTokenRef: string | undefined;
   /** Ref to the scrollable list container; used to read/adjust scroll position and host sentinels. */
   scrollContainerRef: RefObject<HTMLElement | undefined>;
   /**
@@ -96,6 +103,13 @@ export interface UseSegmentWindowResult {
    * lockstep.
    */
   displayScrRef: SerializedVerseRef;
+  /**
+   * Token ref the list should highlight as focused. Gated on the same clock as {@link displayScrRef}
+   * so the per-token focus and link-button active state move only at the recenter midpoint, behind
+   * the fade — never on the old content before the fade-out begins. Tracks `focusedTokenRef`
+   * immediately for internal nav and the initial mount.
+   */
+  displayFocusedTokenRef: string | undefined;
   /** Ref callback for the invisible sentinel placed above the first segment. */
   topSentinelRef: (el: HTMLElement | null) => void;
   /** Ref callback for the invisible sentinel placed below the last segment. */
@@ -173,6 +187,7 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
 export default function useSegmentWindow({
   book,
   scrRef,
+  focusedTokenRef,
   scrollContainerRef,
   internalNavRef,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
@@ -191,6 +206,16 @@ export default function useSegmentWindow({
    * changes. Updated immediately for internal nav and the initial value.
    */
   const [displayScrRef, setDisplayScrRef] = useState<SerializedVerseRef>(scrRef);
+
+  /**
+   * Focused token ref the per-token highlight and link-button active state track. Gated on the same
+   * clock as {@link displayScrRef}: deferred to the recenter midpoint on external nav (so buttons
+   * never re-evaluate active/disabled — and dim — on the old, still-visible content before the
+   * fade-out), updated immediately for internal nav and the initial value.
+   */
+  const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
+    focusedTokenRef,
+  );
 
   /**
    * Scroll-height correction owed to the next paint. When segments are prepended the content above
@@ -234,6 +259,8 @@ export default function useSegmentWindow({
   totalRef.current = total;
   const scrRefRef = useRef(scrRef);
   scrRefRef.current = scrRef;
+  const focusedTokenRefRef = useRef(focusedTokenRef);
+  focusedTokenRefRef.current = focusedTokenRef;
 
   /**
    * Handle of the in-flight recenter fade timeout, or `undefined` when no recenter is mid-flight.
@@ -355,6 +382,7 @@ export default function useSegmentWindow({
       setRange(buildCenteredRange(anchorIndexRef.current, totalRef.current));
       setRecenterEpoch((n) => n + 1);
       setDisplayScrRef(scrRefRef.current);
+      setDisplayFocusedTokenRef(focusedTokenRefRef.current);
       setIsFaded(false);
     }, RECENTER_FADE_MS);
   }, []);
@@ -383,6 +411,7 @@ export default function useSegmentWindow({
     internalNavRef.current = undefined;
     if (isInternal) {
       setDisplayScrRef(currentScrRef);
+      setDisplayFocusedTokenRef(focusedTokenRefRef.current);
       return;
     }
     triggerRecenter();
@@ -392,6 +421,19 @@ export default function useSegmentWindow({
     // re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorIndex, segments, internalNavRef, triggerRecenter]);
+
+  // Track within-verse focus moves (arrow/click that stays in the active verse) immediately. These
+  // change `focusedTokenRef` without changing `anchorIndex`, so the recenter effect above never
+  // fires for them; sync the display ref here so the focus highlight follows. Skip while a recenter
+  // fade is in flight — that swap owns the display ref and lands the new focus at the midpoint, so
+  // updating here too would move the highlight (and re-dim buttons) on the old content before the
+  // fade-out completes. `recenterTimeoutRef` is set synchronously by `triggerRecenter`, so it reads
+  // true even in the same commit the external nav starts the fade — when `isFaded` state is still
+  // stale.
+  useEffect(() => {
+    if (recenterTimeoutRef.current !== undefined) return;
+    setDisplayFocusedTokenRef(focusedTokenRef);
+  }, [focusedTokenRef]);
 
   // The mounted sentinel elements, held in state so the observer effect re-runs once they attach.
   // Ref callbacks only record the node; the actual observe happens in the effect below, which runs
@@ -472,6 +514,7 @@ export default function useSegmentWindow({
     windowSegments,
     isFaded,
     displayScrRef,
+    displayFocusedTokenRef,
     topSentinelRef,
     bottomSentinelRef,
     recenterOnActive,

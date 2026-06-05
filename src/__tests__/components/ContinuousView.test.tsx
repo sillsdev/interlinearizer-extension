@@ -820,6 +820,29 @@ describe('ContinuousView scroll behavior', () => {
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
+  it('snaps the link slots (no transition) during an external jump so they do not slide after the fade-in', () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { container, rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    act(() => {
+      jest.useFakeTimers();
+    });
+    // External nav into the other verse: the active segment commits instantly behind the fade, so
+    // the slots must snap to their new widths rather than animating (which would slide the boxes for
+    // ~200ms after the strip fades back in).
+    rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-3' }} />);
+
+    const slotWrapper = container.querySelector('[data-link-slot] > span');
+    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    expect(slotWrapper.style.transitionDuration).toBe('0ms');
+
+    act(() => {
+      jest.advanceTimersByTime(600);
+      jest.useRealTimers();
+    });
+  });
+
   it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
     // The smooth-scroll path requires the displayed focus to already agree with the prop and the
     // strip to be visible when the scroll effect runs. That only happens when a real (stateful)

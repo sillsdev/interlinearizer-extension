@@ -66,17 +66,26 @@ function makeBook(chapter1Count: number, chapter2Count: number): Book {
  * @param scrRef - The scripture reference whose verse anchors the window.
  * @returns The render-hook result plus the scroll container element.
  */
-function renderSegmentWindow(book: Book, scrRef: SerializedVerseRef) {
+function renderSegmentWindow(book: Book, scrRef: SerializedVerseRef, focusedTokenRef?: string) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   // Shared across renders so a test can stamp it (mimicking an internal nav) before a rerender.
   const internalNavRef: { current: string | undefined } = { current: undefined };
-  const hook = renderHook(
-    ({ b, ref }: { b: Book; ref: SerializedVerseRef }) => {
+  const hook = renderHook<
+    ReturnType<typeof useSegmentWindow>,
+    { b: Book; ref: SerializedVerseRef; focus?: string | undefined }
+  >(
+    ({ b, ref, focus }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
-      return useSegmentWindow({ book: b, scrRef: ref, scrollContainerRef, internalNavRef });
+      return useSegmentWindow({
+        book: b,
+        scrRef: ref,
+        focusedTokenRef: focus,
+        scrollContainerRef,
+        internalNavRef,
+      });
     },
-    { initialProps: { b: book, ref: scrRef } },
+    { initialProps: { b: book, ref: scrRef, focus: focusedTokenRef } },
   );
   return { ...hook, container, internalNavRef };
 }
@@ -584,5 +593,53 @@ describe('useSegmentWindow', () => {
     expect(global.ioInstances.length).toBeGreaterThan(0);
     unmount();
     expect(global.ioInstances).toHaveLength(0);
+  });
+
+  it('initializes displayFocusedTokenRef from the initial focused token', () => {
+    const book = makeBook(40, 0);
+    const { result } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 15 },
+      'tok-initial',
+    );
+    expect(result.current.displayFocusedTokenRef).toBe('tok-initial');
+  });
+
+  it('defers displayFocusedTokenRef to the recenter midpoint on external nav', () => {
+    const book = makeBook(60, 0);
+    const { result, rerender } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 5 },
+      'tok-old',
+    );
+
+    // External nav: the focused token jumps to the new verse the same render the anchor changes.
+    act(() =>
+      rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, focus: 'tok-new' }),
+    );
+    // Mid-fade: the display ref must still read the old token so the active-verse buttons on the
+    // still-visible old content don't re-evaluate (and dim) before the fade-out completes.
+    expect(result.current.isFaded).toBe(true);
+    expect(result.current.displayFocusedTokenRef).toBe('tok-old');
+
+    // At the midpoint the window swaps behind the fade and the display ref catches up.
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.displayFocusedTokenRef).toBe('tok-new');
+  });
+
+  it('updates displayFocusedTokenRef immediately for a within-verse focus move (no fade)', () => {
+    const book = makeBook(40, 0);
+    const { result, rerender } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 15 },
+      'tok-a',
+    );
+
+    // Same verse (anchor unchanged), focus moves token-to-token: no fade, display ref tracks at once.
+    act(() =>
+      rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 15 }, focus: 'tok-b' }),
+    );
+    expect(result.current.isFaded).toBe(false);
+    expect(result.current.displayFocusedTokenRef).toBe('tok-b');
   });
 });

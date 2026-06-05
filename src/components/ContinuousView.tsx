@@ -401,6 +401,13 @@ export default function ContinuousView({
 
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
+  /**
+   * Splits a phrase arc at a token boundary and dispatches the resulting create/update/delete
+   * operations. No-ops if `phraseId` is not in `committedPhraseLinkById`.
+   *
+   * @param phraseId - Id of the phrase arc to split.
+   * @param splitAfterTokenRef - Token ref at whose trailing boundary the split is made.
+   */
   const handleArcSplit = useCallback(
     (phraseId: string, splitAfterTokenRef: string) => {
       const phraseLink = committedPhraseLinkById.get(phraseId);

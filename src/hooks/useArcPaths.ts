@@ -58,8 +58,16 @@ export function useArcPaths(
   const [stripLeftPadding, setStripLeftPadding] = useState(0);
   const [stripRightPadding, setStripRightPadding] = useState(0);
 
-  const stripTopPadding = computeStripTopPadding(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
-  const stripRowGap = computeStripRowGap(arcPaths.length > 0, maxArcLevel, hasRealPhrase);
+  const stripTopPadding = computeStripTopPadding(
+    enabled && arcPaths.length > 0,
+    maxArcLevel,
+    hasRealPhrase,
+  );
+  const stripRowGap = computeStripRowGap(
+    enabled && arcPaths.length > 0,
+    maxArcLevel,
+    hasRealPhrase,
+  );
 
   // Collapse `deps` into a version counter so the layout effect's dep array stays fixed-length. It
   // increments whenever any element of `deps` changes identity, triggering a re-measure.

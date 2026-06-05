@@ -220,10 +220,13 @@ describe('useArcPaths', () => {
       jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
 
       let observerCallback: ResizeObserverCallback | undefined;
+      let observerInstance: ResizeObserver | undefined;
       global.ResizeObserver = class implements ResizeObserver {
         /** @param callback - Stored so the test can fire it on demand. */
         constructor(callback: ResizeObserverCallback) {
           observerCallback = callback;
+          // eslint-disable-next-line @typescript-eslint/no-this-alias
+          observerInstance = this;
         }
 
         // eslint-disable-next-line @typescript-eslint/class-methods-use-this
@@ -239,7 +242,9 @@ describe('useArcPaths', () => {
       const pump = (): number => {
         const before = computeAllArcPaths.mock.calls.length;
         act(() => {
-          observerCallback?.([], new ResizeObserver(() => {}));
+          if (observerCallback && observerInstance) {
+            observerCallback([], observerInstance);
+          }
           const pending = rafCallbacks.splice(0);
           pending.forEach((cb) => cb(0));
         });

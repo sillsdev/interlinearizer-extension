@@ -366,7 +366,7 @@ describe('SegmentView', () => {
     expect(screen.getByRole('button', { name: 'the' })).toBeInTheDocument();
   });
 
-  it('passes showGlossInput=true to the first fragment of a discontiguous phrase', () => {
+  it('passes showGlossInput=true to the first fragment and false to the second of a discontiguous phrase', () => {
     /** Segment with two tokens that share a phrase but are separated by a free token. */
     const discontiguousSegment: Segment = {
       id: 'GEN 1:3',
@@ -421,8 +421,8 @@ describe('SegmentView', () => {
       </AnalysisStoreProvider>,
     );
 
+    // boxes[0]=tok-a (1st fragment), boxes[1]=tok-b (free), boxes[2]=tok-c (2nd fragment)
     const boxes = document.querySelectorAll('[data-show-gloss]');
-    // tok-a is first occurrence → showGlossInput=true; tok-c is second → showGlossInput=false
     expect(boxes[0]).toHaveAttribute('data-show-gloss', 'true');
     expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
   });
@@ -504,64 +504,6 @@ describe('SegmentView', () => {
     expect(onHoverPhrase).toHaveBeenCalledWith('phrase-1');
     await userEvent.unhover(phraseGroupSpan ?? document.body);
     expect(onHoverPhrase).toHaveBeenCalledWith(undefined);
-  });
-
-  it('passes showGlossInput=false to the second fragment of a discontiguous phrase', () => {
-    const discontiguousSegment: Segment = {
-      id: 'GEN 1:4',
-      startRef: { book: 'GEN', chapter: 1, verse: 4 },
-      endRef: { book: 'GEN', chapter: 1, verse: 4 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'tok-a',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-        {
-          ref: 'tok-b',
-          surfaceText: 'the',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 3,
-          charEnd: 6,
-        },
-        {
-          ref: 'tok-c',
-          surfaceText: 'beginning',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 7,
-          charEnd: 16,
-        },
-      ],
-    };
-    const discontigLink: PhraseAnalysisLink = {
-      analysisId: 'phrase-dc',
-      status: 'approved',
-      tokens: [
-        { tokenRef: 'tok-a', surfaceText: 'In' },
-        { tokenRef: 'tok-c', surfaceText: 'beginning' },
-      ],
-    };
-    mockUsePhraseLinkMap.mockReturnValue(
-      new Map([
-        ['tok-a', discontigLink],
-        ['tok-c', discontigLink],
-      ]),
-    );
-
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} segment={discontiguousSegment} />
-      </AnalysisStoreProvider>,
-    );
-
-    const boxes = document.querySelectorAll('[data-show-gloss]');
-    expect(boxes[2]).toHaveAttribute('data-show-gloss', 'false');
   });
 
   it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {

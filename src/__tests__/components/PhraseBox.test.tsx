@@ -48,6 +48,18 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 jest.mock('../../components/TokenChip', () => {
+  /**
+   * Minimal TokenChip stub that renders the token's surface text, a controlled gloss input, and an
+   * optional remove button. Lets PhraseBox tests verify gloss-forwarding, focus callbacks, and
+   * token-removal interactions without pulling in the real TokenChip implementation.
+   *
+   * @param props - Component props.
+   * @param props.onFocus - Called when the gloss input receives focus.
+   * @param props.token - The word token to render.
+   * @param props.isSplitFree - When true, marks the chip as a would-be-free token.
+   * @param props.onRemove - Called when the remove button is clicked; omitted for edge tokens.
+   * @returns A span containing the surface text, a gloss input, and an optional remove button.
+   */
   function MockTokenChip({
     onFocus,
     token,
@@ -641,6 +653,12 @@ describe('PhraseBox', () => {
       ['D', 2],
       ['E', 3],
     ]);
+    /**
+     * Builds a minimal word token whose surface text equals its ref.
+     *
+     * @param ref - Token ref (also used as surface text).
+     * @returns A word token with the given ref.
+     */
     const mk = (ref: string): Token & { type: 'word' } => ({
       ref,
       surfaceText: ref,
@@ -696,6 +714,12 @@ describe('PhraseBox', () => {
       ['A', 0],
       ['B', 1],
     ]);
+    /**
+     * Builds a minimal word token whose surface text equals its ref.
+     *
+     * @param ref - Token ref (also used as surface text).
+     * @returns A word token with the given ref.
+     */
     const mk = (ref: string): Token & { type: 'word' } => ({
       ref,
       surfaceText: ref,
@@ -745,6 +769,12 @@ describe('PhraseBox', () => {
       ['C', 2],
       ['D', 3],
     ]);
+    /**
+     * Builds a minimal word token whose surface text equals its ref.
+     *
+     * @param ref - Token ref (also used as surface text).
+     * @returns A word token with the given ref.
+     */
     const mk = (ref: string): Token & { type: 'word' } => ({
       ref,
       surfaceText: ref,
@@ -855,6 +885,13 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
+    /**
+     * Builds a minimal word token with an explicit surface text.
+     *
+     * @param ref - Token ref.
+     * @param surfaceText - Surface text for the token.
+     * @returns A word token with the given ref and surface text.
+     */
     const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
       ref,
       surfaceText,
@@ -904,6 +941,13 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
+    /**
+     * Builds a minimal word token with an explicit surface text.
+     *
+     * @param ref - Token ref.
+     * @param surfaceText - Surface text for the token.
+     * @returns A word token with the given ref and surface text.
+     */
     const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
       ref,
       surfaceText,
@@ -943,6 +987,13 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
+    /**
+     * Builds a minimal word token with an explicit surface text.
+     *
+     * @param ref - Token ref.
+     * @param surfaceText - Surface text for the token.
+     * @returns A word token with the given ref and surface text.
+     */
     const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
       ref,
       surfaceText,

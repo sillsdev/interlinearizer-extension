@@ -74,13 +74,22 @@ const STRING_KEYS = [
 /** A between-group slot render item annotated with the absolute group indices on either side. */
 type SlotUnit = {
   kind: 'slot';
+  /** The slot's neighbouring groups and any punctuation tokens in the gap. */
   slot: LinkSlot;
+  /** Window-absolute index of the group before the slot, or `undefined` for the leading boundary. */
   prevGroupIndex: number | undefined;
+  /** Window-absolute index of the group after the slot, or `undefined` for the trailing boundary. */
   nextGroupIndex: number | undefined;
 };
 
 /** A phrase-group render item annotated with its window-absolute group index. */
-type GroupUnit = { kind: 'group'; group: TokenGroup; groupIndex: number };
+type GroupUnit = {
+  kind: 'group';
+  /** The phrase group to render. */
+  group: TokenGroup;
+  /** Absolute index of this group within the full `phraseGroups` array (not the window slice). */
+  groupIndex: number;
+};
 
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
@@ -137,6 +146,8 @@ type ContinuousViewProps = Readonly<{
  * @param props.editPhraseSegmentId - Segment id of the phrase being edited; passed to `PhraseBox`
  * @param props.focusedTokenRef - Single source of truth for focus + scroll position
  * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
+ * @param props.phraseMode - Current phrase-interaction mode; controls token click behaviour
+ * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
  * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
@@ -492,6 +503,7 @@ export default function ContinuousView({
       // the relayout runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
+      /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
       const onSettled = () => {
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));

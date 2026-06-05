@@ -3,12 +3,13 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
 import { SegmentView } from '../../components/SegmentView';
+import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -103,12 +104,21 @@ jest.mock('../../components/PhraseBox', () => ({
     phraseLink: unknown;
     showGlossInput?: boolean;
   }>) => (
-    <span data-focus-state={isFocused ? 'focused' : 'default'} data-show-gloss={showGlossInput}>
+    <span
+      data-focus-state={isFocused ? 'focused' : 'default'}
+      data-phrase-box="true"
+      data-show-gloss={showGlossInput}
+    >
       {tokens.map((t) => (
         <span key={t.ref}>
           <button onClick={() => onFocusPhrase(groupKey)} type="button">
             {t.surfaceText}
           </button>
+          {/* Mirrors the real TokenChip: a <label> wrapping a non-interactive surface-text span
+              that is not itself a button/input, used to exercise the background-click guard. */}
+          <label>
+            <span>{`label-${t.surfaceText}`}</span>
+          </label>
         </span>
       ))}
     </span>
@@ -593,6 +603,102 @@ describe('SegmentView', () => {
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-1');
+  });
+
+  it('ignores background clicks that bubble up from a phrase-box label, not just an interactive tag', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} onSelect={handleSelect} />
+      </AnalysisStoreProvider>,
+    );
+
+    // Clicking a token chip's surface text lands on a <label>/<span> inside the phrase box, not on
+    // the gloss input itself. The browser still forwards that click to the input (which fires its
+    // own phrase focus), so the bubbled background click must NOT also fire and refocus the
+    // segment's first phrase — the bug seen when clicking an out-of-segment phrase fragment.
+    await userEvent.click(screen.getByText('label-the'));
+
+    expect(handleSelect).not.toHaveBeenCalled();
+  });
+
+  it('ignores background clicks that bubble up from an inter-phrase link slot', async () => {
+    const handleSelect = jest.fn();
+    const { container } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        {/* Inactive segment with link buttons hidden: the slot between the two token groups
+            collapses its link button to zero width, leaving an empty clickable gap. Clicking that
+            gap must NOT snap focus to the segment's first phrase (the reported out-of-segment bug);
+            it should be a no-op, matching the buttons-visible case where the button absorbs it. */}
+        <SegmentView {...requiredProps()} hideInactiveLinkButtons onSelect={handleSelect} />
+      </AnalysisStoreProvider>,
+    );
+
+    const slot = container.querySelector('[data-link-slot]');
+    if (!slot) throw new Error('Expected a link slot between the two token groups');
+    await userEvent.click(slot);
+
+    expect(handleSelect).not.toHaveBeenCalled();
+  });
+
+  it('animates the link-slot open/close transition after mount', () => {
+    const { container } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // The slot's sliding-door wrapper is the [data-link-slot]'s first element child. Once the mount
+    // effect has run (flushed by render/act), SegmentView stops suppressing the transition so a
+    // later active-segment flip slides the slot instead of snapping it — the reflow-during-click
+    // that otherwise mis-selects the phrase under the pointer.
+    const slotWrapper = container.querySelector('[data-link-slot] > span');
+    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);
+  });
+
+  it('re-measures arcs each frame while the link slots slide, then stops at the deadline', () => {
+    // Capture rAF callbacks and control the clock so we can step the slide loop deterministically.
+    const frames: FrameRequestCallback[] = [];
+    const rafSpy = jest
+      .spyOn(globalThis, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => {
+        frames.push(cb);
+        return frames.length;
+      });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+    let now = 0;
+    jest.spyOn(performance, 'now').mockImplementation(() => now);
+
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} isActive={false} />
+      </AnalysisStoreProvider>,
+    );
+    // Mount effect skips the loop; flipping isActive after mount starts it.
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentView {...requiredProps()} isActive />
+      </AnalysisStoreProvider>,
+    );
+
+    const runNextFrame = () => {
+      const cb = frames.shift();
+      if (!cb) throw new Error('Expected a scheduled animation frame');
+      act(() => cb(now));
+    };
+
+    // Before the deadline each frame schedules another (the bump + continue branch).
+    expect(frames.length).toBe(1);
+    runNextFrame();
+    expect(frames.length).toBe(1);
+
+    // Crossing the deadline runs the final frame without scheduling more (the stop branch).
+    now = LINK_SLOT_TRANSITION_MS + 1;
+    runNextFrame();
+    expect(frames.length).toBe(0);
+
+    rafSpy.mockRestore();
   });
 
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {

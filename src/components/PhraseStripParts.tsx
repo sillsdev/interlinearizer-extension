@@ -88,7 +88,11 @@ export function PhraseSlot({
   const suppressLinkIcon = hideInactiveLinkButtons && !slotInActiveSegment;
   const hasLinkableNeighbors = prevToken !== undefined || nextToken !== undefined;
   return (
-    <span className="tw:link-slot tw:pointer-events-auto" style={{ overflowAnchor: 'none' }}>
+    <span
+      className="tw:link-slot tw:pointer-events-auto"
+      data-link-slot="true"
+      style={{ overflowAnchor: 'none' }}
+    >
       {hasLinkableNeighbors && (
         <span
           className="tw:overflow-hidden tw:transition-[max-width,opacity] tw:ease-in-out"

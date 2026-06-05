@@ -1,13 +1,13 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
-import { PhraseStrip, type StripItem } from './PhraseStripParts';
+import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
   buildRenderUnits,
   groupTokens,
@@ -201,6 +201,47 @@ export function SegmentView({
   const tokenRowRef = useRef<HTMLSpanElement | null>(null);
 
   /**
+   * `false` until just after the first paint, then `true`. Gates the link-slot open/close
+   * transition: the initial layout must snap to its final width before paint (animating from
+   * collapsed on mount would flash), but every later flip of `isActive` / `hideInactiveLinkButtons`
+   * should animate. Animating those flips is what fixes the mis-selection bug — when a click on an
+   * inactive segment flips it active, the inter-phrase slots slide open over
+   * `LINK_SLOT_TRANSITION_MS` instead of snapping, so the bubbled click still resolves against the
+   * pre-reflow layout and lands on the phrase the user aimed at rather than whatever instantly
+   * shifted under the pointer.
+   */
+  const [hasMounted, setHasMounted] = useState(false);
+  useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  /**
+   * Bumped on each animation frame while the link slots are sliding open/closed, then fed into the
+   * arc re-measure deps below. When `isActive` or `hideInactiveLinkButtons` flips, the inter-phrase
+   * slots animate their width over `LINK_SLOT_TRANSITION_MS`, continuously shifting the token
+   * boxes; a discontiguous phrase's arc endpoints move with them. The arc `ResizeObserver` only
+   * fires when the container's own box changes (e.g. a wrap), so a pure horizontal shift within a
+   * row would leave the arcs lagging the tokens for the whole transition. Re-measuring every frame
+   * keeps the arcs pinned to their runs throughout the slide — mirroring ContinuousView's re-center
+   * loop.
+   */
+  const [slotAnimationTick, setSlotAnimationTick] = useState(0);
+  const skipSlotAnimationRef = useRef(true);
+  useEffect(() => {
+    // Skip the first run: the initial layout snaps (skipLinkTransition), so there's nothing sliding.
+    if (skipSlotAnimationRef.current) {
+      skipSlotAnimationRef.current = false;
+      return undefined;
+    }
+    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+    let rafId = requestAnimationFrame(function tick() {
+      setSlotAnimationTick((n) => n + 1);
+      if (performance.now() < deadline) rafId = requestAnimationFrame(tick);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [isActive, hideInactiveLinkButtons]);
+
+  /**
    * Ref to the outer `tw:relative tw:overflow-visible` div that is both the SVG parent and the arc
    * measurement container. Using this element (rather than the inner token-row span) aligns the
    * coordinate origin with the SVG's `inset: 0` anchor, so arc y-positions are always correct.
@@ -332,7 +373,7 @@ export function SegmentView({
       activeSegmentId: isActive ? segment.id : undefined,
       crossSegmentLinkTooltip:
         localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: true,
+      skipLinkTransition: !hasMounted,
     }),
     [
       phraseMode,
@@ -349,6 +390,7 @@ export function SegmentView({
       isActive,
       segment.id,
       localizedStrings,
+      hasMounted,
     ],
   );
 
@@ -369,9 +411,19 @@ export function SegmentView({
    * on segment background or structural wrappers rather than a genuinely interactive element. The
    * token row and arc container fill most of the segment, so a strict `target === currentTarget`
    * check would only catch the thin padding ring; instead we ignore the click only when it
-   * originated inside an interactive element (token button, gloss input, etc.), which handles its
-   * own selection. Everything else — padding, arc gutters, empty wrap space — focuses the first
-   * phrase.
+   * originated inside an interactive element (token button, gloss input, etc.) or anywhere inside a
+   * phrase box, each of which handles its own selection. The `label` and `[data-phrase-box]` cases
+   * matter for clicks that land on a token chip's surrounding `<label>` or its surface-text span
+   * rather than directly on the gloss input: those targets are not in the interactive-tag list, but
+   * the browser still forwards the click to the chip's input (firing its own phrase focus), so the
+   * background handler must not also fire and override that focus with the segment's first phrase —
+   * which was most visible when clicking an out-of-segment phrase fragment. The `[data-link-slot]`
+   * case is the inter-phrase link slot: when its link button is visible the button absorbs the
+   * click, but when `hideInactiveLinkButtons` collapses the button to zero width the slot becomes
+   * an empty clickable gap between phrases. Treating it as background was the bug where clicking
+   * near a phrase in an inactive segment (buttons hidden) snapped focus to the segment's first
+   * phrase; ignoring it leaves the click a no-op, matching the buttons-visible behavior. Everything
+   * else — padding, arc gutters, empty wrap space — focuses the first phrase.
    *
    * @param event - The click event on the segment container.
    */
@@ -380,7 +432,9 @@ export function SegmentView({
       if (firstWordTokenRef === undefined) return;
       if (
         event.target instanceof Element &&
-        event.target.closest('button, a, input, textarea, select, [contenteditable="true"]')
+        event.target.closest(
+          'button, a, input, textarea, select, label, [contenteditable="true"], [data-phrase-box], [data-link-slot]',
+        )
       ) {
         return;
       }
@@ -403,6 +457,7 @@ export function SegmentView({
     displayMode,
     isActive,
     hideInactiveLinkButtons,
+    slotAnimationTick,
   ]);
 
   if (displayMode === 'baseline-text') {

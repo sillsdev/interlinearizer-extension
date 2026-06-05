@@ -256,6 +256,29 @@ describe('PhraseBox', () => {
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
   });
 
+  it('clicking a nested non-chip element inside the box also focuses the first gloss input', async () => {
+    const onFocusPhrase = jest.fn();
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        onFocusPhrase={onFocusPhrase}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+      />,
+    );
+
+    // The token-row wrapper span is a descendant of the box container, not the container itself, so
+    // the old `target === currentTarget` guard ignored clicks on it. Such clicks must still focus the
+    // phrase (forwarding to the first gloss input, which fires onFocusPhrase) rather than doing
+    // nothing — otherwise the click fell through to the segment background and focused the wrong
+    // phrase.
+    const tokenRow = document.querySelector('[data-phrase-box="true"] .tw\\:phrase-token-row');
+    if (!tokenRow) throw new Error('Expected a nested token-row span inside the phrase box');
+    await userEvent.click(tokenRow);
+
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
+    expect(onFocusPhrase).toHaveBeenCalledWith('test-group');
+  });
+
   it('applies focused border and background when isFocused is true', () => {
     renderBox(<PhraseBox {...requiredProps()} isFocused />);
 

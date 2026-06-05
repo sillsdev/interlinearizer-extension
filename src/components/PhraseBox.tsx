@@ -178,14 +178,19 @@ export function PhraseBox({
   const handleFocus = useCallback(() => onFocusPhrase(groupKey), [groupKey, onFocusPhrase]);
 
   /**
-   * Focuses the box's first gloss input when the bare container itself is clicked (not a descendant
-   * button or chip). Restores the old `<label>` click-to-focus convenience without a `<label>`'s
-   * indiscriminate click-forwarding to its first labelable control.
+   * Focuses the box's first gloss input when any non-interactive part of the box is clicked — the
+   * bordered container, the token-row wrapper spans, the padding, or the gloss area around the
+   * input. Each token chip's own input/button handles its own focus, so clicks that land directly
+   * on one of those are left alone (the `closest` check); everything else is treated as "click the
+   * phrase" and forwards focus to the first gloss input, which fires its `onFocus` →
+   * {@link onFocusPhrase} and so highlights this phrase. This is what makes clicking the body of a
+   * phrase box (not just a chip) select it; without it, such clicks fell through to the segment
+   * background handler, which focused the segment's first phrase instead.
    *
    * @param e - The container's click event.
    */
   const focusFirstGlossOnSelfClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
+    if (e.target instanceof Element && e.target.closest('input, button, a, label')) return;
     e.currentTarget.querySelector('input')?.focus();
   }, []);
 

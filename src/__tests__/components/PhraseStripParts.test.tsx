@@ -242,7 +242,10 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
+    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    const icon = screen.getByTestId('link-icon');
+    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.opacity).toBe('0');
   });
 
   it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
@@ -285,7 +288,10 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    expect(screen.queryByTestId('link-icon')).not.toBeInTheDocument();
+    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    const icon = screen.getByTestId('link-icon');
+    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.opacity).toBe('0');
   });
 });
 

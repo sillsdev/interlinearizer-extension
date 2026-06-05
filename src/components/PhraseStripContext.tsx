@@ -70,6 +70,12 @@ export type PhraseStripContextValue = Readonly<{
    * segment. Explains that cross-segment phrases are not yet supported.
    */
   crossSegmentLinkTooltip: string;
+  /**
+   * When `true`, the sliding-door transition on link-slot wrappers is suppressed (duration set to
+   * 0ms). Set during external navigation and initial mount so the layout snaps to its final state
+   * before the strip fades in, rather than animating while the strip is becoming visible.
+   */
+  skipLinkTransition: boolean;
 }>;
 
 /** The phrase-strip context. `undefined` outside a provider so consumers can fail loudly. */

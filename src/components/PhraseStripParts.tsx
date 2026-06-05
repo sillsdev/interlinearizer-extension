@@ -12,6 +12,13 @@ import {
   type TokenGroup,
 } from '../utils/token-layout';
 
+/**
+ * Duration, in milliseconds, of the link-slot sliding-door (`max-width` / `opacity`) transition.
+ * Exported so `ContinuousView` can re-center the focused phrase for exactly this long while the
+ * slots animate open/closed, keeping it pinned dead-center as the layout shifts around it.
+ */
+export const LINK_SLOT_TRANSITION_MS = 200;
+
 // #region PhraseSlot
 
 /** Props for {@link PhraseSlot}. */
@@ -57,7 +64,7 @@ export function PhraseSlot({
   focusedSideIsPrev,
   hoveredPhraseId,
 }: PhraseSlotProps) {
-  const { hideInactiveLinkButtons, activeSegmentId } = usePhraseStripContext();
+  const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -79,17 +86,29 @@ export function PhraseSlot({
     prevSegmentId === activeSegmentId &&
     nextSegmentId === activeSegmentId;
   const suppressLinkIcon = hideInactiveLinkButtons && !slotInActiveSegment;
+  const hasLinkableNeighbors = prevToken !== undefined || nextToken !== undefined;
   return (
-    <span className="tw:link-slot tw:pointer-events-auto">
-      {!suppressLinkIcon && (
-        <MemoizedTokenLinkIcon
-          slotFocus={slotFocus}
-          isPhraseRevealed={phraseRevealed}
-          nextPhraseLink={nextGroup?.phraseLink}
-          nextToken={nextToken}
-          prevPhraseLink={prevGroup?.phraseLink}
-          prevToken={prevToken}
-        />
+    <span className="tw:link-slot tw:pointer-events-auto" style={{ overflowAnchor: 'none' }}>
+      {hasLinkableNeighbors && (
+        <span
+          className="tw:overflow-hidden tw:transition-[max-width,opacity] tw:ease-in-out"
+          style={{
+            transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
+            maxWidth: suppressLinkIcon ? '0' : '2rem',
+            opacity: suppressLinkIcon ? 0 : 1,
+            pointerEvents: suppressLinkIcon ? 'none' : undefined,
+            overflowAnchor: 'none',
+          }}
+        >
+          <MemoizedTokenLinkIcon
+            slotFocus={slotFocus}
+            isPhraseRevealed={phraseRevealed}
+            nextPhraseLink={nextGroup?.phraseLink}
+            nextToken={nextToken}
+            prevPhraseLink={prevGroup?.phraseLink}
+            prevToken={prevToken}
+          />
+        </span>
       )}
       {punctuation.length > 0 && (
         <span className="tw:inline-flex tw:flex-row tw:items-center">

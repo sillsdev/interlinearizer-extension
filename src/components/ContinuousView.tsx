@@ -8,7 +8,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/typeGuards';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
-import { PhraseStrip, type StripItem } from './PhraseStripParts';
+import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
   buildRenderUnits,
   groupTokens,
@@ -528,24 +528,36 @@ export default function ContinuousView({
     };
   }, [focusPhraseIndex, commitPendingActiveSegment]);
 
-  // Keep the center anchored across the deferred inactive-link relayout. When `committedActiveSegmentId`
-  // flips (after an internal-nav scroll settles), inactive link icons appear/disappear, shifting
-  // every box. Re-centering the focused group synchronously — before the browser paints — cancels the
-  // shift at the center, so the icons change only on either side and the focused phrase stays put. A
-  // `useLayoutEffect` (not rAF) is essential: it runs in the same frame as the relayout, so the shift
-  // never paints. The first run is skipped because the initial center is established by the scroll
-  // effect's instant jump.
+  // Keep the focused group pinned dead-center across the deferred inactive-link relayout. When
+  // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
+  // slide open/closed over `LINK_SLOT_TRANSITION_MS`, continuously shifting every box around the
+  // center. A single re-center would only fix the first frame; the focused phrase would then drift
+  // as the slots keep animating. So we re-center every frame for the whole transition: a `rAF` loop
+  // re-anchors the focused group until the animation completes, canceling the shift at the center on
+  // every painted frame. The first run is skipped because the initial center is established by the
+  // scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very first re-center
+  // lands before paint (no initial flash), then `rAF` carries it through the animation.
   const skipActiveSegmentRecenterRef = useRef(true);
   useLayoutEffect(() => {
     if (skipActiveSegmentRecenterRef.current) {
       skipActiveSegmentRecenterRef.current = false;
-      return;
+      return undefined;
     }
-    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: 'auto',
-      block: 'nearest',
-      inline: 'center',
+    /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
+    const recenter = () => {
+      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    };
+    recenter();
+    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+    let rafId = requestAnimationFrame(function recenterFrame() {
+      recenter();
+      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
     });
+    return () => cancelAnimationFrame(rafId);
     // Only the active-segment flip should trigger this re-anchor; focusPhraseIndex has its own scroll
     // effect. Reading it here is a snapshot, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -553,15 +565,25 @@ export default function ContinuousView({
 
   // Re-center the focused group when a view option toggles. Hiding/showing link buttons and phrase
   // controls changes the strip's layout, so the previously-centered group drifts off-center; snap it
-  // back into view after the layout settles. Deferred via rAF so the measurement reflects the new
-  // (post-toggle) widths rather than the pre-toggle ones.
+  // back into view. Toggling `hideInactiveLinkButtons` collapses/expands the out-of-segment link
+  // slots via a `max-width`/`opacity` transition over `LINK_SLOT_TRANSITION_MS`, continuously
+  // shifting every box around the center for the whole animation. A single re-center would only fix
+  // the first frame; the focused phrase would then drift as the slots keep animating. So we re-center
+  // every frame until the transition completes, canceling the shift at the center on every painted
+  // frame — mirroring the active-segment-flip re-anchor loop above.
   useEffect(() => {
-    const rafId = requestAnimationFrame(() => {
+    /** Re-centers the focused group; called each `rAF` until the deadline. */
+    const recenter = () => {
       phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
         behavior: 'auto',
         block: 'nearest',
         inline: 'center',
       });
+    };
+    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+    let rafId = requestAnimationFrame(function recenterFrame() {
+      recenter();
+      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
     });
     return () => cancelAnimationFrame(rafId);
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
@@ -640,12 +662,10 @@ export default function ContinuousView({
       onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
       hideInactiveLinkButtons,
       simplifyPhrases,
-      // The "active verse" within the flat strip is the segment containing the focused token. It
-      // lags the focus during internal nav so its link-icon relayout lands after the scroll, not
-      // during it.
       activeSegmentId: committedActiveSegmentId,
       crossSegmentLinkTooltip:
         localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+      skipLinkTransition: !isVisible,
     }),
     [
       phraseMode,
@@ -660,6 +680,7 @@ export default function ContinuousView({
       hideInactiveLinkButtons,
       simplifyPhrases,
       committedActiveSegmentId,
+      isVisible,
       localizedStrings,
     ],
   );

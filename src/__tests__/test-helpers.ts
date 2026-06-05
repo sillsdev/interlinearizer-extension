@@ -88,6 +88,7 @@ export function makePhraseStripContext(
     simplifyPhrases: false,
     activeSegmentId: undefined,
     crossSegmentLinkTooltip: '',
+    skipLinkTransition: false,
     ...overrides,
   };
 }

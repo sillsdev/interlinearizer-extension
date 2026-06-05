@@ -72,16 +72,22 @@ jest.mock('../../hooks/usePhraseHoverState', () => ({
 jest.mock('../../components/TokenChip');
 
 /**
- * Spy invoked once per mounted (non-suppressed) link icon. Rendering `undefined` keeps the DOM
- * light (so userEvent stays fast) while letting tests count how many link icons are live via the
- * mock's call records. Cleared in `beforeEach`.
+ * Spy invoked once per rendered link icon (mounted, whether suppressed or not). Rendering a span
+ * with data attributes encoding the token refs lets DOM queries check suppression state via the
+ * parent wrapper's style. Cleared in `beforeEach`.
  */
 const tokenLinkIconSpy = jest.fn();
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
   default: (props: Readonly<{ prevToken?: { ref: string }; nextToken?: { ref: string } }>) => {
     tokenLinkIconSpy(props);
-    return undefined;
+    return (
+      <span
+        data-testid="mock-link-icon"
+        data-prev-ref={props.prevToken?.ref}
+        data-next-ref={props.nextToken?.ref}
+      />
+    );
   },
 }));
 
@@ -786,10 +792,16 @@ describe('ContinuousView scroll behavior', () => {
       );
     }
     render(<Parent />, withAnalysisStore);
-    return () =>
-      tokenLinkIconSpy.mock.calls.some(
-        ([props]) => props?.prevToken?.ref === 'tok-0' && props?.nextToken?.ref === 'tok-1',
+    // Returns true when the tok-0/tok-1 link icon is rendered AND its sliding-door wrapper is
+    // open (not suppressed). After the animation change, icons stay mounted but collapse via
+    // maxWidth: '0' when suppressed — so we query the DOM wrapper's style rather than spy calls.
+    return () => {
+      const icon = document.querySelector<HTMLElement>(
+        '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
       );
+      if (!icon) return false;
+      return icon.parentElement?.style.maxWidth !== '0';
+    };
   }
 
   it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
@@ -868,6 +880,58 @@ describe('ContinuousView scroll behavior', () => {
     }
   });
 
+  it('re-centers the focused group each frame while the inactive-link slots animate, then stops', () => {
+    // After the active segment commits (post-scrollend), the inactive-link slots slide open/closed
+    // over LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. The view
+    // re-centers the focused group on every animation frame for that whole window so it stays dead
+    // center, then tears the loop down once the transition completes. Fake timers drive both the
+    // rAF callbacks and performance.now() deterministically.
+    jest.useFakeTimers();
+    try {
+      const inSegmentIconMounted = renderHideInactiveCrossing();
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      expect(inSegmentIconMounted()).toBe(true);
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+      });
+
+      // Commit the active segment (the scroll has settled). This seeds the re-center rAF loop.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        screen.getByTestId('strip-scroll-viewport').dispatchEvent(new Event('scrollend'));
+      });
+      // The synchronous useLayoutEffect re-center has already fired once.
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Advance one frame at a time: each frame within the transition window re-centers again.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Advance well past the transition window so the loop hits its deadline and stops scheduling.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      // No further re-centering frames are scheduled once the deadline has passed.
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('scrolls with the nearest-block, center-inline placement', () => {
     const book = makeBook();
     render(
@@ -880,28 +944,64 @@ describe('ContinuousView scroll behavior', () => {
     );
   });
 
-  it('re-centers the focused group when a view option toggles', async () => {
-    const book = makeBook();
-    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
-    scrollIntoViewMock.mockClear();
+  it('re-centers the focused group each frame while a view-option toggle re-lays out the strip', () => {
+    // Toggling `hideInactiveLinkButtons` collapses/expands the out-of-segment link slots over
+    // LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. A single re-center
+    // would only fix the first frame; the focused group must be re-centered on every animation frame
+    // for the whole transition so it stays dead center, then the loop tears down once the transition
+    // completes. Fake timers drive both the rAF callbacks and performance.now() deterministically.
+    jest.useFakeTimers();
+    try {
+      const book = makeBook();
+      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      scrollIntoViewMock.mockClear();
 
-    // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centers.
-    rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
-    await waitFor(() =>
-      expect(scrollIntoViewMock).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: 'auto' }),
-      ),
-    );
+      // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centers.
+      rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
 
-    scrollIntoViewMock.mockClear();
-    // Toggling simplifyPhrases likewise re-centers.
-    rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
-    await waitFor(() =>
+      // First animation frame re-centers.
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
       expect(scrollIntoViewMock).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: 'auto' }),
-      ),
-    );
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Subsequent frames within the transition window re-center again.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Advance well past the transition window so the loop hits its deadline and stops scheduling.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+      // Toggling simplifyPhrases likewise starts a fresh re-center loop.
+      scrollIntoViewMock.mockClear();
+      rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

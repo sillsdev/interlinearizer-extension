@@ -329,10 +329,10 @@ export function SegmentView({
       onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
       hideInactiveLinkButtons,
       simplifyPhrases,
-      // This strip renders a single segment, so it is the active segment only when `isActive`.
       activeSegmentId: isActive ? segment.id : undefined,
       crossSegmentLinkTooltip:
         localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+      skipLinkTransition: true,
     }),
     [
       phraseMode,

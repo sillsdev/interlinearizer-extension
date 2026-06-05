@@ -66,6 +66,6 @@
     "wordform",
     "ZWNJ"
   ],
-  "ignoreWords": ["behaviour", "colour", "Ελληνικά", "homme", "neighbouring", "ʼelohim", "ʻokina"],
+  "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],
   "import": []
 }

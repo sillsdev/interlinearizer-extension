@@ -74,7 +74,7 @@ const STRING_KEYS = [
 /** A between-group slot render item annotated with the absolute group indices on either side. */
 type SlotUnit = {
   kind: 'slot';
-  /** The slot's neighbouring groups and any punctuation tokens in the gap. */
+  /** The slot's neighboring groups and any punctuation tokens in the gap. */
   slot: LinkSlot;
   /** Window-absolute index of the group before the slot, or `undefined` for the leading boundary. */
   prevGroupIndex: number | undefined;
@@ -146,7 +146,7 @@ type ContinuousViewProps = Readonly<{
  * @param props.editPhraseSegmentId - Segment id of the phrase being edited; passed to `PhraseBox`
  * @param props.focusedTokenRef - Single source of truth for focus + scroll position
  * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
- * @param props.phraseMode - Current phrase-interaction mode; controls token click behaviour
+ * @param props.phraseMode - Current phrase-interaction mode; controls token click behavior
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution

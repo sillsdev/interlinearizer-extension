@@ -6,8 +6,10 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import Interlinearizer from '../../components/Interlinearizer';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
+import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
 
 jest.mock('lucide-react', () => ({
@@ -208,6 +210,37 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
 /** Pre-built Book with no segments — used by the no-verse-data test. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
+/**
+ * Builds a GEN book with `count` single-token verses in chapter 1. Used to exercise the segment
+ * window's recenter fade, which only triggers when the new active verse is outside the rendered
+ * window — impossible with the small fixtures above.
+ *
+ * @param count - Number of verses to generate.
+ * @returns A {@link Book} with `count` chapter-1 segments.
+ */
+function makeLargeBook(count: number): Book {
+  const segments: Segment[] = [];
+  for (let v = 1; v <= count; v += 1) {
+    segments.push({
+      id: `GEN 1:${v}`,
+      startRef: { book: 'GEN', chapter: 1, verse: v },
+      endRef: { book: 'GEN', chapter: 1, verse: v },
+      baselineText: 'word',
+      tokens: [
+        {
+          ref: `GEN 1:${v}:0`,
+          surfaceText: 'word',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 4,
+        },
+      ],
+    });
+  }
+  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+}
+
 /** Book with two segments in GEN 1 — used by chapter-display tests. */
 const GEN_1_MULTI_BOOK: Book = {
   id: 'GEN',
@@ -258,7 +291,6 @@ const GEN_1_MULTI_BOOK: Book = {
  */
 function renderInterlinearizer({
   book = GEN_1_1_BOOK,
-  chapterSegments = GEN_1_1_BOOK.segments,
   continuousScroll = false,
   scrRef = defaultScrRef,
   setScrRef = () => {},
@@ -266,7 +298,6 @@ function renderInterlinearizer({
   simplifyPhrases = false,
 }: {
   book?: Book;
-  chapterSegments?: Book['segments'];
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
   setScrRef?: (r: SerializedVerseRef) => void;
@@ -276,7 +307,6 @@ function renderInterlinearizer({
   return render(
     <Interlinearizer
       book={book}
-      chapterSegments={chapterSegments}
       continuousScroll={continuousScroll}
       scrRef={scrRef}
       setScrRef={setScrRef}
@@ -307,13 +337,13 @@ describe('Interlinearizer', () => {
   });
 
   it('shows a no-verse message when the tokenized book has no segments at all', () => {
-    renderInterlinearizer({ chapterSegments: GEN_EMPTY_BOOK.segments });
+    renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
     expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
   });
 
   it('renders a SegmentView for every segment in the current chapter', () => {
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
     expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
     expect(capturedSegmentViewPropsList[0].segment.id).toBe('GEN 1:1');
@@ -321,7 +351,7 @@ describe('Interlinearizer', () => {
   });
 
   it('passes isActive=true only to the segment matching the current verse', () => {
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
     // defaultScrRef is GEN 1:1
     expect(capturedSegmentViewPropsList[0].isActive).toBe(true);
@@ -330,14 +360,14 @@ describe('Interlinearizer', () => {
 
   it('renders all segments when navigating to a title reference (verse 0)', () => {
     const titleRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 0 };
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments, scrRef: titleRef });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, scrRef: titleRef });
 
     expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
   });
 
   it('calls setScrRef with the segment ref when a segment fires onSelect', () => {
     const mockSetScrRef = jest.fn();
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments, setScrRef: mockSetScrRef });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, setScrRef: mockSetScrRef });
 
     capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 });
 
@@ -345,7 +375,7 @@ describe('Interlinearizer', () => {
   });
 
   it('passes displayMode="baseline-text" to all SegmentViews when continuousScroll is true', () => {
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments, continuousScroll: true });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true });
 
     capturedSegmentViewPropsList.forEach((p) => expect(p.displayMode).toBe('baseline-text'));
   });
@@ -364,7 +394,7 @@ describe('Interlinearizer', () => {
 
   it('renders ContinuousView above the chapter segment rows when both are present', () => {
     const { container } = renderInterlinearizer({
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
+      book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
     });
 
@@ -379,7 +409,6 @@ describe('Interlinearizer', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       setScrRef: mockSetScrRef,
     });
 
@@ -397,7 +426,6 @@ describe('Interlinearizer', () => {
     // Render in token-chip mode first so onSelect is available on SegmentView props.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: false,
     });
 
@@ -413,7 +441,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
         setScrRef={() => {}}
@@ -434,7 +461,6 @@ describe('Interlinearizer', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: true,
       setScrRef: mockSetScrRef,
     });
@@ -451,11 +477,36 @@ describe('Interlinearizer', () => {
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
+  it('does not echo scrRef when the focused token belongs to a different book than scrRef', () => {
+    // During an external book change scrRef names the new book before its data loads, so the
+    // mounted book (and its focused token) still belong to the previous book. The echo-back effect
+    // must not fire that stale book's verse back as scrRef. Here the mounted book is GEN but scrRef
+    // names EXO, so a GEN focus move must not call setScrRef.
+    const mockSetScrRef = jest.fn();
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      continuousScroll: true,
+      scrRef: { book: 'EXO', chapterNum: 1, verseNum: 1 },
+      setScrRef: mockSetScrRef,
+    });
+
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
+    mockSetScrRef.mockClear();
+    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
+
+    act(() => {
+      // GEN 1:2:0 is in book GEN, which differs from the current scrRef's book (EXO).
+      onFocusedTokenRefChange('GEN 1:2:0');
+    });
+
+    expect(mockSetScrRef).not.toHaveBeenCalled();
+  });
+
   it('does not update scrRef when ContinuousView focus stays within the current verse', () => {
     const mockSetScrRef = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: true,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
       setScrRef: mockSetScrRef,
@@ -476,7 +527,6 @@ describe('Interlinearizer', () => {
   it('carries the strip focus into segment view when switching off continuousScroll', () => {
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: true,
     });
 
@@ -493,7 +543,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll={false}
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
         setScrRef={() => {}}
@@ -513,7 +562,6 @@ describe('Interlinearizer', () => {
     // Start in continuous mode without ContinuousView ever calling onFocusPhraseIndexChange.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: true,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
     });
@@ -523,7 +571,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll={false}
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
         setScrRef={() => {}}
@@ -544,7 +591,6 @@ describe('Interlinearizer', () => {
     // Start in segment mode and focus a specific token.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: false,
     });
 
@@ -560,7 +606,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -577,7 +622,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -597,13 +641,13 @@ describe('Interlinearizer', () => {
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {
-    renderInterlinearizer({ chapterSegments: GEN_1_MULTI_BOOK.segments });
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
     expect(screen.getByRole('button', { name: /scroll to active verse/i })).toBeInTheDocument();
   });
 
   it('does not render the snap-to-active-verse button when there are no segments', () => {
-    renderInterlinearizer({ chapterSegments: GEN_EMPTY_BOOK.segments });
+    renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
     expect(
       screen.queryByRole('button', { name: /scroll to active verse/i }),
@@ -611,7 +655,7 @@ describe('Interlinearizer', () => {
   });
 
   it('snap button calls scrollIntoView on the active segment', () => {
-    renderInterlinearizer({ chapterSegments: GEN_1_1_BOOK.segments });
+    renderInterlinearizer({ book: GEN_1_1_BOOK });
 
     act(() => {
       screen.getByRole('button', { name: /scroll to active verse/i }).click();
@@ -627,7 +671,6 @@ describe('Interlinearizer', () => {
     // scrRef points to verse 99 which does not exist in GEN_1_MULTI_BOOK.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
       continuousScroll: true,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 99 },
     });
@@ -636,7 +679,6 @@ describe('Interlinearizer', () => {
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll={false}
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
         setScrRef={() => {}}
@@ -656,7 +698,6 @@ describe('Interlinearizer', () => {
     render(
       <Interlinearizer
         book={GEN_1_1_BOOK}
-        chapterSegments={GEN_1_1_BOOK.segments}
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -678,7 +719,6 @@ describe('Interlinearizer', () => {
     render(
       <Interlinearizer
         book={GEN_1_1_BOOK}
-        chapterSegments={GEN_1_1_BOOK.segments}
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -698,7 +738,6 @@ describe('Interlinearizer', () => {
     render(
       <Interlinearizer
         book={GEN_1_1_BOOK}
-        chapterSegments={GEN_1_1_BOOK.segments}
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -718,7 +757,6 @@ describe('Interlinearizer', () => {
     render(
       <Interlinearizer
         book={GEN_1_1_BOOK}
-        chapterSegments={GEN_1_1_BOOK.segments}
         continuousScroll={false}
         scrRef={defaultScrRef}
         setScrRef={() => {}}
@@ -731,5 +769,77 @@ describe('Interlinearizer', () => {
     );
     expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', []);
     expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
+  });
+
+  it('fades the segment list out while recentering on a far-away verse, then back in', () => {
+    jest.useFakeTimers();
+    const book = makeLargeBook(60);
+    const props = {
+      book,
+      continuousScroll: false,
+      setScrRef: () => {},
+      analysisLanguage: 'und',
+      phraseMode: { kind: 'view' } as const,
+      setPhraseMode: () => {},
+      hideInactiveLinkButtons: false,
+      simplifyPhrases: false,
+    };
+    const { container, rerender } = render(
+      <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />,
+    );
+
+    const list = container.querySelector('.tw\\:transition-opacity');
+    expect(list).toHaveStyle({ opacity: '1' });
+
+    // Navigate far past the rendered window so the hook fades out before rebuilding.
+    act(() => {
+      rerender(
+        <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }} />,
+      );
+    });
+    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '0' });
+
+    act(() => {
+      jest.advanceTimersByTime(RECENTER_FADE_MS);
+    });
+    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
+    jest.useRealTimers();
+  });
+
+  it('does not fade the segment list when navigation is originated by an internal segment click', () => {
+    jest.useFakeTimers();
+    const book = makeLargeBook(60);
+
+    // Stateful wrapper so a segment click's setScrRef flows back as the scrRef prop, exercising the
+    // internal-nav stamp that suppresses the recenter fade.
+    function Wrapper() {
+      const [ref, setRef] = useState<SerializedVerseRef>({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      return (
+        <Interlinearizer
+          book={book}
+          continuousScroll={false}
+          scrRef={ref}
+          setScrRef={setRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />
+      );
+    }
+    const { container } = render(<Wrapper />);
+
+    // Click a segment far down the list (still mounted) — an internal nav, so no fade.
+    const select = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:7')?.onSelect;
+    if (typeof select !== 'function') throw new Error('Expected GEN 1:7 onSelect to be a function');
+    act(() => select({ book: 'GEN', chapter: 1, verse: 7 }, 'GEN 1:7:0'));
+
+    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
+    jest.useRealTimers();
   });
 });

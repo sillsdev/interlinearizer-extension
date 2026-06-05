@@ -187,7 +187,7 @@ describe('useInterlinearizerBookData', () => {
     expect(result.current.tokenizeError?.raw).toBe(nonErrorValue);
   });
 
-  it('filters segments to current chapter', () => {
+  it('returns the whole tokenized book without filtering segments by chapter', () => {
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
     jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
 
@@ -195,24 +195,8 @@ describe('useInterlinearizerBookData', () => {
       useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
     );
 
-    expect(result.current.chapterSegments).toHaveLength(2); // Only GEN 1:1 and GEN 1:2
-    expect(result.current.chapterSegments[0].id).toBe('GEN 1:1');
-    expect(result.current.chapterSegments[1].id).toBe('GEN 1:2');
-  });
-
-  it('filters segments for different chapters correctly', () => {
-    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
-    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
-
-    const { result } = renderHook(() =>
-      useInterlinearizerBookData({
-        projectId: 'test-project',
-        scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
-      }),
-    );
-
-    expect(result.current.chapterSegments).toHaveLength(1); // Only GEN 2:1
-    expect(result.current.chapterSegments[0].id).toBe('GEN 2:1');
+    expect(result.current.book).toBe(TEST_BOOK);
+    expect(result.current.book?.segments).toBe(TEST_BOOK.segments);
   });
 
   it('falls back to "und" writing system when useProjectSetting returns PlatformError', () => {

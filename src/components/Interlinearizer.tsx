@@ -10,13 +10,13 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
 import MemoizedSegmentView from './SegmentView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
+import useSegmentWindow, { verseKey } from '../hooks/useSegmentWindow';
+import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
   /** Tokenized book whose segments are rendered. */
   book: Book;
-  /** Segments belonging to the current chapter, filtered by the caller. */
-  chapterSegments: Segment[];
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /** Current scripture reference used to highlight the active verse. */
@@ -48,7 +48,6 @@ type InterlinearizerProps = Readonly<{
  *
  * @param props - Component props
  * @param props.book - Tokenized book whose segments are rendered.
- * @param props.chapterSegments - Segments belonging to the current chapter, filtered by the caller.
  * @param props.continuousScroll - When true, the horizontal token strip is shown above the segment
  *   list.
  * @param props.scrRef - Current scripture reference used to highlight the active verse.
@@ -64,7 +63,6 @@ type InterlinearizerProps = Readonly<{
  */
 function InterlinearizerInner({
   book,
-  chapterSegments,
   continuousScroll,
   scrRef,
   setScrRef,
@@ -73,20 +71,40 @@ function InterlinearizerInner({
   hideInactiveLinkButtons,
   simplifyPhrases,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
+  /**
+   * Finds the book segment that owns the active verse named by `scrRef`, matching on book, chapter,
+   * and verse. Book must be matched too: during an external navigation the new `scrRef.book` is set
+   * before its book data finishes loading, so the still-mounted `book` belongs to the previous
+   * reference. A chapter+verse-only match would then resolve to the wrong book's verse (e.g.
+   * Genesis 15 while navigating to Matthew 15), seed `focusedTokenRef` from it, and the echo-back
+   * effect would fire that wrong-book verse back as `scrRef`, corrupting the global reference.
+   * Returning `undefined` until the matching book is mounted keeps focus unset rather than wrong.
+   *
+   * @returns The active verse's segment, or `undefined` when no segment matches.
+   */
+  const findActiveSegment = useCallback(
+    () =>
+      book.segments.find(
+        (seg) =>
+          seg.startRef.book === scrRef.book &&
+          seg.startRef.chapter === scrRef.chapterNum &&
+          seg.startRef.verse === scrRef.verseNum,
+      ),
+    [book.segments, scrRef.book, scrRef.chapterNum, scrRef.verseNum],
+  );
+
   // Seed focusedTokenRef from the active verse on first render so the views always see a defined
   // value. An undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
   // focus.focusedSegmentId), so we never want it unset while there's a valid seed available.
-  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(() => {
-    const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
-    return activeSeg?.tokens.find((t) => t.type === 'word')?.ref;
-  });
+  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(
+    () => findActiveSegment()?.tokens.find((t) => t.type === 'word')?.ref,
+  );
 
   // Reseed when the book changes — the previous focusedTokenRef refers to a token from another
   // book and would never resolve in the new book's maps.
   useEffect(() => {
-    const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
-    setFocusedTokenRef(activeSeg?.tokens.find((t) => t.type === 'word')?.ref);
-    // chapterSegments and scrRef change frequently; only re-seed on book change.
+    setFocusedTokenRef(findActiveSegment()?.tokens.find((t) => t.type === 'word')?.ref);
+    // findActiveSegment changes with scrRef too; only re-seed on book change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
@@ -132,6 +150,16 @@ function InterlinearizerInner({
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
+   * Verse key (see {@link verseKey}) of the most recent scripture-reference change this component
+   * originated internally — a segment/token click in the list, or strip arrow nav whose focus moved
+   * into a new verse. Read by {@link useSegmentWindow} to suppress the recenter fade for navigation
+   * that came from within the views (the target is already on screen); external navigation leaves
+   * it unset and so triggers the fade. Mirrors ContinuousView's `internalFocusedTokenRefRef` so
+   * both views agree on which `scrRef` changes are internal.
+   */
+  const internalNavRef = useRef<string | undefined>(undefined);
+
+  /**
    * Ref callback that stores the scroll container element so imperative scroll calls can target it.
    *
    * @param el - The mounted div, or `null` on unmount.
@@ -150,6 +178,17 @@ function InterlinearizerInner({
     /* v8 ignore next -- active is always found when a verse is rendered; guard for empty lists */
     active?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, []);
+
+  // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
+  // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
+  // outside the list.
+  const { windowSegments, isFaded, displayScrRef, topSentinelRef, bottomSentinelRef } =
+    useSegmentWindow({
+      book,
+      scrRef,
+      scrollContainerRef,
+      internalNavRef,
+    });
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
@@ -188,12 +227,12 @@ function InterlinearizerInner({
   // when focus is already inside the new verse — that case means the verse change came from a
   // token click here, and we must not clobber the clicked token with the verse's first token.
   useEffect(() => {
-    const activeSeg = chapterSegments.find((seg) => seg.startRef.verse === scrRef.verseNum);
+    const activeSeg = findActiveSegment();
     if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
-    /* v8 ignore next -- activeSeg is always defined when chapterSegments includes the active verse */
+    /* v8 ignore next -- activeSeg is always defined when the book includes the active verse */
     setFocusedTokenRef(activeSeg?.tokens.find((t) => t.type === 'word')?.ref);
-    // chapterSegments is intentionally excluded: it changes identity on every render and the
-    // verse-coordinate deps already capture the change we care about.
+    // findActiveSegment is intentionally excluded: the verse-coordinate deps already capture the
+    // change we care about, and it changes identity on every scrRef update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 
@@ -208,18 +247,24 @@ function InterlinearizerInner({
     const seg = segmentById.get(segId);
     /* v8 ignore next -- segmentById contains every segment id from tokenSegmentMap */
     if (!seg) return;
-    if (
-      seg.startRef.book === scrRef.book &&
-      seg.startRef.chapter === scrRef.chapterNum &&
-      seg.startRef.verse === scrRef.verseNum
-    ) {
+    // Never echo a verse from a different book back as scrRef. During an external book change the
+    // focused token can briefly belong to the previous book (Genesis) while scrRef already names the
+    // new one (Matthew); firing setScrRef here would overwrite the new book with the stale one. A
+    // cross-book move only ever originates externally, so there is nothing to echo in that case.
+    if (seg.startRef.book !== scrRef.book) return;
+    if (seg.startRef.chapter === scrRef.chapterNum && seg.startRef.verse === scrRef.verseNum) {
       return;
     }
-    setScrRef({
+    const newScrRef = {
       book: seg.startRef.book,
       chapterNum: seg.startRef.chapter,
       verseNum: seg.startRef.verse,
-    });
+    };
+    // Strip arrow nav (or a strip phrase click) moved focus into a new verse. Mark it internal so
+    // the segment window doesn't fade — the continuous strip already smooth-scrolls to it, and the
+    // list just tracks along.
+    internalNavRef.current = verseKey(newScrRef);
+    setScrRef(newScrRef);
     // scrRef fields are intentionally excluded: they're guards against re-firing, not triggers.
     // Adding them would re-run this effect on every external verse change without doing useful work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -234,7 +279,11 @@ function InterlinearizerInner({
    */
   const handleSegmentSelect = useCallback(
     (ref: ScriptureRef, tokenRef?: string) => {
-      setScrRef({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse });
+      const newScrRef = { book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse };
+      // Mark this as internal navigation so the segment window skips its recenter fade: the clicked
+      // verse is already on screen, so fading and rebuilding would be a jarring no-op.
+      internalNavRef.current = verseKey(newScrRef);
+      setScrRef(newScrRef);
       if (tokenRef) setFocusedTokenRef(tokenRef);
     },
     [setScrRef],
@@ -270,15 +319,15 @@ function InterlinearizerInner({
 
       <div
         ref={setScrollContainer}
-        className="tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
       >
-        {chapterSegments.length === 0 && (
+        {windowSegments.length === 0 && (
           <p className="tw:text-sm tw:text-muted-foreground">
             No verse data for {scrRef.book} {scrRef.chapterNum}.
           </p>
         )}
 
-        {chapterSegments.length > 0 && (
+        {windowSegments.length > 0 && (
           <>
             <div className="tw:sticky tw:top-0 tw:z-10 tw:flex tw:justify-end tw:pointer-events-none">
               <button
@@ -292,15 +341,26 @@ function InterlinearizerInner({
               </button>
             </div>
 
-            <div className="tw:flex tw:flex-col tw:gap-2">
-              {chapterSegments.map((seg) => (
+            <div
+              className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
+              style={{
+                opacity: isFaded ? 0 : 1,
+                transitionDuration: `${RECENTER_FADE_MS}ms`,
+                transitionTimingFunction: RECENTER_FADE_EASING,
+              }}
+            >
+              <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
+              {windowSegments.map((seg) => (
                 <MemoizedSegmentView
                   key={seg.id}
                   displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
                   editPhraseSegmentId={editPhraseSegmentId}
                   focusedTokenRef={continuousScroll ? undefined : focusedTokenRef}
                   hoveredPhraseId={hoveredPhraseId}
-                  isActive={seg.startRef.verse === scrRef.verseNum}
+                  isActive={
+                    seg.startRef.chapter === displayScrRef.chapterNum &&
+                    seg.startRef.verse === displayScrRef.verseNum
+                  }
                   onHoverPhrase={setHoveredPhraseId}
                   onSelect={handleSegmentSelect}
                   phraseMode={phraseMode}
@@ -313,6 +373,7 @@ function InterlinearizerInner({
                   simplifyPhrases={simplifyPhrases}
                 />
               ))}
+              <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
             </div>
           </>
         )}
@@ -327,8 +388,7 @@ function InterlinearizerInner({
  * descendant components can read and write analysis data without prop drilling.
  *
  * @param props - Component props
- * @param props.book - Book data used by the continuous view
- * @param props.chapterSegments - Segments to render as individual verse views
+ * @param props.book - Book data used by the continuous view and segment window
  * @param props.continuousScroll - Whether the continuous scroll view is shown
  * @param props.scrRef - Current scripture reference
  * @param props.setScrRef - Callback to update the scripture reference

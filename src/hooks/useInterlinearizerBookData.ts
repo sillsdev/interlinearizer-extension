@@ -19,8 +19,6 @@ export interface UseInterlinearizerBookDataArgs {
 export interface UseInterlinearizerBookDataResult {
   /** The fully tokenized book, or `undefined` while loading or on error. */
   book: Book | undefined;
-  /** Segments belonging to the current chapter (`scrRef.chapterNum`); empty while loading. */
-  chapterSegments: Book['segments'];
   /** `true` while the USJ book data is being fetched from the platform. */
   isLoading: boolean;
   /** Human-readable error string when the platform returns an error or no USJ data. */
@@ -35,7 +33,7 @@ export interface UseInterlinearizerBookDataResult {
  * @param args - Hook arguments.
  * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
  * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
- * @returns The tokenized book, chapter segments, loading state, and any errors encountered.
+ * @returns The tokenized book, loading state, and any errors encountered.
  */
 export default function useInterlinearizerBookData({
   projectId,
@@ -79,14 +77,6 @@ export default function useInterlinearizerBookData({
     });
   }, [tokenizeError, writingSystem, projectId, scrRef.book]);
 
-  const chapterSegments = useMemo(
-    () =>
-      book?.segments.filter(
-        (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
-      ) ?? [],
-    [book, scrRef.book, scrRef.chapterNum],
-  );
-
   let bookError: string | undefined;
   if (isPlatformError(bookResult)) {
     bookError = bookResult.message;
@@ -94,5 +84,5 @@ export default function useInterlinearizerBookData({
     bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   }
 
-  return { book, chapterSegments, isLoading, bookError, tokenizeError };
+  return { book, isLoading, bookError, tokenizeError };
 }

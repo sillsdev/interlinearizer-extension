@@ -168,9 +168,10 @@ export default function InterlinearizerLoader({
     value: simplifyPhrases,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
-  const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
-    { projectId, scrRef },
-  );
+  const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
+    projectId,
+    scrRef,
+  });
 
   const hasError = !!bookError || !!tokenizeError;
   const isSettingLoading =
@@ -300,7 +301,6 @@ export default function InterlinearizerLoader({
         <Interlinearizer
           key={activeProject?.id ?? ''}
           book={book}
-          chapterSegments={chapterSegments}
           continuousScroll={continuousScroll}
           scrRef={scrRef}
           setScrRef={setScrRef}

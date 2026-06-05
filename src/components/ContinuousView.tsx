@@ -14,6 +14,7 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';
+import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -29,16 +30,17 @@ function clampIndex(index: number, len: number): number {
 }
 
 /**
- * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
- * at both ends of the transition.
+ * CSS easing for the strip opacity fade-in/out animation. Aliased to the shared
+ * {@link RECENTER_FADE_EASING} so the strip and the segment list fade on the same curve.
  */
-const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+const STRIP_FADE_EASING = RECENTER_FADE_EASING;
 
 /**
- * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
- * pending-jump effect.
+ * Duration of the strip fade animation in milliseconds. Aliased to the shared
+ * {@link RECENTER_FADE_MS} so the strip and the segment list fade as one; must match the
+ * `setTimeout` in the pending-jump effect.
  */
-const STRIP_FADE_MS = 500;
+const STRIP_FADE_MS = RECENTER_FADE_MS;
 
 /**
  * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an

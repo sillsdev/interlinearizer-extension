@@ -7,7 +7,7 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, PhraseAnalysisLink, Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
@@ -74,7 +74,6 @@ jest.mock('../../components/ContinuousView', () => ({
 
 type CapturedInterlinearizerProps = {
   book: Book;
-  chapterSegments: Segment[];
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
   setScrRef: (newScrRef: SerializedVerseRef) => void;
@@ -256,7 +255,6 @@ function makeScrollGroupHook() {
 function mockBookData(
   overrides: Partial<{
     book: Book | undefined;
-    chapterSegments: Book['segments'];
     isLoading: boolean;
     bookError: string | undefined;
     tokenizeError: { message: string; raw: unknown } | undefined;
@@ -264,7 +262,6 @@ function mockBookData(
 ): void {
   jest.mocked(useInterlinearizerBookData).mockReturnValue({
     book: GEN_1_1_BOOK,
-    chapterSegments: [],
     isLoading: false,
     bookError: undefined,
     tokenizeError: undefined,

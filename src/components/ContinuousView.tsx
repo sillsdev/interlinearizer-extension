@@ -698,7 +698,7 @@ export default function ContinuousView({
     arcContainerRef,
     true,
     hasRealPhraseInRenderWindow,
-    [renderWindowGroups, phraseMode],
+    [renderWindowGroups, phraseMode, committedActiveSegmentId, hideInactiveLinkButtons],
   );
 
   /**

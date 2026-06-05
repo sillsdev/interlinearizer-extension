@@ -17,3 +17,9 @@ Before reporting any documentation as missing, open the file and confirm the JSD
 ## Keyboard navigation
 
 Keyboard accessibility is planned but not yet implemented. Do not flag missing `tabIndex` attributes, absent `aria-*` roles, or gaps in focus management as issues — these will be addressed in a dedicated pass once the core interaction model is stable.
+
+## Mock cleanup in tests
+
+[jest.config.ts](jest.config.ts) sets both `resetMocks: true` and `restoreMocks: true`. This means every `jest.spyOn(...)` is automatically restored to its original implementation after each test — tests do **not** need a manual `mockRestore()` or `jest.restoreAllMocks()` in `afterEach` for spies. Do not flag spies as leaking or suggest adding cleanup for them.
+
+Manual cleanup in `afterEach` is only required for state that `restoreMocks` cannot undo, such as plain reassignment of a global (e.g. `global.ResizeObserver = ...`). When you see an `afterEach` restoring only some things, confirm whether the rest are spies (auto-restored) before flagging an omission.

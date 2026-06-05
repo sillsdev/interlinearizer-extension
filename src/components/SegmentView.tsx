@@ -401,6 +401,8 @@ export function SegmentView({
     tokenGroups,
     phraseMode,
     displayMode,
+    isActive,
+    hideInactiveLinkButtons,
   ]);
 
   if (displayMode === 'baseline-text') {

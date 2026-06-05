@@ -69,6 +69,8 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 All UI uses Tailwind CSS (via `src/tailwind.css`). Every Tailwind class is prefixed `tw:` to avoid collisions with Platform.Bible's own styles (configured in `tailwind.config.ts`). For modifier variants the prefix comes first: `tw:hover:px-3`, not `hover:tw-px-3`.
 
+Tailwind v4 at-rules (`@utility`, `@apply`, `@theme`, `@config`, `@custom-variant`, `@layer`, `@source`, `@plugin`, etc.) are **already whitelisted** in [.stylelintrc.js](.stylelintrc.js)'s `scss/at-rule-no-unknown` `ignoreAtRules` list. Do **not** flag these as Stylelint violations, and do not suggest adding them to the config or adding `stylelint-disable` comments — they already pass. If you believe a lint rule is firing, run `npm run lint` and cite the actual output rather than inferring it from the rule name.
+
 ### Parser pipeline
 
 Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two stages:
@@ -143,8 +145,16 @@ Every function and method — exported or internal — must have a JSDoc block w
 - `@returns` describing the return value (omit only for `void`/`Promise<void>`).
 - `@throws` for every error condition the caller must handle; omit if the function never throws.
 
-Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type.
+Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type. We document each field individually rather than describing the fields in the type-level summary.
+
+This means: when each field already carries its own JSDoc comment, the documentation is **complete** — do not flag it as inadequate, and do not ask for per-field details to be repeated or summarized in the type-level doc. The type-level summary describes the type as a whole; the per-field comments describe the fields. Only flag a field that is genuinely missing its own comment.
+
+Before reporting any documentation as missing, open the file and confirm the JSDoc is actually absent. Do not infer missing docs from a symbol name, a type signature, or an excerpt — read the declaration.
 
 ## UX decisions
 
 When key UX decisions are being made, discuss with a developer whether something should be added to `user-questions.md` for review with people outside the development team.
+
+## Keyboard navigation
+
+Keyboard accessibility is planned but not yet implemented. Do not flag missing `tabIndex` attributes, absent `aria-*` roles, or gaps in focus management as issues — these will be addressed in a dedicated pass once the core interaction model is stable.

@@ -52,7 +52,7 @@
 }
 
 @utility link-slot {
-  @apply tw:inline-flex tw:flex-col tw:items-center;
+  @apply tw:inline-flex tw:flex-row tw:items-center;
 }
 
 @utility token-row {

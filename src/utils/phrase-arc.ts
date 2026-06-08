@@ -288,10 +288,10 @@ const HOVERED_ARC_STROKE: ArcStrokeProps = {
   strokeWidth: 2,
 };
 
-/** Matches `phrase-focused`: foreground at full opacity. */
+/** Matches `phrase-focused`: foreground at 75% opacity. */
 const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
   stroke: 'var(--foreground)',
-  strokeOpacity: 1,
+  strokeOpacity: 0.75,
   strokeWidth: 2,
 };
 

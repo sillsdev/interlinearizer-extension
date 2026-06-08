@@ -104,8 +104,8 @@
 
 @utility phrase-focused {
   --phrase-stroke: var(--foreground);
-  --phrase-stroke-opacity: 1;
-  @apply tw:border-foreground tw:bg-muted/30;
+  --phrase-stroke-opacity: 0.75;
+  @apply tw:border-foreground/75 tw:bg-muted/30;
 }
 
 @utility phrase-hovered {

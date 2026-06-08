@@ -314,7 +314,7 @@ export function TokenLinkIcon({
   return (
     <button
       aria-label="Link tokens"
-      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-muted-foreground tw:hover:text-foreground' : 'tw:text-muted-foreground/50 tw:cursor-default'}`}
+      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       tabIndex={-1}

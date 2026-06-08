@@ -255,9 +255,9 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
       // This is a subsequent token of an already-open group. The gap index is tokenIndex - 1
       // (the gap between tokens[tokenIndex-1] and tokens[tokenIndex]).
       const gapIndex = intraEntry.tokenIndex - 1;
-      // Flush any punctuation already buffered since the previous group token — it belongs to
-      // this intra-group gap, not to the upcoming inter-group slot.
-      intraEntry.group.punctuationBetween[gapIndex].push(...pendingPunctuation);
+      // Reset the gap array to a fresh one so repeated calls to buildRenderUnits (e.g. on focus
+      // change) do not accumulate into the memoized TokenGroup's shared arrays.
+      intraEntry.group.punctuationBetween[gapIndex] = [...pendingPunctuation];
       pendingPunctuation = [];
       pendingIntraGroup = { group: intraEntry.group, gapIndex };
       return;

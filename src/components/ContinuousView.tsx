@@ -531,15 +531,15 @@ export default function ContinuousView({
     };
   }, [focusPhraseIndex, commitPendingActiveSegment]);
 
-  // Keep the focused group pinned dead-center across the deferred inactive-link relayout. When
+  // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
-  // slide open/closed over `LINK_SLOT_TRANSITION_MS`, continuously shifting every box around the
-  // center. A single re-center would only fix the first frame; the focused phrase would then drift
-  // as the slots keep animating. So we re-center every frame for the whole transition: a `rAF` loop
-  // re-anchors the focused group until the animation completes, canceling the shift at the center on
-  // every painted frame. The first run is skipped because the initial center is established by the
-  // scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very first re-center
-  // lands before paint (no initial flash), then `rAF` carries it through the animation.
+  // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `visibility: hidden`
+  // their layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from
+  // the preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds
+  // the group centered for the full fade duration as a conservative guard against any future layout
+  // changes that could re-introduce drift. The first run is skipped because the initial center is
+  // established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very
+  // first re-center lands before paint (no initial flash), then `rAF` carries it through the fade.
   const skipActiveSegmentRecenterRef = useRef(true);
   useLayoutEffect(() => {
     if (skipActiveSegmentRecenterRef.current) {
@@ -566,33 +566,20 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committedActiveSegmentId]);
 
-  // Re-center the focused group when a view option toggles. Hiding/showing link buttons and phrase
-  // controls changes the strip's layout, so the previously-centered group drifts off-center; snap it
-  // back into view. Toggling `hideInactiveLinkButtons` collapses/expands the out-of-segment link
-  // slots via a `max-width`/`opacity` transition over `LINK_SLOT_TRANSITION_MS`, continuously
-  // shifting every box around the center for the whole animation. A single re-center would only fix
-  // the first frame; the focused phrase would then drift as the slots keep animating. So we re-center
-  // every frame until the transition completes, canceling the shift at the center on every painted
-  // frame — mirroring the active-segment-flip re-anchor loop above.
+  // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` changes
+  // the strip's layout, so the previously-centered group may drift off-center; snap it back into
+  // view. `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even
+  // when hidden (visibility:hidden), so toggling it no longer shifts the layout.
   useEffect(() => {
-    /** Re-centers the focused group; called each `rAF` until the deadline. */
-    const recenter = () => {
-      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
-    };
-    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
-    let rafId = requestAnimationFrame(function recenterFrame() {
-      recenter();
-      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
+    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+      behavior: 'auto',
+      block: 'nearest',
+      inline: 'center',
     });
-    return () => cancelAnimationFrame(rafId);
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
     // only re-centers in response to layout-affecting option toggles.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hideInactiveLinkButtons, simplifyPhrases]);
+  }, [simplifyPhrases]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically
@@ -722,7 +709,7 @@ export default function ContinuousView({
     arcContainerRef,
     true,
     hasRealPhraseInRenderWindow,
-    [renderWindowGroups, phraseMode, committedActiveSegmentId, hideInactiveLinkButtons],
+    [renderWindowGroups, phraseMode, committedActiveSegmentId],
   );
 
   /**

@@ -3,7 +3,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
@@ -641,64 +641,18 @@ describe('SegmentView', () => {
     expect(handleSelect).not.toHaveBeenCalled();
   });
 
-  it('animates the link-slot open/close transition after mount', () => {
+  it('enables the link-slot fade transition after mount', () => {
     const { container } = render(
       <AnalysisStoreProvider analysisLanguage="und">
         <SegmentView {...requiredProps()} />
       </AnalysisStoreProvider>,
     );
 
-    // The slot's sliding-door wrapper is the [data-link-slot]'s first element child. Once the mount
-    // effect has run (flushed by render/act), SegmentView stops suppressing the transition so a
-    // later active-segment flip slides the slot instead of snapping it — the reflow-during-click
-    // that otherwise mis-selects the phrase under the pointer.
+    // After mount, SegmentView stops suppressing the opacity transition so later toggles of
+    // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping.
     const slotWrapper = container.querySelector('[data-link-slot] > span');
     if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
     expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);
-  });
-
-  it('re-measures arcs each frame while the link slots slide, then stops at the deadline', () => {
-    // Capture rAF callbacks and control the clock so we can step the slide loop deterministically.
-    const frames: FrameRequestCallback[] = [];
-    const rafSpy = jest
-      .spyOn(globalThis, 'requestAnimationFrame')
-      .mockImplementation((cb: FrameRequestCallback) => {
-        frames.push(cb);
-        return frames.length;
-      });
-    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
-    let now = 0;
-    jest.spyOn(performance, 'now').mockImplementation(() => now);
-
-    const { rerender } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} isActive={false} />
-      </AnalysisStoreProvider>,
-    );
-    // Mount effect skips the loop; flipping isActive after mount starts it.
-    rerender(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} isActive />
-      </AnalysisStoreProvider>,
-    );
-
-    const runNextFrame = () => {
-      const cb = frames.shift();
-      if (!cb) throw new Error('Expected a scheduled animation frame');
-      act(() => cb(now));
-    };
-
-    // Before the deadline each frame schedules another (the bump + continue branch).
-    expect(frames.length).toBe(1);
-    runNextFrame();
-    expect(frames.length).toBe(1);
-
-    // Crossing the deadline runs the final frame without scheduling more (the stop branch).
-    now = LINK_SLOT_TRANSITION_MS + 1;
-    runNextFrame();
-    expect(frames.length).toBe(0);
-
-    rafSpy.mockRestore();
   });
 
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {

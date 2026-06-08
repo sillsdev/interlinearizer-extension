@@ -242,9 +242,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    // Icon stays mounted but hidden in place (visibility:hidden preserves its space in the layout).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.visibility).toBe('hidden');
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 
@@ -288,9 +288,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    // Icon stays mounted but hidden in place (visibility:hidden preserves its space in the layout).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.visibility).toBe('hidden');
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 });

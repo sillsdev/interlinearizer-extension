@@ -13,9 +13,9 @@ import {
 } from '../utils/token-layout';
 
 /**
- * Duration, in milliseconds, of the link-slot sliding-door (`max-width` / `opacity`) transition.
- * Exported so `ContinuousView` can re-center the focused phrase for exactly this long while the
- * slots animate open/closed, keeping it pinned dead-center as the layout shifts around it.
+ * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so `ContinuousView`
+ * can re-center the focused phrase for exactly this long after `committedActiveSegmentId` flips,
+ * keeping it anchored while the fade runs.
  */
 export const LINK_SLOT_TRANSITION_MS = 200;
 
@@ -95,12 +95,11 @@ export function PhraseSlot({
     >
       {hasLinkableNeighbors && (
         <span
-          className="tw:overflow-hidden tw:transition-[max-width,opacity] tw:ease-in-out"
+          className="tw:transition-opacity tw:ease-in-out"
           style={{
             transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
-            maxWidth: suppressLinkIcon ? '0' : '2rem',
             opacity: suppressLinkIcon ? 0 : 1,
-            pointerEvents: suppressLinkIcon ? 'none' : undefined,
+            visibility: suppressLinkIcon ? 'hidden' : undefined,
             overflowAnchor: 'none',
           }}
         >

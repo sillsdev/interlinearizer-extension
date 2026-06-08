@@ -832,14 +832,14 @@ describe('ContinuousView scroll behavior', () => {
     }
     render(<Parent />, withAnalysisStore);
     // Returns true when the tok-0/tok-1 link icon is rendered AND its wrapper is visible (not
-    // suppressed). Icons stay mounted but are hidden via visibility:'hidden' when suppressed, so
+    // suppressed). Icons stay mounted but are hidden via opacity:0 when suppressed, so
     // we query the DOM wrapper's style rather than spy calls.
     return () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
       );
       if (!icon) return false;
-      return icon.parentElement?.style.visibility !== 'hidden';
+      return icon.parentElement?.style.opacity !== '0';
     };
   }
 

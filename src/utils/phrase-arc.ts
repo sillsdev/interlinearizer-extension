@@ -267,10 +267,10 @@ export type ArcStrokeProps = {
  * vice-versa.
  */
 
-/** Matches `phrase-dimmed`: border-color at 80% opacity. */
+/** Matches `phrase-dimmed`: border-color at full opacity. */
 const DIMMED_ARC_STROKE: ArcStrokeProps = {
   stroke: 'var(--border)',
-  strokeOpacity: 0.8,
+  strokeOpacity: 1,
   strokeWidth: 2,
 };
 
@@ -288,10 +288,10 @@ const HOVERED_ARC_STROKE: ArcStrokeProps = {
   strokeWidth: 2,
 };
 
-/** Matches `phrase-focused`: foreground at 75% opacity. */
+/** Matches `phrase-focused`: foreground at 60% opacity. */
 const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
   stroke: 'var(--foreground)',
-  strokeOpacity: 0.75,
+  strokeOpacity: 0.6,
   strokeWidth: 2,
 };
 

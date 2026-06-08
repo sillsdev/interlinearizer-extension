@@ -97,9 +97,10 @@ export function PhraseSlot({
         <span
           className="tw:transition-opacity tw:ease-in-out"
           style={{
+            display: 'inline-flex',
+            minHeight: '1rem',
             transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
             opacity: suppressLinkIcon ? 0 : 1,
-            visibility: suppressLinkIcon ? 'hidden' : undefined,
             overflowAnchor: 'none',
           }}
         >

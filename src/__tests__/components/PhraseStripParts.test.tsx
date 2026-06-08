@@ -242,9 +242,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted but hidden in place (visibility:hidden preserves its space in the layout).
+    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.visibility).toBe('hidden');
+    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 
@@ -288,9 +288,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted but hidden in place (visibility:hidden preserves its space in the layout).
+    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.visibility).toBe('hidden');
+    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 });

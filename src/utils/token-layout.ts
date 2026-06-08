@@ -256,10 +256,26 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
       // (the gap between tokens[tokenIndex-1] and tokens[tokenIndex]).
       const gapIndex = intraEntry.tokenIndex - 1;
       // Reset the gap array to a fresh one so repeated calls to buildRenderUnits (e.g. on focus
-      // change) do not accumulate into the memoized TokenGroup's shared arrays.
-      intraEntry.group.punctuationBetween[gapIndex] = [...pendingPunctuation];
+      // change) do not accumulate into the memoized TokenGroup's shared arrays. If
+      // pendingIntraGroup is already tracking this exact gap, punctuation tokens were routed
+      // directly into it; preserve them by prepending rather than replacing.
+      if (
+        pendingIntraGroup?.group === intraEntry.group &&
+        pendingIntraGroup.gapIndex === gapIndex
+      ) {
+        intraEntry.group.punctuationBetween[gapIndex] = [
+          ...pendingPunctuation,
+          ...intraEntry.group.punctuationBetween[gapIndex],
+        ];
+      } else {
+        intraEntry.group.punctuationBetween[gapIndex] = [...pendingPunctuation];
+      }
       pendingPunctuation = [];
-      pendingIntraGroup = { group: intraEntry.group, gapIndex };
+      const nextGapIndex = intraEntry.tokenIndex;
+      pendingIntraGroup =
+        nextGapIndex < intraEntry.group.punctuationBetween.length
+          ? { group: intraEntry.group, gapIndex: nextGapIndex }
+          : undefined;
       return;
     }
 

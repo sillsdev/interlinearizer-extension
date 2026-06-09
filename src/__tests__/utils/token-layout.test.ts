@@ -2,13 +2,14 @@
 /// <reference types="jest" />
 
 import type { Token } from 'interlinearizer';
+import { emptyFocusContext } from '../../types/empty-factories';
+import type { FocusContext } from '../../types/token-layout';
 import {
   resolveFocusContext,
   resolveSlotFocus,
   groupTokens,
   buildRenderUnits,
   NO_SLOT_FOCUS,
-  type FocusContext,
 } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
@@ -105,14 +106,7 @@ describe('resolveSlotFocus', () => {
     focusedSegmentId: string | undefined,
     overrides: Partial<FocusContext> = {},
   ): FocusContext {
-    return {
-      focusedToken: undefined,
-      focusedPhraseLink: undefined,
-      focusedFreeToken: undefined,
-      focusedSegmentId,
-      focusedPhraseId: undefined,
-      ...overrides,
-    };
+    return { ...emptyFocusContext(), focusedSegmentId, ...overrides };
   }
 
   it('marks isSameSegmentAsFocus true when all three segment ids agree', () => {

@@ -9,7 +9,7 @@ import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
 import ContinuousView from '../../components/ContinuousView';
 import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
-import { isWordToken } from '../../types/typeGuards';
+import { isWordToken } from '../../types/type-guards';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope

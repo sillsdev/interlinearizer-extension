@@ -5,12 +5,8 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import {
-  resolveSlotFocus,
-  type FocusContext,
-  type LinkSlot,
-  type TokenGroup,
-} from '../utils/token-layout';
+import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
+import { resolveSlotFocus } from '../utils/token-layout';
 
 /**
  * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so `ContinuousView`

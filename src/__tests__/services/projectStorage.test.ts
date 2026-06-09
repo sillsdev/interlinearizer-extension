@@ -12,7 +12,7 @@ import {
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
-import { emptyAnalysis } from '../../types/emptyFactories';
+import { emptyAnalysis } from '../../types/empty-factories';
 import { createTestActivationContext } from '../test-helpers';
 
 /**

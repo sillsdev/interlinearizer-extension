@@ -6,7 +6,7 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
-import { emptyAnalysis } from '../types/emptyFactories';
+import { emptyAnalysis } from '../types/empty-factories';
 import { createTestActivationContext } from './test-helpers';
 
 jest.mock('../services/projectStorage');

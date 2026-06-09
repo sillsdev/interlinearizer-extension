@@ -1,3 +1,4 @@
+/** @file Type guards for narrowing interlinearizer types and validating parsed JSON payloads. */
 import type { AssignmentStatus, TextAnalysis, Token } from 'interlinearizer';
 import type { InterlinearProjectSummary } from './interlinear-project-summary';
 

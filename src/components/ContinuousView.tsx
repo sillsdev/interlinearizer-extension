@@ -5,17 +5,12 @@ import type { Dispatch, SetStateAction } from 'react';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
-import { isWordToken } from '../types/typeGuards';
+import { isWordToken } from '../types/type-guards';
 import { PhraseStripProvider } from './PhraseStripContext';
 import type { PhraseStripContextValue } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
-import {
-  buildRenderUnits,
-  groupTokens,
-  resolveFocusContext,
-  type LinkSlot,
-  type TokenGroup,
-} from '../utils/token-layout';
+import type { LinkSlot, TokenGroup } from '../types/token-layout';
+import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';

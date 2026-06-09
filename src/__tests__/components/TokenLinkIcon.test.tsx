@@ -10,7 +10,7 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import type { SlotFocusInfo } from '../../utils/token-layout';
+import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 // ---------------------------------------------------------------------------

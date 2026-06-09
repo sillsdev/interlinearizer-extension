@@ -12,7 +12,8 @@ import {
   type StripItem,
 } from '../../components/PhraseStripParts';
 import { PhraseStripProvider } from '../../components/PhraseStripContext';
-import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
+import { emptyFocusContext } from '../../types/empty-factories';
+import type { TokenGroup, LinkSlot, FocusContext } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -81,13 +82,7 @@ function mkPunct(ref: string, surfaceText = '.'): Token {
 }
 
 /** A minimal no-focus context. */
-const NO_FOCUS: FocusContext = {
-  focusedToken: undefined,
-  focusedPhraseLink: undefined,
-  focusedFreeToken: undefined,
-  focusedSegmentId: undefined,
-  focusedPhraseId: undefined,
-};
+const NO_FOCUS: FocusContext = emptyFocusContext();
 
 /** Default props shared by PhraseSlot tests. */
 function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {

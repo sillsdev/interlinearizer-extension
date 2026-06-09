@@ -4,8 +4,8 @@ import { Link2, Link2Off } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
+import type { SlotFocusInfo } from '../types/token-layout';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import type { SlotFocusInfo } from '../utils/token-layout';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{

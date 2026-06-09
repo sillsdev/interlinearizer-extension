@@ -2,21 +2,16 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
-import type { PhraseMode } from '../types/phrase-mode';
-import { PhraseStripProvider } from './PhraseStripContext';
-import type { PhraseStripContextValue } from './PhraseStripContext';
-import { PhraseStrip, type StripItem } from './PhraseStripParts';
-import {
-  buildRenderUnits,
-  groupTokens,
-  resolveFocusContext,
-  type RenderUnit,
-} from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import type { PhraseMode } from '../types/phrase-mode';
+import type { RenderUnit } from '../types/token-layout';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
+import { type PhraseStripContextValue, PhraseStripProvider } from './PhraseStripContext';
+import { PhraseStrip, type StripItem } from './PhraseStripParts';
 
 /**
  * The two display modes for {@link SegmentView}.

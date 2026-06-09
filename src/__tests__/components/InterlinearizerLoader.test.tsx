@@ -12,7 +12,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
-import { emptyAnalysis } from '../../types/emptyFactories';
+import { emptyAnalysis } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 

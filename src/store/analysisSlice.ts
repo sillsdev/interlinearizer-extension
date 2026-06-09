@@ -7,7 +7,7 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
-import { emptyAnalysis } from '../types/emptyFactories';
+import { emptyAnalysis } from '../types/empty-factories';
 
 // #region Types
 

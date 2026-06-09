@@ -1,7 +1,7 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
 import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
-import { emptyAnalysis } from '../types/emptyFactories';
+import { emptyAnalysis } from '../types/empty-factories';
 
 const PROJECT_IDS_KEY = 'projectIds';
 

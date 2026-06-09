@@ -5,7 +5,7 @@
  */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
-import type { Book, PhraseAnalysisLink } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 
@@ -142,6 +142,19 @@ export function createTestActivationContext(): ExecutionActivationContext {
     elevatedPrivileges: mockElevatedPrivileges,
     registrations: new UnsubscriberAsyncList('test'),
   };
+}
+
+/**
+ * Builds a minimal word token for use in component tests. When `surfaceText` is omitted it defaults
+ * to `ref`, which is appropriate for tests that only need a syntactically valid token and do not
+ * assert on surface text independently.
+ *
+ * @param ref - Token reference string.
+ * @param surfaceText - Display text; defaults to `ref` when omitted.
+ * @returns A word token with the given ref and surface text.
+ */
+export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
+  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
 }
 
 /**

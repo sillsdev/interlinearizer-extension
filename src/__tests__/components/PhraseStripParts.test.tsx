@@ -13,7 +13,7 @@ import {
 } from '../../components/PhraseStripParts';
 import { PhraseStripProvider } from '../../components/PhraseStripContext';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
-import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
+import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -68,17 +68,6 @@ jest.mock('../../components/PhraseBox', () => ({
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Creates a word token fixture.
- *
- * @param ref - Token ref.
- * @param surfaceText - Surface text.
- * @returns A word token.
- */
-function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
-  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
-}
 
 /**
  * Creates a punctuation token fixture.
@@ -146,7 +135,7 @@ describe('PhraseSlot', () => {
 
   it('renders when the slot has two neighbors', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -159,13 +148,13 @@ describe('PhraseSlot', () => {
   it('sets phraseRevealed when both neighbors are in the same hovered phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: link,
       firstIndex: 0,
       punctuationBetween: [],
     };
     const nextGroup: TokenGroup = {
-      tokens: [mkWord('tok-b')],
+      tokens: [makeWordToken('tok-b')],
       phraseLink: link,
       firstIndex: 1,
       punctuationBetween: [],
@@ -182,20 +171,20 @@ describe('PhraseSlot', () => {
   it('sets phraseRevealed via focusedPhraseId when both neighbors are in the same focused phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: link,
       firstIndex: 0,
       punctuationBetween: [],
     };
     const nextGroup: TokenGroup = {
-      tokens: [mkWord('tok-b')],
+      tokens: [makeWordToken('tok-b')],
       phraseLink: link,
       firstIndex: 1,
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     const focusedContext: FocusContext = {
-      focusedToken: mkWord('tok-a'),
+      focusedToken: makeWordToken('tok-a'),
       focusedPhraseLink: link,
       focusedFreeToken: undefined,
       focusedSegmentId: 'seg-1',
@@ -211,7 +200,7 @@ describe('PhraseSlot', () => {
 
   it('renders the link icon when hideInactiveLinkButtons is off', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -226,7 +215,7 @@ describe('PhraseSlot', () => {
 
   it('hides the link icon when hideInactiveLinkButtons is on and neither neighbor is in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -250,7 +239,7 @@ describe('PhraseSlot', () => {
 
   it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -271,7 +260,7 @@ describe('PhraseSlot', () => {
 
   it('hides the cross-verse-boundary link icon when only one neighbor is in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -301,7 +290,7 @@ describe('PhraseSlot', () => {
 
 describe('MemoizedPhraseGroup', () => {
   const group: TokenGroup = {
-    tokens: [mkWord('tok-a', 'Hello')],
+    tokens: [makeWordToken('tok-a', 'Hello')],
     phraseLink: undefined,
     firstIndex: 0,
     punctuationBetween: [],
@@ -398,7 +387,7 @@ describe('PhraseStrip', () => {
    * @returns A group {@link StripItem}.
    */
   function groupItem(link: PhraseAnalysisLink | undefined, refs: string[]): StripItem {
-    const tokens = refs.map((r) => mkWord(r));
+    const tokens = refs.map((r) => makeWordToken(r));
     return {
       kind: 'group',
       key: refs[0],

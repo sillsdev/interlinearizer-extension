@@ -5,14 +5,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps, ReactElement } from 'react';
-import type { Token } from 'interlinearizer';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
 import type { SlotFocusInfo } from '../../utils/token-layout';
-import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
+import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock
@@ -38,17 +37,6 @@ jest.mock('../../components/AnalysisStore', () => ({
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a word token fixture.
- *
- * @param ref - Token reference string.
- * @param surfaceText - Display text.
- * @returns A word token.
- */
-function mkToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
-  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
-}
-
-/**
  * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
  * link-icon tests, which then layer on `focusedSideIsPrev` / `focusedPhraseLink` /
  * `focusedFreeToken` as needed.
@@ -69,8 +57,8 @@ function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
 /** Default no-op required props for `TokenLinkIcon`. */
 function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
   return {
-    prevToken: mkToken('tok-a'),
-    nextToken: mkToken('tok-b'),
+    prevToken: makeWordToken('tok-a'),
+    nextToken: makeWordToken('tok-b'),
     prevPhraseLink: undefined,
     nextPhraseLink: undefined,
     slotFocus: slotFocus(),
@@ -287,7 +275,7 @@ describe('TokenLinkIcon', () => {
         slotFocus={slotFocus({
           focusedSideIsPrev: true,
           isSameSegmentAsFocus: false,
-          focusedFreeToken: mkToken('tok-a'),
+          focusedFreeToken: makeWordToken('tok-a'),
         })}
       />,
     );
@@ -295,7 +283,7 @@ describe('TokenLinkIcon', () => {
   });
 
   it('creates a phrase when clicking link with two free tokens', async () => {
-    const focusedFreeToken = mkToken('tok-a');
+    const focusedFreeToken = makeWordToken('tok-a');
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
@@ -371,7 +359,7 @@ describe('TokenLinkIcon', () => {
 
   it('absorbs free token into neighbor phrase when focus is free and neighbor is a phrase', async () => {
     const neighborPhrase = makePhraseLink('p2', ['tok-b']);
-    const focusedFreeToken = mkToken('tok-a');
+    const focusedFreeToken = makeWordToken('tok-a');
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
@@ -402,8 +390,8 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        prevToken={mkToken('tok-b')}
-        nextToken={mkToken('tok-c')}
+        prevToken={makeWordToken('tok-b')}
+        nextToken={makeWordToken('tok-c')}
         slotFocus={slotFocus({ focusedSideIsPrev: true, focusedPhraseLink: focusedPhrase })}
         nextPhraseLink={focusedPhrase}
       />,
@@ -441,7 +429,7 @@ describe('TokenLinkIcon', () => {
 
   it('calls onHoverCandidateTokens with token refs on enter and undefined on leave', async () => {
     const onHoverCandidateTokens = jest.fn();
-    const focusedFreeToken = mkToken('tok-a');
+    const focusedFreeToken = makeWordToken('tok-a');
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
@@ -469,8 +457,8 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        prevToken={mkToken('tok-a')}
-        nextToken={mkToken('tok-b')}
+        prevToken={makeWordToken('tok-a')}
+        nextToken={makeWordToken('tok-b')}
         slotFocus={slotFocus({ focusedSideIsPrev: false, focusedPhraseLink: focusedPhrase })}
       />,
       {
@@ -544,7 +532,7 @@ describe('TokenLinkIcon', () => {
 
   it('highlights all tokens in a multi-token neighbor phrase when focus is free and neighbor is phrase', async () => {
     const neighborPhrase = makePhraseLink('p2', ['tok-b', 'tok-c']);
-    const focusedFreeToken = mkToken('tok-a');
+    const focusedFreeToken = makeWordToken('tok-a');
     const onHoverCandidateTokens = jest.fn();
     renderIcon(
       <TokenLinkIcon
@@ -574,8 +562,8 @@ describe('TokenLinkIcon', () => {
     renderIcon(
       <TokenLinkIcon
         {...requiredProps()}
-        prevToken={mkToken('tok-b')}
-        nextToken={mkToken('tok-c')}
+        prevToken={makeWordToken('tok-b')}
+        nextToken={makeWordToken('tok-c')}
         prevPhraseLink={phraseLink}
         nextPhraseLink={phraseLink}
       />,

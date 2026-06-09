@@ -12,7 +12,7 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import { makePhraseStripContext } from '../test-helpers';
+import { makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks — reset between tests via resetMocks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
@@ -676,20 +676,6 @@ describe('PhraseBox', () => {
       ['D', 2],
       ['E', 3],
     ]);
-    /**
-     * Builds a minimal word token whose surface text equals its ref.
-     *
-     * @param ref - Token ref (also used as surface text).
-     * @returns A word token with the given ref.
-     */
-    const mk = (ref: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText: ref,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const updatePhraseSpy = jest.fn();
     const createPhraseSpy = jest.fn();
@@ -704,7 +690,7 @@ describe('PhraseBox', () => {
         {...requiredProps()}
         isHighlighted
         phraseLink={phraseLink}
-        tokens={[mk('C'), mk('D'), mk('E')]}
+        tokens={[makeWordToken('C'), makeWordToken('D'), makeWordToken('E')]}
       />,
       { tokenDocOrder: docOrder },
     );
@@ -737,20 +723,6 @@ describe('PhraseBox', () => {
       ['A', 0],
       ['B', 1],
     ]);
-    /**
-     * Builds a minimal word token whose surface text equals its ref.
-     *
-     * @param ref - Token ref (also used as surface text).
-     * @returns A word token with the given ref.
-     */
-    const mk = (ref: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText: ref,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const onHoverSplitFreeTokens = jest.fn();
     renderBox(
@@ -758,7 +730,7 @@ describe('PhraseBox', () => {
         {...requiredProps()}
         isHighlighted
         phraseLink={phraseLink}
-        tokens={[mk('A'), mk('B')]}
+        tokens={[makeWordToken('A'), makeWordToken('B')]}
       />,
       { tokenDocOrder: docOrder, onHoverSplitFreeTokens },
     );
@@ -792,20 +764,6 @@ describe('PhraseBox', () => {
       ['C', 2],
       ['D', 3],
     ]);
-    /**
-     * Builds a minimal word token whose surface text equals its ref.
-     *
-     * @param ref - Token ref (also used as surface text).
-     * @returns A word token with the given ref.
-     */
-    const mk = (ref: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText: ref,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(phraseLink);
     const updatePhraseSpy = jest.fn();
     const deletePhraseSpy = jest.fn();
@@ -819,7 +777,7 @@ describe('PhraseBox', () => {
         {...requiredProps()}
         isHighlighted
         phraseLink={phraseLink}
-        tokens={[mk('A'), mk('B'), mk('C'), mk('D')]}
+        tokens={[makeWordToken('A'), makeWordToken('B'), makeWordToken('C'), makeWordToken('D')]}
       />,
       { tokenDocOrder: docOrder },
     );
@@ -908,21 +866,6 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
-    /**
-     * Builds a minimal word token with an explicit surface text.
-     *
-     * @param ref - Token ref.
-     * @param surfaceText - Surface text for the token.
-     * @returns A word token with the given ref and surface text.
-     */
-    const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
     const updatePhraseSpy = jest.fn();
     mockUsePhraseDispatch.mockReturnValue({
@@ -936,10 +879,10 @@ describe('PhraseBox', () => {
         isHighlighted
         phraseLink={fourTokenPhrase}
         tokens={[
-          mk('token-1', 'Hello'),
-          mk('token-2', 'World'),
-          mk('token-3', 'foo'),
-          mk('token-4', 'bar'),
+          makeWordToken('token-1', 'Hello'),
+          makeWordToken('token-2', 'World'),
+          makeWordToken('token-3', 'foo'),
+          makeWordToken('token-4', 'bar'),
         ]}
       />,
     );
@@ -964,21 +907,6 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
-    /**
-     * Builds a minimal word token with an explicit surface text.
-     *
-     * @param ref - Token ref.
-     * @param surfaceText - Surface text for the token.
-     * @returns A word token with the given ref and surface text.
-     */
-    const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
     renderBox(
       <PhraseBox
@@ -987,10 +915,10 @@ describe('PhraseBox', () => {
         isFocused={false}
         phraseLink={fourTokenPhrase}
         tokens={[
-          mk('token-1', 'Hello'),
-          mk('token-2', 'World'),
-          mk('token-3', 'foo'),
-          mk('token-4', 'bar'),
+          makeWordToken('token-1', 'Hello'),
+          makeWordToken('token-2', 'World'),
+          makeWordToken('token-3', 'foo'),
+          makeWordToken('token-4', 'bar'),
         ]}
       />,
       { simplifyPhrases: true },
@@ -1010,21 +938,6 @@ describe('PhraseBox', () => {
         { tokenRef: 'token-4', surfaceText: 'bar' },
       ],
     };
-    /**
-     * Builds a minimal word token with an explicit surface text.
-     *
-     * @param ref - Token ref.
-     * @param surfaceText - Surface text for the token.
-     * @returns A word token with the given ref and surface text.
-     */
-    const mk = (ref: string, surfaceText: string): Token & { type: 'word' } => ({
-      ref,
-      surfaceText,
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 1,
-    });
     mockUsePhraseLinkForToken.mockReturnValue(fourTokenPhrase);
     renderBox(
       <PhraseBox
@@ -1033,10 +946,10 @@ describe('PhraseBox', () => {
         isFocused
         phraseLink={fourTokenPhrase}
         tokens={[
-          mk('token-1', 'Hello'),
-          mk('token-2', 'World'),
-          mk('token-3', 'foo'),
-          mk('token-4', 'bar'),
+          makeWordToken('token-1', 'Hello'),
+          makeWordToken('token-2', 'World'),
+          makeWordToken('token-3', 'foo'),
+          makeWordToken('token-4', 'bar'),
         ]}
       />,
       { simplifyPhrases: true },

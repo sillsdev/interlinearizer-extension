@@ -372,6 +372,37 @@ describe('mergePhrases', () => {
     expect(phraseAnalysisLinks[0].tokens).toStrictEqual(mergedTokens);
   });
 
+  it('no-ops entirely when absorbedPhraseId equals targetPhraseId', () => {
+    const phrase = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...defaultAnalysis,
+          phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'A' }],
+          phraseAnalysisLinks: [phrase],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: [
+          { tokenRef: 'tok-a', surfaceText: 'A' },
+          { tokenRef: 'tok-b', surfaceText: 'B' },
+        ],
+        absorbedPhraseId: 'phrase-1',
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].surfaceText).toBe('A');
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].tokens).toHaveLength(1);
+  });
+
   it('no-ops on the target updates when the target phrase id is not found', () => {
     const absorbed = makePhraseLink('phrase-2', ['tok-b']);
     const store = createAnalysisStore({

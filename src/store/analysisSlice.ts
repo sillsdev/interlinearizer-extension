@@ -246,11 +246,16 @@ const analysisSlice = createSlice({
      * `deletePhrase` were dispatched separately — where the neighbor's tokens briefly existed in
      * two phrases at once, which a save between the two dispatches could persist.
      *
+     * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
+     * immediately undone by the delete.
+     *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the `MergePhrasesPayload`.
      */
     mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
       const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
+      if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+
       const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
       if (link) link.tokens = tokens;
       const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);

@@ -5,9 +5,10 @@
  */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
-import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
+import { emptyAnalysis } from '../types/empty-factories';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -141,6 +142,23 @@ export function createTestActivationContext(): ExecutionActivationContext {
     executionToken: mockExecutionToken,
     elevatedPrivileges: mockElevatedPrivileges,
     registrations: new UnsubscriberAsyncList('test'),
+  };
+}
+
+/**
+ * Builds a minimal `InterlinearProject` test fixture with stable defaults used across command
+ * tests.
+ *
+ * @param id - Project ID override for tests that need a specific identifier.
+ * @returns A project with fixed metadata and a fresh empty analysis object.
+ */
+export function makeStubProject(id = 'proj-id'): InterlinearProject {
+  return {
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    sourceProjectId: 'src-project',
+    analysisLanguages: ['en'],
+    analysis: emptyAnalysis(),
   };
 }
 

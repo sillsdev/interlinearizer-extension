@@ -5,6 +5,7 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
+import { defaultScrRef } from './test-helpers';
 
 jest.mock('../components/InterlinearizerLoader', () => ({
   __esModule: true,
@@ -24,9 +25,6 @@ require('../interlinearizer.web-view');
 
 const InterlinearizerWebView = globalThis.webViewComponent;
 if (!InterlinearizerWebView) throw new Error('webViewComponent not loaded');
-
-/** Minimal SerializedVerseRef for hook mock return. */
-const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
 /** Builds a minimal WebViewProps for tests. */
 function makeProps(projectId?: string, scrRef: SerializedVerseRef = defaultScrRef): WebViewProps {

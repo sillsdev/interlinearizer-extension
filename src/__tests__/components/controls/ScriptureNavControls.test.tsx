@@ -2,13 +2,11 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings, useRecentScriptureRefs } from '@papi/frontend/react';
 import ScriptureNavControls from '../../../components/controls/ScriptureNavControls';
-
-const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+import { defaultScrRef } from '../../test-helpers';
 
 describe('ScriptureNavControls', () => {
   beforeEach(() => {

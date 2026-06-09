@@ -528,10 +528,10 @@ export default function ContinuousView({
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
-  // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `visibility: hidden`
-  // their layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from
-  // the preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds
-  // the group centered for the full fade duration as a conservative guard against any future layout
+  // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `opacity: 0` their
+  // layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from the
+  // preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds the
+  // group centered for the full fade duration as a conservative guard against any future layout
   // changes that could re-introduce drift. The first run is skipped because the initial center is
   // established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very
   // first re-center lands before paint (no initial flash), then `rAF` carries it through the fade.
@@ -564,7 +564,8 @@ export default function ContinuousView({
   // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` changes
   // the strip's layout, so the previously-centered group may drift off-center; snap it back into
   // view. `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even
-  // when hidden (visibility:hidden), so toggling it no longer shifts the layout.
+  // when hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does
+  // not shift the layout.
   useEffect(() => {
     phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
       behavior: 'auto',

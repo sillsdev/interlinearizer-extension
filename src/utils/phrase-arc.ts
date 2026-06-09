@@ -252,7 +252,7 @@ export function computeStripRowGap(
 // #region Arc stroke styling
 
 /** Stroke styling for a single phrase arc; consumed directly as SVG `<path>` attributes. */
-export type ArcStrokeProps = {
+type ArcStrokeProps = {
   /** SVG `stroke` value — a CSS color expression. */
   stroke: string;
   /** SVG `stroke-opacity`. */

@@ -167,7 +167,10 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
     if (!isWordToken(token)) {
       if (pendingIntraGroup) {
         // Punctuation between two tokens of the same group: route into the group.
-        pendingIntraGroup.group.punctuationBetween[pendingIntraGroup.gapIndex].push(token);
+        pendingIntraGroup.group.punctuationBetween[pendingIntraGroup.gapIndex] = [
+          ...pendingIntraGroup.group.punctuationBetween[pendingIntraGroup.gapIndex],
+          token,
+        ];
       } else {
         pendingPunctuation.push(token);
       }
@@ -196,10 +199,13 @@ export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): Re
       }
       pendingPunctuation = [];
       const nextGapIndex = intraEntry.tokenIndex;
-      pendingIntraGroup =
-        nextGapIndex < intraEntry.group.punctuationBetween.length
-          ? { group: intraEntry.group, gapIndex: nextGapIndex }
-          : undefined;
+      if (nextGapIndex < intraEntry.group.punctuationBetween.length) {
+        // Entering a new intra-group gap for this invocation; clear any stale memoized entries.
+        intraEntry.group.punctuationBetween[nextGapIndex] = [];
+        pendingIntraGroup = { group: intraEntry.group, gapIndex: nextGapIndex };
+      } else {
+        pendingIntraGroup = undefined;
+      }
       return;
     }
 

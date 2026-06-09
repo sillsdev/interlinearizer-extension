@@ -6,16 +6,16 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import type { PhraseAnalysisLink } from 'interlinearizer';
-import EditPhraseControls from '../../components/controls/EditPhraseControls';
-import type { PhraseMode } from '../../types/phrase-mode';
-import { makePhraseLink } from '../test-helpers';
+import EditPhraseControls from '../../../components/controls/EditPhraseControls';
+import type { PhraseMode } from '../../../types/phrase-mode';
+import { makePhraseLink } from '../../test-helpers';
 
 const mockUsePhraseLinkByIdMap = jest.fn<Map<string, PhraseAnalysisLink>, []>();
 
 // AnalysisStore is exercised by its own dedicated suite. EditPhraseControls only reads the live
 // phrase's token count via usePhraseLinkByIdMap, so we stub that single hook rather than driving
 // the real provider (which would pull AnalysisStore into this suite's coverage).
-jest.mock('../../components/AnalysisStore', () => ({
+jest.mock('../../../components/AnalysisStore', () => ({
   __esModule: true,
   usePhraseLinkByIdMap: () => mockUsePhraseLinkByIdMap(),
 }));

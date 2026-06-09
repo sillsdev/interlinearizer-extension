@@ -5,7 +5,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import ViewOptionsDropdown from '../../components/controls/ViewOptionsDropdown';
+import ViewOptionsDropdown from '../../../components/controls/ViewOptionsDropdown';
 
 beforeEach(() => {
   // Restore key-as-value behavior cleared by resetMocks: true.

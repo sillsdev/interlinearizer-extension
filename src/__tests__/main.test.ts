@@ -6,6 +6,7 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
+import { emptyAnalysis } from '../types/emptyFactories';
 import { createTestActivationContext } from './test-helpers';
 
 jest.mock('../services/projectStorage');
@@ -520,20 +521,12 @@ describe('main', () => {
 
   describe('interlinearizer.createProject command', () => {
     const mockCreateProject = jest.mocked(projectStorage.createProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
     const stubProject = {
       id: 'new-project-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
       analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
+      analysis: emptyAnalysis(),
     };
 
     it('registers the interlinearizer.createProject command', async () => {
@@ -775,20 +768,12 @@ describe('main', () => {
 
   describe('interlinearizer.getProjectsForSource command', () => {
     const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
     const stubProject = {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
       analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
+      analysis: emptyAnalysis(),
     };
 
     it('registers the interlinearizer.getProjectsForSource command', async () => {
@@ -826,20 +811,12 @@ describe('main', () => {
 
   describe('interlinearizer.updateProjectMetadata command', () => {
     const mockUpdateProjectMetadata = jest.mocked(projectStorage.updateProjectMetadata);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
     const stubProject = {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
       analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
+      analysis: emptyAnalysis(),
     };
 
     it('registers the interlinearizer.updateProjectMetadata command', async () => {
@@ -915,20 +892,12 @@ describe('main', () => {
 
   describe('interlinearizer.getProject command', () => {
     const mockGetProject = jest.mocked(projectStorage.getProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
     const stubProject = {
       id: 'proj-id',
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-project',
       analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
+      analysis: emptyAnalysis(),
     };
 
     /**

@@ -12,6 +12,7 @@ import {
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
+import { emptyAnalysis } from '../../types/emptyFactories';
 import { createTestActivationContext } from '../test-helpers';
 
 /**
@@ -50,15 +51,6 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
 
 const token = createTestActivationContext().executionToken;
 
-const EMPTY_ANALYSIS = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
-
 /**
  * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
  * storage key has never been written.
@@ -87,7 +79,7 @@ describe('projectStorage', () => {
         id: '00000000-0000-0000-0000-000000000001',
         sourceProjectId: 'src-proj',
         analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
+        analysis: emptyAnalysis(),
       });
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
@@ -199,7 +191,7 @@ describe('projectStorage', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
         analysisLanguages: ['fr'],
-        analysis: EMPTY_ANALYSIS,
+        analysis: emptyAnalysis(),
       };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
 
@@ -233,7 +225,7 @@ describe('projectStorage', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
         analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
+        analysis: emptyAnalysis(),
       };
       const p2 = { ...p1, id: 'id-2' };
       __mockReadUserData
@@ -252,7 +244,7 @@ describe('projectStorage', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
         sourceProjectId: 'src',
         analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
+        analysis: emptyAnalysis(),
       };
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-missing']))
@@ -271,7 +263,7 @@ describe('projectStorage', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src',
       analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
+      analysis: emptyAnalysis(),
     };
 
     it('returns the updated project with the new name and description', async () => {
@@ -449,7 +441,7 @@ describe('projectStorage', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src',
       analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
+      analysis: emptyAnalysis(),
     };
     const newAnalysis = {
       segmentAnalyses: [],
@@ -502,7 +494,7 @@ describe('projectStorage', () => {
       createdAt: '2026-01-01T00:00:00.000Z',
       sourceProjectId: 'src-a',
       analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
+      analysis: emptyAnalysis(),
     };
 
     it('returns only projects whose sourceProjectId matches', async () => {

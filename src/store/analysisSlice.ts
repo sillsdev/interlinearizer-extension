@@ -7,6 +7,7 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
+import { emptyAnalysis } from '../types/emptyFactories';
 
 // #region Types
 
@@ -79,14 +80,7 @@ interface WritePhraseGlossPayload {
 // #region Default state
 
 /** Empty `TextAnalysis` used when no `initialAnalysis` is provided to the store. */
-export const defaultAnalysis: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
+export const defaultAnalysis: TextAnalysis = emptyAnalysis();
 
 /** Default `AnalysisState` used as the Redux initial state. */
 export const defaultState: AnalysisState = {

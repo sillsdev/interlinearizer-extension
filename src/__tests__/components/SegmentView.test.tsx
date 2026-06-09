@@ -7,10 +7,11 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
-import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
-import { SegmentView } from '../../components/SegmentView';
+import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
+import { SegmentView } from '../../components/SegmentView';
 import { makePhraseLink } from '../test-helpers';
+import { withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -230,82 +231,53 @@ describe('SegmentView', () => {
   });
 
   it('renders word token chips in token-chip mode (default)', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
   });
 
   it('renders non-word (punctuation) tokens in token-chip mode', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} />, withAnalysisStore);
 
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
   it('renders baselineText in baseline-text mode', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} displayMode="baseline-text" />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
   });
 
   it('does not render individual tokens in baseline-text mode', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} displayMode="baseline-text" />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
     expect(screen.queryByText('In')).not.toBeInTheDocument();
     expect(screen.queryByText('the')).not.toBeInTheDocument();
   });
 
   it('shows the verse number label', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(screen.getByText('1')).toBeInTheDocument();
   });
 
   it('sets aria-current="true" when isActive is true', () => {
-    const { container } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} isActive />
-      </AnalysisStoreProvider>,
-    );
+    const { container } = render(<SegmentView {...requiredProps()} isActive />, withAnalysisStore);
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
   });
 
   it('does not set aria-current when isActive is omitted', () => {
-    const { container } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(container.firstChild).not.toHaveAttribute('aria-current');
   });
 
   it('sets aria-current="true" on the baseline-text button when isActive is true', () => {
     const { container } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />
-      </AnalysisStoreProvider>,
+      <SegmentView {...requiredProps()} displayMode="baseline-text" isActive />,
+      withAnalysisStore,
     );
 
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
@@ -314,9 +286,8 @@ describe('SegmentView', () => {
   it('calls onSelect when clicked in baseline-text mode', async () => {
     const handleSelect = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
+      <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+      withAnalysisStore,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -327,11 +298,7 @@ describe('SegmentView', () => {
 
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
     const handleSelect = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
 
     await userEvent.click(screen.getByRole('button', { name: 'In' }));
 
@@ -340,11 +307,7 @@ describe('SegmentView', () => {
   });
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
   });
@@ -364,11 +327,7 @@ describe('SegmentView', () => {
     ]);
     mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
 
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     // Both tokens are grouped into one PhraseBox (the mock renders both as buttons inside one wrapper)
     expect(document.querySelectorAll('[data-focus-state]')).toHaveLength(1);
@@ -425,11 +384,7 @@ describe('SegmentView', () => {
       ]),
     );
 
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} segment={discontiguousSegment} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} segment={discontiguousSegment} />, withAnalysisStore);
 
     // boxes[0]=tok-a (1st fragment), boxes[1]=tok-b (free), boxes[2]=tok-c (2nd fragment)
     const boxes = document.querySelectorAll('[data-show-gloss]');
@@ -438,11 +393,7 @@ describe('SegmentView', () => {
   });
 
   it('sets focusedGroupSeen when focusedTokenRef matches a token in a group', () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} focusedTokenRef="tok-0" />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} focusedTokenRef="tok-0" />, withAnalysisStore);
     // Just verifies no error — the focusedSideIsPrev computation runs with a matching token.
     expect(screen.getByText('In')).toBeInTheDocument();
   });
@@ -463,23 +414,18 @@ describe('SegmentView', () => {
       ]),
     );
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView
-          {...requiredProps()}
-          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: sharedLink.tokens }}
-        />
-      </AnalysisStoreProvider>,
+      <SegmentView
+        {...requiredProps()}
+        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: sharedLink.tokens }}
+      />,
+      withAnalysisStore,
     );
     // In edit mode, EMPTY_SPLIT_FREE_REFS is used — no errors expected.
     expect(screen.getByText('In')).toBeInTheDocument();
   });
 
   it('fires mouse-leave on the token row without throwing', async () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     const tokenRow = document.querySelector('.tw\\:token-row');
     expect(tokenRow).not.toBeNull();
     await userEvent.unhover(tokenRow ?? document.body);
@@ -501,11 +447,7 @@ describe('SegmentView', () => {
     ]);
     mockUsePhraseLinkMap.mockReturnValue(phraseLinkMap);
     const onHoverPhrase = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} onHoverPhrase={onHoverPhrase} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} onHoverPhrase={onHoverPhrase} />, withAnalysisStore);
     // The PhraseGroup wrapper span wraps the mocked PhraseBox span (data-focus-state).
     const focusStateEl = document.querySelector('[data-focus-state]');
     const phraseGroupSpan = focusStateEl?.parentElement;
@@ -524,22 +466,21 @@ describe('SegmentView', () => {
       deletePhrase,
       mergePhrases: jest.fn(),
     });
-    // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
+    // Two-token phrase split at tok-0 — both halves are 1 token — deletePhrase called
     mockUsePhraseLinkMap.mockReturnValue(
       new Map([['tok-0', makePhraseLink('phrase-1', ['tok-0', 'tok-1'], ['In', 'the'])]]),
     );
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView
-          {...requiredProps()}
-          tokenDocOrder={
-            new Map([
-              ['tok-0', 0],
-              ['tok-1', 1],
-            ])
-          }
-        />
-      </AnalysisStoreProvider>,
+      <SegmentView
+        {...requiredProps()}
+        tokenDocOrder={
+          new Map([
+            ['tok-0', 0],
+            ['tok-1', 1],
+          ])
+        }
+      />,
+      withAnalysisStore,
     );
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
@@ -553,22 +494,14 @@ describe('SegmentView', () => {
       deletePhrase,
       mergePhrases: jest.fn(),
     });
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     await userEvent.click(screen.getByTestId('arc-split-btn'));
     expect(deletePhrase).not.toHaveBeenCalled();
   });
 
   it('focuses the first word token and updates the verse when the background is clicked', async () => {
     const handleSelect = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
 
     await userEvent.click(screen.getByTestId('segment-container'));
 
@@ -579,9 +512,8 @@ describe('SegmentView', () => {
   it('does nothing on background click when the segment has no word token', async () => {
     const handleSelect = jest.fn();
     render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
+      <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} onSelect={handleSelect} />,
+      withAnalysisStore,
     );
 
     await userEvent.click(screen.getByTestId('segment-container'));
@@ -591,11 +523,7 @@ describe('SegmentView', () => {
 
   it('ignores background clicks that bubble up from an interactive child', async () => {
     const handleSelect = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
 
     // Clicking the token button calls onSelect itself (with the clicked token), but the bubbled
     // click on the container must not fire handleBackgroundClick a second time.
@@ -607,11 +535,7 @@ describe('SegmentView', () => {
 
   it('ignores background clicks that bubble up from a phrase-box label, not just an interactive tag', async () => {
     const handleSelect = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
 
     // Clicking a token chip's surface text lands on a <label>/<span> inside the phrase box, not on
     // the gloss input itself. The browser still forwards that click to the input (which fires its
@@ -625,13 +549,12 @@ describe('SegmentView', () => {
   it('ignores background clicks that bubble up from an inter-phrase link slot', async () => {
     const handleSelect = jest.fn();
     const { container } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        {/* Inactive segment with link buttons hidden: the slot between the two token groups
-            collapses its link button to zero width, leaving an empty clickable gap. Clicking that
-            gap must NOT snap focus to the segment's first phrase (the reported out-of-segment bug);
-            it should be a no-op, matching the buttons-visible case where the button absorbs it. */}
-        <SegmentView {...requiredProps()} hideInactiveLinkButtons onSelect={handleSelect} />
-      </AnalysisStoreProvider>,
+      // Inactive segment with link buttons hidden: the slot between the two token groups collapses
+      // its link button to zero width, leaving an empty clickable gap. Clicking that gap must NOT
+      // snap focus to the segment's first phrase (the reported out-of-segment bug); it should be a
+      // no-op, matching the buttons-visible case where the button absorbs it.
+      <SegmentView {...requiredProps()} hideInactiveLinkButtons onSelect={handleSelect} />,
+      withAnalysisStore,
     );
 
     const slot = container.querySelector('[data-link-slot]');
@@ -642,11 +565,7 @@ describe('SegmentView', () => {
   });
 
   it('enables the link-slot fade transition after mount', () => {
-    const { container } = render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     // After mount, SegmentView stops suppressing the opacity transition so later toggles of
     // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping.
@@ -664,11 +583,7 @@ describe('SegmentView', () => {
     mockUsePhraseLinkMap.mockReturnValue(new Map([['tok-0', phraseLink]]));
     mockCandidateTokenRefs.current = new Set(['tok-0']);
     // No throw and correct render = the candidatePhraseIds memo ran without error
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <SegmentView {...requiredProps()} />
-      </AnalysisStoreProvider>,
-    );
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     // ArcOverlay receives candidatePhraseIds; it renders so no assertion needed beyond no crash
     expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
   });

@@ -7,9 +7,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
+import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
-import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
 import { isWordToken } from '../../types/type-guards';
+import { withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -43,13 +44,6 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGloss: () => '',
   usePhraseGlossDispatch: () => () => {},
 }));
-
-/** Render options that wrap every test render in a `AnalysisStoreProvider`. */
-const withAnalysisStore = {
-  wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
-  },
-};
 
 // The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
 // ContinuousView's tests don't redundantly re-exercise the hook's internals; the view only forwards

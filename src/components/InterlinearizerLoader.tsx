@@ -15,7 +15,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
-import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
+import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
@@ -349,11 +349,7 @@ function InterlinearizerLoaderInner({
       <div
         data-testid="book-fade-wrapper"
         className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        style={{
-          opacity: fadePhase === 'out' ? 0 : 1,
-          transitionDuration: `${RECENTER_FADE_MS}ms`,
-          transitionTimingFunction: RECENTER_FADE_EASING,
-        }}
+        style={{ opacity: fadePhase === 'out' ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
       >
         {hasError || showLoading || !book ? (
           <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">

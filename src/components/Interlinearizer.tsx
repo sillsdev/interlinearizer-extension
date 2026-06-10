@@ -10,7 +10,19 @@ import { isWordToken } from '../types/type-guards';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { useInterlinearNav } from './InterlinearNavContext';
-import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
+import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+
+/**
+ * Returns the ref of the first word token in `segment`, or `undefined` when the segment has none.
+ * The seed value for `focusedTokenRef` whenever focus must fall back to the active verse's leading
+ * word (initial mount, book change, and external verse reseed).
+ *
+ * @param segment - The segment to read, or `undefined` when no active segment is resolved.
+ * @returns The first word token's ref, or `undefined`.
+ */
+function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
+  return segment?.tokens.find(isWordToken)?.ref;
+}
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -105,14 +117,14 @@ function InterlinearizerInner({
   // Seed focusedTokenRef from the active verse on first render so the views always see a defined
   // value. An undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
   // focus.focusedSegmentId), so we never want it unset while there's a valid seed available.
-  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(
-    () => findActiveSegment()?.tokens.find((t) => t.type === 'word')?.ref,
+  const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(() =>
+    firstWordTokenRefOf(findActiveSegment()),
   );
 
   // Reseed when the book changes — the previous focusedTokenRef refers to a token from another
   // book and would never resolve in the new book's maps.
   useEffect(() => {
-    setFocusedTokenRef(findActiveSegment()?.tokens.find((t) => t.type === 'word')?.ref);
+    setFocusedTokenRef(firstWordTokenRefOf(findActiveSegment()));
     // findActiveSegment changes with scrRef too; only re-seed on book change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
@@ -213,7 +225,7 @@ function InterlinearizerInner({
     const activeSeg = findActiveSegment();
     if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
     /* v8 ignore next -- activeSeg is always defined when the book includes the active verse */
-    setFocusedTokenRef(activeSeg?.tokens.find((t) => t.type === 'word')?.ref);
+    setFocusedTokenRef(firstWordTokenRefOf(activeSeg));
     // findActiveSegment is intentionally excluded: the verse-coordinate deps already capture the
     // change we care about, and it changes identity on every scrRef update.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,11 +304,7 @@ function InterlinearizerInner({
       )}
       <div
         className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        style={{
-          opacity: isModeToggleFading ? 0 : 1,
-          transitionDuration: `${RECENTER_FADE_MS}ms`,
-          transitionTimingFunction: RECENTER_FADE_EASING,
-        }}
+        style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
       >
         {displayContinuousScroll && (
           <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">

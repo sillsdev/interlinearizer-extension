@@ -204,10 +204,6 @@ export function SegmentView({
     </span>
   );
 
-  /** Ref to the flex token row; used by mouse-leave handling. */
-  // eslint-disable-next-line no-null/no-null
-  const tokenRowRef = useRef<HTMLSpanElement | null>(null);
-
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the
    * initial visibility state must snap into place before paint (fading in on mount would flash),
@@ -483,7 +479,6 @@ export function SegmentView({
         <PhraseStripProvider value={stripContext}>
           <span
             className="tw:token-row tw:pointer-events-none"
-            ref={tokenRowRef}
             style={{
               paddingTop: `${tokenRowTopPadding}px`,
               paddingLeft: `${stripLeftPadding}px`,

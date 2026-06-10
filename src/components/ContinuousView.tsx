@@ -14,7 +14,7 @@ import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/tok
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import MemoizedArcOverlay from './ArcOverlay';
-import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
+import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -28,19 +28,6 @@ function clampIndex(index: number, len: number): number {
   if (len === 0) return 0;
   return Math.max(0, Math.min(index, len - 1));
 }
-
-/**
- * CSS easing for the strip opacity fade-in/out animation. Aliased to the shared
- * {@link RECENTER_FADE_EASING} so the strip and the segment list fade on the same curve.
- */
-const STRIP_FADE_EASING = RECENTER_FADE_EASING;
-
-/**
- * Duration of the strip fade animation in milliseconds. Aliased to the shared
- * {@link RECENTER_FADE_MS} so the strip and the segment list fade as one; must match the
- * `setTimeout` in the pending-jump effect.
- */
-const STRIP_FADE_MS = RECENTER_FADE_MS;
 
 /**
  * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an
@@ -292,6 +279,24 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /**
+   * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
+   * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
+   * `behavior`, so they route through here. Stable identity (reads `phraseRefs` and takes the index
+   * explicitly) so the effects that center a snapshot index keep their intentionally-narrow dep
+   * arrays.
+   *
+   * @param groupIndex - Index into `phraseRefs` of the group to center.
+   * @param behavior - `'auto'` for an instant jump, `'smooth'` for an animated glide.
+   */
+  const centerGroup = useCallback((groupIndex: number, behavior: ScrollBehavior) => {
+    phraseRefs.current[groupIndex]?.scrollIntoView({
+      behavior,
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, []);
+
   /** Ref to the token-strip row; the content row and mouse-leave target. */
   // eslint-disable-next-line no-null/no-null
   const stripRowRef = useRef<HTMLDivElement | null>(null);
@@ -483,7 +488,7 @@ export default function ContinuousView({
     setIsVisible(false);
     const timeout = setTimeout(() => {
       setDisplayFocusedTokenRef(focusedTokenRef);
-    }, STRIP_FADE_MS);
+    }, RECENTER_FADE_MS);
     return () => clearTimeout(timeout);
   }, [focusedTokenRef, displayFocusedTokenRef]);
 
@@ -501,11 +506,7 @@ export default function ContinuousView({
       // to disturb — commit the active segment now alongside the instant scroll.
       setSkipSlotTransitionForJump(true);
       commitPendingActiveSegment();
-      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
+      centerGroup(focusPhraseIndex, 'auto');
     }
 
     if (isInternal && !isInitialLoad) {
@@ -514,11 +515,7 @@ export default function ContinuousView({
       // Scrolling synchronously here animates toward a position that then shifts, producing a visible
       // overshoot-and-return ("yank") when crossing a verse boundary.
       const navRafId = requestAnimationFrame(() => {
-        phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
+        centerGroup(focusPhraseIndex, 'smooth');
       });
       // Commit the active-segment change (which toggles inactive link-icon visibility, re-laying out
       // the strip) only once the smooth scroll has actually settled. Updating it mid-scroll would
@@ -562,7 +559,7 @@ export default function ContinuousView({
       cancelAnimationFrame(rafId);
       setIsVisible(true);
     };
-  }, [focusPhraseIndex, commitPendingActiveSegment]);
+  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup]);
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
@@ -580,13 +577,7 @@ export default function ContinuousView({
       return undefined;
     }
     /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
-    const recenter = () => {
-      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
-    };
+    const recenter = () => centerGroup(focusPhraseIndex, 'auto');
     recenter();
     const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
     let rafId = requestAnimationFrame(function recenterFrame() {
@@ -605,13 +596,9 @@ export default function ContinuousView({
   // when hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does
   // not shift the layout.
   useEffect(() => {
-    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: 'auto',
-      block: 'nearest',
-      inline: 'center',
-    });
+    centerGroup(focusPhraseIndex, 'auto');
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
-    // only re-centers in response to layout-affecting option toggles.
+    // only re-centers in response to layout-affecting option toggles. centerGroup is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simplifyPhrases]);
 
@@ -909,10 +896,7 @@ export default function ContinuousView({
           data-testid="strip-fade-wrapper"
           ref={arcContainerRef}
           className={`tw:arc-container tw:transition-opacity ${stripOpacityClass}`}
-          style={{
-            transitionDuration: `${STRIP_FADE_MS}ms`,
-            transitionTimingFunction: STRIP_FADE_EASING,
-          }}
+          style={RECENTER_FADE_TRANSITION_STYLE}
         >
           <MemoizedArcOverlay
             arcPaths={arcPaths}

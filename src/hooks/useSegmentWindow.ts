@@ -153,8 +153,9 @@ export interface UseSegmentWindowResult {
   bottomSentinelRef: (el: HTMLElement | null) => void;
   /**
    * Imperatively recenters the window on the active verse with a fade. Intended for the LocateFixed
-   * button: when the active verse is outside the render window `snapToActive` finds no
-   * `aria-current` element, so the button calls this instead.
+   * button and the continuous-scroll mode switch: always fades and rebuilds, so the active verse is
+   * brought into view even when it sits outside the render window (where a plain `scrollIntoView`
+   * of the `aria-current` element would find nothing and silently no-op). Stable identity.
    */
   recenterOnActive: () => void;
 }
@@ -487,8 +488,8 @@ export default function useSegmentWindow({
   }, [recenterEpoch, snapActiveToTop, scrollContainerRef]);
 
   /**
-   * Rebuilds the window centered on the active verse and fades it into view. Shared by both the
-   * external-navigation effect and the imperative `recenterOnActive` callback.
+   * Rebuilds the window centered on the active verse and fades it into view. Used by the
+   * external-navigation effect and returned directly as the imperative `recenterOnActive`.
    *
    * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
    * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade
@@ -688,16 +689,6 @@ export default function useSegmentWindow({
     [segments, range.start, range.end],
   );
 
-  /**
-   * Imperative recenter for the LocateFixed button (and the continuous-scroll mode switch).
-   * Rebuilds the window centered on the active verse and fades it in, so the verse is brought into
-   * view even when it sits outside the current render window. Always fades — see the parent's
-   * `snapToActive`.
-   */
-  const recenterOnActive = useCallback(() => {
-    triggerRecenter();
-  }, [triggerRecenter]);
-
   // Clear any in-flight recenter fade on unmount so the deferred range/snap/state updates don't run
   // against a torn-down tree.
   useEffect(
@@ -715,6 +706,6 @@ export default function useSegmentWindow({
     displayContinuousScroll,
     topSentinelRef,
     bottomSentinelRef,
-    recenterOnActive,
+    recenterOnActive: triggerRecenter,
   };
 }

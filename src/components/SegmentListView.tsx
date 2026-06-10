@@ -6,7 +6,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
-import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
+import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** Props for {@link SegmentListView}. */
 type SegmentListViewProps = Readonly<{
@@ -168,33 +168,18 @@ export default function SegmentListView({
     onSettled: reportSettled,
   });
 
-  /**
-   * Recenters the segment list on the active verse with the same fade-and-rebuild used for external
-   * navigation. Used by the LocateFixed button and the continuous-scroll mode switch. Always fades
-   * (even when the verse is already on screen) so the active verse is guaranteed to land in view —
-   * a plain `scrollIntoView` of an `aria-current` element silently no-ops when the verse is outside
-   * the render window, leaving the list parked wherever it was.
-   *
-   * `recenterOnActive` is captured via ref so this callback's identity stays stable.
-   */
-  const recenterOnActiveRef = useRef<() => void>(() => undefined);
-  recenterOnActiveRef.current = recenterOnActive;
-  const snapToActive = useCallback(() => {
-    recenterOnActiveRef.current();
-  }, []);
-
   // Recenter the segment list on the active verse when switching between continuous and segment
   // modes. Skips the initial mount: the window is already built centered on the anchor there, so a
   // recenter would needlessly fade. Only an actual mode toggle should fade-and-recenter.
+  // `recenterOnActive` has a stable identity, so listing it as a dep doesn't re-fire this.
   const didMountModeSwitchRef = useRef(false);
   useEffect(() => {
     if (!didMountModeSwitchRef.current) {
       didMountModeSwitchRef.current = true;
       return;
     }
-    snapToActive();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuousScroll]);
+    recenterOnActive();
+  }, [continuousScroll, recenterOnActive]);
 
   return (
     <div
@@ -214,7 +199,7 @@ export default function SegmentListView({
               aria-label="Scroll to active verse"
               className="tw:rounded tw:p-1 tw:text-foreground tw:bg-background tw:hover:bg-muted/50 tw:pointer-events-auto"
               tabIndex={-1}
-              onClick={snapToActive}
+              onClick={recenterOnActive}
               type="button"
             >
               <LocateFixed className="tw:h-4 tw:w-4" />
@@ -223,11 +208,7 @@ export default function SegmentListView({
 
           <div
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
-            style={{
-              opacity: isFaded ? 0 : 1,
-              transitionDuration: `${RECENTER_FADE_MS}ms`,
-              transitionTimingFunction: RECENTER_FADE_EASING,
-            }}
+            style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
             <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
             {windowSegments.map((seg) => (

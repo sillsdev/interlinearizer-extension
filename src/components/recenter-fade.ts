@@ -16,3 +16,15 @@ export const RECENTER_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
  * transition and for the `setTimeout` that swaps content at the midpoint, so they fade as one.
  */
 export const RECENTER_FADE_MS = 500;
+
+/**
+ * Inline `style` for any element whose opacity fades on the shared recenter clock. Pairs the
+ * duration and easing so the four fade wrappers (loader curtain, mode-toggle wrapper, segment list,
+ * continuous strip) can't drift onto different timings — set `opacity` alongside this and add the
+ * `tw:transition-opacity` class. Frozen so the shared reference is safe to spread into any style
+ * object.
+ */
+export const RECENTER_FADE_TRANSITION_STYLE = Object.freeze({
+  transitionDuration: `${RECENTER_FADE_MS}ms`,
+  transitionTimingFunction: RECENTER_FADE_EASING,
+});

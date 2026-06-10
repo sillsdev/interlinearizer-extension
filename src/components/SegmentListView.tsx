@@ -214,7 +214,10 @@ export default function SegmentListView({
             {windowSegments.map((seg) => (
               <Fragment key={seg.id}>
                 {!chapterLabelInVerse && chapterStartIds.has(seg.id) && (
-                  <span className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground">
+                  <span
+                    data-chapter-start={seg.startRef.chapter}
+                    className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground"
+                  >
                     {`Chapter ${seg.startRef.chapter}`}
                   </span>
                 )}
@@ -226,7 +229,8 @@ export default function SegmentListView({
                   isActive={
                     seg.startRef.book === displayScrRef.book &&
                     seg.startRef.chapter === displayScrRef.chapterNum &&
-                    seg.startRef.verse === displayScrRef.verseNum
+                    (seg.startRef.verse === displayScrRef.verseNum ||
+                      (displayScrRef.verseNum === 0 && chapterStartIds.has(seg.id)))
                   }
                   onHoverPhrase={setHoveredPhraseId}
                   onSelect={onSelect}

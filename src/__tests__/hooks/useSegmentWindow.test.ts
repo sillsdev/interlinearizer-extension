@@ -143,6 +143,46 @@ function mountSentinels(
   return { top, bottom };
 }
 
+/**
+ * Installs a stub `ResizeObserver` that records the most recently created callback and returns a
+ * `fire` helper (invokes it inside `act`) plus a `restore` to put the original observer back.
+ * Shared by every test that drives the scroll-compensation / re-snap observer by hand, so the stub
+ * class is declared once at module scope rather than re-declared in each test.
+ *
+ * @returns `fire` to invoke the recorded observer callback and `restore` to reinstate the original.
+ */
+function installResizeObserver(): { fire: () => void; restore: () => void } {
+  const original = global.ResizeObserver;
+  let callback: ResizeObserverCallback | undefined;
+  const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
+  // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal ResizeObserver stub
+  class StubResizeObserver implements ResizeObserver {
+    /** @param cb - Stored so a test can fire it on demand. */
+    constructor(cb: ResizeObserverCallback) {
+      callback = cb;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+    observe() {}
+
+    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+    unobserve() {}
+
+    // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+    disconnect() {}
+  }
+  global.ResizeObserver = StubResizeObserver;
+  return {
+    fire: () =>
+      act(() => {
+        callback?.([], stub);
+      }),
+    restore: () => {
+      global.ResizeObserver = original;
+    },
+  };
+}
+
 beforeEach(() => {
   jest.useFakeTimers();
   global.ioInstances = [];
@@ -434,6 +474,52 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
 
+  it('snaps the chapter heading (not the active verse) when the reference names verse 0', () => {
+    const book = makeBook(60, 60);
+    const scrollIntoView = jest.spyOn(Element.prototype, 'scrollIntoView');
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    // Mount both candidate targets: the active verse-1 segment and the chapter-2 heading. A verse-0
+    // reference should snap the heading, leaving the active verse highlighted below it.
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+    const heading = document.createElement('span');
+    heading.setAttribute('data-chapter-start', '2');
+    container.appendChild(heading);
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 2, verseNum: 0 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    expect(scrollIntoView.mock.contexts).toContain(heading);
+    expect(scrollIntoView.mock.contexts).not.toContain(active);
+  });
+
+  it('falls back to the active verse for a verse-0 reference when no heading is mounted', () => {
+    const book = makeBook(60, 60);
+    const scrollIntoView = jest.spyOn(Element.prototype, 'scrollIntoView');
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    // No `[data-chapter-start]` element (headings suppressed by chapterLabelInVerse), so the snap
+    // falls back to the active verse.
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 2, verseNum: 0 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    expect(scrollIntoView.mock.contexts).toContain(active);
+  });
+
   it('re-snaps the recentered verse after paint to correct for late layout settling', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
@@ -459,7 +545,7 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  it('re-snaps every frame for the whole re-snap window, then stops', () => {
+  it('does not re-snap on idle frames after the single post-paint snap', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -475,66 +561,62 @@ describe('useSegmentWindow', () => {
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-    // Layout-effect snap: 1. The re-snap loop has not run a frame yet.
+    // Layout-effect snap: 1. The post-paint rAF re-snap has not run yet.
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-    // The loop re-snaps on every frame — even when the scroll position is stable (jsdom has no
-    // layout) — and does not stop until the re-snap window elapses, so a transient plateau can never
-    // end it early. Run frames almost to the deadline.
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS - 16));
-    const beforeDeadline = scrollIntoView.mock.calls.length;
-    expect(beforeDeadline).toBeGreaterThan(2);
+    // The post-paint frame re-snaps once against the painted layout: 2 total.
+    act(() => jest.advanceTimersByTime(16));
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
-    // Once the window elapses the loop reports settled and stops scheduling further snaps.
-    act(() => jest.advanceTimersByTime(16 * 10));
-    const afterDeadline = scrollIntoView.mock.calls.length;
-    act(() => jest.advanceTimersByTime(16 * 10));
-    expect(scrollIntoView).toHaveBeenCalledTimes(afterDeadline);
-    expect(afterDeadline).toBeGreaterThanOrEqual(beforeDeadline);
+    // No further resizes fire (jsdom doesn't lay out), so the event-driven snap stays quiet — unlike
+    // the old per-frame loop it does not keep snapping on idle frames. The quiet timer then reports
+    // settled and the deadline elapses with no extra snaps.
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS * 2));
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps re-snapping after a plateau when the layout shifts again later in the window', () => {
-    const book = makeBook(60, 0);
-    const scrollIntoView = jest.fn();
-    Element.prototype.scrollIntoView = scrollIntoView;
-    const onSettled = jest.fn();
-    const { container, rerender } = renderSegmentWindow(
-      book,
-      { book: 'GEN', chapterNum: 1, verseNum: 1 },
-      undefined,
-      onSettled,
-    );
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+  it('re-snaps against each later settling wave relayed through the compensation observer', () => {
+    const { fire, restore } = installResizeObserver();
+    try {
+      const book = makeBook(60, 0);
+      const scrollIntoView = jest.fn();
+      Element.prototype.scrollIntoView = scrollIntoView;
+      const onSettled = jest.fn();
+      const { container, result, rerender } = renderSegmentWindow(
+        book,
+        { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        undefined,
+        onSettled,
+      );
+      const active = document.createElement('div');
+      active.setAttribute('aria-current', 'true');
+      container.appendChild(active);
+      // Mount the top sentinel so the compensation observer subscribes to the container.
+      const top = document.createElement('div');
+      container.appendChild(top);
+      act(() => result.current.topSentinelRef(top));
 
-    // Drain the initial-mount settle (anchor at book start → next-frame settle) before the recenter.
-    act(() => jest.advanceTimersByTime(16));
-    onSettled.mockClear();
+      act(() => jest.advanceTimersByTime(16));
+      onSettled.mockClear();
 
-    // Simulate the toggle-on layout: the snapped scrollTop plateaus at 100 for a few frames (the
-    // early-exit would have quit here), then a later wave (strip/arc settling) shifts it. The loop
-    // must re-snap against that later shift instead of having stopped on the plateau.
-    const positions = [100, 100, 100, 100, 100, 250, 250, 250, 250];
-    let readIdx = 0;
-    Object.defineProperty(container, 'scrollTop', {
-      configurable: true,
-      get: () => {
-        const v = positions[Math.min(readIdx, positions.length - 1)];
-        readIdx += 1;
-        return v;
-      },
-      set: () => {},
-    });
+      act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      // The post-paint rAF re-snaps once against the painted layout.
+      act(() => jest.advanceTimersByTime(16));
+      const afterFirstSnap = scrollIntoView.mock.calls.length;
 
-    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      // Each later settling wave (arc padding applied, strip mounted) fires the resize observer; while
+      // the recenter is in flight that re-snaps the verse rather than compensating.
+      fire();
+      fire();
+      expect(scrollIntoView.mock.calls.length).toBe(afterFirstSnap + 2);
 
-    // Run out the whole window: the loop snaps every frame, so it catches the post-plateau shift.
-    const callsBefore = scrollIntoView.mock.calls.length;
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
-    expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsBefore + 5);
-    expect(onSettled).toHaveBeenCalledTimes(1);
+      // Once the waves stop the quiet window elapses and the recenter reports settled exactly once.
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      expect(onSettled).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
   });
 
   it('does not re-snap on the initial mount, only after a recenter', () => {
@@ -581,7 +663,7 @@ describe('useSegmentWindow', () => {
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onSettled once the mid-book mount snap loop settles', () => {
+  it('fires onSettled once the mid-book mount snap settles', () => {
     const book = makeBook(60, 0);
     Element.prototype.scrollIntoView = jest.fn();
     const onSettled = jest.fn();
@@ -595,13 +677,14 @@ describe('useSegmentWindow', () => {
     active.setAttribute('aria-current', 'true');
     container.appendChild(active);
 
-    // The mount snap loop re-snaps for the whole re-snap window, then reports settled. Advance past
-    // the window (plus a frame to run the deadline check).
+    // The mount snap re-snaps once after paint, then — no further resize waves fire in jsdom — the
+    // quiet window elapses and it reports settled. Advance past the rAF, the quiet window, and the
+    // deadline backstop.
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
-  it('fires onSettled after a recenter snap loop settles', () => {
+  it('fires onSettled after a recenter snap settles', () => {
     const book = makeBook(60, 0);
     Element.prototype.scrollIntoView = jest.fn();
     const onSettled = jest.fn();
@@ -619,42 +702,44 @@ describe('useSegmentWindow', () => {
     act(() => jest.advanceTimersByTime(16));
     onSettled.mockClear();
 
-    // An external recenter rebuilds + snaps; settle fires again once its re-snap window elapses.
+    // An external recenter rebuilds + snaps; settle fires again once the layout goes quiet.
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
     expect(onSettled).toHaveBeenCalled();
   });
 
-  it('fires onSettled once even when the layout never stops shifting during the re-snap window', () => {
-    const book = makeBook(60, 0);
-    Element.prototype.scrollIntoView = jest.fn();
-    const onSettled = jest.fn();
-    const { container } = renderSegmentWindow(
-      book,
-      { book: 'GEN', chapterNum: 1, verseNum: 30 },
-      undefined,
-      onSettled,
-    );
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+  it('fires onSettled once via the deadline when settling waves never stop', () => {
+    const { fire, restore } = installResizeObserver();
+    try {
+      const book = makeBook(60, 0);
+      Element.prototype.scrollIntoView = jest.fn();
+      const onSettled = jest.fn();
+      const { container, result } = renderSegmentWindow(
+        book,
+        { book: 'GEN', chapterNum: 1, verseNum: 30 },
+        undefined,
+        onSettled,
+      );
+      const active = document.createElement('div');
+      active.setAttribute('aria-current', 'true');
+      container.appendChild(active);
+      const top = document.createElement('div');
+      container.appendChild(top);
+      act(() => result.current.topSentinelRef(top));
 
-    // scrollTop changes on every read (a layout that never plateaus). The loop ignores that — it is
-    // time-bounded, not settle-detected — so it re-snaps for the whole window and reports settled
-    // exactly once at the end, never stranding the loader curtain.
-    let scrollTop = 0;
-    Object.defineProperty(container, 'scrollTop', {
-      configurable: true,
-      get: () => {
-        scrollTop += 1;
-        return scrollTop;
-      },
-      set: () => {},
-    });
-
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16 * 5));
-    expect(onSettled).toHaveBeenCalledTimes(1);
+      // A layout that resizes faster than the quiet window keeps relaying re-snaps, so the quiet
+      // timer never fires. The deadline backstop reports settled exactly once so the curtain is never
+      // stranded. Fire a resize on every quiet interval right up to the deadline.
+      const ticks = Math.ceil(RECENTER_FADE_MS / 50) + 2;
+      for (let i = 0; i < ticks; i += 1) {
+        fire();
+        act(() => jest.advanceTimersByTime(50));
+      }
+      expect(onSettled).toHaveBeenCalledTimes(1);
+    } finally {
+      restore();
+    }
   });
 
   it('tolerates a mount with no onSettled callback', () => {
@@ -810,42 +895,24 @@ describe('useSegmentWindow', () => {
   });
 
   describe('above-viewport scroll compensation', () => {
-    const originalResizeObserver = global.ResizeObserver;
-
+    // The module-scope `installResizeObserver` swaps in a stub observer; restore the original after
+    // each test in this block so the stub never leaks into another test's render.
+    let restoreResizeObserver: (() => void) | undefined;
     afterEach(() => {
-      global.ResizeObserver = originalResizeObserver;
+      restoreResizeObserver?.();
+      restoreResizeObserver = undefined;
     });
 
     /**
-     * Installs a stub `ResizeObserver` that records the callback created for the scroll container,
-     * so a test can fire it on demand. Returns a `fire` helper.
+     * Installs the shared stub `ResizeObserver` and registers its restore for this block's
+     * `afterEach`, so callers only need the returned `fire` helper.
      *
      * @returns `fire`, which invokes the recorded observer callback inside `act`.
      */
-    function installResizeObserver(): { fire: () => void } {
-      let callback: ResizeObserverCallback | undefined;
-      const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
-      global.ResizeObserver = class implements ResizeObserver {
-        /** @param cb - Stored so the test can fire it on demand. */
-        constructor(cb: ResizeObserverCallback) {
-          callback = cb;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        observe() {}
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        unobserve() {}
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        disconnect() {}
-      };
-      return {
-        fire: () =>
-          act(() => {
-            callback?.([], stub);
-          }),
-      };
+    function installBlockResizeObserver(): { fire: () => void } {
+      const { fire, restore } = installResizeObserver();
+      restoreResizeObserver = restore;
+      return { fire };
     }
 
     /**
@@ -877,7 +944,7 @@ describe('useSegmentWindow', () => {
      * @returns The render result plus the observer `fire` helper and the top sentinel element.
      */
     function renderSettledWindow() {
-      const { fire } = installResizeObserver();
+      const { fire } = installBlockResizeObserver();
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',
@@ -931,6 +998,52 @@ describe('useSegmentWindow', () => {
       expect(container.scrollTop).toBe(100);
     });
 
+    it('re-seeds after a prepend so it does not double-correct the height the layout effect already handled', () => {
+      const { fire } = installBlockResizeObserver();
+      // Anchor at the book start so the initial mount needs no snap and the settle drains below,
+      // clearing recenterInFlight — otherwise the compensation observer stands down for the loop.
+      const book = makeBook(60, 0);
+      const { result, container } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      act(() => jest.advanceTimersByTime(16));
+      stubRectTop(container, 0);
+      const top = document.createElement('div');
+      container.appendChild(top);
+      act(() => result.current.topSentinelRef(top));
+      const bottom = document.createElement('div');
+      container.appendChild(bottom);
+      act(() => result.current.bottomSentinelRef(bottom));
+
+      // Scroll down far enough (appending past the window cap) that the window's start advances off
+      // the book start, so there are earlier segments left to prepend.
+      for (let i = 0; i < 8; i += 1) act(() => global.triggerIntersection(bottom, true));
+      expect(result.current.windowSegments[0].id).not.toBe('GEN 1:1');
+
+      // Seed the compensation baseline at the current sentinel offset, off the very top.
+      container.scrollTop = 100;
+      stubRectTop(top, -50);
+      fire();
+
+      // A prepend grows content above the viewport: the layout effect adds the 100px delta to
+      // scrollTop, and the sentinel's top edge moves up by the same amount.
+      Object.defineProperty(container, 'scrollHeight', { value: 100, configurable: true });
+      act(() => {
+        global.triggerIntersection(top, true);
+        Object.defineProperty(container, 'scrollHeight', { value: 200, configurable: true });
+      });
+      expect(container.scrollTop).toBe(200);
+      stubRectTop(top, -150);
+
+      // The resize the prepend triggers must re-seed off the already-shifted offset, not add the
+      // 100px delta again on top of the layout effect's correction (which would land scrollTop at
+      // 300 — the random jump).
+      fire();
+      expect(container.scrollTop).toBe(200);
+    });
+
     it('re-seeds instead of compensating when the container itself resizes (strip mount/unmount)', () => {
       const { container, top, fire } = renderSettledWindow();
       container.scrollTop = 100;
@@ -954,8 +1067,8 @@ describe('useSegmentWindow', () => {
       expect(container.scrollTop).toBe(130);
     });
 
-    it('stands down while a recenter is in flight so it never fights the re-snap loop', () => {
-      const { fire } = installResizeObserver();
+    it('re-snaps instead of compensating while a recenter is in flight', () => {
+      const { fire } = installBlockResizeObserver();
       const book = makeBook(60, 0);
       Element.prototype.scrollIntoView = jest.fn();
       const { result, container, rerender } = renderSegmentWindow(book, {
@@ -972,8 +1085,9 @@ describe('useSegmentWindow', () => {
       stubRectTop(top, -50);
       fire();
 
-      // Start an external recenter; while its fade + re-snap loop is in flight the observer must not
-      // also move scrollTop, or the two corrections would fight.
+      // Start an external recenter; while it is in flight the observer relays each resize to the
+      // re-snap handler (which pins the verse via scrollIntoView) rather than compensating, so it
+      // never moves scrollTop directly — the two corrections can't fight.
       act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
       stubRectTop(top, -90);
       fire();

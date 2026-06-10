@@ -34,32 +34,27 @@ const MAX_WINDOW_SIZE = 30;
 const SENTINEL_ROOT_MARGIN_PX = 400;
 
 /**
- * How long the post-recenter re-snap loop keeps re-snapping the active verse, in milliseconds.
- * After a recenter the freshly-mounted layout does not reach its final geometry in a single frame —
- * and on a continuous-scroll toggle it settles in _waves_: the segments switch display mode, the
- * horizontal strip mounts, and `useArcPaths` measures/clears arc padding, each across its own
- * ResizeObserver → rAF → setState chain that lands on different frames. A loop that stops at the
- * first frame whose `scrollTop` matches the previous one can exit during a transient plateau
- * _between_ those waves and leave the verse anchored to a layout that then shifts under it (the
- * reported "first visible segment isn't the active verse after toggling continuous scroll on").
- *
- * So the loop re-snaps every frame for this whole window — which spans the recenter fade — so the
- * _final_ snap is guaranteed to run against the fully-settled layout, behind the curtain, costing
- * nothing visually. (Reporting "settled" to the cross-book fade clock is decoupled and happens as
- * soon as the layout holds still; see {@link RESNAP_SETTLE_STABLE_FRAMES}.)
+ * How long, in milliseconds, the post-recenter snap keeps watching for late layout shifts before it
+ * gives up and reports settled regardless. After a recenter the freshly-mounted layout does not
+ * reach its final geometry in a single frame — and on a continuous-scroll toggle it settles in
+ * _waves_: the segments switch display mode, the horizontal strip mounts, and `useArcPaths`
+ * measures/clears arc padding, each across its own ResizeObserver → rAF → setState chain that lands
+ * on different frames. Rather than poll every frame for this whole window, the snap is driven by
+ * the resize observer that already fires on each of those waves (it re-snaps the verse on every
+ * fire); this is only the backstop deadline for a layout that never stops shifting, so the loader
+ * curtain is never stranded waiting for a settle that won't come.
  */
-const RECENTER_RESNAP_MS = RECENTER_FADE_MS;
+const RECENTER_RESNAP_DEADLINE_MS = RECENTER_FADE_MS;
 
 /**
- * Number of consecutive frames the snapped `scrollTop` must hold steady before the loop reports
- * "settled" to the cross-book fade clock (which lifts the loader curtain). Decoupled from how long
- * the loop keeps re-snapping ({@link RECENTER_RESNAP_MS}): the curtain should lift as soon as the
- * layout is visibly stable so a book change doesn't sit under the curtain for the whole fade, while
- * the snap itself keeps correcting (harmlessly, behind the fade) until the window ends. Requiring a
- * few stable frames — rather than the single match the old early-exit used — keeps a one-frame
- * plateau between layout waves from reporting settled prematurely.
+ * How long, in milliseconds, the layout must go without a resize-driven re-snap before the recenter
+ * is reported "settled" to the cross-book fade clock (which lifts the loader curtain). The waves of
+ * late layout settling each fire the resize observer; once they stop — no fire for this quiet
+ * window — the layout has reached its final geometry and the curtain can lift. Short enough that
+ * the curtain lifts promptly after a book change, long enough to span the gap between two settling
+ * waves so a lull mid-settle doesn't report settled early.
  */
-const RESNAP_SETTLE_STABLE_FRAMES = 3;
+const RECENTER_SETTLE_QUIET_MS = 100;
 
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;
@@ -303,6 +298,15 @@ export default function useSegmentWindow({
   const pendingPrependAnchorRef = useRef<number | undefined>(undefined);
 
   /**
+   * Last measured offset of the top sentinel's top edge below the container's top edge, in pixels
+   * (negative once scrolled past it). Comparing the current offset against this on each resize
+   * tells us how much height was added or removed _above_ the viewport, which is the amount the
+   * visible content would otherwise shift by. Reset to `undefined` by the prepend layout effect so
+   * the observer re-seeds rather than double-correcting a prepend it already compensated for.
+   */
+  const lastTopSentinelOffsetRef = useRef<number | undefined>(undefined);
+
+  /**
    * Set when a recenter rebuilds the window, signaling the layout effect to snap the active verse
    * (the element marked `aria-current="true"`) to the top of the list. The snap happens behind the
    * fade so the jump is never seen; clearing the flag after one snap keeps later range changes
@@ -353,11 +357,23 @@ export default function useSegmentWindow({
 
   /**
    * `true` from the moment a recenter starts (or the initial mount, until its first settle) through
-   * the post-paint re-snap loop, cleared when the loop reports settled. While set, the re-snap loop
-   * owns the scroll position, so the above-viewport scroll-compensation observer stands down rather
-   * than fighting the loop's snaps. Seeded `true` so the very first settle clears it.
+   * the post-paint settle, cleared once the layout goes quiet. While set, the recenter owns the
+   * scroll position: instead of compensating for above-viewport growth, the scroll-compensation
+   * observer re-snaps the active verse to the top (the layout is still reaching its final geometry,
+   * and {@link onResnapResize} keeps the verse pinned through each settling wave). Seeded `true` so
+   * the very first settle clears it.
    */
   const recenterInFlightRef = useRef(true);
+
+  /**
+   * While a recenter is in flight, called by the scroll-compensation observer on each resize — i.e.
+   * each wave of late layout settling (mode swap, strip mount, arc-padding application). Re-snaps
+   * the active verse against the freshly-settled geometry and pushes back the quiet-debounce settle
+   * timer, so "settled" is reported only once the waves stop. Installed by the re-snap effect for
+   * the current recenter; left `undefined` between recenters. Held in a ref so the observer reads
+   * the current handler without re-subscribing.
+   */
+  const onResnapResizeRef = useRef<(() => void) | undefined>(undefined);
 
   /**
    * Extends the window by {@link EXTEND_CHUNK} segments at one edge, culling the opposite edge back
@@ -387,11 +403,24 @@ export default function useSegmentWindow({
     [scrollContainerRef, total],
   );
 
-  /** Snaps the active verse (the `aria-current` element) to the top of the scroll container. */
+  /**
+   * Snaps the recenter target to the top of the scroll container. Normally that is the active verse
+   * (the `aria-current` element). When the reference names verse 0 of a chapter — the chapter
+   * heading rather than any verse — the target is instead that chapter's inline heading (the
+   * `[data-chapter-start]` element), so the heading sits at the top while the active-verse
+   * highlight stays on verse 1 below it. Falls back to the active verse when no heading is mounted
+   * (e.g. the `chapterLabelInVerse` setting suppresses headings).
+   */
   const snapActiveToTop = useCallback(() => {
-    const active = scrollContainerRef.current?.querySelector('[aria-current="true"]');
-    /* v8 ignore next -- the recentered verse is always mounted, so its element exists */
-    active?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    const container = scrollContainerRef.current;
+    const { verseNum, chapterNum } = scrRefRef.current;
+    const target =
+      verseNum === 0
+        ? (container?.querySelector(`[data-chapter-start="${chapterNum}"]`) ??
+          container?.querySelector('[aria-current="true"]'))
+        : container?.querySelector('[aria-current="true"]');
+    /* v8 ignore next -- the recentered target is always mounted, so its element exists */
+    target?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, [scrollContainerRef]);
 
   // Reconcile the container scroll position to the freshly-mounted range before the browser paints,
@@ -409,6 +438,7 @@ export default function useSegmentWindow({
       if (!container) return;
       const delta = container.scrollHeight - beforeHeight;
       if (delta !== 0) container.scrollTop += delta;
+      lastTopSentinelOffsetRef.current = undefined;
       return;
     }
     if (pendingRecenterSnapRef.current) {
@@ -417,22 +447,37 @@ export default function useSegmentWindow({
     }
   }, [range, scrollContainerRef, snapActiveToTop]);
 
-  // Re-snap after the browser has painted the recentered window, repeatedly, until the layout
-  // settles. The freshly-mounted segments don't reach their final heights synchronously — arc
-  // padding is measured and applied by `useArcPaths` across *several* later frames (a ResizeObserver
-  // → rAF → setState chain, not a single frame) — so a one-shot re-snap can still compute its target
-  // against stale heights and leave the verse off screen, with the scroll position pinned to an edge
-  // so the user can't scroll back toward it (the reported "verse lands at the bottom / above the
-  // viewport, and scrolling one way does nothing" bugs). Snapping each frame until the resulting
-  // `scrollTop` stops changing re-anchors the verse against whatever the *final* settled heights turn
-  // out to be, however many frames that takes. The whole loop runs behind the fade, so none of the
-  // intermediate corrections are seen; a frame cap backstops a layout that never fully settles.
+  // Re-snap the recentered verse after paint and hold it there as the layout settles, then report
+  // settled once the layout goes quiet. The freshly-mounted segments don't reach their final heights
+  // synchronously — arc padding is measured and applied by `useArcPaths` across *several* later
+  // frames (a ResizeObserver → rAF → setState chain) — so a one-shot re-snap can compute its target
+  // against stale heights and leave the verse off screen, pinned to an edge (the reported "verse
+  // lands at the bottom / above the viewport, and scrolling one way does nothing" bugs).
+  //
+  // Rather than poll every frame, this is event-driven: one rAF re-snap catches the first painted
+  // frame (the common case), and `onResnapResizeRef` — installed here, called by the
+  // scroll-compensation observer below on each subsequent resize — re-snaps against each later
+  // settling wave. A quiet-debounce timer reports settled once no wave has fired for
+  // `RECENTER_SETTLE_QUIET_MS`; a deadline backstops a layout that never stops shifting so the loader
+  // curtain is never stranded. Behind the fade, so none of the intermediate corrections are seen.
   // Skips the initial mount (epoch 0); only real recenters re-snap.
   const isInitialEpochRef = useRef(true);
   useEffect(() => {
-    // Marks the recenter complete: the loop no longer owns the scroll, so the scroll-compensation
-    // observer may resume, and the cross-book fade clock lifts the curtain off the settle signal.
+    let quietTimer: ReturnType<typeof setTimeout> | undefined;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let didReportSettled = false;
+    // Marks the recenter complete: the recenter no longer owns the scroll, so the scroll-compensation
+    // observer resumes plain above-viewport compensation, and the cross-book fade clock lifts the
+    // curtain off the settle signal. Idempotent — the quiet timer and the deadline race to call it.
     const reportSettled = () => {
+      // Idempotency guard against a double-report. Whichever of the quiet/deadline timers fires first
+      // clears the other, so in practice this is never reached; it is defensive only.
+      /* v8 ignore next */
+      if (didReportSettled) return;
+      didReportSettled = true;
+      clearTimeout(quietTimer);
+      clearTimeout(deadlineTimer);
+      onResnapResizeRef.current = undefined;
       recenterInFlightRef.current = false;
       onSettledRef.current?.();
     };
@@ -449,43 +494,35 @@ export default function useSegmentWindow({
         return () => cancelAnimationFrame(settleRaf);
       }
     }
-    let rafId = 0;
-    const deadline = Date.now() + RECENTER_RESNAP_MS;
-    let lastScrollTop = Number.NaN;
-    let stableFrames = 0;
-    let didReportSettled = false;
-    const step = () => {
-      snapActiveToTop();
-      const scrollTop =
-        /* v8 ignore next -- container is always mounted while the recentered window renders */
-        scrollContainerRef.current?.scrollTop ?? lastScrollTop;
-      // Report settled once the snapped position has held steady for a few frames, so the cross-book
-      // curtain lifts as soon as the layout looks stable rather than waiting out the whole window.
-      // Fire it at most once; the loop keeps re-snapping afterward to absorb any later layout wave.
-      if (scrollTop === lastScrollTop) {
-        stableFrames += 1;
-        if (stableFrames >= RESNAP_SETTLE_STABLE_FRAMES && !didReportSettled) {
-          didReportSettled = true;
-          reportSettled();
-        }
-      } else {
-        stableFrames = 0;
-      }
-      lastScrollTop = scrollTop;
-      // Keep re-snapping every frame until the window elapses — spanning the recenter fade — so the
-      // final snap runs against the fully-settled layout (mode swap, strip mount, and arc-padding
-      // waves all landed). A plateau between waves can't end the loop early; only the deadline does.
-      if (Date.now() >= deadline) {
-        // The layout never held steady long enough to report settled (it shifted every frame through
-        // the whole window); report now so the loader curtain is never stranded.
-        if (!didReportSettled) reportSettled();
-        return;
-      }
-      rafId = requestAnimationFrame(step);
+    // (Re)arm the quiet-debounce: each settling wave that re-snaps the verse pushes the settle report
+    // back, so it fires only once the waves stop.
+    const armQuietTimer = () => {
+      clearTimeout(quietTimer);
+      quietTimer = setTimeout(reportSettled, RECENTER_SETTLE_QUIET_MS);
     };
-    rafId = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(rafId);
-  }, [recenterEpoch, snapActiveToTop, scrollContainerRef]);
+    // Called by the compensation observer on each resize while this recenter is in flight: re-snap
+    // the verse against the now-settled geometry and restart the quiet window.
+    onResnapResizeRef.current = () => {
+      snapActiveToTop();
+      armQuietTimer();
+    };
+    // One post-paint re-snap covers the common case where the layout settles in a single frame; the
+    // quiet timer then reports settled unless a later wave (relayed through `onResnapResizeRef`)
+    // restarts it.
+    const rafId = requestAnimationFrame(() => {
+      snapActiveToTop();
+      armQuietTimer();
+    });
+    // Backstop: a layout that resizes forever would keep restarting the quiet timer, so cap the total
+    // wait and report settled regardless, leaving the verse snapped to its latest position.
+    deadlineTimer = setTimeout(reportSettled, RECENTER_RESNAP_DEADLINE_MS);
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(quietTimer);
+      clearTimeout(deadlineTimer);
+      onResnapResizeRef.current = undefined;
+    };
+  }, [recenterEpoch, snapActiveToTop]);
 
   /**
    * Rebuilds the window centered on the active verse and fades it into view. Used by the
@@ -616,14 +653,6 @@ export default function useSegmentWindow({
   }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch]);
 
   /**
-   * Last measured offset of the top sentinel's top edge below the container's top edge, in pixels
-   * (negative once scrolled past it). Comparing the current offset against this on each resize
-   * tells us how much height was added or removed _above_ the viewport, which is the amount the
-   * visible content would otherwise shift by.
-   */
-  const lastTopSentinelOffsetRef = useRef<number | undefined>(undefined);
-
-  /**
    * Last observed `clientHeight` of the scroll container. The compensation below only corrects for
    * content growth _above_ the viewport while the container's own size is fixed; when the container
    * itself resizes (the continuous-scroll strip mounting/unmounting above it, or a window resize)
@@ -634,23 +663,29 @@ export default function useSegmentWindow({
    */
   const lastContainerHeightRef = useRef<number | undefined>(undefined);
 
-  // Compensate scrollTop for above-viewport height changes so already-mounted segments above the
-  // anchor can't shove the visible content as their arc padding settles asynchronously (a
-  // ResizeObserver → rAF → setState chain in `useArcPaths` that finishes *after* the post-recenter
-  // re-snap loop has already exited). The re-snap loop only pins the anchor while it runs; once it
-  // stops, growth above the fold has no correction, so scrolling up jumps the anchor past the
-  // viewport. This generalizes the prepend correction (`pendingPrependAnchorRef`) from "prepend
-  // events" to "any above-viewport growth": anchor on the top sentinel's offset below the container
-  // top, and when it changes, add the delta to scrollTop to hold the visible content fixed.
+  // Keep the active verse anchored against above-viewport height changes so already-mounted segments
+  // above the anchor can't shove the visible content as their arc padding settles asynchronously (a
+  // ResizeObserver → rAF → setState chain in `useArcPaths` that finishes across several later
+  // frames). This single observer plays two roles depending on whether a recenter is in flight:
   //
-  // Stands down while a recenter is in flight (the loop owns the scroll then) and when the list is at
-  // the very top (`scrollTop === 0`), matching the prepend correction's assumption that growth at the
-  // book top is fine. Also stands down when the container's own height changed since the last fire —
-  // that is the strip mounting/unmounting on a mode toggle (or a window resize), not above-viewport
-  // segment growth; the sentinel offset moved for an unrelated reason (and scrollTop may have been
-  // clamped to the new scroll range), so re-seed the baseline rather than "correcting" a phantom
-  // shift, which was the toggle-on wrong-snap. Re-subscribes on each recenter so the baseline offset
-  // is re-seeded for the new geometry rather than carried over from the pre-recenter layout.
+  // - **While a recenter is in flight** it relays each resize to the re-snap handler
+  //   (`onResnapResizeRef`, installed by the re-snap effect), which re-snaps the verse to the top
+  //   against the now-settled geometry and restarts the settle's quiet timer. The recenter owns the
+  //   scroll position here, so this is how the verse stays pinned through every settling wave —
+  //   replacing the old per-frame re-snap loop with one re-snap per actual layout change.
+  //
+  // - **Otherwise** it compensates: this generalizes the prepend correction
+  //   (`pendingPrependAnchorRef`) from "prepend events" to "any above-viewport growth" — anchor on
+  //   the top sentinel's offset below the container top, and when it changes, add the delta to
+  //   scrollTop to hold the visible content fixed. Stands down when the list is at the very top
+  //   (`scrollTop === 0`), matching the prepend correction's assumption that growth at the book top
+  //   is fine, and when the container's own height changed since the last fire — the strip
+  //   mounting/unmounting on a mode toggle (or a window resize), not above-viewport segment growth;
+  //   the sentinel offset moved for an unrelated reason (and scrollTop may have been clamped to the
+  //   new scroll range), so re-seed the baseline rather than "correcting" a phantom shift.
+  //
+  // Re-subscribes on each recenter so the baseline offset is re-seeded for the new geometry rather
+  // than carried over from the pre-recenter layout.
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || !topSentinel) return undefined;
@@ -660,18 +695,19 @@ export default function useSegmentWindow({
     const measureOffset = () =>
       topSentinel.getBoundingClientRect().top - root.getBoundingClientRect().top;
     const observer = new ResizeObserver(() => {
+      // While the recenter owns the scroll, relay the resize to the re-snap handler instead of
+      // compensating — it pins the verse to the top and keeps the settle's quiet window open.
+      if (recenterInFlightRef.current) {
+        onResnapResizeRef.current?.();
+        return;
+      }
       const offset = measureOffset();
       const last = lastTopSentinelOffsetRef.current;
       lastTopSentinelOffsetRef.current = offset;
       const containerHeight = root.clientHeight;
       const lastContainerHeight = lastContainerHeightRef.current;
       lastContainerHeightRef.current = containerHeight;
-      if (
-        last === undefined ||
-        recenterInFlightRef.current ||
-        root.scrollTop === 0 ||
-        containerHeight !== lastContainerHeight
-      ) {
+      if (last === undefined || root.scrollTop === 0 || containerHeight !== lastContainerHeight) {
         return;
       }
       // When content above the viewport grows, the sentinel's offset below the container top moves

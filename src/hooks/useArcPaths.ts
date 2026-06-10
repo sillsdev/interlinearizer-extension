@@ -29,6 +29,28 @@ export type ArcPathsResult = {
 // #region useArcPaths
 
 /**
+ * Serializes a measurement's padding-affecting outputs into a stable key. Arc level and the gutter
+ * paddings are what feed back into layout, so two measurements with the same signature produce the
+ * same applied padding and cannot represent genuine progress.
+ *
+ * @param paths - The measured arc paths.
+ * @param maxLevel - The measured max nesting level.
+ * @param leftPadding - The measured left gutter padding.
+ * @param rightPadding - The measured right gutter padding.
+ * @returns A signature string that is equal iff the layout-affecting outputs match.
+ */
+function signatureOf(
+  paths: ArcPath[],
+  maxLevel: number,
+  leftPadding: number,
+  rightPadding: number,
+): string {
+  return `${maxLevel}:${leftPadding}:${rightPadding}:${paths
+    .map((p) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`)
+    .join('|')}`;
+}
+
+/**
  * Measures the rendered phrase boxes inside `containerRef` after each layout commit and computes
  * the arcs connecting every discontiguous phrase's runs. Shared by SegmentView and ContinuousView
  * so the two strip layouts can't drift apart. State is only replaced when the serialized arc shape
@@ -94,27 +116,6 @@ export function useArcPaths(
    * measure always runs; cleared whenever a genuine input change forces a measure.
    */
   const recentArcSignaturesRef = useRef<string[]>([]);
-
-  /**
-   * Serializes a measurement's padding-affecting outputs into a stable key. Arc level and the
-   * gutter paddings are what feed back into layout, so two measurements with the same signature
-   * produce the same applied padding and cannot represent genuine progress.
-   *
-   * @param paths - The measured arc paths.
-   * @param maxLevel - The measured max nesting level.
-   * @param leftPadding - The measured left gutter padding.
-   * @param rightPadding - The measured right gutter padding.
-   * @returns A signature string that is equal iff the layout-affecting outputs match.
-   */
-  const signatureOf = (
-    paths: ArcPath[],
-    maxLevel: number,
-    leftPadding: number,
-    rightPadding: number,
-  ): string =>
-    `${maxLevel}:${leftPadding}:${rightPadding}:${paths
-      .map((p) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`)
-      .join('|')}`;
 
   /**
    * Runs one measurement pass against `container` and flushes the results into state. Called from

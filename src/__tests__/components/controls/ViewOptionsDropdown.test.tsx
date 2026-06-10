@@ -169,7 +169,7 @@ describe('ViewOptionsDropdown', () => {
     });
   });
 
-  describe('dim inactive segments toggle', () => {
+  describe('simplify phrases toggle', () => {
     it('reflects the checked value', async () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} simplifyPhrases />);
       await userEvent.click(screen.getByTestId('view-options-button'));

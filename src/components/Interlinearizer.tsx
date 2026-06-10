@@ -10,8 +10,9 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
 import MemoizedSegmentView from './SegmentView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
-import useSegmentWindow, { verseKey } from '../hooks/useSegmentWindow';
+import useSegmentWindow from '../hooks/useSegmentWindow';
 import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
+import { useInterlinearNav } from './InterlinearNavContext';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -21,8 +22,6 @@ type InterlinearizerProps = Readonly<{
   continuousScroll: boolean;
   /** Current scripture reference used to highlight the active verse. */
   scrRef: SerializedVerseRef;
-  /** Called when the user navigates to a different verse. */
-  setScrRef: (newScrRef: SerializedVerseRef) => void;
   /**
    * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
    * active project (supplied by the caller).
@@ -51,7 +50,6 @@ type InterlinearizerProps = Readonly<{
  * @param props.continuousScroll - When true, the horizontal token strip is shown above the segment
  *   list.
  * @param props.scrRef - Current scripture reference used to highlight the active verse.
- * @param props.setScrRef - Called when the user navigates to a different verse.
  * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
  *   transition modes.
@@ -65,12 +63,16 @@ function InterlinearizerInner({
   book,
   continuousScroll,
   scrRef,
-  setScrRef,
   phraseMode,
   setPhraseMode,
   hideInactiveLinkButtons,
   simplifyPhrases,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
+  // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
+  // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
+  // internal moves, and `reportSettled` lifts the cross-book curtain once the new book is laid out.
+  const { navigate, consumeInternalNav, reportSettled } = useInterlinearNav();
+
   /**
    * Finds the book segment that owns the active verse named by `scrRef`, matching on book, chapter,
    * and verse. Book must be matched too: during an external navigation the new `scrRef.book` is set
@@ -150,16 +152,6 @@ function InterlinearizerInner({
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
-   * Verse key (see {@link verseKey}) of the most recent scripture-reference change this component
-   * originated internally — a segment/token click in the list, or strip arrow nav whose focus moved
-   * into a new verse. Read by {@link useSegmentWindow} to suppress the recenter fade for navigation
-   * that came from within the views (the target is already on screen); external navigation leaves
-   * it unset and so triggers the fade. Mirrors ContinuousView's `internalFocusedTokenRefRef` so
-   * both views agree on which `scrRef` changes are internal.
-   */
-  const internalNavRef = useRef<string | undefined>(undefined);
-
-  /**
    * Ref callback that stores the scroll container element so imperative scroll calls can target it.
    *
    * @param el - The mounted div, or `null` on unmount.
@@ -198,7 +190,8 @@ function InterlinearizerInner({
     scrRef,
     focusedTokenRef,
     scrollContainerRef,
-    internalNavRef,
+    consumeInternalNav,
+    onSettled: reportSettled,
   });
   recenterOnActiveRef.current = recenterOnActive;
 
@@ -279,15 +272,14 @@ function InterlinearizerInner({
       chapterNum: seg.startRef.chapter,
       verseNum: seg.startRef.verse,
     };
-    // Strip arrow nav (or a strip phrase click) moved focus into a new verse. Mark it internal so
-    // the segment window doesn't fade — the continuous strip already smooth-scrolls to it, and the
-    // list just tracks along.
-    internalNavRef.current = verseKey(newScrRef);
-    setScrRef(newScrRef);
+    // Strip arrow nav (or a strip phrase click) moved focus into a new verse. Classify it internal
+    // so the segment window doesn't fade — the continuous strip already smooth-scrolls to it, and
+    // the list just tracks along.
+    navigate(newScrRef, 'internal');
     // scrRef fields are intentionally excluded: they're guards against re-firing, not triggers.
     // Adding them would re-run this effect on every external verse change without doing useful work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTokenRef, tokenSegmentMap, segmentById, setScrRef]);
+  }, [focusedTokenRef, tokenSegmentMap, segmentById, navigate]);
 
   /**
    * Updates the active scripture reference and, when a specific token was clicked, focuses that
@@ -299,13 +291,12 @@ function InterlinearizerInner({
   const handleSegmentSelect = useCallback(
     (ref: ScriptureRef, tokenRef?: string) => {
       const newScrRef = { book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse };
-      // Mark this as internal navigation so the segment window skips its recenter fade: the clicked
+      // Classify as internal navigation so the segment window skips its recenter fade: the clicked
       // verse is already on screen, so fading and rebuilding would be a jarring no-op.
-      internalNavRef.current = verseKey(newScrRef);
-      setScrRef(newScrRef);
+      navigate(newScrRef, 'internal');
       if (tokenRef) setFocusedTokenRef(tokenRef);
     },
-    [setScrRef],
+    [navigate],
   );
 
   return (
@@ -411,7 +402,6 @@ function InterlinearizerInner({
  * @param props.book - Book data used by the continuous view and segment window
  * @param props.continuousScroll - Whether the continuous scroll view is shown
  * @param props.scrRef - Current scripture reference
- * @param props.setScrRef - Callback to update the scripture reference
  * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
  * @param props.analysisLanguage - BCP 47 tag for gloss read/write
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`

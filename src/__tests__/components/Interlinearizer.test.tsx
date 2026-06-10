@@ -8,6 +8,7 @@ import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
 import Interlinearizer from '../../components/Interlinearizer';
+import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
@@ -283,8 +284,34 @@ const GEN_1_MULTI_BOOK: Book = {
 };
 
 /**
+ * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
+ * `useInterlinearNav` call resolves. `Interlinearizer` now writes the reference through the
+ * context's `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang
+ * off the `navigate` spy supplied here rather than a `setScrRef` prop.
+ *
+ * @param ui - The `<Interlinearizer>` element to wrap.
+ * @param navigate - Spy wired as the scroll-group hook's setter; receives the reference each
+ *   `navigate` call writes. Defaults to a noop.
+ * @returns The element wrapped in a nav provider.
+ */
+function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () => {}): ReactNode {
+  const scrollGroupHook = (): [
+    SerializedVerseRef,
+    (r: SerializedVerseRef) => void,
+    number | undefined,
+    (id: number | undefined) => void,
+  ] => [defaultScrRef, navigate, undefined, () => {}];
+  return (
+    <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
+      {ui}
+    </InterlinearNavProvider>
+  );
+}
+
+/**
  * Renders an Interlinearizer component with sensible defaults, allowing individual props to be
- * overridden per test.
+ * overridden per test. Wrapped in an {@link InterlinearNavProvider} via {@link withNav}; `navigate`
+ * is the spy that captures references the component writes through the context.
  *
  * @param options - Partial props to merge over the defaults.
  * @returns The render result from @testing-library/react.
@@ -293,29 +320,31 @@ function renderInterlinearizer({
   book = GEN_1_1_BOOK,
   continuousScroll = false,
   scrRef = defaultScrRef,
-  setScrRef = () => {},
+  navigate = () => {},
   hideInactiveLinkButtons = false,
   simplifyPhrases = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
-  setScrRef?: (r: SerializedVerseRef) => void;
+  navigate?: (r: SerializedVerseRef) => void;
   hideInactiveLinkButtons?: boolean;
   simplifyPhrases?: boolean;
 } = {}) {
   return render(
-    <Interlinearizer
-      book={book}
-      continuousScroll={continuousScroll}
-      scrRef={scrRef}
-      setScrRef={setScrRef}
-      analysisLanguage="und"
-      phraseMode={{ kind: 'view' }}
-      setPhraseMode={() => {}}
-      hideInactiveLinkButtons={hideInactiveLinkButtons}
-      simplifyPhrases={simplifyPhrases}
-    />,
+    withNav(
+      <Interlinearizer
+        book={book}
+        continuousScroll={continuousScroll}
+        scrRef={scrRef}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={hideInactiveLinkButtons}
+        simplifyPhrases={simplifyPhrases}
+      />,
+      navigate,
+    ),
   );
 }
 
@@ -366,12 +395,12 @@ describe('Interlinearizer', () => {
   });
 
   it('calls setScrRef with the segment ref when a segment fires onSelect', () => {
-    const mockSetScrRef = jest.fn();
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, setScrRef: mockSetScrRef });
+    const mockNavigate = jest.fn();
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, navigate: mockNavigate });
 
     capturedSegmentViewPropsList[1].onSelect?.({ book: 'GEN', chapter: 1, verse: 2 });
 
-    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
   it('passes displayMode="baseline-text" to all SegmentViews when continuousScroll is true', () => {
@@ -406,10 +435,10 @@ describe('Interlinearizer', () => {
   });
 
   it('calls setScrRef with the segment ref when a token is clicked', () => {
-    const mockSetScrRef = jest.fn();
+    const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
-      setScrRef: mockSetScrRef,
+      navigate: mockNavigate,
     });
 
     act(() => {
@@ -419,7 +448,7 @@ describe('Interlinearizer', () => {
       );
     });
 
-    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
   it('passes the clicked token through to ContinuousView as focusedTokenRef', () => {
@@ -439,17 +468,18 @@ describe('Interlinearizer', () => {
     // Switch to continuous-scroll mode so ContinuousView is rendered and its props captured.
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll
-        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     if (!capturedContinuousViewProps)
@@ -458,11 +488,11 @@ describe('Interlinearizer', () => {
   });
 
   it('updates scrRef when ContinuousView reports focus moving into a different verse', () => {
-    const mockSetScrRef = jest.fn();
+    const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
-      setScrRef: mockSetScrRef,
+      navigate: mockNavigate,
     });
 
     if (!capturedContinuousViewProps)
@@ -474,7 +504,7 @@ describe('Interlinearizer', () => {
       onFocusedTokenRefChange('GEN 1:2:0');
     });
 
-    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
   it('does not echo scrRef when the focused token belongs to a different book than scrRef', () => {
@@ -482,17 +512,17 @@ describe('Interlinearizer', () => {
     // mounted book (and its focused token) still belong to the previous book. The echo-back effect
     // must not fire that stale book's verse back as scrRef. Here the mounted book is GEN but scrRef
     // names EXO, so a GEN focus move must not call setScrRef.
-    const mockSetScrRef = jest.fn();
+    const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
       scrRef: { book: 'EXO', chapterNum: 1, verseNum: 1 },
-      setScrRef: mockSetScrRef,
+      navigate: mockNavigate,
     });
 
     if (!capturedContinuousViewProps)
       throw new Error('Expected ContinuousView to have been rendered');
-    mockSetScrRef.mockClear();
+    mockNavigate.mockClear();
     const { onFocusedTokenRefChange } = capturedContinuousViewProps;
 
     act(() => {
@@ -500,28 +530,28 @@ describe('Interlinearizer', () => {
       onFocusedTokenRefChange('GEN 1:2:0');
     });
 
-    expect(mockSetScrRef).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('does not update scrRef when ContinuousView focus stays within the current verse', () => {
-    const mockSetScrRef = jest.fn();
+    const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
-      setScrRef: mockSetScrRef,
+      navigate: mockNavigate,
     });
 
     if (!capturedContinuousViewProps)
       throw new Error('Expected ContinuousView to have been rendered');
-    mockSetScrRef.mockClear();
+    mockNavigate.mockClear();
     const { onFocusedTokenRefChange } = capturedContinuousViewProps;
 
     act(() => {
       onFocusedTokenRefChange('GEN 1:1:0');
     });
 
-    expect(mockSetScrRef).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('carries the strip focus into segment view when switching off continuousScroll', () => {
@@ -541,17 +571,18 @@ describe('Interlinearizer', () => {
     // Switch to segment view — Interlinearizer should carry the strip focus over.
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll={false}
-        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
@@ -569,17 +600,18 @@ describe('Interlinearizer', () => {
     // Switch to segment view without any strip position having been reported.
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll={false}
-        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     // The fallback focuses the first word of GEN 1:1 ('GEN 1:1:0').
@@ -604,33 +636,35 @@ describe('Interlinearizer', () => {
     // Switch to continuous mode (without strip reporting any position).
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     // Switch back to segment mode — existing focusedTokenRef should be preserved.
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll={false}
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     // 'GEN 1:2:0' was already focused, so the fallback must not overwrite it.
@@ -685,17 +719,18 @@ describe('Interlinearizer', () => {
 
     capturedSegmentViewPropsList = [];
     rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        continuousScroll={false}
-        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'view' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
 
     // No segment matches verse 99 so focusedTokenRef stays undefined for all views.
@@ -704,38 +739,40 @@ describe('Interlinearizer', () => {
 
   it('renders EditPhraseControls toolbar when phraseMode is edit', () => {
     render(
-      <Interlinearizer
-        book={GEN_1_1_BOOK}
-        continuousScroll={false}
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{
-          kind: 'edit',
-          phraseId: 'phrase-1',
-          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
-        }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_1_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{
+            kind: 'edit',
+            phraseId: 'phrase-1',
+            originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+          }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
     expect(screen.getByTestId('done-edit-btn')).toBeInTheDocument();
   });
 
   it('renders UnlinkPhraseConfirm toolbar when phraseMode is confirm-unlink', () => {
     render(
-      <Interlinearizer
-        book={GEN_1_1_BOOK}
-        continuousScroll={false}
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
-        setPhraseMode={() => {}}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_1_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
     expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
   });
@@ -744,17 +781,18 @@ describe('Interlinearizer', () => {
     const setPhraseMode = jest.fn();
     const originalTokens = [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }];
     render(
-      <Interlinearizer
-        book={GEN_1_1_BOOK}
-        continuousScroll={false}
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
-        setPhraseMode={setPhraseMode}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_1_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
+          setPhraseMode={setPhraseMode}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
     expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', originalTokens);
     expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
@@ -763,17 +801,18 @@ describe('Interlinearizer', () => {
   it('calls updatePhrase and resets to view mode even when the phrase has 0 tokens (all removed)', () => {
     const setPhraseMode = jest.fn();
     render(
-      <Interlinearizer
-        book={GEN_1_1_BOOK}
-        continuousScroll={false}
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
-        setPhraseMode={setPhraseMode}
-        hideInactiveLinkButtons={false}
-        simplifyPhrases={false}
-      />,
+      withNav(
+        <Interlinearizer
+          book={GEN_1_1_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
+          setPhraseMode={setPhraseMode}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />,
+      ),
     );
     expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', []);
     expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
@@ -785,7 +824,6 @@ describe('Interlinearizer', () => {
     const props = {
       book,
       continuousScroll: false,
-      setScrRef: () => {},
       analysisLanguage: 'und',
       phraseMode: { kind: 'view' } as const,
       setPhraseMode: () => {},
@@ -793,7 +831,7 @@ describe('Interlinearizer', () => {
       simplifyPhrases: false,
     };
     const { container, rerender } = render(
-      <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />,
+      withNav(<Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />),
     );
 
     const list = container.querySelector('.tw\\:transition-opacity');
@@ -802,7 +840,9 @@ describe('Interlinearizer', () => {
     // Navigate far past the rendered window so the hook fades out before rebuilding.
     act(() => {
       rerender(
-        <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }} />,
+        withNav(
+          <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }} />,
+        ),
       );
     });
     expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '0' });
@@ -818,20 +858,22 @@ describe('Interlinearizer', () => {
     jest.useFakeTimers();
     const book = makeLargeBook(60);
 
-    // Stateful wrapper so a segment click's setScrRef flows back as the scrRef prop, exercising the
-    // internal-nav stamp that suppresses the recenter fade.
+    // Stateful wrapper so a segment click's navigate flows back as the scrRef prop, exercising the
+    // internal-nav classification that suppresses the recenter fade. `setRef` is wired as the
+    // context's navigate sink (via withNav), so `navigate(ref, 'internal')` updates the prop here.
+    let updateRef: (r: SerializedVerseRef) => void = () => {};
     function Wrapper() {
       const [ref, setRef] = useState<SerializedVerseRef>({
         book: 'GEN',
         chapterNum: 1,
         verseNum: 1,
       });
+      updateRef = setRef;
       return (
         <Interlinearizer
           book={book}
           continuousScroll={false}
           scrRef={ref}
-          setScrRef={setRef}
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
@@ -840,7 +882,7 @@ describe('Interlinearizer', () => {
         />
       );
     }
-    const { container } = render(<Wrapper />);
+    const { container } = render(withNav(<Wrapper />, (r) => updateRef(r)));
 
     // Click a segment far down the list (still mounted) — an internal nav, so no fade.
     const select = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:7')?.onSelect;

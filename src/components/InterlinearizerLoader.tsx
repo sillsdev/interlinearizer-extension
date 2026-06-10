@@ -5,7 +5,7 @@ import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -14,11 +14,13 @@ import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import ScriptureNavControls from './controls/ScriptureNavControls';
+import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
+import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
 
 /**
- * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
- * for project creation/selection/metadata, then renders error and loading states or delegates to
- * {@link Interlinearizer} when data is ready.
+ * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
+ * loader and the whole {@link Interlinearizer} subtree read and write navigation through one source
+ * of truth, then delegates the actual loading/rendering to {@link InterlinearizerLoaderInner}.
  *
  * @param props - Component props
  * @param props.projectId - PAPI project ID passed from the host
@@ -26,8 +28,7 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
  *   reference and its setter
  * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
  *   by the PAPI host
- * @returns The toolbar and either an error/loading state or the fully rendered
- *   {@link Interlinearizer}
+ * @returns The nav provider wrapping {@link InterlinearizerLoaderInner}
  */
 export default function InterlinearizerLoader({
   projectId,
@@ -38,21 +39,42 @@ export default function InterlinearizerLoader({
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [rawScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
-
-  /**
-   * `rawScrRef` with a chapter-level (verse 0) reference normalized to verse 1. Selecting a chapter
-   * in the scripture controls yields `verseNum: 0`, which names the chapter rather than a verse —
-   * no segment has verse 0, so the active-verse lookup, the `isActive` highlight, and the
-   * continuous strip's focus resolution would all miss, leaving the list parked on the book's first
-   * phrase with nothing highlighted. Mapping verse 0 to the chapter's first verse makes every
-   * downstream consumer resolve the intended verse. The raw reference still drives the editable nav
-   * controls so the user's chapter selection is reflected verbatim there.
-   */
-  const scrRef = useMemo(
-    () => (rawScrRef.verseNum === 0 ? { ...rawScrRef, verseNum: 1 } : rawScrRef),
-    [rawScrRef],
+  return (
+    <InterlinearNavProvider useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}>
+      <InterlinearizerLoaderInner projectId={projectId} useWebViewState={useWebViewState} />
+    </InterlinearNavProvider>
   );
+}
+
+/**
+ * Loads book data and settings, manages modal state for project creation/selection/metadata, then
+ * renders error and loading states or delegates to {@link Interlinearizer} when data is ready. Reads
+ * the scripture reference and scroll-group linkage from {@link useInterlinearNav} rather than
+ * calling the host hook directly.
+ *
+ * @param props - Component props
+ * @param props.projectId - PAPI project ID passed from the host
+ * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
+ *   by the PAPI host
+ * @returns The toolbar and either an error/loading state or the fully rendered
+ *   {@link Interlinearizer}
+ */
+function InterlinearizerLoaderInner({
+  projectId,
+  useWebViewState,
+}: Readonly<{
+  projectId: string;
+  useWebViewState: UseWebViewStateHook;
+}>) {
+  const {
+    rawScrRef,
+    liveScrRef: scrRef,
+    navigate,
+    scrollGroupId,
+    setScrollGroupId,
+    fadePhase,
+    cancelFade,
+  } = useInterlinearNav();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -193,6 +215,27 @@ export default function InterlinearizerLoader({
   const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
   const isLoaded = !hasError && !showLoading && !!book;
 
+  // Abort any in-flight cross-book fade when the new book fails to load, so the error is revealed
+  // rather than left hidden behind a curtain that will never receive a settle.
+  useEffect(() => {
+    if (hasError) cancelFade();
+  }, [hasError, cancelFade]);
+
+  /**
+   * The scripture reference handed to {@link Interlinearizer}. While a cross-book navigation is in
+   * flight, `scrRef` already names the new book but the loaded `book` is still the previous one
+   * (its USJ hasn't arrived), so the still-mounted views would react to a verse absent from the
+   * mounted book — reseeding focus and scrolling toward it, a visible shuffle behind/before the
+   * fade. Gating on `book.bookRef` keeps the views on a reference that matches the book they
+   * actually render: the live `scrRef` only once the loaded book matches it, otherwise the last
+   * in-book reference. Once the new book's USJ arrives, `Interlinearizer` remounts on it and
+   * immediately receives the live (new-book) reference, so it seeds focus on the intended verse and
+   * reports settled.
+   */
+  const lastInBookScrRefRef = useRef(scrRef);
+  if (book && scrRef.book === book.bookRef) lastInBookScrRefRef.current = scrRef;
+  const viewScrRef = book && scrRef.book === book.bookRef ? scrRef : lastInBookScrRefRef.current;
+
   const [modal, setModal] = useState<ModalState>('none');
 
   const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
@@ -266,7 +309,7 @@ export default function InterlinearizerLoader({
           interfaceMode === 'power' ? (
             <ScriptureNavControls
               scrRef={rawScrRef}
-              handleSubmit={setScrRef}
+              handleSubmit={navigate}
               scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}
             />
@@ -291,42 +334,51 @@ export default function InterlinearizerLoader({
         }}
       />
 
-      {hasError || showLoading || !book ? (
-        <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
-          {bookError && (
-            <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:error-heading">Error loading book</h2>
-              <pre className="tw:error-pre">{bookError}</pre>
-            </div>
-          )}
+      <div
+        data-testid="book-fade-wrapper"
+        className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+        style={{
+          opacity: fadePhase === 'out' ? 0 : 1,
+          transitionDuration: `${RECENTER_FADE_MS}ms`,
+          transitionTimingFunction: RECENTER_FADE_EASING,
+        }}
+      >
+        {hasError || showLoading || !book ? (
+          <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
+            {bookError && (
+              <div className="tw:flex tw:flex-col tw:gap-2">
+                <h2 className="tw:error-heading">Error loading book</h2>
+                <pre className="tw:error-pre">{bookError}</pre>
+              </div>
+            )}
 
-          {tokenizeError && (
-            <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:error-heading">Error processing book</h2>
-              <pre className="tw:error-pre">{tokenizeError.message}</pre>
-            </div>
-          )}
+            {tokenizeError && (
+              <div className="tw:flex tw:flex-col tw:gap-2">
+                <h2 className="tw:error-heading">Error processing book</h2>
+                <pre className="tw:error-pre">{tokenizeError.message}</pre>
+              </div>
+            )}
 
-          {!hasError && showLoading && (
-            <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
-          )}
-        </div>
-      ) : (
-        <Interlinearizer
-          key={activeProject?.id ?? ''}
-          book={book}
-          continuousScroll={continuousScroll}
-          scrRef={scrRef}
-          setScrRef={setScrRef}
-          analysisLanguage={analysisLanguage}
-          initialAnalysis={activeProjectAnalysis}
-          onSaveAnalysis={handleSaveAnalysis}
-          phraseMode={phraseMode}
-          setPhraseMode={setPhraseMode}
-          hideInactiveLinkButtons={hideInactiveLinkButtons}
-          simplifyPhrases={simplifyPhrases}
-        />
-      )}
+            {!hasError && showLoading && (
+              <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
+            )}
+          </div>
+        ) : (
+          <Interlinearizer
+            key={activeProject?.id ?? ''}
+            book={book}
+            continuousScroll={continuousScroll}
+            scrRef={viewScrRef}
+            analysisLanguage={analysisLanguage}
+            initialAnalysis={activeProjectAnalysis}
+            onSaveAnalysis={handleSaveAnalysis}
+            phraseMode={phraseMode}
+            setPhraseMode={setPhraseMode}
+            hideInactiveLinkButtons={hideInactiveLinkButtons}
+            simplifyPhrases={simplifyPhrases}
+          />
+        )}
+      </div>
 
       <ProjectModals
         activeProject={activeProject}

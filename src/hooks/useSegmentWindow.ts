@@ -49,19 +49,6 @@ const RECENTER_RESNAP_MAX_FRAMES = 20;
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;
 
-/**
- * Builds a stable string key identifying the verse a reference names. The parent stamps
- * `internalNavRef` with this key before an internally-originated navigation, and the hook compares
- * the incoming `scrRef`'s key against it, so internal navigation can be told apart from external.
- * Exported so the parent keys the ref with the exact same format the hook reads.
- *
- * @param ref - The scripture reference to key.
- * @returns A `book:chapter:verse` string uniquely identifying the verse.
- */
-export function verseKey(ref: SerializedVerseRef): string {
-  return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
-}
-
 /** Arguments for {@link useSegmentWindow}. */
 export interface UseSegmentWindowArgs {
   /** The fully tokenized book whose flat `segments` list the window slices. */
@@ -78,15 +65,23 @@ export interface UseSegmentWindowArgs {
   /** Ref to the scrollable list container; used to read/adjust scroll position and host sentinels. */
   scrollContainerRef: RefObject<HTMLElement | undefined>;
   /**
-   * Mutable ref holding the verse key (see {@link verseKey}) of the most recent scripture-reference
-   * change the parent originated _internally_ — a segment/token click in the list, or arrow nav in
-   * the continuous strip echoed back through `scrRef`. The hook compares it against the incoming
-   * `scrRef`: a match means the change came from within the views (no fade — the target is already
-   * shown), while a mismatch means an external navigation (Paratext selector, scroll group) and
-   * triggers the recenter fade. The hook clears the ref once consumed so a later external change to
-   * the same verse still fades.
+   * Consumes the internal-navigation classification for a reference: returns `true` (and clears the
+   * marker) when the most recent navigation to that verse was originated internally — a
+   * segment/token click in the list, or arrow nav in the strip. The hook calls it when an anchor
+   * change arrives: `true` means the change came from within the views (no fade — the target is
+   * already shown), `false` means an external navigation (Paratext selector, scroll group) and
+   * triggers the recenter fade. Supplied by {@link InterlinearNavProvider}, which records the origin
+   * at the `navigate` call site rather than having the hook reverse-engineer it.
    */
-  internalNavRef: RefObject<string | undefined>;
+  consumeInternalNav: (ref: SerializedVerseRef) => boolean;
+  /**
+   * Called after the window has snapped the active verse into place and the layout has settled —
+   * both on a fresh mount whose anchor sits mid-book (a cross-book remount) and after each
+   * recenter. The cross-book fade clock (in {@link InterlinearNavProvider}) uses it to lift the
+   * loader curtain once the freshly-loaded book is laid out. Safe to over-call: the clock ignores
+   * it unless a cross-book fade is actually awaiting settle.
+   */
+  onSettled?: () => void;
 }
 
 /** Return value of {@link useSegmentWindow}. */
@@ -180,8 +175,9 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * @param args.book - The tokenized book whose `segments` are windowed.
  * @param args.scrRef - Current scripture reference; its verse is the recenter anchor.
  * @param args.scrollContainerRef - Ref to the scrollable list container.
- * @param args.internalNavRef - Ref holding the verse key of the last internally-originated nav;
- *   used to suppress the fade for navigation that came from within the views.
+ * @param args.consumeInternalNav - Returns whether the navigation to a given verse was internal
+ *   (and clears the marker); used to suppress the fade for navigation that came from within the
+ *   views.
  * @returns The mounted segment slice, fade state, and the two sentinel ref callbacks.
  */
 export default function useSegmentWindow({
@@ -189,7 +185,8 @@ export default function useSegmentWindow({
   scrRef,
   focusedTokenRef,
   scrollContainerRef,
-  internalNavRef,
+  consumeInternalNav,
+  onSettled,
 }: UseSegmentWindowArgs): UseSegmentWindowResult {
   const { segments } = book;
   const total = segments.length;
@@ -198,6 +195,28 @@ export default function useSegmentWindow({
 
   const [range, setRange] = useState<WindowRange>(() => buildCenteredRange(anchorIndex, total));
   const [isFaded, setIsFaded] = useState(false);
+
+  /**
+   * `true` on the first commit when the initial window has segments above the anchor — i.e. the
+   * anchor sits mid-book, as on a cross-book remount (the loader swaps to `Loading…` then remounts
+   * this hook fresh on the new book). Without snapping on mount the active verse would render
+   * mid-window, below the fold, at `scrollTop` 0. Seeding {@link pendingRecenterSnapRef} and the
+   * re-snap loop (which both normally skip the initial mount) pulls it to the top behind the loader
+   * curtain. A normal first mount (anchor at the book start) leaves it `false` so scroll stays at
+   * 0.
+   */
+  const needsInitialSnapRef = useRef(anchorIndex > range.start);
+
+  /** Latest `onSettled`, mirrored so the snap loop fires the current callback with a stable dep. */
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+
+  /**
+   * Latest `consumeInternalNav`, mirrored so the recenter effect reads it without listing it as a
+   * dep — the same identity-churn decoupling as `scrRefRef` (see the recenter effect's note).
+   */
+  const consumeInternalNavRef = useRef(consumeInternalNav);
+  consumeInternalNavRef.current = consumeInternalNav;
 
   /**
    * Scripture reference the active-verse highlight tracks. Held in state (rather than reading
@@ -228,9 +247,11 @@ export default function useSegmentWindow({
    * Set when a recenter rebuilds the window, signaling the layout effect to snap the active verse
    * (the element marked `aria-current="true"`) to the top of the list. The snap happens behind the
    * fade so the jump is never seen; clearing the flag after one snap keeps later range changes
-   * (scroll extends/culls) from re-snapping.
+   * (scroll extends/culls) from re-snapping. Seeded `true` on a fresh mount whose initial window
+   * already has segments above the anchor, so a cross-book remount lands the verse at the top (see
+   * {@link needsInitialSnapRef}).
    */
-  const pendingRecenterSnapRef = useRef(false);
+  const pendingRecenterSnapRef = useRef(needsInitialSnapRef.current);
 
   /**
    * Bumped once per recenter. Two effects key off it: the post-paint re-snap (which corrects the
@@ -342,7 +363,16 @@ export default function useSegmentWindow({
   useEffect(() => {
     if (isInitialEpochRef.current) {
       isInitialEpochRef.current = false;
-      return undefined;
+      // On the initial mount only re-snap when this is a cross-book remount that needs the verse
+      // pulled to the top; a normal first mount (anchor at the book start) leaves scroll at 0. Either
+      // way the layout has settled once the next frame paints, so report settled then — the
+      // cross-book fade clock lifts the curtain off this signal (and ignores it otherwise).
+      const needsSnap = needsInitialSnapRef.current;
+      needsInitialSnapRef.current = false;
+      if (!needsSnap) {
+        const settleRaf = requestAnimationFrame(() => onSettledRef.current?.());
+        return () => cancelAnimationFrame(settleRaf);
+      }
     }
     let rafId = 0;
     let framesLeft = RECENTER_RESNAP_MAX_FRAMES;
@@ -355,7 +385,11 @@ export default function useSegmentWindow({
       framesLeft -= 1;
       // Stop once a snap leaves the scroll position unchanged (layout has settled) or the frame cap
       // is hit; otherwise schedule another snap against the next frame's (possibly taller) layout.
-      if (settledScrollTop === lastScrollTop || framesLeft <= 0) return;
+      // The verse is now in its final position, so report settled (the fade clock lifts off this).
+      if (settledScrollTop === lastScrollTop || framesLeft <= 0) {
+        onSettledRef.current?.();
+        return;
+      }
       lastScrollTop = settledScrollTop;
       rafId = requestAnimationFrame(step);
     };
@@ -388,8 +422,9 @@ export default function useSegmentWindow({
   }, []);
 
   // Recenter on external navigation. An `scrRef` change the parent originated internally (a click in
-  // this list, or strip arrow nav echoed back) keys `internalNavRef` to the new verse: consume it
-  // and skip the fade, since the target is already shown. Any other anchor change is an external
+  // this list, or strip arrow nav echoed back) was recorded as internal at the `navigate` call site;
+  // `consumeInternalNav` returns true, so skip the fade — the target is already shown. Any other
+  // anchor change is an external
   // navigation (Paratext selector, scroll group): fade out, rebuild the window centered on the new
   // verse, snap that verse into view behind the fade, then fade back in — on the same clock as the
   // strip so the two views fade as one. The fade fires for every external nav, even one already
@@ -407,9 +442,7 @@ export default function useSegmentWindow({
     if (sameAnchor) return;
     prevAnchorRef.current = { index: anchorIndex, segments };
     const currentScrRef = scrRefRef.current;
-    const isInternal = internalNavRef.current === verseKey(currentScrRef);
-    internalNavRef.current = undefined;
-    if (isInternal) {
+    if (consumeInternalNavRef.current(currentScrRef)) {
       setDisplayScrRef(currentScrRef);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);
       return;
@@ -420,7 +453,7 @@ export default function useSegmentWindow({
     // timeout is owned by triggerRecenter (recenterTimeoutRef), not torn down here, so an incidental
     // re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchorIndex, segments, internalNavRef, triggerRecenter]);
+  }, [anchorIndex, segments, triggerRecenter]);
 
   // Track within-verse focus moves (arrow/click that stays in the active verse) immediately. These
   // change `focusedTokenRef` without changing `anchorIndex`, so the recenter effect above never

@@ -1067,4 +1067,132 @@ describe('InterlinearizerLoader', () => {
       expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });
   });
+
+  describe('cross-book fade curtain', () => {
+    /**
+     * Reads the live opacity of the book-fade wrapper the loader renders from the context's fade
+     * phase.
+     *
+     * @returns The wrapper's inline `opacity` style value.
+     */
+    function fadeOpacity(): string {
+      return screen.getByTestId('book-fade-wrapper').style.opacity;
+    }
+
+    /**
+     * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
+     * identity is required each change so the provider's `liveScrRef` memo recomputes.
+     *
+     * @param initial - The reference reported on the first render.
+     * @returns A `[hook, setRef]` pair.
+     */
+    function makeMutableScrollGroupHook(
+      initial: SerializedVerseRef,
+    ): [
+      () => [SerializedVerseRef, () => void, undefined, () => void],
+      (n: SerializedVerseRef) => void,
+    ] {
+      let current = initial;
+      const hook = (): [SerializedVerseRef, () => void, undefined, () => void] => [
+        current,
+        () => {},
+        undefined,
+        () => {},
+      ];
+      return [
+        hook,
+        (next) => {
+          current = next;
+        },
+      ];
+    }
+
+    /**
+     * Renders the loader with a mutable scroll-group hook, returning a `rerenderNow` that rebuilds
+     * a fresh element so React re-invokes the component (the stub mutates a closure variable, not
+     * state, so an identical element would let React bail out).
+     *
+     * @param initial - The scroll-group reference reported on the first render.
+     * @returns `setRef` to stage the next reference and `rerenderNow` to re-render with it.
+     */
+    function renderLoader(initial: SerializedVerseRef) {
+      const [scrollGroupHook, setRef] = makeMutableScrollGroupHook(initial);
+      const webViewState = makeWebViewState();
+      const buildUi = () => (
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={scrollGroupHook}
+          useWebViewState={webViewState}
+        />
+      );
+      const { rerender } = render(buildUi());
+      return { setRef, rerenderNow: () => rerender(buildUi()) };
+    }
+
+    it('fades the content out the moment scrRef names a new book', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      // Initial GEN load shows no fade.
+      expect(fadeOpacity()).toBe('1');
+
+      // External jump to MAT: the context detects the book change and the curtain fades out.
+      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      mockBookData({ book: undefined, isLoading: true });
+      rerenderNow();
+      expect(fadeOpacity()).toBe('0');
+    });
+
+    it('freezes the scrRef handed to Interlinearizer until the new book loads', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+      expect(capturedInterlinearizerProps?.scrRef).toEqual({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 5,
+      });
+
+      // Cross-book jump to MAT while the loaded book is still GEN (the window before the USJ arrives
+      // / Interlinearizer remounts). The still-mounted views must keep receiving the last in-book GEN
+      // reference, never the out-of-book MAT one — otherwise they reseed focus and scroll toward a
+      // verse absent from the mounted book, the pre-fade shuffle this freeze exists to prevent.
+      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      rerenderNow();
+      expect(capturedInterlinearizerProps?.scrRef).toEqual({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 5,
+      });
+
+      // Once MAT's book data arrives, Interlinearizer remounts on it and receives the live MAT ref.
+      mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
+      rerenderNow();
+      expect(capturedInterlinearizerProps?.scrRef).toEqual({
+        book: 'MAT',
+        chapterNum: 5,
+        verseNum: 3,
+      });
+    });
+
+    it('reveals the error instead of staying faded when the new book fails to load', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      expect(fadeOpacity()).toBe('1');
+
+      // Cross-book nav whose target book errors: cancelFade must reveal the content rather than
+      // leave the error hidden behind a curtain that will never receive a settle.
+      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      mockBookData({ book: undefined, bookError: 'No USJ book available' });
+      rerenderNow();
+      expect(fadeOpacity()).toBe('1');
+      expect(screen.getByText('No USJ book available')).toBeInTheDocument();
+    });
+
+    it('does not fade for a same-book external navigation', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      expect(fadeOpacity()).toBe('1');
+
+      // A verse change within the same book keeps Interlinearizer mounted; the loader curtain stays
+      // up (its own in-component fade handles within-book recenters).
+      setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
+      rerenderNow();
+      expect(fadeOpacity()).toBe('1');
+    });
+  });
 });

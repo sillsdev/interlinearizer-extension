@@ -2,7 +2,8 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
 import { act, renderHook } from '@testing-library/react';
 import { useRef } from 'react';
-import useSegmentWindow, { verseKey } from '../../hooks/useSegmentWindow';
+import useSegmentWindow from '../../hooks/useSegmentWindow';
+import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 
 /**
@@ -66,11 +67,25 @@ function makeBook(chapter1Count: number, chapter2Count: number): Book {
  * @param scrRef - The scripture reference whose verse anchors the window.
  * @returns The render-hook result plus the scroll container element.
  */
-function renderSegmentWindow(book: Book, scrRef: SerializedVerseRef, focusedTokenRef?: string) {
+function renderSegmentWindow(
+  book: Book,
+  scrRef: SerializedVerseRef,
+  focusedTokenRef?: string,
+  onSettled?: () => void,
+) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  // Shared across renders so a test can stamp it (mimicking an internal nav) before a rerender.
-  const internalNavRef: { current: string | undefined } = { current: undefined };
+  // Mirrors the context's internal-nav classification: a test calls `markInternal(ref)` to mimic an
+  // internally-originated navigation (a segment/strip click) before a rerender; the hook's
+  // `consumeInternalNav` matches+clears it, exactly as the real context does.
+  const pendingInternal = new Set<string>();
+  const markInternal = (ref: SerializedVerseRef) => pendingInternal.add(verseKey(ref));
+  const consumeInternalNav = (ref: SerializedVerseRef) => {
+    const key = verseKey(ref);
+    if (!pendingInternal.has(key)) return false;
+    pendingInternal.delete(key);
+    return true;
+  };
   const hook = renderHook<
     ReturnType<typeof useSegmentWindow>,
     { b: Book; ref: SerializedVerseRef; focus?: string | undefined }
@@ -82,12 +97,18 @@ function renderSegmentWindow(book: Book, scrRef: SerializedVerseRef, focusedToke
         scrRef: ref,
         focusedTokenRef: focus,
         scrollContainerRef,
-        internalNavRef,
+        consumeInternalNav,
+        onSettled,
       });
     },
     { initialProps: { b: book, ref: scrRef, focus: focusedTokenRef } },
   );
-  return { ...hook, container, internalNavRef };
+  return {
+    ...hook,
+    container,
+    markInternal,
+    hasPendingInternal: (ref: SerializedVerseRef) => pendingInternal.has(verseKey(ref)),
+  };
 }
 
 /**
@@ -325,14 +346,14 @@ describe('useSegmentWindow', () => {
 
   it('moves displayScrRef immediately for internal navigation (no fade)', () => {
     const book = makeBook(60, 0);
-    const { result, rerender, internalNavRef } = renderSegmentWindow(book, {
+    const { result, rerender, markInternal } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
       verseNum: 5,
     });
 
     const target: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
-    internalNavRef.current = verseKey(target);
+    markInternal(target);
     act(() => rerender({ b: book, ref: target }));
 
     expect(result.current.isFaded).toBe(false);
@@ -499,6 +520,116 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
+  it('snaps the active verse to the top on a fresh mount whose anchor sits mid-book', () => {
+    // A cross-book remount mounts this hook fresh with the new book centered on a mid-book anchor.
+    // Without a mount snap the verse renders mid-window, below the fold, at scrollTop 0.
+    const book = makeBook(60, 0);
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 30 });
+
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    // The mount-snap loop runs on this fresh mid-book mount (skipped when the anchor is at the book
+    // start), pulling the active verse to the top behind the loader curtain.
+    act(() => jest.advanceTimersByTime(16));
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
+  });
+
+  it('fires onSettled on the next frame for a first mount that needs no snap', () => {
+    const book = makeBook(60, 0);
+    const onSettled = jest.fn();
+    // Anchor at the book start: no mount snap, so settle fires once the next frame paints.
+    renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 1 }, undefined, onSettled);
+
+    expect(onSettled).not.toHaveBeenCalled();
+    act(() => jest.advanceTimersByTime(16));
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onSettled once the mid-book mount snap loop settles', () => {
+    const book = makeBook(60, 0);
+    Element.prototype.scrollIntoView = jest.fn();
+    const onSettled = jest.fn();
+    const { container } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 30 },
+      undefined,
+      onSettled,
+    );
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    // jsdom reports a stable scrollTop, so the loop settles on the second frame and fires settle.
+    act(() => jest.advanceTimersByTime(16 * 3));
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('fires onSettled after a recenter snap loop settles', () => {
+    const book = makeBook(60, 0);
+    Element.prototype.scrollIntoView = jest.fn();
+    const onSettled = jest.fn();
+    const { rerender, container } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      undefined,
+      onSettled,
+    );
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    // Drain the initial-mount settle (anchor at book start → next-frame settle).
+    act(() => jest.advanceTimersByTime(16));
+    onSettled.mockClear();
+
+    // An external recenter rebuilds + snaps; settle fires again when its loop settles.
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    act(() => jest.advanceTimersByTime(16 * 3));
+    expect(onSettled).toHaveBeenCalled();
+  });
+
+  it('fires onSettled when the mount snap loop hits the frame cap without settling', () => {
+    const book = makeBook(60, 0);
+    Element.prototype.scrollIntoView = jest.fn();
+    const onSettled = jest.fn();
+    const { container } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 30 },
+      undefined,
+      onSettled,
+    );
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    // scrollTop changes on every read so the settle check never short-circuits; only the frame cap
+    // stops the loop, and settle must still fire so the loader curtain is never stranded.
+    let scrollTop = 0;
+    Object.defineProperty(container, 'scrollTop', {
+      configurable: true,
+      get: () => {
+        scrollTop += 1;
+        return scrollTop;
+      },
+      set: () => {},
+    });
+
+    act(() => jest.advanceTimersByTime(16 * 50));
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it('tolerates a mount with no onSettled callback', () => {
+    const book = makeBook(60, 0);
+    // No callback: the next-frame settle path must run without throwing on the optional call.
+    renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 1 });
+    expect(() => act(() => jest.advanceTimersByTime(16))).not.toThrow();
+  });
+
   it('re-creates the sentinel observer on recenter so the new geometry is re-evaluated', () => {
     const book = makeBook(60, 0);
     const { result, container, rerender } = renderSegmentWindow(book, {
@@ -520,34 +651,35 @@ describe('useSegmentWindow', () => {
 
   it('does not fade when the navigation was originated internally', () => {
     const book = makeBook(60, 0);
-    const { result, rerender, internalNavRef } = renderSegmentWindow(book, {
+    const { result, rerender, markInternal, hasPendingInternal } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
       verseNum: 5,
     });
 
-    // Stamp the ref as the parent does for a click/strip nav, then drive the matching scrRef change.
+    // Mark the nav internal as the context does for a click/strip nav, then drive the matching
+    // scrRef change.
     const newRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
-    internalNavRef.current = verseKey(newRef);
+    markInternal(newRef);
     act(() => {
       rerender({ b: book, ref: newRef });
     });
 
     expect(result.current.isFaded).toBe(false);
-    // The ref is consumed so a later external nav to the same verse still fades.
-    expect(internalNavRef.current).toBeUndefined();
+    // The marker is consumed so a later external nav to the same verse still fades.
+    expect(hasPendingInternal(newRef)).toBe(false);
   });
 
-  it('fades on a later external nav to the same verse after an internal nav consumed the ref', () => {
+  it('fades on a later external nav to the same verse after an internal nav consumed the marker', () => {
     const book = makeBook(60, 0);
-    const { result, rerender, internalNavRef } = renderSegmentWindow(book, {
+    const { result, rerender, markInternal } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
       verseNum: 5,
     });
 
     const target: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 50 };
-    internalNavRef.current = verseKey(target);
+    markInternal(target);
     act(() => rerender({ b: book, ref: target }));
     expect(result.current.isFaded).toBe(false);
 

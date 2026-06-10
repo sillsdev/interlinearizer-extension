@@ -248,38 +248,47 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 
-  // Update scrRef when focusedTokenRef moves into a different verse (e.g. arrow nav in the
-  // continuous strip). Skip when scrRef already matches — that case means scrRef and focus
-  // were set together by a click and no further work is needed.
-  useEffect(() => {
-    if (!focusedTokenRef) return;
-    const segId = tokenSegmentMap.get(focusedTokenRef);
-    /* v8 ignore next -- focusedTokenRef is always set from tokens in tokenSegmentMap */
-    if (!segId) return;
-    const seg = segmentById.get(segId);
-    /* v8 ignore next -- segmentById contains every segment id from tokenSegmentMap */
-    if (!seg) return;
-    // Never echo a verse from a different book back as scrRef. During an external book change the
-    // focused token can briefly belong to the previous book (Genesis) while scrRef already names the
-    // new one (Matthew); firing setScrRef here would overwrite the new book with the stale one. A
-    // cross-book move only ever originates externally, so there is nothing to echo in that case.
-    if (seg.startRef.book !== scrRef.book) return;
-    if (seg.startRef.chapter === scrRef.chapterNum && seg.startRef.verse === scrRef.verseNum) {
-      return;
-    }
-    const newScrRef = {
-      book: seg.startRef.book,
-      chapterNum: seg.startRef.chapter,
-      verseNum: seg.startRef.verse,
-    };
-    // Strip arrow nav (or a strip phrase click) moved focus into a new verse. Classify it internal
-    // so the segment window doesn't fade — the continuous strip already smooth-scrolls to it, and
-    // the list just tracks along.
-    navigate(newScrRef, 'internal');
-    // scrRef fields are intentionally excluded: they're guards against re-firing, not triggers.
-    // Adding them would re-run this effect on every external verse change without doing useful work.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusedTokenRef, tokenSegmentMap, segmentById, navigate]);
+  // Latest scrRef, mirrored so `focusToken` can read the current verse without taking it as a dep
+  // (scrRef is a fresh object on many host renders; depending on it would churn focusToken's
+  // identity and re-wire ContinuousView's callback ref every render).
+  const scrRefRef = useRef(scrRef);
+  scrRefRef.current = scrRef;
+
+  /**
+   * Focuses `tokenRef` and, when it lives in a different verse than the active one, navigates
+   * there. The single explicit focus-move operation behind strip arrow nav and phrase clicks: it
+   * both sets the focused token and pushes the verse change as an _internal_ navigation (so the
+   * segment window tracks along without a recenter fade). Replaces the former focus→scrRef "echo"
+   * effect, which watched `focusedTokenRef` and re-derived the navigation after the fact; doing it
+   * inline removes that indirection.
+   *
+   * Never navigates when the focused token's book differs from the active `scrRef`'s book: during
+   * an external book change `scrRef` can briefly name the new book while the mounted book (and this
+   * token) still belong to the previous one, and echoing that stale verse would overwrite the new
+   * reference. (The loader's `viewScrRef` freeze normally keeps the two in sync, so this guards a
+   * transient.)
+   *
+   * @param tokenRef - The word-token ref to focus.
+   */
+  const focusToken = useCallback(
+    (tokenRef: string) => {
+      setFocusedTokenRef(tokenRef);
+      const segId = tokenSegmentMap.get(tokenRef);
+      /* v8 ignore next 2 -- tokenRef always resolves to a segment in the mounted book */
+      const seg = segId === undefined ? undefined : segmentById.get(segId);
+      if (!seg) return;
+      const { current } = scrRefRef;
+      if (seg.startRef.book !== current.book) return;
+      if (seg.startRef.chapter === current.chapterNum && seg.startRef.verse === current.verseNum) {
+        return;
+      }
+      navigate(
+        { book: seg.startRef.book, chapterNum: seg.startRef.chapter, verseNum: seg.startRef.verse },
+        'internal',
+      );
+    },
+    [segmentById, tokenSegmentMap, navigate],
+  );
 
   /**
    * Updates the active scripture reference and, when a specific token was clicked, focuses that
@@ -316,7 +325,7 @@ function InterlinearizerInner({
             book={book}
             editPhraseSegmentId={editPhraseSegmentId}
             focusedTokenRef={focusedTokenRef}
-            onFocusedTokenRefChange={setFocusedTokenRef}
+            onFocusedTokenRefChange={focusToken}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             tokenSegmentMap={tokenSegmentMap}

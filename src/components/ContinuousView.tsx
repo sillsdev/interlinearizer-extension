@@ -337,6 +337,21 @@ export default function ContinuousView({
   const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
   onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
 
+  /**
+   * Emits a focus change that originated _inside_ the strip (arrow nav, phrase click, edit-mode
+   * jump). Records the ref as internally-originated, then notifies the parent. When the parent
+   * echoes the same ref back through `focusedTokenRef`, the focus-change effect recognizes the
+   * match and applies it immediately with a smooth scroll instead of the fade-then-snap used for
+   * external jumps. Folds the stamp and the notify into one call so the "this is an internal emit"
+   * intent lives in a single place rather than being restated at each call site.
+   *
+   * @param ref - The word-token ref to focus.
+   */
+  const emitInternalFocus = useCallback((ref: string) => {
+    internalFocusedTokenRefRef.current = ref;
+    onFocusedTokenRefChangeRef.current(ref);
+  }, []);
+
   // Notify the parent of the initially-focused token on mount so the segment list scrolls the
   // active verse into view on first render. Only fires when no token was already focused.
   useEffect(() => {
@@ -399,12 +414,9 @@ export default function ContinuousView({
       if (clamped === pendingPhraseIndexRef.current) return;
       pendingPhraseIndexRef.current = clamped;
       const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
-      if (nextRef !== undefined) {
-        internalFocusedTokenRefRef.current = nextRef;
-        onFocusedTokenRefChangeRef.current(nextRef);
-      }
+      if (nextRef !== undefined) emitInternalFocus(nextRef);
     },
-    [phraseGroups],
+    [phraseGroups, emitInternalFocus],
   );
 
   /** Moves focus one phrase backward. */
@@ -426,10 +438,9 @@ export default function ContinuousView({
       const currentGroupIndex =
         focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
       if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
-      internalFocusedTokenRefRef.current = ref;
-      onFocusedTokenRefChangeRef.current(ref);
+      emitInternalFocus(ref);
     },
-    [focusedTokenRef, groupIndexByTokenRef],
+    [focusedTokenRef, groupIndexByTokenRef, emitInternalFocus],
   );
 
   const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
@@ -614,10 +625,9 @@ export default function ContinuousView({
     const nextRef = group?.tokens[0]?.ref;
     /* v8 ignore next -- phrase always has tokens; focusedTokenRef differs at mode entry */
     if (nextRef === undefined || nextRef === focusedTokenRef) return;
-    internalFocusedTokenRefRef.current = nextRef;
-    onFocusedTokenRefChangeRef.current(nextRef);
+    emitInternalFocus(nextRef);
     // phraseGroups and focusedTokenRef are read once per mode change; intentionally not deps so the
-    // effect only fires on actual mode transitions.
+    // effect only fires on actual mode transitions. emitInternalFocus has a stable identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);
 

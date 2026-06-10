@@ -13,6 +13,7 @@ import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import useLatestRef from '../hooks/useLatestRef';
 import MemoizedArcOverlay from './ArcOverlay';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -330,17 +331,15 @@ export default function ContinuousView({
     focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined;
 
   /** Ref mirror of the target so the post-scroll timeout reads the latest value without a dep. */
-  const targetActiveSegmentIdRef = useRef(targetActiveSegmentId);
-  targetActiveSegmentIdRef.current = targetActiveSegmentId;
+  const targetActiveSegmentIdRef = useLatestRef(targetActiveSegmentId);
 
   /** Snaps the committed active segment to the current target; runs after an internal-nav scroll. */
   const commitPendingActiveSegment = useCallback(() => {
     setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
-  }, []);
+  }, [targetActiveSegmentIdRef]);
 
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
-  const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
-  onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
+  const onFocusedTokenRefChangeRef = useLatestRef(onFocusedTokenRefChange);
 
   /**
    * Emits a focus change that originated _inside_ the strip (arrow nav, phrase click, edit-mode
@@ -352,10 +351,13 @@ export default function ContinuousView({
    *
    * @param ref - The word-token ref to focus.
    */
-  const emitInternalFocus = useCallback((ref: string) => {
-    internalFocusedTokenRefRef.current = ref;
-    onFocusedTokenRefChangeRef.current(ref);
-  }, []);
+  const emitInternalFocus = useCallback(
+    (ref: string) => {
+      internalFocusedTokenRefRef.current = ref;
+      onFocusedTokenRefChangeRef.current(ref);
+    },
+    [onFocusedTokenRefChangeRef],
+  );
 
   // Notify the parent of the initially-focused token on mount so the segment list scrolls the
   // active verse into view on first render. Only fires when no token was already focused.

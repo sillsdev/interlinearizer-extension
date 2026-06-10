@@ -5,7 +5,7 @@ import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -221,7 +221,14 @@ function InterlinearizerLoaderInner({
     isHideInactiveLinkButtonsLoading ||
     isSimplifyPhrasesLoading ||
     isChapterLabelInVerseLoading;
-  const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
+  // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
+  // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
+  // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
+  // components stay visible while the new book loads, so the swap is seen before the fade hides it.
+  // Treating this window as loading swaps the old view for the Loading… curtain immediately, so
+  // nothing of either book shows until the new one has mounted and fades in.
+  const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
+  const showLoading = isLoading || isAnalysisLoading || isSettingLoading || isCrossBookSwap;
   const isLoaded = !hasError && !showLoading && !!book;
 
   // Abort any in-flight cross-book fade when the new book fails to load, so the error is revealed
@@ -229,22 +236,6 @@ function InterlinearizerLoaderInner({
   useEffect(() => {
     if (hasError) cancelFade();
   }, [hasError, cancelFade]);
-
-  /**
-   * The scripture reference handed to {@link Interlinearizer}. While a cross-book navigation is in
-   * flight, `scrRef` already names the new book but the loaded `book` is still the previous one
-   * (its USJ hasn't arrived), so the still-mounted views would react to a verse absent from the
-   * mounted book — reseeding focus and scrolling toward it, a visible shuffle behind/before the
-   * fade. Gating on `book.bookRef` keeps the views on a reference that matches the book they
-   * actually render: the live `scrRef` only once the loaded book matches it, otherwise the last
-   * in-book reference. Once the new book's USJ arrives, `Interlinearizer` remounts on it (it is
-   * keyed by `book.bookRef`, so a book change tears down the old instance rather than updating it
-   * in place with carried-over scroll/focus state) and immediately receives the live (new-book)
-   * reference, so it seeds focus on the intended verse and reports settled.
-   */
-  const lastInBookScrRefRef = useRef(scrRef);
-  if (book && scrRef.book === book.bookRef) lastInBookScrRefRef.current = scrRef;
-  const viewScrRef = book && scrRef.book === book.bookRef ? scrRef : lastInBookScrRefRef.current;
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -376,7 +367,7 @@ function InterlinearizerLoaderInner({
             key={`${activeProject?.id ?? ''}:${book.bookRef}`}
             book={book}
             continuousScroll={continuousScroll}
-            scrRef={viewScrRef}
+            scrRef={scrRef}
             analysisLanguage={analysisLanguage}
             initialAnalysis={activeProjectAnalysis}
             onSaveAnalysis={handleSaveAnalysis}

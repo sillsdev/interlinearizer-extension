@@ -105,6 +105,38 @@ describe('InterlinearNavContext', () => {
     expect(result.current.rawScrRef).toEqual(ref);
   });
 
+  it('keeps the current verse when the host echoes a verse-0 reference for the chapter already shown', () => {
+    // After a verse navigation the host re-broadcasts the chapter as a separate verse-0 reference.
+    // Normalizing that to verse 1 would read as a fresh move off the verse the user is on, so a
+    // verse-0 echo for the same book+chapter must stay sticky on the current verse.
+    const { result, setRef, rerender } = renderNavMutable({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 7,
+    });
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
+
+    act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
+    rerender();
+
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
+  });
+
+  it('normalizes a verse-0 reference that names a different chapter (a real chapter jump)', () => {
+    // A verse-0 reference for a chapter other than the one shown is a genuine chapter navigation, not
+    // an echo, so it still normalizes to that chapter's first verse.
+    const { result, setRef, rerender } = renderNavMutable({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 7,
+    });
+
+    act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
+    rerender();
+
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
+  });
+
   it('throws when used outside a provider', () => {
     expect(() => renderHook(() => useInterlinearNav())).toThrow(
       'useInterlinearNav must be used within an InterlinearNavProvider',

@@ -1190,27 +1190,20 @@ describe('InterlinearizerLoader', () => {
       expect(fadeOpacity()).toBe('0');
     });
 
-    it('freezes the scrRef handed to Interlinearizer until the new book loads', () => {
+    it('shows the Loading curtain (not the old book) during a cross-book swap', () => {
       const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 5 });
-      expect(capturedInterlinearizerProps?.scrRef).toEqual({
-        book: 'GEN',
-        chapterNum: 1,
-        verseNum: 5,
-      });
+      expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
 
-      // Cross-book jump to MAT while the loaded book is still GEN (the window before the USJ arrives
-      // / Interlinearizer remounts). The still-mounted views must keep receiving the last in-book GEN
-      // reference, never the out-of-book MAT one — otherwise they reseed focus and scroll toward a
-      // verse absent from the mounted book, the pre-fade shuffle this freeze exists to prevent.
+      // Cross-book jump to MAT while the loaded book is still GEN (the window before the USJ arrives /
+      // Interlinearizer remounts). Rather than leave the previous book's views mounted — where they
+      // would show through the fade as the swap happens — the loader shows the Loading curtain, so
+      // nothing of either book is visible until the new one mounts and fades in.
       setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       rerenderNow();
-      expect(capturedInterlinearizerProps?.scrRef).toEqual({
-        book: 'GEN',
-        chapterNum: 1,
-        verseNum: 5,
-      });
+      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
 
-      // Once MAT's book data arrives, Interlinearizer remounts on it and receives the live MAT ref.
+      // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
       rerenderNow();
       expect(capturedInterlinearizerProps?.scrRef).toEqual({

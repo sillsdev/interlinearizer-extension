@@ -165,7 +165,31 @@ export function InterlinearNavProvider({
 }>) {
   const [rawScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
-  const liveScrRef = useMemo(() => normalizeScrRef(rawScrRef), [rawScrRef]);
+  /**
+   * The last committed {@link liveScrRef}, mirrored so the verse-0 stickiness below can compare the
+   * incoming `rawScrRef` against the verse currently shown.
+   */
+  const liveScrRefRef = useRef<SerializedVerseRef>(normalizeScrRef(rawScrRef));
+
+  // After a verse navigation the host re-broadcasts the *chapter* to the scroll group as a separate
+  // `verseNum: 0` reference (an echo of the current location, not a real move). Normalizing that to
+  // verse 1 unconditionally would read as a fresh navigation to the chapter's first verse, fading and
+  // recentering the views off the verse the user is actually on. So a verse-0 reference that names the
+  // book+chapter already shown is treated as sticky: keep the current `liveScrRef` (its real verse)
+  // rather than snapping to verse 1. A verse-0 reference for a *different* chapter is a genuine
+  // chapter jump and normalizes to verse 1 as before.
+  const liveScrRef = useMemo(() => {
+    const prev = liveScrRefRef.current;
+    if (
+      rawScrRef.verseNum === 0 &&
+      rawScrRef.book === prev.book &&
+      rawScrRef.chapterNum === prev.chapterNum
+    ) {
+      return prev;
+    }
+    return normalizeScrRef(rawScrRef);
+  }, [rawScrRef]);
+  liveScrRefRef.current = liveScrRef;
 
   /**
    * Verse keys of internal navigations still awaiting their host round-trip. A `navigate(ref,

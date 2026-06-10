@@ -2,13 +2,14 @@
 /// <reference types="jest" />
 
 import type { Token } from 'interlinearizer';
+import { emptyFocusContext } from '../../types/empty-factories';
+import type { FocusContext } from '../../types/token-layout';
 import {
   resolveFocusContext,
   resolveSlotFocus,
   groupTokens,
   buildRenderUnits,
   NO_SLOT_FOCUS,
-  type FocusContext,
 } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
@@ -105,14 +106,7 @@ describe('resolveSlotFocus', () => {
     focusedSegmentId: string | undefined,
     overrides: Partial<FocusContext> = {},
   ): FocusContext {
-    return {
-      focusedToken: undefined,
-      focusedPhraseLink: undefined,
-      focusedFreeToken: undefined,
-      focusedSegmentId,
-      focusedPhraseId: undefined,
-      ...overrides,
-    };
+    return { ...emptyFocusContext(), focusedSegmentId, ...overrides };
   }
 
   it('marks isSameSegmentAsFocus true when all three segment ids agree', () => {
@@ -323,5 +317,40 @@ describe('buildRenderUnits', () => {
     const allSlots = units.filter((u) => u.kind === 'slot');
     const allPunctuation = allSlots.flatMap((u) => (u.kind === 'slot' ? u.slot.punctuation : []));
     expect(allPunctuation).toHaveLength(0);
+  });
+
+  it('routes punctuation after the last token of a group into the following inter-group slot, not punctuationBetween', () => {
+    // Crash scenario: [A, B] (phrase group 1), punct, [C] (phrase group 2).
+    // After processing B (last token of group 1), pendingIntraGroup must be cleared so the
+    // punctuation is routed into the inter-group LinkSlot, not into an out-of-bounds
+    // punctuationBetween index.
+    const a = mkWord('tok-a');
+    const b = mkWord('tok-b');
+    const punct = mkPunct('p1', ',');
+    const c = mkWord('tok-c');
+    const link1 = makePhraseLink('ph1', ['tok-a', 'tok-b']);
+    const link2 = makePhraseLink('ph2', ['tok-c']);
+    const groups = groupTokens(
+      [a, b, punct, c],
+      new Map([
+        ['tok-a', link1],
+        ['tok-b', link1],
+        ['tok-c', link2],
+      ]),
+    );
+    // Must not throw (was crashing with "Cannot read properties of undefined" before the fix).
+    const units = buildRenderUnits([a, b, punct, c], groups);
+
+    // The punctuation must appear in the inter-group slot between group 1 and group 2.
+    const interGroupSlot = units.find(
+      (u) => u.kind === 'slot' && u.slot.prevGroup === groups[0] && u.slot.nextGroup === groups[1],
+    );
+    expect(interGroupSlot?.kind).toBe('slot');
+    if (interGroupSlot?.kind === 'slot') {
+      expect(interGroupSlot.slot.punctuation.map((t) => t.ref)).toEqual(['p1']);
+    }
+
+    // The punctuation must NOT appear in group 1's punctuationBetween.
+    expect(groups[0].punctuationBetween.flat()).toHaveLength(0);
   });
 });

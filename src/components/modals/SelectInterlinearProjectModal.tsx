@@ -4,7 +4,7 @@ import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../../types/typeGuards';
+import { isInterlinearProjectSummary } from '../../types/type-guards';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [

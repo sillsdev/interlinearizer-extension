@@ -10,7 +10,7 @@ import type {
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
-import { isTextAnalysis } from './types/typeGuards';
+import { isTextAnalysis } from './types/type-guards';
 
 // #region WebView provider
 

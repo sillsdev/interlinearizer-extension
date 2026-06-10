@@ -12,8 +12,9 @@ import {
   type StripItem,
 } from '../../components/PhraseStripParts';
 import { PhraseStripProvider } from '../../components/PhraseStripContext';
-import type { TokenGroup, LinkSlot, FocusContext } from '../../utils/token-layout';
-import { makePhraseLink, makePhraseStripContext } from '../test-helpers';
+import { emptyFocusContext } from '../../types/empty-factories';
+import type { TokenGroup, LinkSlot, FocusContext } from '../../types/token-layout';
+import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -70,17 +71,6 @@ jest.mock('../../components/PhraseBox', () => ({
 // ---------------------------------------------------------------------------
 
 /**
- * Creates a word token fixture.
- *
- * @param ref - Token ref.
- * @param surfaceText - Surface text.
- * @returns A word token.
- */
-function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
-  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
-}
-
-/**
  * Creates a punctuation token fixture.
  *
  * @param ref - Token ref.
@@ -92,13 +82,7 @@ function mkPunct(ref: string, surfaceText = '.'): Token {
 }
 
 /** A minimal no-focus context. */
-const NO_FOCUS: FocusContext = {
-  focusedToken: undefined,
-  focusedPhraseLink: undefined,
-  focusedFreeToken: undefined,
-  focusedSegmentId: undefined,
-  focusedPhraseId: undefined,
-};
+const NO_FOCUS: FocusContext = emptyFocusContext();
 
 /** Default props shared by PhraseSlot tests. */
 function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
@@ -146,7 +130,7 @@ describe('PhraseSlot', () => {
 
   it('renders when the slot has two neighbors', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -159,13 +143,13 @@ describe('PhraseSlot', () => {
   it('sets phraseRevealed when both neighbors are in the same hovered phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: link,
       firstIndex: 0,
       punctuationBetween: [],
     };
     const nextGroup: TokenGroup = {
-      tokens: [mkWord('tok-b')],
+      tokens: [makeWordToken('tok-b')],
       phraseLink: link,
       firstIndex: 1,
       punctuationBetween: [],
@@ -182,20 +166,20 @@ describe('PhraseSlot', () => {
   it('sets phraseRevealed via focusedPhraseId when both neighbors are in the same focused phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: link,
       firstIndex: 0,
       punctuationBetween: [],
     };
     const nextGroup: TokenGroup = {
-      tokens: [mkWord('tok-b')],
+      tokens: [makeWordToken('tok-b')],
       phraseLink: link,
       firstIndex: 1,
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
     const focusedContext: FocusContext = {
-      focusedToken: mkWord('tok-a'),
+      focusedToken: makeWordToken('tok-a'),
       focusedPhraseLink: link,
       focusedFreeToken: undefined,
       focusedSegmentId: 'seg-1',
@@ -211,7 +195,7 @@ describe('PhraseSlot', () => {
 
   it('renders the link icon when hideInactiveLinkButtons is off', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -226,7 +210,7 @@ describe('PhraseSlot', () => {
 
   it('hides the link icon when hideInactiveLinkButtons is on and neither neighbor is in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -242,15 +226,15 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 
   it('keeps the link icon when hideInactiveLinkButtons is on and both neighbors are in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -271,7 +255,7 @@ describe('PhraseSlot', () => {
 
   it('hides the cross-verse-boundary link icon when only one neighbor is in the active segment', () => {
     const group: TokenGroup = {
-      tokens: [mkWord('tok-a')],
+      tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
       firstIndex: 0,
       punctuationBetween: [],
@@ -288,9 +272,9 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted for smooth sliding-door animation; the wrapper collapses it visually.
+    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.maxWidth).toBe('0');
+    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 });
@@ -301,7 +285,7 @@ describe('PhraseSlot', () => {
 
 describe('MemoizedPhraseGroup', () => {
   const group: TokenGroup = {
-    tokens: [mkWord('tok-a', 'Hello')],
+    tokens: [makeWordToken('tok-a', 'Hello')],
     phraseLink: undefined,
     firstIndex: 0,
     punctuationBetween: [],
@@ -398,7 +382,7 @@ describe('PhraseStrip', () => {
    * @returns A group {@link StripItem}.
    */
   function groupItem(link: PhraseAnalysisLink | undefined, refs: string[]): StripItem {
-    const tokens = refs.map((r) => mkWord(r));
+    const tokens = refs.map((r) => makeWordToken(r));
     return {
       kind: 'group',
       key: refs[0],

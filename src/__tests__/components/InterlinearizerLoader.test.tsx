@@ -12,6 +12,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import { emptyAnalysis } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
@@ -108,15 +109,6 @@ type MockProject = {
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
 const testProjectId = 'test-project-id';
-
-const STUB_TEXT_ANALYSIS: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
 
 const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
@@ -862,7 +854,7 @@ describe('InterlinearizerLoader', () => {
   describe('project analysis loading', () => {
     it('passes the stored analysis as initialAnalysis when getProject returns valid JSON', async () => {
       mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }),
+        JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }),
       );
       await act(async () =>
         render(
@@ -874,7 +866,7 @@ describe('InterlinearizerLoader', () => {
         ),
       );
 
-      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(STUB_TEXT_ANALYSIS);
+      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(emptyAnalysis());
       expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getProject', 'proj-1');
     });
 
@@ -915,7 +907,7 @@ describe('InterlinearizerLoader', () => {
       );
 
       unmount();
-      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }));
+      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }));
       await Promise.resolve();
 
       expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
@@ -934,11 +926,11 @@ describe('InterlinearizerLoader', () => {
         ),
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',
-        JSON.stringify(STUB_TEXT_ANALYSIS),
+        JSON.stringify(emptyAnalysis()),
       );
     });
 
@@ -951,7 +943,7 @@ describe('InterlinearizerLoader', () => {
         />,
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
 
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveAnalysis'),

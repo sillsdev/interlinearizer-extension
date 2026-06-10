@@ -6,7 +6,8 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
-import { createTestActivationContext } from './test-helpers';
+import { emptyAnalysis } from '../types/empty-factories';
+import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/projectStorage');
 
@@ -520,21 +521,7 @@ describe('main', () => {
 
   describe('interlinearizer.createProject command', () => {
     const mockCreateProject = jest.mocked(projectStorage.createProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'new-project-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('new-project-id');
 
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
@@ -775,21 +762,7 @@ describe('main', () => {
 
   describe('interlinearizer.getProjectsForSource command', () => {
     const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('proj-id');
 
     it('registers the interlinearizer.getProjectsForSource command', async () => {
       const context = createTestActivationContext();
@@ -826,21 +799,7 @@ describe('main', () => {
 
   describe('interlinearizer.updateProjectMetadata command', () => {
     const mockUpdateProjectMetadata = jest.mocked(projectStorage.updateProjectMetadata);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('proj-id');
 
     it('registers the interlinearizer.updateProjectMetadata command', async () => {
       const context = createTestActivationContext();
@@ -915,21 +874,7 @@ describe('main', () => {
 
   describe('interlinearizer.getProject command', () => {
     const mockGetProject = jest.mocked(projectStorage.getProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('proj-id');
 
     /**
      * Activates the extension and returns a typed wrapper around the `interlinearizer.getProject`
@@ -996,12 +941,8 @@ describe('main', () => {
   describe('interlinearizer.saveAnalysis command', () => {
     const mockUpdateAnalysis = jest.mocked(projectStorage.updateAnalysis);
     const stubAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
+      ...emptyAnalysis(),
       tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
     };
 
     /**

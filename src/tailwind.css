@@ -104,8 +104,8 @@
 
 @utility phrase-focused {
   --phrase-stroke: var(--foreground);
-  --phrase-stroke-opacity: 1;
-  @apply tw:border-foreground tw:bg-muted/30;
+  --phrase-stroke-opacity: 0.6;
+  @apply tw:border-foreground/60 tw:bg-muted/30;
 }
 
 @utility phrase-hovered {
@@ -116,8 +116,8 @@
 
 @utility phrase-dimmed {
   --phrase-stroke: var(--border);
-  --phrase-stroke-opacity: 0.8;
-  @apply tw:border-border/80 tw:bg-muted/20;
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-border tw:bg-muted/20;
 }
 
 @utility phrase-destructive {

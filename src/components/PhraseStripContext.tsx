@@ -65,10 +65,7 @@ export type PhraseStripContextValue = Readonly<{
    * verse in both strips.
    */
   activeSegmentId: string | undefined;
-  /**
-   * Tooltip shown on link buttons that are disabled because they are outside the currently focused
-   * segment. Explains that cross-segment phrases are not yet supported.
-   */
+  /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
   /**
    * When `true`, the sliding-door transition on link-slot wrappers is suppressed (duration set to

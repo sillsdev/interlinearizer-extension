@@ -7,9 +7,10 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
+import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
-import { AnalysisStoreProvider, type PhraseDispatch } from '../../components/AnalysisStore';
-import { isWordToken } from '../../types/typeGuards';
+import { isWordToken } from '../../types/type-guards';
+import { withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -43,13 +44,6 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGloss: () => '',
   usePhraseGlossDispatch: () => () => {},
 }));
-
-/** Render options that wrap every test render in a `AnalysisStoreProvider`. */
-const withAnalysisStore = {
-  wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
-  },
-};
 
 // The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
 // ContinuousView's tests don't redundantly re-exercise the hook's internals; the view only forwards
@@ -831,15 +825,15 @@ describe('ContinuousView scroll behavior', () => {
       );
     }
     render(<Parent />, withAnalysisStore);
-    // Returns true when the tok-0/tok-1 link icon is rendered AND its sliding-door wrapper is
-    // open (not suppressed). After the animation change, icons stay mounted but collapse via
-    // maxWidth: '0' when suppressed — so we query the DOM wrapper's style rather than spy calls.
+    // Returns true when the tok-0/tok-1 link icon is rendered AND its wrapper is visible (not
+    // suppressed). Icons stay mounted but are hidden via opacity:0 when suppressed, so
+    // we query the DOM wrapper's style rather than spy calls.
     return () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
       );
       if (!icon) return false;
-      return icon.parentElement?.style.maxWidth !== '0';
+      return icon.parentElement?.style.opacity !== '0';
     };
   }
 
@@ -983,64 +977,25 @@ describe('ContinuousView scroll behavior', () => {
     );
   });
 
-  it('re-centers the focused group each frame while a view-option toggle re-lays out the strip', () => {
-    // Toggling `hideInactiveLinkButtons` collapses/expands the out-of-segment link slots over
-    // LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. A single re-center
-    // would only fix the first frame; the focused group must be re-centered on every animation frame
-    // for the whole transition so it stays dead center, then the loop tears down once the transition
-    // completes. Fake timers drive both the rAF callbacks and performance.now() deterministically.
-    jest.useFakeTimers();
-    try {
-      const book = makeBook();
-      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
-      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
-      act(() => {
-        jest.runOnlyPendingTimers();
-      });
-      scrollIntoViewMock.mockClear();
+  it('re-centers once when simplifyPhrases toggles but not when hideInactiveLinkButtons toggles', () => {
+    // Inactive link slots are now hidden via visibility:hidden (not max-width collapse), so toggling
+    // hideInactiveLinkButtons no longer shifts the strip layout — no re-center needed.
+    // simplifyPhrases still affects layout, so it should trigger one re-center.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+    scrollIntoViewMock.mockClear();
 
-      // Toggling hideInactiveLinkButtons changes the strip layout, so the view re-centers.
-      rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
+    // Toggling hideInactiveLinkButtons should not cause any re-centering.
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
-      // First animation frame re-centers.
-      act(() => {
-        jest.advanceTimersByTime(50);
-      });
-      expect(scrollIntoViewMock).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
-      );
-
-      // Subsequent frames within the transition window re-center again.
-      scrollIntoViewMock.mockClear();
-      act(() => {
-        jest.advanceTimersByTime(50);
-      });
-      expect(scrollIntoViewMock).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
-      );
-
-      // Advance well past the transition window so the loop hits its deadline and stops scheduling.
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-      scrollIntoViewMock.mockClear();
-      act(() => {
-        jest.advanceTimersByTime(500);
-      });
-      expect(scrollIntoViewMock).not.toHaveBeenCalled();
-
-      // Toggling simplifyPhrases likewise starts a fresh re-center loop.
-      scrollIntoViewMock.mockClear();
-      rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
-      act(() => {
-        jest.advanceTimersByTime(50);
-      });
-      expect(scrollIntoViewMock).toHaveBeenCalledWith(
-        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
-      );
-    } finally {
-      jest.useRealTimers();
-    }
+    // Toggling simplifyPhrases re-centers exactly once (no rAF loop needed).
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+    );
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
   });
 });
 

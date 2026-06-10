@@ -7,6 +7,7 @@ import type {
   TokenAnalysisLink,
   TokenSnapshot,
 } from 'interlinearizer';
+import { emptyAnalysis } from '../types/empty-factories';
 
 // #region Types
 
@@ -79,14 +80,7 @@ interface WritePhraseGlossPayload {
 // #region Default state
 
 /** Empty `TextAnalysis` used when no `initialAnalysis` is provided to the store. */
-export const defaultAnalysis: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
+export const defaultAnalysis: TextAnalysis = emptyAnalysis();
 
 /** Default `AnalysisState` used as the Redux initial state. */
 export const defaultState: AnalysisState = {
@@ -246,11 +240,16 @@ const analysisSlice = createSlice({
      * `deletePhrase` were dispatched separately — where the neighbor's tokens briefly existed in
      * two phrases at once, which a save between the two dispatches could persist.
      *
+     * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
+     * immediately undone by the delete.
+     *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the `MergePhrasesPayload`.
      */
     mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
       const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
+      if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+
       const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
       if (link) link.tokens = tokens;
       const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);

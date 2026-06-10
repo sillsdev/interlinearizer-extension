@@ -7,7 +7,7 @@ import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
 import type { PhraseMode } from '../types/phrase-mode';
-import { isWordToken } from '../types/typeGuards';
+import { isWordToken } from '../types/type-guards';
 import MemoizedSegmentView from './SegmentView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 

@@ -5,17 +5,13 @@ import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import {
-  resolveSlotFocus,
-  type FocusContext,
-  type LinkSlot,
-  type TokenGroup,
-} from '../utils/token-layout';
+import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
+import { resolveSlotFocus } from '../utils/token-layout';
 
 /**
- * Duration, in milliseconds, of the link-slot sliding-door (`max-width` / `opacity`) transition.
- * Exported so `ContinuousView` can re-center the focused phrase for exactly this long while the
- * slots animate open/closed, keeping it pinned dead-center as the layout shifts around it.
+ * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so `ContinuousView`
+ * can re-center the focused phrase for exactly this long after `committedActiveSegmentId` flips,
+ * keeping it anchored while the fade runs.
  */
 export const LINK_SLOT_TRANSITION_MS = 200;
 
@@ -95,13 +91,15 @@ export function PhraseSlot({
     >
       {hasLinkableNeighbors && (
         <span
-          className="tw:overflow-hidden tw:transition-[max-width,opacity] tw:ease-in-out"
+          aria-hidden={suppressLinkIcon || undefined}
+          className="tw:transition-opacity tw:ease-in-out"
           style={{
-            transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
-            maxWidth: suppressLinkIcon ? '0' : '2rem',
+            display: 'inline-flex',
+            minHeight: '1rem',
             opacity: suppressLinkIcon ? 0 : 1,
-            pointerEvents: suppressLinkIcon ? 'none' : undefined,
             overflowAnchor: 'none',
+            pointerEvents: suppressLinkIcon ? 'none' : undefined,
+            transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
           }}
         >
           <MemoizedTokenLinkIcon

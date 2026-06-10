@@ -4,8 +4,8 @@ import { Link2, Link2Off } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
+import type { SlotFocusInfo } from '../types/token-layout';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import type { SlotFocusInfo } from '../utils/token-layout';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -314,7 +314,7 @@ export function TokenLinkIcon({
   return (
     <button
       aria-label="Link tokens"
-      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-muted-foreground tw:hover:text-foreground' : 'tw:text-muted-foreground/50 tw:cursor-default'}`}
+      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       tabIndex={-1}

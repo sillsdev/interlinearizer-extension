@@ -12,7 +12,8 @@ import {
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
-import { createTestActivationContext } from '../test-helpers';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { createTestActivationContext, makeStubProject } from '../test-helpers';
 
 /**
  * Mock implementation of storage methods used in tests. Exposes `__mockReadUserData`,
@@ -50,15 +51,6 @@ const { __mockReadUserData, __mockWriteUserData, __mockDeleteUserData, __mockLog
 
 const token = createTestActivationContext().executionToken;
 
-const EMPTY_ANALYSIS = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
-
 /**
  * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
  * storage key has never been written.
@@ -87,7 +79,7 @@ describe('projectStorage', () => {
         id: '00000000-0000-0000-0000-000000000001',
         sourceProjectId: 'src-proj',
         analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
+        analysis: emptyAnalysis(),
       });
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
@@ -194,13 +186,7 @@ describe('projectStorage', () => {
 
   describe('getProject', () => {
     it('returns the parsed project when the key exists', async () => {
-      const stored = {
-        id: 'abc',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        sourceProjectId: 'src',
-        analysisLanguages: ['fr'],
-        analysis: EMPTY_ANALYSIS,
-      };
+      const stored = { ...makeStubProject('abc'), analysisLanguages: ['fr'] };
       __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
 
       const result = await getProject(token, 'abc');
@@ -228,13 +214,7 @@ describe('projectStorage', () => {
     });
 
     it('returns all projects listed in the index', async () => {
-      const p1 = {
-        id: 'id-1',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        sourceProjectId: 'src',
-        analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
-      };
+      const p1 = makeStubProject('id-1');
       const p2 = { ...p1, id: 'id-2' };
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-2']))
@@ -247,13 +227,7 @@ describe('projectStorage', () => {
     });
 
     it('omits projects whose storage keys are missing', async () => {
-      const p1 = {
-        id: 'id-1',
-        createdAt: '2026-01-01T00:00:00.000Z',
-        sourceProjectId: 'src',
-        analysisLanguages: ['en'],
-        analysis: EMPTY_ANALYSIS,
-      };
+      const p1 = makeStubProject('id-1');
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-missing']))
         .mockResolvedValueOnce(JSON.stringify(p1))
@@ -266,13 +240,7 @@ describe('projectStorage', () => {
   });
 
   describe('updateProjectMetadata', () => {
-    const storedProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src',
-      analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
-    };
+    const storedProject = makeStubProject('proj-id');
 
     it('returns the updated project with the new name and description', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
@@ -444,20 +412,10 @@ describe('projectStorage', () => {
   });
 
   describe('updateAnalysis', () => {
-    const storedProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src',
-      analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
-    };
+    const storedProject = makeStubProject('proj-id');
     const newAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
+      ...emptyAnalysis(),
       tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
     };
 
     it('returns the updated project with the new analysis', async () => {
@@ -497,18 +455,12 @@ describe('projectStorage', () => {
   });
 
   describe('getProjectsForSource', () => {
-    const baseProject = {
-      id: 'id-1',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-a',
-      analysisLanguages: ['en'],
-      analysis: EMPTY_ANALYSIS,
-    };
+    const baseProject = { ...makeStubProject('id-1'), sourceProjectId: 'src-a' };
 
     it('returns only projects whose sourceProjectId matches', async () => {
-      const p1 = { ...baseProject, id: 'id-1', sourceProjectId: 'src-a' };
+      const p1 = { ...baseProject, id: 'id-1' };
       const p2 = { ...baseProject, id: 'id-2', sourceProjectId: 'src-b' };
-      const p3 = { ...baseProject, id: 'id-3', sourceProjectId: 'src-a' };
+      const p3 = { ...baseProject, id: 'id-3' };
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['id-1', 'id-2', 'id-3']))
         .mockResolvedValueOnce(JSON.stringify(p1))

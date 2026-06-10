@@ -1,6 +1,7 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
 import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
+import { emptyAnalysis } from '../types/empty-factories';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -74,22 +75,6 @@ function projectKey(id: string): string {
  */
 function isNotFound(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
-}
-
-/**
- * Returns a `TextAnalysis` with empty collections for every analysis and link array.
- *
- * @returns A new, empty `TextAnalysis` object.
- */
-function emptyAnalysis(): TextAnalysis {
-  return {
-    segmentAnalyses: [],
-    segmentAnalysisLinks: [],
-    tokenAnalyses: [],
-    tokenAnalysisLinks: [],
-    phraseAnalyses: [],
-    phraseAnalysisLinks: [],
-  };
 }
 
 /**

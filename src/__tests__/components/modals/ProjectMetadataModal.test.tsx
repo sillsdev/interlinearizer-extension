@@ -6,7 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import papi from '@papi/frontend';
-import { ProjectMetadataModal } from '../../components/modals/ProjectMetadataModal';
+import { ProjectMetadataModal } from '../../../components/modals/ProjectMetadataModal';
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 

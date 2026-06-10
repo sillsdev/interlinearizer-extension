@@ -808,9 +808,9 @@ describe('computeAllArcPaths', () => {
 // ---------------------------------------------------------------------------
 
 describe('getArcStrokeProps', () => {
-  const dimmed = { stroke: 'var(--border)', strokeOpacity: 0.8, strokeWidth: 2 };
+  const dimmed = { stroke: 'var(--border)', strokeOpacity: 1, strokeWidth: 2 };
   const hovered = { stroke: 'var(--foreground)', strokeOpacity: 0.55, strokeWidth: 2 };
-  const highlighted = { stroke: 'var(--foreground)', strokeOpacity: 1, strokeWidth: 2 };
+  const highlighted = { stroke: 'var(--foreground)', strokeOpacity: 0.6, strokeWidth: 2 };
   const destructive = {
     stroke: 'var(--destructive)',
     strokeOpacity: 1,
@@ -825,15 +825,15 @@ describe('getArcStrokeProps', () => {
     expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', undefined)).toEqual(hovered);
   });
 
-  it('uses full white for the focused phrase arc in view mode', () => {
+  it('uses foreground at 60% opacity for the focused phrase arc in view mode', () => {
     expect(getArcStrokeProps({ kind: 'view' }, 'p1', undefined, 'p1')).toEqual(highlighted);
   });
 
-  it('uses full white for the focused phrase even when it is also hovered', () => {
+  it('uses foreground at 60% opacity for the focused phrase even when it is also hovered', () => {
     expect(getArcStrokeProps({ kind: 'view' }, 'p1', 'p1', 'p1')).toEqual(highlighted);
   });
 
-  it('whitens the edited phrase arc in edit mode regardless of hover', () => {
+  it('uses foreground at 60% opacity for the edited phrase arc in edit mode regardless of hover', () => {
     expect(
       getArcStrokeProps(
         { kind: 'edit', phraseId: 'p1', originalTokens: [] },

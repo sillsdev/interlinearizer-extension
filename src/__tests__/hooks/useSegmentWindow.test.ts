@@ -86,28 +86,35 @@ function renderSegmentWindow(
     pendingInternal.delete(key);
     return true;
   };
+  // Records each gated continuous-scroll value the hook reports at a recenter midpoint, so a test can
+  // assert the strip-visibility flip lands with (not after) the window rebuild.
+  const displayContinuousScrollReports: boolean[] = [];
+  const onDisplayContinuousScrollChange = (v: boolean) => displayContinuousScrollReports.push(v);
   const hook = renderHook<
     ReturnType<typeof useSegmentWindow>,
-    { b: Book; ref: SerializedVerseRef; focus?: string | undefined }
+    { b: Book; ref: SerializedVerseRef; focus?: string | undefined; cont?: boolean }
   >(
-    ({ b, ref, focus }) => {
+    ({ b, ref, focus, cont }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
       return useSegmentWindow({
         book: b,
         scrRef: ref,
         focusedTokenRef: focus,
+        continuousScroll: cont ?? false,
         scrollContainerRef,
         consumeInternalNav,
+        onDisplayContinuousScrollChange,
         onSettled,
       });
     },
-    { initialProps: { b: book, ref: scrRef, focus: focusedTokenRef } },
+    { initialProps: { b: book, ref: scrRef, focus: focusedTokenRef, cont: false } },
   );
   return {
     ...hook,
     container,
     markInternal,
     hasPendingInternal: (ref: SerializedVerseRef) => pendingInternal.has(verseKey(ref)),
+    displayContinuousScrollReports,
   };
 }
 
@@ -344,6 +351,27 @@ describe('useSegmentWindow', () => {
     expect(result.current.displayScrRef.verseNum).toBe(50);
   });
 
+  it('reports the gated continuous-scroll value only at the recenter midpoint', () => {
+    const book = makeBook(60, 0);
+    const { result, rerender, displayContinuousScrollReports } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      undefined,
+    );
+    expect(result.current.displayContinuousScroll).toBe(false);
+
+    // Toggle continuous scroll on while triggering a recenter (external nav). The report must NOT fire
+    // during the fade-out — only when the window rebuilds at the midpoint, so the parent's strip
+    // mounts in the same commit.
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, cont: true }));
+    expect(displayContinuousScrollReports).toEqual([]);
+    expect(result.current.displayContinuousScroll).toBe(false);
+
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(displayContinuousScrollReports).toEqual([true]);
+    expect(result.current.displayContinuousScroll).toBe(true);
+  });
+
   it('moves displayScrRef immediately for internal navigation (no fade)', () => {
     const book = makeBook(60, 0);
     const { result, rerender, markInternal } = renderSegmentWindow(book, {
@@ -431,7 +459,7 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps re-snapping across frames until the scroll position settles', () => {
+  it('re-snaps every frame for the whole re-snap window, then stops', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -447,62 +475,66 @@ describe('useSegmentWindow', () => {
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-    // Layout-effect snap: 1.
+    // Layout-effect snap: 1. The re-snap loop has not run a frame yet.
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-    // First frame: snaps (2) and records the resulting scrollTop, then schedules another frame
-    // because the position has not yet been observed twice.
-    act(() => jest.advanceTimersByTime(16));
-    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    // The loop re-snaps on every frame — even when the scroll position is stable (jsdom has no
+    // layout) — and does not stop until the re-snap window elapses, so a transient plateau can never
+    // end it early. Run frames almost to the deadline.
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS - 16));
+    const beforeDeadline = scrollIntoView.mock.calls.length;
+    expect(beforeDeadline).toBeGreaterThan(2);
 
-    // Second frame: snaps (3); scrollTop is unchanged from the prior frame (jsdom has no layout), so
-    // the loop sees the position settled and stops scheduling further frames.
-    act(() => jest.advanceTimersByTime(16));
-    expect(scrollIntoView).toHaveBeenCalledTimes(3);
-
-    // Further frames do not re-snap: the loop has terminated.
-    act(() => jest.advanceTimersByTime(16 * 5));
-    expect(scrollIntoView).toHaveBeenCalledTimes(3);
+    // Once the window elapses the loop reports settled and stops scheduling further snaps.
+    act(() => jest.advanceTimersByTime(16 * 10));
+    const afterDeadline = scrollIntoView.mock.calls.length;
+    act(() => jest.advanceTimersByTime(16 * 10));
+    expect(scrollIntoView).toHaveBeenCalledTimes(afterDeadline);
+    expect(afterDeadline).toBeGreaterThanOrEqual(beforeDeadline);
   });
 
-  it('stops re-snapping at the frame cap when the scroll position never settles', () => {
+  it('keeps re-snapping after a plateau when the layout shifts again later in the window', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
-    const { container, rerender } = renderSegmentWindow(book, {
-      book: 'GEN',
-      chapterNum: 1,
-      verseNum: 1,
-    });
-
+    const onSettled = jest.fn();
+    const { container, rerender } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      undefined,
+      onSettled,
+    );
     const active = document.createElement('div');
     active.setAttribute('aria-current', 'true');
     container.appendChild(active);
 
-    // Make scrollTop change on every read so the settle check never short-circuits the loop; only
-    // the frame cap can stop it.
-    let scrollTop = 0;
+    // Drain the initial-mount settle (anchor at book start → next-frame settle) before the recenter.
+    act(() => jest.advanceTimersByTime(16));
+    onSettled.mockClear();
+
+    // Simulate the toggle-on layout: the snapped scrollTop plateaus at 100 for a few frames (the
+    // early-exit would have quit here), then a later wave (strip/arc settling) shifts it. The loop
+    // must re-snap against that later shift instead of having stopped on the plateau.
+    const positions = [100, 100, 100, 100, 100, 250, 250, 250, 250];
+    let readIdx = 0;
     Object.defineProperty(container, 'scrollTop', {
       configurable: true,
       get: () => {
-        scrollTop += 1;
-        return scrollTop;
+        const v = positions[Math.min(readIdx, positions.length - 1)];
+        readIdx += 1;
+        return v;
       },
-      set: () => {
-        // Ignore writes; the getter drives the ever-changing value.
-      },
+      set: () => {},
     });
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-    // Layout-effect snap.
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
 
-    // Drive far more frames than the cap allows; the loop must stop after exactly the capped number
-    // of re-snaps rather than spinning forever.
-    act(() => jest.advanceTimersByTime(16 * 50));
-    // 1 layout-effect snap + the frame-capped re-snaps.
-    expect(scrollIntoView).toHaveBeenCalledTimes(1 + 20);
+    // Run out the whole window: the loop snaps every frame, so it catches the post-plateau shift.
+    const callsBefore = scrollIntoView.mock.calls.length;
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
+    expect(scrollIntoView.mock.calls.length).toBeGreaterThan(callsBefore + 5);
+    expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
   it('does not re-snap on the initial mount, only after a recenter', () => {
@@ -563,8 +595,9 @@ describe('useSegmentWindow', () => {
     active.setAttribute('aria-current', 'true');
     container.appendChild(active);
 
-    // jsdom reports a stable scrollTop, so the loop settles on the second frame and fires settle.
-    act(() => jest.advanceTimersByTime(16 * 3));
+    // The mount snap loop re-snaps for the whole re-snap window, then reports settled. Advance past
+    // the window (plus a frame to run the deadline check).
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
@@ -586,14 +619,14 @@ describe('useSegmentWindow', () => {
     act(() => jest.advanceTimersByTime(16));
     onSettled.mockClear();
 
-    // An external recenter rebuilds + snaps; settle fires again when its loop settles.
+    // An external recenter rebuilds + snaps; settle fires again once its re-snap window elapses.
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-    act(() => jest.advanceTimersByTime(16 * 3));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
     expect(onSettled).toHaveBeenCalled();
   });
 
-  it('fires onSettled when the mount snap loop hits the frame cap without settling', () => {
+  it('fires onSettled once even when the layout never stops shifting during the re-snap window', () => {
     const book = makeBook(60, 0);
     Element.prototype.scrollIntoView = jest.fn();
     const onSettled = jest.fn();
@@ -607,8 +640,9 @@ describe('useSegmentWindow', () => {
     active.setAttribute('aria-current', 'true');
     container.appendChild(active);
 
-    // scrollTop changes on every read so the settle check never short-circuits; only the frame cap
-    // stops the loop, and settle must still fire so the loader curtain is never stranded.
+    // scrollTop changes on every read (a layout that never plateaus). The loop ignores that — it is
+    // time-bounded, not settle-detected — so it re-snaps for the whole window and reports settled
+    // exactly once at the end, never stranding the loader curtain.
     let scrollTop = 0;
     Object.defineProperty(container, 'scrollTop', {
       configurable: true,
@@ -619,7 +653,7 @@ describe('useSegmentWindow', () => {
       set: () => {},
     });
 
-    act(() => jest.advanceTimersByTime(16 * 50));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16 * 5));
     expect(onSettled).toHaveBeenCalledTimes(1);
   });
 
@@ -773,5 +807,178 @@ describe('useSegmentWindow', () => {
     );
     expect(result.current.isFaded).toBe(false);
     expect(result.current.displayFocusedTokenRef).toBe('tok-b');
+  });
+
+  describe('above-viewport scroll compensation', () => {
+    const originalResizeObserver = global.ResizeObserver;
+
+    afterEach(() => {
+      global.ResizeObserver = originalResizeObserver;
+    });
+
+    /**
+     * Installs a stub `ResizeObserver` that records the callback created for the scroll container,
+     * so a test can fire it on demand. Returns a `fire` helper.
+     *
+     * @returns `fire`, which invokes the recorded observer callback inside `act`.
+     */
+    function installResizeObserver(): { fire: () => void } {
+      let callback: ResizeObserverCallback | undefined;
+      const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
+      global.ResizeObserver = class implements ResizeObserver {
+        /** @param cb - Stored so the test can fire it on demand. */
+        constructor(cb: ResizeObserverCallback) {
+          callback = cb;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        observe() {}
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        unobserve() {}
+
+        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+        disconnect() {}
+      };
+      return {
+        fire: () =>
+          act(() => {
+            callback?.([], stub);
+          }),
+      };
+    }
+
+    /**
+     * Stubs `getBoundingClientRect` on an element to report a fixed top edge, so the observer can
+     * read a deterministic top-sentinel offset.
+     *
+     * @param el - The element to stub.
+     * @param top - The `top` value the rect should report.
+     */
+    function stubRectTop(el: HTMLElement, top: number): void {
+      el.getBoundingClientRect = () => ({
+        top,
+        bottom: top,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      });
+    }
+
+    /**
+     * Renders a window anchored at the book start, drains the initial-mount settle (which clears
+     * the recenter-in-flight gate), and mounts the top sentinel with a stubbed container rect.
+     * Returns the hook result, container, top sentinel, and the resize `fire` helper.
+     *
+     * @returns The render result plus the observer `fire` helper and the top sentinel element.
+     */
+    function renderSettledWindow() {
+      const { fire } = installResizeObserver();
+      const book = makeBook(60, 0);
+      const { result, container } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      // Anchor at book start needs no mount snap, so the next frame clears recenterInFlight.
+      act(() => jest.advanceTimersByTime(16));
+      stubRectTop(container, 0);
+      const top = document.createElement('div');
+      container.appendChild(top);
+      act(() => result.current.topSentinelRef(top));
+      return { result, container, top, fire };
+    }
+
+    it('adds the above-viewport growth delta to scrollTop so the visible content holds still', () => {
+      const { container, top, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // Seed the baseline offset, then grow content above the viewport: the sentinel's top edge moves
+      // up by 30px (more negative), so the visible content would shift down 30px without correction.
+      stubRectTop(top, -50);
+      fire();
+      stubRectTop(top, -80);
+      fire();
+
+      expect(container.scrollTop).toBe(130);
+    });
+
+    it('does not compensate while the list is scrolled to the very top', () => {
+      const { container, top, fire } = renderSettledWindow();
+      container.scrollTop = 0;
+
+      stubRectTop(top, 0);
+      fire();
+      stubRectTop(top, -30);
+      fire();
+
+      expect(container.scrollTop).toBe(0);
+    });
+
+    it('does not compensate when the top-sentinel offset is unchanged', () => {
+      const { container, top, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      stubRectTop(top, -50);
+      fire();
+      // Same offset: no height changed above the viewport, so scrollTop is left alone.
+      fire();
+
+      expect(container.scrollTop).toBe(100);
+    });
+
+    it('re-seeds instead of compensating when the container itself resizes (strip mount/unmount)', () => {
+      const { container, top, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // Seed the baseline at the current container height (jsdom reports 0 by default).
+      stubRectTop(top, -50);
+      fire();
+
+      // The continuous-scroll strip mounts above the list: the container's own height shrinks AND the
+      // sentinel offset shifts. That offset move is not above-viewport segment growth, so the observer
+      // must re-seed (leave scrollTop alone) rather than "correcting" the phantom shift.
+      Object.defineProperty(container, 'clientHeight', { configurable: true, value: 80 });
+      stubRectTop(top, -90);
+      fire();
+
+      expect(container.scrollTop).toBe(100);
+
+      // Once the container height is stable again, ordinary above-viewport growth compensates as usual.
+      stubRectTop(top, -120);
+      fire();
+      expect(container.scrollTop).toBe(130);
+    });
+
+    it('stands down while a recenter is in flight so it never fights the re-snap loop', () => {
+      const { fire } = installResizeObserver();
+      const book = makeBook(60, 0);
+      Element.prototype.scrollIntoView = jest.fn();
+      const { result, container, rerender } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      act(() => jest.advanceTimersByTime(16));
+      stubRectTop(container, 0);
+      const top = document.createElement('div');
+      container.appendChild(top);
+      act(() => result.current.topSentinelRef(top));
+      container.scrollTop = 100;
+      stubRectTop(top, -50);
+      fire();
+
+      // Start an external recenter; while its fade + re-snap loop is in flight the observer must not
+      // also move scrollTop, or the two corrections would fight.
+      act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+      stubRectTop(top, -90);
+      fire();
+
+      expect(container.scrollTop).toBe(100);
+    });
   });
 });

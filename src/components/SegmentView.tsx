@@ -78,6 +78,12 @@ type SegmentViewProps = Readonly<{
    * every phrase except the focused one. Passed through to {@link PhraseStripContextValue}.
    */
   simplifyPhrases: boolean;
+  /**
+   * When `true`, every segment is labeled `chapter:verse`. When `false`, segments show a bare verse
+   * number (the chapter is shown by an inline header that {@link SegmentListView} renders above each
+   * chapter's first segment).
+   */
+  chapterLabelInVerse: boolean;
 }>;
 
 /**
@@ -109,6 +115,8 @@ type SegmentViewProps = Readonly<{
  *   this segment is the active verse.
  * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
  *   the focused one.
+ * @param props.chapterLabelInVerse - When true, every segment is labeled `chapter:verse`; when
+ *   false, segments show a bare verse number.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
  */
@@ -128,6 +136,7 @@ export function SegmentView({
   wordTokenByRef,
   hideInactiveLinkButtons,
   simplifyPhrases,
+  chapterLabelInVerse,
 }: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
@@ -185,9 +194,13 @@ export function SegmentView({
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
     : 'tw:w-full tw:rounded tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
-  const verseLabel = (
+  // When chapter info is folded into the verse label, every verse reads `chapter:verse`; otherwise
+  // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
+  const verseLabelText = chapterLabelInVerse ? `${chapter}:${verse}` : `${verse}`;
+
+  const segmentHeader = (
     <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-      {verse}
+      {verseLabelText}
     </span>
   );
 
@@ -433,7 +446,7 @@ export function SegmentView({
         onClick={() => onSelect?.(ref)}
         type="button"
       >
-        {verseLabel}
+        {segmentHeader}
         <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
       </button>
     );
@@ -452,7 +465,7 @@ export function SegmentView({
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      {verseLabel}
+      {segmentHeader}
       <div className="tw:arc-container" ref={arcContainerRef}>
         <MemoizedArcOverlay
           arcPaths={arcPaths}

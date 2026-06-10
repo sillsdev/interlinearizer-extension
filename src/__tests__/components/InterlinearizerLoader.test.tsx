@@ -28,6 +28,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onHideInactiveLinkButtonsChange,
     simplifyPhrases,
     onSimplifyPhrasesChange,
+    chapterLabelInVerse,
+    onChapterLabelInVerseChange,
   }: {
     continuousScroll: boolean;
     onContinuousScrollChange: (v: boolean) => void;
@@ -35,6 +37,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onHideInactiveLinkButtonsChange: (v: boolean) => void;
     simplifyPhrases: boolean;
     onSimplifyPhrasesChange: (v: boolean) => void;
+    chapterLabelInVerse: boolean;
+    onChapterLabelInVerseChange: (v: boolean) => void;
   }) => (
     <div data-testid="view-options-dropdown">
       <button
@@ -56,6 +60,13 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="dim-inactive-segments-toggle"
         data-checked={String(simplifyPhrases)}
         onClick={() => onSimplifyPhrasesChange(!simplifyPhrases)}
+        type="button"
+      />
+      <button
+        aria-label="chapter label in verse"
+        data-testid="chapter-label-in-verse-toggle"
+        data-checked={String(chapterLabelInVerse)}
+        onClick={() => onChapterLabelInVerseChange(!chapterLabelInVerse)}
         type="button"
       />
     </div>
@@ -84,16 +95,27 @@ type CapturedInterlinearizerProps = {
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
+  chapterLabelInVerse: boolean;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
+let interlinearizerMountCount = 0;
 
-jest.mock('../../components/Interlinearizer', () => ({
-  __esModule: true,
-  default: (props: CapturedInterlinearizerProps) => {
-    capturedInterlinearizerProps = props;
-    return <div data-testid="interlinearizer" />;
-  },
-}));
+jest.mock('../../components/Interlinearizer', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+  const { useEffect } = require('react');
+  return {
+    __esModule: true,
+    default: (props: CapturedInterlinearizerProps) => {
+      capturedInterlinearizerProps = props;
+      // Count mounts so tests can distinguish a remount (book change) from an in-place update.
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- stub render fn acts as a component
+      useEffect(() => {
+        interlinearizerMountCount += 1;
+      }, []);
+      return <div data-testid="interlinearizer" />;
+    },
+  };
+});
 
 /** Minimal project summary used across modal interaction tests. */
 type MockProject = {
@@ -322,6 +344,7 @@ function mockSettings(
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
+    interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();
     mockSendCommand.mockResolvedValue(undefined);
@@ -557,6 +580,32 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
     expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes chapterLabelInVerse=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.chapterLabelInVerse).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('chapter-label-in-verse-toggle'));
+    expect(onChangeByKey.get('interlinearizer.chapterLabelInVerse')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {
@@ -1169,6 +1218,25 @@ describe('InterlinearizerLoader', () => {
         chapterNum: 5,
         verseNum: 3,
       });
+    });
+
+    it('remounts Interlinearizer on a book change but not on a same-book verse change', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      expect(interlinearizerMountCount).toBe(1);
+
+      // A same-book verse change must keep the same Interlinearizer instance (no remount): its
+      // scroll/focus state and in-component recenter fade carry the within-book navigation.
+      setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
+      rerenderNow();
+      expect(interlinearizerMountCount).toBe(1);
+
+      // A book change must tear down the old instance and mount a fresh one keyed by the new book, so
+      // it never updates in place against carried-over (wrong-book) scroll/focus state — the shuffle
+      // that surfaced before the curtain settled.
+      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
+      rerenderNow();
+      expect(interlinearizerMountCount).toBe(2);
     });
 
     it('reveals the error instead of staying faded when the new book fails to load', () => {

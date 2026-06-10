@@ -204,6 +204,12 @@ function InterlinearizerLoaderInner({
     value: simplifyPhrases,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
+  const {
+    isLoading: isChapterLabelInVerseLoading,
+    onChange: handleChapterLabelInVerseChange,
+    value: chapterLabelInVerse,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.chapterLabelInVerse', false);
+
   const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -211,7 +217,10 @@ function InterlinearizerLoaderInner({
 
   const hasError = !!bookError || !!tokenizeError;
   const isSettingLoading =
-    isContinuousScrollLoading || isHideInactiveLinkButtonsLoading || isSimplifyPhrasesLoading;
+    isContinuousScrollLoading ||
+    isHideInactiveLinkButtonsLoading ||
+    isSimplifyPhrasesLoading ||
+    isChapterLabelInVerseLoading;
   const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
   const isLoaded = !hasError && !showLoading && !!book;
 
@@ -228,9 +237,10 @@ function InterlinearizerLoaderInner({
    * mounted book — reseeding focus and scrolling toward it, a visible shuffle behind/before the
    * fade. Gating on `book.bookRef` keeps the views on a reference that matches the book they
    * actually render: the live `scrRef` only once the loaded book matches it, otherwise the last
-   * in-book reference. Once the new book's USJ arrives, `Interlinearizer` remounts on it and
-   * immediately receives the live (new-book) reference, so it seeds focus on the intended verse and
-   * reports settled.
+   * in-book reference. Once the new book's USJ arrives, `Interlinearizer` remounts on it (it is
+   * keyed by `book.bookRef`, so a book change tears down the old instance rather than updating it
+   * in place with carried-over scroll/focus state) and immediately receives the live (new-book)
+   * reference, so it seeds focus on the intended verse and reports settled.
    */
   const lastInBookScrRefRef = useRef(scrRef);
   if (book && scrRef.book === book.bookRef) lastInBookScrRefRef.current = scrRef;
@@ -324,6 +334,8 @@ function InterlinearizerLoaderInner({
               onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
               simplifyPhrases={simplifyPhrases}
               onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
+              chapterLabelInVerse={chapterLabelInVerse}
+              onChapterLabelInVerseChange={handleChapterLabelInVerseChange}
             />
           ) : undefined
         }
@@ -365,7 +377,7 @@ function InterlinearizerLoaderInner({
           </div>
         ) : (
           <Interlinearizer
-            key={activeProject?.id ?? ''}
+            key={`${activeProject?.id ?? ''}:${book.bookRef}`}
             book={book}
             continuousScroll={continuousScroll}
             scrRef={viewScrRef}
@@ -376,6 +388,7 @@ function InterlinearizerLoaderInner({
             setPhraseMode={setPhraseMode}
             hideInactiveLinkButtons={hideInactiveLinkButtons}
             simplifyPhrases={simplifyPhrases}
+            chapterLabelInVerse={chapterLabelInVerse}
           />
         )}
       </div>

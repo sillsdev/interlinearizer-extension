@@ -192,6 +192,7 @@ function requiredProps(): {
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
+  chapterLabelInVerse: boolean;
 } {
   return {
     displayMode: 'token-chip',
@@ -209,6 +210,7 @@ function requiredProps(): {
     wordTokenByRef: new Map(),
     hideInactiveLinkButtons: false,
     simplifyPhrases: false,
+    chapterLabelInVerse: false,
   };
 }
 
@@ -260,6 +262,27 @@ describe('SegmentView', () => {
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(screen.getByText('1')).toBeInTheDocument();
+  });
+
+  it('shows a bare verse number by default', () => {
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.queryByText('1:1')).not.toBeInTheDocument();
+  });
+
+  it('folds the chapter into the verse label when chapterLabelInVerse is set', () => {
+    render(<SegmentView {...requiredProps()} chapterLabelInVerse />, withAnalysisStore);
+
+    expect(screen.getByText('1:1')).toBeInTheDocument();
+  });
+
+  it('never renders the inline chapter header (the list owns it)', () => {
+    const { rerender } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
+
+    rerender(<SegmentView {...requiredProps()} chapterLabelInVerse />);
+    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
   });
 
   it('sets aria-current="true" when isActive is true', () => {

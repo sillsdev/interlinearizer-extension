@@ -9,6 +9,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
   '%interlinearizer_viewOption_hideInactiveLinkButtons%',
   '%interlinearizer_viewOption_simplifyPhrases%',
+  '%interlinearizer_viewOption_chapterLabelInVerse%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -57,6 +58,10 @@ type ViewOptionsDropdownProps = Readonly<{
   simplifyPhrases: boolean;
   /** Called when the dim-inactive-segments toggle changes. */
   onSimplifyPhrasesChange: (checked: boolean) => void;
+  /** Current value of the show-chapter-in-verse-label toggle. */
+  chapterLabelInVerse: boolean;
+  /** Called when the show-chapter-in-verse-label toggle changes. */
+  onChapterLabelInVerseChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -70,6 +75,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
  * @param props.simplifyPhrases - Current dim-inactive-segments value.
  * @param props.onSimplifyPhrasesChange - Dim-inactive-segments change callback.
+ * @param props.chapterLabelInVerse - Current show-chapter-in-verse-label value.
+ * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -79,6 +86,8 @@ export default function ViewOptionsDropdown({
   onHideInactiveLinkButtonsChange,
   simplifyPhrases,
   onSimplifyPhrasesChange,
+  chapterLabelInVerse,
+  onChapterLabelInVerseChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -171,6 +180,11 @@ export default function ViewOptionsDropdown({
                 checked={simplifyPhrases}
                 label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
                 onCheckedChange={onSimplifyPhrasesChange}
+              />
+              <ViewToggle
+                checked={chapterLabelInVerse}
+                label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
+                onCheckedChange={onChapterLabelInVerseChange}
               />
             </div>
           </>,

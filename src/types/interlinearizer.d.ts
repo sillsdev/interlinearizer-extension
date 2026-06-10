@@ -22,6 +22,13 @@ declare module 'papi-shared-types' {
      * controls (split buttons, intra-phrase unlink icons) and hover effects suppressed.
      */
     'interlinearizer.simplifyPhrases': boolean;
+    /**
+     * Controls how chapter boundaries are marked in the segment list. When false (the default), a
+     * chapter shows an inline header above the first verse of each new chapter and the verse label
+     * stays a bare verse number. When true, the inline header is omitted and the first verse of
+     * each chapter is labeled `chapter:verse` instead of a bare verse number.
+     */
+    'interlinearizer.chapterLabelInVerse': boolean;
   }
 
   /**

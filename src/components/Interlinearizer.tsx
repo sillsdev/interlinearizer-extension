@@ -1,6 +1,5 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
-import { LocateFixed } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
@@ -8,11 +7,10 @@ import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
-import MemoizedSegmentView from './SegmentView';
+import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
-import useSegmentWindow from '../hooks/useSegmentWindow';
-import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
 import { useInterlinearNav } from './InterlinearNavContext';
+import { RECENTER_FADE_EASING, RECENTER_FADE_MS } from './recenter-fade';
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -39,6 +37,12 @@ type InterlinearizerProps = Readonly<{
   hideInactiveLinkButtons: boolean;
   /** When true, phrase-level controls are hidden on every phrase except the focused one. */
   simplifyPhrases: boolean;
+  /**
+   * When true, every verse is labeled `chapter:verse` and no inline chapter header is shown; when
+   * false, an inline chapter header precedes the first verse of each chapter and verse labels stay
+   * bare verse numbers.
+   */
+  chapterLabelInVerse: boolean;
 }>;
 
 /**
@@ -57,6 +61,8 @@ type InterlinearizerProps = Readonly<{
  *   segments other than the active verse.
  * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
  *   the focused one.
+ * @param props.chapterLabelInVerse - When true, every verse is labeled `chapter:verse` instead of
+ *   showing an inline chapter header.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
@@ -67,6 +73,7 @@ function InterlinearizerInner({
   setPhraseMode,
   hideInactiveLinkButtons,
   simplifyPhrases,
+  chapterLabelInVerse,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
@@ -149,54 +156,25 @@ function InterlinearizerInner({
     return map;
   }, [wordTokens]);
 
-  const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
-
-  /**
-   * Ref callback that stores the scroll container element so imperative scroll calls can target it.
-   *
-   * @param el - The mounted div, or `null` on unmount.
-   */
-  const setScrollContainer = useCallback((el: HTMLDivElement | null) => {
-    scrollContainerRef.current = el ?? undefined;
-  }, []);
-
-  /**
-   * Recenters the segment list on the active verse with the same fade-and-rebuild used for external
-   * navigation. Used by the LocateFixed button and the continuous-scroll mode switch. Always fades
-   * (even when the verse is already on screen) so the active verse is guaranteed to land in view —
-   * a plain `scrollIntoView` of an `aria-current` element silently no-ops when the verse is outside
-   * the render window, leaving the list parked wherever it was.
-   *
-   * `recenterOnActive` is captured via ref so this callback's identity stays stable.
-   */
-  const recenterOnActiveRef = useRef<() => void>(() => undefined);
-  const snapToActive = useCallback(() => {
-    recenterOnActiveRef.current();
-  }, []);
-
-  // Scroll-anchored window into the full book's segment list. Spans chapters, grows/culls at the
-  // scrolled edge, and recenters (with a fade) on the active verse when navigation arrives from
-  // outside the list.
-  const {
-    windowSegments,
-    isFaded,
-    displayScrRef,
-    displayFocusedTokenRef,
-    topSentinelRef,
-    bottomSentinelRef,
-    recenterOnActive,
-  } = useSegmentWindow({
-    book,
-    scrRef,
-    focusedTokenRef,
-    scrollContainerRef,
-    consumeInternalNav,
-    onSettled: reportSettled,
-  });
-  recenterOnActiveRef.current = recenterOnActive;
-
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
+
+  // Continuous-scroll mode actually rendered. A toggle defers this to the recenter midpoint so the
+  // horizontal strip mounts/unmounts in lockstep with the segments' display swap — never on the old
+  // content the instant the toggle flips. The fade clock lives in `useSegmentWindow` (inside
+  // SegmentListView), which flips this setter inside its midpoint state batch — so the strip below
+  // mounts/unmounts in the *same* React commit as the list's window rebuild, and the post-recenter
+  // re-snap measures the active verse against the strip-included layout.
+  const [displayContinuousScroll, setDisplayContinuousScroll] = useState(continuousScroll);
+
+  // Fade the whole interlinearizer (strip + list) out and back in across a continuous-scroll toggle,
+  // so the strip and the list animate as one unit rather than the list fading under a strip that
+  // pops in/out. The toggle flips `continuousScroll` immediately but the rendered mode
+  // (`displayContinuousScroll`) only catches up at the recenter midpoint; the window between the two
+  // is exactly the fade-out half, so keying opacity off their mismatch gives a clean out-then-in
+  // cycle on the shared clock without any extra timer here. External verse navigation never changes
+  // these, so it leaves the wrapper fully opaque (the list still runs its own recenter fade).
+  const isModeToggleFading = continuousScroll !== displayContinuousScroll;
 
   /** The segment id that contains the phrase currently being edited, if any. */
   const editPhraseSegmentId = useMemo(() => {
@@ -222,22 +200,15 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRevert, updatePhrase, setPhraseMode]);
 
-  // Recenter the segment list on the active verse when switching between continuous and segment
-  // modes. Skips the initial mount: the window is already built centered on the anchor there, so a
-  // recenter would needlessly fade. Only an actual mode toggle should fade-and-recenter.
-  const didMountModeSwitchRef = useRef(false);
-  useEffect(() => {
-    if (!didMountModeSwitchRef.current) {
-      didMountModeSwitchRef.current = true;
-      return;
-    }
-    snapToActive();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [continuousScroll]);
-
   // Reseed focusedTokenRef when scrRef changes externally (e.g. Paratext verse selector). Skip
   // when focus is already inside the new verse — that case means the verse change came from a
-  // token click here, and we must not clobber the clicked token with the verse's first token.
+  // token click here (or a strip nav echoed back through `focusToken`), and we must not clobber the
+  // deliberately-focused token with the verse's first token. A verse-exact match is intentional: an
+  // external jump *within* a chapter (common in long chapters like Psalm 119) must still move focus
+  // to the newly-named verse, so matching the whole chapter would wrongly strand focus. Internal
+  // navigation never reaches the reseed branch here because the click/strip handler has already set
+  // focus into the target verse; the fade is separately suppressed by the segment window's
+  // `consumeInternalNav` (kept key-symmetric with the host echo in `InterlinearNavContext`).
   useEffect(() => {
     const activeSeg = findActiveSegment();
     if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
@@ -319,84 +290,52 @@ function InterlinearizerInner({
           )}
         </div>
       )}
-      {continuousScroll && (
-        <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
-          <ContinuousView
-            book={book}
-            editPhraseSegmentId={editPhraseSegmentId}
-            focusedTokenRef={focusedTokenRef}
-            onFocusedTokenRefChange={focusToken}
-            phraseMode={phraseMode}
-            setPhraseMode={setPhraseMode}
-            tokenSegmentMap={tokenSegmentMap}
-            wordTokenByRef={wordTokenByRef}
-            hideInactiveLinkButtons={hideInactiveLinkButtons}
-            simplifyPhrases={simplifyPhrases}
-          />
-        </div>
-      )}
-
       <div
-        ref={setScrollContainer}
-        className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+        style={{
+          opacity: isModeToggleFading ? 0 : 1,
+          transitionDuration: `${RECENTER_FADE_MS}ms`,
+          transitionTimingFunction: RECENTER_FADE_EASING,
+        }}
       >
-        {windowSegments.length === 0 && (
-          <p className="tw:text-sm tw:text-muted-foreground">
-            No verse data for {scrRef.book} {scrRef.chapterNum}.
-          </p>
+        {displayContinuousScroll && (
+          <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
+            <ContinuousView
+              book={book}
+              editPhraseSegmentId={editPhraseSegmentId}
+              focusedTokenRef={focusedTokenRef}
+              onFocusedTokenRefChange={focusToken}
+              phraseMode={phraseMode}
+              setPhraseMode={setPhraseMode}
+              tokenSegmentMap={tokenSegmentMap}
+              wordTokenByRef={wordTokenByRef}
+              hideInactiveLinkButtons={hideInactiveLinkButtons}
+              simplifyPhrases={simplifyPhrases}
+            />
+          </div>
         )}
 
-        {windowSegments.length > 0 && (
-          <>
-            <div className="tw:sticky tw:top-0 tw:z-10 tw:flex tw:justify-end tw:pointer-events-none">
-              <button
-                aria-label="Scroll to active verse"
-                className="tw:rounded tw:p-1 tw:text-foreground tw:bg-background tw:hover:bg-muted/50 tw:pointer-events-auto"
-                tabIndex={-1}
-                onClick={snapToActive}
-                type="button"
-              >
-                <LocateFixed className="tw:h-4 tw:w-4" />
-              </button>
-            </div>
-
-            <div
-              className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
-              style={{
-                opacity: isFaded ? 0 : 1,
-                transitionDuration: `${RECENTER_FADE_MS}ms`,
-                transitionTimingFunction: RECENTER_FADE_EASING,
-              }}
-            >
-              <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
-              {windowSegments.map((seg) => (
-                <MemoizedSegmentView
-                  key={seg.id}
-                  displayMode={continuousScroll ? 'baseline-text' : 'token-chip'}
-                  editPhraseSegmentId={editPhraseSegmentId}
-                  focusedTokenRef={continuousScroll ? undefined : displayFocusedTokenRef}
-                  hoveredPhraseId={hoveredPhraseId}
-                  isActive={
-                    seg.startRef.book === displayScrRef.book &&
-                    seg.startRef.chapter === displayScrRef.chapterNum &&
-                    seg.startRef.verse === displayScrRef.verseNum
-                  }
-                  onHoverPhrase={setHoveredPhraseId}
-                  onSelect={handleSegmentSelect}
-                  phraseMode={phraseMode}
-                  setPhraseMode={setPhraseMode}
-                  segment={seg}
-                  tokenSegmentMap={tokenSegmentMap}
-                  tokenDocOrder={tokenDocOrder}
-                  wordTokenByRef={wordTokenByRef}
-                  hideInactiveLinkButtons={hideInactiveLinkButtons}
-                  simplifyPhrases={simplifyPhrases}
-                />
-              ))}
-              <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
-            </div>
-          </>
-        )}
+        <SegmentListView
+          book={book}
+          scrRef={scrRef}
+          focusedTokenRef={focusedTokenRef}
+          continuousScroll={continuousScroll}
+          onDisplayContinuousScrollChange={setDisplayContinuousScroll}
+          consumeInternalNav={consumeInternalNav}
+          reportSettled={reportSettled}
+          phraseMode={phraseMode}
+          setPhraseMode={setPhraseMode}
+          hideInactiveLinkButtons={hideInactiveLinkButtons}
+          simplifyPhrases={simplifyPhrases}
+          chapterLabelInVerse={chapterLabelInVerse}
+          hoveredPhraseId={hoveredPhraseId}
+          setHoveredPhraseId={setHoveredPhraseId}
+          editPhraseSegmentId={editPhraseSegmentId}
+          onSelect={handleSegmentSelect}
+          tokenSegmentMap={tokenSegmentMap}
+          tokenDocOrder={tokenDocOrder}
+          wordTokenByRef={wordTokenByRef}
+        />
       </div>
     </div>
   );

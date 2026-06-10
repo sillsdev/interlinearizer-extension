@@ -284,6 +284,35 @@ const GEN_1_MULTI_BOOK: Book = {
 };
 
 /**
+ * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Used to exercise the
+ * focus-reseed guard when the host echoes a click back at chapter granularity (verse-0 / first
+ * verse), which a verse-exact guard would misread as the chapter's first segment.
+ */
+const GEN_TWO_CHAPTER_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [1, 2].flatMap((chapter) =>
+    [1, 2].map((verse) => ({
+      id: `GEN ${chapter}:${verse}`,
+      startRef: { book: 'GEN', chapter, verse },
+      endRef: { book: 'GEN', chapter, verse },
+      baselineText: 'Word.',
+      tokens: [
+        {
+          ref: `GEN ${chapter}:${verse}:0`,
+          surfaceText: 'Word',
+          writingSystem: 'en',
+          type: 'word' as const,
+          charStart: 0,
+          charEnd: 4,
+        },
+      ],
+    })),
+  ),
+};
+
+/**
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
  * `useInterlinearNav` call resolves. `Interlinearizer` now writes the reference through the
  * context's `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang
@@ -323,6 +352,7 @@ function renderInterlinearizer({
   navigate = () => {},
   hideInactiveLinkButtons = false,
   simplifyPhrases = false,
+  chapterLabelInVerse = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -330,6 +360,7 @@ function renderInterlinearizer({
   navigate?: (r: SerializedVerseRef) => void;
   hideInactiveLinkButtons?: boolean;
   simplifyPhrases?: boolean;
+  chapterLabelInVerse?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -342,6 +373,7 @@ function renderInterlinearizer({
         setPhraseMode={() => {}}
         hideInactiveLinkButtons={hideInactiveLinkButtons}
         simplifyPhrases={simplifyPhrases}
+        chapterLabelInVerse={chapterLabelInVerse}
       />,
       navigate,
     ),
@@ -452,39 +484,47 @@ describe('Interlinearizer', () => {
   });
 
   it('passes the clicked token through to ContinuousView as focusedTokenRef', () => {
-    // Render in token-chip mode first so onSelect is available on SegmentView props.
-    const { rerender } = renderInterlinearizer({
-      book: GEN_1_MULTI_BOOK,
-      continuousScroll: false,
-    });
+    jest.useFakeTimers();
+    try {
+      // Render in token-chip mode first so onSelect is available on SegmentView props.
+      const { rerender } = renderInterlinearizer({
+        book: GEN_1_MULTI_BOOK,
+        continuousScroll: false,
+      });
 
-    const { onSelect } = capturedSegmentViewPropsList[1];
-    if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
+      const { onSelect } = capturedSegmentViewPropsList[1];
+      if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
 
-    act(() => {
-      onSelect({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
-    });
+      act(() => {
+        onSelect({ book: 'GEN', chapter: 1, verse: 2 }, 'GEN 1:2:0');
+      });
 
-    // Switch to continuous-scroll mode so ContinuousView is rendered and its props captured.
-    capturedSegmentViewPropsList = [];
-    rerender(
-      withNav(
-        <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
-          continuousScroll
-          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-          analysisLanguage="und"
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-        />,
-      ),
-    );
+      // Switch to continuous-scroll mode so ContinuousView is rendered and its props captured. The
+      // strip mount is gated behind the recenter fade, so advance past it.
+      capturedSegmentViewPropsList = [];
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_1_MULTI_BOOK}
+            continuousScroll
+            scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            hideInactiveLinkButtons={false}
+            simplifyPhrases={false}
+            chapterLabelInVerse={false}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    if (!capturedContinuousViewProps)
-      throw new Error('Expected ContinuousView to have been rendered');
-    expect(capturedContinuousViewProps.focusedTokenRef).toBe('GEN 1:2:0');
+      if (!capturedContinuousViewProps)
+        throw new Error('Expected ContinuousView to have been rendered');
+      expect(capturedContinuousViewProps.focusedTokenRef).toBe('GEN 1:2:0');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('updates scrRef when ContinuousView reports focus moving into a different verse', () => {
@@ -555,68 +595,84 @@ describe('Interlinearizer', () => {
   });
 
   it('carries the strip focus into segment view when switching off continuousScroll', () => {
-    const { rerender } = renderInterlinearizer({
-      book: GEN_1_MULTI_BOOK,
-      continuousScroll: true,
-    });
+    jest.useFakeTimers();
+    try {
+      const { rerender } = renderInterlinearizer({
+        book: GEN_1_MULTI_BOOK,
+        continuousScroll: true,
+      });
 
-    if (!capturedContinuousViewProps)
-      throw new Error('Expected ContinuousView to have been rendered');
-    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
+      if (!capturedContinuousViewProps)
+        throw new Error('Expected ContinuousView to have been rendered');
+      const { onFocusedTokenRefChange } = capturedContinuousViewProps;
 
-    act(() => {
-      onFocusedTokenRefChange('GEN 1:2:0');
-    });
+      act(() => {
+        onFocusedTokenRefChange('GEN 1:2:0');
+      });
 
-    // Switch to segment view — Interlinearizer should carry the strip focus over.
-    capturedSegmentViewPropsList = [];
-    rerender(
-      withNav(
-        <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
-          continuousScroll={false}
-          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-          analysisLanguage="und"
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-        />,
-      ),
-    );
+      // Switch to segment view — Interlinearizer should carry the strip focus over. The display mode
+      // is gated behind the recenter fade, so advance past it for the segments to render in
+      // token-chip mode with the focus applied.
+      capturedSegmentViewPropsList = [];
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_1_MULTI_BOOK}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            hideInactiveLinkButtons={false}
+            simplifyPhrases={false}
+            chapterLabelInVerse={false}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
-    expect(focused).toBeDefined();
+      const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
+      expect(focused).toBeDefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('falls back to the active-verse first word when switching off continuousScroll with no strip position', () => {
-    // Start in continuous mode without ContinuousView ever calling onFocusPhraseIndexChange.
-    const { rerender } = renderInterlinearizer({
-      book: GEN_1_MULTI_BOOK,
-      continuousScroll: true,
-      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
-    });
+    jest.useFakeTimers();
+    try {
+      // Start in continuous mode without ContinuousView ever calling onFocusPhraseIndexChange.
+      const { rerender } = renderInterlinearizer({
+        book: GEN_1_MULTI_BOOK,
+        continuousScroll: true,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      });
 
-    // Switch to segment view without any strip position having been reported.
-    capturedSegmentViewPropsList = [];
-    rerender(
-      withNav(
-        <Interlinearizer
-          book={GEN_1_MULTI_BOOK}
-          continuousScroll={false}
-          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-          analysisLanguage="und"
-          phraseMode={{ kind: 'view' }}
-          setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-        />,
-      ),
-    );
+      // Switch to segment view without any strip position having been reported.
+      capturedSegmentViewPropsList = [];
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_1_MULTI_BOOK}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            hideInactiveLinkButtons={false}
+            simplifyPhrases={false}
+            chapterLabelInVerse={false}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    // The fallback focuses the first word of GEN 1:1 ('GEN 1:1:0').
-    const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:1:0');
-    expect(focused).toBeDefined();
+      // The fallback focuses the first word of GEN 1:1 ('GEN 1:1:0').
+      const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:1:0');
+      expect(focused).toBeDefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('preserves an existing focusedTokenRef when switching off continuousScroll with no strip position', () => {
@@ -646,6 +702,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -663,6 +720,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -672,6 +730,112 @@ describe('Interlinearizer', () => {
       (p) => p.focusedTokenRef === 'GEN 1:2:0',
     );
     expect(stillFocused).toBeDefined();
+  });
+
+  it('keeps the clicked token focused when the host echoes the click back as the clicked verse', () => {
+    // Active verse starts at GEN 1:1. Click a token in a later chapter/verse (GEN 2:2): focus is set
+    // to 'GEN 2:2:0'. The host echoes the navigation back as the actual clicked verse (GEN 2:2). The
+    // verse-exact reseed guard must see focus already in the active verse and leave the deliberately
+    // clicked token alone — never reseeding to the verse's (here, the only) first word from scratch.
+    const { rerender } = renderInterlinearizer({
+      book: GEN_TWO_CHAPTER_BOOK,
+      continuousScroll: false,
+    });
+
+    const clicked = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 2:2');
+    if (!clicked || typeof clicked.onSelect !== 'function') {
+      throw new Error('Expected an onSelect for the GEN 2:2 segment');
+    }
+    act(() => {
+      clicked.onSelect?.({ book: 'GEN', chapter: 2, verse: 2 }, 'GEN 2:2:0');
+    });
+
+    // Host delivers the echo of the actual clicked verse.
+    capturedSegmentViewPropsList = [];
+    rerender(
+      withNav(
+        <Interlinearizer
+          book={GEN_TWO_CHAPTER_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+          chapterLabelInVerse={false}
+        />,
+      ),
+    );
+
+    // Focus must remain on the deliberately clicked token.
+    const stillFocused = capturedSegmentViewPropsList.find(
+      (p) => p.focusedTokenRef === 'GEN 2:2:0',
+    );
+    expect(stillFocused).toBeDefined();
+  });
+
+  it('reseeds focus to the first word of the active verse on an external within-chapter jump', () => {
+    // A genuine external jump within a long chapter (here GEN 2:1 → GEN 2:2) must move focus to the
+    // newly-named verse — a chapter-wide guard would wrongly strand focus on the old verse. Focus
+    // starts at the active verse's first word; after the jump it must point at the new verse's word.
+    // The segment view's focus highlight lags through the recenter fade, so advance past it.
+    jest.useFakeTimers();
+    try {
+      const { rerender } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
+        continuousScroll: false,
+      });
+
+      capturedSegmentViewPropsList = [];
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_TWO_CHAPTER_BOOK}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            hideInactiveLinkButtons={false}
+            simplifyPhrases={false}
+            chapterLabelInVerse={false}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      const reseeded = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 2:2:0');
+      expect(reseeded).toBeDefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('renders an inline chapter header above the first verse of each chapter', () => {
+    renderInterlinearizer({
+      book: GEN_TWO_CHAPTER_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+    });
+
+    // One header per chapter, rendered by the list (not inside SegmentView) at each boundary.
+    expect(screen.getByText('Chapter 1')).toBeInTheDocument();
+    expect(screen.getByText('Chapter 2')).toBeInTheDocument();
+    expect(screen.queryByText('Chapter 3')).not.toBeInTheDocument();
+  });
+
+  it('omits inline chapter headers when chapterLabelInVerse is set', () => {
+    renderInterlinearizer({
+      book: GEN_TWO_CHAPTER_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      continuousScroll: false,
+      chapterLabelInVerse: true,
+    });
+
+    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Chapter 2')).not.toBeInTheDocument();
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {
@@ -729,6 +893,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -753,6 +918,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -771,6 +937,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -791,6 +958,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={setPhraseMode}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -811,6 +979,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={setPhraseMode}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />,
       ),
     );
@@ -829,12 +998,15 @@ describe('Interlinearizer', () => {
       setPhraseMode: () => {},
       hideInactiveLinkButtons: false,
       simplifyPhrases: false,
+      chapterLabelInVerse: false,
     };
     const { container, rerender } = render(
       withNav(<Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />),
     );
 
-    const list = container.querySelector('.tw\\:transition-opacity');
+    // The inner list-fade wrapper (distinguished by tw:gap-2) is the one that fades for external
+    // navigation; the outer interlinearizer wrapper only fades on a continuous-scroll toggle.
+    const list = container.querySelector('.tw\\:gap-2.tw\\:transition-opacity');
     expect(list).toHaveStyle({ opacity: '1' });
 
     // Navigate far past the rendered window so the hook fades out before rebuilding.
@@ -845,12 +1017,16 @@ describe('Interlinearizer', () => {
         ),
       );
     });
-    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '0' });
+    expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+      opacity: '0',
+    });
 
     act(() => {
       jest.advanceTimersByTime(RECENTER_FADE_MS);
     });
-    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
+    expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+      opacity: '1',
+    });
     jest.useRealTimers();
   });
 
@@ -879,6 +1055,7 @@ describe('Interlinearizer', () => {
           setPhraseMode={() => {}}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          chapterLabelInVerse={false}
         />
       );
     }
@@ -891,5 +1068,47 @@ describe('Interlinearizer', () => {
 
     expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
     jest.useRealTimers();
+  });
+
+  it('fades the whole interlinearizer out and back in across a continuous-scroll toggle', () => {
+    jest.useFakeTimers();
+    try {
+      const book = makeLargeBook(60);
+      const props = {
+        book,
+        analysisLanguage: 'und',
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        phraseMode: { kind: 'view' } as const,
+        setPhraseMode: () => {},
+        hideInactiveLinkButtons: false,
+        simplifyPhrases: false,
+        chapterLabelInVerse: false,
+      };
+      const { container, rerender } = render(
+        withNav(<Interlinearizer {...props} continuousScroll={false} />),
+      );
+
+      // The outer wrapper (tw:flex-1, distinct from the inner list's tw:gap-2 wrapper) starts opaque.
+      const outer = container.querySelector('.tw\\:flex-1.tw\\:transition-opacity');
+      expect(outer).toHaveStyle({ opacity: '1' });
+
+      // Toggle continuous scroll on: the whole view fades out until the mode swap lands at midpoint.
+      act(() => {
+        rerender(withNav(<Interlinearizer {...props} continuousScroll />));
+      });
+      expect(container.querySelector('.tw\\:flex-1.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '0',
+      });
+
+      // At the recenter midpoint the rendered mode catches up and the view fades back in.
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      expect(container.querySelector('.tw\\:flex-1.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '1',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

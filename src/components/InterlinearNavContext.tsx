@@ -41,15 +41,31 @@ export type FadePhase = 'idle' | 'out' | 'in';
 export type NavOrigin = 'internal' | 'external';
 
 /**
+ * Normalizes a chapter-level reference (verse 0, as the scripture controls emit for a chapter
+ * selection) to the chapter's first verse. The host echoes navigations back through this same
+ * mapping ({@link InterlinearNavProvider}'s `liveScrRef`), so applying it everywhere a reference is
+ * keyed or compared keeps the stamped-at-click identity and the delivered identity in lockstep.
+ *
+ * @param ref - The reference to normalize.
+ * @returns `ref` unchanged, or a copy with `verseNum` 0 mapped to 1.
+ */
+export function normalizeScrRef(ref: SerializedVerseRef): SerializedVerseRef {
+  return ref.verseNum === 0 ? { ...ref, verseNum: 1 } : ref;
+}
+
+/**
  * Builds a stable string key identifying the verse a reference names. Used to match an internal
  * navigation against the `liveScrRef` the host later delivers, so the segment window can tell an
- * internally-originated change apart from an external one.
+ * internally-originated change apart from an external one. Keys the {@link normalizeScrRef}-mapped
+ * reference so a stamp and the later delivered (already-normalized) reference can never diverge on
+ * the verse-0 boundary.
  *
  * @param ref - The scripture reference to key.
  * @returns A `book:chapter:verse` string uniquely identifying the verse.
  */
 export function verseKey(ref: SerializedVerseRef): string {
-  return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
+  const normalized = normalizeScrRef(ref);
+  return `${normalized.book}:${normalized.chapterNum}:${normalized.verseNum}`;
 }
 
 /**
@@ -149,10 +165,7 @@ export function InterlinearNavProvider({
 }>) {
   const [rawScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
-  const liveScrRef = useMemo(
-    () => (rawScrRef.verseNum === 0 ? { ...rawScrRef, verseNum: 1 } : rawScrRef),
-    [rawScrRef],
-  );
+  const liveScrRef = useMemo(() => normalizeScrRef(rawScrRef), [rawScrRef]);
 
   /**
    * Verse keys of internal navigations still awaiting their host round-trip. A `navigate(ref,

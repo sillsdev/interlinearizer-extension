@@ -158,6 +158,20 @@ describe('InterlinearNavContext', () => {
       expect(result.current.consumeInternalNav(a)).toBe(true);
       expect(result.current.consumeInternalNav(b)).toBe(true);
     });
+
+    it('matches a verse-0 internal mark against the host-normalized verse-1 reference', () => {
+      // An internal navigation stamped at chapter granularity (verse 0) must still be consumable
+      // when the host echoes it back normalized to the chapter's first verse (verse 1) — the keys
+      // are computed through the same normalization so they cannot diverge on the verse-0 boundary.
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
+      expect(result.current.consumeInternalNav({ book: 'GEN', chapterNum: 3, verseNum: 1 })).toBe(
+        true,
+      );
+    });
   });
 
   describe('cross-book fade clock', () => {

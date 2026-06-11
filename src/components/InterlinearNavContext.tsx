@@ -252,6 +252,7 @@ export function InterlinearNavProvider({
     awaitingSettleRef.current = false;
     displayedBookRef.current = liveScrRef.book;
     setFadePhase('in');
+    /* v8 ignore next -- defensive: render-time book-change guard always clears any stale timer first */
     if (fadeInTimeoutRef.current !== undefined) clearTimeout(fadeInTimeoutRef.current);
     fadeInTimeoutRef.current = setTimeout(() => {
       fadeInTimeoutRef.current = undefined;

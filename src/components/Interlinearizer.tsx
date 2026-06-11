@@ -271,21 +271,26 @@ function InterlinearizerInner({
   );
 
   /**
-   * Updates the active scripture reference and, when a specific token was clicked, focuses that
-   * token.
+   * Updates the active scripture reference (when the verse actually changed) and, when a specific
+   * token was clicked, focuses that token. Skips the write to PAPI when the clicked verse matches
+   * the current one, avoiding a gratuitous echo round-trip.
    *
    * @param ref - The verse coordinate that was selected.
    * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.
    */
   const handleSegmentSelect = useCallback(
     (ref: ScriptureRef, tokenRef?: string) => {
-      const newScrRef = { book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse };
-      // Classify as internal navigation so the segment window skips its recenter fade: the clicked
-      // verse is already on screen, so fading and rebuilding would be a jarring no-op.
-      navigate(newScrRef, 'internal');
+      const { current } = scrRefRef;
+      if (
+        ref.book !== current.book ||
+        ref.chapter !== current.chapterNum ||
+        ref.verse !== current.verseNum
+      ) {
+        navigate({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse }, 'internal');
+      }
       if (tokenRef) setFocusedTokenRef(tokenRef);
     },
-    [navigate],
+    [navigate, scrRefRef],
   );
 
   return (

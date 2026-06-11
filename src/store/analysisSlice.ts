@@ -92,6 +92,30 @@ export const defaultState: AnalysisState = {
 
 // #region Slice
 
+/**
+ * Derives the display surface text for a phrase by joining each token's surface text with a space.
+ *
+ * @param tokens - Ordered token snapshots forming the phrase, in document order.
+ * @returns The space-joined surface text string.
+ */
+function phraseSurfaceText(tokens: TokenSnapshot[]): string {
+  return tokens.map((t) => t.surfaceText).join(' ');
+}
+
+/**
+ * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` matching `phraseId` from the
+ * Immer draft state in a single step, ensuring both collections stay in sync.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param phraseId - ID of the phrase to remove.
+ */
+function removePhraseById(state: AnalysisState, phraseId: string): void {
+  state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter((pa) => pa.id !== phraseId);
+  state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
+    (pl) => pl.analysisId !== phraseId,
+  );
+}
+
 const analysisSlice = createSlice({
   name: 'analysis',
   initialState: defaultState,
@@ -183,8 +207,7 @@ const analysisSlice = createSlice({
        */
       reducer(state, action: PayloadAction<CreatePhrasePayload>) {
         const { id, tokens } = action.payload;
-        const surfaceText = tokens.map((t) => t.surfaceText).join(' ');
-        const newAnalysis: PhraseAnalysis = { id, surfaceText };
+        const newAnalysis: PhraseAnalysis = { id, surfaceText: phraseSurfaceText(tokens) };
         const newLink: PhraseAnalysisLink = { analysisId: id, status: 'approved', tokens };
         state.analysis.phraseAnalyses.push(newAnalysis);
         state.analysis.phraseAnalysisLinks.push(newLink);
@@ -204,18 +227,13 @@ const analysisSlice = createSlice({
     updatePhrase(state, action: PayloadAction<UpdatePhrasePayload>) {
       const { phraseId, tokens } = action.payload;
       if (tokens.length === 0) {
-        state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
-          (pa) => pa.id !== phraseId,
-        );
-        state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
-          (pl) => pl.analysisId !== phraseId,
-        );
+        removePhraseById(state, phraseId);
         return;
       }
       const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
       if (link) link.tokens = tokens;
       const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
-      if (analysis) analysis.surfaceText = tokens.map((t) => t.surfaceText).join(' ');
+      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
     },
     /**
      * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id.
@@ -225,12 +243,7 @@ const analysisSlice = createSlice({
      */
     deletePhrase(state, action: PayloadAction<DeletePhrasePayload>) {
       const { phraseId } = action.payload;
-      state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
-        (pa) => pa.id !== phraseId,
-      );
-      state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
-        (pl) => pl.analysisId !== phraseId,
-      );
+      removePhraseById(state, phraseId);
     },
     /**
      * Merges a neighboring phrase (or a free token) into the target phrase as a single atomic
@@ -253,15 +266,8 @@ const analysisSlice = createSlice({
       const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
       if (link) link.tokens = tokens;
       const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
-      if (analysis) analysis.surfaceText = tokens.map((t) => t.surfaceText).join(' ');
-      if (absorbedPhraseId !== undefined) {
-        state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter(
-          (pa) => pa.id !== absorbedPhraseId,
-        );
-        state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
-          (pl) => pl.analysisId !== absorbedPhraseId,
-        );
-      }
+      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
+      if (absorbedPhraseId !== undefined) removePhraseById(state, absorbedPhraseId);
     },
     /**
      * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no

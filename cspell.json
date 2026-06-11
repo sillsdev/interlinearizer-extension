@@ -18,6 +18,7 @@
     "bara",
     "BBCCCVVV",
     "clickability",
+    "cullable",
     "deconflict",
     "deconfliction",
     "deconflicts",
@@ -47,6 +48,7 @@
     "pdpf",
     "plusplus",
     "punct",
+    "rebaseline",
     "recentered",
     "recentering",
     "recenters",
@@ -74,6 +76,11 @@
     "wordform",
     "ZWNJ"
   ],
-  "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],
+  "ignoreWords": [
+    "Ελληνικά",
+    "homme",
+    "ʼelohim",
+    "ʻokina"
+  ],
   "import": []
 }

@@ -21,12 +21,13 @@ const INITIAL_HALF_WINDOW = 8;
 const EXTEND_CHUNK = 6;
 
 /**
- * Upper bound on how many segments may be mounted at once. When extending one end past this cap,
- * the opposite end is culled back to it. Keeps the DOM small so the list stays responsive and the
- * scrollbar stays effectively redundant (its thumb size reflects only the mounted window, not the
- * whole book).
+ * Hard upper bound on how many segments may be mounted at once. Culling is normally driven by
+ * geometry (see {@link CULL_RETENTION_PX}), which sizes the window to the viewport plus retention
+ * margins regardless of segment height, so this cap exists only as a runaway guard for degenerate
+ * layouts (e.g. a container that reports no height). An extend that cannot fit under the cap even
+ * after culling is skipped.
  */
-const MAX_WINDOW_SIZE = 30;
+const HARD_WINDOW_CAP = 120;
 
 /**
  * Root margin (in pixels) around the scroll container used to arm the sentinels before they are
@@ -34,6 +35,14 @@ const MAX_WINDOW_SIZE = 30;
  * user never reaches an empty edge.
  */
 const SENTINEL_ROOT_MARGIN_PX = 400;
+
+/**
+ * Distance (in pixels) beyond the viewport a mounted segment must lie before an extend may cull it
+ * from the opposite end of the window. Strictly greater than {@link SENTINEL_ROOT_MARGIN_PX} so a
+ * cull can never pull content back inside a sentinel's arming margin — which would re-fire that
+ * sentinel and oscillate the window between its two edges.
+ */
+const CULL_RETENTION_PX = SENTINEL_ROOT_MARGIN_PX * 2;
 
 /** A half-open `[start, end)` range of indices into the book's flat segment list. */
 type WindowRange = Readonly<{ start: number; end: number }>;
@@ -126,6 +135,13 @@ export interface UseSegmentWindowResult {
   /** Ref callback for the invisible sentinel placed below the last segment. */
   bottomSentinelRef: (el: HTMLElement | null) => void;
   /**
+   * Ref callback for the element wrapping the mounted segments (the fade wrapper). The hook's
+   * resize observer watches this element — not just the scroll container, whose own box is fixed by
+   * the panel layout — so late segment-height settling (arc padding) is actually reported and the
+   * above-viewport compensation and recenter re-snap can react to it.
+   */
+  contentRef: (el: HTMLElement | null) => void;
+  /**
    * Imperatively recenters the window on the active verse with a fade. Intended for the LocateFixed
    * button and the continuous-scroll mode switch: always fades and rebuilds, so the active verse is
    * brought into view even when it sits outside the render window (where a plain `scrollIntoView`
@@ -159,8 +175,7 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
 }
 
 /**
- * Builds the initial/recentered window range surrounding `anchorIndex`, clamped to `[0, total)` and
- * never wider than {@link MAX_WINDOW_SIZE}.
+ * Builds the initial/recentered window range surrounding `anchorIndex`, clamped to `[0, total)`.
  *
  * @param anchorIndex - Index of the segment to center on.
  * @param total - Total number of segments in the book.
@@ -195,7 +210,7 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * @param args.consumeInternalNav - Returns whether the navigation to a given verse was internal
  *   (and clears the marker); used to suppress the fade for navigation that came from within the
  *   views.
- * @returns The mounted segment slice, fade state, and the two sentinel ref callbacks.
+ * @returns The mounted segment slice, fade state, and the sentinel/content ref callbacks.
  */
 export default function useSegmentWindow({
   book,
@@ -263,23 +278,56 @@ export default function useSegmentWindow({
 
   // #endregion
 
-  // #region Scroll-position bookkeeping (prepend correction, above-viewport compensation, snap)
+  // #region Scroll-position bookkeeping (extend correction, above-viewport compensation, snap)
 
   /**
-   * Scroll-height correction owed to the next paint. When segments are prepended the content above
-   * the viewport grows; recording the pre-mutation `scrollHeight` lets the layout effect restore
-   * the visual scroll position so the list doesn't jump under the user.
+   * Scroll anchor owed to the next paint after an extend mutates the window. `el` is a mounted
+   * segment element that survives the mutation (the old first segment for a top extend, the old
+   * last for a bottom extend) and `top` is its viewport-relative top edge measured just before the
+   * mutation. The layout effect restores the element to that exact viewport position by adding its
+   * rect delta to `scrollTop`, which is correct regardless of what the mutation did around it —
+   * prepended height, culled height at either end, chapter headings, flex gaps, and any browser
+   * clamping of `scrollTop` are all captured by the element's measured movement. (The previous
+   * scheme compared `scrollHeight` before/after, which conflated growth at one end with cull
+   * shrinkage at the other and jumped the list once the window hit its cap.)
    */
-  const pendingPrependAnchorRef = useRef<number | undefined>(undefined);
+  const pendingExtendAnchorRef = useRef<{ el: Element; top: number } | undefined>(undefined);
 
   /**
-   * Last measured offset of the top sentinel's top edge below the container's top edge, in pixels
-   * (negative once scrolled past it). Comparing the current offset against this on each resize
-   * tells us how much height was added or removed _above_ the viewport, which is the amount the
-   * visible content would otherwise shift by. Reset to `undefined` by the prepend layout effect so
-   * the observer re-seeds rather than double-correcting a prepend it already compensated for.
+   * Anchor for idle-time scroll compensation: the topmost mounted segment intersecting the
+   * viewport, with its last-known offset below the container's top edge. When a resize reports
+   * content settling (arc padding applied above the viewport), the observer restores this element
+   * to its recorded offset, holding the visible content still. Anchoring on a _visible segment_ —
+   * not the top sentinel — matters: the sentinel sits at the very top of the content, so its offset
+   * only ever moves when `scrollTop` moves and is blind to height changes between it and the
+   * viewport, which is the exact signal compensation exists to catch. Refreshed on every scroll
+   * (user scrolling must never be misread as a height change to "correct"), after every extend
+   * correction, on each observer (re)subscription, and after each compensation.
    */
-  const lastTopSentinelOffsetRef = useRef<number | undefined>(undefined);
+  const compensationAnchorRef = useRef<{ el: Element; offset: number } | undefined>(undefined);
+
+  /**
+   * Re-picks and re-measures the compensation anchor: the first mounted segment whose bottom edge
+   * sits below the container's top edge (the topmost visible segment), recorded with its current
+   * offset below the container top. Offsets are container-relative, so the container itself moving
+   * or resizing (the strip mounting above it, a panel resize) never reads as a content shift.
+   * Clears the anchor when no mounted segment reaches the viewport (empty or fully-above window).
+   */
+  const rebaselineCompensationAnchor = useCallback(() => {
+    const root = scrollContainerRef.current;
+    /* v8 ignore next -- callers only run while the window (and so the container) is mounted */
+    if (!root) return;
+    const rootTop = root.getBoundingClientRect().top;
+    const els = root.querySelectorAll('[data-segment-id]');
+    for (let i = 0; i < els.length; i += 1) {
+      const rect = els[i].getBoundingClientRect();
+      if (rect.bottom > rootTop) {
+        compensationAnchorRef.current = { el: els[i], offset: rect.top - rootTop };
+        return;
+      }
+    }
+    compensationAnchorRef.current = undefined;
+  }, [scrollContainerRef]);
 
   /**
    * Set when a recenter rebuilds the window, signaling the layout effect to snap the active verse
@@ -314,9 +362,13 @@ export default function useSegmentWindow({
   // #region Infinite-scroll window growth, snap-to-top, and the post-recenter settle
 
   /**
-   * Extends the window by {@link EXTEND_CHUNK} segments at one edge, culling the opposite edge back
-   * to {@link MAX_WINDOW_SIZE}. When prepending, records the container's current `scrollHeight` so
-   * the layout effect can compensate for the inserted height and keep the viewport anchored.
+   * Extends the window by up to {@link EXTEND_CHUNK} segments at one edge, culling from the opposite
+   * edge every mounted segment that lies wholly beyond {@link CULL_RETENTION_PX} of the viewport.
+   * Culling by measured geometry (rather than a fixed count) sizes the window to the viewport plus
+   * retention margins in both display modes — compact baseline-text segments keep more mounted,
+   * tall token-chip segments fewer — and guarantees a cull can never pull content back inside a
+   * sentinel's arming margin. Before mutating, records a surviving segment element and its viewport
+   * position so the layout effect can hold the visible content exactly still across the mutation.
    *
    * @param edge - Which end to grow: `'top'` prepends earlier segments, `'bottom'` appends later
    *   ones.
@@ -324,18 +376,49 @@ export default function useSegmentWindow({
   const extend = useCallback(
     (edge: 'top' | 'bottom') => {
       const { start, end } = rangeRef.current;
+      if (edge === 'top' ? start === 0 : end >= total) return;
+      const container = scrollContainerRef.current;
+      /* v8 ignore next -- extend is only reachable through the sentinel observer, which requires the container */
+      if (!container) return;
+      /** Mounted segment roots in document order; index-aligned with the current window slice. */
+      const els = Array.from(container.querySelectorAll('[data-segment-id]'));
+      const containerRect = container.getBoundingClientRect();
+      // Count the far-edge segments safely beyond the retention line. The cullable run is
+      // contiguous from the far edge inward, so the walk stops at the first retained element.
+      let cullable = 0;
+      if (els.length > 0) {
+        if (edge === 'top') {
+          for (let i = els.length - 1; i >= 0; i -= 1) {
+            if (els[i].getBoundingClientRect().top <= containerRect.bottom + CULL_RETENTION_PX) {
+              break;
+            }
+            cullable += 1;
+          }
+        } else {
+          for (let i = 0; i < els.length; i += 1) {
+            if (els[i].getBoundingClientRect().bottom >= containerRect.top - CULL_RETENTION_PX) {
+              break;
+            }
+            cullable += 1;
+          }
+        }
+      }
+      const size = end - start;
+      const grow = Math.min(EXTEND_CHUNK, HARD_WINDOW_CAP - (size - cullable));
+      if (grow <= 0) return;
+      // Anchor on the surviving edge element: the old first segment for a top extend (culls take
+      // the bottom), the old last for a bottom extend (culls take the top).
+      const anchorEl = edge === 'top' ? els[0] : els[els.length - 1];
+      if (anchorEl) {
+        pendingExtendAnchorRef.current = {
+          el: anchorEl,
+          top: anchorEl.getBoundingClientRect().top,
+        };
+      }
       if (edge === 'top') {
-        if (start === 0) return;
-        const nextStart = Math.max(0, start - EXTEND_CHUNK);
-        const nextEnd = Math.min(end, nextStart + MAX_WINDOW_SIZE);
-        const container = scrollContainerRef.current;
-        if (container) pendingPrependAnchorRef.current = container.scrollHeight;
-        setRange({ start: nextStart, end: nextEnd });
+        setRange({ start: Math.max(0, start - grow), end: end - cullable });
       } else {
-        if (end >= total) return;
-        const nextEnd = Math.min(total, end + EXTEND_CHUNK);
-        const nextStart = Math.max(start, nextEnd - MAX_WINDOW_SIZE);
-        setRange({ start: nextStart, end: nextEnd });
+        setRange({ start: start + cullable, end: Math.min(total, end + grow) });
       }
     },
     [scrollContainerRef, total, rangeRef],
@@ -378,28 +461,35 @@ export default function useSegmentWindow({
   }, [scrollContainerRef, scrRefRef]);
 
   // Reconcile the container scroll position to the freshly-mounted range before the browser paints,
-  // so neither a prepend nor a recenter ever shows a jump. A prepend grows the content above the
-  // viewport: add the inserted height to scrollTop to hold the visual position. A recenter rebuilds
-  // around a new verse: snap that verse (the `aria-current` element) to the top. Both are mutually
-  // exclusive — a given range change is at most one of the two — and self-clear so ordinary scroll
-  // extends leave the position alone.
+  // so neither an extend nor a recenter ever shows a jump. An extend mutated the window around a
+  // recorded anchor element: add the anchor's measured rect delta to scrollTop so it (and all
+  // visible content) holds its exact viewport position, whatever combination of prepended, appended,
+  // and culled height the mutation produced. A recenter rebuilds around a new verse: snap that verse
+  // (the `aria-current` element) to the top. Both are mutually exclusive — a given range change is
+  // at most one of the two — and self-clear so unrelated renders leave the position alone. An
+  // extend invalidates the compensation anchor (its element may have been culled, and the window
+  // around it changed), so re-baseline rather than let the next resize "correct" a shift this
+  // effect already handled (a recenter re-baselines through its epoch-driven re-subscription
+  // instead).
   useLayoutEffect(() => {
     const container = scrollContainerRef.current;
-    const beforeHeight = pendingPrependAnchorRef.current;
-    if (beforeHeight !== undefined) {
-      pendingPrependAnchorRef.current = undefined;
+    const anchor = pendingExtendAnchorRef.current;
+    if (anchor !== undefined) {
+      pendingExtendAnchorRef.current = undefined;
       /* v8 ignore next -- container is always mounted while the window renders */
       if (!container) return;
-      const delta = container.scrollHeight - beforeHeight;
-      if (delta !== 0) container.scrollTop += delta;
-      lastTopSentinelOffsetRef.current = undefined;
+      if (anchor.el.isConnected) {
+        const delta = anchor.el.getBoundingClientRect().top - anchor.top;
+        if (delta !== 0) container.scrollTop += delta;
+      }
+      rebaselineCompensationAnchor();
       return;
     }
     if (pendingRecenterSnapRef.current) {
       pendingRecenterSnapRef.current = false;
       snapActiveToTop();
     }
-  }, [range, scrollContainerRef, snapActiveToTop]);
+  }, [range, scrollContainerRef, snapActiveToTop, rebaselineCompensationAnchor]);
 
   // The post-recenter re-snap + settle lifecycle. After each recenter (and a mid-book initial mount)
   // this re-snaps the verse against every late settling wave behind the fade, then reports settled
@@ -529,17 +619,33 @@ export default function useSegmentWindow({
     [],
   );
 
+  /**
+   * The element wrapping the mounted segments (the fade wrapper), held in state so the compensation
+   * observer re-subscribes once it attaches. This is the element whose border box actually changes
+   * when segment heights settle: the scroll container's own box is fixed by the panel layout, so a
+   * `ResizeObserver` on the container alone never fires for content growth — only the inner wrapper
+   * reports it.
+   */
+  const [contentEl, setContentEl] = useState<HTMLElement | undefined>(undefined);
+
+  const contentRef = useCallback((el: HTMLElement | null) => setContentEl(el ?? undefined), []);
+
   /** Latest `extend`, mirrored so the observer callback always routes through the current closure. */
   const extendRef = useLatestRef(extend);
 
   // Create one IntersectionObserver over both sentinels and extend the window when either nears the
   // viewport. Runs as an effect (after all refs, including the scroll-container ancestor, are
-  // attached) so the root is available. Re-subscribes whenever the sentinel elements change, and on
-  // each recenter (via `recenterEpoch`): a recenter rebuilds the window and re-snaps the scroll
-  // position without changing the sentinel nodes, so the existing observer would keep its stale
-  // intersection state and never fire for the new geometry. A fresh observer re-delivers the initial
-  // intersection state, so a bottom sentinel left sitting in the viewport extends the window
-  // immediately instead of staying silent until an up-then-down scroll forces a transition.
+  // attached) so the root is available. Re-subscribes whenever the sentinel elements change, on each
+  // recenter (via `recenterEpoch`), and on every `range` change. The re-subscriptions matter because
+  // an IntersectionObserver only fires on intersection *transitions*: after a recenter or an extend
+  // the sentinel nodes are unchanged and may still sit inside the arming margin (compact
+  // baseline-text segments routinely leave the bottom sentinel within it), so a stale observer
+  // would stay silent no matter how far the user scrolls. A fresh observer re-delivers the initial
+  // intersection state, which both kicks the window after a recenter and keeps extending — one
+  // chunk per delivery — until the sentinel finally leaves the margin, filling a viewport that a
+  // single chunk cannot cover. The loop terminates because each delivery either grows the window
+  // (pushing the sentinel away), hits the book edge, or hits the hard cap (no range change, so no
+  // re-subscription).
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || (!topSentinel && !bottomSentinel)) return undefined;
@@ -560,21 +666,10 @@ export default function useSegmentWindow({
     if (topSentinel) observer.observe(topSentinel);
     if (bottomSentinel) observer.observe(bottomSentinel);
     return () => observer.disconnect();
-  }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, extendRef]);
+  }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
 
-  /**
-   * Last observed `clientHeight` of the scroll container. The compensation below only corrects for
-   * content growth _above_ the viewport while the container's own size is fixed; when the container
-   * itself resizes (the continuous-scroll strip mounting/unmounting above it, or a window resize)
-   * the sentinel offset shifts for a reason that is _not_ above-viewport growth — and the browser
-   * may also clamp `scrollTop` to the shorter scroll range — so a naive delta would mis-correct.
-   * Tracking the container height lets us detect those fires and re-seed the baseline instead of
-   * compensating.
-   */
-  const lastContainerHeightRef = useRef<number | undefined>(undefined);
-
-  // Keep the active verse anchored against above-viewport height changes so already-mounted segments
-  // above the anchor can't shove the visible content as their arc padding settles asynchronously (a
+  // Keep the visible content anchored against above-viewport height changes so already-mounted
+  // segments can't shove what the user is reading as their arc padding settles asynchronously (a
   // ResizeObserver → rAF → setState chain in `useArcPaths` that finishes across several later
   // frames). This single observer plays two roles depending on whether a recenter is in flight:
   //
@@ -584,26 +679,25 @@ export default function useSegmentWindow({
   //   scroll position here, so this is how the verse stays pinned through every settling wave —
   //   replacing the old per-frame re-snap loop with one re-snap per actual layout change.
   //
-  // - **Otherwise** it compensates: this generalizes the prepend correction
-  //   (`pendingPrependAnchorRef`) from "prepend events" to "any above-viewport growth" — anchor on
-  //   the top sentinel's offset below the container top, and when it changes, add the delta to
-  //   scrollTop to hold the visible content fixed. Stands down when the list is at the very top
-  //   (`scrollTop === 0`), matching the prepend correction's assumption that growth at the book top
-  //   is fine, and when the container's own height changed since the last fire — the strip
-  //   mounting/unmounting on a mode toggle (or a window resize), not above-viewport segment growth;
-  //   the sentinel offset moved for an unrelated reason (and scrollTop may have been clamped to the
-  //   new scroll range), so re-seed the baseline rather than "correcting" a phantom shift.
+  // - **Otherwise** it compensates: on each resize it restores the anchor segment (see
+  //   `compensationAnchorRef`) to its recorded offset below the container top, generalizing the
+  //   extend correction (`pendingExtendAnchorRef`) from "extend events" to "any above-viewport
+  //   growth". Container-relative offsets make the container's own movement (strip mount, panel
+  //   resize) invisible to the delta. Stands down — re-baselining only — when the list is at the
+  //   very top (`scrollTop === 0`, matching the extend correction's assumption that growth at the
+  //   book top is fine) and when the anchor is missing or was unmounted.
   //
-  // Re-subscribes on each recenter so the baseline offset is re-seeded for the new geometry rather
-  // than carried over from the pre-recenter layout.
+  // The container's scroll event re-baselines the anchor so user scrolling between waves is never
+  // misread as a height change and "corrected" — the anchor's offset must only ever drift via
+  // layout shifts, never via scrolling. Observes BOTH the segment wrapper (`contentEl`) — the
+  // element whose box actually changes when segment heights settle; the container's own box is
+  // fixed by the panel layout, so observing it alone would never report content growth and both
+  // roles above would go silent — and the container, whose box changes on panel/strip resizes (the
+  // waves the in-flight relay role must see). Re-subscribes on each recenter so the anchor is
+  // re-seeded for the new geometry rather than carried over from the pre-recenter layout.
   useEffect(() => {
     const root = scrollContainerRef.current;
-    if (!root || !topSentinel) return undefined;
-    lastTopSentinelOffsetRef.current = undefined;
-    lastContainerHeightRef.current = undefined;
-    /** Reads the top sentinel's current top edge relative to the container's top edge. */
-    const measureOffset = () =>
-      topSentinel.getBoundingClientRect().top - root.getBoundingClientRect().top;
+    if (!root || !contentEl) return undefined;
     const observer = new ResizeObserver(() => {
       // While the recenter owns the scroll, relay the resize to the re-snap handler instead of
       // compensating — it pins the verse to the top and keeps the settle's quiet window open.
@@ -611,24 +705,36 @@ export default function useSegmentWindow({
         relayResize();
         return;
       }
-      const offset = measureOffset();
-      const last = lastTopSentinelOffsetRef.current;
-      lastTopSentinelOffsetRef.current = offset;
-      const containerHeight = root.clientHeight;
-      const lastContainerHeight = lastContainerHeightRef.current;
-      lastContainerHeightRef.current = containerHeight;
-      if (last === undefined || root.scrollTop === 0 || containerHeight !== lastContainerHeight) {
+      const anchor = compensationAnchorRef.current;
+      if (!anchor || !anchor.el.isConnected || root.scrollTop === 0) {
+        rebaselineCompensationAnchor();
         return;
       }
-      // When content above the viewport grows, the sentinel's offset below the container top moves
-      // _more negative_; subtracting that (negative) delta from scrollTop scrolls down by the same
-      // amount, holding the visible content fixed. Symmetric for shrink.
-      const delta = offset - last;
-      if (delta !== 0) root.scrollTop -= delta;
+      const offset = anchor.el.getBoundingClientRect().top - root.getBoundingClientRect().top;
+      // When content above the viewport grows, the anchor segment is pushed down (its offset below
+      // the container top increases); scrolling down by the same amount holds the visible content
+      // fixed. Symmetric for shrink.
+      const delta = offset - anchor.offset;
+      if (delta !== 0) root.scrollTop += delta;
+      rebaselineCompensationAnchor();
     });
     observer.observe(root);
-    return () => observer.disconnect();
-  }, [scrollContainerRef, topSentinel, recenterEpoch, recenterInFlightRef, relayResize]);
+    observer.observe(contentEl);
+    const handleScroll = () => rebaselineCompensationAnchor();
+    root.addEventListener('scroll', handleScroll, { passive: true });
+    rebaselineCompensationAnchor();
+    return () => {
+      observer.disconnect();
+      root.removeEventListener('scroll', handleScroll);
+    };
+  }, [
+    scrollContainerRef,
+    contentEl,
+    recenterEpoch,
+    recenterInFlightRef,
+    relayResize,
+    rebaselineCompensationAnchor,
+  ]);
 
   // #endregion
 
@@ -654,6 +760,7 @@ export default function useSegmentWindow({
     displayContinuousScroll,
     topSentinelRef,
     bottomSentinelRef,
+    contentRef,
     recenterOnActive: triggerRecenter,
   };
 }

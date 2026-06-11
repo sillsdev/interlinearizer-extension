@@ -186,13 +186,16 @@ export function PhraseBox({
    * phrase" and forwards focus to the first gloss input, which fires its `onFocus` →
    * {@link onFocusPhrase} and so highlights this phrase. This is what makes clicking the body of a
    * phrase box (not just a chip) select it; without it, such clicks fell through to the segment
-   * background handler, which focused the segment's first phrase instead.
+   * background handler, which focused the segment's first phrase instead. Focus is forwarded with
+   * `preventScroll` — the user clicked something already on screen, so the browser's default
+   * scroll-focused-element-into-view would realign the segment list for no reason (the input may
+   * sit on another wrapped row of the phrase, partially out of view).
    *
    * @param e - The container's click event.
    */
   const focusFirstGlossOnSelfClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (e.target instanceof Element && e.target.closest('input, button, a, label')) return;
-    e.currentTarget.querySelector('input')?.focus();
+    e.currentTarget.querySelector('input')?.focus({ preventScroll: true });
   }, []);
 
   /**

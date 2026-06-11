@@ -156,6 +156,7 @@ export default function SegmentListView({
     displayContinuousScroll,
     topSentinelRef,
     bottomSentinelRef,
+    contentRef,
     recenterOnActive,
   } = useSegmentWindow({
     book,
@@ -185,6 +186,10 @@ export default function SegmentListView({
     <div
       ref={setScrollContainer}
       className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+      // The window hook owns scroll-position corrections (extend anchoring, above-viewport
+      // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
+      // heuristic adjustments on top of them and double-correct, so it is disabled here.
+      style={{ overflowAnchor: 'none' }}
     >
       {windowSegments.length === 0 && (
         <p className="tw:text-sm tw:text-muted-foreground">
@@ -207,6 +212,7 @@ export default function SegmentListView({
           </div>
 
           <div
+            ref={contentRef}
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >

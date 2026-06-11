@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
@@ -185,6 +185,55 @@ describe('TokenChip', () => {
     );
     await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for hello' }));
     expect(handleFocus).not.toHaveBeenCalled();
+  });
+
+  it('focuses the gloss input without native scrolling on a surface-text mouse-down', () => {
+    const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // Clicking the word hits the label, whose native activation would forward focus to the input
+    // with the browser's default scroll-into-view — realigning the segment list under the click.
+    // The mouse-down handler must preempt it: default prevented, focus forwarded with
+    // preventScroll.
+    const defaultAllowed = fireEvent.mouseDown(screen.getByText('hello'));
+
+    expect(defaultAllowed).toBe(false);
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();
+  });
+
+  it('leaves a mouse-down on the gloss input itself to the input handler', () => {
+    const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} />
+      </AnalysisStoreProvider>,
+    );
+
+    // The input's own handler focuses once with preventScroll; the label handler (which the event
+    // bubbles to) must stand down rather than focus a second time.
+    fireEvent.mouseDown(screen.getByRole('textbox', { name: 'Gloss for hello' }));
+
+    expect(focusSpy).toHaveBeenCalledTimes(1);
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
+  it('does not intercept a surface-text mouse-down when disabled', () => {
+    const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <TokenChip {...requiredProps()} disabled />
+      </AnalysisStoreProvider>,
+    );
+
+    const defaultAllowed = fireEvent.mouseDown(screen.getByText('hello'));
+
+    expect(defaultAllowed).toBe(true);
+    expect(focusSpy).not.toHaveBeenCalled();
   });
 
   it('renders remove button when onRemove is provided', () => {

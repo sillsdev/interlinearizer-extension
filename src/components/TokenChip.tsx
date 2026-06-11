@@ -59,6 +59,22 @@ export function TokenChip({
     e.currentTarget.focus({ preventScroll: true });
   };
 
+  /**
+   * Intercepts mouse-down on the chip's label (the surface text and padding) so the label's native
+   * activation — which forwards focus to the gloss input with the browser's default
+   * scroll-into-view — can never scroll the list under the click. Focuses the input directly with
+   * `preventScroll` instead; the native forwarding then finds it already focused and does nothing.
+   * A mouse-down on the input itself is left to {@link handleMouseDown}, which bubbles here after
+   * already handling it.
+   *
+   * @param e - The label's mouse-down event.
+   */
+  const handleLabelMouseDown: MouseEventHandler<HTMLLabelElement> = (e) => {
+    if (e.target instanceof Element && e.target.closest('input')) return;
+    e.preventDefault();
+    e.currentTarget.querySelector('input')?.focus({ preventScroll: true });
+  };
+
   // The X button is positioned outside the <label> so its implicit labeled control stays the gloss
   // input, not the button. Otherwise clicking anywhere on the chip (label-association behavior)
   // would trigger the X button instead of focusing the input.
@@ -82,6 +98,7 @@ export function TokenChip({
       )}
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
+        onMouseDown={disabled ? undefined : handleLabelMouseDown}
       >
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}

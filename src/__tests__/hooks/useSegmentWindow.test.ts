@@ -1,6 +1,6 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, Segment } from 'interlinearizer';
-import { act, renderHook } from '@testing-library/react';
+import { act, fireEvent, renderHook } from '@testing-library/react';
 import { useRef } from 'react';
 import useSegmentWindow from '../../hooks/useSegmentWindow';
 import { verseKey } from '../../components/InterlinearNavContext';
@@ -144,32 +144,43 @@ function mountSentinels(
 }
 
 /**
- * Installs a stub `ResizeObserver` that records the most recently created callback and returns a
- * `fire` helper (invokes it inside `act`) plus a `restore` to put the original observer back.
- * Shared by every test that drives the scroll-compensation / re-snap observer by hand, so the stub
- * class is declared once at module scope rather than re-declared in each test.
+ * Installs a stub `ResizeObserver` that records the most recently created callback (and the
+ * elements it observes) and returns a `fire` helper (invokes it inside `act`) plus a `restore` to
+ * put the original observer back. Shared by every test that drives the scroll-compensation /
+ * re-snap observer by hand, so the stub class is declared once at module scope rather than
+ * re-declared in each test.
  *
- * @returns `fire` to invoke the recorded observer callback and `restore` to reinstate the original.
+ * @returns `fire` to invoke the recorded observer callback, `observedTargets` to read the elements
+ *   the most recent observer watches, and `restore` to reinstate the original.
  */
-function installResizeObserver(): { fire: () => void; restore: () => void } {
+function installResizeObserver(): {
+  fire: () => void;
+  observedTargets: () => Element[];
+  restore: () => void;
+} {
   const original = global.ResizeObserver;
   let callback: ResizeObserverCallback | undefined;
+  let observed: Element[] = [];
   const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
-  // eslint-disable-next-line @typescript-eslint/no-extraneous-class -- minimal ResizeObserver stub
   class StubResizeObserver implements ResizeObserver {
     /** @param cb - Stored so a test can fire it on demand. */
     constructor(cb: ResizeObserverCallback) {
       callback = cb;
+      observed = [];
     }
 
     // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-    observe() {}
+    observe(el: Element) {
+      observed.push(el);
+    }
 
     // eslint-disable-next-line @typescript-eslint/class-methods-use-this
     unobserve() {}
 
     // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-    disconnect() {}
+    disconnect() {
+      observed = [];
+    }
   }
   global.ResizeObserver = StubResizeObserver;
   return {
@@ -177,10 +188,50 @@ function installResizeObserver(): { fire: () => void; restore: () => void } {
       act(() => {
         callback?.([], stub);
       }),
+    observedTargets: () => [...observed],
     restore: () => {
       global.ResizeObserver = original;
     },
   };
+}
+
+/**
+ * Stubs `getBoundingClientRect` on an element to report fixed top and bottom edges, so the window
+ * hook's geometry reads (cull walks, extend anchors, sentinel offsets) are deterministic in jsdom.
+ *
+ * @param el - The element to stub.
+ * @param top - The `top` value the rect should report.
+ * @param bottom - The `bottom` value the rect should report; defaults to `top` (zero height).
+ */
+function stubRect(el: Element, top: number, bottom: number = top): void {
+  el.getBoundingClientRect = () => ({
+    top,
+    bottom,
+    left: 0,
+    right: 0,
+    width: 0,
+    height: bottom - top,
+    x: 0,
+    y: top,
+    toJSON: () => ({}),
+  });
+}
+
+/**
+ * Mounts one stub segment root per id into `container`, carrying the `data-segment-id` attribute
+ * the window hook uses to enumerate mounted segments for cull measurement and extend anchoring.
+ *
+ * @param container - The scroll container to mount into.
+ * @param ids - Segment ids in window order.
+ * @returns The mounted elements, index-aligned with `ids`.
+ */
+function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLElement[] {
+  return ids.map((id) => {
+    const el = document.createElement('div');
+    el.setAttribute('data-segment-id', id);
+    container.appendChild(el);
+    return el;
+  });
 }
 
 beforeEach(() => {
@@ -265,7 +316,7 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments).toHaveLength(before);
   });
 
-  it('prepends earlier segments and corrects scrollTop when the top sentinel intersects', () => {
+  it('prepends earlier segments and holds the anchor segment still when the top sentinel intersects', () => {
     const book = makeBook(40, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
@@ -279,16 +330,141 @@ describe('useSegmentWindow', () => {
     );
 
     const firstBefore = result.current.windowSegments[0].id;
-    // Simulate the prepend growing the content: scrollHeight jumps by 100px across the mutation.
-    Object.defineProperty(container, 'scrollHeight', { value: 100, configurable: true });
+    // Mount the window's segment roots so the extend can anchor on the old first segment. The
+    // prepend pushes that anchor down by 300px (100 → 400); the correction must add exactly that
+    // delta to scrollTop so the visible content holds still.
+    const els = mountSegmentEls(
+      container,
+      result.current.windowSegments.map((s) => s.id),
+    );
+    stubRect(els[0], 100);
     container.scrollTop = 50;
     act(() => {
       global.triggerIntersection(top, true);
-      Object.defineProperty(container, 'scrollHeight', { value: 200, configurable: true });
+      stubRect(els[0], 400);
     });
 
     expect(result.current.windowSegments[0].id).not.toBe(firstBefore);
-    expect(container.scrollTop).toBe(150);
+    expect(container.scrollTop).toBe(350);
+  });
+
+  it('holds the anchor segment still when a bottom extend culls content above the viewport', () => {
+    const book = makeBook(60, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // Container viewport spans [0, 600); the first two segments sit far above the retention line
+    // (bottom < -800), so the extend culls them. Removing their height shifts the old last segment
+    // (the anchor) up by 50px across the mutation; the correction must subtract that delta.
+    stubRect(container, 0, 600);
+    const els = mountSegmentEls(
+      container,
+      result.current.windowSegments.map((s) => s.id),
+    );
+    stubRect(els[0], -1200, -1000);
+    stubRect(els[1], -1000, -850);
+    const anchor = els[els.length - 1];
+    stubRect(anchor, 500);
+    container.scrollTop = 1700;
+    act(() => {
+      global.triggerIntersection(bottom, true);
+      stubRect(anchor, 450);
+    });
+
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:3');
+    expect(container.scrollTop).toBe(1650);
+  });
+
+  it('does not cull segments that are still within the retention margin', () => {
+    const book = makeBook(60, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // The first segment ends 700px above the viewport — beyond the sentinel margin but inside the
+    // retention line (800px) — so the extend must keep it mounted.
+    stubRect(container, 0, 600);
+    const els = mountSegmentEls(
+      container,
+      result.current.windowSegments.map((s) => s.id),
+    );
+    stubRect(els[0], -900, -700);
+    act(() => global.triggerIntersection(bottom, true));
+
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:1');
+  });
+
+  it('culls far-below segments when a top extend prepends earlier ones', () => {
+    const book = makeBook(40, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 20,
+    });
+    const { top } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    // Container viewport spans [0, 600); the last two segments start beyond the retention line
+    // below it (top > 1400), so the top extend culls them from the bottom edge.
+    stubRect(container, 0, 600);
+    const ids = result.current.windowSegments.map((s) => s.id);
+    const els = mountSegmentEls(container, ids);
+    stubRect(els[els.length - 2], 1500, 1600);
+    stubRect(els[els.length - 1], 1600, 1700);
+    act(() => global.triggerIntersection(top, true));
+
+    const after = result.current.windowSegments.map((s) => s.id);
+    expect(after).not.toContain(ids[ids.length - 1]);
+    expect(after).not.toContain(ids[ids.length - 2]);
+    expect(after).toContain(ids[ids.length - 3]);
+  });
+
+  it('skips the scroll correction when the anchor segment was unmounted across the mutation', () => {
+    const book = makeBook(40, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 20,
+    });
+    const { top } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+
+    const els = mountSegmentEls(
+      container,
+      result.current.windowSegments.map((s) => s.id),
+    );
+    stubRect(els[0], 100);
+    container.scrollTop = 50;
+    // Remove the anchor element before the layout effect measures it (as React would when the
+    // segment unmounts in the same commit): the correction must stand down rather than measure a
+    // detached rect.
+    act(() => {
+      global.triggerIntersection(top, true);
+      els[0].remove();
+    });
+
+    expect(container.scrollTop).toBe(50);
   });
 
   it('does not extend past the book start when already at the top', () => {
@@ -330,8 +506,8 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments).toHaveLength(before);
   });
 
-  it('caps the mounted window at the maximum size while scrolling down', () => {
-    const book = makeBook(80, 0);
+  it('caps the mounted window at the hard cap when nothing is cullable', () => {
+    const book = makeBook(200, 0);
     const { result, container } = renderSegmentWindow(book, {
       book: 'GEN',
       chapterNum: 1,
@@ -343,11 +519,12 @@ describe('useSegmentWindow', () => {
       result.current.bottomSentinelRef,
     );
 
-    // Fire many extends; the window must never exceed the hard cap.
-    for (let i = 0; i < 20; i += 1) {
+    // With no segment roots mounted (jsdom reports no geometry) nothing is ever cullable, so growth
+    // stops exactly at the hard cap: later extends are skipped outright.
+    for (let i = 0; i < 30; i += 1) {
       act(() => global.triggerIntersection(bottom, true));
     }
-    expect(result.current.windowSegments.length).toBeLessThanOrEqual(30);
+    expect(result.current.windowSegments).toHaveLength(120);
   });
 
   it('fades and recenters when external navigation moves the anchor outside the window', () => {
@@ -655,10 +832,10 @@ describe('useSegmentWindow', () => {
       const active = document.createElement('div');
       active.setAttribute('aria-current', 'true');
       container.appendChild(active);
-      // Mount the top sentinel so the compensation observer subscribes to the container.
-      const top = document.createElement('div');
-      container.appendChild(top);
-      act(() => result.current.topSentinelRef(top));
+      // Mount the segment wrapper so the compensation/relay observer subscribes.
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      act(() => result.current.contentRef(wrapper));
 
       act(() => jest.advanceTimersByTime(16));
       onSettled.mockClear();
@@ -788,9 +965,9 @@ describe('useSegmentWindow', () => {
       const active = document.createElement('div');
       active.setAttribute('aria-current', 'true');
       container.appendChild(active);
-      const top = document.createElement('div');
-      container.appendChild(top);
-      act(() => result.current.topSentinelRef(top));
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      act(() => result.current.contentRef(wrapper));
 
       // A layout that resizes faster than the quiet window keeps relaying re-snaps, so the quiet
       // timer never fires. The deadline backstop reports settled exactly once so the curtain is never
@@ -830,6 +1007,81 @@ describe('useSegmentWindow', () => {
     // The recenter tears down the stale observer and subscribes a fresh one.
     expect(global.ioInstances).toHaveLength(1);
     expect(global.ioInstances[0]).not.toBe(observerBefore);
+  });
+
+  it('re-creates the sentinel observer after each extend so a still-intersecting sentinel keeps filling', () => {
+    const book = makeBook(200, 0);
+    const { result, container } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    const { bottom } = mountSentinels(
+      container,
+      result.current.topSentinelRef,
+      result.current.bottomSentinelRef,
+    );
+    const observerBefore = global.ioInstances[0];
+
+    // An IntersectionObserver only fires on transitions, so a sentinel that never leaves the arming
+    // margin (compact baseline-text segments) would otherwise extend once and stall scrolling. Each
+    // extend must re-subscribe a fresh observer, whose initial delivery re-evaluates the sentinel
+    // and keeps the window filling.
+    act(() => global.triggerIntersection(bottom, true));
+    expect(result.current.windowSegments).toHaveLength(15);
+    expect(global.ioInstances).toHaveLength(1);
+    expect(global.ioInstances[0]).not.toBe(observerBefore);
+
+    act(() => global.triggerIntersection(bottom, true));
+    expect(result.current.windowSegments).toHaveLength(21);
+  });
+
+  it('observes both the segment wrapper and the container once the wrapper is registered', () => {
+    const { observedTargets, restore } = installResizeObserver();
+    try {
+      const book = makeBook(40, 0);
+      const { result, container } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      // No observer until the wrapper attaches: the wrapper is what actually grows when segment
+      // heights settle (the container's own box is fixed by the panel layout), so without it there
+      // is nothing meaningful to watch.
+      expect(observedTargets()).toEqual([]);
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      act(() => result.current.contentRef(wrapper));
+
+      expect(observedTargets()).toContain(wrapper);
+      expect(observedTargets()).toContain(container);
+    } finally {
+      restore();
+    }
+  });
+
+  it('disconnects the resize observer when the wrapper ref is cleared', () => {
+    const { observedTargets, restore } = installResizeObserver();
+    try {
+      const book = makeBook(40, 0);
+      const { result, container } = renderSegmentWindow(book, {
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      act(() => result.current.contentRef(wrapper));
+      expect(observedTargets()).toContain(wrapper);
+
+      // eslint-disable-next-line no-null/no-null -- React clears ref callbacks with literal null
+      act(() => result.current.contentRef(null));
+
+      expect(observedTargets()).toEqual([]);
+    } finally {
+      restore();
+    }
   });
 
   it('does not fade when the navigation was originated internally', () => {
@@ -980,32 +1232,12 @@ describe('useSegmentWindow', () => {
     }
 
     /**
-     * Stubs `getBoundingClientRect` on an element to report a fixed top edge, so the observer can
-     * read a deterministic top-sentinel offset.
-     *
-     * @param el - The element to stub.
-     * @param top - The `top` value the rect should report.
-     */
-    function stubRectTop(el: HTMLElement, top: number): void {
-      el.getBoundingClientRect = () => ({
-        top,
-        bottom: top,
-        left: 0,
-        right: 0,
-        width: 0,
-        height: 0,
-        x: 0,
-        y: top,
-        toJSON: () => ({}),
-      });
-    }
-
-    /**
      * Renders a window anchored at the book start, drains the initial-mount settle (which clears
-     * the recenter-in-flight gate), and mounts the top sentinel with a stubbed container rect.
-     * Returns the hook result, container, top sentinel, and the resize `fire` helper.
+     * the recenter-in-flight gate), mounts the segment wrapper plus the window's segment roots
+     * (anchor candidates), and stubs the container and first-segment rects so the anchor seeds
+     * deterministically (first segment visible at offset 10).
      *
-     * @returns The render result plus the observer `fire` helper and the top sentinel element.
+     * @returns The render result plus the observer `fire` helper and the mounted segment elements.
      */
     function renderSettledWindow() {
       const { fire } = installBlockResizeObserver();
@@ -1017,118 +1249,139 @@ describe('useSegmentWindow', () => {
       });
       // Anchor at book start needs no mount snap, so the next frame clears recenterInFlight.
       act(() => jest.advanceTimersByTime(16));
-      stubRectTop(container, 0);
-      const top = document.createElement('div');
-      container.appendChild(top);
-      act(() => result.current.topSentinelRef(top));
-      return { result, container, top, fire };
+      stubRect(container, 0, 600);
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      const els = mountSegmentEls(
+        wrapper,
+        result.current.windowSegments.map((s) => s.id),
+      );
+      stubRect(els[0], 10, 50);
+      // Subscribing the observer seeds the compensation anchor from the current rects.
+      act(() => result.current.contentRef(wrapper));
+      return { result, container, els, fire };
     }
 
-    it('adds the above-viewport growth delta to scrollTop so the visible content holds still', () => {
-      const { container, top, fire } = renderSettledWindow();
+    it('holds the visible content still when content above the viewport grows', () => {
+      const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      // Seed the baseline offset, then grow content above the viewport: the sentinel's top edge moves
-      // up by 30px (more negative), so the visible content would shift down 30px without correction.
-      stubRectTop(top, -50);
-      fire();
-      stubRectTop(top, -80);
+      // Growth above the viewport pushes the anchor segment down 30px; the correction scrolls down
+      // by the same amount so the visible content never moves.
+      stubRect(els[0], 40, 80);
       fire();
 
       expect(container.scrollTop).toBe(130);
     });
 
     it('does not compensate while the list is scrolled to the very top', () => {
-      const { container, top, fire } = renderSettledWindow();
+      const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 0;
 
-      stubRectTop(top, 0);
-      fire();
-      stubRectTop(top, -30);
+      stubRect(els[0], 40, 80);
       fire();
 
       expect(container.scrollTop).toBe(0);
     });
 
-    it('does not compensate when the top-sentinel offset is unchanged', () => {
-      const { container, top, fire } = renderSettledWindow();
+    it('does not move scrollTop when the anchor offset is unchanged', () => {
+      const { container, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      stubRectTop(top, -50);
-      fire();
-      // Same offset: no height changed above the viewport, so scrollTop is left alone.
+      // Same rects as the seed: nothing above the viewport changed, so scrollTop is left alone.
       fire();
 
       expect(container.scrollTop).toBe(100);
     });
 
-    it('re-seeds after a prepend so it does not double-correct the height the layout effect already handled', () => {
+    it('re-baselines on scroll so user scrolling is never re-applied as a correction', () => {
+      const { container, els, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // The user scrolls down 60px: every segment moves up by that amount on screen and the seeded
+      // anchor scrolls out of the viewport. The scroll listener re-baselines onto the next visible
+      // segment, so the following resize wave reads a zero delta — without it, the stale anchor
+      // offset would re-apply the 60px as a phantom "correction".
+      container.scrollTop = 160;
+      stubRect(els[0], -50, -10);
+      stubRect(els[1], -10, 30);
+      fireEvent.scroll(container);
+      fire();
+
+      expect(container.scrollTop).toBe(160);
+    });
+
+    it('stands down when the anchor segment was unmounted, then resumes from the re-picked anchor', () => {
+      const { container, els, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // The anchor segment unmounts (e.g. culled): the fire must not correct against a detached
+      // rect — it re-picks the next visible segment instead.
+      els[0].remove();
+      stubRect(els[1], 5, 45);
+      fire();
+      expect(container.scrollTop).toBe(100);
+
+      // The re-picked anchor is live: the next growth above the viewport compensates as usual.
+      stubRect(els[1], 25, 65);
+      fire();
+      expect(container.scrollTop).toBe(120);
+    });
+
+    it('ignores container movement because anchor offsets are container-relative', () => {
+      const { container, els, fire } = renderSettledWindow();
+      container.scrollTop = 100;
+
+      // The strip mounts above the list: the container's top edge moves down 40px and every
+      // segment moves with it. The anchor's offset below the container top is unchanged, so no
+      // phantom correction fires.
+      stubRect(container, 40, 640);
+      stubRect(els[0], 50, 90);
+      fire();
+
+      expect(container.scrollTop).toBe(100);
+    });
+
+    it('re-baselines after an extend so the next resize does not re-apply the extend shift', () => {
       const { fire } = installBlockResizeObserver();
-      // Anchor at the book start so the initial mount needs no snap and the settle drains below,
-      // clearing recenterInFlight — otherwise the compensation observer stands down for the loop.
+      // Anchor mid-book so the window starts past the book start, leaving earlier segments to
+      // prepend. The mid-book mount snap settles below, clearing recenterInFlight — otherwise the
+      // compensation observer stands down for the whole test.
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',
         chapterNum: 1,
-        verseNum: 1,
+        verseNum: 30,
       });
-      act(() => jest.advanceTimersByTime(16));
-      stubRectTop(container, 0);
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS + 16));
+      expect(result.current.windowSegments[0].id).not.toBe('GEN 1:1');
+      stubRect(container, 0, 600);
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      const els = mountSegmentEls(
+        wrapper,
+        result.current.windowSegments.map((s) => s.id),
+      );
+      stubRect(els[0], 20, 60);
+      act(() => result.current.contentRef(wrapper));
       const top = document.createElement('div');
       container.appendChild(top);
       act(() => result.current.topSentinelRef(top));
-      const bottom = document.createElement('div');
-      container.appendChild(bottom);
-      act(() => result.current.bottomSentinelRef(bottom));
-
-      // Scroll down far enough (appending past the window cap) that the window's start advances off
-      // the book start, so there are earlier segments left to prepend.
-      for (let i = 0; i < 8; i += 1) act(() => global.triggerIntersection(bottom, true));
-      expect(result.current.windowSegments[0].id).not.toBe('GEN 1:1');
-
-      // Seed the compensation baseline at the current sentinel offset, off the very top.
       container.scrollTop = 100;
-      stubRectTop(top, -50);
-      fire();
 
-      // A prepend grows content above the viewport: the layout effect adds the 100px delta to
-      // scrollTop, and the sentinel's top edge moves up by the same amount.
-      Object.defineProperty(container, 'scrollHeight', { value: 100, configurable: true });
+      // A prepend pushes the old first segment (both the extend anchor and the compensation
+      // anchor) down 100px; the layout effect adds that delta to scrollTop and re-baselines.
       act(() => {
         global.triggerIntersection(top, true);
-        Object.defineProperty(container, 'scrollHeight', { value: 200, configurable: true });
+        stubRect(els[0], 120, 160);
       });
       expect(container.scrollTop).toBe(200);
-      stubRectTop(top, -150);
 
-      // The resize the prepend triggers must re-seed off the already-shifted offset, not add the
-      // 100px delta again on top of the layout effect's correction (which would land scrollTop at
-      // 300 — the random jump).
+      // The resize wave the prepend triggers must read the re-baselined anchor offset, not the
+      // stale pre-extend one — re-applying the 100px delta would land scrollTop at 300, the random
+      // jump.
       fire();
       expect(container.scrollTop).toBe(200);
-    });
-
-    it('re-seeds instead of compensating when the container itself resizes (strip mount/unmount)', () => {
-      const { container, top, fire } = renderSettledWindow();
-      container.scrollTop = 100;
-
-      // Seed the baseline at the current container height (jsdom reports 0 by default).
-      stubRectTop(top, -50);
-      fire();
-
-      // The continuous-scroll strip mounts above the list: the container's own height shrinks AND the
-      // sentinel offset shifts. That offset move is not above-viewport segment growth, so the observer
-      // must re-seed (leave scrollTop alone) rather than "correcting" the phantom shift.
-      Object.defineProperty(container, 'clientHeight', { configurable: true, value: 80 });
-      stubRectTop(top, -90);
-      fire();
-
-      expect(container.scrollTop).toBe(100);
-
-      // Once the container height is stable again, ordinary above-viewport growth compensates as usual.
-      stubRectTop(top, -120);
-      fire();
-      expect(container.scrollTop).toBe(130);
     });
 
     it('re-snaps instead of compensating while a recenter is in flight', () => {
@@ -1141,19 +1394,22 @@ describe('useSegmentWindow', () => {
         verseNum: 1,
       });
       act(() => jest.advanceTimersByTime(16));
-      stubRectTop(container, 0);
-      const top = document.createElement('div');
-      container.appendChild(top);
-      act(() => result.current.topSentinelRef(top));
+      stubRect(container, 0, 600);
+      const wrapper = document.createElement('div');
+      container.appendChild(wrapper);
+      const els = mountSegmentEls(
+        wrapper,
+        result.current.windowSegments.map((s) => s.id),
+      );
+      stubRect(els[0], 10, 50);
+      act(() => result.current.contentRef(wrapper));
       container.scrollTop = 100;
-      stubRectTop(top, -50);
-      fire();
 
       // Start an external recenter; while it is in flight the observer relays each resize to the
       // re-snap handler (which pins the verse via scrollIntoView) rather than compensating, so it
       // never moves scrollTop directly — the two corrections can't fight.
       act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
-      stubRectTop(top, -90);
+      stubRect(els[0], 50, 90);
       fire();
 
       expect(container.scrollTop).toBe(100);

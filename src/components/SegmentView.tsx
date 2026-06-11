@@ -173,9 +173,12 @@ export function SegmentView({
     [segment.tokens, phraseLinkByRef],
   );
 
+  // The inactive border is transparent rather than absent so activating a segment only recolors
+  // it: adding/removing a real border would change the segment's height by 2px, shifting every
+  // segment below it — a visible jump in the list whenever the active verse moves on a click.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
-    : 'tw:w-full tw:rounded tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+    : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
   // When chapter info is folded into the verse label, every verse reads `chapter:verse`; otherwise
   // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
@@ -390,6 +393,7 @@ export function SegmentView({
       <button
         aria-current={isActive ? 'true' : undefined}
         className={`${sharedClassName} tw:text-left`}
+        data-segment-id={segment.id}
         data-testid="segment-container"
         tabIndex={-1}
         onClick={() => onSelect?.(ref)}
@@ -411,6 +415,7 @@ export function SegmentView({
     <div
       aria-current={isActive ? 'true' : undefined}
       className={sharedClassName}
+      data-segment-id={segment.id}
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >

@@ -2,17 +2,20 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
 import { PhraseStripProvider } from './PhraseStripContext';
-import type { PhraseStripContextValue } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import {
+  useArcSplitHandler,
+  useCandidatePhraseIds,
+  usePhraseStripContextValue,
+} from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
 import MemoizedArcOverlay from './ArcOverlay';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -450,28 +453,8 @@ export default function ContinuousView({
     [focusedTokenRef, groupIndexByTokenRef, emitInternalFocus],
   );
 
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
-
-  /**
-   * Splits a phrase arc at a token boundary and dispatches the resulting create/update/delete
-   * operations. No-ops if `phraseId` is not in `committedPhraseLinkById`.
-   *
-   * @param phraseId - Id of the phrase arc to split.
-   * @param splitAfterTokenRef - Token ref at whose trailing boundary the split is made.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = committedPhraseLinkById.get(phraseId);
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        { createPhrase, updatePhrase, deletePhrase },
-        tokenDocOrder,
-      );
-    },
-    [committedPhraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
-  );
+  /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
+  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
   // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
@@ -647,56 +630,31 @@ export default function ContinuousView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
-    if (candidateTokenRefs.size === 0) return new Set();
-    const ids = new Set<string>();
-    committedPhraseLinkByRef.forEach((link) => {
-      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
-    });
-    return ids;
-  }, [candidateTokenRefs, committedPhraseLinkByRef]);
+  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot. Memoized so the leaf
-   * `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers don't re-render on unrelated changes.
-   * `setHoveredPhraseId` doubles as both the phrase-hover and candidate-phrase hover callback.
+   * Strip-wide context value shared by every phrase group and link slot. `setHoveredPhraseId`
+   * doubles as both the phrase-hover and candidate-phrase hover callback. The active segment lags
+   * the focus (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip
+   * is faded out or snapping into place after an instant jump.
    */
-  const stripContext = useMemo<PhraseStripContextValue>(
-    () => ({
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase: setHoveredPhraseId,
-      onHoverCandidateTokens: setCandidateTokenRefs,
-      onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      activeSegmentId: committedActiveSegmentId,
-      crossSegmentLinkTooltip:
-        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: !isVisible || skipSlotTransitionForJump,
-    }),
-    [
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      setHoveredPhraseId,
-      setCandidateTokenRefs,
-      handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      committedActiveSegmentId,
-      isVisible,
-      skipSlotTransitionForJump,
-      localizedStrings,
-    ],
-  );
+  const stripContext = usePhraseStripContextValue({
+    phraseMode,
+    setPhraseMode,
+    editPhraseTokens,
+    editPhraseSegmentId,
+    tokenSegmentMap,
+    tokenDocOrder,
+    onHoverPhrase: setHoveredPhraseId,
+    onHoverCandidateTokens: setCandidateTokenRefs,
+    onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    activeSegmentId: committedActiveSegmentId,
+    crossSegmentLinkTooltip:
+      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    skipLinkTransition: !isVisible || skipSlotTransitionForJump,
+  });
 
   /**
    * Group index of the focused token, derived from `focusedTokenRef`. Used per-slot to compute

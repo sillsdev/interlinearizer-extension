@@ -4,13 +4,17 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import {
+  useArcSplitHandler,
+  useCandidatePhraseIds,
+  usePhraseStripContextValue,
+} from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { RenderUnit } from '../types/token-layout';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
-import { type PhraseStripContextValue, PhraseStripProvider } from './PhraseStripContext';
+import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, type StripItem } from './PhraseStripParts';
 
 /**
@@ -145,31 +149,9 @@ export function SegmentView({
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
-  /**
-   * Bridges an {@link ArcOverlay} split-button click into phrase-store writes via
-   * {@link splitPhraseAtBoundary}, which calls {@link createPhrase}, {@link updatePhrase}, and
-   * {@link deletePhrase} to divide the phrase at the chosen boundary. Early-returns when `phraseId`
-   * has no corresponding link in the store.
-   *
-   * @param phraseId - The id of the phrase to split.
-   * @param splitAfterTokenRef - Token ref after which the phrase is divided; tokens at or before
-   *   this ref go to the first half, tokens after go to the second.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = phraseLinkById.get(phraseId);
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        { createPhrase, updatePhrase, deletePhrase },
-        tokenDocOrder,
-      );
-    },
-    [phraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
-  );
+  /** Bridges an {@link ArcOverlay} split-button click into the phrase-store split dispatch. */
+  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
@@ -238,14 +220,7 @@ export function SegmentView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
-    if (candidateTokenRefs.size === 0) return new Set();
-    const ids = new Set<string>();
-    phraseLinkByRef.forEach((link) => {
-      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
-    });
-    return ids;
-  }, [candidateTokenRefs, phraseLinkByRef]);
+  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, phraseLinkByRef);
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
@@ -326,46 +301,28 @@ export function SegmentView({
   );
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot in this segment. Memoized
-   * so the leaf `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers don't re-render on
-   * unrelated changes. `onHoverPhrase` doubles as the candidate-phrase hover callback.
+   * Strip-wide context value shared by every phrase group and link slot in this segment.
+   * `onHoverPhrase` doubles as the candidate-phrase hover callback. The active segment is this
+   * segment only while it is the active verse; the link-slot transition is suppressed until just
+   * after first paint so the initial state snaps in without a flash.
    */
-  const stripContext = useMemo<PhraseStripContextValue>(
-    () => ({
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase,
-      onHoverCandidateTokens: setCandidateTokenRefs,
-      onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      activeSegmentId: isActive ? segment.id : undefined,
-      crossSegmentLinkTooltip:
-        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: !hasMounted,
-    }),
-    [
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase,
-      setCandidateTokenRefs,
-      handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      isActive,
-      segment.id,
-      localizedStrings,
-      hasMounted,
-    ],
-  );
+  const stripContext = usePhraseStripContextValue({
+    phraseMode,
+    setPhraseMode,
+    editPhraseTokens,
+    editPhraseSegmentId,
+    tokenSegmentMap,
+    tokenDocOrder,
+    onHoverPhrase,
+    onHoverCandidateTokens: setCandidateTokenRefs,
+    onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    activeSegmentId: isActive ? segment.id : undefined,
+    crossSegmentLinkTooltip:
+      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    skipLinkTransition: !hasMounted,
+  });
 
   /** True when any committed phrase exists in this segment. */
   const hasRealPhraseInSegment = tokenGroups.some((g) => g.phraseLink !== undefined);

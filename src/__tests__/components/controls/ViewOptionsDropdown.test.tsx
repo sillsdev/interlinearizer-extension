@@ -27,6 +27,8 @@ const DEFAULT_PROPS = {
   onSimplifyPhrasesChange: jest.fn(),
   chapterLabelInVerse: false,
   onChapterLabelInVerseChange: jest.fn(),
+  showMorphology: false,
+  onShowMorphologyChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {

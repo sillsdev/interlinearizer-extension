@@ -1,7 +1,14 @@
 import type { Token } from 'interlinearizer';
 import { X } from 'lucide-react';
 import { memo, type MouseEventHandler, useEffect, useRef, useState } from 'react';
-import { useGloss, useGlossDispatch } from './AnalysisStore';
+import {
+  useAnalysisLanguage,
+  useGloss,
+  useGlossDispatch,
+  useMorphemeBreakdownDispatch,
+  useMorphemes,
+} from './AnalysisStore';
+import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
@@ -10,15 +17,22 @@ import { useGloss, useGlossDispatch } from './AnalysisStore';
  * only when the draft differs from the committed value, to avoid creating empty analysis entries on
  * focus/blur cycles with no edits.
  *
+ * When `showMorphology` is true, a morpheme row is shown below the surface text. For unanalyzed
+ * tokens this is a clickable button showing the surface text; for analyzed tokens it shows the
+ * morpheme forms. Clicking either opens an inline popover where the user can define or edit the
+ * morpheme breakdown. Per-morpheme gloss inputs appear below the morpheme forms.
+ *
  * @param props - Component props
  * @param props.token - The word token to render.
  * @param props.onFocus - Called when the gloss input receives focus.
  * @param props.disabled - When true, the gloss input is read-only and non-interactive.
- * @param props.onRemove - When provided, renders a small ✕ button in the top-right corner of the
+ * @param props.onRemove - When provided, renders a small X button in the top-right corner of the
  *   chip; clicking it calls this callback to remove the token from its phrase.
  * @param props.isSplitFree - When true, this token would become free (solo) if the currently
  *   hovered split/unlink button were clicked; previewed with a destructive border on the chip.
- * @returns A styled label containing the surface text and a gloss input.
+ * @param props.showMorphology - When true, morpheme breakdown and per-morpheme glosses are shown
+ *   below the surface text.
+ * @returns A styled label containing the surface text, optionally morpheme rows, and a gloss input.
  */
 export function TokenChip({
   token,
@@ -26,16 +40,22 @@ export function TokenChip({
   disabled = false,
   onRemove,
   isSplitFree = false,
+  showMorphology = false,
 }: Readonly<{
   token: Token & { type: 'word' };
   onFocus: () => void;
   disabled?: boolean;
   onRemove?: () => void;
   isSplitFree?: boolean;
+  showMorphology?: boolean;
 }>) {
   const committedGloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
+  const morphemes = useMorphemes(token.ref);
+  const analysisLanguage = useAnalysisLanguage();
+  const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const [draft, setDraft] = useState(committedGloss);
+  const [popoverOpen, setPopoverOpen] = useState(false);
   // Tracks whether the X button itself is hovered, so only that button hover reddens the border.
   const [isRemoveHovered, setIsRemoveHovered] = useState(false);
   // Reset remove-hover state when onRemove is cleared so the red border doesn't linger.
@@ -75,6 +95,20 @@ export function TokenChip({
     e.currentTarget.querySelector('input')?.focus({ preventScroll: true });
   };
 
+  /**
+   * Commits the morpheme breakdown from the popover input, splitting on whitespace.
+   *
+   * @param value - The raw text from the popover input.
+   */
+  const handleMorphemeSave = (value: string) => {
+    const forms = value.split(/\s+/).filter(Boolean);
+    if (forms.length > 0) {
+      dispatchMorphemeBreakdown(token.ref, token.surfaceText, forms);
+    }
+  };
+
+  const hasMorphemes = morphemes.length > 0;
+
   // The X button is positioned outside the <label> so its implicit labeled control stays the gloss
   // input, not the button. Otherwise clicking anywhere on the chip (label-association behavior)
   // would trigger the X button instead of focusing the input.
@@ -103,6 +137,58 @@ export function TokenChip({
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}
         </span>
+        {showMorphology && (
+          <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">
+            <button
+              aria-label={
+                hasMorphemes
+                  ? `Edit morpheme breakdown for ${token.surfaceText}`
+                  : `Define morpheme breakdown for ${token.surfaceText}`
+              }
+              className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:cursor-pointer tw:transition-colors tw:hover:bg-accent ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
+              tabIndex={-1}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                if (!disabled) setPopoverOpen(true);
+              }}
+            >
+              {hasMorphemes ? (
+                morphemes.map((m) => (
+                  <span key={m.id} className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
+                    {m.form}
+                  </span>
+                ))
+              ) : (
+                <span className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
+                  {token.surfaceText}
+                </span>
+              )}
+            </button>
+            {hasMorphemes && (
+              <span className="tw:flex tw:flex-row tw:gap-0.5">
+                {morphemes.map((m) => (
+                  <MorphemeGlossInput
+                    key={m.id}
+                    analysisLanguage={analysisLanguage}
+                    disabled={disabled}
+                    morpheme={m}
+                    tokenRef={token.ref}
+                  />
+                ))}
+              </span>
+            )}
+            {popoverOpen && (
+              <MorphemeBreakdownPopover
+                initialValue={
+                  hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
+                }
+                onClose={() => setPopoverOpen(false)}
+                onSave={handleMorphemeSave}
+              />
+            )}
+          </div>
+        )}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
           className="tw:gloss-input"

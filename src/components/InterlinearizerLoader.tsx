@@ -220,6 +220,12 @@ function InterlinearizerLoaderInner({
     value: chapterLabelInVerse,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.chapterLabelInVerse', false);
 
+  const {
+    isLoading: isShowMorphologyLoading,
+    onChange: handleShowMorphologyChange,
+    value: showMorphology,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showMorphology', false);
+
   const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -230,7 +236,8 @@ function InterlinearizerLoaderInner({
     isContinuousScrollLoading ||
     isHideInactiveLinkButtonsLoading ||
     isSimplifyPhrasesLoading ||
-    isChapterLabelInVerseLoading;
+    isChapterLabelInVerseLoading ||
+    isShowMorphologyLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
   // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
   // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
@@ -337,6 +344,8 @@ function InterlinearizerLoaderInner({
               onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
               chapterLabelInVerse={chapterLabelInVerse}
               onChapterLabelInVerseChange={handleChapterLabelInVerseChange}
+              showMorphology={showMorphology}
+              onShowMorphologyChange={handleShowMorphologyChange}
             />
           ) : undefined
         }
@@ -397,6 +406,7 @@ function InterlinearizerLoaderInner({
             hideInactiveLinkButtons={hideInactiveLinkButtons}
             simplifyPhrases={simplifyPhrases}
             chapterLabelInVerse={chapterLabelInVerse}
+            showMorphology={showMorphology}
           />
         )}
       </div>

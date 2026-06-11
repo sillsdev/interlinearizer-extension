@@ -53,6 +53,8 @@ type SegmentListViewProps = Readonly<{
    * verse of each chapter.
    */
   chapterLabelInVerse: boolean;
+  /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
+  showMorphology: boolean;
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   hoveredPhraseId: string | undefined;
   /** Sets the hovered phraseId when the pointer enters or leaves a phrase box. */
@@ -96,6 +98,8 @@ type SegmentListViewProps = Readonly<{
  *   phrase.
  * @param props.chapterLabelInVerse - When true, every verse is labeled `chapter:verse` instead of
  *   showing an inline chapter header.
+ * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
+ *   each word token.
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer.
  * @param props.setHoveredPhraseId - Sets the hovered phraseId.
  * @param props.editPhraseSegmentId - Segment id containing the phrase being edited, or `undefined`.
@@ -119,6 +123,7 @@ export default function SegmentListView({
   hideInactiveLinkButtons,
   simplifyPhrases,
   chapterLabelInVerse,
+  showMorphology,
   hoveredPhraseId,
   setHoveredPhraseId,
   editPhraseSegmentId,
@@ -250,6 +255,7 @@ export default function SegmentListView({
                   hideInactiveLinkButtons={hideInactiveLinkButtons}
                   simplifyPhrases={simplifyPhrases}
                   chapterLabelInVerse={chapterLabelInVerse}
+                  showMorphology={showMorphology}
                 />
               </Fragment>
             ))}

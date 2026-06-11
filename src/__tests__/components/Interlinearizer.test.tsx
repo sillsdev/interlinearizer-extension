@@ -353,6 +353,7 @@ function renderInterlinearizer({
   hideInactiveLinkButtons = false,
   simplifyPhrases = false,
   chapterLabelInVerse = false,
+  showMorphology = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -361,6 +362,7 @@ function renderInterlinearizer({
   hideInactiveLinkButtons?: boolean;
   simplifyPhrases?: boolean;
   chapterLabelInVerse?: boolean;
+  showMorphology?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -374,6 +376,7 @@ function renderInterlinearizer({
         hideInactiveLinkButtons={hideInactiveLinkButtons}
         simplifyPhrases={simplifyPhrases}
         chapterLabelInVerse={chapterLabelInVerse}
+        showMorphology={showMorphology}
       />,
       navigate,
     ),
@@ -514,6 +517,7 @@ describe('Interlinearizer', () => {
             hideInactiveLinkButtons={false}
             simplifyPhrases={false}
             chapterLabelInVerse={false}
+            showMorphology={false}
           />,
         ),
       );
@@ -626,6 +630,7 @@ describe('Interlinearizer', () => {
             hideInactiveLinkButtons={false}
             simplifyPhrases={false}
             chapterLabelInVerse={false}
+            showMorphology={false}
           />,
         ),
       );
@@ -662,6 +667,7 @@ describe('Interlinearizer', () => {
             hideInactiveLinkButtons={false}
             simplifyPhrases={false}
             chapterLabelInVerse={false}
+            showMorphology={false}
           />,
         ),
       );
@@ -703,6 +709,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -721,6 +728,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -764,6 +772,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -801,6 +810,7 @@ describe('Interlinearizer', () => {
             hideInactiveLinkButtons={false}
             simplifyPhrases={false}
             chapterLabelInVerse={false}
+            showMorphology={false}
           />,
         ),
       );
@@ -897,6 +907,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -922,6 +933,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -941,6 +953,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -962,6 +975,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -983,6 +997,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />,
       ),
     );
@@ -1003,6 +1018,7 @@ describe('Interlinearizer', () => {
         hideInactiveLinkButtons: false,
         simplifyPhrases: false,
         chapterLabelInVerse: false,
+        showMorphology: false,
       };
       const { container, rerender } = render(
         withNav(
@@ -1071,6 +1087,7 @@ describe('Interlinearizer', () => {
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
           chapterLabelInVerse={false}
+          showMorphology={false}
         />
       );
     }
@@ -1102,6 +1119,7 @@ describe('Interlinearizer', () => {
         hideInactiveLinkButtons: false,
         simplifyPhrases: false,
         chapterLabelInVerse: false,
+        showMorphology: false,
       };
       const { container, rerender } = render(
         withNav(<Interlinearizer {...props} continuousScroll={false} />),

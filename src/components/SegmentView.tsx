@@ -89,6 +89,8 @@ type SegmentViewProps = Readonly<{
    * chapter's first segment).
    */
   chapterLabelInVerse: boolean;
+  /** When `true`, morpheme rows and per-morpheme glosses are shown beneath each word token. */
+  showMorphology: boolean;
 }>;
 
 /**
@@ -122,6 +124,8 @@ type SegmentViewProps = Readonly<{
  *   the focused one.
  * @param props.chapterLabelInVerse - When true, every segment is labeled `chapter:verse`; when
  *   false, segments show a bare verse number.
+ * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
+ *   each word token.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
  */
@@ -142,6 +146,7 @@ export function SegmentView({
   hideInactiveLinkButtons,
   simplifyPhrases,
   chapterLabelInVerse,
+  showMorphology,
 }: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
@@ -321,6 +326,7 @@ export function SegmentView({
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     skipLinkTransition: !hasMounted,
+    showMorphology,
   });
 
   /** True when any committed phrase exists in this segment. */

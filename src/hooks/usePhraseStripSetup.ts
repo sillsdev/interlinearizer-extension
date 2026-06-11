@@ -121,6 +121,8 @@ export type PhraseStripContextParams = Readonly<{
   crossSegmentLinkTooltip: string;
   /** When true, the link-slot sliding-door transition is suppressed (duration 0ms). */
   skipLinkTransition: boolean;
+  /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
+  showMorphology: boolean;
 }>;
 
 /**
@@ -151,6 +153,7 @@ export function usePhraseStripContextValue(
     activeSegmentId,
     crossSegmentLinkTooltip,
     skipLinkTransition,
+    showMorphology,
   } = params;
 
   return useMemo<PhraseStripContextValue>(
@@ -169,6 +172,7 @@ export function usePhraseStripContextValue(
       activeSegmentId,
       crossSegmentLinkTooltip,
       skipLinkTransition,
+      showMorphology,
     }),
     [
       phraseMode,
@@ -185,6 +189,7 @@ export function usePhraseStripContextValue(
       activeSegmentId,
       crossSegmentLinkTooltip,
       skipLinkTransition,
+      showMorphology,
     ],
   );
 }

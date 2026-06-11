@@ -1,5 +1,10 @@
 /** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
-import type { PhraseAnalysisLink, TextAnalysis, TokenSnapshot } from 'interlinearizer';
+import type {
+  MorphemeAnalysis,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
@@ -8,12 +13,16 @@ import {
   deletePhrase,
   mergePhrases,
   selectAnalysis,
+  selectAnalysisLanguage,
   selectApprovedGloss,
+  selectApprovedMorphemes,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   updatePhrase,
   writeGloss,
+  writeMorphemeGloss,
+  writeMorphemes,
   writePhraseGloss,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
@@ -126,6 +135,37 @@ export function useGloss(tokenRef: string): string {
 }
 
 /**
+ * Returns the morpheme breakdown from the approved `TokenAnalysis` for `tokenRef`, re-rendering
+ * only when the morpheme array changes. Returns a stable empty array when no approved analysis
+ * exists or it has no morphemes.
+ *
+ * @param tokenRef - The `Token.ref` to look up.
+ * @returns The morpheme array from the approved analysis, or a stable empty array.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('useMorphemes must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectApprovedMorphemes(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns the active BCP 47 analysis-language tag from the nearest {@link AnalysisStoreProvider}.
+ *
+ * @returns The analysis language string.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisLanguage(): string {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('useAnalysisLanguage must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectAnalysisLanguage(state.analysis));
+}
+
+/**
  * Returns the current `TextAnalysis` snapshot, re-rendering on every analysis change. Intended for
  * components that need the full analysis (e.g. an analysis-selection popup).
  *
@@ -160,6 +200,65 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
       const { analysis } = store.getState().analysis;
       callbacks.onSaveRef.current?.(analysis);
       callbacks.onGlossChangeRef.current?.(tokenRef, value);
+    },
+    [dispatch, store, callbacks],
+  );
+}
+
+/**
+ * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
+ * for a given token. Dispatches the `writeMorphemes` action and triggers `onSave`.
+ *
+ * @returns A function `(tokenRef, surfaceText, forms) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeBreakdownDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+) => void {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks)
+    throw new Error('useMorphemeBreakdownDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (tokenRef: string, surfaceText: string, forms: string[]) => {
+      dispatch(writeMorphemes(tokenRef, surfaceText, forms));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
+    },
+    [dispatch, store, callbacks],
+  );
+}
+
+/**
+ * Returns a stable callback that writes a gloss on a single morpheme within the approved
+ * `TokenAnalysis` for a given token. Dispatches the `writeMorphemeGloss` action and triggers
+ * `onSave`.
+ *
+ * @returns A function `(tokenRef, morphemeId, value) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeGlossDispatch(): (
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+) => void {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks)
+    throw new Error('useMorphemeGlossDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (tokenRef: string, morphemeId: string, value: string) => {
+      dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
     },
     [dispatch, store, callbacks],
   );

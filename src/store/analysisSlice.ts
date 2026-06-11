@@ -1,5 +1,6 @@
 import { createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
 import type {
+  MorphemeAnalysis,
   PhraseAnalysis,
   PhraseAnalysisLink,
   TextAnalysis,
@@ -185,6 +186,108 @@ const analysisSlice = createSlice({
         state.analysis.tokenAnalysisLinks.push(newLink);
       },
     },
+    writeMorphemes: {
+      /**
+       * Generates UUIDs for new morpheme records and a potential new `TokenAnalysis` before the
+       * action reaches the reducer.
+       *
+       * @param tokenRef - `Token.ref` of the token whose morphemes are being set.
+       * @param surfaceText - Surface text of the token.
+       * @param forms - Ordered morpheme form strings as entered by the user.
+       * @returns The prepared action payload.
+       */
+      prepare(tokenRef: string, surfaceText: string, forms: string[]) {
+        return {
+          payload: {
+            tokenRef,
+            surfaceText,
+            analysisId: crypto.randomUUID(),
+            morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
+          },
+        };
+      },
+      /**
+       * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. Preserves
+       * existing morpheme glosses when a morpheme form is unchanged. When no approved analysis
+       * exists, creates one.
+       *
+       * @param state - Current slice state (Immer draft).
+       * @param action - Action carrying the morpheme payload.
+       */
+      reducer(
+        state,
+        action: PayloadAction<{
+          tokenRef: string;
+          surfaceText: string;
+          analysisId: string;
+          morphemes: Array<{ id: string; form: string }>;
+        }>,
+      ) {
+        const { tokenRef, surfaceText, analysisId, morphemes } = action.payload;
+        const writingSystem = state.analysisLanguage;
+
+        const existingLink = state.analysis.tokenAnalysisLinks.find(
+          (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+        );
+
+        if (existingLink) {
+          const existingAnalysis = state.analysis.tokenAnalyses.find(
+            (ta) => ta.id === existingLink.analysisId,
+          );
+          if (existingAnalysis) {
+            const oldByForm = new Map((existingAnalysis.morphemes ?? []).map((m) => [m.form, m]));
+            existingAnalysis.morphemes = morphemes.map(({ id, form }) => {
+              const old = oldByForm.get(form);
+              if (old) return { ...old, id };
+              return { id, form, writingSystem };
+            });
+            return;
+          }
+          state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+            (l) => l !== existingLink,
+          );
+        }
+
+        const newAnalysis: TokenAnalysis = {
+          id: analysisId,
+          surfaceText,
+          morphemes: morphemes.map(({ id, form }) => ({ id, form, writingSystem })),
+        };
+        const newLink: TokenAnalysisLink = {
+          analysisId,
+          status: 'approved',
+          token: { tokenRef, surfaceText },
+        };
+        state.analysis.tokenAnalyses.push(newAnalysis);
+        state.analysis.tokenAnalysisLinks.push(newLink);
+      },
+    },
+    /**
+     * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
+     * given token. No-ops when the token has no approved analysis or the morpheme id is not found.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the morpheme gloss payload.
+     */
+    writeMorphemeGloss(
+      state,
+      action: PayloadAction<{ tokenRef: string; morphemeId: string; value: string }>,
+    ) {
+      const { tokenRef, morphemeId, value } = action.payload;
+      const lang = state.analysisLanguage;
+
+      const link = state.analysis.tokenAnalysisLinks.find(
+        (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+      );
+      if (!link) return;
+
+      const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
+      const morpheme = analysis?.morphemes?.find((m) => m.id === morphemeId);
+      if (!morpheme) return;
+
+      if (!morpheme.gloss) morpheme.gloss = {};
+      morpheme.gloss[lang] = value;
+    },
     createPhrase: {
       /**
        * Generates a UUID for the new `PhraseAnalysis` before the action reaches the reducer,
@@ -287,6 +390,8 @@ const analysisSlice = createSlice({
 export const {
   setAnalysis,
   writeGloss,
+  writeMorphemes,
+  writeMorphemeGloss,
   createPhrase,
   updatePhrase,
   deletePhrase,
@@ -321,7 +426,7 @@ const selectTokenAnalysisLinks = (state: AnalysisState) => state.analysis.tokenA
  * @param state - The analysis slice state.
  * @returns The active BCP 47 analysis language tag.
  */
-const selectAnalysisLanguage = (state: AnalysisState) => state.analysisLanguage;
+export const selectAnalysisLanguage = (state: AnalysisState) => state.analysisLanguage;
 
 /**
  * Memoized selector that builds a `Map` from `TokenAnalysis.id` to `TokenAnalysis` for O(1) lookup.
@@ -371,6 +476,26 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
   const ta = selectAnalysisById(state).get(approvedId);
   const lang = selectAnalysisLanguage(state);
   return ta?.gloss?.[lang] ?? '';
+}
+
+const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
+
+/**
+ * Returns the morpheme array from the approved `TokenAnalysis` for `tokenRef`, or an empty array
+ * when no approved analysis exists or it has no morphemes.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` to look up.
+ * @returns The morpheme array, or a stable empty array when absent.
+ */
+export function selectApprovedMorphemes(
+  state: AnalysisState,
+  tokenRef: string,
+): readonly MorphemeAnalysis[] {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (!approvedId) return EMPTY_MORPHEMES;
+  const ta = selectAnalysisById(state).get(approvedId);
+  return ta?.morphemes ?? EMPTY_MORPHEMES;
 }
 
 /**

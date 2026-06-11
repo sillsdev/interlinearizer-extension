@@ -1,8 +1,4 @@
-/**
- * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- *   ExecutionActivationContext that satisfies @papi/core types, a `useWebViewState` hook stub for
- *   component tests, and shared Book and analysis fixtures.
- */
+/** @file Shared test helpers for unit and component tests. */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
 import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';

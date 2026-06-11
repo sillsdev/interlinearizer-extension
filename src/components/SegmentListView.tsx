@@ -248,7 +248,7 @@ export default function SegmentListView({
             ))}
             <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
           </div>
-          <div aria-hidden="true" className="tw:min-h-screen" />
+          <div data-snap-spacer aria-hidden="true" />
         </>
       )}
     </div>

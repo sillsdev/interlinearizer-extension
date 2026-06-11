@@ -520,6 +520,70 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView.mock.contexts).toContain(active);
   });
 
+  it('grows the snap spacer when scrollIntoView cannot reach the top', () => {
+    const book = makeBook(60, 0);
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    const spacer = document.createElement('div');
+    spacer.setAttribute('data-snap-spacer', '');
+    container.appendChild(spacer);
+
+    // Simulate scrollIntoView failing to reach the top: after the call the target still reports a
+    // positive offset below the container top (the content below is too short for the browser to
+    // scroll the target all the way up).
+    const containerRect = { top: 0, left: 0, right: 0, bottom: 400, width: 0, height: 400 };
+    jest
+      .spyOn(container, 'getBoundingClientRect')
+      .mockReturnValue({ ...containerRect, x: 0, y: 0, toJSON: () => containerRect });
+    const activeRect = { top: 30, left: 0, right: 0, bottom: 60, width: 0, height: 30 };
+    jest
+      .spyOn(active, 'getBoundingClientRect')
+      .mockReturnValue({ ...activeRect, x: 0, y: 0, toJSON: () => activeRect });
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(spacer.style.height).toBe('30px');
+  });
+
+  it('does not grow the snap spacer when scrollIntoView reaches the top', () => {
+    const book = makeBook(60, 0);
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { container, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+
+    const active = document.createElement('div');
+    active.setAttribute('aria-current', 'true');
+    container.appendChild(active);
+
+    const spacer = document.createElement('div');
+    spacer.setAttribute('data-snap-spacer', '');
+    spacer.style.height = '50px';
+    container.appendChild(spacer);
+
+    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+    // scrollIntoView succeeded (remainingOffset is 0 in jsdom) — spacer stays at 0 from the reset.
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(spacer.style.height).toBe('0px');
+  });
+
   it('re-snaps the recentered verse after paint to correct for late layout settling', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();

@@ -348,6 +348,13 @@ export default function useSegmentWindow({
    * `[data-chapter-start]` element), so the heading sits at the top while the active-verse
    * highlight stays on verse 1 below it. Falls back to the active verse when no heading is mounted
    * (e.g. the `chapterLabelInVerse` setting suppresses headings).
+   *
+   * When the content below the target is too short for `scrollIntoView` to reach the top (common in
+   * baseline-text mode where segments are compact, and especially after the continuous-scroll strip
+   * mounts above the list and shrinks the container), the function grows a spacer element
+   * (`[data-snap-spacer]`) at the bottom of the scroll content to provide enough scroll range, then
+   * retries. The spacer resets to zero on each call so it never outlives the shortfall that created
+   * it.
    */
   const snapActiveToTop = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -358,7 +365,16 @@ export default function useSegmentWindow({
           container?.querySelector('[aria-current="true"]'))
         : container?.querySelector('[aria-current="true"]');
     /* v8 ignore next -- the recentered target is always mounted, so its element exists */
-    target?.scrollIntoView({ behavior: 'auto', block: 'start' });
+    if (!target || !container) return;
+    const spacer = container.querySelector<HTMLElement>('[data-snap-spacer]');
+    if (spacer) spacer.style.height = '0px';
+    target.scrollIntoView({ behavior: 'auto', block: 'start' });
+    const remainingOffset =
+      target.getBoundingClientRect().top - container.getBoundingClientRect().top;
+    if (remainingOffset > 1 && spacer) {
+      spacer.style.height = `${Math.ceil(remainingOffset)}px`;
+      target.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
   }, [scrollContainerRef, scrRefRef]);
 
   // Reconcile the container scroll position to the freshly-mounted range before the browser paints,

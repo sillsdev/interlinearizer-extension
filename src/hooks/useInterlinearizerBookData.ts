@@ -5,7 +5,7 @@ import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
 export interface UseInterlinearizerBookDataArgs {
@@ -44,11 +44,28 @@ export default function useInterlinearizerBookData({
     [scrRef.book],
   );
 
-  const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
-    bookScrRef,
-    undefined,
-  );
+  const [rawBookResult, , isLoading] = useProjectData(
+    'platformScripture.USJ_Book',
+    projectId,
+  ).BookUSJ(bookScrRef, undefined);
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
+
+  // PAPI can deliver duplicate results for the same book (e.g. the scripture picker fires two
+  // signals in quick succession). Each new object reference would re-trigger tokenization and
+  // produce a new Book identity, which cascades into a redundant recenter fade. Stabilize by
+  // comparing the JSON serialization: when the content is identical, keep the previous reference
+  // so downstream consumers see no change.
+  const stableBookResultRef = useRef(rawBookResult);
+  const prevJsonRef = useRef<string | undefined>(undefined);
+  const bookResult = useMemo(() => {
+    if (rawBookResult === stableBookResultRef.current) return stableBookResultRef.current;
+    prevJsonRef.current ??= JSON.stringify(stableBookResultRef.current);
+    const json = JSON.stringify(rawBookResult);
+    if (json === prevJsonRef.current) return stableBookResultRef.current;
+    prevJsonRef.current = json;
+    stableBookResultRef.current = rawBookResult;
+    return rawBookResult;
+  }, [rawBookResult]);
 
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,

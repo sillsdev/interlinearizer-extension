@@ -16,6 +16,7 @@
     "affordances",
     "appdata",
     "bara",
+    "baselining",
     "BBCCCVVV",
     "clickability",
     "cullable",
@@ -76,11 +77,6 @@
     "wordform",
     "ZWNJ"
   ],
-  "ignoreWords": [
-    "Ελληνικά",
-    "homme",
-    "ʼelohim",
-    "ʻokina"
-  ],
+  "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],
   "import": []
 }

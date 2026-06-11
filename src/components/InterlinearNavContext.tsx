@@ -19,10 +19,14 @@ import { RECENTER_FADE_MS } from './recenter-fade';
  * the provider, above the unmount, so it can drive a loader-level curtain across the whole load.
  *
  * - `idle` — no cross-book transition in flight; the curtain is fully visible (opacity 1).
- * - `out` — a book change was detected; the curtain is fading to opacity 0 and is held there through
+ * - `out` — a book change was detected (or a follow-up external navigation landed while the reveal
+ *   was still animating; see below); the curtain is fading to opacity 0 and is held there through
  *   the load and the new book's first-mount settle.
  * - `in` — the new book reported settled ({@link InterlinearNav.reportSettled}); the curtain is fading
- *   back to opacity 1, after which it returns to `idle`.
+ *   back to opacity 1, after which it returns to `idle`. An external navigation arriving in this
+ *   phase re-engages the curtain (back to `out`) rather than letting the views fade the
+ *   just-revealed content a second time — the host resolves one picker selection as two
+ *   navigations, so the precise target routinely lands mid-reveal.
  */
 export type FadePhase = 'idle' | 'out' | 'in';
 
@@ -54,6 +58,22 @@ export function normalizeScrRef(ref: SerializedVerseRef): SerializedVerseRef {
 }
 
 /**
+ * Compares the verse coordinate of two serialized references: book, chapter, and verse number. Used
+ * to detect the host's duplicate deliveries — the scripture picker fires each external navigation
+ * twice in quick succession, as fresh objects naming the same verse. The optional `verse` segment
+ * string and `versificationStr` are deliberately excluded: the host fills them inconsistently
+ * across the duplicate deliveries (which is exactly what defeated a full-field comparison), and
+ * nothing in this extension consumes either field.
+ *
+ * @param a - First reference.
+ * @param b - Second reference.
+ * @returns `true` when both references name the same book, chapter, and verse number.
+ */
+function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean {
+  return a.book === b.book && a.chapterNum === b.chapterNum && a.verseNum === b.verseNum;
+}
+
+/**
  * Builds a stable string key identifying the verse a reference names. Used to match an internal
  * navigation against the `liveScrRef` the host later delivers, so the segment window can tell an
  * internally-originated change apart from an external one. Keys the {@link normalizeScrRef}-mapped
@@ -77,9 +97,11 @@ export function verseKey(ref: SerializedVerseRef): string {
  */
 export interface InterlinearNav {
   /**
-   * `rawScrRef` straight from the host scroll-group hook, verbatim. Drives the editable
-   * book/chapter nav controls so a chapter selection (verse 0) is reflected exactly as the user
-   * entered it.
+   * The reference from the host scroll-group hook, value-verbatim. Drives the editable book/chapter
+   * nav controls so a chapter selection (verse 0) is reflected exactly as the user entered it.
+   * Identity-stable across the host's duplicate deliveries: when the host re-sends a value-equal
+   * reference (the scripture picker fires each navigation twice), the previously adopted object is
+   * handed back so consumers see no change.
    */
   rawScrRef: SerializedVerseRef;
   /**
@@ -164,7 +186,25 @@ export function InterlinearNavProvider({
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   children: ReactNode;
 }>) {
-  const [rawScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+  const [hostScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+
+  /**
+   * The last host delivery adopted as `rawScrRef`, kept so the duplicate-delivery guard below can
+   * hand back the same object when the host re-sends an identical reference.
+   */
+  const stableRawScrRefRef = useRef<SerializedVerseRef>(hostScrRef);
+
+  // The host delivers each scripture-picker navigation twice in quick succession: two back-to-back
+  // signals carrying the same reference as distinct objects. Passing the second through verbatim
+  // would change `rawScrRef`'s identity — and with it the context value — for a navigation that
+  // already happened, re-rendering every nav consumer mid-recenter for nothing (the same
+  // double-fire whose duplicate USJ payload `useInterlinearizerBookData` already stabilizes). Reuse
+  // the previously adopted object when the delivery is value-equal, so a duplicate is invisible
+  // downstream.
+  const rawScrRef = areScrRefsEqual(hostScrRef, stableRawScrRefRef.current)
+    ? stableRawScrRefRef.current
+    : hostScrRef;
+  stableRawScrRefRef.current = rawScrRef;
 
   /**
    * The last committed {@link liveScrRef}, mirrored so the verse-0 stickiness below can compare the
@@ -178,7 +218,9 @@ export function InterlinearNavProvider({
   // recentering the views off the verse the user is actually on. So a verse-0 reference that names the
   // book+chapter already shown is treated as sticky: keep the current `liveScrRef` (its real verse)
   // rather than snapping to verse 1. A verse-0 reference for a *different* chapter is a genuine
-  // chapter jump and normalizes to verse 1 as before.
+  // chapter jump and normalizes to verse 1 as before. When two *different* deliveries normalize to
+  // the same verse (a verse-0 chapter jump followed by its verse-1 form), the previously committed
+  // object is reused so the second delivery never reads as a fresh navigation downstream.
   const liveScrRef = useMemo(() => {
     const prev = liveScrRefRef.current;
     if (
@@ -188,8 +230,15 @@ export function InterlinearNavProvider({
     ) {
       return prev;
     }
-    return normalizeScrRef(rawScrRef);
+    const normalized = normalizeScrRef(rawScrRef);
+    return areScrRefsEqual(normalized, prev) ? prev : normalized;
   }, [rawScrRef]);
+  /**
+   * The {@link liveScrRef} committed on the previous render, captured before the mirror update below
+   * overwrites it, so the mid-reveal navigation guard further down can compare the incoming
+   * reference against the verse last shown.
+   */
+  const prevLiveScrRef = liveScrRefRef.current;
   liveScrRefRef.current = liveScrRef;
 
   /**
@@ -244,6 +293,25 @@ export function InterlinearNavProvider({
       clearTimeout(fadeInTimeoutRef.current);
       fadeInTimeoutRef.current = undefined;
     }
+    awaitingSettleRef.current = true;
+    setFadePhase('out');
+  } else if (
+    fadePhase === 'in' &&
+    verseKey(liveScrRef) !== verseKey(prevLiveScrRef) &&
+    !pendingInternalNavRef.current.has(verseKey(liveScrRef))
+  ) {
+    // A follow-up external navigation landing while the cross-book reveal is still animating. The
+    // host resolves one picker selection as two navigations — the book change first, the precise
+    // target a beat later — so the second routinely arrives mid-fade-in. Left alone it would fade
+    // the freshly revealed content a second time (curtain up, content out, content in: the "double
+    // fade"). Instead, fold it into the same curtain cycle: re-engage the curtain (the CSS
+    // transition carries the opacity smoothly down from wherever the rise had reached), let the
+    // views re-anchor on the new verse behind it, and lift once on their settle. Internal echoes
+    // (a click made during the reveal) are exempt — the curtain must not drop over a navigation
+    // whose target is already on screen.
+    /* v8 ignore next -- defensive: reportSettled always arms the fade-in timer alongside 'in' */
+    if (fadeInTimeoutRef.current !== undefined) clearTimeout(fadeInTimeoutRef.current);
+    fadeInTimeoutRef.current = undefined;
     awaitingSettleRef.current = true;
     setFadePhase('out');
   }

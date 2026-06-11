@@ -548,6 +548,25 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:50');
   });
 
+  it('fades and recenters when the segments identity changes at the same anchor index', () => {
+    // A book swap (or a re-tokenized book) hands the hook a new `segments` array whose anchor can
+    // resolve to the same index as before; the identity check must still detect the change and
+    // recenter rather than leaving the window on stale segment objects.
+    const book = makeBook(10, 0);
+    const { result, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 1,
+    });
+    expect(result.current.isFaded).toBe(false);
+
+    act(() => rerender({ b: makeBook(10, 0), ref: { book: 'GEN', chapterNum: 1, verseNum: 1 } }));
+
+    expect(result.current.isFaded).toBe(true);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+  });
+
   it('lags displayScrRef through the fade so the highlight moves only with the window swap', () => {
     const book = makeBook(60, 0);
     const { result, rerender } = renderSegmentWindow(book, {

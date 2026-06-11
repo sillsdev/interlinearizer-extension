@@ -340,7 +340,18 @@ function InterlinearizerLoaderInner({
       <div
         data-testid="book-fade-wrapper"
         className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        style={{ opacity: fadePhase === 'out' ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+        // The fade-out must hide content instantly, not transition to 0: the old book is swapped
+        // for the Loading… placeholder in the same commit the curtain drops, so a gradual descent
+        // has nothing left to fade — it only lets the new book ghost in at partial opacity when a
+        // fast load mounts it mid-descent, then dim and rise again (the "false-start fade"). A
+        // zero-duration descent enforces the intended contract — nothing of either book shows
+        // until the new one has mounted and fades in — while the rise (`in` → `idle`) keeps the
+        // shared recenter timing.
+        style={{
+          opacity: fadePhase === 'out' ? 0 : 1,
+          ...RECENTER_FADE_TRANSITION_STYLE,
+          ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
+        }}
       >
         {hasError || showLoading || !book ? (
           <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">

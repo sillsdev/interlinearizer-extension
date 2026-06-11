@@ -137,6 +137,81 @@ describe('InterlinearNavContext', () => {
     expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
   });
 
+  describe('duplicate host deliveries', () => {
+    it('keeps rawScrRef and liveScrRef identity when the host re-sends a value-equal reference', () => {
+      // The scripture picker fires each external navigation twice in quick succession, the second
+      // delivery being a fresh object with identical content. The provider must hand back the
+      // previously adopted objects so the duplicate is invisible to consumers (no context-value
+      // change, no re-render churn mid-recenter).
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 3,
+        verseNum: 7,
+      });
+      const rawBefore = result.current.rawScrRef;
+      const liveBefore = result.current.liveScrRef;
+
+      act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 7 }));
+      rerender();
+
+      expect(result.current.rawScrRef).toBe(rawBefore);
+      expect(result.current.liveScrRef).toBe(liveBefore);
+    });
+
+    it('keeps liveScrRef identity when a verse-0 chapter jump is followed by its verse-1 form', () => {
+      // A chapter jump can arrive as a verse-0 reference (normalized to verse 1) followed by the
+      // explicit verse-1 reference. The raw references differ, but both normalize to the same
+      // verse, so the committed liveScrRef object must be reused for the second delivery.
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 3,
+        verseNum: 7,
+      });
+
+      act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
+      rerender();
+      const liveAfterJump = result.current.liveScrRef;
+      expect(liveAfterJump).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
+
+      act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 1 }));
+      rerender();
+
+      expect(result.current.liveScrRef).toBe(liveAfterJump);
+    });
+
+    it('reuses the previous reference when a duplicate differs only in the verse segment string', () => {
+      // The host fills the optional `verse` field inconsistently across its duplicate deliveries.
+      // Nothing in the extension consumes it, so a delivery naming the same book/chapter/verse
+      // must dedupe regardless.
+      const initial: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 7, verse: '7' };
+      const { result, setRef, rerender } = renderNavMutable(initial);
+
+      act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 7, verse: '7a' }));
+      rerender();
+
+      expect(result.current.rawScrRef).toBe(initial);
+    });
+
+    it('reuses the previous reference when a duplicate differs only in versification', () => {
+      // Same rationale as the `verse` field: `versificationStr` arrives inconsistently on the
+      // duplicate deliveries and is never consumed, so it must not defeat the dedup.
+      const initial: SerializedVerseRef = {
+        book: 'GEN',
+        chapterNum: 3,
+        verseNum: 7,
+        versificationStr: 'English',
+      };
+      const { result, setRef, rerender } = renderNavMutable(initial);
+
+      act(() =>
+        setRef({ book: 'GEN', chapterNum: 3, verseNum: 7, versificationStr: 'Septuagint' }),
+      );
+      rerender();
+
+      expect(result.current.rawScrRef).toBe(initial);
+    });
+  });
+
   it('throws when used outside a provider', () => {
     expect(() => renderHook(() => useInterlinearNav())).toThrow(
       'useInterlinearNav must be used within an InterlinearNavProvider',
@@ -352,6 +427,79 @@ describe('InterlinearNavContext', () => {
       expect(result.current.fadePhase).toBe('in');
       act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
       expect(result.current.fadePhase).toBe('idle');
+    });
+
+    it('re-engages the curtain when an external navigation lands during the fade-in', () => {
+      // The host resolves one picker selection as two navigations: the book change first, the
+      // precise target a beat later — routinely landing while the reveal is still animating.
+      // Re-engaging the curtain folds both into one cycle instead of fading the just-revealed
+      // content a second time (the "double fade").
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => setRef({ book: 'ZEP', chapterNum: 1, verseNum: 1 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      // The precise target arrives mid-reveal: the curtain drops back to 'out'.
+      act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 1 }));
+      rerender();
+      expect(result.current.fadePhase).toBe('out');
+
+      // The stale in→idle timer was cleared: advancing past it must not flip the phase.
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      expect(result.current.fadePhase).toBe('out');
+
+      // The re-anchored view settles: the curtain lifts once and the cycle completes.
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      expect(result.current.fadePhase).toBe('idle');
+    });
+
+    it('does not re-engage the curtain for an internal navigation echoed back during the fade-in', () => {
+      // A click made while the reveal is animating targets content already on screen; dropping the
+      // curtain over it would hide the user's own selection.
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => setRef({ book: 'ZEP', chapterNum: 1, verseNum: 1 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      act(() => result.current.navigate({ book: 'ZEP', chapterNum: 1, verseNum: 4 }, 'internal'));
+      act(() => setRef({ book: 'ZEP', chapterNum: 1, verseNum: 4 }));
+      rerender();
+
+      expect(result.current.fadePhase).toBe('in');
+    });
+
+    it('does not re-engage the curtain for a verse-0 echo during the fade-in', () => {
+      // The host's chapter re-broadcast (verse 0 for the chapter already shown) is sticky — it
+      // names the verse currently displayed, so it must not read as a fresh navigation mid-reveal.
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 5 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 0 }));
+      rerender();
+
+      expect(result.current.fadePhase).toBe('in');
     });
 
     it('clears the pending fade-in timer on unmount', () => {

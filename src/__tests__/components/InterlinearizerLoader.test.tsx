@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
+import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import { emptyAnalysis } from '../../types/empty-factories';
@@ -1188,6 +1189,22 @@ describe('InterlinearizerLoader', () => {
       mockBookData({ book: undefined, isLoading: true });
       rerenderNow();
       expect(fadeOpacity()).toBe('0');
+    });
+
+    it('drops the curtain instantly (no transition) during the fade-out', () => {
+      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      const wrapper = () => screen.getByTestId('book-fade-wrapper');
+      // At idle the shared recenter timing is armed for the next rise.
+      expect(wrapper().style.transitionDuration).toBe(`${RECENTER_FADE_MS}ms`);
+
+      // Cross-book jump: the old book is swapped for Loading… in the same commit, so a gradual
+      // descent has nothing to fade — it would only let a fast-loading new book ghost in at
+      // partial opacity (the "false-start fade"). The descent must be instant.
+      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      mockBookData({ book: undefined, isLoading: true });
+      rerenderNow();
+      expect(fadeOpacity()).toBe('0');
+      expect(wrapper().style.transitionDuration).toBe('0ms');
     });
 
     it('shows the Loading curtain (not the old book) during a cross-book swap', () => {

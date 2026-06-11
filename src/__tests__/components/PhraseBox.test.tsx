@@ -896,7 +896,7 @@ describe('PhraseBox', () => {
     ]);
   });
 
-  it('with simplifyPhrases on, hides intra-phrase unlink icons and remove-token buttons on a non-focused phrase', () => {
+  it('with simplifyPhrases on, hides (but keeps mounted) intra-phrase unlink icons and omits remove-token buttons on a non-focused phrase', () => {
     const fourTokenPhrase: PhraseAnalysisLink = {
       analysisId: 'phrase-big',
       status: 'approved',
@@ -923,7 +923,13 @@ describe('PhraseBox', () => {
       />,
       { simplifyPhrases: true },
     );
-    expect(screen.queryByTestId('token-unlink-btn')).not.toBeInTheDocument();
+    const unlinkButtons = screen.getAllByTestId('token-unlink-btn');
+    expect(unlinkButtons.length).toBeGreaterThan(0);
+    unlinkButtons.forEach((button) => {
+      const wrapper = button.parentElement;
+      expect(wrapper).toHaveStyle({ opacity: '0' });
+      expect(wrapper).toHaveAttribute('aria-hidden', 'true');
+    });
     expect(screen.queryByRole('button', { name: 'Remove World' })).not.toBeInTheDocument();
   });
 

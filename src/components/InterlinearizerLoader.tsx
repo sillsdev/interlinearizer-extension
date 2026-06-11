@@ -1,6 +1,6 @@
 import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
+import { useData, useSetting } from '@papi/frontend/react';
 import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
@@ -9,13 +9,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
-import ContinuousScrollToggle from './ContinuousScrollToggle';
 import Interlinearizer from './Interlinearizer';
-import ProjectModals, { type ModalState } from './ProjectModals';
-import ScriptureNavControls from './ScriptureNavControls';
-
-/** Localized string keys used by {@link InterlinearizerLoader}. */
-const STRING_KEYS: `%${string}%`[] = ['%interlinearizer_continuousScrollToggle%'];
+import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
+import type { PhraseMode } from '../types/phrase-mode';
+import ProjectModals, { type ModalState } from './modals/ProjectModals';
+import ScriptureNavControls from './controls/ScriptureNavControls';
 
 /**
  * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
@@ -90,7 +88,7 @@ export default function InterlinearizerLoader({
       return;
     }
 
-    let cancelled = false;
+    let canceled = false;
     setIsAnalysisLoading(true);
 
     /**
@@ -98,7 +96,7 @@ export default function InterlinearizerLoader({
      *
      * Writes `activeProjectAnalysis` on success (or `undefined` when the project record is absent)
      * and clears `isAnalysisLoading` in the `finally` block. Both state updates are suppressed when
-     * `cancelled` is `true` (i.e. the effect was cleaned up before the fetch completed).
+     * `canceled` is `true` (i.e. the effect was cleaned up before the fetch completed).
      *
      * @returns Promise that resolves to void once state has been updated or the update has been
      *   suppressed due to cancellation.
@@ -111,7 +109,7 @@ export default function InterlinearizerLoader({
           'interlinearizer.getProject',
           activeProject.id,
         );
-        if (cancelled) return;
+        if (canceled) return;
         if (json) {
           const project: InterlinearProject = JSON.parse(json);
           setActiveProjectAnalysis(project.analysis);
@@ -119,19 +117,19 @@ export default function InterlinearizerLoader({
           setActiveProjectAnalysis(undefined);
         }
       } catch (e) {
-        if (!cancelled) {
+        if (!canceled) {
           logger.error('Interlinearizer: failed to load project analysis', e);
           setActiveProjectAnalysis(undefined);
         }
       } finally {
-        if (!cancelled) setIsAnalysisLoading(false);
+        if (!canceled) setIsAnalysisLoading(false);
       }
     };
 
     loadAnalysis().catch(() => {});
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -153,21 +151,42 @@ export default function InterlinearizerLoader({
   );
 
   const {
-    isLoading: isSettingLoading,
+    isLoading: isContinuousScrollLoading,
     onChange: handleContinuousScrollChange,
     value: continuousScroll,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.continuousScroll', true);
+
+  const {
+    isLoading: isHideInactiveLinkButtonsLoading,
+    onChange: handleHideInactiveLinkButtonsChange,
+    value: hideInactiveLinkButtons,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.hideInactiveLinkButtons', false);
+
+  const {
+    isLoading: isSimplifyPhrasesLoading,
+    onChange: handleSimplifyPhrasesChange,
+    value: simplifyPhrases,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
   const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
     { projectId, scrRef },
   );
 
   const hasError = !!bookError || !!tokenizeError;
-  const showLoading = isLoading || isSettingLoading || isAnalysisLoading;
-
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const isSettingLoading =
+    isContinuousScrollLoading || isHideInactiveLinkButtonsLoading || isSimplifyPhrasesLoading;
+  const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
+  const isLoaded = !hasError && !showLoading && !!book;
 
   const [modal, setModal] = useState<ModalState>('none');
+
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
+
+  // Reset phraseMode when the active project changes so stale edit/confirm-unlink state from a
+  // previous project is never passed to the newly mounted Interlinearizer.
+  useEffect(() => {
+    setPhraseMode({ kind: 'view' });
+  }, [activeProject?.id]);
 
   /**
    * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
@@ -239,15 +258,19 @@ export default function InterlinearizerLoader({
           ) : undefined
         }
         endAreaChildren={
-          <ContinuousScrollToggle
-            checked={continuousScroll}
-            disabled={isSettingLoading}
-            label={localizedStrings['%interlinearizer_continuousScrollToggle%']}
-            onCheckedChange={handleContinuousScrollChange}
-          />
+          isLoaded ? (
+            <ViewOptionsDropdown
+              continuousScroll={continuousScroll}
+              onContinuousScrollChange={handleContinuousScrollChange}
+              hideInactiveLinkButtons={hideInactiveLinkButtons}
+              onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
+              simplifyPhrases={simplifyPhrases}
+              onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
+            />
+          ) : undefined
         }
         onSelectProjectMenuItem={menuCommandHandler}
-        /* v8 ignore next 3 -- stub required by TabToolbar API, no behaviour to test */
+        /* v8 ignore next 3 -- stub required by TabToolbar API, no behavior to test */
         onSelectViewInfoMenuItem={() => {
           logger.warn('Interlinearizer: unexpected onSelectViewInfoMenuItem call');
         }}
@@ -257,21 +280,15 @@ export default function InterlinearizerLoader({
         <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
           {bookError && (
             <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:text-lg tw:font-medium tw:text-destructive">Error loading book</h2>
-              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
-                {bookError}
-              </pre>
+              <h2 className="tw:error-heading">Error loading book</h2>
+              <pre className="tw:error-pre">{bookError}</pre>
             </div>
           )}
 
           {tokenizeError && (
             <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:text-lg tw:font-medium tw:text-destructive">
-                Error processing book
-              </h2>
-              <pre className="tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm">
-                {tokenizeError.message}
-              </pre>
+              <h2 className="tw:error-heading">Error processing book</h2>
+              <pre className="tw:error-pre">{tokenizeError.message}</pre>
             </div>
           )}
 
@@ -290,6 +307,10 @@ export default function InterlinearizerLoader({
           analysisLanguage={analysisLanguage}
           initialAnalysis={activeProjectAnalysis}
           onSaveAnalysis={handleSaveAnalysis}
+          phraseMode={phraseMode}
+          setPhraseMode={setPhraseMode}
+          hideInactiveLinkButtons={hideInactiveLinkButtons}
+          simplifyPhrases={simplifyPhrases}
         />
       )}
 

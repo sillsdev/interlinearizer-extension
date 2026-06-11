@@ -7,38 +7,62 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, PhraseAnalysisLink, Segment, TextAnalysis } from 'interlinearizer';
+import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
+import { emptyAnalysis } from '../../types/empty-factories';
+import type { PhraseMode } from '../../types/phrase-mode';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
 
-jest.mock('../../components/ContinuousScrollToggle', () => ({
+jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
   __esModule: true,
   default: ({
-    checked,
-    disabled,
-    onCheckedChange,
+    continuousScroll,
+    onContinuousScrollChange,
+    hideInactiveLinkButtons,
+    onHideInactiveLinkButtonsChange,
+    simplifyPhrases,
+    onSimplifyPhrasesChange,
   }: {
-    checked: boolean;
-    disabled: boolean;
-    onCheckedChange: (v: boolean) => void;
+    continuousScroll: boolean;
+    onContinuousScrollChange: (v: boolean) => void;
+    hideInactiveLinkButtons: boolean;
+    onHideInactiveLinkButtonsChange: (v: boolean) => void;
+    simplifyPhrases: boolean;
+    onSimplifyPhrasesChange: (v: boolean) => void;
   }) => (
-    <button
-      aria-label="continuous scroll"
-      data-testid="continuous-scroll-toggle"
-      data-checked={String(checked)}
-      data-disabled={String(disabled)}
-      onClick={() => onCheckedChange(!checked)}
-      type="button"
-    />
+    <div data-testid="view-options-dropdown">
+      <button
+        aria-label="continuous scroll"
+        data-testid="continuous-scroll-toggle"
+        data-checked={String(continuousScroll)}
+        onClick={() => onContinuousScrollChange(!continuousScroll)}
+        type="button"
+      />
+      <button
+        aria-label="hide inactive link buttons"
+        data-testid="hide-inactive-link-buttons-toggle"
+        data-checked={String(hideInactiveLinkButtons)}
+        onClick={() => onHideInactiveLinkButtonsChange(!hideInactiveLinkButtons)}
+        type="button"
+      />
+      <button
+        aria-label="dim inactive segments"
+        data-testid="dim-inactive-segments-toggle"
+        data-checked={String(simplifyPhrases)}
+        onClick={() => onSimplifyPhrasesChange(!simplifyPhrases)}
+        type="button"
+      />
+    </div>
   ),
 }));
 
-jest.mock('../../components/ScriptureNavControls', () => ({
+jest.mock('../../components/controls/ScriptureNavControls', () => ({
   __esModule: true,
   default: () => <div data-testid="scripture-nav-controls" />,
 }));
@@ -57,6 +81,10 @@ type CapturedInterlinearizerProps = {
   analysisLanguage: string;
   initialAnalysis?: TextAnalysis;
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
+  phraseMode: PhraseMode;
+  setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
+  hideInactiveLinkButtons: boolean;
+  simplifyPhrases: boolean;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 
@@ -82,15 +110,6 @@ const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
 const testProjectId = 'test-project-id';
 
-const STUB_TEXT_ANALYSIS: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
-
 const STUB_ACTIVE_PROJECT: MockProject = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
@@ -99,7 +118,7 @@ const STUB_ACTIVE_PROJECT: MockProject = {
   name: 'My Project',
 };
 
-jest.mock('../../components/ProjectModals', () => ({
+jest.mock('../../components/modals/ProjectModals', () => ({
   __esModule: true,
   /**
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
@@ -254,19 +273,27 @@ function mockBookData(
 }
 
 /**
- * Configures useOptimisticBooleanSetting to return the given state.
+ * Configures useOptimisticBooleanSetting to return the given state. Each setting key gets its own
+ * distinct `onChange` mock so wiring tests can verify that a given toggle is connected to the
+ * correct handler — a single shared mock would let a toggle wired to the wrong setting still pass.
  *
- * @param value - The current boolean value; defaults to `false`
- * @param onChange - The change handler; defaults to a jest.fn()
- * @param isLoading - Whether the setting is loading; defaults to `false`
+ * @param value - The current boolean value applied to every setting; defaults to `false`
+ * @param onChange - The change handler for every setting; defaults to a distinct jest.fn() per key
+ * @param isLoading - Whether the settings are loading; defaults to `false`
+ * @returns A map from setting key to that key's `onChange` mock.
  */
 function mockOptimisticSetting(
   value = false,
-  onChange: jest.Mock = jest.fn(),
+  onChange: jest.Mock | undefined = undefined,
   isLoading = false,
-): jest.Mock {
-  jest.mocked(useOptimisticBooleanSetting).mockReturnValue({ value, onChange, isLoading });
-  return onChange;
+): Map<string, jest.Mock> {
+  const onChangeByKey = new Map<string, jest.Mock>();
+  jest.mocked(useOptimisticBooleanSetting).mockImplementation((_projectId, key) => {
+    const handler = onChange ?? onChangeByKey.get(key) ?? jest.fn();
+    onChangeByKey.set(key, handler);
+    return { value, onChange: handler, isLoading };
+  });
+  return onChangeByKey;
 }
 
 /**
@@ -393,8 +420,8 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
-  it('passes checked and disabled from useOptimisticBooleanSetting to ContinuousScrollToggle', () => {
-    mockOptimisticSetting(true, jest.fn(), true);
+  it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', () => {
+    mockOptimisticSetting(true);
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -405,12 +432,27 @@ describe('InterlinearizerLoader', () => {
 
     const toggle = screen.getByTestId('continuous-scroll-toggle');
     expect(toggle).toHaveAttribute('data-checked', 'true');
-    expect(toggle).toHaveAttribute('data-disabled', 'true');
   });
 
-  it('wires ContinuousScrollToggle onCheckedChange to the onChange from useOptimisticBooleanSetting', async () => {
-    const mockOnChange = jest.fn();
-    mockOptimisticSetting(false, mockOnChange);
+  it('gates rendering until the persisted display settings have loaded', () => {
+    mockOptimisticSetting(false, jest.fn(), true);
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    // The saved settings must arrive before the view renders so the user's stored choices apply on
+    // the first paint instead of flashing the hard-coded defaults.
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByTestId('continuous-scroll-toggle')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
+  });
+
+  it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
     render(
       <InterlinearizerLoader
         projectId={testProjectId}
@@ -420,7 +462,59 @@ describe('InterlinearizerLoader', () => {
     );
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
-    expect(mockOnChange).toHaveBeenCalledWith(true);
+    expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes hideInactiveLinkButtons=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.hideInactiveLinkButtons).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('hide-inactive-link-buttons-toggle'));
+    expect(onChangeByKey.get('interlinearizer.hideInactiveLinkButtons')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes simplifyPhrases=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.simplifyPhrases).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
+    expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {
@@ -760,7 +854,7 @@ describe('InterlinearizerLoader', () => {
   describe('project analysis loading', () => {
     it('passes the stored analysis as initialAnalysis when getProject returns valid JSON', async () => {
       mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }),
+        JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }),
       );
       await act(async () =>
         render(
@@ -772,7 +866,7 @@ describe('InterlinearizerLoader', () => {
         ),
       );
 
-      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(STUB_TEXT_ANALYSIS);
+      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(emptyAnalysis());
       expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getProject', 'proj-1');
     });
 
@@ -813,7 +907,7 @@ describe('InterlinearizerLoader', () => {
       );
 
       unmount();
-      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: STUB_TEXT_ANALYSIS }));
+      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }));
       await Promise.resolve();
 
       expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
@@ -832,11 +926,11 @@ describe('InterlinearizerLoader', () => {
         ),
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',
-        JSON.stringify(STUB_TEXT_ANALYSIS),
+        JSON.stringify(emptyAnalysis()),
       );
     });
 
@@ -849,11 +943,86 @@ describe('InterlinearizerLoader', () => {
         />,
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(STUB_TEXT_ANALYSIS);
+      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
 
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveAnalysis'),
       ).toHaveLength(0);
+    });
+  });
+
+  describe('phrase mode plumbing', () => {
+    it('forwards setPhraseMode through to Interlinearizer', () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
+      expect(typeof capturedInterlinearizerProps?.setPhraseMode).toBe('function');
+    });
+
+    it('updates the captured phraseMode when setPhraseMode is invoked', () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({
+        kind: 'edit',
+        phraseId: 'phrase-1',
+        originalTokens,
+      });
+    });
+
+    it('resets phraseMode to view when the active project changes', async () => {
+      render(
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+          useWebViewState={makeWebViewState()}
+        />,
+      );
+
+      // Enter edit mode.
+      const originalTokens: PhraseAnalysisLink['tokens'] = [
+        { tokenRef: 'tok-1', surfaceText: 'In' },
+      ];
+      act(() => {
+        capturedInterlinearizerProps?.setPhraseMode({
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens,
+        });
+      });
+      expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
+
+      // Simulate a project change: open the select modal and choose a project. The project-modals
+      // stub calls setActiveProject (from useWebViewState) which updates the stored slot; the
+      // subsequent setModal('none') call triggers a React re-render so InterlinearizerLoader reads
+      // the new activeProject value. The useEffect that watches activeProject.id then fires and
+      // resets phraseMode to view.
+      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
+      await userEvent.click(screen.getByTestId('select-modal-select'));
+
+      expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });
   });
 });

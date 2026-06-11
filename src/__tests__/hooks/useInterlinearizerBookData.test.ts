@@ -86,6 +86,15 @@ const TEST_BOOK: Book = {
 
 const GEN_1_1_SRC_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
+/**
+ * Mocks useProjectSetting to return a specified default state.
+ *
+ * @param defaultState - The value to return as the current setting state.
+ */
+function mockUseProjectSettings(defaultState: string | PlatformError | undefined) {
+  jest.mocked(useProjectSetting).mockReturnValue([defaultState, jest.fn(), jest.fn(), false]);
+}
+
 describe('useInterlinearizerBookData', () => {
   /**
    * Configures useProjectData to return a resolved USJ object so the hook can proceed to
@@ -97,18 +106,12 @@ describe('useInterlinearizerBookData', () => {
     });
   };
 
-  /**
-   * Configures useProjectSetting to return the writing system code 'en' so the hook uses a valid
-   * BCP 47 tag rather than falling back to 'und'.
-   */
-  const setupDefaultProjectSettingMock = () => {
-    jest.mocked(useProjectSetting).mockReturnValue(['en', jest.fn(), jest.fn(), false]);
-  };
-
   beforeEach(() => {
     jest.mocked(logger.error).mockImplementation(() => {});
     setupDefaultProjectDataMock();
-    setupDefaultProjectSettingMock();
+    // Configures useProjectSetting to return the writing system code 'en' so the hook uses a valid
+    // BCP 47 tag rather than falling back to 'und'.
+    mockUseProjectSettings('en');
   });
 
   it('returns isLoading=true and no book when USJ data has not arrived', () => {
@@ -217,7 +220,7 @@ describe('useInterlinearizerBookData', () => {
       message: 'Setting unavailable',
       platformErrorVersion: 1,
     };
-    jest.mocked(useProjectSetting).mockReturnValue([platformError, jest.fn(), jest.fn(), false]);
+    mockUseProjectSettings(platformError);
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
     jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
 
@@ -230,7 +233,7 @@ describe('useInterlinearizerBookData', () => {
   });
 
   it('falls back to "und" writing system when useProjectSetting returns empty string', () => {
-    jest.mocked(useProjectSetting).mockReturnValue(['', jest.fn(), jest.fn(), false]);
+    mockUseProjectSettings('');
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
     jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
 
@@ -271,7 +274,7 @@ describe('useInterlinearizerBookData', () => {
       message: 'Setting unavailable',
       platformErrorVersion: 1,
     };
-    jest.mocked(useProjectSetting).mockReturnValue([platformError, jest.fn(), jest.fn(), false]);
+    mockUseProjectSettings(platformError);
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
 
     const error = new Error('Tokenization failed');

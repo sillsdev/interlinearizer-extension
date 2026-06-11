@@ -218,7 +218,7 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[0].type).toBe('punctuation');
     });
 
-    it("tokenizes word-initial U+0027 as part of the word (e.g. Hebrew aleph romanisation 'Elohim)", () => {
+    it("tokenizes word-initial U+0027 as part of the word (e.g. Hebrew aleph romanization 'Elohim)", () => {
       const text = "'Elohim";
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
       expect(segments[0].tokens).toHaveLength(1);
@@ -234,7 +234,7 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[0].surfaceText).toBe(text);
     });
 
-    it("tokenizes word-final U+0027 as part of the word (e.g. Hebrew aleph romanisation bara')", () => {
+    it("tokenizes word-final U+0027 as part of the word (e.g. Hebrew aleph romanization bara')", () => {
       const text = "bara'";
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
       expect(segments[0].tokens).toHaveLength(1);
@@ -242,7 +242,7 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[0].surfaceText).toBe(text);
     });
 
-    it('tokenizes word-final U+2019 as part of the word (e.g. Hebrew aleph romanisation bara’)', () => {
+    it('tokenizes word-final U+2019 as part of the word (e.g. Hebrew aleph romanization bara’)', () => {
       const text = 'bara’';
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
       expect(segments[0].tokens).toHaveLength(1);

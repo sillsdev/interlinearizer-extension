@@ -6,7 +6,8 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
-import { createTestActivationContext } from './test-helpers';
+import { emptyAnalysis } from '../types/empty-factories';
+import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/projectStorage');
 
@@ -114,25 +115,64 @@ function findRegisteredHandler(commandName: string): ((...args: unknown[]) => un
 }
 
 /**
- * Activates the extension and returns a typed wrapper around the `interlinearizer.openForWebView`
- * command handler.
+ * Activates the extension with a fresh test context and returns the handler registered for
+ * `commandName`, cast to `T`.
  *
- * @returns A function that invokes the handler with an optional WebView ID and resolves to the
- *   opened WebView ID string, or `undefined` if the handler returns a non-string.
+ * @param commandName - The fully-qualified command name to look up.
+ * @returns The handler registered during `activate()`, cast to `T`.
  * @throws If the handler was not registered during `activate()`.
  */
-async function getOpenForWebViewHandler(): Promise<
-  (webViewId?: string) => Promise<string | undefined>
-> {
+async function activateAndGetHandler<T>(commandName: string): Promise<T> {
   const context = createTestActivationContext();
   await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.openForWebView');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.openForWebView');
-  return async (webViewId?: string): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(webViewId);
-    return typeof result === 'string' ? result : undefined;
-  };
+  const rawHandler = findRegisteredHandler(commandName);
+  if (!rawHandler) throw new Error(`Handler not found for ${commandName}`);
+  // eslint-disable-next-line no-type-assertion/no-type-assertion
+  return rawHandler as unknown as T;
 }
+
+/** Activates the extension and returns the `interlinearizer.openForWebView` handler. */
+const getOpenForWebViewHandler = () =>
+  activateAndGetHandler<(webViewId?: string) => Promise<string | undefined>>(
+    'interlinearizer.openForWebView',
+  );
+
+/** Activates the extension and returns the `interlinearizer.createProject` handler. */
+const getCreateProjectHandler = () =>
+  activateAndGetHandler<
+    (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
+  >('interlinearizer.createProject');
+
+/** Activates the extension and returns the `interlinearizer.deleteProject` handler. */
+const getDeleteProjectHandler = () =>
+  activateAndGetHandler<(id: string) => Promise<void>>('interlinearizer.deleteProject');
+
+/** Activates the extension and returns the `interlinearizer.getProjectsForSource` handler. */
+const getProjectsForSourceHandler = () =>
+  activateAndGetHandler<(sourceProjectId: string) => Promise<string>>(
+    'interlinearizer.getProjectsForSource',
+  );
+
+/** Activates the extension and returns the `interlinearizer.updateProjectMetadata` handler. */
+const getUpdateProjectMetadataHandler = () =>
+  activateAndGetHandler<
+    (
+      id: string,
+      name: string | undefined,
+      description: string | undefined,
+      analysisLanguages: string[],
+    ) => Promise<string | undefined>
+  >('interlinearizer.updateProjectMetadata');
+
+/** Activates the extension and returns the `interlinearizer.getProject` handler. */
+const getGetProjectHandler = () =>
+  activateAndGetHandler<(id: string) => Promise<string | undefined>>('interlinearizer.getProject');
+
+/** Activates the extension and returns the `interlinearizer.saveAnalysis` handler. */
+const getSaveAnalysisHandler = () =>
+  activateAndGetHandler<(id: string, analysisJson: string) => Promise<void>>(
+    'interlinearizer.saveAnalysis',
+  );
 
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
@@ -156,101 +196,6 @@ function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition })
   const cb: unknown = __mockOnDidCloseWebView.mock.calls[0]?.[0];
   if (!isCallable(cb)) throw new Error('onDidCloseWebView callback not found');
   return (event) => cb(event);
-}
-
-/**
- * Activates the extension and returns a typed wrapper around the `interlinearizer.createProject`
- * command handler.
- *
- * @returns A function that invokes the handler with a source project ID and analysis languages,
- *   resolving to the JSON-stringified project or `undefined` if the handler returns a non-string.
- * @throws If the handler was not registered during `activate()`.
- */
-async function getCreateProjectHandler(): Promise<
-  (sourceProjectId: string, analysisLanguages: string[]) => Promise<string | undefined>
-> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.createProject');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.createProject');
-  return async (
-    sourceProjectId: string,
-    analysisLanguages: string[],
-  ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(sourceProjectId, analysisLanguages);
-    return typeof result === 'string' ? result : undefined;
-  };
-}
-
-/**
- * Activates the extension and returns a typed wrapper around the `interlinearizer.deleteProject`
- * command handler.
- *
- * @returns A function that invokes the handler with a project UUID and resolves when deletion
- *   completes.
- * @throws If the handler was not registered during `activate()`.
- */
-async function getDeleteProjectHandler(): Promise<(id: string) => Promise<void>> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.deleteProject');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.deleteProject');
-  return async (id: string): Promise<void> => {
-    await rawHandler(id);
-  };
-}
-
-/**
- * Activates the extension and returns a typed wrapper around the
- * `interlinearizer.getProjectsForSource` command handler.
- *
- * @returns A function that invokes the handler with a source project ID and resolves to the
- *   JSON-stringified project array (falls back to `'[]'` if the handler returns a non-string).
- * @throws If the handler was not registered during `activate()`.
- */
-async function getProjectsForSourceHandler(): Promise<
-  (sourceProjectId: string) => Promise<string>
-> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.getProjectsForSource');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProjectsForSource');
-  return async (sourceProjectId: string): Promise<string> => {
-    const result: unknown = await rawHandler(sourceProjectId);
-    return typeof result === 'string' ? result : '[]';
-  };
-}
-
-/**
- * Activates the extension and returns a typed wrapper around the
- * `interlinearizer.updateProjectMetadata` command handler.
- *
- * @returns A function that invokes the handler with a project UUID and updated fields, resolving to
- *   the JSON-stringified updated project or `undefined` if the project was not found or the handler
- *   returns a non-string.
- * @throws If the handler was not registered during `activate()`.
- */
-async function getUpdateProjectMetadataHandler(): Promise<
-  (
-    id: string,
-    name: string | undefined,
-    description: string | undefined,
-    analysisLanguages: string[],
-  ) => Promise<string | undefined>
-> {
-  const context = createTestActivationContext();
-  await activate(context);
-  const rawHandler = findRegisteredHandler('interlinearizer.updateProjectMetadata');
-  if (!rawHandler) throw new Error('Handler not found for interlinearizer.updateProjectMetadata');
-  return async (
-    id: string,
-    name: string | undefined,
-    description: string | undefined,
-    analysisLanguages: string[],
-  ): Promise<string | undefined> => {
-    const result: unknown = await rawHandler(id, name, description, analysisLanguages);
-    return typeof result === 'string' ? result : undefined;
-  };
 }
 
 describe('main', () => {
@@ -319,7 +264,7 @@ describe('main', () => {
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(14);
+      expect(context.registrations.unsubscribers.size).toBe(16);
     });
 
     it('logs activation start and finish', async () => {
@@ -520,21 +465,7 @@ describe('main', () => {
 
   describe('interlinearizer.createProject command', () => {
     const mockCreateProject = jest.mocked(projectStorage.createProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'new-project-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('new-project-id');
 
     it('registers the interlinearizer.createProject command', async () => {
       const context = createTestActivationContext();
@@ -775,21 +706,7 @@ describe('main', () => {
 
   describe('interlinearizer.getProjectsForSource command', () => {
     const mockGetProjectsForSource = jest.mocked(projectStorage.getProjectsForSource);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('proj-id');
 
     it('registers the interlinearizer.getProjectsForSource command', async () => {
       const context = createTestActivationContext();
@@ -826,21 +743,7 @@ describe('main', () => {
 
   describe('interlinearizer.updateProjectMetadata command', () => {
     const mockUpdateProjectMetadata = jest.mocked(projectStorage.updateProjectMetadata);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
+    const stubProject = makeStubProject('proj-id');
 
     it('registers the interlinearizer.updateProjectMetadata command', async () => {
       const context = createTestActivationContext();
@@ -915,40 +818,7 @@ describe('main', () => {
 
   describe('interlinearizer.getProject command', () => {
     const mockGetProject = jest.mocked(projectStorage.getProject);
-    const emptyAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
-      tokenAnalyses: [],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
-    };
-    const stubProject = {
-      id: 'proj-id',
-      createdAt: '2026-01-01T00:00:00.000Z',
-      sourceProjectId: 'src-project',
-      analysisLanguages: ['en'],
-      analysis: emptyAnalysis,
-    };
-
-    /**
-     * Activates the extension and returns a typed wrapper around the `interlinearizer.getProject`
-     * command handler.
-     *
-     * @returns A function that invokes the handler with a project UUID and resolves to the
-     *   JSON-stringified project or `undefined`.
-     * @throws If the handler was not registered during `activate()`.
-     */
-    async function getGetProjectHandler(): Promise<(id: string) => Promise<string | undefined>> {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.getProject');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.getProject');
-      return async (id: string): Promise<string | undefined> => {
-        const result: unknown = await rawHandler(id);
-        return typeof result === 'string' ? result : undefined;
-      };
-    }
+    const stubProject = makeStubProject('proj-id');
 
     it('registers the interlinearizer.getProject command', async () => {
       const context = createTestActivationContext();
@@ -996,32 +866,9 @@ describe('main', () => {
   describe('interlinearizer.saveAnalysis command', () => {
     const mockUpdateAnalysis = jest.mocked(projectStorage.updateAnalysis);
     const stubAnalysis = {
-      segmentAnalyses: [],
-      segmentAnalysisLinks: [],
+      ...emptyAnalysis(),
       tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
-      tokenAnalysisLinks: [],
-      phraseAnalyses: [],
-      phraseAnalysisLinks: [],
     };
-
-    /**
-     * Activates the extension and returns a typed wrapper around the `interlinearizer.saveAnalysis`
-     * command handler.
-     *
-     * @returns A function that invokes the handler with a project UUID and analysis JSON.
-     * @throws If the handler was not registered during `activate()`.
-     */
-    async function getSaveAnalysisHandler(): Promise<
-      (id: string, analysisJson: string) => Promise<void>
-    > {
-      const context = createTestActivationContext();
-      await activate(context);
-      const rawHandler = findRegisteredHandler('interlinearizer.saveAnalysis');
-      if (!rawHandler) throw new Error('Handler not found for interlinearizer.saveAnalysis');
-      return async (id: string, analysisJson: string): Promise<void> => {
-        await rawHandler(id, analysisJson);
-      };
-    }
 
     it('registers the interlinearizer.saveAnalysis command', async () => {
       const context = createTestActivationContext();

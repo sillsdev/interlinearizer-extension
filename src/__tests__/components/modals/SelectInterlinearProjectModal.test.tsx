@@ -6,8 +6,8 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { SelectInterlinearProjectModal } from '../../components/SelectInterlinearProjectModal';
-import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import { SelectInterlinearProjectModal } from '../../../components/modals/SelectInterlinearProjectModal';
+import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 

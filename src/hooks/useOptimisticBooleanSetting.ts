@@ -1,5 +1,11 @@
 import { useProjectSetting } from '@papi/frontend/react';
+import type { ProjectSettingTypes } from 'papi-shared-types';
 import { useCallback, useEffect, useRef, useState } from 'react';
+
+/** Keys in {@link ProjectSettingTypes} whose values are `boolean`. */
+type BooleanProjectSettingKey = {
+  [K in keyof ProjectSettingTypes]: ProjectSettingTypes[K] extends boolean ? K : never;
+}[keyof ProjectSettingTypes];
 
 /** A timeout duration longer than the 5-10 seconds it usually takes for a setting to save. */
 const TIMEOUT_MS = 15_000;
@@ -21,7 +27,7 @@ const TIMEOUT_MS = 15_000;
  */
 export default function useOptimisticBooleanSetting(
   projectId: string,
-  settingKey: 'interlinearizer.continuousScroll',
+  settingKey: BooleanProjectSettingKey,
   defaultValue: boolean,
 ): {
   isLoading: boolean;

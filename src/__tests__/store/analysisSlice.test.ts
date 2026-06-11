@@ -1,14 +1,30 @@
 /** @file Unit tests for store/analysisSlice.ts. */
 /// <reference types="jest" />
 
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type {
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenAnalysis,
+  TokenAnalysisLink,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
+import { makePhraseLink } from '../test-helpers';
 import {
+  createPhrase,
   defaultAnalysis,
   defaultState,
+  deletePhrase,
+  mergePhrases,
   selectApprovedGloss,
+  selectPhraseLinkByTokenRef,
+  selectPhraseAnalysisById,
+  selectPhraseGloss,
+  selectPhraseLinks,
   setAnalysis,
+  updatePhrase,
   writeGloss,
+  writePhraseGloss,
 } from '../../store/analysisSlice';
 
 /**
@@ -57,6 +73,50 @@ describe('setAnalysis', () => {
 });
 
 describe('writeGloss', () => {
+  it('removes an orphaned approved link and creates a fresh one', () => {
+    // Orphaned state: an approved link whose analysisId has no matching TokenAnalysis.
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'old-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    const { tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalysisLinks).toHaveLength(1);
+    expect(tokenAnalysisLinks[0].analysisId).not.toBe('old-uuid');
+  });
+
+  it('produces exactly one approved link after writing a gloss over an orphaned link', () => {
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'old-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', 'hello'));
+
+    const approved = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter(
+        (l) => l.status === 'approved' && l.token.tokenRef === 'tok-1',
+      );
+    expect(approved).toHaveLength(1);
+  });
+
   it('initializes gloss when the existing approved analysis has none', () => {
     // Seed an approved TokenAnalysis with no gloss field, then update it via writeGloss.
     const store = createAnalysisStore({
@@ -84,5 +144,403 @@ describe('selectApprovedGloss', () => {
     });
 
     expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase reducers
+// ---------------------------------------------------------------------------
+
+/**
+ * Builds a `TextAnalysis` seeded with the given approved phrase link.
+ *
+ * @param link - The `PhraseAnalysisLink` to include.
+ * @returns A `TextAnalysis` with the link and its corresponding `PhraseAnalysis`.
+ */
+function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
+  return {
+    ...defaultAnalysis,
+    phraseAnalyses: [{ id: link.analysisId, surfaceText: 'phrase' }],
+    phraseAnalysisLinks: [link],
+  };
+}
+
+describe('createPhrase', () => {
+  it('appends a PhraseAnalysis and approved PhraseAnalysisLink', () => {
+    const store = createAnalysisStore();
+    const tokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'Hello' },
+      { tokenRef: 'tok-b', surfaceText: 'World' },
+    ];
+
+    store.dispatch(createPhrase(tokens));
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].status).toBe('approved');
+    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(tokens);
+    expect(phraseAnalyses[0].id).toBe(phraseAnalysisLinks[0].analysisId);
+  });
+
+  it('sets surfaceText to tokens joined by spaces', () => {
+    const store = createAnalysisStore();
+    const tokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
+    ];
+
+    store.dispatch(createPhrase(tokens));
+
+    expect(store.getState().analysis.analysis.phraseAnalyses[0].surfaceText).toBe('foo bar');
+  });
+});
+
+describe('updatePhrase', () => {
+  it('replaces the token list of the matching phrase link', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+    const newTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
+    ];
+
+    store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: newTokens }));
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].tokens).toStrictEqual(
+      newTokens,
+    );
+  });
+
+  it('re-derives surfaceText from the new tokens', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+    const newTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'foo' },
+      { tokenRef: 'tok-b', surfaceText: 'bar' },
+    ];
+
+    store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: newTokens }));
+
+    expect(store.getState().analysis.analysis.phraseAnalyses[0].surfaceText).toBe('foo bar');
+  });
+
+  it('preserves the phrase analysis id when tokens is non-empty', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(
+      updatePhrase({ phraseId: 'phrase-1', tokens: [{ tokenRef: 'tok-a', surfaceText: 'Hello' }] }),
+    );
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
+  });
+
+  it('removes the phrase entirely when tokens becomes empty', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(updatePhrase({ phraseId: 'phrase-1', tokens: [] }));
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(0);
+    expect(phraseAnalysisLinks).toHaveLength(0);
+  });
+
+  it('does nothing when the phraseId does not match any link', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+    const before = store.getState().analysis.analysis.phraseAnalysisLinks[0].tokens;
+
+    store.dispatch(updatePhrase({ phraseId: 'nonexistent', tokens: [] }));
+
+    expect(store.getState().analysis.analysis.phraseAnalysisLinks[0].tokens).toStrictEqual(before);
+  });
+});
+
+describe('deletePhrase', () => {
+  it('removes both the PhraseAnalysis and its PhraseAnalysisLink', () => {
+    const existing = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(existing), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deletePhrase({ phraseId: 'phrase-1' }));
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(0);
+    expect(phraseAnalysisLinks).toHaveLength(0);
+  });
+
+  it('leaves other phrases intact when deleting one', () => {
+    const link1 = makePhraseLink('phrase-1', ['tok-a']);
+    const link2 = makePhraseLink('phrase-2', ['tok-b']);
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...defaultAnalysis,
+          phraseAnalyses: [
+            { id: 'phrase-1', surfaceText: 'A' },
+            { id: 'phrase-2', surfaceText: 'B' },
+          ],
+          phraseAnalysisLinks: [link1, link2],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(deletePhrase({ phraseId: 'phrase-1' }));
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].id).toBe('phrase-2');
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].analysisId).toBe('phrase-2');
+  });
+});
+
+describe('mergePhrases', () => {
+  it('replaces the target tokens, re-derives surfaceText, and deletes the absorbed phrase', () => {
+    const target = makePhraseLink('phrase-1', ['tok-a']);
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...defaultAnalysis,
+          phraseAnalyses: [
+            { id: 'phrase-1', surfaceText: 'A' },
+            { id: 'phrase-2', surfaceText: 'B' },
+          ],
+          phraseAnalysisLinks: [target, absorbed],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    const mergedTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
+    ];
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: mergedTokens,
+        absorbedPhraseId: 'phrase-2',
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].id).toBe('phrase-1');
+    expect(phraseAnalyses[0].surfaceText).toBe('A B');
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].analysisId).toBe('phrase-1');
+    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(mergedTokens);
+  });
+
+  it('grows the target without deleting anything when absorbedPhraseId is undefined', () => {
+    const target = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(target), analysisLanguage: 'und' },
+    });
+
+    const mergedTokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-a', surfaceText: 'A' },
+      { tokenRef: 'tok-b', surfaceText: 'B' },
+    ];
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: mergedTokens,
+        absorbedPhraseId: undefined,
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].surfaceText).toBe('A B');
+    expect(phraseAnalysisLinks[0].tokens).toStrictEqual(mergedTokens);
+  });
+
+  it('no-ops entirely when absorbedPhraseId equals targetPhraseId', () => {
+    const phrase = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...defaultAnalysis,
+          phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'A' }],
+          phraseAnalysisLinks: [phrase],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'phrase-1',
+        tokens: [
+          { tokenRef: 'tok-a', surfaceText: 'A' },
+          { tokenRef: 'tok-b', surfaceText: 'B' },
+        ],
+        absorbedPhraseId: 'phrase-1',
+      }),
+    );
+
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(1);
+    expect(phraseAnalyses[0].surfaceText).toBe('A');
+    expect(phraseAnalysisLinks).toHaveLength(1);
+    expect(phraseAnalysisLinks[0].tokens).toHaveLength(1);
+  });
+
+  it('no-ops on the target updates when the target phrase id is not found', () => {
+    const absorbed = makePhraseLink('phrase-2', ['tok-b']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(absorbed), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(
+      mergePhrases({
+        targetPhraseId: 'missing',
+        tokens: [{ tokenRef: 'tok-b', surfaceText: 'B' }],
+        absorbedPhraseId: 'phrase-2',
+      }),
+    );
+
+    // The absorbed phrase is still removed; the missing target simply has no link/analysis to grow.
+    const { phraseAnalyses, phraseAnalysisLinks } = store.getState().analysis.analysis;
+    expect(phraseAnalyses).toHaveLength(0);
+    expect(phraseAnalysisLinks).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase selectors
+// ---------------------------------------------------------------------------
+
+describe('selectPhraseLinks', () => {
+  it('returns only approved phrase links', () => {
+    const approved = makePhraseLink('phrase-1', ['tok-a']);
+    const suggested: PhraseAnalysisLink = {
+      ...makePhraseLink('phrase-2', ['tok-b']),
+      status: 'suggested',
+    };
+    const analysis: TextAnalysis = {
+      ...defaultAnalysis,
+      phraseAnalyses: [
+        { id: 'phrase-1', surfaceText: 'A' },
+        { id: 'phrase-2', surfaceText: 'B' },
+      ],
+      phraseAnalysisLinks: [approved, suggested],
+    };
+    const store = createAnalysisStore({ analysis: { analysis, analysisLanguage: 'und' } });
+
+    const result = selectPhraseLinks(store.getState().analysis);
+
+    expect(result).toHaveLength(1);
+    expect(result[0].analysisId).toBe('phrase-1');
+  });
+});
+
+describe('selectPhraseLinkByTokenRef', () => {
+  it('maps each tokenRef to its approved phrase link', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a', 'tok-b']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    const map = selectPhraseLinkByTokenRef(store.getState().analysis);
+
+    expect(map.get('tok-a')?.analysisId).toBe('phrase-1');
+    expect(map.get('tok-b')?.analysisId).toBe('phrase-1');
+  });
+
+  it('returns an empty map when no approved phrase links exist', () => {
+    const store = createAnalysisStore();
+
+    const map = selectPhraseLinkByTokenRef(store.getState().analysis);
+
+    expect(map.size).toBe(0);
+  });
+});
+
+describe('selectPhraseAnalysisById', () => {
+  it('returns the PhraseAnalysis for a known id', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    const result = selectPhraseAnalysisById(store.getState().analysis, 'phrase-1');
+
+    expect(result?.id).toBe('phrase-1');
+  });
+
+  it('returns undefined for an unknown id', () => {
+    const store = createAnalysisStore();
+
+    const result = selectPhraseAnalysisById(store.getState().analysis, 'nonexistent');
+
+    expect(result).toBeUndefined();
+  });
+});
+
+describe('writePhraseGloss', () => {
+  it('writes the gloss for the active language on a phrase', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writePhraseGloss({ phraseId: 'phrase-1', value: 'beginning' }));
+
+    const pa = store.getState().analysis.analysis.phraseAnalyses[0];
+    expect(pa.gloss).toStrictEqual({ und: 'beginning' });
+  });
+
+  it('no-ops when the phrase id is not found', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writePhraseGloss({ phraseId: 'nonexistent', value: 'hi' }));
+
+    expect(store.getState().analysis.analysis.phraseAnalyses).toHaveLength(0);
+  });
+});
+
+describe('selectPhraseGloss', () => {
+  it('returns the gloss string for a phrase in the active language', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+    store.dispatch(writePhraseGloss({ phraseId: 'phrase-1', value: 'beginning' }));
+
+    const gloss = selectPhraseGloss(store.getState().analysis, 'phrase-1');
+
+    expect(gloss).toBe('beginning');
+  });
+
+  it('returns empty string when the phrase has no gloss in the active language', () => {
+    const link = makePhraseLink('phrase-1', ['tok-a']);
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
+    });
+
+    expect(selectPhraseGloss(store.getState().analysis, 'phrase-1')).toBe('');
+  });
+
+  it('returns empty string when the phrase id is not found', () => {
+    const store = createAnalysisStore();
+    expect(selectPhraseGloss(store.getState().analysis, 'nonexistent')).toBe('');
   });
 });

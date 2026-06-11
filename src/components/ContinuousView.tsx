@@ -1,8 +1,19 @@
-import type { Book, ScriptureRef, Token } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { isWordToken } from './component-types';
-import MemoizedPhraseBox from './PhraseBox';
-import { MemoizedInertTokenChip } from './TokenChip';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import type { Book, Token } from 'interlinearizer';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
+import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import type { PhraseMode } from '../types/phrase-mode';
+import { isWordToken } from '../types/type-guards';
+import { PhraseStripProvider } from './PhraseStripContext';
+import type { PhraseStripContextValue } from './PhraseStripContext';
+import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
+import type { LinkSlot, TokenGroup } from '../types/token-layout';
+import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { useArcPaths } from '../hooks/useArcPaths';
+import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import MemoizedArcOverlay from './ArcOverlay';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -12,6 +23,7 @@ import { MemoizedInertTokenChip } from './TokenChip';
  * @returns A safe index guaranteed to be within bounds.
  */
 function clampIndex(index: number, len: number): number {
+  /* v8 ignore next -- only called when len > 0; guard is a defensive invariant */
   if (len === 0) return 0;
   return Math.max(0, Math.min(index, len - 1));
 }
@@ -29,369 +41,349 @@ const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
 const STRIP_FADE_MS = 500;
 
 /**
+ * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an
+ * internal-nav smooth scroll. The relayout normally fires on the scroll container's `scrollend`
+ * event (adaptive to however long the animation actually takes); this timeout only fires when
+ * `scrollend` is unavailable or never emitted (the target was already centered, so no scroll
+ * occurred). Sized to comfortably outlast a one-phrase smooth scroll on slow hardware so it never
+ * preempts a real `scrollend`.
+ */
+const SCROLL_SETTLE_FALLBACK_MS = 600;
+
+/**
  * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
  * realistic viewport can ever render all tokens simultaneously.
  */
 const PHRASE_WINDOW_HALF = 100;
 
+/**
+ * Localized string keys this view needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders. A fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, escalating into an infinite update loop that freezes
+ * the WebView.
+ */
+const STRING_KEYS = [
+  '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+] as const satisfies `%${string}%`[];
+
+/** A between-group slot render item annotated with the absolute group indices on either side. */
+type SlotUnit = {
+  kind: 'slot';
+  /** The slot's neighboring groups and any punctuation tokens in the gap. */
+  slot: LinkSlot;
+  /** Window-absolute index of the group before the slot, or `undefined` for the leading boundary. */
+  prevGroupIndex: number | undefined;
+  /** Window-absolute index of the group after the slot, or `undefined` for the trailing boundary. */
+  nextGroupIndex: number | undefined;
+};
+
+/** A phrase-group render item annotated with its window-absolute group index. */
+type GroupUnit = {
+  kind: 'group';
+  /** The phrase group to render. */
+  group: TokenGroup;
+  /** Absolute index of this group within the full `phraseGroups` array (not the window slice). */
+  groupIndex: number;
+};
+
 /** Props for {@link ContinuousView}. */
 type ContinuousViewProps = Readonly<{
-  /**
-   * When set, the strip jumps to this phrase index. Used to carry over a focused token when
-   * switching from segment view.
-   */
-  activePhraseIndex: number | undefined;
-  /** Verse coordinate; when it changes the strip scrolls to the first token of that segment. */
-  activeVerse: ScriptureRef;
   /** The full tokenized book whose tokens are streamed into the strip. */
   book: Book;
-  /** Called whenever the focused phrase index changes so the parent can mirror the strip position. */
-  onFocusPhraseIndexChange: (index: number) => void;
-  /** Called when arrow navigation moves the focus into a new verse. */
-  onVerseChange: (verse: ScriptureRef) => void;
+  /** Segment id of the phrase being edited, or `undefined` outside edit mode. Passed to `PhraseBox`. */
+  editPhraseSegmentId: string | undefined;
+  /**
+   * Token ref of the currently focused word token, or `undefined` when nothing is focused. The
+   * strip jumps to the group containing this token and uses it as the single source of truth for
+   * highlight + slot rules. All scroll position is derived from this value.
+   */
+  focusedTokenRef: string | undefined;
+  /**
+   * Called when arrow navigation or a click in the strip should change which token is focused. The
+   * parent echoes the value back through `focusedTokenRef`; the strip then re-renders with the new
+   * focus and scrolls into view.
+   */
+  onFocusedTokenRefChange: (ref: string) => void;
+  /** Current phrase-interaction mode; controls token click behavior in the strip. */
+  phraseMode: PhraseMode;
+  /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
+  setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
+  /** Token ref → segment id lookup; used to resolve the focused token's segment for slot rules. */
+  tokenSegmentMap: ReadonlyMap<string, string>;
+  /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  /**
+   * When `true`, link/unlink buttons between phrases are hidden except in the segment containing
+   * the focused token (the active verse within the strip).
+   */
+  hideInactiveLinkButtons: boolean;
+  /**
+   * When `true`, phrase-level controls (split, intra-phrase unlink, remove-token) are hidden on
+   * every phrase except the focused one.
+   */
+  simplifyPhrases: boolean;
 }>;
 
 /**
  * Renders all tokens from every segment in the given book as a single flat, horizontally scrollable
- * strip. Arrow buttons advance or retreat the view by one token at a time with smooth scrolling
- * animation. No segment markers, verse labels, or chapter boundaries are shown — the strip is fully
- * continuous.
+ * strip. Word tokens belonging to the same phrase are joined into a single `PhraseBox`; arcs are
+ * drawn between discontiguous boxes that share a phrase. Arrow buttons advance or retreat the view
+ * by one phrase group at a time with smooth scrolling animation. No segment markers, verse labels,
+ * or chapter boundaries are shown — the strip is fully continuous.
  *
- * Edge behaviour:
- *
- * - Previous arrow is disabled (and previous fade suppressed) when the first token is focused.
- * - Next arrow is disabled (and next fade suppressed) when the last token is focused.
- *
- * When `activeVerse` changes the strip jumps to the first token of the matching segment. When arrow
- * navigation crosses a verse boundary `onVerseChange` is called with the new verse coordinate.
+ * Scroll position is derived from `focusedTokenRef`: the strip always centers the group containing
+ * that token. Arrow buttons advance or retreat focus by one group and notify the parent; the parent
+ * echoes the new ref back through `focusedTokenRef`. The previous/next arrows are disabled when the
+ * first/last phrase is focused.
  *
  * @param props - Component props
- * @param props.activePhraseIndex - When set, the strip jumps to this phrase index; used to carry
- *   over a focused token when switching from segment view
- * @param props.activeVerse - Verse coordinate; when it changes the strip scrolls to the first token
- *   of the matching segment
  * @param props.book - The full tokenized book whose tokens should be streamed
- * @param props.onFocusPhraseIndexChange - Called whenever the focused phrase index changes so the
- *   parent can mirror the strip position
- * @param props.onVerseChange - Called when arrow navigation moves the focus into a new verse
- * @returns A horizontal token strip with previous/next navigation arrows and edge-fade overlays
+ * @param props.editPhraseSegmentId - Segment id of the phrase being edited; passed to `PhraseBox`
+ * @param props.focusedTokenRef - Single source of truth for focus + scroll position
+ * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
+ * @param props.phraseMode - Current phrase-interaction mode; controls token click behavior
+ * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
+ * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
+ * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
+ * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
+ *   the focused token's segment.
+ * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
+ *   the focused one.
+ * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
-  activePhraseIndex,
-  activeVerse,
   book,
-  onFocusPhraseIndexChange,
-  onVerseChange,
+  editPhraseSegmentId,
+  focusedTokenRef,
+  onFocusedTokenRefChange,
+  phraseMode,
+  setPhraseMode,
+  tokenSegmentMap,
+  wordTokenByRef,
+  hideInactiveLinkButtons,
+  simplifyPhrases,
 }: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
+
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const allTokens: Token[] = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens),
     [book.segments],
   );
 
-  /** Maps each segment id to the index of its first word token in `allTokens`. */
-  const segmentStartIndex = useMemo(() => {
-    const { map } = book.segments.reduce(
-      (acc, seg) => {
-        const firstWordIndex = seg.tokens.findIndex((t) => t.type === 'word');
-        if (firstWordIndex >= 0) acc.map.set(seg.id, acc.offset + firstWordIndex);
-        return { map: acc.map, offset: acc.offset + seg.tokens.length };
-      },
-      { map: new Map<string, number>(), offset: 0 },
-    );
+  const committedPhraseLinkByRef = usePhraseLinkMap();
+  const committedPhraseLinkById = usePhraseLinkByIdMap();
+
+  /**
+   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
+   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
+   */
+  const editPhraseTokens = useMemo(
+    () =>
+      phraseMode.kind === 'edit'
+        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
+          committedPhraseLinkById.get(phraseMode.phraseId)?.tokens
+        : undefined,
+    [phraseMode, committedPhraseLinkById],
+  );
+
+  /** Maps each word token ref to its flat document index for document-order phrase merges. */
+  const tokenDocOrder = useMemo(() => {
+    const map = new Map<string, number>();
+    allTokens.filter(isWordToken).forEach((t, i) => map.set(t.ref, i));
     return map;
-  }, [book.segments]);
+  }, [allTokens]);
 
-  /** The navigable phrase entries (currently one per word token). */
-  const phraseEntries = useMemo(
-    () =>
-      allTokens
-        .map((token, tokenIndex) => ({ token, tokenIndex }))
-        .filter((entry) => entry.token.type === 'word'),
-    [allTokens],
+  /** Phrase groups built from the flat token list, respecting the committed phrase-link map. */
+  const phraseGroups = useMemo(
+    () => groupTokens(allTokens, committedPhraseLinkByRef),
+    [allTokens, committedPhraseLinkByRef],
   );
 
-  /**
-   * Stable single-token arrays indexed by position in `allTokens`, so `MemoizedPhraseBox` receives
-   * the same array reference across renders and shallow memo comparison holds.
-   */
-  const tokenArrays = useMemo(
-    () => allTokens.map((token) => (isWordToken(token) ? [token] : [])),
-    [allTokens],
-  );
+  /** Maps each word token ref to the group index that contains it. */
+  const groupIndexByTokenRef = useMemo(() => {
+    const map = new Map<string, number>();
+    phraseGroups.forEach((g, gi) => {
+      g.tokens.forEach((t) => map.set(t.ref, gi));
+    });
+    return map;
+  }, [phraseGroups]);
 
-  /**
-   * Ref mirror of `phraseEntries`. Read inside effects and callbacks that need the latest list
-   * without declaring it as a dependency (which would cause spurious re-runs).
-   */
-  const phraseEntriesRef = useRef(phraseEntries);
-  phraseEntriesRef.current = phraseEntries;
-
-  /** Flat token index -> phrase index lookup for focused rendering. */
-  const phraseIndexByTokenIndex = useMemo(
-    () =>
-      phraseEntries.reduce((acc, entry, phraseIndex) => {
-        acc.set(entry.tokenIndex, phraseIndex);
-        return acc;
-      }, new Map<number, number>()),
-    [phraseEntries],
-  );
-
-  /** Flat token index -> owning segment lookup. */
+  /** Flat token index -> owning segment lookup; used for per-slot segment resolution. */
   const tokenSegment = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens.map(() => seg)),
     [book.segments],
   );
 
   /**
-   * Maps a flat token index to the segment that owns it. Stored in a ref so that a new book object
-   * reference (same content) does not cause the verse-change effect to re-fire.
+   * Token ref that the strip is currently displaying as focused. Lags `focusedTokenRef` during the
+   * fade-out for external jumps so the window/scroll/highlight don't shift until the strip has
+   * faded out. For internal nav (arrow buttons, phrase clicks) this is updated immediately so the
+   * smooth scroll starts on the same frame.
    */
-  const tokenSegmentRef = useRef(tokenSegment);
-  tokenSegmentRef.current = tokenSegment;
-
-  /**
-   * Returns the phrase index of the first word token in the segment that matches `verse`, or
-   * `undefined` when `verse` is absent or does not match any known segment.
-   *
-   * @param verse - Target scripture reference to locate.
-   * @returns Zero-based phrase index, or `undefined` if the verse cannot be resolved.
-   */
-  const getPhraseIndexForVerse = useCallback(
-    (verse?: ScriptureRef): number | undefined => {
-      /* v8 ignore next -- verse is always defined at the one call site */
-      if (!verse) return;
-
-      const seg = book.segments.find(
-        (s) =>
-          s.startRef.book === verse.book &&
-          s.startRef.chapter === verse.chapter &&
-          s.startRef.verse === verse.verse,
-      );
-      /* v8 ignore next -- only reachable when an external activeVerse references an unrecognized segment */
-      if (!seg) return;
-
-      const tokenIndex = segmentStartIndex.get(seg.id);
-      if (tokenIndex === undefined) return;
-
-      return phraseIndexByTokenIndex.get(tokenIndex);
-    },
-    [book.segments, segmentStartIndex, phraseIndexByTokenIndex],
+  const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
+    focusedTokenRef,
   );
 
-  // Lazy-initialize to the target verse so on first render the strip is already positioned
-  // correctly before the initial-load fade-in fires. Prefer activePhraseIndex (e.g. a focused token
-  // carried over from segment view) so there is no flash to the verse-start position on mount.
-  const [focusPhraseIndex, setFocusPhraseIndex] = useState<number>(() => {
-    if (activePhraseIndex !== undefined) return clampIndex(activePhraseIndex, phraseEntries.length);
-
-    const seg = book.segments.find(
-      (s) =>
-        s.startRef.book === activeVerse.book &&
-        s.startRef.chapter === activeVerse.chapter &&
-        s.startRef.verse === activeVerse.verse,
-    );
-    /* v8 ignore next -- V8 does not track branches inside useState lazy initializer */
-    if (!seg) return 0;
-
-    const tokenIdx = segmentStartIndex.get(seg.id);
-    /* v8 ignore next -- V8 does not track branches inside useState lazy initializer */
-    if (tokenIdx === undefined) return 0;
-
-    /* v8 ignore next -- phraseIndexByTokenIndex always has an entry for a valid tokenIdx */
-    return phraseIndexByTokenIndex.get(tokenIdx) ?? 0;
-  });
-
   /**
-   * The phrase index of the most recent external jump (prop-driven). Read inside the
-   * `focusPhraseIndex` effect to suppress the echo-back verse-change notification that would
-   * otherwise fire when the strip repositions itself in response to an incoming prop.
+   * Group index of the displayed focused token, or `0` when nothing is focused. Single source of
+   * truth for scroll position, windowing, arrow disabled state, and per-group focus highlighting.
    */
-  const jumpTargetRef = useRef<number | undefined>(undefined);
-  const [pendingExternalJumpPhraseIndex, setPendingExternalJumpPhraseIndex] = useState<
-    number | undefined
-  >();
+  const focusPhraseIndex = useMemo(() => {
+    if (displayFocusedTokenRef === undefined) return 0;
+    const gi = groupIndexByTokenRef.get(displayFocusedTokenRef);
+    /* v8 ignore next -- gi is always defined when displayFocusedTokenRef is set */
+    return gi === undefined ? 0 : clampIndex(gi, phraseGroups.length);
+  }, [displayFocusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
+
   const [isVisible, setIsVisible] = useState(false);
 
-  /** True while an externally triggered jump (prop change) is in progress; suppresses smooth scroll. */
-  const isExternalJumpInProgressRef = useRef(false);
   /** True until the first scroll-into-view completes; suppresses smooth scroll on initial mount. */
   const isInitialLoadInProgressRef = useRef(true);
 
   /**
-   * True when the lazy `useState` initializer already positioned the strip at `activePhraseIndex`,
-   * so the first run of the `activePhraseIndex` effect should be skipped to avoid a redundant
-   * jump.
+   * Token ref that the strip set via `onFocusedTokenRefChange` from internal arrow nav or click.
+   * When the parent echoes the same value back as `focusedTokenRef`, the focus-change effect
+   * applies the new ref immediately and smooth-scrolls instead of fade-then-snap.
    */
-  const activePhraseIndexAppliedRef = useRef(activePhraseIndex !== undefined);
+  const internalFocusedTokenRefRef = useRef<string | undefined>(undefined);
+
+  /** True when the last displayFocusedTokenRef update was triggered by internal navigation. */
+  const lastDisplayUpdateWasInternalRef = useRef(false);
 
   /**
-   * Records the verse most recently reported via `onVerseChange`. When the parent echoes that verse
-   * back as `activeVerse` we skip the jump — the change originated here, not externally.
-   * Initialized to `activeVerse` so the initial mount position (set by the lazy `useState`
-   * initializer) is treated as already handled, preventing a spurious jump on first render.
+   * Tracks the "pending" phrase index for sequential arrow-button presses. Written synchronously by
+   * `step()` so that a second click before re-render reads the already-advanced value instead of
+   * the stale rendered `focusPhraseIndex`, preventing rapid double-clicks from advancing only one
+   * group instead of two.
    */
-  const lastInternalVerseRef = useRef<ScriptureRef | undefined>(activeVerse);
+  const pendingPhraseIndexRef = useRef(0);
+  // Keep in sync with the rendered value so external jumps reset the pending index. When an
+  // internal nav is still in flight (the parent hasn't echoed back yet), do not overwrite: a rapid
+  // second click needs to read the already-advanced pending index rather than the stale rendered
+  // focusPhraseIndex.
+  if (internalFocusedTokenRefRef.current === undefined) {
+    pendingPhraseIndexRef.current = focusPhraseIndex;
+  }
 
-  // These two effects (activePhraseIndex and activeVerse) could theoretically race: if both props
-  // changed in one render, the activeVerse effect would overwrite the activePhraseIndex jump,
-  // scrolling to verse-start rather than the exact token. This is safe because Interlinearizer
-  // only passes activePhraseIndex when continuousScroll is false (segment mode), where ContinuousView
-  // is unmounted. When continuousScroll is true, SegmentView renders in baseline-text mode and
-  // onSelect is called without a tokenId, so activePhraseIndex is never set from within continuous
-  // mode. Any future change that adds token-level clicks in continuous mode must revisit this.
-
-  // Jump to a specific phrase index when activePhraseIndex changes.
-  useEffect(() => {
-    if (activePhraseIndex === undefined) return;
-
-    // Skip the first run when the lazy initializer already positioned the strip here.
-    if (activePhraseIndexAppliedRef.current) {
-      activePhraseIndexAppliedRef.current = false;
-      return;
-    }
-
-    const clamped = clampIndex(activePhraseIndex, phraseEntriesRef.current.length);
-    jumpTargetRef.current = clamped;
-    isExternalJumpInProgressRef.current = true;
-    setIsVisible(false);
-    setPendingExternalJumpPhraseIndex(clamped);
-  }, [activePhraseIndex]);
-
-  // Jump to the first token of the matching segment when the active verse changes.
-  useEffect(() => {
-    // Skip if this activeVerse update is an echo-back of a verse change we reported ourselves.
-    const lastInternal = lastInternalVerseRef.current;
-    if (
-      lastInternal?.book === activeVerse.book &&
-      lastInternal.chapter === activeVerse.chapter &&
-      lastInternal.verse === activeVerse.verse
-    ) {
-      lastInternalVerseRef.current = undefined;
-      return;
-    }
-
-    const phraseIndex = getPhraseIndexForVerse(activeVerse);
-    if (phraseIndex === undefined) return;
-
-    jumpTargetRef.current = phraseIndex;
-    isExternalJumpInProgressRef.current = true;
-    setIsVisible(false);
-    setPendingExternalJumpPhraseIndex(phraseIndex);
-    // Exclude activeVerse to prevent rerun if the verse hasn't changed.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeVerse?.book, activeVerse?.chapter, activeVerse?.verse, getPhraseIndexForVerse]);
-
-  // Let the fade-out complete before triggering the focus jump scroll.
-  useEffect(() => {
-    if (pendingExternalJumpPhraseIndex === undefined) return undefined;
-
-    const timeout = setTimeout(() => {
-      setFocusPhraseIndex(pendingExternalJumpPhraseIndex);
-      setPendingExternalJumpPhraseIndex(undefined);
-    }, STRIP_FADE_MS);
-
-    return () => clearTimeout(timeout);
-  }, [pendingExternalJumpPhraseIndex]);
-
-  // Fire onVerseChange when arrow navigation crosses into a new verse.
-  // Initialize to the segment that owns the initial focusPhraseIndex so the initial render does not trigger the callback.
-  const firstVisibleSegId =
-    phraseEntries.length > 0 ? tokenSegment[phraseEntries[0].tokenIndex]?.id : undefined;
-  const initialFocusedPhrase = phraseEntries[focusPhraseIndex];
-  const initialSegId = initialFocusedPhrase
-    ? tokenSegment[initialFocusedPhrase.tokenIndex]?.id
-    : firstVisibleSegId;
-  /**
-   * Segment id of the last verse reported via `onVerseChange`. Compared against the current focused
-   * segment to avoid firing the callback redundantly when focus stays within the same verse.
-   */
-  const lastReportedSegIdRef = useRef<string | undefined>(initialSegId);
-
-  // Keep the reported-segment baseline in sync when switching to a different book.
-  useEffect(() => {
-    lastReportedSegIdRef.current = firstVisibleSegId;
-  }, [book.id, firstVisibleSegId]);
-
-  useEffect(() => {
-    // Suppress echo-back when the change was driven by an incoming activeVerse prop.
-    if (jumpTargetRef.current === focusPhraseIndex) {
-      jumpTargetRef.current = undefined;
-      return;
-    }
-
-    jumpTargetRef.current = undefined;
-    const focusedPhrase = phraseEntriesRef.current[focusPhraseIndex];
-    /* v8 ignore next -- focusPhraseIndex is always within phraseEntries bounds when state changes */
-    if (!focusedPhrase) return;
-
-    const seg = tokenSegmentRef.current[focusedPhrase.tokenIndex];
-    if (!seg || seg.id === lastReportedSegIdRef.current) return;
-
-    lastReportedSegIdRef.current = seg.id;
-    const verse = {
-      book: seg.startRef.book,
-      chapter: seg.startRef.chapter,
-      verse: seg.startRef.verse,
-    };
-    lastInternalVerseRef.current = verse;
-    onVerseChange(verse);
-    // onVerseChange and tokenSegmentRef are intentionally excluded — callers must stabilize the
-    // reference (useCallback) and tokenSegmentRef is a ref so changes are always current.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusPhraseIndex]);
-
-  /** Ref mirror of `onFocusPhraseIndexChange` so the notification effect never needs it as a dep. */
-  const onFocusPhraseIndexChangeRef = useRef(onFocusPhraseIndexChange);
-  onFocusPhraseIndexChangeRef.current = onFocusPhraseIndexChange;
-  // Intentionally fires on mount with the lazy-initialized focusPhraseIndex. This notifies the
-  // parent of the initial strip position so the segment list scrolls the active verse into view
-  // on first render. The coupling is load-bearing — do not add an early-return guard here.
-  useEffect(() => {
-    onFocusPhraseIndexChangeRef.current(focusPhraseIndex);
-  }, [focusPhraseIndex]);
-
-  /** DOM ref array indexed by phrase index; used to scroll the focused chip into view. */
+  /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
-  const atStart = phraseEntries.length === 0 || focusPhraseIndex === 0;
-  const atEnd = phraseEntries.length === 0 || focusPhraseIndex >= phraseEntries.length - 1;
+  /** Ref to the token-strip row; the content row and mouse-leave target. */
+  // eslint-disable-next-line no-null/no-null
+  const stripRowRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Ref to the fixed-width clipping viewport that wraps the content row. Because the inner row is
+   * `w-max` (sized to its content), this outer element is the one that actually scrolls when
+   * `scrollIntoView` centers a phrase, so its `scrollend` event is what signals the animation has
+   * settled.
+   */
+  // eslint-disable-next-line no-null/no-null
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+
+  /**
+   * Segment id whose link buttons are currently treated as active, lagging `focusedTokenRef` during
+   * internal navigation. Toggling this adds/removes inactive link icons, which re-lays out the
+   * whole strip; deferring it until the smooth scroll settles keeps the animation a pure one-token
+   * glide with no mid-flight box shifts. For external jumps and the initial mount it tracks the
+   * focus immediately (the strip is faded out or static, so there is no animation to disturb).
+   */
+  const [committedActiveSegmentId, setCommittedActiveSegmentId] = useState<string | undefined>(
+    () => (focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined),
+  );
+
+  /**
+   * The active segment the focus currently implies, recomputed every render. The lagging
+   * {@link committedActiveSegmentId} is reconciled toward this value either immediately (external
+   * jumps) or after the scroll animation (internal nav).
+   */
+  const targetActiveSegmentId =
+    focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined;
+
+  /** Ref mirror of the target so the post-scroll timeout reads the latest value without a dep. */
+  const targetActiveSegmentIdRef = useRef(targetActiveSegmentId);
+  targetActiveSegmentIdRef.current = targetActiveSegmentId;
+
+  /** Snaps the committed active segment to the current target; runs after an internal-nav scroll. */
+  const commitPendingActiveSegment = useCallback(() => {
+    setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
+  }, []);
+
+  /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
+  const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
+  onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
+
+  // Notify the parent of the initially-focused token on mount so the segment list scrolls the
+  // active verse into view on first render. Only fires when no token was already focused.
+  useEffect(() => {
+    if (focusedTokenRef !== undefined) return;
+    const initialGroup = phraseGroups[focusPhraseIndex];
+    const initialRef = initialGroup?.tokens[0]?.ref;
+    if (initialRef !== undefined) onFocusedTokenRefChangeRef.current(initialRef);
+    // Intentionally runs only on mount; do not add deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const atStart = phraseGroups.length === 0 || focusPhraseIndex === 0;
+  const atEnd = phraseGroups.length === 0 || focusPhraseIndex >= phraseGroups.length - 1;
   const stripOpacityClass = isVisible ? 'tw:opacity-100' : 'tw:opacity-0';
 
-  /** The inclusive phrase-index bounds of the rendered window. */
-  const windowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
-  const windowEnd = Math.min(phraseEntries.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
+  /** The inclusive group-index bounds of the rendered window. */
+  const renderWindowStart = Math.max(0, focusPhraseIndex - PHRASE_WINDOW_HALF);
+  const renderWindowEnd = Math.min(phraseGroups.length - 1, focusPhraseIndex + PHRASE_WINDOW_HALF);
 
-  /** Token index of the first token in the rendered window. */
-  const windowStartTokenIndex =
-    phraseEntries.length > 0 && windowStart > 0 ? phraseEntries[windowStart].tokenIndex : 0;
+  /**
+   * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
+   * identity is stable while the window is unchanged. This matters because `renderWindowGroups`
+   * feeds the `useArcPaths` dependency list: a fresh `.slice()` every render would bump the hook's
+   * internal version counter every render, forcing a re-measure on each pass and defeating the arc
+   * hook's own loop-damping (which keys off whether a real input changed).
+   */
+  const renderWindowGroups = useMemo(
+    () => phraseGroups.slice(renderWindowStart, renderWindowEnd + 1),
+    [phraseGroups, renderWindowStart, renderWindowEnd],
+  );
 
-  // windowEndTokenIndex stops at the last word token in the window, so punctuation tokens that
-  // trail it (before the next word) are excluded from the rendered slice. Punctuation before the
-  // window's first word IS included (windowStartTokenIndex points at the word itself). This
-  // asymmetry is invisible with PHRASE_WINDOW_HALF=100 but would matter if the window shrinks.
-  /** Token index one past the last token in the rendered window. */
-  const windowEndTokenIndex =
-    phraseEntries.length > 0 && windowEnd < phraseEntries.length - 1
-      ? phraseEntries[windowEnd].tokenIndex + 1
+  /**
+   * The flat token-index range spanned by the mounted render-window groups, used to slice
+   * `allTokens` for rendering punctuation tokens that appear between phrase groups.
+   */
+  const renderWindowStartTokenIndex =
+    phraseGroups.length > 0 && renderWindowStart > 0
+      ? phraseGroups[renderWindowStart].firstIndex
+      : 0;
+  const renderWindowEndTokenIndex =
+    phraseGroups.length > 0 && renderWindowEnd < phraseGroups.length - 1
+      ? phraseGroups[renderWindowEnd + 1].firstIndex
       : allTokens.length;
 
   /**
-   * Advances the focused phrase by `delta` positions, clamping to valid bounds.
+   * Advances focus by `delta` phrases by notifying the parent of the new focused token ref. The
+   * parent echoes the change back through `focusedTokenRef`, which re-derives `focusPhraseIndex`
+   * and triggers the scroll effect. Marks the change as internal so the fade is suppressed.
    *
    * @param delta - Number of phrases to move (positive = forward, negative = backward).
    */
-  const step = useCallback((delta: number) => {
-    setFocusPhraseIndex((i) => {
-      const nextIndex = i + delta;
-      /* v8 ignore next -- disabled buttons prevent underflow */
-      if (nextIndex < 0) return 0;
-      /* v8 ignore next -- disabled buttons prevent overflow */
-      if (nextIndex >= phraseEntriesRef.current.length) return phraseEntriesRef.current.length - 1;
-      return nextIndex;
-    });
-  }, []);
+  const step = useCallback(
+    (delta: number) => {
+      /* v8 ignore next -- arrow buttons are disabled when phraseGroups is empty */
+      if (phraseGroups.length === 0) return;
+      const nextIndex = pendingPhraseIndexRef.current + delta;
+      /* v8 ignore next -- disabled buttons prevent under/overflow */
+      const clamped = nextIndex < 0 ? 0 : Math.min(nextIndex, phraseGroups.length - 1);
+      /* v8 ignore next -- disabled buttons prevent clicking when already at boundary */
+      if (clamped === pendingPhraseIndexRef.current) return;
+      pendingPhraseIndexRef.current = clamped;
+      const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
+      if (nextRef !== undefined) {
+        internalFocusedTokenRefRef.current = nextRef;
+        onFocusedTokenRefChangeRef.current(nextRef);
+      }
+    },
+    [phraseGroups],
+  );
 
   /** Moves focus one phrase backward. */
   const stepPrev = useCallback(() => step(-1), [step]);
@@ -400,45 +392,438 @@ export default function ContinuousView({
   const stepNext = useCallback(() => step(1), [step]);
 
   /**
-   * Sets the focused phrase to `index` when provided, ignoring calls with no argument.
+   * Notifies the parent that the user selected the phrase whose first token is `ref`. The parent
+   * echoes the new token ref back through `focusedTokenRef`; scroll + highlight follow
+   * automatically.
    *
-   * @param index - Zero-based phrase index to focus, or `undefined` to do nothing.
+   * @param ref - First-token ref (group key) of the selected phrase.
    */
-  const handlePhraseSelect = useCallback((index?: number) => {
-    if (index !== undefined) {
-      setFocusPhraseIndex((prev) => (prev === index ? prev : index));
-    }
-  }, []);
+  const handlePhraseSelect = useCallback(
+    (ref: string) => {
+      const targetGroupIndex = groupIndexByTokenRef.get(ref);
+      const currentGroupIndex =
+        focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
+      if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
+      internalFocusedTokenRefRef.current = ref;
+      onFocusedTokenRefChangeRef.current(ref);
+    },
+    [focusedTokenRef, groupIndexByTokenRef],
+  );
 
+  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
+
+  /**
+   * Splits a phrase arc at a token boundary and dispatches the resulting create/update/delete
+   * operations. No-ops if `phraseId` is not in `committedPhraseLinkById`.
+   *
+   * @param phraseId - Id of the phrase arc to split.
+   * @param splitAfterTokenRef - Token ref at whose trailing boundary the split is made.
+   */
+  const handleArcSplit = useCallback(
+    (phraseId: string, splitAfterTokenRef: string) => {
+      const phraseLink = committedPhraseLinkById.get(phraseId);
+      if (!phraseLink) return;
+      splitPhraseAtBoundary(
+        phraseLink,
+        splitAfterTokenRef,
+        { createPhrase, updatePhrase, deletePhrase },
+        tokenDocOrder,
+      );
+    },
+    [committedPhraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
+  );
+
+  // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
+  // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
+  // Paratext verse selector, mode switch), fade the strip out, wait for the fade to complete,
+  // then snap the displayed focus into place so the scroll happens behind the curtain.
   useEffect(() => {
-    const isExternalJump = isExternalJumpInProgressRef.current;
+    if (focusedTokenRef === displayFocusedTokenRef) return undefined;
+    const isInternal = internalFocusedTokenRefRef.current === focusedTokenRef;
+    internalFocusedTokenRefRef.current = undefined;
+    if (isInternal) {
+      lastDisplayUpdateWasInternalRef.current = true;
+      setDisplayFocusedTokenRef(focusedTokenRef);
+      return undefined;
+    }
+    lastDisplayUpdateWasInternalRef.current = false;
+    setIsVisible(false);
+    const timeout = setTimeout(() => {
+      setDisplayFocusedTokenRef(focusedTokenRef);
+    }, STRIP_FADE_MS);
+    return () => clearTimeout(timeout);
+  }, [focusedTokenRef, displayFocusedTokenRef]);
+
+  // Scroll the focused phrase into view whenever the displayed focus changes. Smooth-scroll for
+  // internal nav (the displayed ref was updated immediately, so the prop and display agree); snap
+  // for external jumps (the displayed ref was just updated post-fade) and for the initial mount.
+  useEffect(() => {
+    const isInternal = lastDisplayUpdateWasInternalRef.current;
+    lastDisplayUpdateWasInternalRef.current = false;
     const isInitialLoad = isInitialLoadInProgressRef.current;
-    const shouldJumpInstantly = isExternalJump || isInitialLoad;
-    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: shouldJumpInstantly ? 'auto' : 'smooth',
-      block: 'nearest',
-      inline: 'center',
-    });
+    const shouldJumpInstantly = !isInternal || isInitialLoad;
 
-    if (!isExternalJump && !isInitialLoad) return undefined;
+    if (shouldJumpInstantly) {
+      // External jumps fade the strip out and the initial mount is static, so there is no animation
+      // to disturb — commit the active segment now alongside the instant scroll.
+      commitPendingActiveSegment();
+      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    }
 
-    // Clear the flags now — scrollIntoView has already been called above.  Clearing here
-    // (rather than inside the RAF callback) keeps subsequent scroll behavior deterministic
-    // regardless of whether the RAF fires before the next focusPhraseIndex change.
-    if (isExternalJump) isExternalJumpInProgressRef.current = false;
+    if (isInternal && !isInitialLoad) {
+      // Defer the smooth scroll one frame so the window re-render (groups mounting/unmounting as the
+      // window slides) has settled into its final layout before the animation computes its target.
+      // Scrolling synchronously here animates toward a position that then shifts, producing a visible
+      // overshoot-and-return ("yank") when crossing a verse boundary.
+      const navRafId = requestAnimationFrame(() => {
+        phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+          inline: 'center',
+        });
+      });
+      // Commit the active-segment change (which toggles inactive link-icon visibility, re-laying out
+      // the strip) only once the smooth scroll has actually settled. Updating it mid-scroll would
+      // add/remove icons while the strip is moving, shifting every box and turning the smooth glide
+      // into a jump-and-settle.
+      //
+      // Prefer the browser's `scrollend` event so the relayout lands the instant the animation
+      // finishes — adaptive to hardware, no guessed duration. `scrollend` is not universal and never
+      // fires when the target was already centered (no scroll happens), so a timeout backstops both
+      // cases. Whichever fires first wins; the other is torn down.
+      // `scrollIntoView` scrolls the nearest scrollable ancestor. Depending on layout that can be
+      // either the fixed-width clipping viewport or the content row, so listen on both — whichever
+      // actually scrolls fires `scrollend`. Commit on the first signal, then tear everything down so
+      // the relayout runs exactly once.
+      const scrollers = [scrollViewportRef.current, stripRowRef.current];
+      let fallbackTimeout: ReturnType<typeof setTimeout>;
+      /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
+      const onSettled = () => {
+        clearTimeout(fallbackTimeout);
+        scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        commitPendingActiveSegment();
+      };
+      fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
+      scrollers.forEach((el) => el?.addEventListener('scrollend', onSettled, { once: true }));
+      return () => {
+        cancelAnimationFrame(navRafId);
+        clearTimeout(fallbackTimeout);
+        scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+      };
+    }
+
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
     // Defer the fade-in until after the browser applies the instant scroll position.
     const rafId = requestAnimationFrame(() => setIsVisible(true));
-
     return () => {
       cancelAnimationFrame(rafId);
-      // Only reveal the strip on cleanup if no new external jump is about to take over.
-      // When a second click arrives before this RAF fires, isExternalJumpInProgressRef is already
-      // true for the new jump — revealing here would make the strip visible before it has scrolled.
-      if (!isExternalJumpInProgressRef.current) setIsVisible(true);
+      setIsVisible(true);
     };
-  }, [focusPhraseIndex]);
+  }, [focusPhraseIndex, commitPendingActiveSegment]);
+
+  // Keep the focused group pinned dead-center after the deferred active-segment flip. When
+  // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
+  // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `opacity: 0` their
+  // layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from the
+  // preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds the
+  // group centered for the full fade duration as a conservative guard against any future layout
+  // changes that could re-introduce drift. The first run is skipped because the initial center is
+  // established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very
+  // first re-center lands before paint (no initial flash), then `rAF` carries it through the fade.
+  const skipActiveSegmentRecenterRef = useRef(true);
+  useLayoutEffect(() => {
+    if (skipActiveSegmentRecenterRef.current) {
+      skipActiveSegmentRecenterRef.current = false;
+      return undefined;
+    }
+    /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
+    const recenter = () => {
+      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+        behavior: 'auto',
+        block: 'nearest',
+        inline: 'center',
+      });
+    };
+    recenter();
+    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+    let rafId = requestAnimationFrame(function recenterFrame() {
+      recenter();
+      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
+    });
+    return () => cancelAnimationFrame(rafId);
+    // Only the active-segment flip should trigger this re-anchor; focusPhraseIndex has its own scroll
+    // effect. Reading it here is a snapshot, not a trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [committedActiveSegmentId]);
+
+  // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` changes
+  // the strip's layout, so the previously-centered group may drift off-center; snap it back into
+  // view. `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even
+  // when hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does
+  // not shift the layout.
+  useEffect(() => {
+    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
+      behavior: 'auto',
+      block: 'nearest',
+      inline: 'center',
+    });
+    // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
+    // only re-centers in response to layout-affecting option toggles.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [simplifyPhrases]);
+
+  // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
+  // phrase by notifying the parent of the new focused token. Scroll then follows automatically
+  // through focusedTokenRef → focusPhraseIndex.
+  useEffect(() => {
+    if (phraseMode.kind === 'view') return;
+    const targetPhraseId = phraseMode.phraseId;
+    const group = phraseGroups.find((g) => g.phraseLink?.analysisId === targetPhraseId);
+    const nextRef = group?.tokens[0]?.ref;
+    /* v8 ignore next -- phrase always has tokens; focusedTokenRef differs at mode entry */
+    if (nextRef === undefined || nextRef === focusedTokenRef) return;
+    internalFocusedTokenRefRef.current = nextRef;
+    onFocusedTokenRefChangeRef.current(nextRef);
+    // phraseGroups and focusedTokenRef are read once per mode change; intentionally not deps so the
+    // effect only fires on actual mode transitions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phraseMode]);
+
+  /**
+   * Ref to the outer `tw:relative tw:overflow-visible` strip-fade-wrapper div that is both the SVG
+   * parent and the arc measurement container. Using this element (rather than the inner token-strip
+   * div) aligns the coordinate origin with the SVG's `inset: 0` anchor, so arc y-positions match.
+   */
+  // eslint-disable-next-line no-null/no-null
+  const arcContainerRef = useRef<HTMLDivElement | null>(null);
+
+  /** The phraseId whose arc is currently highlighted due to a phrase box being hovered. */
+  const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
+
+  /**
+   * Hover-preview state shared with SegmentView: the hovered group key (keyed by ref to match
+   * SegmentView), link-candidate token refs, and would-become-free token refs, plus their stable
+   * handlers.
+   */
+  const {
+    hoveredGroupKey,
+    setHoveredGroupKey,
+    candidateTokenRefs,
+    setCandidateTokenRefs,
+    splitFreeTokenRefs,
+    handleSplitHoverChange,
+    handleHoverSplitFreeTokens,
+    clearAll: clearHoverState,
+  } = usePhraseHoverState();
+
+  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
+    if (candidateTokenRefs.size === 0) return new Set();
+    const ids = new Set<string>();
+    committedPhraseLinkByRef.forEach((link) => {
+      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
+    });
+    return ids;
+  }, [candidateTokenRefs, committedPhraseLinkByRef]);
+
+  /**
+   * Strip-wide context value shared by every phrase group and link slot. Memoized so the leaf
+   * `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers don't re-render on unrelated changes.
+   * `setHoveredPhraseId` doubles as both the phrase-hover and candidate-phrase hover callback.
+   */
+  const stripContext = useMemo<PhraseStripContextValue>(
+    () => ({
+      phraseMode,
+      setPhraseMode,
+      editPhraseTokens,
+      editPhraseSegmentId,
+      tokenSegmentMap,
+      tokenDocOrder,
+      onHoverPhrase: setHoveredPhraseId,
+      onHoverCandidateTokens: setCandidateTokenRefs,
+      onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      activeSegmentId: committedActiveSegmentId,
+      crossSegmentLinkTooltip:
+        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+      skipLinkTransition: !isVisible,
+    }),
+    [
+      phraseMode,
+      setPhraseMode,
+      editPhraseTokens,
+      editPhraseSegmentId,
+      tokenSegmentMap,
+      tokenDocOrder,
+      setHoveredPhraseId,
+      setCandidateTokenRefs,
+      handleHoverSplitFreeTokens,
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      committedActiveSegmentId,
+      isVisible,
+      localizedStrings,
+    ],
+  );
+
+  /**
+   * Group index of the focused token, derived from `focusedTokenRef`. Used per-slot to compute
+   * `focusedSideIsPrev` from the same source as `focus.focusedPhraseLink` /
+   * `focus.focusedFreeToken` so link direction and link target can never disagree.
+   */
+  const focusedGroupIndex = useMemo(
+    () => (focusedTokenRef !== undefined ? groupIndexByTokenRef.get(focusedTokenRef) : undefined),
+    [focusedTokenRef, groupIndexByTokenRef],
+  );
+
+  /**
+   * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
+   * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
+   * SegmentView exactly.
+   */
+  const focus = useMemo(
+    () =>
+      resolveFocusContext(
+        focusedTokenRef,
+        wordTokenByRef,
+        committedPhraseLinkByRef,
+        tokenSegmentMap,
+      ),
+    [focusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
+  );
+
+  /** True when any committed phrase exists in the visible window. */
+  const hasRealPhraseInRenderWindow = renderWindowGroups.some((g) => g.phraseLink !== undefined);
+
+  // Measure phrase boxes after each render and compute arcs for discontiguous phrases.
+  const { arcPaths, stripTopPadding, stripLeftPadding, stripRightPadding } = useArcPaths(
+    arcContainerRef,
+    true,
+    hasRealPhraseInRenderWindow,
+    [renderWindowGroups, phraseMode, committedActiveSegmentId],
+  );
+
+  /**
+   * Interleaved render units (groups + link slots) in document order across the window. Built from
+   * the window token slice using the shared {@link buildRenderUnits} utility, then each group unit
+   * is annotated with its absolute group index.
+   */
+  const renderItems = useMemo(() => {
+    const renderWindowTokens = allTokens.slice(
+      renderWindowStartTokenIndex,
+      renderWindowEndTokenIndex,
+    );
+    const rawUnits = buildRenderUnits(renderWindowTokens, renderWindowGroups);
+    const groupIndexOffset = renderWindowStart;
+    const groupIndexByGroup = new Map(renderWindowGroups.map((g, i) => [g, i + groupIndexOffset]));
+    const result: (SlotUnit | GroupUnit)[] = [];
+    rawUnits.forEach((unit) => {
+      if (unit.kind === 'slot') {
+        result.push({
+          kind: 'slot',
+          slot: unit.slot,
+          prevGroupIndex: unit.slot.prevGroup
+            ? groupIndexByGroup.get(unit.slot.prevGroup)
+            : undefined,
+          nextGroupIndex: unit.slot.nextGroup
+            ? groupIndexByGroup.get(unit.slot.nextGroup)
+            : undefined,
+        });
+      } else {
+        const groupIndex =
+          /* v8 ignore next -- all window groups are always indexed; fallback is a defensive guard */
+          groupIndexByGroup.get(unit.group) ??
+          renderWindowGroups.indexOf(unit.group) + groupIndexOffset;
+        result.push({ kind: 'group', group: unit.group, groupIndex });
+      }
+    });
+    return result;
+  }, [
+    allTokens,
+    renderWindowGroups,
+    renderWindowStartTokenIndex,
+    renderWindowEndTokenIndex,
+    renderWindowStart,
+  ]);
+
+  /**
+   * Per-slot `focusedSideIsPrev`, precomputed once from the focused token's absolute group index. A
+   * slot's value is `true` when the focused group is start-ward of the slot, `false` when end-ward,
+   * and `undefined` when nothing is focused or the slot is a leading/trailing boundary. Keyed by
+   * slot item so the render body can look it up instead of computing the comparison inline.
+   */
+  const focusedSideIsPrevByItem = useMemo(() => {
+    const map = new Map<SlotUnit, boolean | undefined>();
+    renderItems.forEach((item) => {
+      if (item.kind !== 'slot') return;
+      map.set(
+        item,
+        focusedGroupIndex !== undefined &&
+          item.prevGroupIndex !== undefined &&
+          item.nextGroupIndex !== undefined
+          ? focusedGroupIndex <= item.prevGroupIndex
+          : undefined,
+      );
+    });
+    return map;
+  }, [renderItems, focusedGroupIndex]);
+
+  /**
+   * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot's segment ids
+   * are resolved from the absolute group indices, and each group carries the scroll-into-view ref
+   * by its absolute group index.
+   */
+  const stripItems = useMemo<StripItem[]>(
+    () =>
+      renderItems.map((item) => {
+        if (item.kind === 'slot') {
+          const { prevGroup, nextGroup } = item.slot;
+          const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
+          const prevSegmentId =
+            item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
+              ? tokenSegment[phraseGroups[item.prevGroupIndex].firstIndex]?.id
+              : undefined;
+          const nextSegmentId =
+            item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
+              ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
+              : undefined;
+          return {
+            kind: 'slot',
+            key,
+            slot: item.slot,
+            prevSegmentId,
+            nextSegmentId,
+            focusedSideIsPrev: focusedSideIsPrevByItem.get(item),
+          };
+        }
+        const { group, groupIndex } = item;
+        return {
+          kind: 'group',
+          key: group.tokens[0].ref,
+          group,
+          isFocused: group.tokens.some((t) => t.ref === displayFocusedTokenRef),
+          // New closure per recomputation; React briefly nulls and reassigns each ref, but the
+          // cycle is synchronous and harmless. If renders become hot, move the assignment into
+          // MemoizedPhraseGroup (pass phraseRefs + groupIndex as props instead of a callback).
+          groupRef: (el: HTMLSpanElement | null) => {
+            phraseRefs.current[groupIndex] = el;
+          },
+        };
+      }),
+    [
+      renderItems,
+      phraseGroups,
+      tokenSegment,
+      focusedSideIsPrevByItem,
+      displayFocusedTokenRef,
+      phraseRefs,
+    ],
+  );
 
   return (
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
@@ -447,6 +832,7 @@ export default function ContinuousView({
         aria-label="Previous token"
         className="tw:icon-button"
         disabled={atStart}
+        tabIndex={-1}
         onClick={stepPrev}
         type="button"
       >
@@ -454,7 +840,12 @@ export default function ContinuousView({
       </button>
 
       {/* Scrollable token strip */}
-      <div className="tw:relative tw:flex-1 tw:overflow-hidden">
+      <div
+        data-testid="strip-scroll-viewport"
+        ref={scrollViewportRef}
+        className="tw:relative tw:flex-1"
+        style={{ overflowX: 'hidden', overflowY: 'visible' }}
+      >
         {/* Previous fade overlay — only rendered when the previous arrow is enabled */}
         {!atStart && (
           <div
@@ -471,38 +862,58 @@ export default function ContinuousView({
           />
         )}
 
-        {/* Inner flex row */}
+        {/* Inner flex row: both the arc SVG and the token strip fade together */}
         <div
-          data-testid="token-strip"
-          className={`tw:no-scrollbar tw:flex tw:w-max tw:items-center tw:gap-1 tw:overflow-x-scroll tw:py-2 tw:transition-opacity ${stripOpacityClass}`}
+          data-testid="strip-fade-wrapper"
+          ref={arcContainerRef}
+          className={`tw:arc-container tw:transition-opacity ${stripOpacityClass}`}
           style={{
             transitionDuration: `${STRIP_FADE_MS}ms`,
             transitionTimingFunction: STRIP_FADE_EASING,
           }}
         >
-          {allTokens.slice(windowStartTokenIndex, windowEndTokenIndex).map((token, i) => {
-            const tokenIndex = windowStartTokenIndex + i;
-            if (!isWordToken(token))
-              return <MemoizedInertTokenChip key={token.ref} token={token} />;
-
-            const phraseIndex = phraseIndexByTokenIndex.get(tokenIndex);
-            const isFocusedPhrase = phraseIndex !== undefined && phraseIndex === focusPhraseIndex;
-            return (
-              <span
-                key={token.ref}
-                ref={(el) => {
-                  if (phraseIndex !== undefined) phraseRefs.current[phraseIndex] = el;
-                }}
-              >
-                <MemoizedPhraseBox
-                  index={phraseIndex}
-                  isFocused={isFocusedPhrase}
-                  onFocusPhrase={handlePhraseSelect}
-                  tokens={tokenArrays[tokenIndex]}
-                />
-              </span>
-            );
-          })}
+          <MemoizedArcOverlay
+            arcPaths={arcPaths}
+            phraseMode={phraseMode}
+            hoveredPhraseId={hoveredPhraseId}
+            focusedPhraseId={focus.focusedPhraseId}
+            candidatePhraseIds={candidatePhraseIds}
+            phraseLinkById={committedPhraseLinkById}
+            tokenDocOrder={tokenDocOrder}
+            onArcSplit={handleArcSplit}
+            onSplitHoverChange={handleSplitHoverChange}
+            onHoverPhrase={setHoveredPhraseId}
+            simplifyPhrases={simplifyPhrases}
+          />
+          <PhraseStripProvider value={stripContext}>
+            <div
+              data-testid="token-strip"
+              className="tw:no-scrollbar tw:pointer-events-none tw:relative tw:z-60 tw:flex tw:w-max tw:items-start tw:gap-1 tw:overflow-x-scroll tw:pb-2"
+              ref={stripRowRef}
+              style={{
+                paddingTop: `${stripTopPadding}px`,
+                paddingLeft: `${stripLeftPadding}px`,
+                paddingRight: `${stripRightPadding}px`,
+              }}
+              onMouseLeave={() => {
+                setHoveredPhraseId(undefined);
+                clearHoverState();
+              }}
+            >
+              <PhraseStrip
+                items={stripItems}
+                phraseMode={phraseMode}
+                focus={focus}
+                hoveredPhraseId={hoveredPhraseId}
+                hoveredGroupKey={hoveredGroupKey}
+                candidateTokenRefs={candidateTokenRefs}
+                splitFreeTokenRefs={splitFreeTokenRefs}
+                onHoverPhrase={setHoveredPhraseId}
+                setHoveredGroupKey={setHoveredGroupKey}
+                onFocusPhrase={handlePhraseSelect}
+              />
+            </div>
+          </PhraseStripProvider>
         </div>
       </div>
 
@@ -511,6 +922,7 @@ export default function ContinuousView({
         aria-label="Next token"
         className="tw:icon-button"
         disabled={atEnd}
+        tabIndex={-1}
         onClick={stepNext}
         type="button"
       >

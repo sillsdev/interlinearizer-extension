@@ -6,7 +6,7 @@
 /**
  * Known data-provider method names exposed by this mock. Tests that call an unlisted method will
  * receive a descriptive error rather than silently returning `undefined`, which mirrors the real
- * PAPI behaviour where requesting an unsupported provider key is a programmer error.
+ * PAPI behavior where requesting an unsupported provider key is a programmer error.
  */
 const KNOWN_PROJECT_DATA_METHODS = new Set(['BookUSJ']);
 

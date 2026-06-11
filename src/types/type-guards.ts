@@ -1,5 +1,16 @@
-import type { AssignmentStatus, TextAnalysis } from 'interlinearizer';
+/** @file Type guards for narrowing interlinearizer types and validating parsed JSON payloads. */
+import type { AssignmentStatus, TextAnalysis, Token } from 'interlinearizer';
 import type { InterlinearProjectSummary } from './interlinear-project-summary';
+
+/**
+ * Narrows a `Token` to a word token.
+ *
+ * @param token - The token to test.
+ * @returns `true` when `token.type === 'word'`.
+ */
+export function isWordToken(token: Token): token is Token & { type: 'word' } {
+  return token.type === 'word';
+}
 
 /**
  * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.

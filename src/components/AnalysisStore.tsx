@@ -1,19 +1,25 @@
 /** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
-import type { TextAnalysis } from 'interlinearizer';
+import type { PhraseAnalysisLink, TextAnalysis, TokenSnapshot } from 'interlinearizer';
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
+  createPhrase,
   defaultAnalysis,
+  deletePhrase,
+  mergePhrases,
   selectAnalysis,
   selectApprovedGloss,
+  selectPhraseLinkByAnalysisId,
+  selectPhraseLinkByTokenRef,
+  selectPhraseGloss,
+  updatePhrase,
   writeGloss,
+  writePhraseGloss,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 
-// ---------------------------------------------------------------------------
-// Internal callback context — holds refs so useGlossDispatch stays stable
-// ---------------------------------------------------------------------------
+// #region Internal context
 
 /**
  * Stable ref-container passed through context so {@link useGlossDispatch} can call the latest
@@ -30,9 +36,9 @@ type CallbackRefs = {
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
 const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
 
-// ---------------------------------------------------------------------------
-// Provider
-// ---------------------------------------------------------------------------
+// #endregion
+
+// #region Provider
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
@@ -51,7 +57,7 @@ type AnalysisStoreProviderProps = Readonly<{
   onSave?: (analysis: TextAnalysis) => void;
   /**
    * Optional spy called after each gloss write. Intended for test observability only — has no
-   * effect on store behaviour.
+   * effect on store behavior.
    */
   onGlossChange?: (tokenRef: string, value: string) => void;
 }>;
@@ -100,9 +106,9 @@ export function AnalysisStoreProvider({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Hooks
-// ---------------------------------------------------------------------------
+// #endregion
+
+// #region Token hooks
 
 /**
  * Returns the approved gloss string for the given token in the store's active analysis language,
@@ -158,3 +164,198 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
     [dispatch, store, callbacks],
   );
 }
+
+// #endregion
+
+// #region Phrase hooks
+
+/**
+ * Returns a `Map` from every token ref that belongs to an approved phrase to its
+ * `PhraseAnalysisLink`. Re-renders only when the phrase link map reference changes.
+ *
+ * @returns The current phrase link map.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkMap must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseLinkByTokenRef(state.analysis));
+}
+
+/**
+ * Returns a `Map` from `analysisId` to the approved `PhraseAnalysisLink` for O(1) phrase lookup by
+ * id. Re-renders only when the phrase link map reference changes.
+ *
+ * @returns The current phrase-link-by-id map.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkByIdMap must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseLinkByAnalysisId(state.analysis));
+}
+
+/**
+ * Returns the approved `PhraseAnalysisLink` whose token list contains `tokenRef`, or `undefined`
+ * when the token is not part of any phrase. Re-renders only when the phrase membership of this
+ * token changes.
+ *
+ * @param tokenRef - The `Token.ref` to look up.
+ * @returns The matching approved `PhraseAnalysisLink`, or `undefined`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseLinkForToken must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectPhraseLinkByTokenRef(state.analysis).get(tokenRef),
+  );
+}
+
+/**
+ * Returns the gloss string for the given phrase in the store's active analysis language,
+ * re-rendering only when that phrase's gloss changes.
+ *
+ * @param phraseId - The `PhraseAnalysis.id` whose gloss to read.
+ * @returns The current gloss string, or `''` when absent.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseGloss(phraseId: string): string {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error('usePhraseGloss must be used inside an AnalysisStoreProvider');
+
+  return useSelector((state: AnalysisRootState) => selectPhraseGloss(state.analysis, phraseId));
+}
+
+/**
+ * Returns a stable callback that writes a gloss value for the given phrase, then calls `onSave`.
+ *
+ * @returns A function `(phraseId, value) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks)
+    throw new Error('usePhraseGlossDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (phraseId: string, value: string) => {
+      dispatch(writePhraseGloss({ phraseId, value }));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
+    },
+    [dispatch, store, callbacks],
+  );
+}
+
+/** Return value of {@link usePhraseDispatch}. */
+export type PhraseDispatch = {
+  /**
+   * Creates a new approved phrase from an ordered list of token snapshots.
+   *
+   * @param tokens - Ordered `TokenSnapshot`s in document order.
+   * @returns The UUID assigned to the new phrase.
+   */
+  createPhrase: (tokens: TokenSnapshot[]) => string;
+  /**
+   * Replaces the token list of an existing phrase link.
+   *
+   * @param phraseId - ID of the phrase to update.
+   * @param tokens - Replacement ordered `TokenSnapshot`s in document order.
+   */
+  updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
+  /**
+   * Deletes a phrase analysis and its link.
+   *
+   * @param phraseId - ID of the phrase to delete.
+   */
+  deletePhrase: (phraseId: string) => void;
+  /**
+   * Merges a neighboring phrase (or free token) into a target phrase in a single atomic dispatch,
+   * then saves once. Prefer this over `updatePhrase` + `deletePhrase` when absorbing a neighbor so
+   * no save observes the intermediate state where the neighbor's tokens belong to two phrases.
+   *
+   * @param targetPhraseId - ID of the phrase to keep and grow.
+   * @param tokens - The combined, document-ordered token snapshots for the target phrase.
+   * @param absorbedPhraseId - ID of the neighbor phrase to delete, or `undefined` when the absorbed
+   *   neighbor was a free (unphrased) token.
+   */
+  mergePhrases: (
+    targetPhraseId: string,
+    tokens: TokenSnapshot[],
+    absorbedPhraseId: string | undefined,
+  ) => void;
+};
+
+/**
+ * Returns stable callbacks for creating, updating, and deleting phrases. Each callback dispatches
+ * the corresponding Redux action then calls `onSave` with the updated `TextAnalysis`, matching the
+ * pattern of {@link useGlossDispatch}.
+ *
+ * @returns An object with `createPhrase`, `updatePhrase`, `deletePhrase`, and `mergePhrases`
+ *   functions.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseDispatch(): PhraseDispatch {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks) throw new Error('usePhraseDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  const save = useCallback(() => {
+    const { analysis } = store.getState().analysis;
+    callbacks.onSaveRef.current?.(analysis);
+  }, [store, callbacks]);
+
+  const handleCreatePhrase = useCallback(
+    (tokens: TokenSnapshot[]): string => {
+      const action = dispatch(createPhrase(tokens));
+      save();
+      return action.payload.id;
+    },
+    [dispatch, save],
+  );
+
+  const handleUpdatePhrase = useCallback(
+    (phraseId: string, tokens: TokenSnapshot[]) => {
+      dispatch(updatePhrase({ phraseId, tokens }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const handleDeletePhrase = useCallback(
+    (phraseId: string) => {
+      dispatch(deletePhrase({ phraseId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  const handleMergePhrases = useCallback(
+    (targetPhraseId: string, tokens: TokenSnapshot[], absorbedPhraseId: string | undefined) => {
+      dispatch(mergePhrases({ targetPhraseId, tokens, absorbedPhraseId }));
+      save();
+    },
+    [dispatch, save],
+  );
+
+  return useMemo(
+    () => ({
+      createPhrase: handleCreatePhrase,
+      updatePhrase: handleUpdatePhrase,
+      deletePhrase: handleDeletePhrase,
+      mergePhrases: handleMergePhrases,
+    }),
+    [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase, handleMergePhrases],
+  );
+}
+
+// #endregion

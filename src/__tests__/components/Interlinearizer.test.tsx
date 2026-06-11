@@ -4,7 +4,7 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
-import type { Book, ScriptureRef, Segment } from 'interlinearizer';
+import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import Interlinearizer from '../../components/Interlinearizer';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
@@ -25,16 +25,16 @@ jest.mock('lucide-react', () => ({
  * down.
  */
 type CapturedContinuousViewProps = {
-  /** When set, the strip jumps to this phrase index. */
-  activePhraseIndex: number | undefined;
-  /** Verse coordinate used to scroll the strip. */
-  activeVerse: ScriptureRef;
   /** The full tokenized book. */
   book: Book;
-  /** Called when the focused phrase index changes. */
-  onFocusPhraseIndexChange: (index: number) => void;
-  /** Called when arrow navigation moves focus into a new verse. */
-  onVerseChange: (verse: ScriptureRef) => void;
+  /** The `Token.ref` string of the currently focused token, if any. */
+  focusedTokenRef: string | undefined;
+  /** Called when the strip changes focus via arrow nav or click. */
+  onFocusedTokenRefChange: (ref: string) => void;
+  /** Token ref → segment id lookup. */
+  tokenSegmentMap: ReadonlyMap<string, string>;
+  /** Word token ref → token lookup. */
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 };
 let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
@@ -50,8 +50,15 @@ type CapturedSegmentViewProps = {
   isActive: boolean;
   /** Called when the user selects a token. */
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
+  /** PhraseId currently hovered anywhere in the interlinearizer. */
+  hoveredPhraseId: string | undefined;
+  /** Called when the pointer enters or leaves a phrase box. */
+  onHoverPhrase: (phraseId: string | undefined) => void;
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
+
+/** Stable spy for `updatePhrase` — reset between tests via resetMocks. */
+const mockUpdatePhrase = jest.fn();
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
@@ -78,6 +85,18 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns A function that accepts any arguments and does nothing.
    */
   useGlossDispatch: () => () => {},
+  /**
+   * Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom.
+   *
+   * @returns An empty `Map`.
+   */
+  usePhraseLinkMap: () => new Map(),
+  usePhraseLinkByIdMap: () => new Map(),
+  usePhraseDispatch: () => ({
+    createPhrase: () => {},
+    updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
+    deletePhrase: () => {},
+  }),
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -85,12 +104,7 @@ jest.mock('../../components/ContinuousView', () => ({
   default: (props: CapturedContinuousViewProps) => {
     capturedContinuousViewProps = props;
     return (
-      <div
-        data-active-phrase-index={
-          props.activePhraseIndex === undefined ? undefined : String(props.activePhraseIndex)
-        }
-        data-testid="continuous-view"
-      />
+      <div data-focused-token-ref={props.focusedTokenRef ?? ''} data-testid="continuous-view" />
     );
   },
 }));
@@ -103,11 +117,25 @@ jest.mock('../../components/SegmentView', () => ({
    * @param props - The props passed by Interlinearizer.
    * @param props.segment - The segment being rendered.
    * @param props.isActive - Whether this segment is the active verse.
+   * @param props.hoveredPhraseId - PhraseId currently hovered.
+   * @param props.onHoverPhrase - Hover callback.
    * @param props.rest - Any additional props forwarded from the parent.
    * @returns A div with `data-testid="segment-view"` and the segment id.
    */
-  SegmentView: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
-    capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
+  SegmentView: ({
+    segment,
+    isActive,
+    hoveredPhraseId,
+    onHoverPhrase,
+    ...rest
+  }: CapturedSegmentViewProps) => {
+    capturedSegmentViewPropsList.push({
+      segment,
+      isActive,
+      hoveredPhraseId,
+      onHoverPhrase,
+      ...rest,
+    });
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
@@ -122,11 +150,25 @@ jest.mock('../../components/SegmentView', () => ({
    * @param props - The props passed by Interlinearizer.
    * @param props.segment - The segment being rendered.
    * @param props.isActive - Whether this segment is the active verse.
+   * @param props.hoveredPhraseId - PhraseId currently hovered.
+   * @param props.onHoverPhrase - Hover callback.
    * @param props.rest - Any additional props forwarded from the parent.
    * @returns A div with `data-testid="segment-view"` and the segment id.
    */
-  default: ({ segment, isActive, ...rest }: CapturedSegmentViewProps) => {
-    capturedSegmentViewPropsList.push({ segment, isActive, ...rest });
+  default: ({
+    segment,
+    isActive,
+    hoveredPhraseId,
+    onHoverPhrase,
+    ...rest
+  }: CapturedSegmentViewProps) => {
+    capturedSegmentViewPropsList.push({
+      segment,
+      isActive,
+      hoveredPhraseId,
+      onHoverPhrase,
+      ...rest,
+    });
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
@@ -135,6 +177,32 @@ jest.mock('../../components/SegmentView', () => ({
       />
     );
   },
+}));
+
+jest.mock('../../components/controls/EditPhraseControls', () => ({
+  __esModule: true,
+  /**
+   * Minimal EditPhraseControls stub exposing the done button the toolbar tests assert on.
+   *
+   * @returns A stub div carrying the `done-edit-btn` test id.
+   */
+  default: () => (
+    <div data-testid="edit-phrase-controls">
+      <button data-testid="done-edit-btn" type="button">
+        Done
+      </button>
+    </div>
+  ),
+}));
+
+jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
+  __esModule: true,
+  /**
+   * Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on.
+   *
+   * @returns A stub div carrying the `unlink-confirm` test id.
+   */
+  default: () => <div data-testid="unlink-confirm" />,
 }));
 
 /** Pre-built Book with no segments — used by the no-verse-data test. */
@@ -194,12 +262,16 @@ function renderInterlinearizer({
   continuousScroll = false,
   scrRef = defaultScrRef,
   setScrRef = () => {},
+  hideInactiveLinkButtons = false,
+  simplifyPhrases = false,
 }: {
   book?: Book;
   chapterSegments?: Book['segments'];
   continuousScroll?: boolean;
   scrRef?: SerializedVerseRef;
   setScrRef?: (r: SerializedVerseRef) => void;
+  hideInactiveLinkButtons?: boolean;
+  simplifyPhrases?: boolean;
 } = {}) {
   return render(
     <Interlinearizer
@@ -209,6 +281,10 @@ function renderInterlinearizer({
       scrRef={scrRef}
       setScrRef={setScrRef}
       analysisLanguage="und"
+      phraseMode={{ kind: 'view' }}
+      setPhraseMode={() => {}}
+      hideInactiveLinkButtons={hideInactiveLinkButtons}
+      simplifyPhrases={simplifyPhrases}
     />,
   );
 }
@@ -317,7 +393,7 @@ describe('Interlinearizer', () => {
     expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
-  it('passes activePhraseIndex to ContinuousView matching the clicked token', () => {
+  it('passes the clicked token through to ContinuousView as focusedTokenRef', () => {
     // Render in token-chip mode first so onSelect is available on SegmentView props.
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
@@ -325,7 +401,6 @@ describe('Interlinearizer', () => {
       continuousScroll: false,
     });
 
-    // GEN 1:2 word token is phrase index 1 (after GEN 1:1's one word token at index 0).
     const { onSelect } = capturedSegmentViewPropsList[1];
     if (typeof onSelect !== 'function') throw new Error('Expected onSelect to be a function');
 
@@ -340,33 +415,65 @@ describe('Interlinearizer', () => {
         book={GEN_1_MULTI_BOOK}
         chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll
-        scrRef={defaultScrRef}
+        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
     if (!capturedContinuousViewProps)
       throw new Error('Expected ContinuousView to have been rendered');
-    expect(capturedContinuousViewProps.activePhraseIndex).toBe(1);
+    expect(capturedContinuousViewProps.focusedTokenRef).toBe('GEN 1:2:0');
   });
 
-  it('calls setScrRef when ContinuousView emits onVerseChange', () => {
+  it('updates scrRef when ContinuousView reports focus moving into a different verse', () => {
     const mockSetScrRef = jest.fn();
-    renderInterlinearizer({ continuousScroll: true, setScrRef: mockSetScrRef });
-
-    expect(screen.getByTestId('continuous-view')).toBeInTheDocument();
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      chapterSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+      setScrRef: mockSetScrRef,
+    });
 
     if (!capturedContinuousViewProps)
       throw new Error('Expected ContinuousView to have been rendered');
-    const { onVerseChange } = capturedContinuousViewProps;
+    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
 
-    onVerseChange({ book: 'GEN', chapter: 2, verse: 3 });
+    act(() => {
+      // GEN 1:2:0 belongs to verse 2, which differs from the current scrRef (verse 1).
+      onFocusedTokenRefChange('GEN 1:2:0');
+    });
 
-    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 2, verseNum: 3 });
+    expect(mockSetScrRef).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
-  it('does not update activePhraseIndex when ContinuousView emits onFocusPhraseIndexChange', () => {
+  it('does not update scrRef when ContinuousView focus stays within the current verse', () => {
+    const mockSetScrRef = jest.fn();
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      chapterSegments: GEN_1_MULTI_BOOK.segments,
+      continuousScroll: true,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+      setScrRef: mockSetScrRef,
+    });
+
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
+    mockSetScrRef.mockClear();
+    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
+
+    act(() => {
+      onFocusedTokenRefChange('GEN 1:1:0');
+    });
+
+    expect(mockSetScrRef).not.toHaveBeenCalled();
+  });
+
+  it('carries the strip focus into segment view when switching off continuousScroll', () => {
     const { rerender } = renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       chapterSegments: GEN_1_MULTI_BOOK.segments,
@@ -375,60 +482,29 @@ describe('Interlinearizer', () => {
 
     if (!capturedContinuousViewProps)
       throw new Error('Expected ContinuousView to have been rendered');
-    const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
+    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
 
     act(() => {
-      onFocusPhraseIndexChange(1);
+      onFocusedTokenRefChange('GEN 1:2:0');
     });
 
-    // Re-render in continuous mode — just verifying the callback does not throw and updates state.
-    capturedSegmentViewPropsList = [];
-    rerender(
-      <Interlinearizer
-        book={GEN_1_MULTI_BOOK}
-        chapterSegments={GEN_1_MULTI_BOOK.segments}
-        continuousScroll
-        scrRef={defaultScrRef}
-        setScrRef={() => {}}
-        analysisLanguage="und"
-      />,
-    );
-
-    if (!capturedContinuousViewProps)
-      throw new Error('Expected ContinuousView to have been rendered');
-    expect(capturedContinuousViewProps.activePhraseIndex).toBeUndefined();
-  });
-
-  it('carries the strip phrase position into segment view when switching off continuousScroll', () => {
-    const { rerender } = renderInterlinearizer({
-      book: GEN_1_MULTI_BOOK,
-      chapterSegments: GEN_1_MULTI_BOOK.segments,
-      continuousScroll: true,
-    });
-
-    // Simulate ContinuousView reporting that phrase index 1 (GEN 1:2's token) is in view.
-    if (!capturedContinuousViewProps)
-      throw new Error('Expected ContinuousView to have been rendered');
-    const { onFocusPhraseIndexChange } = capturedContinuousViewProps;
-
-    act(() => {
-      onFocusPhraseIndexChange(1);
-    });
-
-    // Switch to segment view — Interlinearizer should carry over phrase index 1 as the focus.
+    // Switch to segment view — Interlinearizer should carry the strip focus over.
     capturedSegmentViewPropsList = [];
     rerender(
       <Interlinearizer
         book={GEN_1_MULTI_BOOK}
         chapterSegments={GEN_1_MULTI_BOOK.segments}
         continuousScroll={false}
-        scrRef={defaultScrRef}
+        scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
-    // The token at phrase index 1 is 'GEN 1:2:0'; it should now be the focusedTokenRef.
     const focused = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
     expect(focused).toBeDefined();
   });
@@ -452,6 +528,10 @@ describe('Interlinearizer', () => {
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -485,6 +565,10 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -498,6 +582,10 @@ describe('Interlinearizer', () => {
         scrRef={defaultScrRef}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
@@ -553,10 +641,95 @@ describe('Interlinearizer', () => {
         scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
         setScrRef={() => {}}
         analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
       />,
     );
 
     // No segment matches verse 99 so focusedTokenRef stays undefined for all views.
     capturedSegmentViewPropsList.forEach((p) => expect(p.focusedTokenRef).toBeUndefined());
+  });
+
+  it('renders EditPhraseControls toolbar when phraseMode is edit', () => {
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+        }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
+      />,
+    );
+    expect(screen.getByTestId('done-edit-btn')).toBeInTheDocument();
+  });
+
+  it('renders UnlinkPhraseConfirm toolbar when phraseMode is confirm-unlink', () => {
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
+        setPhraseMode={() => {}}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
+      />,
+    );
+    expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
+  });
+
+  it('calls updatePhrase with originalTokens and resets to view mode when revert:true is set', () => {
+    const setPhraseMode = jest.fn();
+    const originalTokens = [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }];
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
+        setPhraseMode={setPhraseMode}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
+      />,
+    );
+    expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', originalTokens);
+    expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
+  });
+
+  it('calls updatePhrase and resets to view mode even when the phrase has 0 tokens (all removed)', () => {
+    const setPhraseMode = jest.fn();
+    render(
+      <Interlinearizer
+        book={GEN_1_1_BOOK}
+        chapterSegments={GEN_1_1_BOOK.segments}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        setScrRef={() => {}}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
+        setPhraseMode={setPhraseMode}
+        hideInactiveLinkButtons={false}
+        simplifyPhrases={false}
+      />,
+    );
+    expect(mockUpdatePhrase).toHaveBeenCalledWith('phrase-1', []);
+    expect(setPhraseMode).toHaveBeenCalledWith({ kind: 'view' });
   });
 });

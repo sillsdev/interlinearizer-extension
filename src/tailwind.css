@@ -51,6 +51,101 @@
   @apply tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
 }
 
+@utility link-slot {
+  @apply tw:inline-flex tw:flex-col tw:items-center;
+}
+
+@utility token-row {
+  @apply tw:relative tw:z-7 tw:flex tw:flex-wrap tw:gap-x-1 tw:gap-y-6 tw:items-start tw:pt-4;
+}
+
+@utility arc-container {
+  @apply tw:relative tw:isolate tw:overflow-visible;
+}
+
+@utility confirm-bar {
+  @apply tw:shrink-0 tw:flex tw:justify-end tw:border-b tw:border-border tw:bg-background tw:px-4 tw:py-2;
+}
+
+@utility confirm-controls {
+  @apply tw:inline-flex tw:items-center tw:gap-2 tw:text-sm tw:text-foreground;
+}
+
+@utility pill-btn-primary {
+  @apply tw:rounded tw:border tw:border-ring tw:bg-ring tw:px-2 tw:py-0.5 tw:text-background tw:hover:opacity-90;
+}
+
+@utility pill-btn-secondary {
+  @apply tw:rounded tw:border tw:border-border tw:bg-muted tw:px-2 tw:py-0.5 tw:text-foreground tw:hover:bg-muted/80;
+}
+
+@utility pill-btn-destructive {
+  @apply tw:rounded tw:border tw:border-destructive tw:bg-destructive tw:px-2 tw:py-0.5 tw:text-destructive-foreground tw:hover:opacity-90;
+}
+
+@utility gloss-input {
+  @apply tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default;
+}
+
+@utility modal-form-input {
+  @apply tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm;
+}
+
+@utility phrase-box-base {
+  @apply tw:inline-flex tw:flex-col tw:rounded tw:border tw:px-0.5 tw:py-0.5;
+}
+
+/*
+ * Phrase interaction tiers — applied to phrase boxes, arc split buttons, and controls pills.
+ * Each utility sets both Tailwind border/bg classes and the CSS custom properties
+ * --phrase-stroke / --phrase-stroke-opacity consumed by SVG arc <path> elements, so all four
+ * surfaces stay in sync from a single source of truth.
+ */
+
+@utility phrase-focused {
+  --phrase-stroke: var(--foreground);
+  --phrase-stroke-opacity: 0.6;
+  @apply tw:border-foreground/60 tw:bg-muted/30;
+}
+
+@utility phrase-hovered {
+  --phrase-stroke: var(--foreground);
+  --phrase-stroke-opacity: 0.55;
+  @apply tw:border-foreground/55 tw:bg-muted/25;
+}
+
+@utility phrase-dimmed {
+  --phrase-stroke: var(--border);
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-border tw:bg-muted/20;
+}
+
+@utility phrase-destructive {
+  --phrase-stroke: var(--destructive);
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-destructive tw:bg-muted/20;
+}
+
+@utility phrase-token-row {
+  @apply tw:inline-flex tw:items-start tw:gap-1;
+}
+
+@utility arc-svg-layer {
+  @apply tw:pointer-events-none tw:absolute tw:inset-0;
+}
+
+@utility error-heading {
+  @apply tw:text-lg tw:font-medium tw:text-destructive;
+}
+
+@utility error-pre {
+  @apply tw:overflow-auto tw:rounded-md tw:bg-muted tw:text-foreground tw:p-4 tw:text-sm;
+}
+
+@utility modal-metadata-input {
+  @apply tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground;
+}
+
 @utility bg-linear-to-e {
   --tw-gradient-position: to right;
   @supports (background-image: linear-gradient(in lab, red, red)) {

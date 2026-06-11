@@ -5,18 +5,25 @@ import { useProjectSetting } from '@papi/frontend/react';
 import { act, renderHook } from '@testing-library/react';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 
-const mockUseProjectSetting = jest.mocked(useProjectSetting);
+/** Mock function for setting project settings. */
+const mockSetSetting = jest.fn();
+
+/**
+ * Mocks useProjectSetting to return a specified default state.
+ *
+ * @param defaultState - The value to return as the current setting state.
+ */
+function mockUseProjectSettings(defaultState: boolean | undefined) {
+  jest.mocked(useProjectSetting).mockReturnValue([defaultState, mockSetSetting, jest.fn(), false]);
+}
 
 const SETTING_KEY = 'interlinearizer.continuousScroll' as const;
 const TIMEOUT_MS = 15_000;
 
 describe('useOptimisticBooleanSetting', () => {
-  let mockSetSetting: jest.Mock;
-
   beforeEach(() => {
     jest.useFakeTimers();
-    mockSetSetting = jest.fn();
-    mockUseProjectSetting.mockReturnValue([false, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(false);
   });
 
   afterEach(() => {
@@ -24,7 +31,7 @@ describe('useOptimisticBooleanSetting', () => {
   });
 
   it('returns the persisted setting value as the initial display value', () => {
-    mockUseProjectSetting.mockReturnValue([true, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(true);
     const { result } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );
@@ -32,7 +39,7 @@ describe('useOptimisticBooleanSetting', () => {
   });
 
   it('falls back to defaultValue when the persisted setting is not yet a boolean', () => {
-    mockUseProjectSetting.mockReturnValue([undefined, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(undefined);
     const { result } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
     );
@@ -61,7 +68,7 @@ describe('useOptimisticBooleanSetting', () => {
 
   it('ignores incoming setting updates while the timeout is active', () => {
     // Setting not yet loaded so `setting` starts as non-boolean.
-    mockUseProjectSetting.mockReturnValue([undefined, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(undefined);
     const { result, rerender } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
     );
@@ -72,7 +79,7 @@ describe('useOptimisticBooleanSetting', () => {
     expect(result.current.value).toBe(false);
 
     // Simulate the store returning a conflicting value during the lock period.
-    mockUseProjectSetting.mockReturnValue([true, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(true);
     rerender();
 
     // Value should remain at the optimistically set value.
@@ -81,7 +88,7 @@ describe('useOptimisticBooleanSetting', () => {
 
   it('accepts incoming setting updates after the timeout elapses', () => {
     // Setting not yet loaded so `setting` starts as non-boolean.
-    mockUseProjectSetting.mockReturnValue([undefined, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(undefined);
     const { result, rerender } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
     );
@@ -90,7 +97,7 @@ describe('useOptimisticBooleanSetting', () => {
     act(() => {
       result.current.onChange(false);
     });
-    mockUseProjectSetting.mockReturnValue([true, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(true);
     rerender();
     expect(result.current.value).toBe(false); // Locked to optimistic value.
 
@@ -100,7 +107,7 @@ describe('useOptimisticBooleanSetting', () => {
     });
 
     // The store value (true) should now be accepted when setting changes.
-    mockUseProjectSetting.mockReturnValue([false, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(false);
     rerender();
     expect(result.current.value).toBe(false);
   });
@@ -123,7 +130,7 @@ describe('useOptimisticBooleanSetting', () => {
 
   it('does not accept setting updates until the reset timeout elapses after back-to-back onChange calls', () => {
     // Start with a non-boolean setting so the initial useEffect bails early.
-    mockUseProjectSetting.mockReturnValue([undefined, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(undefined);
     const { result, rerender } = renderHook(() =>
       useOptimisticBooleanSetting('project-1', SETTING_KEY, false),
     );
@@ -143,7 +150,7 @@ describe('useOptimisticBooleanSetting', () => {
       jest.advanceTimersByTime(1_000);
     });
     // Arriving setting is ignored while locked.
-    mockUseProjectSetting.mockReturnValue([false, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(false);
     rerender();
     expect(result.current.value).toBe(true); // locked; update blocked
 
@@ -152,7 +159,7 @@ describe('useOptimisticBooleanSetting', () => {
       jest.advanceTimersByTime(TIMEOUT_MS - 1_000);
     });
     // New setting value (different from the false that arrived during the lock) triggers the effect.
-    mockUseProjectSetting.mockReturnValue([true, mockSetSetting, jest.fn(), false]);
+    mockUseProjectSettings(true);
     rerender();
     expect(result.current.value).toBe(true); // lock released; setting accepted
   });

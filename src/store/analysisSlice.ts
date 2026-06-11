@@ -1,5 +1,15 @@
 import { createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
-import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type {
+  PhraseAnalysis,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenAnalysis,
+  TokenAnalysisLink,
+  TokenSnapshot,
+} from 'interlinearizer';
+import { emptyAnalysis } from '../types/empty-factories';
+
+// #region Types
 
 /** Redux state slice for the active `TextAnalysis` and its working language. */
 export type AnalysisState = {
@@ -21,21 +31,90 @@ interface WriteGlossPayload {
   id: string;
 }
 
+/** Payload for the {@link createPhrase} action. */
+interface CreatePhrasePayload {
+  /** Pre-generated UUID for the new `PhraseAnalysis`, produced by the `prepare` callback. */
+  id: string;
+  /** Ordered `TokenSnapshot`s forming the phrase, in document order. */
+  tokens: TokenSnapshot[];
+}
+
+/** Payload for the {@link updatePhrase} action. */
+interface UpdatePhrasePayload {
+  /** ID of the `PhraseAnalysis` (and its link) to update. */
+  phraseId: string;
+  /** Replacement ordered `TokenSnapshot`s, in document order. */
+  tokens: TokenSnapshot[];
+}
+
+/** Payload for the {@link deletePhrase} action. */
+interface DeletePhrasePayload {
+  /** ID of the `PhraseAnalysis` (and its link) to remove. */
+  phraseId: string;
+}
+
+/** Payload for the {@link mergePhrases} action. */
+interface MergePhrasesPayload {
+  /** ID of the `PhraseAnalysis` to keep and grow; receives the merged token list. */
+  targetPhraseId: string;
+  /** The combined, document-ordered `TokenSnapshot`s for the target phrase. */
+  tokens: TokenSnapshot[];
+  /**
+   * ID of a neighboring phrase whose tokens were folded into `tokens` and that must be deleted in
+   * the same step. `undefined` when the absorbed neighbor was a free (unphrased) token, so there is
+   * no phrase record to remove.
+   */
+  absorbedPhraseId?: string;
+}
+
+/** Payload for the {@link writePhraseGloss} action. */
+interface WritePhraseGlossPayload {
+  /** ID of the `PhraseAnalysis` to update. */
+  phraseId: string;
+  /** New gloss string to assign in the active analysis language. */
+  value: string;
+}
+
+// #endregion
+
+// #region Default state
+
 /** Empty `TextAnalysis` used when no `initialAnalysis` is provided to the store. */
-export const defaultAnalysis: TextAnalysis = {
-  segmentAnalyses: [],
-  segmentAnalysisLinks: [],
-  tokenAnalyses: [],
-  tokenAnalysisLinks: [],
-  phraseAnalyses: [],
-  phraseAnalysisLinks: [],
-};
+export const defaultAnalysis: TextAnalysis = emptyAnalysis();
 
 /** Default `AnalysisState` used as the Redux initial state. */
 export const defaultState: AnalysisState = {
   analysis: { ...defaultAnalysis },
   analysisLanguage: 'und',
 };
+
+// #endregion
+
+// #region Slice
+
+/**
+ * Derives the display surface text for a phrase by joining each token's surface text with a space.
+ *
+ * @param tokens - Ordered token snapshots forming the phrase, in document order.
+ * @returns The space-joined surface text string.
+ */
+function phraseSurfaceText(tokens: TokenSnapshot[]): string {
+  return tokens.map((t) => t.surfaceText).join(' ');
+}
+
+/**
+ * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` matching `phraseId` from the
+ * Immer draft state in a single step, ensuring both collections stay in sync.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param phraseId - ID of the phrase to remove.
+ */
+function removePhraseById(state: AnalysisState, phraseId: string): void {
+  state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter((pa) => pa.id !== phraseId);
+  state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
+    (pl) => pl.analysisId !== phraseId,
+  );
+}
 
 const analysisSlice = createSlice({
   name: 'analysis',
@@ -91,9 +170,14 @@ const analysisSlice = createSlice({
             existingAnalysis.gloss[lang] = value;
             return;
           }
+          // The approved link references a missing analysis (orphaned link from corruption or a
+          // migration). Remove it so we don't accumulate duplicate approved links below.
+          state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+            (l) => l !== existingLink,
+          );
         }
 
-        // No approved link exists, or the link's analysis is missing — create a new one.
+        // No approved link exists, or the orphaned link was removed above — create a new one.
         const newAnalysis: TokenAnalysis = { id, surfaceText, gloss: { [lang]: value } };
         const newLink: TokenAnalysisLink = {
           analysisId: id,
@@ -104,15 +188,119 @@ const analysisSlice = createSlice({
         state.analysis.tokenAnalysisLinks.push(newLink);
       },
     },
+    createPhrase: {
+      /**
+       * Generates a UUID for the new `PhraseAnalysis` before the action reaches the reducer,
+       * keeping the reducer pure.
+       *
+       * @param tokens - Ordered `TokenSnapshot`s forming the phrase, in document order.
+       * @returns The prepared action payload including a pre-generated `id`.
+       */
+      prepare(tokens: TokenSnapshot[]) {
+        return { payload: { id: crypto.randomUUID(), tokens } };
+      },
+      /**
+       * Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis.
+       *
+       * @param state - Current slice state (Immer draft).
+       * @param action - Action carrying the `CreatePhrasePayload`.
+       */
+      reducer(state, action: PayloadAction<CreatePhrasePayload>) {
+        const { id, tokens } = action.payload;
+        const newAnalysis: PhraseAnalysis = { id, surfaceText: phraseSurfaceText(tokens) };
+        const newLink: PhraseAnalysisLink = { analysisId: id, status: 'approved', tokens };
+        state.analysis.phraseAnalyses.push(newAnalysis);
+        state.analysis.phraseAnalysisLinks.push(newLink);
+      },
+    },
+    /**
+     * Replaces the token list of the matching `PhraseAnalysisLink` and re-derives the
+     * `PhraseAnalysis.surfaceText` from the new tokens (mirroring `createPhrase`) so the persisted
+     * surface form never goes stale. Does not create a new `PhraseAnalysis` record — preserves the
+     * phrase id and any gloss already written on it. When `tokens` is empty the phrase is removed
+     * entirely (both the analysis record and its link) so a zero-token phrase can never persist in
+     * the store.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `UpdatePhrasePayload`.
+     */
+    updatePhrase(state, action: PayloadAction<UpdatePhrasePayload>) {
+      const { phraseId, tokens } = action.payload;
+      if (tokens.length === 0) {
+        removePhraseById(state, phraseId);
+        return;
+      }
+      const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === phraseId);
+      if (link) link.tokens = tokens;
+      const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
+      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
+    },
+    /**
+     * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `DeletePhrasePayload`.
+     */
+    deletePhrase(state, action: PayloadAction<DeletePhrasePayload>) {
+      const { phraseId } = action.payload;
+      removePhraseById(state, phraseId);
+    },
+    /**
+     * Merges a neighboring phrase (or a free token) into the target phrase as a single atomic
+     * mutation: the target's tokens are replaced with the supplied merged list and, when an
+     * `absorbedPhraseId` is given, that neighbor's analysis record and link are removed in the same
+     * step. Doing both in one reducer avoids the transient state — produced when `updatePhrase` and
+     * `deletePhrase` were dispatched separately — where the neighbor's tokens briefly existed in
+     * two phrases at once, which a save between the two dispatches could persist.
+     *
+     * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
+     * immediately undone by the delete.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `MergePhrasesPayload`.
+     */
+    mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
+      const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
+      if (absorbedPhraseId !== undefined && absorbedPhraseId === targetPhraseId) return;
+
+      const link = state.analysis.phraseAnalysisLinks.find((l) => l.analysisId === targetPhraseId);
+      if (link) link.tokens = tokens;
+      const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === targetPhraseId);
+      if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
+      if (absorbedPhraseId !== undefined) removePhraseById(state, absorbedPhraseId);
+    },
+    /**
+     * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no
+     * matching `PhraseAnalysis` is found.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `WritePhraseGlossPayload`.
+     */
+    writePhraseGloss(state, action: PayloadAction<WritePhraseGlossPayload>) {
+      const { phraseId, value } = action.payload;
+      const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
+      if (!pa) return;
+      const lang = state.analysisLanguage;
+      if (!pa.gloss) pa.gloss = {};
+      pa.gloss[lang] = value;
+    },
   },
 });
 
-export const { setAnalysis, writeGloss } = analysisSlice.actions;
+export const {
+  setAnalysis,
+  writeGloss,
+  createPhrase,
+  updatePhrase,
+  deletePhrase,
+  mergePhrases,
+  writePhraseGloss,
+} = analysisSlice.actions;
 export default analysisSlice.reducer;
 
-// ---------------------------------------------------------------------------
-// Selectors
-// ---------------------------------------------------------------------------
+// #endregion
+
+// #region Selectors
 
 /**
  * Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input.
@@ -187,3 +375,72 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
   const lang = selectAnalysisLanguage(state);
   return ta?.gloss?.[lang] ?? '';
 }
+
+/**
+ * Projects `phraseAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input.
+ *
+ * @param state - The analysis slice state.
+ * @returns The `phraseAnalysisLinks` array.
+ */
+const selectPhraseAnalysisLinksRaw = (state: AnalysisState) => state.analysis.phraseAnalysisLinks;
+
+/**
+ * Memoized selector that returns all approved `PhraseAnalysisLink`s. Recomputes only when
+ * `phraseAnalysisLinks` changes reference.
+ */
+export const selectPhraseLinks = createSelector(selectPhraseAnalysisLinksRaw, (links) =>
+  links.filter((l) => l.status === 'approved'),
+);
+
+/**
+ * Memoized selector that builds a `Map` from each `tokenRef` to the approved `PhraseAnalysisLink`
+ * containing it. When a token appears in multiple approved links (data-model violation), the last
+ * wins. Recomputes only when approved phrase links change.
+ */
+export const selectPhraseLinkByTokenRef = createSelector(selectPhraseLinks, (links) =>
+  links.reduce((map, link) => {
+    link.tokens.reduce((m, snap) => {
+      m.set(snap.tokenRef, link);
+      return m;
+    }, map);
+    return map;
+  }, new Map<string, PhraseAnalysisLink>()),
+);
+
+/**
+ * Memoized selector that builds a `Map` from `analysisId` to approved `PhraseAnalysisLink` for O(1)
+ * phrase lookup by id. Recomputes only when approved phrase links change.
+ */
+export const selectPhraseLinkByAnalysisId = createSelector(
+  selectPhraseLinks,
+  (links) => new Map(links.map((link) => [link.analysisId, link])),
+);
+
+/**
+ * Returns the `PhraseAnalysis` with the given id, or `undefined` when absent.
+ *
+ * @param state - The analysis slice state.
+ * @param phraseId - The `PhraseAnalysis.id` to look up.
+ * @returns The matching `PhraseAnalysis`, or `undefined`.
+ */
+export function selectPhraseAnalysisById(
+  state: AnalysisState,
+  phraseId: string,
+): PhraseAnalysis | undefined {
+  return state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
+}
+
+/**
+ * Returns the approved gloss string for the given phrase in the active analysis language, or `''`
+ * when no phrase with that id exists or it has no gloss for the active language.
+ *
+ * @param state - The analysis slice state.
+ * @param phraseId - The `PhraseAnalysis.id` to look up.
+ * @returns The gloss string, or `''` when absent.
+ */
+export function selectPhraseGloss(state: AnalysisState, phraseId: string): string {
+  const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
+  return pa?.gloss?.[state.analysisLanguage] ?? '';
+}
+
+// #endregion

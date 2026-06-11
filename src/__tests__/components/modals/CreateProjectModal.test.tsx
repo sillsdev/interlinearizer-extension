@@ -6,7 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { CreateProjectModal } from '../../components/CreateProjectModal';
+import { CreateProjectModal } from '../../../components/modals/CreateProjectModal';
 
 const testProjectId = 'test-project-id';
 

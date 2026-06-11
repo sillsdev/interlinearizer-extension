@@ -10,7 +10,9 @@ import type {
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
-import { isTextAnalysis } from './types/typeGuards';
+import { isTextAnalysis } from './types/type-guards';
+
+// #region WebView provider
 
 /**
  * WebView type identifier for the Interlinearizer. Used when registering the provider and when
@@ -54,6 +56,10 @@ const mainWebViewProvider: IWebViewProvider = {
   },
 };
 
+// #endregion
+
+// #region Module state
+
 /**
  * Execution token stored during activation for use in command handlers that call `papi.storage`.
  * Set in `activate()` before any command can be invoked.
@@ -66,6 +72,10 @@ let executionToken: ExecutionToken;
  * `onDidCloseWebView` subscriptions registered during activation.
  */
 const openWebViewsByProject = new Map<string, string>();
+
+// #endregion
+
+// #region Command handlers
 
 /**
  * Opens the Interlinearizer WebView for the given project. If no projectId is provided, shows a
@@ -303,6 +313,10 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   }
 }
 
+// #endregion
+
+// #region Lifecycle
+
 /**
  * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
  * Called by the platform when the extension is loaded.
@@ -350,6 +364,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',
+    async (newValue) => typeof newValue === 'boolean',
+  );
+
+  const hideInactiveLinkButtonsValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.hideInactiveLinkButtons',
+    async (newValue) => typeof newValue === 'boolean',
+  );
+
+  const simplifyPhrasesValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.simplifyPhrases',
     async (newValue) => typeof newValue === 'boolean',
   );
 
@@ -598,6 +622,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     mainWebViewProviderRegistration,
     openForWebViewCommandRegistration,
     continuousScrollValidatorRegistration,
+    hideInactiveLinkButtonsValidatorRegistration,
+    simplifyPhrasesValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,
@@ -625,3 +651,5 @@ export async function deactivate(): Promise<boolean> {
   logger.debug('Interlinearizer extension is deactivating!');
   return true;
 }
+
+// #endregion

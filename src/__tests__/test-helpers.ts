@@ -1,12 +1,10 @@
-/**
- * @file Test helpers used to build type-safe mocks without type assertions. Provides a minimal
- *   ExecutionActivationContext that satisfies @papi/core types, a `useWebViewState` hook stub for
- *   component tests, and shared Book fixtures.
- */
+/** @file Shared test helpers for unit and component tests. */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext } from '@papi/core';
-import type { Book } from 'interlinearizer';
+import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
+import type { PhraseStripContextValue } from '../components/PhraseStripContext';
+import { emptyAnalysis } from '../types/empty-factories';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -62,6 +60,36 @@ export function makeWebViewState(seed: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * Builds a {@link PhraseStripContextValue} for component tests, with no-op callbacks and empty
+ * lookups by default. Tests that consume strip context wrap their subject in `PhraseStripProvider`
+ * with this value (overriding only the fields they assert on).
+ *
+ * @param overrides - Partial context fields to override the defaults.
+ * @returns A complete `PhraseStripContextValue`.
+ */
+export function makePhraseStripContext(
+  overrides: Partial<PhraseStripContextValue> = {},
+): PhraseStripContextValue {
+  return {
+    phraseMode: { kind: 'view' },
+    setPhraseMode: () => {},
+    editPhraseTokens: undefined,
+    editPhraseSegmentId: undefined,
+    tokenSegmentMap: new Map(),
+    tokenDocOrder: new Map(),
+    onHoverPhrase: () => {},
+    onHoverCandidateTokens: () => {},
+    onHoverSplitFreeTokens: () => {},
+    hideInactiveLinkButtons: false,
+    simplifyPhrases: false,
+    activeSegmentId: undefined,
+    crossSegmentLinkTooltip: '',
+    skipLinkTransition: false,
+    ...overrides,
+  };
+}
+
 /** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
 export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
@@ -110,5 +138,59 @@ export function createTestActivationContext(): ExecutionActivationContext {
     executionToken: mockExecutionToken,
     elevatedPrivileges: mockElevatedPrivileges,
     registrations: new UnsubscriberAsyncList('test'),
+  };
+}
+
+/**
+ * Builds a minimal `InterlinearProject` test fixture with stable defaults used across command
+ * tests.
+ *
+ * @param id - Project ID override for tests that need a specific identifier.
+ * @returns A project with fixed metadata and a fresh empty analysis object.
+ */
+export function makeStubProject(id = 'proj-id'): InterlinearProject {
+  return {
+    id,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    sourceProjectId: 'src-project',
+    analysisLanguages: ['en'],
+    analysis: emptyAnalysis(),
+  };
+}
+
+/**
+ * Builds a minimal word token for use in component tests. When `surfaceText` is omitted it defaults
+ * to `ref`, which is appropriate for tests that only need a syntactically valid token and do not
+ * assert on surface text independently.
+ *
+ * @param ref - Token reference string.
+ * @param surfaceText - Display text; defaults to `ref` when omitted.
+ * @returns A word token with the given ref and surface text.
+ */
+export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
+  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
+}
+
+/**
+ * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
+ *
+ * @param phraseId - The analysis id for both the link and its corresponding `PhraseAnalysis`.
+ * @param tokenRefs - Token refs to include.
+ * @param surfaceTexts - Surface text for each token, parallel to `tokenRefs`. Defaults to the ref
+ *   string when omitted, which is only appropriate when drift detection is not under test.
+ * @returns A `PhraseAnalysisLink` with `status: 'approved'`.
+ */
+export function makePhraseLink(
+  phraseId: string,
+  tokenRefs: string[],
+  surfaceTexts?: string[],
+): PhraseAnalysisLink {
+  return {
+    analysisId: phraseId,
+    status: 'approved',
+    tokens: tokenRefs.map((ref, i) => ({
+      tokenRef: ref,
+      surfaceText: surfaceTexts?.[i] ?? ref,
+    })),
   };
 }

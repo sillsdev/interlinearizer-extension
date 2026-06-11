@@ -1,6 +1,8 @@
 # AGENTS.md
 
-This file provides guidance to AI agents when working with code in this repository.
+This file provides guidance to AI agents creating and editing code in this repository.
+
+Agents **reviewing** code should also read [REVIEW.md](REVIEW.md), which documents existing conventions that commonly trigger false-positive findings.
 
 ## Commands
 
@@ -143,7 +145,15 @@ Every function and method — exported or internal — must have a JSDoc block w
 - `@returns` describing the return value (omit only for `void`/`Promise<void>`).
 - `@throws` for every error condition the caller must handle; omit if the function never throws.
 
-Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type.
+Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type. We document each field individually rather than describing the fields in the type-level summary.
+
+## Spelling
+
+Use American English throughout — in code, comments, JSDoc, and documentation:
+
+- `center` not `centre`, `color` not `colour`, `behavior` not `behaviour`
+- `canceled`/`canceling` not `cancelled`/`cancelling`, `leveled`/`leveling` not `levelled`/`levelling`
+- `neighboring` not `neighbouring`, `favor` not `favour`, `signaled` not `signalled`
 
 ## UX decisions
 

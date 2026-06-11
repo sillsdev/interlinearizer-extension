@@ -2,70 +2,129 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { act, render, screen } from '@testing-library/react';
+import { useLocalizedStrings } from '@papi/frontend/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, ScriptureRef, Token } from 'interlinearizer';
-import type { ReactNode } from 'react';
+import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
+import { useState, type ReactNode } from 'react';
+import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
-import { AnalysisStoreProvider } from '../../components/AnalysisStore';
+import { isWordToken } from '../../types/type-guards';
+import { withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
 // ---------------------------------------------------------------------------
 
+/**
+ * Stable module-level phrase-link map returned by `usePhraseLinkMap` across renders. Mutated by
+ * individual tests to simulate phrase membership; reset in `beforeEach`.
+ */
+const phraseLinkMap = new Map<string, PhraseAnalysisLink>();
+
+const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().mockReturnValue({
+  createPhrase: jest.fn(),
+  updatePhrase: jest.fn(),
+  deletePhrase: jest.fn(),
+  mergePhrases: jest.fn(),
+});
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  /**
-   * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
-   * scope.
-   *
-   * @param props - Component props.
-   * @param props.children - Child nodes to render.
-   * @returns The children unchanged.
-   */
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
     return children;
   },
-  /**
-   * Returns a fixed empty gloss string for any token.
-   *
-   * @returns An empty string.
-   */
   useGloss: () => '',
-  /**
-   * Returns a no-op dispatch function.
-   *
-   * @returns A function that accepts any arguments and does nothing.
-   */
   useGlossDispatch: () => () => {},
+  usePhraseLinkMap: () => phraseLinkMap,
+  usePhraseLinkByIdMap: () =>
+    new Map([...new Set(phraseLinkMap.values())].map((l) => [l.analysisId, l])),
+  usePhraseLinkForToken: () => undefined,
+  usePhraseDispatch: () => mockUsePhraseDispatch(),
+  usePhraseGloss: () => '',
+  usePhraseGlossDispatch: () => () => {},
 }));
 
-/** Render options that wrap every test render in a `AnalysisStoreProvider`. */
-const withAnalysisStore = {
-  wrapper({ children }: Readonly<{ children: ReactNode }>) {
-    return <AnalysisStoreProvider analysisLanguage="und">{children}</AnalysisStoreProvider>;
-  },
-};
+// The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
+// ContinuousView's tests don't redundantly re-exercise the hook's internals; the view only forwards
+// its handlers, which a no-op stub satisfies.
+const mockCandidateTokenRefs = { current: new Set<string>() };
+jest.mock('../../hooks/usePhraseHoverState', () => ({
+  __esModule: true,
+  usePhraseHoverState: () => ({
+    hoveredGroupKey: undefined,
+    setHoveredGroupKey: () => {},
+    candidateTokenRefs: mockCandidateTokenRefs.current,
+    setCandidateTokenRefs: () => {},
+    splitFreeTokenRefs: new Set<string>(),
+    handleSplitHoverChange: () => {},
+    handleHoverSplitFreeTokens: () => {},
+    clearAll: () => {},
+  }),
+}));
 
 jest.mock('../../components/TokenChip');
+
+/**
+ * Spy invoked once per rendered link icon (mounted, whether suppressed or not). Rendering a span
+ * with data attributes encoding the token refs lets DOM queries check suppression state via the
+ * parent wrapper's style. Cleared in `beforeEach`.
+ */
+const tokenLinkIconSpy = jest.fn();
+jest.mock('../../components/TokenLinkIcon', () => ({
+  __esModule: true,
+  default: (props: Readonly<{ prevToken?: { ref: string }; nextToken?: { ref: string } }>) => {
+    tokenLinkIconSpy(props);
+    return (
+      <span
+        data-testid="mock-link-icon"
+        data-prev-ref={props.prevToken?.ref}
+        data-next-ref={props.nextToken?.ref}
+      />
+    );
+  },
+}));
+
+jest.mock('../../components/ArcOverlay', () => ({
+  __esModule: true,
+  default: ({
+    onArcSplit,
+  }: Readonly<{ onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void }>) => (
+    <button
+      type="button"
+      data-testid="arc-split-btn"
+      onClick={() => onArcSplit('phrase-1', 'tok-0')}
+    >
+      split
+    </button>
+  ),
+}));
 
 jest.mock('../../components/PhraseBox', () => ({
   __esModule: true,
   default: ({
-    index,
+    groupKey,
     isFocused = false,
     onFocusPhrase,
     tokens,
+    phraseLink,
+    showGlossInput = true,
   }: Readonly<{
-    index: number | undefined;
+    groupKey: string;
     isFocused: boolean;
-    onFocusPhrase: (index?: number) => void;
+    onFocusPhrase: (groupKey: string) => void;
     tokens: (Token & { type: 'word' })[];
+    phraseMode: unknown;
+    setPhraseMode: unknown;
+    phraseLink: { analysisId: string } | undefined;
+    showGlossInput?: boolean;
   }>) => (
     <button
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
-      onClick={() => onFocusPhrase(index)}
+      data-phrase-id={phraseLink?.analysisId}
+      data-show-gloss={showGlossInput}
+      onClick={() => onFocusPhrase(groupKey)}
       type="button"
     >
       {tokens.map((t) => (
@@ -139,12 +198,7 @@ function makeBook(overrides?: Partial<Book>): Book {
   };
 }
 
-/**
- * Builds a two-chapter Book fixture: chapter 1 has one segment ("Alpha"), chapter 2 has one segment
- * ("Beta"). Used to exercise cross-chapter traversal and verse-jump behaviour.
- *
- * @returns A two-chapter Book.
- */
+/** Builds a two-chapter Book fixture used to exercise cross-chapter navigation. */
 function makeTwoChapterBook(): Book {
   return {
     id: 'GEN',
@@ -187,12 +241,7 @@ function makeTwoChapterBook(): Book {
   };
 }
 
-/**
- * Builds a Book with exactly one word token in one segment. Used to assert that both navigation
- * arrows are disabled when the strip has nowhere to move.
- *
- * @returns A single-token Book.
- */
+/** Builds a Book with exactly one word token in one segment. */
 function makeSingleTokenBook(): Book {
   return {
     id: 'GEN',
@@ -219,13 +268,7 @@ function makeSingleTokenBook(): Book {
   };
 }
 
-/**
- * A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only a punctuation
- * token (no word tokens). Used to exercise code paths that run when a segment exists in the book
- * but contributes nothing to phraseEntries / segmentStartIndex.
- *
- * @returns A two-segment Book where the second segment has no word tokens.
- */
+/** A book whose GEN 1:1 segment has word tokens and whose GEN 1:2 segment has only punctuation. */
 function makeMixedBook(): Book {
   return {
     id: 'GEN',
@@ -268,12 +311,7 @@ function makeMixedBook(): Book {
   };
 }
 
-/**
- * Builds a Book whose only token is punctuation, so phraseEntries is empty. Used to exercise the
- * code path where ContinuousView renders with no word tokens to navigate between.
- *
- * @returns A word-free Book.
- */
+/** Builds a Book whose only token is punctuation. */
 function makeWordFreeBook(): Book {
   return {
     id: 'GEN',
@@ -300,13 +338,7 @@ function makeWordFreeBook(): Book {
   };
 }
 
-/**
- * Builds a Book with `count` word tokens spread across one segment per token, each in GEN 1:N. Used
- * to exercise the phrase-window windowing code paths (PHRASE_WINDOW_HALF = 100 on each side).
- *
- * @param count - Total number of word-token segments to create.
- * @returns A Book with `count` single-token segments.
- */
+/** Builds a Book with `count` word tokens spread across one segment per token. */
 function makeLargeBook(count: number): Book {
   return {
     id: 'GEN',
@@ -336,22 +368,62 @@ function makeLargeBook(count: number): Book {
 const scrollIntoViewMock = jest.fn();
 
 /**
- * Minimal required props for ContinuousView. Spread into render calls so tests only need to
- * override what they actually care about.
+ * Builds the lookup maps that ContinuousView's parent supplies, derived from a Book.
  *
- * @returns An object containing all required ContinuousView props set to no-op stubs.
+ * @param book - The book to scan.
+ * @returns The token-segment-id lookup and word-token-ref lookup.
  */
-function requiredProps(): {
-  activePhraseIndex: undefined;
-  activeVerse: ScriptureRef;
-  onFocusPhraseIndexChange: jest.Mock;
-  onVerseChange: jest.Mock;
+function buildLookups(book: Book): {
+  tokenSegmentMap: ReadonlyMap<string, string>;
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
+  const tokenSegmentMap = new Map<string, string>();
+  const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
+  book.segments.forEach((seg) => {
+    seg.tokens.forEach((t) => {
+      tokenSegmentMap.set(t.ref, seg.id);
+      if (isWordToken(t)) wordTokenByRef.set(t.ref, t);
+    });
+  });
+  return { tokenSegmentMap, wordTokenByRef };
+}
+
+/**
+ * Minimal required props for ContinuousView. Spread into render calls so tests only need to
+ * override what they actually care about. The lookup maps are derived from `book` so they always
+ * agree with what's rendered.
+ *
+ * @param book - The book the test will render with.
+ * @param overrides - Optional prop overrides.
+ * @returns A complete ContinuousView props object.
+ */
+function requiredProps(
+  book: Book,
+  overrides?: { focusedTokenRef?: string | undefined },
+): {
+  book: Book;
+  editPhraseSegmentId: string | undefined;
+  focusedTokenRef: string | undefined;
+  onFocusedTokenRefChange: jest.Mock;
+  phraseMode: { kind: 'view' };
+  setPhraseMode: jest.Mock;
+  tokenSegmentMap: ReadonlyMap<string, string>;
+  wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
+  hideInactiveLinkButtons: boolean;
+  simplifyPhrases: boolean;
+} {
+  const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
   return {
-    activePhraseIndex: undefined,
-    activeVerse: { book: 'GEN', chapter: 1, verse: 1 },
-    onFocusPhraseIndexChange: jest.fn(),
-    onVerseChange: jest.fn(),
+    book,
+    editPhraseSegmentId: undefined,
+    focusedTokenRef: overrides?.focusedTokenRef,
+    onFocusedTokenRefChange: jest.fn(),
+    phraseMode: { kind: 'view' },
+    setPhraseMode: jest.fn(),
+    tokenSegmentMap,
+    wordTokenByRef,
+    hideInactiveLinkButtons: false,
+    simplifyPhrases: false,
   };
 }
 
@@ -361,7 +433,22 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  jest
+    .mocked(useLocalizedStrings)
+    .mockImplementation((keys: readonly string[]) => [
+      Object.fromEntries(keys.map((k) => [k, k])),
+      false,
+    ]);
   scrollIntoViewMock.mockClear();
+  tokenLinkIconSpy.mockClear();
+  phraseLinkMap.clear();
+  mockUsePhraseDispatch.mockReturnValue({
+    createPhrase: jest.fn(),
+    updatePhrase: jest.fn(),
+    deletePhrase: jest.fn(),
+    mergePhrases: jest.fn(),
+  });
+  mockCandidateTokenRefs.current = new Set();
 });
 
 // ---------------------------------------------------------------------------
@@ -370,7 +457,8 @@ beforeEach(() => {
 
 describe('ContinuousView initial render', () => {
   it('renders all tokens from all segments as a flat list', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('the')).toBeInTheDocument();
@@ -379,75 +467,133 @@ describe('ContinuousView initial render', () => {
   });
 
   it('does not render any verse label or segment separator', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    // No verse numbers or colons that would indicate verse labels
     expect(screen.queryByText('1:1')).not.toBeInTheDocument();
     expect(screen.queryByText('1:2')).not.toBeInTheDocument();
-    // Segment ids should not appear as text
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 
   it('renders a Previous token button and a Next token button', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
   });
 
   it('renders a non-word token via InertTokenChip within the strip', () => {
-    // makeMixedBook: GEN 1:1 has a word token; GEN 1:2 has a punctuation token
-    render(<ContinuousView book={makeMixedBook()} {...requiredProps()} />, withAnalysisStore);
+    const book = makeMixedBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    // Both the word chip ("In") and the inert chip (".") must appear
     expect(screen.getByText('In')).toBeInTheDocument();
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('renders without crashing when book has no word tokens (empty phraseEntries)', () => {
-    render(<ContinuousView book={makeWordFreeBook()} {...requiredProps()} />, withAnalysisStore);
+  it('renders without crashing when book has no word tokens', () => {
+    const book = makeWordFreeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    // The punctuation token is rendered
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
-  it('renders without crashing when book has no word tokens and activePhraseIndex is set', () => {
+  it('notifies the parent of the initially-focused token on mount when no focus prop is set', () => {
+    const book = makeBook();
+    const props = requiredProps(book);
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+  });
+
+  it('does not notify the parent on mount when focusedTokenRef is already set', () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+  });
+
+  it('marks the phrase containing focusedTokenRef as focused', () => {
+    const book = makeBook();
     render(
-      <ContinuousView book={makeWordFreeBook()} {...requiredProps()} activePhraseIndex={0} />,
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
       withAnalysisStore,
     );
 
-    expect(screen.getByText('.')).toBeInTheDocument();
+    const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
+    expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
   });
+});
 
-  it('clicking an out-of-focus phrase box brings it into focus', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+// ---------------------------------------------------------------------------
+// Click → focus change
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView focus changes', () => {
+  it('notifies the parent when an out-of-focus phrase box is clicked', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
 
     const clickedPhraseBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     if (!clickedPhraseBox) throw new Error('Expected phrase box wrapper for token');
-    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'default');
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
 
     await userEvent.click(clickedPhraseBox);
 
-    expect(clickedPhraseBox).toHaveAttribute('data-focus-state', 'focused');
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
   });
 
-  it('clicking the already-focused phrase box leaves it focused', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+  it('does not notify the parent when clicking the already-focused phrase box', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
 
-    // The first token is focused by default.
     const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
     if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
-    expect(firstPhraseBox).toHaveAttribute('data-focus-state', 'focused');
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
 
     await userEvent.click(firstPhraseBox);
 
-    // Still focused, still at the start.
-    expect(firstPhraseBox).toHaveAttribute('data-focus-state', 'focused');
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+  });
+
+  it('does not notify the parent when clicking the group of an already-focused non-first token', async () => {
+    // Group tok-0 and tok-1 into one phrase box (keyed by tok-0), then focus tok-1 — the second
+    // token of the group, as a segment-view click on a middle token would. Clicking the box must
+    // stay a no-op even though its groupKey (tok-0) differs from focusedTokenRef (tok-1).
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    const groupedBox = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!groupedBox) throw new Error('Expected phrase box wrapper for grouped tokens');
+
+    await userEvent.click(groupedBox);
+
+    expect(props.onFocusedTokenRefChange).not.toHaveBeenCalled();
+  });
+
+  it('notifies the parent when clicking a phrase box while nothing is focused', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: undefined });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    const firstPhraseBox = screen.getByText('In').closest('[data-phrase-box="true"]');
+    if (!firstPhraseBox) throw new Error('Expected phrase box wrapper for token');
+
+    await userEvent.click(firstPhraseBox);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
   });
 });
 
@@ -456,580 +602,400 @@ describe('ContinuousView initial render', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView arrow disabled states', () => {
-  it('disables the prev arrow on initial render (book start)', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+  it('disables the prev arrow when focus is on the first phrase', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
+      withAnalysisStore,
+    );
 
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
   });
 
-  it('enables the next arrow on initial render when there are multiple tokens', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
+  it('enables the prev arrow when focus is on a non-first phrase', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+  });
+
+  it('disables the next arrow when focus is on the last phrase', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-3' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+
+  it('enables the next arrow when focus is on a non-last phrase', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
+      withAnalysisStore,
+    );
 
     expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
   });
 
-  it('disables both arrows when the book has exactly one token', () => {
-    render(<ContinuousView book={makeSingleTokenBook()} {...requiredProps()} />, withAnalysisStore);
-
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-  });
-
-  it('enables the prev arrow after clicking next once', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-  });
-
-  it('disables the next arrow when advanced to the last token', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    const nextBtn = screen.getByRole('button', { name: 'Next token' });
-    // 4 tokens total: advance 3 times to reach index 3 (last)
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-
-    expect(nextBtn).toBeDisabled();
-  });
-
-  it('re-enables the next arrow after going prev from the last token', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    const nextBtn = screen.getByRole('button', { name: 'Next token' });
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-    // Now at end
-    expect(nextBtn).toBeDisabled();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
-
-    expect(nextBtn).toBeEnabled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Fade overlays
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView fade overlays', () => {
-  it('does not render prev fade at book start', () => {
-    const { container } = render(
-      <ContinuousView book={makeBook()} {...requiredProps()} />,
-      withAnalysisStore,
-    );
-
-    const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-linear-to-e'),
-    );
-    expect(prevFades).toHaveLength(0);
-  });
-
-  it('renders next fade at book start (next side is enabled)', () => {
-    const { container } = render(
-      <ContinuousView book={makeBook()} {...requiredProps()} />,
-      withAnalysisStore,
-    );
-
-    const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-linear-to-s'),
-    );
-    expect(nextFades).toHaveLength(1);
-  });
-
-  it('renders prev fade after moving away from book start', async () => {
-    const { container } = render(
-      <ContinuousView book={makeBook()} {...requiredProps()} />,
-      withAnalysisStore,
-    );
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const prevFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-linear-to-e'),
-    );
-    expect(prevFades).toHaveLength(1);
-  });
-
-  it('does not render next fade at book end', async () => {
-    const { container } = render(
-      <ContinuousView book={makeBook()} {...requiredProps()} />,
-      withAnalysisStore,
-    );
-
-    const nextBtn = screen.getByRole('button', { name: 'Next token' });
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-    await userEvent.click(nextBtn);
-
-    const gradients = container.querySelectorAll('[aria-hidden="true"]');
-    const nextFades = Array.from(gradients).filter((el) =>
-      el.className.includes('tw:bg-linear-to-s'),
-    );
-    expect(nextFades).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Cross-chapter traversal
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView cross-chapter traversal', () => {
-  it('indexes tokens across chapter boundaries in segment order', () => {
-    render(<ContinuousView book={makeTwoChapterBook()} {...requiredProps()} />, withAnalysisStore);
-
-    // Both chapter tokens should be present
-    expect(screen.getByText('Alpha')).toBeInTheDocument();
-    expect(screen.getByText('Beta')).toBeInTheDocument();
-  });
-
-  it('can navigate across a chapter boundary with the next arrow', async () => {
-    render(<ContinuousView book={makeTwoChapterBook()} {...requiredProps()} />, withAnalysisStore);
-
-    // Only one token per chapter, so clicking next once reaches chapter 2's token (index 1 = last)
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    // Next arrow should now be disabled (at end = last token = chapter 2 token)
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    // Prev arrow should be enabled
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Smooth-scroll intent
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView smooth-scroll intent', () => {
-  it('calls scrollIntoView with smooth behaviour when next arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(scrollIntoViewMock).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'smooth' }),
-    );
-  });
-
-  it('calls scrollIntoView with smooth behaviour when prev arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    scrollIntoViewMock.mockClear();
-
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
-
-    expect(scrollIntoViewMock).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'smooth' }),
-    );
-  });
-
-  it('does not call scrollIntoView when a disabled arrow is clicked', async () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-    scrollIntoViewMock.mockClear();
-
-    // Prev arrow is disabled at start — clicking it should be a no-op
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
-
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// activeVerse / verse-jump behaviour
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView activeVerse verse-jump', () => {
-  // These tests rely on the 500 ms fade-out timer that delays the focus jump.
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('positions at focusIndex 0 when activeVerse matches the first segment', () => {
+  it('disables both arrows when the book has a single token', () => {
+    const book = makeSingleTokenBook();
     render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-only' })} />,
       withAnalysisStore,
     );
 
-    // At index 0 the prev arrow should be disabled
     expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-  });
-
-  it('jumps to the first token of the second segment when activeVerse points there', () => {
-    // makeBook() has 4 tokens: index 0,1 in segment GEN 1:1 and index 2,3 in GEN 1:2
-    const { rerender } = render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
-    );
-
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-      />,
-    );
-    // Advance past the fade-out delay so the pending focus jump fires.
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    // focusIndex is now 2 (first token of segment 2), so prev arrow should be enabled
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-  });
-
-  it('jumps across a chapter boundary to the second chapter segment', () => {
-    const { rerender } = render(
-      <ContinuousView
-        book={makeTwoChapterBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
-    );
-
-    rerender(
-      <ContinuousView
-        book={makeTwoChapterBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 2, verse: 1 }}
-      />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    // Chapter 2 starts at index 1 (the last token), so next arrow should be disabled
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
   });
 
-  it('calls scrollIntoView with instant behaviour when activeVerse changes', () => {
-    // External jumps use behavior:'auto' (not 'smooth') to avoid double-animation with the
-    // strip opacity fade that already plays during the jump.
-    const { rerender } = render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
-    );
-    scrollIntoViewMock.mockClear();
+  it('disables both arrows when the book has no word tokens', () => {
+    const book = makeWordFreeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-      />,
-    );
+    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Arrow nav
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView arrow navigation', () => {
+  it('notifies the parent of the next phrase ref when Next is clicked', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-1');
+  });
+
+  it('notifies the parent of the previous phrase ref when Previous is clicked', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
+  });
+
+  it('crosses verse boundaries via the Next arrow', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+  });
+
+  it('crosses chapter boundaries via the Next arrow', async () => {
+    const book = makeTwoChapterBook();
+    const props = requiredProps(book, { focusedTokenRef: 'ch1-tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('ch2-tok-0');
+  });
+
+  it('advances two groups on rapid double-click before re-render', async () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    render(<ContinuousView {...props} />, withAnalysisStore);
+    const next = screen.getByRole('button', { name: 'Next token' });
+
+    await userEvent.click(next);
+    await userEvent.click(next);
+
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scroll behavior
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView scroll behavior', () => {
+  it('calls scrollIntoView on initial mount', () => {
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'nearest',
+      inline: 'center',
+    });
+  });
+
+  it('uses instant scroll when focusedTokenRef changes externally', () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    scrollIntoViewMock.mockClear();
     act(() => {
-      jest.advanceTimersByTime(500);
+      jest.useFakeTimers();
+    });
+    rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-3' }} />);
+    act(() => {
+      jest.advanceTimersByTime(600);
+      jest.useRealTimers();
     });
 
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
-  it('does not call onVerseChange when activeVerse changes', () => {
-    const { rerender } = render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
-    );
-
-    const handleVerseChange = jest.fn();
-    rerender(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-        onVerseChange={handleVerseChange}
-      />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    expect(handleVerseChange).not.toHaveBeenCalled();
-  });
-
-  it('initializes at the target verse position when activeVerse is provided at mount', () => {
-    // makeBook(): GEN 1:1 at index 0-1, GEN 1:2 at index 2-3. Mounting with verse 2 should
-    // start the strip focused at index 2 immediately (lazy useState initializer, no effect wait).
-    render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-      />,
-      withAnalysisStore,
-    );
-
-    // Index 2 is not the start (prev enabled) and not the end (next enabled).
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
-  });
-
-  it('does not jump when activeVerse is undefined', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    // Without activeVerse the strip stays at focusIndex 0
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-  });
-
-  it('does not jump when activeVerse does not match any segment', () => {
-    render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 99, verse: 99 }}
-      />,
-      withAnalysisStore,
-    );
-
-    // No matching segment — strip stays at focusIndex 0
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-  });
-
-  it('does not jump when activeVerse targets a segment that has no word tokens', () => {
-    // Start focused at GEN 1:1 (word token), then move activeVerse to GEN 1:2 (punctuation only).
-    // getPhraseIndexForVerse should return undefined → no pending jump.
-    const { rerender } = render(
-      <ContinuousView
-        book={makeMixedBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-      />,
-    );
-
-    rerender(
-      <ContinuousView
-        book={makeMixedBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-      />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    // No jump occurred; focus stays at GEN 1:1 (index 0), so prev arrow remains disabled.
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// activePhraseIndex direct jump
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView activePhraseIndex', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('jumps to the specified phrase index after the fade delay when activePhraseIndex changes', () => {
+  it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
+    // The smooth-scroll path requires the displayed focus to already agree with the prop and the
+    // strip to be visible when the scroll effect runs. That only happens when a real (stateful)
+    // parent reflects the internal ref change straight back, so simulate one here rather than
+    // driving the ref via a jest.fn() that never updates the prop.
     const book = makeBook();
-    const { rerender } = render(
-      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
+    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    function Parent() {
+      const [ref, setRef] = useState<string | undefined>('tok-0');
+      return (
+        <ContinuousView
+          book={book}
+          editPhraseSegmentId={undefined}
+          focusedTokenRef={ref}
+          onFocusedTokenRefChange={setRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={jest.fn()}
+          tokenSegmentMap={tokenSegmentMap}
+          wordTokenByRef={wordTokenByRef}
+          hideInactiveLinkButtons={false}
+          simplifyPhrases={false}
+        />
+      );
+    }
+    render(<Parent />, withAnalysisStore);
+    // Wait for the initial-load requestAnimationFrame fade-in to complete (strip becomes visible)
+    // before navigating; the smooth path is only taken while the strip is already visible.
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
+    scrollIntoViewMock.mockClear();
 
-    const phraseBtns = () =>
-      screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
 
-    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'focused');
-
-    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'default');
-    expect(phraseBtns()[1]).toHaveAttribute('data-focus-state', 'focused');
+    await waitFor(() =>
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'smooth' }),
+      ),
+    );
   });
 
-  it('uses instant scrollIntoView behaviour after the fade completes', () => {
+  /**
+   * Renders ContinuousView with `hideInactiveLinkButtons` on, focused at tok-1 (the last phrase of
+   * GEN 1:1) so a single Next step crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in
+   * GEN 1:1 and shows a link icon only while that segment is active, so it's a clean probe for
+   * whether the active-segment relayout has committed.
+   *
+   * @returns A predicate reporting whether that in-segment link icon mounted in the latest render.
+   */
+  function renderHideInactiveCrossing(): () => boolean {
     const book = makeBook();
-    render(
-      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
-      withAnalysisStore,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    expect(globalThis.HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: 'auto' }),
-    );
-  });
-
-  it('remains hidden while a second click overrides a pending jump mid-fade', () => {
-    // Regression: when a second activePhraseIndex arrives before the first fade-out timer fires,
-    // the RAF cleanup from the first jump must not reveal the strip prematurely.
-    const book = makeBook();
-    const { rerender } = render(
-      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    // First click — strip fades out; timer is pending.
-    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
-
-    // Second click before the first 500 ms timer fires — overrides the pending jump.
-    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
-
-    // Strip should still be hidden while the second fade-out timer is pending.
-    expect(screen.getByTestId('token-strip')).toHaveClass('tw:opacity-0');
-  });
-
-  it('jumps to the correct phrase when a second click arrives before the first jump resolves', () => {
-    // Regression: second click before the first fade timer fires must end at the second target, not
-    // wherever the first jump would have landed.
-    const book = makeBook();
-    const { rerender } = render(
-      <ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />,
-    );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    const phraseBtns = () =>
-      screen.getAllByRole('button').filter((b) => b.dataset.phraseBox === 'true');
-
-    // First click to index 1.
-    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={1} />);
-
-    // Second click back to index 0 before the first timer fires.
-    rerender(<ContinuousView book={book} {...requiredProps()} activePhraseIndex={0} />);
-
-    // Let the second fade-out timer fire.
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
-
-    expect(phraseBtns()[0]).toHaveAttribute('data-focus-state', 'focused');
-    expect(phraseBtns()[1]).toHaveAttribute('data-focus-state', 'default');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// onVerseChange outbound propagation
-// ---------------------------------------------------------------------------
-
-describe('ContinuousView onVerseChange propagation', () => {
-  it('calls onVerseChange when the next arrow crosses into a new verse', async () => {
-    // makeBook(): segment GEN 1:1 has tokens at index 0,1; GEN 1:2 starts at index 2
-    const handleVerseChange = jest.fn();
-    render(
-      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
-      withAnalysisStore,
-    );
-
-    // Advance twice to reach index 2 (first token of GEN 1:2)
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 2 });
-  });
-
-  it('calls onVerseChange when the prev arrow crosses back into a prior verse', async () => {
-    const handleVerseChange = jest.fn();
-    render(
-      <ContinuousView
-        book={makeBook()}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 2 }}
-        onVerseChange={handleVerseChange}
-      />,
-      withAnalysisStore,
-    );
-    handleVerseChange.mockClear();
-
-    // focusIndex is at 2 (first token of GEN 1:2); go prev to cross back to GEN 1:1
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
-
-    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 });
-  });
-
-  it('does not call onVerseChange for multiple arrow clicks within the same verse', async () => {
-    const handleVerseChange = jest.fn();
-    render(
-      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
-      withAnalysisStore,
-    );
-    handleVerseChange.mockClear();
-
-    // index 0 → index 1: both are in GEN 1:1, no verse change
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(handleVerseChange).not.toHaveBeenCalled();
-  });
-
-  it('calls onVerseChange with the chapter-2 verse when crossing the chapter boundary', async () => {
-    const handleVerseChange = jest.fn();
-    render(
-      <ContinuousView
-        book={makeTwoChapterBook()}
-        {...requiredProps()}
-        onVerseChange={handleVerseChange}
-      />,
-      withAnalysisStore,
-    );
-    handleVerseChange.mockClear();
-
-    // ch1 has 1 token (index 0), ch2 starts at index 1 — one click crosses the boundary
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-
-    expect(handleVerseChange).toHaveBeenCalledWith({ book: 'GEN', chapter: 2, verse: 1 });
-  });
-
-  it('does not call onVerseChange when book changes and focus resets to the first phrase', async () => {
-    const handleVerseChange = jest.fn();
-    const { rerender } = render(
-      <ContinuousView book={makeBook()} {...requiredProps()} onVerseChange={handleVerseChange} />,
-    );
-
-    // Move focus away from index 0 so book-switch reset path is exercised.
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    handleVerseChange.mockClear();
-
-    const exoBook: Book = {
-      ...makeBook(),
-      id: 'EXO',
-      bookRef: 'EXO',
-      segments: makeBook().segments.map((seg) => ({
-        ...seg,
-        startRef: { ...seg.startRef, book: 'EXO' },
-        endRef: { ...seg.endRef, book: 'EXO' },
-      })),
+    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    function Parent() {
+      const [ref, setRef] = useState<string | undefined>('tok-1');
+      return (
+        <ContinuousView
+          book={book}
+          editPhraseSegmentId={undefined}
+          focusedTokenRef={ref}
+          onFocusedTokenRefChange={setRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={jest.fn()}
+          tokenSegmentMap={tokenSegmentMap}
+          wordTokenByRef={wordTokenByRef}
+          hideInactiveLinkButtons
+          simplifyPhrases={false}
+        />
+      );
+    }
+    render(<Parent />, withAnalysisStore);
+    // Returns true when the tok-0/tok-1 link icon is rendered AND its wrapper is visible (not
+    // suppressed). Icons stay mounted but are hidden via opacity:0 when suppressed, so
+    // we query the DOM wrapper's style rather than spy calls.
+    return () => {
+      const icon = document.querySelector<HTMLElement>(
+        '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
+      );
+      if (!icon) return false;
+      return icon.parentElement?.style.opacity !== '0';
     };
+  }
 
-    rerender(
-      <ContinuousView book={exoBook} {...requiredProps()} onVerseChange={handleVerseChange} />,
+  it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
+    // With hideInactiveLinkButtons on, crossing a boundary wants to add/remove icons — but doing so
+    // mid-scroll shifts every box and breaks the smooth glide. The view defers the active-segment
+    // switch until the scroll settles (signaled by the container's `scrollend`), so the old segment
+    // keeps its icon during the animation and only loses it once the scroll finishes.
+    const inSegmentIconMounted = renderHideInactiveCrossing();
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
+    );
+    // GEN 1:1 is active, so its in-segment slot (between tok-0 and tok-1) shows a link icon.
+    expect(inSegmentIconMounted()).toBe(true);
+
+    // Step into GEN 1:2. The GEN 1:1 link icon must remain while the scroll animates (no relayout).
+    tokenLinkIconSpy.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(inSegmentIconMounted()).toBe(true);
+
+    // The scroll settles → `scrollend` fires on the clipping viewport (the element that actually
+    // scrolls) → the active segment switches to GEN 1:2 and the GEN 1:1 icon disappears (its
+    // in-segment slot is now inactive and suppressed).
+    tokenLinkIconSpy.mockClear();
+    act(() => {
+      screen.getByTestId('strip-scroll-viewport').dispatchEvent(new Event('scrollend'));
+    });
+    expect(inSegmentIconMounted()).toBe(false);
+  });
+
+  it('also commits when scrollend fires on the inner content row', async () => {
+    // The listener is attached to both the viewport and the content row, so whichever the browser
+    // treats as the scroller settles the relayout. Covers the content-row path.
+    const inSegmentIconMounted = renderHideInactiveCrossing();
+    await waitFor(() =>
+      expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
 
-    expect(handleVerseChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(inSegmentIconMounted()).toBe(true);
+
+    tokenLinkIconSpy.mockClear();
+    act(() => {
+      screen.getByTestId('token-strip').dispatchEvent(new Event('scrollend'));
+    });
+    expect(inSegmentIconMounted()).toBe(false);
+  });
+
+  it('commits the deferred relayout via the fallback timeout when scrollend never fires', () => {
+    // Browsers without `scrollend` (or when the target was already centered, so no scroll happens)
+    // must still commit the deferred relayout. A backstop timeout covers that case. Fake timers are
+    // installed before render so every scheduled timer is captured, then advanced past the fallback.
+    jest.useFakeTimers();
+    try {
+      const inSegmentIconMounted = renderHideInactiveCrossing();
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      // GEN 1:1 is active, so its in-segment link icon shows.
+      expect(inSegmentIconMounted()).toBe(true);
+
+      tokenLinkIconSpy.mockClear();
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+      });
+      // Still present while the (fake-timer) scroll is mid-flight; no scrollend is dispatched.
+      expect(inSegmentIconMounted()).toBe(true);
+
+      tokenLinkIconSpy.mockClear();
+      act(() => {
+        // Advance past the 600ms fallback so the backstop commits the relayout.
+        jest.advanceTimersByTime(700);
+      });
+      expect(inSegmentIconMounted()).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('re-centers the focused group each frame while the inactive-link slots animate, then stops', () => {
+    // After the active segment commits (post-scrollend), the inactive-link slots slide open/closed
+    // over LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. The view
+    // re-centers the focused group on every animation frame for that whole window so it stays dead
+    // center, then tears the loop down once the transition completes. Fake timers drive both the
+    // rAF callbacks and performance.now() deterministically.
+    jest.useFakeTimers();
+    try {
+      const inSegmentIconMounted = renderHideInactiveCrossing();
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      expect(inSegmentIconMounted()).toBe(true);
+
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+      });
+
+      // Commit the active segment (the scroll has settled). This seeds the re-center rAF loop.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        screen.getByTestId('strip-scroll-viewport').dispatchEvent(new Event('scrollend'));
+      });
+      // The synchronous useLayoutEffect re-center has already fired once.
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Advance one frame at a time: each frame within the transition window re-centers again.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Advance well past the transition window so the loop hits its deadline and stops scheduling.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      // No further re-centering frames are scheduled once the deadline has passed.
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('scrolls with the nearest-block, center-inline placement', () => {
+    const book = makeBook();
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />,
+      withAnalysisStore,
+    );
+
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ block: 'nearest', inline: 'center' }),
+    );
+  });
+
+  it('re-centers once when simplifyPhrases toggles but not when hideInactiveLinkButtons toggles', () => {
+    // Inactive link slots are now hidden via visibility:hidden (not max-width collapse), so toggling
+    // hideInactiveLinkButtons no longer shifts the strip layout — no re-center needed.
+    // simplifyPhrases still affects layout, so it should trigger one re-center.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+    scrollIntoViewMock.mockClear();
+
+    // Toggling hideInactiveLinkButtons should not cause any re-centering.
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    // Toggling simplifyPhrases re-centers exactly once (no rAF loop needed).
+    rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+    );
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1038,61 +1004,254 @@ describe('ContinuousView onVerseChange propagation', () => {
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView RTL layout', () => {
+  let originalDir: string;
+
   beforeEach(() => {
-    document.documentElement.dir = 'rtl';
+    originalDir = document.documentElement.dir;
   });
 
   afterEach(() => {
+    document.documentElement.dir = originalDir;
+  });
+
+  it('uses right-pointing arrow for Previous in RTL', () => {
+    document.documentElement.dir = 'rtl';
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    const prev = screen.getByRole('button', { name: 'Previous token' });
+    expect(prev.textContent).toContain('→');
+  });
+
+  it('uses left-pointing arrow for Next in RTL', () => {
+    document.documentElement.dir = 'rtl';
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    const next = screen.getByRole('button', { name: 'Next token' });
+    expect(next.textContent).toContain('←');
+  });
+
+  it('uses left-pointing arrow for Previous in LTR', () => {
     document.documentElement.dir = 'ltr';
-  });
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-  it('shows right-arrow (→) on the previous button in RTL mode', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    const prevBtn = screen.getByRole('button', { name: 'Previous token' });
-    expect(prevBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2192');
-  });
-
-  it('shows left-arrow (←) on the next button in RTL mode', () => {
-    render(<ContinuousView book={makeBook()} {...requiredProps()} />, withAnalysisStore);
-
-    const nextBtn = screen.getByRole('button', { name: 'Next token' });
-    expect(nextBtn.querySelector('[aria-hidden="true"]')).toHaveTextContent('\u2190');
+    const prev = screen.getByRole('button', { name: 'Previous token' });
+    expect(prev.textContent).toContain('←');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Phrase window — windowing branches (PHRASE_WINDOW_HALF = 100 on each side)
+// Phrase window — large books
 // ---------------------------------------------------------------------------
 
 describe('ContinuousView phrase window', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-  });
-  afterEach(() => {
-    jest.useRealTimers();
+  it('renders the focused phrase from a large book', () => {
+    const book = makeLargeBook(300);
+    render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-150' })} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByText('word150')).toBeInTheDocument();
   });
 
-  it('activates both windowing branches when the focused phrase is deep inside a large book', () => {
-    // A book with 250 tokens: focusing phrase 125 means windowStart = 25 (> 0) and
-    // windowEnd = 225 (< 249), exercising both the windowStartTokenIndex and
-    // windowEndTokenIndex non-default branches.
-    const book = makeLargeBook(250);
+  it('does not render tokens that fall outside the rendered window', () => {
+    const book = makeLargeBook(300);
     render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'large-tok-0' })} />,
+      withAnalysisStore,
+    );
+
+    // PHRASE_WINDOW_HALF = 100; tok-299 is well outside.
+    expect(screen.queryByText('word299')).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phrase grouping
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView phrase grouping', () => {
+  it('groups adjacent tokens of the same phrase into a single PhraseBox', () => {
+    phraseLinkMap.set('tok-0', {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    });
+    phraseLinkMap.set('tok-1', {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    });
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    const phraseBoxes = document.querySelectorAll('[data-phrase-box="true"]');
+    // Two tokens grouped → one box; plus the two free tokens from segment 2 → 3 total.
+    expect(phraseBoxes).toHaveLength(3);
+  });
+
+  it('shows the gloss input on only the first fragment of a discontiguous phrase', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-2', phraseLink);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    const phraseBoxes = document.querySelectorAll('[data-phrase-id="phrase-1"]');
+    expect(phraseBoxes).toHaveLength(2);
+    expect(phraseBoxes[0]).toHaveAttribute('data-show-gloss', 'true');
+    expect(phraseBoxes[1]).toHaveAttribute('data-show-gloss', 'false');
+  });
+
+  it('fires mouse-leave on the token strip without throwing', async () => {
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    const strip = screen.getByTestId('token-strip');
+    await userEvent.unhover(strip);
+    // No throw = pass
+  });
+
+  it('applies the internal focus transition when the parent reflects a click-driven ref change', async () => {
+    // Simulate: ContinuousView clicks Next, sets internalFocusedTokenRefRef, calls
+    // onFocusedTokenRefChange. The parent then passes the new focusedTokenRef back. This exercises
+    // the isInternal=true path (lines 306-308) of the pending-jump effect.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    // Now reflect the new ref back as a prop change (as a real parent would do).
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
+    // No throw = the isInternal path ran successfully.
+  });
+
+  it('scrolls to the first token of the active phrase when entering edit mode', async () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-2', surfaceText: 'beginning' },
+        { tokenRef: 'tok-3', surfaceText: 'God' },
+      ],
+    };
+    phraseLinkMap.set('tok-2', phraseLink);
+    phraseLinkMap.set('tok-3', phraseLink);
+    const book = makeBook();
+    const onFocusedTokenRefChange = jest.fn();
+    const { rerender } = render(
       <ContinuousView
-        book={book}
-        {...requiredProps()}
-        activeVerse={{ book: 'GEN', chapter: 1, verse: 1 }}
-        activePhraseIndex={125}
+        {...requiredProps(book)}
+        focusedTokenRef="tok-0"
+        onFocusedTokenRefChange={onFocusedTokenRefChange}
       />,
       withAnalysisStore,
     );
-    act(() => {
-      jest.advanceTimersByTime(500);
-    });
 
-    // Phrase 125 is not at the start or end, so both arrows are enabled.
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
+    // Switch to edit mode for phrase-1.
+    rerender(
+      <ContinuousView
+        {...requiredProps(book)}
+        focusedTokenRef="tok-0"
+        onFocusedTokenRefChange={onFocusedTokenRefChange}
+        phraseMode={{
+          kind: 'edit',
+          phraseId: 'phrase-1',
+          originalTokens: phraseLink.tokens,
+        }}
+      />,
+    );
+    // The effect should call onFocusedTokenRefChange with the first token of the phrase.
+    expect(onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
+  });
+
+  it('fires phrase group hover enter and leave without throwing', async () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    // The PhraseGroup wrapper span contains the phrase box.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    const phraseGroupSpan = phraseBox?.parentElement;
+    expect(phraseGroupSpan).not.toBeNull();
+    await userEvent.hover(phraseGroupSpan ?? document.body);
+    await userEvent.unhover(phraseGroupSpan ?? document.body);
+    // No throw = pass
+  });
+
+  it('calls splitPhraseAtBoundary when the arc split button is clicked with a known phrase', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+      mergePhrases: jest.fn(),
+    });
+    // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).toHaveBeenCalledWith('phrase-1');
+  });
+
+  it('does nothing when the arc split button fires for an unknown phrase id', async () => {
+    const deletePhrase = jest.fn();
+    mockUsePhraseDispatch.mockReturnValue({
+      createPhrase: jest.fn(),
+      updatePhrase: jest.fn(),
+      deletePhrase,
+      mergePhrases: jest.fn(),
+    });
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    await userEvent.click(screen.getByTestId('arc-split-btn'));
+    expect(deletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    mockCandidateTokenRefs.current = new Set(['tok-0']);
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
   });
 });

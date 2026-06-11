@@ -10,11 +10,32 @@
  */
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { PhraseAnalysisLink } from 'interlinearizer';
+import type { PhraseAnalysisLink, TokenSnapshot } from 'interlinearizer';
 import { usePhraseDispatch, usePhraseLinkByIdMap } from '../components/AnalysisStore';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 import type { PhraseMode } from '../types/phrase-mode';
 import { splitPhraseAtBoundary } from '../utils/phrase-arc';
+
+/**
+ * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
+ * Reads the by-id phrase-link map internally so both `SegmentView` and `ContinuousView` share one
+ * derivation rather than each maintaining an identical `useMemo`.
+ *
+ * @param phraseMode - Current phrase-interaction mode; only `edit` mode resolves a token list.
+ * @returns The edit-mode phrase's token snapshots, or `undefined` when not editing.
+ */
+export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | undefined {
+  const phraseLinkById = usePhraseLinkByIdMap();
+
+  return useMemo(
+    () =>
+      phraseMode.kind === 'edit'
+        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
+          phraseLinkById.get(phraseMode.phraseId)?.tokens
+        : undefined,
+    [phraseMode, phraseLinkById],
+  );
+}
 
 /**
  * Returns a memoized handler that splits a phrase arc at a token boundary and dispatches the

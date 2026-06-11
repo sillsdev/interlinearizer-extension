@@ -375,17 +375,24 @@ const scrollIntoViewMock = jest.fn();
  */
 function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
+  tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
   const tokenSegmentMap = new Map<string, string>();
+  const tokenDocOrder = new Map<string, number>();
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
+  let wordIndex = 0;
   book.segments.forEach((seg) => {
     seg.tokens.forEach((t) => {
       tokenSegmentMap.set(t.ref, seg.id);
-      if (isWordToken(t)) wordTokenByRef.set(t.ref, t);
+      if (isWordToken(t)) {
+        wordTokenByRef.set(t.ref, t);
+        tokenDocOrder.set(t.ref, wordIndex);
+        wordIndex += 1;
+      }
     });
   });
-  return { tokenSegmentMap, wordTokenByRef };
+  return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
 }
 
 /**
@@ -408,11 +415,12 @@ function requiredProps(
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
+  tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
 } {
-  const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+  const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
     book,
     editPhraseSegmentId: undefined,
@@ -421,6 +429,7 @@ function requiredProps(
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap,
+    tokenDocOrder,
     wordTokenByRef,
     hideInactiveLinkButtons: false,
     simplifyPhrases: false,
@@ -849,7 +858,7 @@ describe('ContinuousView scroll behavior', () => {
     // parent reflects the internal ref change straight back, so simulate one here rather than
     // driving the ref via a jest.fn() that never updates the prop.
     const book = makeBook();
-    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-0');
       return (
@@ -861,6 +870,7 @@ describe('ContinuousView scroll behavior', () => {
           phraseMode={{ kind: 'view' }}
           setPhraseMode={jest.fn()}
           tokenSegmentMap={tokenSegmentMap}
+          tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
@@ -894,7 +904,7 @@ describe('ContinuousView scroll behavior', () => {
    */
   function renderHideInactiveCrossing(): () => boolean {
     const book = makeBook();
-    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-1');
       return (
@@ -906,6 +916,7 @@ describe('ContinuousView scroll behavior', () => {
           phraseMode={{ kind: 'view' }}
           setPhraseMode={jest.fn()}
           tokenSegmentMap={tokenSegmentMap}
+          tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons
           simplifyPhrases={false}

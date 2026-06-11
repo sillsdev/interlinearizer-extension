@@ -1,10 +1,11 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
+import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
 import SegmentListView from './SegmentListView';
@@ -231,11 +232,7 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 
-  // Latest scrRef, mirrored so `focusToken` can read the current verse without taking it as a dep
-  // (scrRef is a fresh object on many host renders; depending on it would churn focusToken's
-  // identity and re-wire ContinuousView's callback ref every render).
-  const scrRefRef = useRef(scrRef);
-  scrRefRef.current = scrRef;
+  const scrRefRef = useLatestRef(scrRef);
 
   /**
    * Focuses `tokenRef` and, when it lives in a different verse than the active one, navigates
@@ -270,7 +267,7 @@ function InterlinearizerInner({
         'internal',
       );
     },
-    [segmentById, tokenSegmentMap, navigate],
+    [segmentById, tokenSegmentMap, navigate, scrRefRef],
   );
 
   /**
@@ -316,6 +313,7 @@ function InterlinearizerInner({
               phraseMode={phraseMode}
               setPhraseMode={setPhraseMode}
               tokenSegmentMap={tokenSegmentMap}
+              tokenDocOrder={tokenDocOrder}
               wordTokenByRef={wordTokenByRef}
               hideInactiveLinkButtons={hideInactiveLinkButtons}
               simplifyPhrases={simplifyPhrases}

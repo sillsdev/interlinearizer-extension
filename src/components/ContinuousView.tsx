@@ -4,7 +4,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
-import { isWordToken } from '../types/type-guards';
 import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
@@ -14,6 +13,7 @@ import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import {
   useArcSplitHandler,
   useCandidatePhraseIds,
+  useEditPhraseTokens,
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import useLatestRef from '../hooks/useLatestRef';
@@ -103,6 +103,8 @@ type ContinuousViewProps = Readonly<{
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Token ref → segment id lookup; used to resolve the focused token's segment for slot rules. */
   tokenSegmentMap: ReadonlyMap<string, string>;
+  /** Word token ref → flat book-level index; used to sort phrase tokens in document order. */
+  tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
@@ -137,6 +139,8 @@ type ContinuousViewProps = Readonly<{
  * @param props.phraseMode - Current phrase-interaction mode; controls token click behavior
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
+ * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
+ *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
  * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
  *   the focused token's segment.
@@ -152,6 +156,7 @@ export default function ContinuousView({
   phraseMode,
   setPhraseMode,
   tokenSegmentMap,
+  tokenDocOrder,
   wordTokenByRef,
   hideInactiveLinkButtons,
   simplifyPhrases,
@@ -168,25 +173,7 @@ export default function ContinuousView({
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
 
-  /**
-   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
-   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
-   */
-  const editPhraseTokens = useMemo(
-    () =>
-      phraseMode.kind === 'edit'
-        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          committedPhraseLinkById.get(phraseMode.phraseId)?.tokens
-        : undefined,
-    [phraseMode, committedPhraseLinkById],
-  );
-
-  /** Maps each word token ref to its flat document index for document-order phrase merges. */
-  const tokenDocOrder = useMemo(() => {
-    const map = new Map<string, number>();
-    allTokens.filter(isWordToken).forEach((t, i) => map.set(t.ref, i));
-    return map;
-  }, [allTokens]);
+  const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
   /** Phrase groups built from the flat token list, respecting the committed phrase-link map. */
   const phraseGroups = useMemo(
@@ -630,6 +617,12 @@ export default function ContinuousView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
+  /** Clears both the hovered phrase id and all hover-preview state on mouse leave. */
+  const clearAllHoverState = useCallback(() => {
+    setHoveredPhraseId(undefined);
+    clearHoverState();
+  }, [clearHoverState]);
+
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
@@ -881,10 +874,7 @@ export default function ContinuousView({
                 paddingLeft: `${stripLeftPadding}px`,
                 paddingRight: `${stripRightPadding}px`,
               }}
-              onMouseLeave={() => {
-                setHoveredPhraseId(undefined);
-                clearHoverState();
-              }}
+              onMouseLeave={clearAllHoverState}
             >
               <PhraseStrip
                 items={stripItems}

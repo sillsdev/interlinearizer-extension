@@ -7,6 +7,7 @@ import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import {
   useArcSplitHandler,
   useCandidatePhraseIds,
+  useEditPhraseTokens,
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -220,6 +221,12 @@ export function SegmentView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
+  /** Clears both the hovered phrase id and all hover-preview state on mouse leave. */
+  const clearAllHoverState = useCallback(() => {
+    onHoverPhrase(undefined);
+    clearHoverState();
+  }, [onHoverPhrase, clearHoverState]);
+
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, phraseLinkByRef);
 
   /**
@@ -287,18 +294,7 @@ export function SegmentView({
     [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef],
   );
 
-  /**
-   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
-   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
-   */
-  const editPhraseTokens = useMemo(
-    () =>
-      phraseMode.kind === 'edit'
-        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          phraseLinkById.get(phraseMode.phraseId)?.tokens
-        : undefined,
-    [phraseMode, phraseLinkById],
-  );
+  const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
   /**
    * Strip-wide context value shared by every phrase group and link slot in this segment.
@@ -442,10 +438,7 @@ export function SegmentView({
               paddingRight: `${stripRightPadding}px`,
               rowGap: `${stripRowGap}px`,
             }}
-            onMouseLeave={() => {
-              onHoverPhrase(undefined);
-              clearHoverState();
-            }}
+            onMouseLeave={clearAllHoverState}
           >
             <PhraseStrip
               items={stripItems}

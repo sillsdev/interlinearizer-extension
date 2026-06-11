@@ -10,9 +10,9 @@ import type {
 } from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
 import { makePhraseLink } from '../test-helpers';
+import { emptyAnalysis } from '../../types/empty-factories';
 import {
   createPhrase,
-  defaultAnalysis,
   defaultState,
   deletePhrase,
   mergePhrases,
@@ -49,7 +49,7 @@ function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
  */
 function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
   return {
-    ...defaultAnalysis,
+    ...emptyAnalysis(),
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [makeApprovedLink(ta)],
   };
@@ -67,7 +67,7 @@ describe('setAnalysis', () => {
 
   it('does not mutate analysisLanguage', () => {
     const store = createAnalysisStore({ analysis: { ...defaultState, analysisLanguage: 'fr' } });
-    store.dispatch(setAnalysis(defaultAnalysis));
+    store.dispatch(setAnalysis(emptyAnalysis()));
     expect(store.getState().analysis.analysisLanguage).toBe('fr');
   });
 });
@@ -82,7 +82,7 @@ describe('writeGloss', () => {
     };
     const store = createAnalysisStore({
       analysis: {
-        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [orphanLink] },
         analysisLanguage: 'und',
       },
     });
@@ -102,7 +102,7 @@ describe('writeGloss', () => {
     };
     const store = createAnalysisStore({
       analysis: {
-        analysis: { ...defaultAnalysis, tokenAnalysisLinks: [orphanLink] },
+        analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [orphanLink] },
         analysisLanguage: 'und',
       },
     });
@@ -159,7 +159,7 @@ describe('selectApprovedGloss', () => {
  */
 function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
   return {
-    ...defaultAnalysis,
+    ...emptyAnalysis(),
     phraseAnalyses: [{ id: link.analysisId, surfaceText: 'phrase' }],
     phraseAnalysisLinks: [link],
   };
@@ -288,7 +288,7 @@ describe('deletePhrase', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: {
-          ...defaultAnalysis,
+          ...emptyAnalysis(),
           phraseAnalyses: [
             { id: 'phrase-1', surfaceText: 'A' },
             { id: 'phrase-2', surfaceText: 'B' },
@@ -316,7 +316,7 @@ describe('mergePhrases', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: {
-          ...defaultAnalysis,
+          ...emptyAnalysis(),
           phraseAnalyses: [
             { id: 'phrase-1', surfaceText: 'A' },
             { id: 'phrase-2', surfaceText: 'B' },
@@ -377,7 +377,7 @@ describe('mergePhrases', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: {
-          ...defaultAnalysis,
+          ...emptyAnalysis(),
           phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'A' }],
           phraseAnalysisLinks: [phrase],
         },
@@ -436,7 +436,7 @@ describe('selectPhraseLinks', () => {
       status: 'suggested',
     };
     const analysis: TextAnalysis = {
-      ...defaultAnalysis,
+      ...emptyAnalysis(),
       phraseAnalyses: [
         { id: 'phrase-1', surfaceText: 'A' },
         { id: 'phrase-2', surfaceText: 'B' },

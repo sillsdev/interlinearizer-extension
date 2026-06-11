@@ -131,9 +131,10 @@ export interface InterlinearNav {
    */
   reportSettled: () => void;
   /**
-   * Aborts an in-flight cross-book fade and reveals the content immediately. Called by the loader
-   * when the new book fails to load, so the error is shown rather than left hidden behind a curtain
-   * that will never receive a settle.
+   * Aborts an in-flight cross-book fade and reveals the content without waiting for a settle (the
+   * reveal still animates through the wrapper's opacity transition). Called by the loader when the
+   * new book fails to load, so the error is shown rather than left hidden behind a curtain that
+   * will never receive a settle.
    */
   cancelFade: () => void;
 }

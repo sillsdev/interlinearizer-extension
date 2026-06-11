@@ -323,6 +323,37 @@ describe('InterlinearNavContext', () => {
       expect(result.current.fadePhase).toBe('idle');
     });
 
+    it('clears the stale fade-in timer when a second book change begins before idle', () => {
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      // First cross-book settle starts an in→idle timer (Timer A).
+      act(() => setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      // Advance partway through the timer, then trigger a second book change. The render-time
+      // guard must clear Timer A so it cannot fire during the second fade-out.
+      act(() => jest.advanceTimersByTime(100));
+      act(() => setRef({ book: 'LUK', chapterNum: 2, verseNum: 1 }));
+      rerender();
+      expect(result.current.fadePhase).toBe('out');
+
+      // Advance past the point where Timer A would have fired — fadePhase must stay 'out'.
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      expect(result.current.fadePhase).toBe('out');
+
+      // The second settle starts a fresh timer and proceeds normally.
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+      expect(result.current.fadePhase).toBe('idle');
+    });
+
     it('clears the pending fade-in timer on unmount', () => {
       const { result, rerender, setRef, unmount } = renderNavMutable({
         book: 'GEN',

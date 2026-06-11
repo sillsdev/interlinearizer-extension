@@ -239,6 +239,10 @@ export function InterlinearNavProvider({
   // curtain covers them). Setting state during render is the guarded React pattern: `awaitingSettle`
   // flips true so this fires once per book change, and `setFadePhase` is batched into this commit.
   if (liveScrRef.book !== displayedBookRef.current && !awaitingSettleRef.current) {
+    if (fadeInTimeoutRef.current !== undefined) {
+      clearTimeout(fadeInTimeoutRef.current);
+      fadeInTimeoutRef.current = undefined;
+    }
     awaitingSettleRef.current = true;
     setFadePhase('out');
   }

@@ -10,6 +10,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_hideInactiveLinkButtons%',
   '%interlinearizer_viewOption_simplifyPhrases%',
   '%interlinearizer_viewOption_chapterLabelInVerse%',
+  '%interlinearizer_viewOption_showMorphology%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -62,12 +63,16 @@ type ViewOptionsDropdownProps = Readonly<{
   chapterLabelInVerse: boolean;
   /** Called when the show-chapter-in-verse-label toggle changes. */
   onChapterLabelInVerseChange: (checked: boolean) => void;
+  /** Current value of the show-morphology toggle. */
+  showMorphology: boolean;
+  /** Called when the show-morphology toggle changes. */
+  onShowMorphologyChange: (checked: boolean) => void;
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and three view-mode toggles (hide
- * inactive link buttons, simplify phrases, chapter label in verse). Opens and closes via a gear
- * icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and four view-mode toggles (hide
+ * inactive link buttons, simplify phrases, chapter label in verse, show morphology). Opens and
+ * closes via a gear icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.
@@ -78,6 +83,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onSimplifyPhrasesChange - Dim-inactive-segments change callback.
  * @param props.chapterLabelInVerse - Current show-chapter-in-verse-label value.
  * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
+ * @param props.showMorphology - Current show-morphology value.
+ * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -89,6 +96,8 @@ export default function ViewOptionsDropdown({
   onSimplifyPhrasesChange,
   chapterLabelInVerse,
   onChapterLabelInVerseChange,
+  showMorphology,
+  onShowMorphologyChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -191,6 +200,11 @@ export default function ViewOptionsDropdown({
                 checked={chapterLabelInVerse}
                 label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
                 onCheckedChange={onChapterLabelInVerseChange}
+              />
+              <ViewToggle
+                checked={showMorphology}
+                label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
+                onCheckedChange={onShowMorphologyChange}
               />
             </div>
           </>,

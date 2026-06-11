@@ -117,6 +117,8 @@ type ContinuousViewProps = Readonly<{
    * every phrase except the focused one.
    */
   simplifyPhrases: boolean;
+  /** When `true`, morpheme rows and per-morpheme glosses are shown beneath each word token. */
+  showMorphology: boolean;
 }>;
 
 /**
@@ -146,6 +148,8 @@ type ContinuousViewProps = Readonly<{
  *   the focused token's segment.
  * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
  *   the focused one.
+ * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
+ *   each word token.
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
@@ -160,6 +164,7 @@ export default function ContinuousView({
   wordTokenByRef,
   hideInactiveLinkButtons,
   simplifyPhrases,
+  showMorphology,
 }: ContinuousViewProps) {
   const isRtl = document.documentElement.dir === 'rtl';
 
@@ -663,6 +668,7 @@ export default function ContinuousView({
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     skipLinkTransition: !isVisible || skipSlotTransitionForJump,
+    showMorphology,
   });
 
   /**

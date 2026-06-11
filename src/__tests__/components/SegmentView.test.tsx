@@ -193,6 +193,7 @@ function requiredProps(): {
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
   chapterLabelInVerse: boolean;
+  showMorphology: boolean;
 } {
   return {
     displayMode: 'token-chip',
@@ -211,6 +212,7 @@ function requiredProps(): {
     hideInactiveLinkButtons: false,
     simplifyPhrases: false,
     chapterLabelInVerse: false,
+    showMorphology: false,
   };
 }
 

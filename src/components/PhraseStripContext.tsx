@@ -73,6 +73,11 @@ export type PhraseStripContextValue = Readonly<{
    * before the strip fades in, rather than animating while the strip is becoming visible.
    */
   skipLinkTransition: boolean;
+  /**
+   * When `true`, each word token displays its morpheme breakdown and per-morpheme glosses beneath
+   * the token-level gloss input.
+   */
+  showMorphology: boolean;
 }>;
 
 /** The phrase-strip context. `undefined` outside a provider so consumers can fail loudly. */

@@ -419,6 +419,7 @@ function requiredProps(
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
+  showMorphology: boolean;
 } {
   const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
@@ -433,6 +434,7 @@ function requiredProps(
     wordTokenByRef,
     hideInactiveLinkButtons: false,
     simplifyPhrases: false,
+    showMorphology: false,
   };
 }
 
@@ -899,6 +901,7 @@ describe('ContinuousView scroll behavior', () => {
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
+          showMorphology={false}
         />
       );
     }
@@ -945,6 +948,7 @@ describe('ContinuousView scroll behavior', () => {
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons
           simplifyPhrases={false}
+          showMorphology={false}
         />
       );
     }

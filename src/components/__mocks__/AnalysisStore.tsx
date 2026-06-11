@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AssignmentStatus } from 'interlinearizer';
+import type { AssignmentStatus, MorphemeAnalysis } from 'interlinearizer';
 
 type GlossMap = Record<string, string>;
 type MockCtxValue = {
@@ -72,4 +72,52 @@ export function useGloss(tokenRef: string) {
  */
 export function useGlossDispatch() {
   return useContext(MockCtx).dispatch;
+}
+
+/** Empty morphemes array returned by {@link useMorphemes} when no breakdown exists. */
+const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
+
+/**
+ * Returns the morpheme breakdown for a token. Always returns an empty array in mock context.
+ *
+ * @param _tokenRef - The token reference key (unused in mock).
+ * @returns An empty readonly morpheme array.
+ */
+export function useMorphemes(_tokenRef: string): readonly MorphemeAnalysis[] {
+  return EMPTY_MORPHEMES;
+}
+
+/**
+ * Returns the analysis language string from mock context.
+ *
+ * @returns The BCP 47 tag `'und'`.
+ */
+export function useAnalysisLanguage(): string {
+  return 'und';
+}
+
+/**
+ * Returns a no-op dispatch for writing morpheme breakdowns in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeBreakdownDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+) => void {
+  return () => {};
+}
+
+/**
+ * Returns a no-op dispatch for writing morpheme glosses in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeGlossDispatch(): (
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+) => void {
+  return () => {};
 }

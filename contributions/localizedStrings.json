@@ -24,6 +24,9 @@
       "%interlinearizer_projectSettings_simplifyPhrasesDescription%": "Hide interactive controls (split, unlink, remove-token) on phrases that are not currently focused, leaving only their style change on hover",
       "%interlinearizer_projectSettings_chapterLabelInVerse%": "Show Chapter in Verse Label",
       "%interlinearizer_projectSettings_chapterLabelInVerseDescription%": "Mark chapter boundaries by labeling the first verse of each chapter as chapter:verse instead of showing an inline chapter header above it",
+      "%interlinearizer_viewOption_showMorphology%": "Show morphology",
+      "%interlinearizer_projectSettings_showMorphology%": "Show Morphology",
+      "%interlinearizer_projectSettings_showMorphologyDescription%": "Display morpheme breakdown and per-morpheme glosses beneath each word token",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Cross-segment phrases are not supported. This link button is outside the current segment.",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",

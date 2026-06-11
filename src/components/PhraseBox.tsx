@@ -162,6 +162,7 @@ export function PhraseBox({
     tokenSegmentMap,
     tokenDocOrder,
     simplifyPhrases,
+    showMorphology,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
   // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
@@ -394,6 +395,7 @@ export function PhraseBox({
                       ? () => handleViewPopOut(token.ref)
                       : undefined
                   }
+                  showMorphology={showMorphology}
                   token={token}
                 />
               </span>
@@ -432,7 +434,12 @@ export function PhraseBox({
                     ))}
                   </span>
                 )}
-                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+                <MemoizedTokenChip
+                  disabled
+                  onFocus={handleFocus}
+                  showMorphology={showMorphology}
+                  token={token}
+                />
               </span>
             ))}
           </span>
@@ -488,7 +495,12 @@ export function PhraseBox({
                 onClick={() => handleEditRemove(token.ref)}
                 onKeyDown={handlePerTokenKeyDown(token.ref)}
               >
-                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+                <MemoizedTokenChip
+                  disabled
+                  onFocus={handleFocus}
+                  showMorphology={showMorphology}
+                  token={token}
+                />
               </span>
             </span>
           ))}

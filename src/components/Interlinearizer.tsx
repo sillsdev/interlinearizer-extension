@@ -63,6 +63,8 @@ type InterlinearizerProps = Readonly<{
    * bare verse numbers.
    */
   chapterLabelInVerse: boolean;
+  /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
+  showMorphology: boolean;
 }>;
 
 /**
@@ -83,6 +85,8 @@ type InterlinearizerProps = Readonly<{
  *   the focused one.
  * @param props.chapterLabelInVerse - When true, every verse is labeled `chapter:verse` instead of
  *   showing an inline chapter header.
+ * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
+ *   each word token.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
@@ -94,6 +98,7 @@ function InterlinearizerInner({
   hideInactiveLinkButtons,
   simplifyPhrases,
   chapterLabelInVerse,
+  showMorphology,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
@@ -284,6 +289,7 @@ function InterlinearizerInner({
               wordTokenByRef={wordTokenByRef}
               hideInactiveLinkButtons={hideInactiveLinkButtons}
               simplifyPhrases={simplifyPhrases}
+              showMorphology={showMorphology}
             />
           </div>
         )}
@@ -302,6 +308,7 @@ function InterlinearizerInner({
           hideInactiveLinkButtons={hideInactiveLinkButtons}
           simplifyPhrases={simplifyPhrases}
           chapterLabelInVerse={chapterLabelInVerse}
+          showMorphology={showMorphology}
           hoveredPhraseId={hoveredPhraseId}
           setHoveredPhraseId={setHoveredPhraseId}
           editPhraseSegmentId={editPhraseSegmentId}
@@ -334,6 +341,8 @@ function InterlinearizerInner({
  *   segments other than the active verse.
  * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
  *   the focused one.
+ * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
+ *   each word token.
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({

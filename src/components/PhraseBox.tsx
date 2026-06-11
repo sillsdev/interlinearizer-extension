@@ -163,9 +163,10 @@ export function PhraseBox({
     tokenDocOrder,
     simplifyPhrases,
   } = usePhraseStripContext();
-  // When simplifyPhrases is on, a phrase exposes its interactive controls (intra-phrase unlink
-  // icons, remove-token ✕) only while it is the focused phrase. Non-focused phrases keep their
-  // hover style but render no controls.
+  // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
+  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
+  // gap they occupy is preserved. The remove-token ✕ is omitted from onRemove instead (it only
+  // appears as a prop-driven overlay, so omitting it has no layout impact).
   const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -350,15 +351,23 @@ export function PhraseBox({
               <span key={token.ref} className="tw:phrase-token-row">
                 {i > 0 && (
                   <span className="tw:inline-flex tw:flex-col tw:items-center">
-                    {isRealPhrase && !controlsSuppressed && (
-                      <MemoizedTokenLinkIcon
-                        slotFocus={NO_SLOT_FOCUS}
-                        isPhraseRevealed={isHighlighted}
-                        nextPhraseLink={phraseLink}
-                        nextToken={token}
-                        prevPhraseLink={phraseLink}
-                        prevToken={tokens[i - 1]}
-                      />
+                    {isRealPhrase && (
+                      <span
+                        aria-hidden={controlsSuppressed || undefined}
+                        style={{
+                          opacity: controlsSuppressed ? 0 : 1,
+                          pointerEvents: controlsSuppressed ? 'none' : undefined,
+                        }}
+                      >
+                        <MemoizedTokenLinkIcon
+                          slotFocus={NO_SLOT_FOCUS}
+                          isPhraseRevealed={isHighlighted}
+                          nextPhraseLink={phraseLink}
+                          nextToken={token}
+                          prevPhraseLink={phraseLink}
+                          prevToken={tokens[i - 1]}
+                        />
+                      </span>
                     )}
                     {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
                       <span className="tw:inline-flex tw:flex-row tw:items-center">

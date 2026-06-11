@@ -28,12 +28,17 @@ export interface UseInterlinearizerBookDataResult {
 }
 
 /**
- * Fetches and tokenizes the USJ book for the given project and scripture reference.
+ * Fetches and tokenizes the USJ book for the given project and scripture reference. The returned
+ * `book` reference is stabilized across duplicate USJ payloads that PAPI can deliver (e.g. the
+ * scripture picker firing two signals in quick succession): when the serialized content is
+ * identical to the previous result, the prior reference is preserved so consumers avoid redundant
+ * tokenization and recenter churn.
  *
  * @param args - Hook arguments.
  * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
  * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
- * @returns The tokenized book, loading state, and any errors encountered.
+ * @returns The tokenized book (reference-stable across duplicate USJ results), loading state, and
+ *   any errors encountered.
  */
 export default function useInterlinearizerBookData({
   projectId,

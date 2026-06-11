@@ -65,8 +65,9 @@ type ViewOptionsDropdownProps = Readonly<{
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and two view-mode toggles (hide
- * inactive link buttons, dim inactive segments). Opens and closes via a gear icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and three view-mode toggles (hide
+ * inactive link buttons, simplify phrases, chapter label in verse). Opens and closes via a gear
+ * icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.

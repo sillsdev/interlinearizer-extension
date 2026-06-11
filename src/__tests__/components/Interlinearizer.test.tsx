@@ -893,23 +893,26 @@ describe('Interlinearizer', () => {
 
   it('snap button fades, recenters, then scrolls the active segment to the top', () => {
     jest.useFakeTimers();
-    renderInterlinearizer({ book: GEN_1_1_BOOK });
+    try {
+      renderInterlinearizer({ book: GEN_1_1_BOOK });
 
-    act(() => {
-      screen.getByRole('button', { name: /scroll to active verse/i }).click();
-    });
+      act(() => {
+        screen.getByRole('button', { name: /scroll to active verse/i }).click();
+      });
 
-    // The button always fade-recenters (so a verse outside the window still comes into view), so the
-    // snap only lands after the fade timeout rebuilds the window behind the curtain.
-    act(() => {
-      jest.advanceTimersByTime(RECENTER_FADE_MS);
-    });
+      // The button always fade-recenters (so a verse outside the window still comes into view), so the
+      // snap only lands after the fade timeout rebuilds the window behind the curtain.
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
 
-    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-      behavior: 'auto',
-      block: 'start',
-    });
-    jest.useRealTimers();
+      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+        behavior: 'auto',
+        block: 'start',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('leaves focusedTokenRef undefined when switching off continuousScroll with no strip position and no matching segment', () => {
@@ -1028,45 +1031,50 @@ describe('Interlinearizer', () => {
 
   it('fades the segment list out while recentering on a far-away verse, then back in', () => {
     jest.useFakeTimers();
-    const book = makeLargeBook(60);
-    const props = {
-      book,
-      continuousScroll: false,
-      analysisLanguage: 'und',
-      phraseMode: { kind: 'view' } as const,
-      setPhraseMode: () => {},
-      hideInactiveLinkButtons: false,
-      simplifyPhrases: false,
-      chapterLabelInVerse: false,
-    };
-    const { container, rerender } = render(
-      withNav(<Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />),
-    );
-
-    // The inner list-fade wrapper (distinguished by tw:gap-2) is the one that fades for external
-    // navigation; the outer interlinearizer wrapper only fades on a continuous-scroll toggle.
-    const list = container.querySelector('.tw\\:gap-2.tw\\:transition-opacity');
-    expect(list).toHaveStyle({ opacity: '1' });
-
-    // Navigate far past the rendered window so the hook fades out before rebuilding.
-    act(() => {
-      rerender(
+    try {
+      const book = makeLargeBook(60);
+      const props = {
+        book,
+        continuousScroll: false,
+        analysisLanguage: 'und',
+        phraseMode: { kind: 'view' } as const,
+        setPhraseMode: () => {},
+        hideInactiveLinkButtons: false,
+        simplifyPhrases: false,
+        chapterLabelInVerse: false,
+      };
+      const { container, rerender } = render(
         withNav(
-          <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }} />,
+          <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }} />,
         ),
       );
-    });
-    expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
-      opacity: '0',
-    });
 
-    act(() => {
-      jest.advanceTimersByTime(RECENTER_FADE_MS);
-    });
-    expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
-      opacity: '1',
-    });
-    jest.useRealTimers();
+      // The inner list-fade wrapper (distinguished by tw:gap-2) is the one that fades for external
+      // navigation; the outer interlinearizer wrapper only fades on a continuous-scroll toggle.
+      const list = container.querySelector('.tw\\:gap-2.tw\\:transition-opacity');
+      expect(list).toHaveStyle({ opacity: '1' });
+
+      // Navigate far past the rendered window so the hook fades out before rebuilding.
+      act(() => {
+        rerender(
+          withNav(
+            <Interlinearizer {...props} scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 50 }} />,
+          ),
+        );
+      });
+      expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '0',
+      });
+
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '1',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('does not fade the segment list when navigation is originated by an internal segment click', () => {
@@ -1077,6 +1085,13 @@ describe('Interlinearizer', () => {
     // internal-nav classification that suppresses the recenter fade. `setRef` is wired as the
     // context's navigate sink (via withNav), so `navigate(ref, 'internal')` updates the prop here.
     let updateRef: (r: SerializedVerseRef) => void = () => {};
+    /**
+     * Stateful wrapper that feeds its own `ref` state as the `scrRef` prop to
+     * {@link Interlinearizer}, letting `updateRef` simulate navigate calls from outside the
+     * component tree.
+     *
+     * @returns The wrapped Interlinearizer element.
+     */
     function Wrapper() {
       const [ref, setRef] = useState<SerializedVerseRef>({
         book: 'GEN',
@@ -1098,15 +1113,19 @@ describe('Interlinearizer', () => {
         />
       );
     }
-    const { container } = render(withNav(<Wrapper />, (r) => updateRef(r)));
+    try {
+      const { container } = render(withNav(<Wrapper />, (r) => updateRef(r)));
 
-    // Click a segment far down the list (still mounted) — an internal nav, so no fade.
-    const select = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:7')?.onSelect;
-    if (typeof select !== 'function') throw new Error('Expected GEN 1:7 onSelect to be a function');
-    act(() => select({ book: 'GEN', chapter: 1, verse: 7 }, 'GEN 1:7:0'));
+      // Click a segment far down the list (still mounted) — an internal nav, so no fade.
+      const select = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:7')?.onSelect;
+      if (typeof select !== 'function')
+        throw new Error('Expected GEN 1:7 onSelect to be a function');
+      act(() => select({ book: 'GEN', chapter: 1, verse: 7 }, 'GEN 1:7:0'));
 
-    expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
-    jest.useRealTimers();
+      expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('fades the whole interlinearizer out and back in across a continuous-scroll toggle', () => {

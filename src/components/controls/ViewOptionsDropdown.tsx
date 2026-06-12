@@ -153,9 +153,14 @@ export default function ViewOptionsDropdown({
         createPortal(
           /* Clicking outside the panel closes it. */
           <>
+            {/* The invisible backdrop must stay BELOW the toolbar's stacking context (tw:z-10,
+                from the sticky TabToolbarContainer) so the gear button's onClick — not the
+                backdrop — closes the dropdown. Raising the button instead wouldn't work: the
+                toolbar caps its descendants at z-10 against this portaled sibling.
+                Keep panel (z-30) > backdrop. */}
             <div
               aria-hidden="true"
-              className="tw:fixed tw:inset-0 tw:z-20"
+              className="tw:fixed tw:inset-0 tw:z-5"
               onClick={close}
               onKeyDown={undefined}
               role="presentation"

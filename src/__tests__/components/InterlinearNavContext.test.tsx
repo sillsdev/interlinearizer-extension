@@ -5,7 +5,11 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
+import {
+  INTERNAL_NAV_TTL_MS,
+  InterlinearNavProvider,
+  useInterlinearNav,
+} from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 
 /** Tuple shape returned by the PAPI scroll-group hook. */
@@ -266,6 +270,33 @@ describe('InterlinearNavContext', () => {
       expect(result.current.consumeInternalNav(b)).toBe(true);
     });
 
+    it('expires a stranded internal mark after the TTL so a later external navigation fades', () => {
+      // When React batches two rapid internal clicks (verse A then B in one frame), the host
+      // echoes only the final value: B's marker is consumed but A's is stranded. Once the TTL has
+      // passed, a later external navigation to A must classify as external (consume returns
+      // false), not be misread as internal by the stale marker.
+      jest.useFakeTimers();
+      try {
+        const { result } = renderNav(
+          makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+        );
+        const a: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 5 };
+        const b: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 10 };
+
+        act(() => {
+          result.current.navigate(a, 'internal');
+          result.current.navigate(b, 'internal');
+        });
+        // The host coalesces the batched navigations and echoes only the final value.
+        expect(result.current.consumeInternalNav(b)).toBe(true);
+
+        jest.advanceTimersByTime(INTERNAL_NAV_TTL_MS + 1);
+        expect(result.current.consumeInternalNav(a)).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('matches a verse-0 internal mark against the host-normalized verse-1 reference', () => {
       // An internal navigation stamped at chapter granularity (verse 0) must still be consumable
       // when the host echoes it back normalized to the chapter's first verse (verse 1) — the keys
@@ -480,6 +511,36 @@ describe('InterlinearNavContext', () => {
       rerender();
 
       expect(result.current.fadePhase).toBe('in');
+    });
+
+    it('re-engages the curtain when an expired stranded internal mark names the mid-reveal target', () => {
+      // A stranded internal marker (its echo never arrived) must stop exempting the verse once the
+      // TTL passes: a later external navigation to that verse landing mid-reveal still re-engages
+      // the curtain. Markers stamp at navigate time and RECENTER_FADE_MS (500ms) is far shorter
+      // than the TTL (3000ms), so the clock is advanced past the TTL *before* the reveal begins —
+      // advancing during the 'in' phase would fire the fade-in timer to 'idle' first.
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      // Strand a marker for the eventual target: an internal navigation whose echo never arrives.
+      act(() => result.current.navigate({ book: 'ZEP', chapterNum: 3, verseNum: 1 }, 'internal'));
+      // Let the marker expire while the clock is still idle.
+      act(() => jest.advanceTimersByTime(INTERNAL_NAV_TTL_MS + 1));
+
+      // Cross-book navigation, then settle: the curtain is mid-reveal ('in').
+      act(() => setRef({ book: 'ZEP', chapterNum: 1, verseNum: 1 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      // An external navigation to the stranded verse lands mid-reveal. The expired marker must not
+      // exempt it: the curtain re-engages.
+      act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 1 }));
+      rerender();
+      expect(result.current.fadePhase).toBe('out');
     });
 
     it('does not re-engage the curtain for a verse-0 echo during the fade-in', () => {

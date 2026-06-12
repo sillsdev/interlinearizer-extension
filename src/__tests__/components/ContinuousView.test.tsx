@@ -793,6 +793,31 @@ describe('ContinuousView arrow navigation', () => {
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
   });
+
+  it('steps from the externally-imposed focus, not the stale pending index, after an external change interrupts an in-flight internal nav', async () => {
+    // Sequence: an external nav (tok-3) starts its fade while tok-1 is still displayed; the user
+    // clicks Next during the fade (internal nav in flight — this parent never echoes it); then a
+    // second external change lands back on the still-displayed tok-1. Because that value equals the
+    // displayed ref, the focus-change effect early-returns without clearing the in-flight marker,
+    // so only the render-phase external-override detection resyncs the pending index. Without it,
+    // the next step would advance from the stale pending index (group 2 → tok-1) instead of the
+    // externally-imposed position (group 1 → tok-0).
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    // External nav while idle: the fade starts; the displayed focus is still tok-1.
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-3" />);
+    // Internal nav in flight: Next from the displayed group (tok-1) emits tok-2.
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-2');
+
+    // The parent imposes an external position (not the tok-2 echo) that matches the displayed ref.
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-0');
+  });
 });
 
 // ---------------------------------------------------------------------------

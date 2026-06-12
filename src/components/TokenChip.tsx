@@ -76,6 +76,13 @@ export function TokenChip({
     setDraft(committedGloss);
   }, [committedGloss]);
 
+  // The popover tree unmounts with the morpheme row when showMorphology turns off, but this state
+  // lives on the chip and would survive — silently reopening the popover when morphology is shown
+  // again. Clear it so hiding morphology also closes the popover.
+  useEffect(() => {
+    if (!showMorphology) setPopoverOpen(false);
+  }, [showMorphology]);
+
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
     // Prevent the browser's built-in focus-and-scroll so only the React-controlled
     // smooth scrollIntoView fires. We re-focus manually with preventScroll instead.

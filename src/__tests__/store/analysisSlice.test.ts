@@ -600,6 +600,26 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[2].form).toBe('-able');
   });
 
+  it('preserves distinct glosses on duplicate morpheme forms in order (reduplication)', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'baba',
+      morphemes: [
+        { id: 'm-1', form: 'ba', writingSystem: 'und', gloss: { und: 'first' } },
+        { id: 'm-2', form: 'ba', writingSystem: 'und', gloss: { und: 'second' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemes('tok-1', 'baba', ['ba', 'ba']));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].gloss).toStrictEqual({ und: 'first' });
+    expect(updated?.morphemes?.[1].gloss).toStrictEqual({ und: 'second' });
+  });
+
   it('removes an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: TokenAnalysisLink = {
       analysisId: 'old-uuid',

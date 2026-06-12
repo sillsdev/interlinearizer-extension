@@ -542,7 +542,12 @@ export function PhraseBox({
           <span key={token.ref} className="tw:phrase-token-row">
             {i > 0 &&
               punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
-            <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+            <MemoizedTokenChip
+              disabled
+              onFocus={handleFocus}
+              showMorphology={showMorphology}
+              token={token}
+            />
           </span>
         ))}
       </span>

@@ -87,15 +87,18 @@ export function TokenChip({
    * activation — which forwards focus to the gloss input with the browser's default
    * scroll-into-view — can never scroll the list under the click. Focuses the input directly with
    * `preventScroll` instead; the native forwarding then finds it already focused and does nothing.
-   * A mouse-down on the input itself is left to {@link handleMouseDown}, which bubbles here after
-   * already handling it.
+   * The input is looked up by id rather than `querySelector('input')` because the morpheme gloss
+   * inputs precede it inside the label when morphology is shown. A mouse-down on any input is left
+   * to that input's own handling ({@link handleMouseDown} for the gloss input, which bubbles here
+   * after already handling it); a mouse-down on the morpheme trigger button is left to the button's
+   * own click handler, which opens the popover.
    *
    * @param e - The label's mouse-down event.
    */
   const handleLabelMouseDown: MouseEventHandler<HTMLLabelElement> = (e) => {
-    if (e.target instanceof Element && e.target.closest('input')) return;
+    if (e.target instanceof Element && e.target.closest('input, button')) return;
     e.preventDefault();
-    e.currentTarget.querySelector('input')?.focus({ preventScroll: true });
+    document.getElementById(glossInputId)?.focus({ preventScroll: true });
   };
 
   /**
@@ -106,7 +109,7 @@ export function TokenChip({
   const handleMorphemeSave = (value: string) => {
     const forms = value.split(/\s+/).filter(Boolean);
     if (forms.length > 0) {
-      dispatchMorphemeBreakdown(token.ref, token.surfaceText, forms);
+      dispatchMorphemeBreakdown(token.ref, token.surfaceText, forms, token.writingSystem);
     }
   };
 

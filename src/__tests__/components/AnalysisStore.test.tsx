@@ -850,16 +850,18 @@ function LanguageReader() {
  * @param props.tokenRef - Token ref to write.
  * @param props.surfaceText - Surface text of the token.
  * @param props.forms - Morpheme forms to write.
+ * @param props.writingSystem - Writing system of the token's surface text.
  * @returns JSX element suitable for passing to `render`.
  */
 function MorphemeWriter({
   tokenRef,
   surfaceText,
   forms,
-}: Readonly<{ tokenRef: string; surfaceText: string; forms: string[] }>) {
+  writingSystem,
+}: Readonly<{ tokenRef: string; surfaceText: string; forms: string[]; writingSystem: string }>) {
   const dispatch = useMorphemeBreakdownDispatch();
   return (
-    <button onClick={() => dispatch(tokenRef, surfaceText, forms)} type="button">
+    <button onClick={() => dispatch(tokenRef, surfaceText, forms, writingSystem)} type="button">
       break
     </button>
   );
@@ -1023,7 +1025,12 @@ describe('useMorphemeBreakdownDispatch', () => {
     const onSave = jest.fn();
     render(
       <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
-        <MorphemeWriter tokenRef="tok-1" surfaceText="cat" forms={['ca', '-t']} />
+        <MorphemeWriter
+          tokenRef="tok-1"
+          surfaceText="cat"
+          forms={['ca', '-t']}
+          writingSystem="en"
+        />
         <MorphemeReader tokenRef="tok-1" />
       </AnalysisStoreProvider>,
     );
@@ -1035,6 +1042,7 @@ describe('useMorphemeBreakdownDispatch', () => {
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses).toHaveLength(1);
     expect(saved.tokenAnalyses[0].morphemes).toHaveLength(2);
+    expect(saved.tokenAnalyses[0].morphemes?.[0].writingSystem).toBe('en');
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {

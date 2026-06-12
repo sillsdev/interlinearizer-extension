@@ -47,6 +47,37 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).toHaveBeenCalledWith('wor -d');
   });
 
+  it('does not save when Done is clicked with unchanged text and an existing breakdown', async () => {
+    const onSave = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <MorphemeBreakdownPopover
+        initialValue="un- believe"
+        onSave={onSave}
+        onClose={onClose}
+        onDelete={jest.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('saves when Done is clicked with edited text and an existing breakdown', async () => {
+    const onSave = jest.fn();
+    render(
+      <MorphemeBreakdownPopover
+        initialValue="un- believe"
+        onSave={onSave}
+        onClose={jest.fn()}
+        onDelete={jest.fn()}
+      />,
+    );
+    await userEvent.type(screen.getByRole('textbox'), ' -r');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onSave).toHaveBeenCalledWith('un- believe -r');
+  });
+
   it('commits on Enter key', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();

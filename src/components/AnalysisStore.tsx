@@ -210,13 +210,16 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
  * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
  * for a given token. Dispatches the `writeMorphemes` action and triggers `onSave`.
  *
- * @returns A function `(tokenRef, surfaceText, forms) => void`.
+ * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
+ *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
+ *   on each morpheme as the writing system of its form.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeBreakdownDispatch(): (
   tokenRef: string,
   surfaceText: string,
   forms: string[],
+  writingSystem: string,
 ) => void {
   const callbacks = useContext(AnalysisCallbackCtx);
   if (!callbacks)
@@ -226,8 +229,8 @@ export function useMorphemeBreakdownDispatch(): (
   const store = useStore<AnalysisRootState>();
 
   return useCallback(
-    (tokenRef: string, surfaceText: string, forms: string[]) => {
-      dispatch(writeMorphemes(tokenRef, surfaceText, forms));
+    (tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) => {
+      dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
       const { analysis } = store.getState().analysis;
       callbacks.onSaveRef.current?.(analysis);
     },

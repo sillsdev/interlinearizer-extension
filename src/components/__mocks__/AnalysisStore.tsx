@@ -105,6 +105,7 @@ export function useMorphemeBreakdownDispatch(): (
   tokenRef: string,
   surfaceText: string,
   forms: string[],
+  writingSystem: string,
 ) => void {
   return () => {};
 }

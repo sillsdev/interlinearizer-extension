@@ -552,7 +552,7 @@ describe('selectPhraseGloss', () => {
 describe('writeMorphemes', () => {
   it('creates a new approved analysis with morphemes when none exists', () => {
     const store = createAnalysisStore();
-    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believe', '-able']));
+    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believe', '-able'], 'und'));
 
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalysisLinks).toHaveLength(1);
@@ -581,7 +581,7 @@ describe('writeMorphemes', () => {
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
 
-    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believ', '-able']));
+    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believ', '-able'], 'und'));
 
     const updated = store
       .getState()
@@ -613,7 +613,7 @@ describe('writeMorphemes', () => {
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
 
-    store.dispatch(writeMorphemes('tok-1', 'baba', ['ba', 'ba']));
+    store.dispatch(writeMorphemes('tok-1', 'baba', ['ba', 'ba'], 'und'));
 
     const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
     expect(updated?.morphemes?.[0].gloss).toStrictEqual({ und: 'first' });
@@ -633,7 +633,7 @@ describe('writeMorphemes', () => {
       },
     });
 
-    store.dispatch(writeMorphemes('tok-1', 'word', ['wor', '-d']));
+    store.dispatch(writeMorphemes('tok-1', 'word', ['wor', '-d'], 'und'));
 
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalysisLinks).toHaveLength(1);
@@ -649,7 +649,7 @@ describe('writeMorphemes', () => {
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
 
-    store.dispatch(writeMorphemes('tok-1', 'hello', ['hel', '-lo']));
+    store.dispatch(writeMorphemes('tok-1', 'hello', ['hel', '-lo'], 'und'));
 
     const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
     expect(updated?.morphemes).toHaveLength(2);
@@ -658,11 +658,38 @@ describe('writeMorphemes', () => {
 
   it('assigns unique ids to each morpheme via prepare', () => {
     const store = createAnalysisStore();
-    store.dispatch(writeMorphemes('tok-1', 'abc', ['a', 'b', 'c']));
+    store.dispatch(writeMorphemes('tok-1', 'abc', ['a', 'b', 'c'], 'und'));
 
     const ta = store.getState().analysis.analysis.tokenAnalyses[0];
     const ids = ta.morphemes?.map((m) => m.id);
     expect(new Set(ids).size).toBe(3);
+  });
+
+  it('stores the passed writing system on new morphemes, not the analysis language', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'en' },
+    });
+    store.dispatch(writeMorphemes('tok-1', 'λόγος', ['λόγ', '-ος'], 'grc'));
+
+    const ta = store.getState().analysis.analysis.tokenAnalyses[0];
+    expect(ta.morphemes?.map((m) => m.writingSystem)).toStrictEqual(['grc', 'grc']);
+  });
+
+  it('refreshes the writing system on preserved morphemes whose form is unchanged', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'λόγος',
+      morphemes: [{ id: 'm-1', form: 'λόγ', writingSystem: 'en', gloss: { en: 'word' } }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    store.dispatch(writeMorphemes('tok-1', 'λόγος', ['λόγ', '-ος'], 'grc'));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].gloss).toStrictEqual({ en: 'word' });
+    expect(updated?.morphemes?.[0].writingSystem).toBe('grc');
   });
 });
 

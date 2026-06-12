@@ -16,10 +16,12 @@ const POPOVER_MARGIN_PX = 4;
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
  * space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter, Done, or by
  * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
- * Escape dismiss without saving, as does an outside click when the text was not edited — committing
- * an unedited draft would either create a single-morpheme breakdown equal to the pre-filled surface
- * text (no existing breakdown) or pointlessly re-save identical forms under fresh morpheme ids
- * (existing breakdown).
+ * Escape dismiss without saving. An unedited draft is never re-saved over an existing breakdown —
+ * Enter, Done, and outside clicks all dismiss instead, because re-saving identical forms would only
+ * regenerate every morpheme id (which `MorphemeLink.morphemeId` cross-references). When no
+ * breakdown exists yet, Enter and Done with the unedited pre-filled surface text deliberately
+ * record the token as a single whole-word morpheme, but an outside click dismisses without saving
+ * so an accidental click cannot create one.
  *
  * @param props - Component props.
  * @param props.initialValue - Pre-filled text for the input (current morpheme forms joined by
@@ -28,7 +30,8 @@ const POPOVER_MARGIN_PX = 4;
  * @param props.onClose - Called to dismiss the popover.
  * @param props.onDelete - When provided, a Delete button is shown that calls this to remove the
  *   token's existing morpheme breakdown, then dismisses the popover. Callers should omit it when
- *   the token has no breakdown to delete.
+ *   the token has no breakdown to delete; its presence is also how the popover knows a breakdown
+ *   already exists when deciding whether an unedited commit should save.
  * @returns A positioned popover panel with a text input and Cancel/Done buttons. The panel and
  *   backdrop are portaled to document.body with `position: fixed`, so they escape both the clipping
  *   of ancestor scroll viewports (e.g. the continuous view's token strip) and the `token-row`
@@ -84,10 +87,16 @@ export function MorphemeBreakdownPopover({
     setPosition({ top, left });
   }, []);
 
-  /** Commits the current draft and closes the popover. */
+  /**
+   * Commits the current draft and closes the popover. Skips the save when the token already has a
+   * breakdown (`onDelete` provided) and the text was not edited — re-saving identical forms would
+   * only regenerate every morpheme id, which `MorphemeLink.morphemeId` cross-references. An
+   * unedited commit on a token with _no_ breakdown is kept: it deliberately records the token as a
+   * single whole-word morpheme.
+   */
   const handleSave = () => {
     const trimmed = draft.trim();
-    if (trimmed) onSave(trimmed);
+    if (trimmed && !(onDelete && trimmed === initialValue.trim())) onSave(trimmed);
     onClose();
   };
 
@@ -121,11 +130,11 @@ export function MorphemeBreakdownPopover({
 
   /**
    * Commits the draft when the user clicks outside the popover, except when the text was not edited
-   * — then the click acts like Cancel. For a token with no breakdown yet, committing the unedited
-   * draft would create a single-morpheme breakdown equal to the pre-filled surface text; for a
-   * token with an existing breakdown, it would re-save identical forms while regenerating every
-   * morpheme id (which `MorphemeLink.morphemeId` cross-references). `preventDefault` cancels any
-   * default action of whatever sits under the backdrop (see {@link handlePanelClick}).
+   * — then the click acts like Cancel. Unlike Enter and Done, the unedited check here applies even
+   * when the token has no breakdown yet ({@link handleSave} would otherwise create a single-morpheme
+   * breakdown equal to the pre-filled surface text), because an accidental outside click is not a
+   * deliberate commit. `preventDefault` cancels any default action of whatever sits under the
+   * backdrop (see {@link handlePanelClick}).
    *
    * @param e - The mouse event on the full-screen backdrop.
    */

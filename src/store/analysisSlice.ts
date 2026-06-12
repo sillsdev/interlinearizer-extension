@@ -194,13 +194,16 @@ const analysisSlice = createSlice({
        * @param tokenRef - `Token.ref` of the token whose morphemes are being set.
        * @param surfaceText - Surface text of the token.
        * @param forms - Ordered morpheme form strings as entered by the user.
+       * @param writingSystem - BCP 47 tag of the token's surface text (`Token.writingSystem`),
+       *   stored on each morpheme as the writing system of its form.
        * @returns The prepared action payload.
        */
-      prepare(tokenRef: string, surfaceText: string, forms: string[]) {
+      prepare(tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) {
         return {
           payload: {
             tokenRef,
             surfaceText,
+            writingSystem,
             analysisId: crypto.randomUUID(),
             morphemes: forms.map((form) => ({ id: crypto.randomUUID(), form })),
           },
@@ -209,7 +212,9 @@ const analysisSlice = createSlice({
       /**
        * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. Preserves
        * existing morpheme glosses when a morpheme form is unchanged. When no approved analysis
-       * exists, creates one.
+       * exists, creates one. Every morpheme — preserved or new — is stamped with the supplied
+       * writing system, so records written before the writing system was threaded through (which
+       * wrongly stored the analysis language) self-correct on the next save.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the morpheme payload.
@@ -219,12 +224,12 @@ const analysisSlice = createSlice({
         action: PayloadAction<{
           tokenRef: string;
           surfaceText: string;
+          writingSystem: string;
           analysisId: string;
           morphemes: Array<{ id: string; form: string }>;
         }>,
       ) {
-        const { tokenRef, surfaceText, analysisId, morphemes } = action.payload;
-        const writingSystem = state.analysisLanguage;
+        const { tokenRef, surfaceText, writingSystem, analysisId, morphemes } = action.payload;
 
         const existingLink = state.analysis.tokenAnalysisLinks.find(
           (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
@@ -245,7 +250,7 @@ const analysisSlice = createSlice({
             });
             existingAnalysis.morphemes = morphemes.map(({ id, form }) => {
               const old = oldByForm.get(form)?.shift();
-              if (old) return { ...old, id };
+              if (old) return { ...old, id, writingSystem };
               return { id, form, writingSystem };
             });
             return;

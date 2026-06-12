@@ -470,7 +470,7 @@ describe('TokenChip', () => {
         screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-save' }));
-      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0', 'hello', ['hel', '-lo']);
+      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0', 'hello', ['hel', '-lo'], 'en');
     });
 
     it('does not dispatch when the popover saves only whitespace', async () => {
@@ -521,6 +521,42 @@ describe('TokenChip', () => {
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'mock-delete' })).not.toBeInTheDocument();
+    });
+
+    it('focuses the main gloss input on a surface-text mouse-down when morpheme inputs precede it', () => {
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      // The morpheme gloss inputs sit before the main gloss input inside the label; the label
+      // handler must still route focus to the main gloss input, not the first input it finds.
+      fireEvent.mouseDown(screen.getByText('hello'));
+
+      expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();
+    });
+
+    it('leaves a mouse-down on the morpheme button to the button itself', () => {
+      const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      // The button opens the popover via its own click handler; the label handler must not focus
+      // an input as a side effect of the same mouse-down.
+      const defaultAllowed = fireEvent.mouseDown(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+
+      expect(defaultAllowed).toBe(true);
+      expect(focusSpy).not.toHaveBeenCalled();
     });
 
     it('closes the popover via onClose', async () => {

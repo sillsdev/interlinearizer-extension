@@ -559,6 +559,31 @@ describe('TokenChip', () => {
       expect(focusSpy).not.toHaveBeenCalled();
     });
 
+    it('does not reopen the popover when showMorphology is toggled off and back on', async () => {
+      const { rerender } = render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      // Toggling morphology off unmounts the popover tree; the open state must not survive and
+      // resurrect the popover when morphology comes back.
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology={false} />
+        </AnalysisStoreProvider>,
+      );
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
+
     it('closes the popover via onClose', async () => {
       render(
         <AnalysisStoreProvider analysisLanguage="und">

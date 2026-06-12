@@ -336,6 +336,7 @@ describe('PhraseBox', () => {
     if (box instanceof HTMLElement) box.focus();
     await userEvent.keyboard('{Enter}');
 
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
     expect(screen.getByRole('textbox', { name: 'Gloss for morpheme Hello' })).not.toHaveFocus();
   });
 

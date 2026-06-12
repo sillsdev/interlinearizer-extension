@@ -365,8 +365,11 @@ export function PopoverAnchor({
  * @param props - Component props.
  * @param props.children - Panel content.
  * @param props.className - CSS class names forwarded to the div.
- * @param props.onEscapeKeyDown - Called when Escape is pressed inside the content.
- * @param props.onInteractOutside - Called when the sentinel outside button is clicked.
+ * @param props.onEscapeKeyDown - Called with the native `KeyboardEvent` when Escape is pressed
+ *   inside the content, matching Radix's signature.
+ * @param props.onInteractOutside - Called with a `CustomEvent` carrying the original pointer event
+ *   in `detail.originalEvent` when the sentinel outside button is clicked, matching the shape of
+ *   Radix's `PointerDownOutsideEvent`.
  * @param props.onOpenAutoFocus - Called once on mount with a plain `Event`.
  * @param props.onClick - Click handler forwarded to the div.
  * @param props.onMouseDown - Mouse-down handler forwarded to the div.
@@ -385,8 +388,8 @@ export function PopoverContent({
   className?: string;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
-  onEscapeKeyDown?: () => void;
-  onInteractOutside?: () => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
+  onInteractOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
   onClick?: MouseEventHandler<HTMLDivElement>;
   onMouseDown?: MouseEventHandler<HTMLDivElement>;
@@ -403,7 +406,7 @@ export function PopoverContent({
       data-testid="popover-content"
       onClick={onClick}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') onEscapeKeyDown?.();
+        if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);
       }}
       onMouseDown={onMouseDown}
     >
@@ -412,7 +415,13 @@ export function PopoverContent({
         <button
           data-testid="popover-outside"
           type="button"
-          onClick={() => onInteractOutside()}
+          onClick={(e) =>
+            onInteractOutside(
+              new CustomEvent('dismissableLayer.pointerDownOutside', {
+                detail: { originalEvent: e.nativeEvent },
+              }),
+            )
+          }
         >
           outside
         </button>

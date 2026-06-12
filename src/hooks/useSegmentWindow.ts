@@ -425,12 +425,8 @@ export default function useSegmentWindow({
   );
 
   /**
-   * Snaps the recenter target to the top of the scroll container. Normally that is the active verse
-   * (the `aria-current` element). When the reference names verse 0 of a chapter — the chapter
-   * heading rather than any verse — the target is instead that chapter's inline heading (the
-   * `[data-chapter-start]` element), so the heading sits at the top while the active-verse
-   * highlight stays on verse 1 below it. Falls back to the active verse when no heading is mounted
-   * (e.g. the `chapterLabelInVerse` setting suppresses headings).
+   * Snaps the recenter target — the active verse (the `aria-current` element) — to the top of the
+   * scroll container.
    *
    * When the content below the target is too short for `scrollIntoView` to reach the top (common in
    * baseline-text mode where segments are compact, and especially after the continuous-scroll strip
@@ -441,12 +437,7 @@ export default function useSegmentWindow({
    */
   const snapActiveToTop = useCallback(() => {
     const container = scrollContainerRef.current;
-    const { verseNum, chapterNum } = scrRefRef.current;
-    const target =
-      verseNum === 0
-        ? (container?.querySelector(`[data-chapter-start="${chapterNum}"]`) ??
-          container?.querySelector('[aria-current="true"]'))
-        : container?.querySelector('[aria-current="true"]');
+    const target = container?.querySelector('[aria-current="true"]');
     /* v8 ignore next -- the recentered target is always mounted, so its element exists */
     if (!target || !container) return;
     const spacer = container.querySelector<HTMLElement>('[data-snap-spacer]');
@@ -458,7 +449,7 @@ export default function useSegmentWindow({
       spacer.style.height = `${Math.ceil(remainingOffset)}px`;
       target.scrollIntoView({ behavior: 'auto', block: 'start' });
     }
-  }, [scrollContainerRef, scrRefRef]);
+  }, [scrollContainerRef]);
 
   // Reconcile the container scroll position to the freshly-mounted range before the browser paints,
   // so neither an extend nor a recenter ever shows a jump. An extend mutated the window around a

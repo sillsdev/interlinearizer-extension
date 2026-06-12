@@ -670,52 +670,6 @@ describe('useSegmentWindow', () => {
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
 
-  it('snaps the chapter heading (not the active verse) when the reference names verse 0', () => {
-    const book = makeBook(60, 60);
-    const scrollIntoView = jest.spyOn(Element.prototype, 'scrollIntoView');
-    const { container, rerender } = renderSegmentWindow(book, {
-      book: 'GEN',
-      chapterNum: 1,
-      verseNum: 1,
-    });
-
-    // Mount both candidate targets: the active verse-1 segment and the chapter-2 heading. A verse-0
-    // reference should snap the heading, leaving the active verse highlighted below it.
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
-    const heading = document.createElement('span');
-    heading.setAttribute('data-chapter-start', '2');
-    container.appendChild(heading);
-
-    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 2, verseNum: 0 } }));
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-
-    expect(scrollIntoView.mock.contexts).toContain(heading);
-    expect(scrollIntoView.mock.contexts).not.toContain(active);
-  });
-
-  it('falls back to the active verse for a verse-0 reference when no heading is mounted', () => {
-    const book = makeBook(60, 60);
-    const scrollIntoView = jest.spyOn(Element.prototype, 'scrollIntoView');
-    const { container, rerender } = renderSegmentWindow(book, {
-      book: 'GEN',
-      chapterNum: 1,
-      verseNum: 1,
-    });
-
-    // No `[data-chapter-start]` element (headings suppressed by chapterLabelInVerse), so the snap
-    // falls back to the active verse.
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
-
-    act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 2, verseNum: 0 } }));
-    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
-
-    expect(scrollIntoView.mock.contexts).toContain(active);
-  });
-
   it('grows the snap spacer when scrollIntoView cannot reach the top', () => {
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();

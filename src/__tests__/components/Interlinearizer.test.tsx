@@ -419,13 +419,6 @@ describe('Interlinearizer', () => {
     expect(capturedSegmentViewPropsList[1].isActive).toBeFalsy();
   });
 
-  it('renders all segments when navigating to a title reference (verse 0)', () => {
-    const titleRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 0 };
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, scrRef: titleRef });
-
-    expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
-  });
-
   it('calls setScrRef with the segment ref when a segment fires onSelect', () => {
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, navigate: mockNavigate });
@@ -836,45 +829,6 @@ describe('Interlinearizer', () => {
 
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
     expect(screen.queryByText('Chapter 2')).not.toBeInTheDocument();
-  });
-
-  it('tags each inline chapter header with its chapter number for snap targeting', () => {
-    renderInterlinearizer({
-      book: GEN_TWO_CHAPTER_BOOK,
-      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
-      continuousScroll: false,
-    });
-
-    expect(screen.getByText('Chapter 1')).toHaveAttribute('data-chapter-start', '1');
-    expect(screen.getByText('Chapter 2')).toHaveAttribute('data-chapter-start', '2');
-  });
-
-  it('highlights the first verse of a chapter when the reference names verse 0 (the heading)', () => {
-    renderInterlinearizer({
-      book: GEN_TWO_CHAPTER_BOOK,
-      scrRef: { book: 'GEN', chapterNum: 2, verseNum: 0 },
-      continuousScroll: false,
-    });
-
-    // Verse 0 names the chapter heading, which is not a verse; the active-verse marker still lands
-    // on the chapter's first segment so a verse stays highlighted.
-    const activeIds = new Set(
-      capturedSegmentViewPropsList.filter((p) => p.isActive).map((p) => p.segment.id),
-    );
-    expect([...activeIds]).toEqual(['GEN 2:1']);
-  });
-
-  it('scrolls the chapter heading to the top when the reference names verse 0', () => {
-    const scrollSpy = jest.spyOn(Element.prototype, 'scrollIntoView');
-    renderInterlinearizer({
-      book: GEN_TWO_CHAPTER_BOOK,
-      scrRef: { book: 'GEN', chapterNum: 2, verseNum: 0 },
-      continuousScroll: false,
-    });
-
-    // The snap targets the chapter-2 heading element rather than the active verse-1 segment.
-    const heading = screen.getByText('Chapter 2');
-    expect(scrollSpy.mock.contexts).toContain(heading);
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {

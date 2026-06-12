@@ -4,13 +4,10 @@
  *   morpheme forms; {@link MorphemeGlossInput} provides a per-morpheme gloss field.
  */
 import type { MorphemeAnalysis } from 'interlinearizer';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { PopoverContent } from 'platform-bible-react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { useMorphemeGlossDispatch } from './AnalysisStore';
-
-/** Minimum gap in pixels between the popover panel and its anchor or the viewport edges. */
-const POPOVER_MARGIN_PX = 4;
 
 /**
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
@@ -18,10 +15,14 @@ const POPOVER_MARGIN_PX = 4;
  * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
  * Escape dismiss without saving. An unedited draft is never re-saved over an existing breakdown —
  * Enter, Done, and outside clicks all dismiss instead, because re-saving identical forms would only
- * regenerate every morpheme id (which `MorphemeLink.morphemeId` cross-references). When no
- * breakdown exists yet, Enter and Done with the unedited pre-filled surface text deliberately
- * record the token as a single whole-word morpheme, but an outside click dismisses without saving
- * so an accidental click cannot create one.
+ * rewrite identical data. When no breakdown exists yet, Enter and Done with the unedited pre-filled
+ * surface text deliberately record the token as a single whole-word morpheme, but an outside click
+ * dismisses without saving so an accidental click cannot create one.
+ *
+ * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
+ * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
+ * popover is open so the draft state re-initializes from `initialValue` on every open. The popover
+ * is modal, so interactions outside the panel are blocked while it is open.
  *
  * @param props - Component props.
  * @param props.initialValue - Pre-filled text for the input (current morpheme forms joined by
@@ -32,11 +33,7 @@ const POPOVER_MARGIN_PX = 4;
  *   token's existing morpheme breakdown, then dismisses the popover. Callers should omit it when
  *   the token has no breakdown to delete; its presence is also how the popover knows a breakdown
  *   already exists when deciding whether an unedited commit should save.
- * @returns A positioned popover panel with a text input and Cancel/Done buttons. The panel and
- *   backdrop are portaled to document.body with `position: fixed`, so they escape both the clipping
- *   of ancestor scroll viewports (e.g. the continuous view's token strip) and the `token-row`
- *   stacking contexts that would otherwise paint later segment rows over the panel. The panel opens
- *   below its anchor and flips above when there is not enough room under the viewport bottom.
+ * @returns A popover panel with a text input and Cancel/Done buttons.
  */
 export function MorphemeBreakdownPopover({
   initialValue,
@@ -53,55 +50,32 @@ export function MorphemeBreakdownPopover({
   const [draft, setDraft] = useState(initialValue);
   // eslint-disable-next-line no-null/no-null
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // eslint-disable-next-line no-null/no-null
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  // eslint-disable-next-line no-null/no-null
-  const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const [position, setPosition] = useState<{ top: number; left: number } | undefined>(undefined);
 
+  // Focus and select the input on open. The popover's own auto-focus is suppressed (see
+  // onOpenAutoFocus below) so this effect, which runs after it, is the only focus on open.
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
 
-  // Position the fixed panel from its anchor (the parent of the in-place marker span — the
-  // morpheme row in the token chip). The panel itself is portaled to document.body with fixed
-  // positioning because the token chip lives inside scroll viewports that clip vertical overflow
-  // and inside `token-row` stacking contexts (z-7) that later segment rows would paint over. The
-  // panel opens below the anchor and flips above when the viewport bottom is too close.
-  useLayoutEffect(() => {
-    const panel = panelRef.current;
-    const anchor = anchorRef.current?.parentElement;
-    /* v8 ignore next -- the panel and the anchor's parent always exist when the effect runs */
-    if (!panel || !anchor) return;
-    const anchorRect = anchor.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    let top = anchorRect.bottom + POPOVER_MARGIN_PX;
-    if (top + panelRect.height > window.innerHeight - POPOVER_MARGIN_PX) {
-      top = Math.max(POPOVER_MARGIN_PX, anchorRect.top - panelRect.height - POPOVER_MARGIN_PX);
-    }
-    const left = Math.max(
-      POPOVER_MARGIN_PX,
-      Math.min(anchorRect.left, window.innerWidth - panelRect.width - POPOVER_MARGIN_PX),
-    );
-    setPosition({ top, left });
-  }, []);
+  // Whether the draft matches the pre-filled value. Shared by the Done/Enter and outside-click
+  // commit paths so the two can never disagree about what counts as an edit.
+  const isUnedited = draft.trim() === initialValue.trim();
 
   /**
    * Commits the current draft and closes the popover. Skips the save when the token already has a
    * breakdown (`onDelete` provided) and the text was not edited — re-saving identical forms would
-   * only regenerate every morpheme id, which `MorphemeLink.morphemeId` cross-references. An
-   * unedited commit on a token with _no_ breakdown is kept: it deliberately records the token as a
-   * single whole-word morpheme.
+   * only rewrite identical data. An unedited commit on a token with _no_ breakdown is kept: it
+   * deliberately records the token as a single whole-word morpheme.
    */
   const handleSave = () => {
     const trimmed = draft.trim();
-    if (trimmed && !(onDelete && trimmed === initialValue.trim())) onSave(trimmed);
+    if (trimmed && !(onDelete && isUnedited)) onSave(trimmed);
     onClose();
   };
 
   /**
-   * Handles Enter to commit and Escape to dismiss.
+   * Handles Enter to commit. Escape is handled by the popover itself (`onEscapeKeyDown`).
    *
    * @param e - The keyboard event.
    */
@@ -109,110 +83,97 @@ export function MorphemeBreakdownPopover({
     if (e.key === 'Enter') {
       e.preventDefault();
       handleSave();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
     }
   };
 
   /**
-   * Stops the click from reaching ancestor click handlers. The panel is portaled to document.body,
-   * so the browser's native label activation cannot fire, but React synthetic events still bubble
-   * through the React tree (portal boundary included) to the token chip and its phrase-selection
-   * handlers. The click's default action is left alone so interactions inside the panel (e.g. the
-   * panel's own label focusing its input) keep their native behavior.
-   *
-   * @param e - The mouse event on the popover panel.
+   * Commits the draft when the user interacts outside the popover, except when the text was not
+   * edited — then the interaction acts like Cancel. Unlike Enter and Done, the unedited check here
+   * applies even when the token has no breakdown yet ({@link handleSave} would otherwise create a
+   * single-morpheme breakdown equal to the pre-filled surface text), because an accidental outside
+   * click is not a deliberate commit.
    */
-  const handlePanelClick = (e: MouseEvent) => {
-    e.stopPropagation();
-  };
-
-  /**
-   * Commits the draft when the user clicks outside the popover, except when the text was not edited
-   * — then the click acts like Cancel. Unlike Enter and Done, the unedited check here applies even
-   * when the token has no breakdown yet ({@link handleSave} would otherwise create a single-morpheme
-   * breakdown equal to the pre-filled surface text), because an accidental outside click is not a
-   * deliberate commit. `preventDefault` cancels any default action of whatever sits under the
-   * backdrop.
-   *
-   * @param e - The mouse event on the full-screen backdrop.
-   */
-  const handleBackdropClick = (e: MouseEvent) => {
-    e.preventDefault();
-    if (draft.trim() === initialValue.trim()) {
+  const handleInteractOutside = () => {
+    if (isUnedited) {
       onClose();
       return;
     }
     handleSave();
   };
 
+  /**
+   * Stops mouse events inside the panel from reaching ancestor handlers. The panel is portaled to
+   * document.body, but React synthetic events still bubble through the React tree (portal boundary
+   * included) to the token chip's label mouse-down handler and its phrase-selection click handlers
+   * — which would steal focus to the gloss input behind the popover. The events' default actions
+   * are left alone so interactions inside the panel (e.g. the panel's own label focusing its input)
+   * keep their native behavior.
+   *
+   * @param e - The mouse event on the popover panel.
+   */
+  const stopMouseEvents = (e: MouseEvent) => {
+    e.stopPropagation();
+  };
+
   return (
-    <>
-      {/* Invisible in-place marker; its parent is the anchor the fixed panel is positioned from. */}
-      <span ref={anchorRef} aria-hidden className="tw:hidden" />
-      {createPortal(
-        <>
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div className="tw:fixed tw:inset-0 tw:z-20" onClick={handleBackdropClick} />
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-          <div
-            ref={panelRef}
-            className="tw:fixed tw:z-30 tw:min-w-48 tw:rounded-md tw:border tw:border-border tw:bg-popover tw:p-2 tw:shadow-md tw:flex tw:flex-col tw:gap-1.5"
-            style={position ?? { visibility: 'hidden' }}
-            onClick={handlePanelClick}
+    <PopoverContent
+      align="start"
+      className="tw:flex tw:w-auto tw:min-w-48 tw:flex-col tw:gap-1.5 tw:p-2"
+      onClick={stopMouseEvents}
+      onMouseDown={stopMouseEvents}
+      onEscapeKeyDown={onClose}
+      onInteractOutside={handleInteractOutside}
+      onOpenAutoFocus={(e) => e.preventDefault()}
+    >
+      <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
+        Split into morphemes
+      </label>
+      <input
+        ref={inputRef}
+        className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
+        id={inputId}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={handleKeyDown}
+        type="text"
+      />
+      <div className="tw:flex tw:justify-end tw:gap-1.5">
+        {onDelete && (
+          <button
+            className="tw:me-auto tw:rounded tw:border tw:border-destructive tw:px-3 tw:py-0.5 tw:text-xs tw:text-destructive tw:hover:bg-destructive/10"
+            type="button"
+            onClick={() => {
+              onDelete();
+              onClose();
+            }}
           >
-            <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
-              Split into morphemes
-            </label>
-            <input
-              ref={inputRef}
-              className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
-              id={inputId}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
-              type="text"
-            />
-            <div className="tw:flex tw:justify-end tw:gap-1.5">
-              {onDelete && (
-                <button
-                  className="tw:me-auto tw:rounded tw:border tw:border-destructive tw:px-3 tw:py-0.5 tw:text-xs tw:text-destructive tw:hover:bg-destructive/10"
-                  type="button"
-                  onClick={() => {
-                    onDelete();
-                    onClose();
-                  }}
-                >
-                  Delete
-                </button>
-              )}
-              <button
-                className="tw:rounded tw:border tw:border-border tw:px-3 tw:py-0.5 tw:text-xs tw:text-muted-foreground tw:hover:bg-accent"
-                type="button"
-                onClick={onClose}
-              >
-                Cancel
-              </button>
-              <button
-                className="tw:rounded tw:bg-primary tw:px-3 tw:py-0.5 tw:text-xs tw:text-primary-foreground tw:hover:bg-primary/90"
-                type="button"
-                onClick={handleSave}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </>,
-        document.body,
-      )}
-    </>
+            Delete
+          </button>
+        )}
+        <button
+          className="tw:rounded tw:border tw:border-border tw:px-3 tw:py-0.5 tw:text-xs tw:text-muted-foreground tw:hover:bg-accent"
+          type="button"
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          className="tw:rounded tw:bg-primary tw:px-3 tw:py-0.5 tw:text-xs tw:text-primary-foreground tw:hover:bg-primary/90"
+          type="button"
+          onClick={handleSave}
+        >
+          Done
+        </button>
+      </div>
+    </PopoverContent>
   );
 }
 
 /**
  * Renders a single morpheme's gloss as an inline editable input. Writes to the store on blur when
- * the draft differs from the committed value.
+ * the draft differs from the committed value. The input carries a `data-morpheme-gloss` attribute
+ * so container-level "focus the first gloss input" handlers (e.g. {@link PhraseBox}) can exclude
+ * morpheme glosses, which precede the token gloss input in DOM order.
  *
  * @param props - Component props.
  * @param props.morpheme - The morpheme whose gloss is being edited.
@@ -244,6 +205,7 @@ export function MorphemeGlossInput({
     <input
       aria-label={`Gloss for morpheme ${morpheme.form}`}
       className="tw:gloss-input tw:text-xs"
+      data-morpheme-gloss="true"
       disabled={disabled}
       placeholder="—"
       style={{ fieldSizing: 'content', minWidth: '2ch' }}

@@ -114,6 +114,77 @@ function removePhraseById(state: AnalysisState, phraseId: string): void {
   );
 }
 
+/**
+ * Finds the approved `TokenAnalysisLink` for `tokenRef` together with the `TokenAnalysis` it
+ * references. When the approved link references a missing analysis (an orphaned link from
+ * corruption or a migration), the link is removed from the draft — so the corruption never persists
+ * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
+ * existed. Every token-analysis reducer resolves through this helper so they all repair orphaned
+ * links the same way.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param tokenRef - `Token.ref` of the token to look up.
+ * @returns The approved link and its analysis, or `undefined` when the token has none.
+ */
+function resolveApprovedAnalysis(
+  state: AnalysisState,
+  tokenRef: string,
+): { link: TokenAnalysisLink; analysis: TokenAnalysis } | undefined {
+  const link = state.analysis.tokenAnalysisLinks.find(
+    (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+  );
+  if (!link) return undefined;
+  const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
+  if (!analysis) {
+    state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter((l) => l !== link);
+    return undefined;
+  }
+  return { link, analysis };
+}
+
+/**
+ * Appends a new `TokenAnalysis` and an approved `TokenAnalysisLink` referencing it in a single
+ * step, ensuring both collections stay in sync. The link's token snapshot takes its surface text
+ * from the analysis.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param analysis - The new `TokenAnalysis` record to append.
+ * @param tokenRef - `Token.ref` of the token the link points at.
+ */
+function appendApprovedAnalysis(
+  state: AnalysisState,
+  analysis: TokenAnalysis,
+  tokenRef: string,
+): void {
+  state.analysis.tokenAnalyses.push(analysis);
+  state.analysis.tokenAnalysisLinks.push({
+    analysisId: analysis.id,
+    status: 'approved',
+    token: { tokenRef, surfaceText: analysis.surfaceText },
+  });
+}
+
+/**
+ * Determines whether a `TokenAnalysis` carries no analysis content, so a reducer that just emptied
+ * one field can decide to drop the whole record instead of letting empty records accumulate in
+ * storage. Checks every content field of the type — `gloss`, `morphemes`, `pos`, `features`, and
+ * `glossSenseRef` — not only the field the caller emptied, so records carrying imported
+ * morphosyntactic or lexicon data are never discarded by an unrelated edit.
+ *
+ * @param analysis - The `TokenAnalysis` to inspect.
+ * @returns `true` when the record holds no analysis content worth keeping.
+ */
+function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
+  return (
+    (!analysis.gloss || Object.keys(analysis.gloss).length === 0) &&
+    /* v8 ignore next -- the only current caller deletes morphemes first; kept for future callers */
+    (!analysis.morphemes || analysis.morphemes.length === 0) &&
+    analysis.pos === undefined &&
+    analysis.features === undefined &&
+    analysis.glossSenseRef === undefined
+  );
+}
+
 const analysisSlice = createSlice({
   name: 'analysis',
   initialState: defaultState,
@@ -143,9 +214,12 @@ const analysisSlice = createSlice({
       },
       /**
        * Creates or updates an approved `TokenAnalysis` for the given token. If an approved link
-       * already exists for `tokenRef`, its analysis is updated in place; otherwise a new
-       * `TokenAnalysis` and `TokenAnalysisLink` are appended. Non-approved analyses for the token
-       * are left untouched.
+       * already exists for `tokenRef`, its analysis is updated in place and the stored surface text
+       * is refreshed on both the analysis and the link's token snapshot, so neither goes stale when
+       * the baseline text changed since the analysis was first written. Otherwise a new
+       * `TokenAnalysis` and `TokenAnalysisLink` are appended (an orphaned approved link is repaired
+       * first; see {@link resolveApprovedAnalysis}). Non-approved analyses for the token are left
+       * untouched.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the `WriteGlossPayload`.
@@ -154,36 +228,17 @@ const analysisSlice = createSlice({
         const { tokenRef, surfaceText, value, id } = action.payload;
         const lang = state.analysisLanguage;
 
-        const existingLink = state.analysis.tokenAnalysisLinks.find(
-          (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
-        );
-
-        if (existingLink) {
-          const existingAnalysis = state.analysis.tokenAnalyses.find(
-            (ta) => ta.id === existingLink.analysisId,
-          );
-          if (existingAnalysis) {
-            existingAnalysis.surfaceText = surfaceText;
-            if (!existingAnalysis.gloss) existingAnalysis.gloss = {};
-            existingAnalysis.gloss[lang] = value;
-            return;
-          }
-          // The approved link references a missing analysis (orphaned link from corruption or a
-          // migration). Remove it so we don't accumulate duplicate approved links below.
-          state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
-            (l) => l !== existingLink,
-          );
+        const resolved = resolveApprovedAnalysis(state, tokenRef);
+        if (resolved) {
+          const { link, analysis } = resolved;
+          analysis.surfaceText = surfaceText;
+          link.token.surfaceText = surfaceText;
+          if (!analysis.gloss) analysis.gloss = {};
+          analysis.gloss[lang] = value;
+          return;
         }
 
-        // No approved link exists, or the orphaned link was removed above — create a new one.
-        const newAnalysis: TokenAnalysis = { id, surfaceText, gloss: { [lang]: value } };
-        const newLink: TokenAnalysisLink = {
-          analysisId: id,
-          status: 'approved',
-          token: { tokenRef, surfaceText },
-        };
-        state.analysis.tokenAnalyses.push(newAnalysis);
-        state.analysis.tokenAnalysisLinks.push(newLink);
+        appendApprovedAnalysis(state, { id, surfaceText, gloss: { [lang]: value } }, tokenRef);
       },
     },
     writeMorphemes: {
@@ -210,13 +265,17 @@ const analysisSlice = createSlice({
         };
       },
       /**
-       * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. Preserves
-       * existing morpheme glosses when a morpheme form is unchanged. When no approved analysis
-       * exists, creates one. Also refreshes the stored surface text on both the analysis and the
-       * link's token snapshot, so neither goes stale when the baseline text changed since the
-       * analysis was first written. Every morpheme — preserved or new — is stamped with the
-       * supplied writing system, so records written before the writing system was threaded through
-       * (which wrongly stored the analysis language) self-correct on the next save.
+       * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. When a
+       * morpheme form is unchanged the existing morpheme record is preserved whole — including its
+       * id, which `MorphemeLink.morphemeId` cross-references, so alignment links to unchanged
+       * morphemes survive edits to the rest of the breakdown. When no approved analysis exists,
+       * creates one (an orphaned approved link is repaired first; see
+       * {@link resolveApprovedAnalysis}). Also refreshes the stored surface text on both the
+       * analysis and the link's token snapshot, so neither goes stale when the baseline text
+       * changed since the analysis was first written. Every morpheme — preserved or new — is
+       * stamped with the supplied writing system, so records written before the writing system was
+       * threaded through (which wrongly stored the analysis language) self-correct on the next
+       * save.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the morpheme payload.
@@ -233,56 +292,47 @@ const analysisSlice = createSlice({
       ) {
         const { tokenRef, surfaceText, writingSystem, analysisId, morphemes } = action.payload;
 
-        const existingLink = state.analysis.tokenAnalysisLinks.find(
-          (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
-        );
-
-        if (existingLink) {
-          const existingAnalysis = state.analysis.tokenAnalyses.find(
-            (ta) => ta.id === existingLink.analysisId,
-          );
-          if (existingAnalysis) {
-            existingAnalysis.surfaceText = surfaceText;
-            existingLink.token.surfaceText = surfaceText;
-            // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
-            // match a distinct old morpheme in order, instead of all inheriting the last one.
-            const oldByForm = new Map<string, MorphemeAnalysis[]>();
-            (existingAnalysis.morphemes ?? []).forEach((m) => {
-              const bucket = oldByForm.get(m.form);
-              if (bucket) bucket.push(m);
-              else oldByForm.set(m.form, [m]);
-            });
-            existingAnalysis.morphemes = morphemes.map(({ id, form }) => {
-              const old = oldByForm.get(form)?.shift();
-              if (old) return { ...old, id, writingSystem };
-              return { id, form, writingSystem };
-            });
-            return;
-          }
-          state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
-            (l) => l !== existingLink,
-          );
+        const resolved = resolveApprovedAnalysis(state, tokenRef);
+        if (resolved) {
+          const { link, analysis } = resolved;
+          analysis.surfaceText = surfaceText;
+          link.token.surfaceText = surfaceText;
+          // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
+          // match a distinct old morpheme in order, instead of all inheriting the last one.
+          const oldByForm = new Map<string, MorphemeAnalysis[]>();
+          (analysis.morphemes ?? []).forEach((m) => {
+            const bucket = oldByForm.get(m.form);
+            if (bucket) bucket.push(m);
+            else oldByForm.set(m.form, [m]);
+          });
+          analysis.morphemes = morphemes.map(({ id, form }) => {
+            const old = oldByForm.get(form)?.shift();
+            // Keep the preserved morpheme's id (the prepared id is discarded) so external
+            // references to it stay valid; only the writing system is refreshed.
+            if (old) return { ...old, writingSystem };
+            return { id, form, writingSystem };
+          });
+          return;
         }
 
-        const newAnalysis: TokenAnalysis = {
-          id: analysisId,
-          surfaceText,
-          morphemes: morphemes.map(({ id, form }) => ({ id, form, writingSystem })),
-        };
-        const newLink: TokenAnalysisLink = {
-          analysisId,
-          status: 'approved',
-          token: { tokenRef, surfaceText },
-        };
-        state.analysis.tokenAnalyses.push(newAnalysis);
-        state.analysis.tokenAnalysisLinks.push(newLink);
+        appendApprovedAnalysis(
+          state,
+          {
+            id: analysisId,
+            surfaceText,
+            morphemes: morphemes.map(({ id, form }) => ({ id, form, writingSystem })),
+          },
+          tokenRef,
+        );
       },
     },
     /**
      * Removes the morpheme breakdown from the approved `TokenAnalysis` for the given token. When
-     * the analysis carries no gloss either, the now-empty analysis record and its link are removed
-     * entirely so empty records do not accumulate in storage. No-ops when the token has no approved
-     * analysis or the analysis has no morphemes.
+     * the analysis carries no other content (gloss, POS, features, or lexicon sense reference — see
+     * {@link isEmptyTokenAnalysis}), the now-empty analysis record and its link are removed entirely
+     * so empty records do not accumulate in storage. No-ops when the token has no approved analysis
+     * or the analysis has no morphemes (an orphaned approved link is still repaired; see
+     * {@link resolveApprovedAnalysis}).
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the `tokenRef` whose breakdown is removed.
@@ -290,16 +340,12 @@ const analysisSlice = createSlice({
     deleteMorphemes(state, action: PayloadAction<{ tokenRef: string }>) {
       const { tokenRef } = action.payload;
 
-      const link = state.analysis.tokenAnalysisLinks.find(
-        (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
-      );
-      if (!link) return;
-
-      const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
-      if (!analysis?.morphemes) return;
+      const resolved = resolveApprovedAnalysis(state, tokenRef);
+      if (!resolved?.analysis.morphemes) return;
+      const { link, analysis } = resolved;
 
       delete analysis.morphemes;
-      if (!analysis.gloss || Object.keys(analysis.gloss).length === 0) {
+      if (isEmptyTokenAnalysis(analysis)) {
         state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
         state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
           (l) => l !== link,
@@ -308,7 +354,8 @@ const analysisSlice = createSlice({
     },
     /**
      * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
-     * given token. No-ops when the token has no approved analysis or the morpheme id is not found.
+     * given token. No-ops when the token has no approved analysis or the morpheme id is not found
+     * (an orphaned approved link is still repaired; see {@link resolveApprovedAnalysis}).
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the morpheme gloss payload.
@@ -320,13 +367,8 @@ const analysisSlice = createSlice({
       const { tokenRef, morphemeId, value } = action.payload;
       const lang = state.analysisLanguage;
 
-      const link = state.analysis.tokenAnalysisLinks.find(
-        (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
-      );
-      if (!link) return;
-
-      const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
-      const morpheme = analysis?.morphemes?.find((m) => m.id === morphemeId);
+      const resolved = resolveApprovedAnalysis(state, tokenRef);
+      const morpheme = resolved?.analysis.morphemes?.find((m) => m.id === morphemeId);
       if (!morpheme) return;
 
       if (!morpheme.gloss) morpheme.gloss = {};

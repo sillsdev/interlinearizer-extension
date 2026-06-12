@@ -1125,6 +1125,21 @@ describe('ContinuousView scroll behavior', () => {
     );
     expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
   });
+
+  it('re-centers once when showMorphology toggles', () => {
+    // Morpheme rows beneath tokens can widen phrase boxes, shifting the strip layout, so the
+    // focused group must be snapped back to center when the toggle flips.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+    scrollIntoViewMock.mockClear();
+
+    rerender(<ContinuousView {...props} showMorphology />);
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+    );
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ---------------------------------------------------------------------------

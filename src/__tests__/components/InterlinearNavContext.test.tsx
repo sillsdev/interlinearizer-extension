@@ -5,7 +5,11 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { InterlinearNavProvider, useInterlinearNav } from '../../components/InterlinearNavContext';
+import {
+  INTERNAL_NAV_TTL_MS,
+  InterlinearNavProvider,
+  useInterlinearNav,
+} from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 
 /** Tuple shape returned by the PAPI scroll-group hook. */
@@ -264,6 +268,33 @@ describe('InterlinearNavContext', () => {
       });
       expect(result.current.consumeInternalNav(a)).toBe(true);
       expect(result.current.consumeInternalNav(b)).toBe(true);
+    });
+
+    it('expires a stranded internal mark after the TTL so a later external navigation fades', () => {
+      // When React batches two rapid internal clicks (verse A then B in one frame), the host
+      // echoes only the final value: B's marker is consumed but A's is stranded. Once the TTL has
+      // passed, a later external navigation to A must classify as external (consume returns
+      // false), not be misread as internal by the stale marker.
+      jest.useFakeTimers();
+      try {
+        const { result } = renderNav(
+          makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+        );
+        const a: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 5 };
+        const b: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 10 };
+
+        act(() => {
+          result.current.navigate(a, 'internal');
+          result.current.navigate(b, 'internal');
+        });
+        // The host coalesces the batched navigations and echoes only the final value.
+        expect(result.current.consumeInternalNav(b)).toBe(true);
+
+        jest.advanceTimersByTime(INTERNAL_NAV_TTL_MS + 1);
+        expect(result.current.consumeInternalNav(a)).toBe(false);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('matches a verse-0 internal mark against the host-normalized verse-1 reference', () => {

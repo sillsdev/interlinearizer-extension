@@ -89,6 +89,18 @@ export function verseKey(ref: SerializedVerseRef): string {
 }
 
 /**
+ * How long an unconsumed internal-navigation marker stays valid, in milliseconds. A marker is
+ * normally consumed by the host's echo of the navigated reference within a few milliseconds; one
+ * can only go unconsumed when React batches rapid internal clicks (verse A then verse B in one
+ * frame) and the host echoes just the final value, leaving A's marker stranded. Without an expiry,
+ * a much-later _external_ navigation to A would consume the stale marker and skip the recenter fade
+ * it should show. A few seconds is orders of magnitude beyond any echo round-trip, so a legitimate
+ * marker can never expire early, while a stranded one is gone long before the user could plausibly
+ * navigate back to that verse externally.
+ */
+export const INTERNAL_NAV_TTL_MS = 3000;
+
+/**
  * The single navigation surface for the Interlinearizer WebView. Owns the scripture reference, the
  * scroll-group linkage, the cross-book fade clock, and the internal/external classification of each
  * navigation that were previously read and written by the loader, `Interlinearizer`, and the
@@ -128,7 +140,10 @@ export interface InterlinearNav {
    * Consumes a pending internal-navigation marker for `ref`: returns `true` (and clears the marker)
    * when the most recent {@link navigate} to this verse was `internal`, else `false`. The segment
    * window calls this when an anchor change arrives to decide whether to fade. Consuming clears the
-   * marker so a later _external_ navigation to the same verse still fades.
+   * marker so a later _external_ navigation to the same verse still fades. Markers older than
+   * {@link INTERNAL_NAV_TTL_MS} are ignored (and discarded): a marker stranded by React batching
+   * rapid clicks — where the host echoes only the last of several internal navigations — must not
+   * misclassify a later external navigation to the un-echoed verse.
    *
    * @param ref - The reference whose pending classification to consume.
    * @returns `true` if the navigation to `ref` was internal (skip the fade), else `false`.
@@ -242,26 +257,37 @@ export function InterlinearNavProvider({
   liveScrRefRef.current = liveScrRef;
 
   /**
-   * Verse keys of internal navigations still awaiting their host round-trip. A `navigate(ref,
-   * 'internal')` adds `verseKey(ref)`; `consumeInternalNav` removes it on match. A set (not a
-   * single value) handles rapid successive internal clicks: if two verses are clicked before the
-   * host delivers the first `liveScrRef`, both keys stay pending so neither delivery is misread as
-   * external.
+   * Verse keys of internal navigations still awaiting their host round-trip, each mapped to its
+   * `Date.now()` stamp. A `navigate(ref, 'internal')` records `verseKey(ref)`; `consumeInternalNav`
+   * removes it on match. A keyed collection (not a single value) handles rapid successive internal
+   * clicks: if two verses are clicked before the host delivers the first `liveScrRef`, both keys
+   * stay pending so neither delivery is misread as external. The stamp puts a TTL
+   * ({@link INTERNAL_NAV_TTL_MS}) on each marker: when React batches such rapid clicks into one
+   * update, the host echoes only the final value, stranding the earlier marker — unexpired, it
+   * would misclassify a later external navigation to that verse as internal and suppress its
+   * recenter fade.
    */
-  const pendingInternalNavRef = useRef<Set<string>>(new Set());
+  const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
   const navigate = useCallback(
     (newScrRef: SerializedVerseRef, origin: NavOrigin = 'external') => {
-      if (origin === 'internal') pendingInternalNavRef.current.add(verseKey(newScrRef));
+      if (origin === 'internal') pendingInternalNavRef.current.set(verseKey(newScrRef), Date.now());
       setScrRef(newScrRef);
     },
     [setScrRef],
   );
 
   const consumeInternalNav = useCallback((ref: SerializedVerseRef) => {
+    const pending = pendingInternalNavRef.current;
+    // Evict expired markers before matching, so a marker stranded by a batched rapid-click (its
+    // echo never arrived) cannot be consumed by a later external navigation to the same verse.
+    const cutoff = Date.now() - INTERNAL_NAV_TTL_MS;
+    pending.forEach((stampedAt, pendingKey) => {
+      if (stampedAt < cutoff) pending.delete(pendingKey);
+    });
     const key = verseKey(ref);
-    if (!pendingInternalNavRef.current.has(key)) return false;
-    pendingInternalNavRef.current.delete(key);
+    if (!pending.has(key)) return false;
+    pending.delete(key);
     return true;
   }, []);
 

@@ -1,5 +1,6 @@
 import type { Token } from 'interlinearizer';
 import { X } from 'lucide-react';
+import { Popover, PopoverAnchor } from 'platform-bible-react';
 import { memo, type MouseEventHandler, useEffect, useId, useRef, useState } from 'react';
 import {
   useAnalysisLanguage,
@@ -147,46 +148,56 @@ export function TokenChip({
           {token.surfaceText}
         </span>
         {showMorphology && (
-          <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">
-            <button
-              aria-label={
-                hasMorphemes
-                  ? `Edit morpheme breakdown for ${token.surfaceText}`
-                  : `Define morpheme breakdown for ${token.surfaceText}`
-              }
-              className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:cursor-pointer tw:transition-colors tw:hover:bg-accent ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
-              tabIndex={-1}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                if (!disabled) setPopoverOpen(true);
-              }}
-            >
-              {hasMorphemes ? (
-                morphemes.map((m) => (
-                  <span key={m.id} className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
-                    {m.form}
+          // The morpheme row is the popover anchor; the panel itself is portaled to document.body
+          // by PopoverContent, so it escapes both the clipping of ancestor scroll viewports (e.g.
+          // the continuous view's token strip) and the `token-row` stacking contexts that would
+          // otherwise paint later segment rows over it. The popover is modal so interactions
+          // outside the panel are blocked while it is open. The popover component is mounted only
+          // while open so its draft state re-initializes from the current forms on every open.
+          <Popover modal open={popoverOpen}>
+            <PopoverAnchor asChild>
+              <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">
+                <button
+                  aria-label={
+                    hasMorphemes
+                      ? `Edit morpheme breakdown for ${token.surfaceText}`
+                      : `Define morpheme breakdown for ${token.surfaceText}`
+                  }
+                  className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:cursor-pointer tw:transition-colors tw:hover:bg-accent ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
+                  tabIndex={-1}
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (!disabled) setPopoverOpen(true);
+                  }}
+                >
+                  {hasMorphemes ? (
+                    morphemes.map((m) => (
+                      <span key={m.id} className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
+                        {m.form}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
+                      {token.surfaceText}
+                    </span>
+                  )}
+                </button>
+                {hasMorphemes && (
+                  <span className="tw:flex tw:flex-row tw:gap-0.5">
+                    {morphemes.map((m) => (
+                      <MorphemeGlossInput
+                        key={m.id}
+                        analysisLanguage={analysisLanguage}
+                        disabled={disabled}
+                        morpheme={m}
+                        tokenRef={token.ref}
+                      />
+                    ))}
                   </span>
-                ))
-              ) : (
-                <span className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
-                  {token.surfaceText}
-                </span>
-              )}
-            </button>
-            {hasMorphemes && (
-              <span className="tw:flex tw:flex-row tw:gap-0.5">
-                {morphemes.map((m) => (
-                  <MorphemeGlossInput
-                    key={m.id}
-                    analysisLanguage={analysisLanguage}
-                    disabled={disabled}
-                    morpheme={m}
-                    tokenRef={token.ref}
-                  />
-                ))}
-              </span>
-            )}
+                )}
+              </div>
+            </PopoverAnchor>
             {popoverOpen && (
               <MorphemeBreakdownPopover
                 initialValue={
@@ -197,7 +208,7 @@ export function TokenChip({
                 onSave={handleMorphemeSave}
               />
             )}
-          </div>
+          </Popover>
         )}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}

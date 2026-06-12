@@ -59,7 +59,9 @@ jest.mock('../../components/TokenChip', () => {
    * @param props.isSplitFree - When true, marks the chip as a would-be-free token.
    * @param props.onRemove - Called when the remove button is clicked; omitted for edge tokens.
    * @param props.showMorphology - Exposed as a data attribute so tests can verify every PhraseBox
-   *   render path forwards the strip-wide morphology toggle.
+   *   render path forwards the strip-wide morphology toggle. When true, also renders a
+   *   `data-morpheme-gloss` input before the main gloss input, mirroring the real chip's DOM order
+   *   so focus-routing tests exercise the morpheme-exclusion selector.
    * @returns A span containing the surface text, a gloss input, and an optional remove button.
    */
   function MockTokenChip({
@@ -84,6 +86,12 @@ jest.mock('../../components/TokenChip', () => {
         data-show-morphology={showMorphology ? 'true' : 'false'}
       >
         {token.surfaceText}
+        {showMorphology && (
+          <input
+            aria-label={`Gloss for morpheme ${token.surfaceText}`}
+            data-morpheme-gloss="true"
+          />
+        )}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
           onChange={(e) => dispatch(token.ref, token.surfaceText, e.target.value)}
@@ -298,6 +306,37 @@ describe('PhraseBox', () => {
 
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
     expect(onFocusPhrase).toHaveBeenCalledWith('test-group');
+  });
+
+  it('clicking the box with morphology shown focuses the token gloss input, not the preceding morpheme gloss input', async () => {
+    const onFocusPhrase = jest.fn();
+    renderBox(
+      <PhraseBox
+        {...requiredProps()}
+        onFocusPhrase={onFocusPhrase}
+        tokens={[TEST_TOKEN, TEST_TOKEN_2]}
+      />,
+      { showMorphology: true },
+    );
+
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    await userEvent.click(phraseBox ?? document.body);
+
+    // Morpheme gloss inputs precede the token gloss input in DOM order; the box-click handler must
+    // skip them — only the token gloss input fires onFocus → onFocusPhrase.
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
+    expect(onFocusPhrase).toHaveBeenCalledWith('test-group');
+  });
+
+  it('Enter on the box container with morphology shown focuses the token gloss input, not the morpheme gloss input', async () => {
+    renderBox(<PhraseBox {...requiredProps()} />, { showMorphology: true });
+
+    const box = document.querySelector('[data-phrase-box="true"]');
+    expect(box).not.toBeNull();
+    if (box instanceof HTMLElement) box.focus();
+    await userEvent.keyboard('{Enter}');
+
+    expect(screen.getByRole('textbox', { name: 'Gloss for morpheme Hello' })).not.toHaveFocus();
   });
 
   it('applies focused border and background when isFocused is true', () => {

@@ -2,7 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from '../../components/MorphemeEditor';
@@ -105,43 +105,29 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('closes when the backdrop is clicked', async () => {
-    const onClose = jest.fn();
-    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={onClose} />);
-    // The backdrop is the fixed full-screen div; getByRole won't find it, so query the DOM.
-    const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
-    if (!backdrop) throw new Error('Backdrop not found');
-    await userEvent.click(backdrop);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it('saves on backdrop click when the text was edited', async () => {
-    const onSave = jest.fn();
-    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={jest.fn()} />);
-    await userEvent.type(screen.getByRole('textbox'), ' -er');
-    const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
-    if (!backdrop) throw new Error('Backdrop not found');
-    await userEvent.click(backdrop);
-    expect(onSave).toHaveBeenCalledWith('test -er');
-  });
-
-  it('does not save on backdrop click when the text is unchanged', async () => {
+  it('closes without saving when interacting outside with unchanged text', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
     render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={onClose} />);
-    const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
-    if (!backdrop) throw new Error('Backdrop not found');
-    await userEvent.click(backdrop);
+    // The platform-bible-react mock exposes a sentinel button that fires onInteractOutside,
+    // simulating a pointer interaction outside the popover.
+    await userEvent.click(screen.getByTestId('popover-outside'));
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not save on backdrop click when the input is only whitespace', async () => {
+  it('saves on outside interaction when the text was edited', async () => {
+    const onSave = jest.fn();
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={jest.fn()} />);
+    await userEvent.type(screen.getByRole('textbox'), ' -er');
+    await userEvent.click(screen.getByTestId('popover-outside'));
+    expect(onSave).toHaveBeenCalledWith('test -er');
+  });
+
+  it('does not save on outside interaction when the input is only whitespace', async () => {
     const onSave = jest.fn();
     render(<MorphemeBreakdownPopover initialValue="   " onSave={onSave} onClose={jest.fn()} />);
-    const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
-    if (!backdrop) throw new Error('Backdrop not found');
-    await userEvent.click(backdrop);
+    await userEvent.click(screen.getByTestId('popover-outside'));
     expect(onSave).not.toHaveBeenCalled();
   });
 
@@ -151,6 +137,32 @@ describe('MorphemeBreakdownPopover', () => {
     const label = screen.getByText('Split into morphemes');
     await userEvent.click(label);
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('stops clicks inside the panel from reaching ancestor click handlers', async () => {
+    // The panel is portaled to document.body, but React synthetic events bubble through the React
+    // tree to the token chip and its phrase-selection click handlers; the panel must contain them.
+    const ancestorClick = jest.fn();
+    render(
+      <div role="presentation" onClick={ancestorClick}>
+        <MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />
+      </div>,
+    );
+    await userEvent.click(screen.getByText('Split into morphemes'));
+    expect(ancestorClick).not.toHaveBeenCalled();
+  });
+
+  it('stops mouse-downs inside the panel from reaching ancestor mouse-down handlers', () => {
+    // A mouse-down that escaped the panel would reach the chip label's mouse-down handler, which
+    // focuses the gloss input behind the popover and blurs the editor mid-edit.
+    const ancestorMouseDown = jest.fn();
+    render(
+      <div role="presentation" onMouseDown={ancestorMouseDown}>
+        <MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByText('Split into morphemes'));
+    expect(ancestorMouseDown).not.toHaveBeenCalled();
   });
 
   it('does not call onSave when the input is empty', async () => {
@@ -190,35 +202,12 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('portals the panel to document.body so segment rows cannot stack above it', () => {
+  it('renders inside the popover content panel', () => {
+    // Positioning, portaling, and flipping are owned by the platform-bible-react Popover; this
+    // only verifies the editor renders as the popover's content.
     render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
-    const panel = screen.getByText('Split into morphemes').closest('div');
-    expect(panel?.parentElement).toBe(document.body);
-  });
-
-  it('positions the panel below the anchor when there is room under the viewport bottom', () => {
-    // The layout effect measures the anchor (panel's DOM parent) first, then the panel itself.
-    jest
-      .spyOn(Element.prototype, 'getBoundingClientRect')
-      .mockReturnValueOnce(new DOMRect(50, 100, 40, 20))
-      .mockReturnValueOnce(new DOMRect(0, 0, 200, 100));
-    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
-    const panel = screen.getByText('Split into morphemes').closest('div');
-    // Anchor bottom (120) plus the 4px margin.
-    expect(panel).toHaveStyle({ top: '124px', left: '50px' });
-  });
-
-  it('flips the panel above the anchor when the viewport bottom is too close', () => {
-    // Anchor bottom at 720 leaves only 48px below in jsdom's 768px-tall window — not enough for
-    // the 100px-tall panel, so it flips above the anchor.
-    jest
-      .spyOn(Element.prototype, 'getBoundingClientRect')
-      .mockReturnValueOnce(new DOMRect(50, 700, 40, 20))
-      .mockReturnValueOnce(new DOMRect(0, 0, 200, 100));
-    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
-    const panel = screen.getByText('Split into morphemes').closest('div');
-    // Anchor top (700) minus panel height (100) minus the 4px margin.
-    expect(panel).toHaveStyle({ top: '596px', left: '50px' });
+    const content = screen.getByTestId('popover-content');
+    expect(content).toContainElement(screen.getByText('Split into morphemes'));
   });
 });
 

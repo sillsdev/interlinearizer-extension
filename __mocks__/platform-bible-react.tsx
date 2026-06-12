@@ -3,8 +3,8 @@
  * without extra transform configuration. This stub provides the subset used by the extension.
  */
 
-import { forwardRef } from 'react';
-import type { ReactElement, ReactNode } from 'react';
+import { forwardRef, useEffect, useRef } from 'react';
+import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
 
 export interface MenuItemContainingCommand {
   label: `%${string}%`;
@@ -320,6 +320,104 @@ export function Switch({
       onChange={(e) => onCheckedChange?.(e.target.checked)}
       type="checkbox"
     />
+  );
+}
+
+/**
+ * Stub popover root that renders its children unconditionally. The extension conditionally mounts
+ * the content component while open (so its draft state re-initializes per open), so visibility
+ * needs no simulation here.
+ *
+ * @param props - Component props.
+ * @param props.children - Anchor and (while open) content elements.
+ * @returns The children unchanged.
+ */
+export function Popover({
+  children,
+}: Readonly<{ children?: ReactNode; open?: boolean; modal?: boolean }>): ReactElement {
+  return <>{children}</>;
+}
+
+/**
+ * Stub popover anchor that renders its children as-is, matching the real component's `asChild`
+ * pass-through behavior.
+ *
+ * @param props - Component props.
+ * @param props.children - The element the popover is anchored to.
+ * @returns The children unchanged.
+ */
+export function PopoverAnchor({
+  children,
+}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactElement {
+  return <>{children}</>;
+}
+
+/**
+ * Stub popover content rendered as a plain `<div data-testid="popover-content">`. The real
+ * component implements positioning, portaling, and dismissal internally; this stub exposes the
+ * dismissal callbacks so tests can simulate them:
+ *
+ * - `onOpenAutoFocus` is invoked once on mount (mirroring Radix's open auto-focus event).
+ * - An Escape keydown anywhere inside the content invokes `onEscapeKeyDown`.
+ * - A sentinel `data-testid="popover-outside"` button invokes `onInteractOutside` on click,
+ *   simulating a pointer interaction outside the popover.
+ *
+ * @param props - Component props.
+ * @param props.children - Panel content.
+ * @param props.className - CSS class names forwarded to the div.
+ * @param props.onEscapeKeyDown - Called when Escape is pressed inside the content.
+ * @param props.onInteractOutside - Called when the sentinel outside button is clicked.
+ * @param props.onOpenAutoFocus - Called once on mount with a plain `Event`.
+ * @param props.onClick - Click handler forwarded to the div.
+ * @param props.onMouseDown - Mouse-down handler forwarded to the div.
+ * @returns A `<div data-testid="popover-content">` with the panel content and sentinel controls.
+ */
+export function PopoverContent({
+  children,
+  className,
+  onEscapeKeyDown,
+  onInteractOutside,
+  onOpenAutoFocus,
+  onClick,
+  onMouseDown,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  align?: 'start' | 'center' | 'end';
+  sideOffset?: number;
+  onEscapeKeyDown?: () => void;
+  onInteractOutside?: () => void;
+  onOpenAutoFocus?: (event: Event) => void;
+  onClick?: MouseEventHandler<HTMLDivElement>;
+  onMouseDown?: MouseEventHandler<HTMLDivElement>;
+}>): ReactElement {
+  // Capture the mount-time callback so the simulation fires exactly once, like the real event.
+  const openAutoFocusRef = useRef(onOpenAutoFocus);
+  useEffect(() => {
+    openAutoFocusRef.current?.(new Event('openAutoFocus'));
+  }, []);
+  return (
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      className={className}
+      data-testid="popover-content"
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onEscapeKeyDown?.();
+      }}
+      onMouseDown={onMouseDown}
+    >
+      {children}
+      {onInteractOutside && (
+        <button
+          data-testid="popover-outside"
+          type="button"
+          onClick={() => onInteractOutside()}
+        >
+          outside
+        </button>
+      )}
+    </div>
   );
 }
 

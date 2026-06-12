@@ -135,6 +135,21 @@ describe('writeGloss', () => {
     const { tokenAnalyses } = store.getState().analysis.analysis;
     expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'hello' });
   });
+
+  it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'words', 'hello'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses[0].surfaceText).toBe('words');
+    expect(tokenAnalysisLinks[0].token.surfaceText).toBe('words');
+  });
 });
 
 describe('selectApprovedGloss', () => {
@@ -673,6 +688,50 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[0].form).toBe('hel');
   });
 
+  it('preserves morpheme ids when forms are unchanged', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [
+        { id: 'm-1', form: 'un-', writingSystem: 'und' },
+        { id: 'm-2', form: 'believe', writingSystem: 'und' },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believe', '-able'], 'und'));
+
+    // MorphemeLink.morphemeId cross-references these ids, so editing the breakdown must not
+    // regenerate the ids of morphemes whose form did not change.
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].id).toBe('m-1');
+    expect(updated?.morphemes?.[1].id).toBe('m-2');
+  });
+
+  it('assigns a fresh id to a newly added morpheme alongside preserved ones', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [
+        { id: 'm-1', form: 'un-', writingSystem: 'und' },
+        { id: 'm-2', form: 'believe', writingSystem: 'und' },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemes('tok-1', 'unbelievable', ['un-', 'believe', '-able'], 'und'));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    const newId = updated?.morphemes?.[2].id;
+    expect(newId).toBeDefined();
+    expect(newId).not.toBe('m-1');
+    expect(newId).not.toBe('m-2');
+  });
+
   it('assigns unique ids to each morpheme via prepare', () => {
     const store = createAnalysisStore();
     store.dispatch(writeMorphemes('tok-1', 'abc', ['a', 'b', 'c'], 'und'));
@@ -795,7 +854,67 @@ describe('deleteMorphemes', () => {
     expect(tokenAnalysisLinks).toHaveLength(1);
   });
 
-  it('no-ops when the approved link references a missing analysis', () => {
+  it('keeps the analysis and link when it carries a part of speech but no gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      pos: 'N',
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalyses[0].pos).toBe('N');
+    expect(tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('keeps the analysis and link when it carries features but no gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      features: { Case: 'Nom' },
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalyses[0].features).toStrictEqual({ Case: 'Nom' });
+    expect(tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('keeps the analysis and link when it carries a lexicon sense reference but no gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      glossSenseRef: { senseId: 'sense-1' },
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalyses[0].glossSenseRef).toStrictEqual({ senseId: 'sense-1' });
+    expect(tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('repairs an orphaned approved link by removing it', () => {
     const orphanLink: TokenAnalysisLink = {
       analysisId: 'missing-uuid',
       status: 'approved',
@@ -810,7 +929,9 @@ describe('deleteMorphemes', () => {
 
     store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
 
-    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(1);
+    // Every token-analysis reducer repairs orphaned approved links the same way; an orphan found
+    // during deletion is removed rather than left to dangle.
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(0);
   });
 });
 
@@ -839,6 +960,24 @@ describe('writeMorphemeGloss', () => {
     const store = createAnalysisStore();
     store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: 'not' }));
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(0);
+  });
+
+  it('repairs an orphaned approved link by removing it', () => {
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'missing-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: 'not' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(0);
   });
 
   it('no-ops when the morpheme id is not found', () => {

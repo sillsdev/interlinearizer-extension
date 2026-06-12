@@ -101,6 +101,19 @@ export function verseKey(ref: SerializedVerseRef): string {
 export const INTERNAL_NAV_TTL_MS = 3000;
 
 /**
+ * The single freshness definition for an internal-navigation marker, shared by both marker readers
+ * — `consumeInternalNav` and the render-phase mid-reveal guard — so the two can never drift on what
+ * counts as expired. The boundary is consistent with eviction: a marker is fresh iff its age is at
+ * most {@link INTERNAL_NAV_TTL_MS}.
+ *
+ * @param stampedAt - The marker's `Date.now()` stamp, or `undefined` when no marker exists.
+ * @returns `true` when a marker exists and is within the TTL.
+ */
+function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
+  return stampedAt !== undefined && Date.now() - stampedAt <= INTERNAL_NAV_TTL_MS;
+}
+
+/**
  * The single navigation surface for the Interlinearizer WebView. Owns the scripture reference, the
  * scroll-group linkage, the cross-book fade clock, and the internal/external classification of each
  * navigation that were previously read and written by the loader, `Interlinearizer`, and the
@@ -265,7 +278,8 @@ export function InterlinearNavProvider({
    * ({@link INTERNAL_NAV_TTL_MS}) on each marker: when React batches such rapid clicks into one
    * update, the host echoes only the final value, stranding the earlier marker — unexpired, it
    * would misclassify a later external navigation to that verse as internal and suppress its
-   * recenter fade.
+   * recenter fade. BOTH readers honor the TTL: `consumeInternalNav` (which also evicts expired
+   * markers) and the render-phase mid-reveal guard (a pure read — no eviction during render).
    */
   const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
@@ -281,9 +295,10 @@ export function InterlinearNavProvider({
     const pending = pendingInternalNavRef.current;
     // Evict expired markers before matching, so a marker stranded by a batched rapid-click (its
     // echo never arrived) cannot be consumed by a later external navigation to the same verse.
-    const cutoff = Date.now() - INTERNAL_NAV_TTL_MS;
+    // Eviction also bounds the map's size; freshness is the shared `isInternalNavMarkerFresh`
+    // definition so this reader and the mid-reveal guard cannot drift.
     pending.forEach((stampedAt, pendingKey) => {
-      if (stampedAt < cutoff) pending.delete(pendingKey);
+      if (!isInternalNavMarkerFresh(stampedAt)) pending.delete(pendingKey);
     });
     const key = verseKey(ref);
     if (!pending.has(key)) return false;
@@ -324,7 +339,7 @@ export function InterlinearNavProvider({
   } else if (
     fadePhase === 'in' &&
     verseKey(liveScrRef) !== verseKey(prevLiveScrRef) &&
-    !pendingInternalNavRef.current.has(verseKey(liveScrRef))
+    !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(verseKey(liveScrRef)))
   ) {
     // A follow-up external navigation landing while the cross-book reveal is still animating. The
     // host resolves one picker selection as two navigations — the book change first, the precise
@@ -334,7 +349,10 @@ export function InterlinearNavProvider({
     // transition carries the opacity smoothly down from wherever the rise had reached), let the
     // views re-anchor on the new verse behind it, and lift once on their settle. Internal echoes
     // (a click made during the reveal) are exempt — the curtain must not drop over a navigation
-    // whose target is already on screen.
+    // whose target is already on screen — but the exemption honors the marker TTL, so an expired
+    // stranded marker (a batched rapid-click whose echo never arrived) cannot suppress the
+    // re-engage. The read is pure (no eviction): this runs during render, so the map must not be
+    // mutated here; `consumeInternalNav` handles eviction.
     /* v8 ignore next -- defensive: reportSettled always arms the fade-in timer alongside 'in' */
     if (fadeInTimeoutRef.current !== undefined) clearTimeout(fadeInTimeoutRef.current);
     fadeInTimeoutRef.current = undefined;

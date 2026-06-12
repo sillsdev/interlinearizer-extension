@@ -513,6 +513,36 @@ describe('InterlinearNavContext', () => {
       expect(result.current.fadePhase).toBe('in');
     });
 
+    it('re-engages the curtain when an expired stranded internal mark names the mid-reveal target', () => {
+      // A stranded internal marker (its echo never arrived) must stop exempting the verse once the
+      // TTL passes: a later external navigation to that verse landing mid-reveal still re-engages
+      // the curtain. Markers stamp at navigate time and RECENTER_FADE_MS (500ms) is far shorter
+      // than the TTL (3000ms), so the clock is advanced past the TTL *before* the reveal begins —
+      // advancing during the 'in' phase would fire the fade-in timer to 'idle' first.
+      const { result, rerender, setRef } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      // Strand a marker for the eventual target: an internal navigation whose echo never arrives.
+      act(() => result.current.navigate({ book: 'ZEP', chapterNum: 3, verseNum: 1 }, 'internal'));
+      // Let the marker expire while the clock is still idle.
+      act(() => jest.advanceTimersByTime(INTERNAL_NAV_TTL_MS + 1));
+
+      // Cross-book navigation, then settle: the curtain is mid-reveal ('in').
+      act(() => setRef({ book: 'ZEP', chapterNum: 1, verseNum: 1 }));
+      rerender();
+      act(() => result.current.reportSettled());
+      expect(result.current.fadePhase).toBe('in');
+
+      // An external navigation to the stranded verse lands mid-reveal. The expired marker must not
+      // exempt it: the curtain re-engages.
+      act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 1 }));
+      rerender();
+      expect(result.current.fadePhase).toBe('out');
+    });
+
     it('does not re-engage the curtain for a verse-0 echo during the fade-in', () => {
       // The host's chapter re-broadcast (verse 0 for the chapter already shown) is sticky — it
       // names the verse currently displayed, so it must not read as a fresh navigation mid-reveal.

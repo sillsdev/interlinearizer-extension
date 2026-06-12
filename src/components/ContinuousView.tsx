@@ -259,6 +259,28 @@ export default function ContinuousView({
    * group instead of two.
    */
   const pendingPhraseIndexRef = useRef(0);
+
+  /**
+   * `focusedTokenRef` prop value from the previous render. Lets the sync block below distinguish a
+   * prop that merely hasn't echoed an in-flight internal nav yet (unchanged since last render) from
+   * one the parent changed to an external position (changed to something other than the in-flight
+   * ref).
+   */
+  const prevFocusedTokenRefPropRef = useRef(focusedTokenRef);
+  // If the prop changed to anything other than the in-flight internal ref, the parent imposed an
+  // external position instead of echoing the nav. Clear the in-flight marker so the pending index
+  // resyncs below; otherwise the next step() would advance from the stale pending index rather
+  // than the externally-imposed position. The focus-change effect can't cover this case: it
+  // early-returns without clearing the marker when the external value already matches the
+  // displayed ref.
+  if (
+    internalFocusedTokenRefRef.current !== undefined &&
+    focusedTokenRef !== prevFocusedTokenRefPropRef.current &&
+    focusedTokenRef !== internalFocusedTokenRefRef.current
+  ) {
+    internalFocusedTokenRefRef.current = undefined;
+  }
+  prevFocusedTokenRefPropRef.current = focusedTokenRef;
   // Keep in sync with the rendered value so external jumps reset the pending index. When an
   // internal nav is still in flight (the parent hasn't echoed back yet), do not overwrite: a rapid
   // second click needs to read the already-advanced pending index rather than the stale rendered

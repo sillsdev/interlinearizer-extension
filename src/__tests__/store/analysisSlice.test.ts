@@ -14,6 +14,7 @@ import { emptyAnalysis } from '../../types/empty-factories';
 import {
   createPhrase,
   defaultState,
+  deleteMorphemes,
   deletePhrase,
   mergePhrases,
   selectApprovedGloss,
@@ -642,6 +643,110 @@ describe('writeMorphemes', () => {
     const ta = store.getState().analysis.analysis.tokenAnalyses[0];
     const ids = ta.morphemes?.map((m) => m.id);
     expect(new Set(ids).size).toBe(3);
+  });
+});
+
+describe('deleteMorphemes', () => {
+  it('removes the morphemes but keeps the analysis when it has a gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      gloss: { und: 'incredible' },
+      morphemes: [{ id: 'm-1', form: 'un-', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'incredible' });
+    expect(tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('removes the analysis and its link when it has no gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('removes the analysis and its link when its gloss object is empty', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      gloss: {},
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('no-ops when the token has no approved link', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-other' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses[0].morphemes).toHaveLength(1);
+  });
+
+  it('no-ops when the approved analysis has no morphemes', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'hi' });
+    expect(tokenAnalysisLinks).toHaveLength(1);
+  });
+
+  it('no-ops when the approved link references a missing analysis', () => {
+    const orphanLink: TokenAnalysisLink = {
+      analysisId: 'missing-uuid',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'word' },
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    expect(store.getState().analysis.analysis.tokenAnalysisLinks).toHaveLength(1);
   });
 });
 

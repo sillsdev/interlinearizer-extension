@@ -263,6 +263,34 @@ const analysisSlice = createSlice({
       },
     },
     /**
+     * Removes the morpheme breakdown from the approved `TokenAnalysis` for the given token. When
+     * the analysis carries no gloss either, the now-empty analysis record and its link are removed
+     * entirely so empty records do not accumulate in storage. No-ops when the token has no approved
+     * analysis or the analysis has no morphemes.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the `tokenRef` whose breakdown is removed.
+     */
+    deleteMorphemes(state, action: PayloadAction<{ tokenRef: string }>) {
+      const { tokenRef } = action.payload;
+
+      const link = state.analysis.tokenAnalysisLinks.find(
+        (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+      );
+      if (!link) return;
+
+      const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link.analysisId);
+      if (!analysis?.morphemes) return;
+
+      delete analysis.morphemes;
+      if (!analysis.gloss || Object.keys(analysis.gloss).length === 0) {
+        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+        state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
+          (l) => l !== link,
+        );
+      }
+    },
+    /**
      * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
      * given token. No-ops when the token has no approved analysis or the morpheme id is not found.
      *
@@ -391,6 +419,7 @@ export const {
   setAnalysis,
   writeGloss,
   writeMorphemes,
+  deleteMorphemes,
   writeMorphemeGloss,
   createPhrase,
   updatePhrase,

@@ -1,11 +1,12 @@
 import type { Token } from 'interlinearizer';
 import { X } from 'lucide-react';
-import { memo, type MouseEventHandler, useEffect, useRef, useState } from 'react';
+import { memo, type MouseEventHandler, useEffect, useId, useRef, useState } from 'react';
 import {
   useAnalysisLanguage,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
+  useMorphemeDeleteDispatch,
   useMorphemes,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
@@ -19,8 +20,8 @@ import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
  *
  * When `showMorphology` is true, a morpheme row is shown below the surface text. For unanalyzed
  * tokens this is a clickable button showing the surface text; for analyzed tokens it shows the
- * morpheme forms. Clicking either opens an inline popover where the user can define or edit the
- * morpheme breakdown. Per-morpheme gloss inputs appear below the morpheme forms.
+ * morpheme forms. Clicking either opens an inline popover where the user can define, edit, or
+ * delete the morpheme breakdown. Per-morpheme gloss inputs appear below the morpheme forms.
  *
  * @param props - Component props
  * @param props.token - The word token to render.
@@ -54,8 +55,10 @@ export function TokenChip({
   const morphemes = useMorphemes(token.ref);
   const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
+  const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
   const [draft, setDraft] = useState(committedGloss);
   const [popoverOpen, setPopoverOpen] = useState(false);
+  const glossInputId = useId();
   // Tracks whether the X button itself is hovered, so only that button hover reddens the border.
   const [isRemoveHovered, setIsRemoveHovered] = useState(false);
   // Reset remove-hover state when onRemove is cleared so the red border doesn't linger.
@@ -109,9 +112,11 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // The X button is positioned outside the <label> so its implicit labeled control stays the gloss
-  // input, not the button. Otherwise clicking anywhere on the chip (label-association behavior)
-  // would trigger the X button instead of focusing the input.
+  // The X button is positioned outside the <label>, and the label is bound to the gloss input with
+  // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
+  // explicit binding, the label's implicit control would be its first labelable descendant — the X
+  // button, or the morpheme trigger button when showMorphology is on — and clicking anywhere on
+  // the chip (label-association behavior) would activate that button instead.
   return (
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
@@ -133,6 +138,7 @@ export function TokenChip({
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
         onMouseDown={disabled ? undefined : handleLabelMouseDown}
+        htmlFor={glossInputId}
       >
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
           {token.surfaceText}
@@ -180,10 +186,12 @@ export function TokenChip({
             )}
             {popoverOpen && (
               <MorphemeBreakdownPopover
+                hasExistingBreakdown={hasMorphemes}
                 initialValue={
                   hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
                 }
                 onClose={() => setPopoverOpen(false)}
+                onDelete={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}
               />
             )}
@@ -193,6 +201,7 @@ export function TokenChip({
           aria-label={`Gloss for ${token.surfaceText}`}
           className="tw:gloss-input"
           disabled={disabled}
+          id={glossInputId}
           placeholder="gloss"
           style={{ fieldSizing: 'content', minWidth: '5ch' }}
           value={draft}

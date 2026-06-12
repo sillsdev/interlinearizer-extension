@@ -212,9 +212,11 @@ const analysisSlice = createSlice({
       /**
        * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. Preserves
        * existing morpheme glosses when a morpheme form is unchanged. When no approved analysis
-       * exists, creates one. Every morpheme — preserved or new — is stamped with the supplied
-       * writing system, so records written before the writing system was threaded through (which
-       * wrongly stored the analysis language) self-correct on the next save.
+       * exists, creates one. Also refreshes the stored surface text on both the analysis and the
+       * link's token snapshot, so neither goes stale when the baseline text changed since the
+       * analysis was first written. Every morpheme — preserved or new — is stamped with the
+       * supplied writing system, so records written before the writing system was threaded through
+       * (which wrongly stored the analysis language) self-correct on the next save.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the morpheme payload.
@@ -240,6 +242,8 @@ const analysisSlice = createSlice({
             (ta) => ta.id === existingLink.analysisId,
           );
           if (existingAnalysis) {
+            existingAnalysis.surfaceText = surfaceText;
+            existingLink.token.surfaceText = surfaceText;
             // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
             // match a distinct old morpheme in order, instead of all inheriting the last one.
             const oldByForm = new Map<string, MorphemeAnalysis[]>();

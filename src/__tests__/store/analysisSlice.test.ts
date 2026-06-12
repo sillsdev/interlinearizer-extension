@@ -643,6 +643,23 @@ describe('writeMorphemes', () => {
     expect(ta?.morphemes).toHaveLength(2);
   });
 
+  it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'word',
+      morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemes('tok-1', 'words', ['word', '-s'], 'und'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses.find((a) => a.id === 'ta-1')?.surfaceText).toBe('words');
+    expect(tokenAnalysisLinks[0].token.surfaceText).toBe('words');
+  });
+
   it('adds morphemes to an existing approved analysis that has no morphemes', () => {
     const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'hello' };
     const store = createAnalysisStore({

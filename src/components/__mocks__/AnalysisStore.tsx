@@ -8,8 +8,9 @@ type GlossMap = Record<string, string>;
 type MockCtxValue = {
   glosses: GlossMap;
   dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
+  language: string;
 };
-const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
+const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {}, language: 'und' });
 
 /**
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
@@ -51,7 +52,10 @@ export function AnalysisStoreProvider({
     },
     [onGlossChange],
   );
-  const ctx = useMemo(() => ({ glosses, dispatch }), [glosses, dispatch]);
+  const ctx = useMemo(
+    () => ({ glosses, dispatch, language: analysisLanguage }),
+    [glosses, dispatch, analysisLanguage],
+  );
   return <MockCtx value={ctx}>{children}</MockCtx>;
 }
 
@@ -88,12 +92,13 @@ export function useMorphemes(_tokenRef: string): readonly MorphemeAnalysis[] {
 }
 
 /**
- * Returns the analysis language string from mock context.
+ * Returns the analysis language string from mock context, mirroring the `analysisLanguage` prop
+ * passed to the mock provider.
  *
- * @returns The BCP 47 tag `'und'`.
+ * @returns The BCP 47 tag from mock context (defaults to `'und'` outside a provider).
  */
 export function useAnalysisLanguage(): string {
-  return 'und';
+  return useContext(MockCtx).language;
 }
 
 /**

@@ -31,7 +31,12 @@ type InterlinearizerProps = Readonly<{
   book: Book;
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
-  /** Current scripture reference used to highlight the active verse. */
+  /**
+   * Current scripture reference used to highlight the active verse. Must carry a normalized verse
+   * number (>= 1): production refs flow through `normalizeScrRef` in `InterlinearNavContext`,
+   * which maps a verse-0 (chapter heading) selection to verse 1 before it reaches this component.
+   * A raw verse-0 ref would match no segment, leaving focus unseeded and nothing highlighted.
+   */
   scrRef: SerializedVerseRef;
   /**
    * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
@@ -209,7 +214,9 @@ function InterlinearizerInner({
     updatePhrase(phraseMode.phraseId, phraseMode.originalTokens);
     setPhraseMode({ kind: 'view' });
     // phraseMode is intentionally omitted: adding it would re-fire on every edit
-    // keystroke; isRevert changing to true guarantees phraseMode holds the revert values.
+    // keystroke; isRevert changing to true guarantees phraseMode holds the revert values — a
+    // guarantee that holds only while isRevert stays derived directly from phraseMode above, so
+    // don't move or memoize that derivation independently of this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRevert, updatePhrase, setPhraseMode]);
 
@@ -228,7 +235,10 @@ function InterlinearizerInner({
     /* v8 ignore next -- activeSeg is always defined when the book includes the active verse */
     setFocusedTokenRef(firstWordTokenRefOf(activeSeg));
     // findActiveSegment is intentionally excluded: the verse-coordinate deps already capture the
-    // change we care about, and it changes identity on every scrRef update.
+    // change we care about, and it changes identity on every scrRef update. focusedTokenRef and
+    // tokenSegmentMap are excluded too — they are read only as guards; as deps they would re-run
+    // this effect on every focus move and clobber the deliberately-focused token with the verse's
+    // first word.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 
@@ -360,7 +370,8 @@ function InterlinearizerInner({
  * @param props - Component props
  * @param props.book - Book data used by the continuous view and segment window
  * @param props.continuousScroll - Whether the continuous scroll view is shown
- * @param props.scrRef - Current scripture reference
+ * @param props.scrRef - Current scripture reference; must be normalized (verse >= 1, see
+ *   {@link InterlinearizerProps}).
  * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
  * @param props.analysisLanguage - BCP 47 tag for gloss read/write
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`

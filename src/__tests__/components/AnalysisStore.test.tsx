@@ -12,6 +12,7 @@ import {
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
+  useMorphemeDeleteDispatch,
   useMorphemeGlossDispatch,
   useMorphemes,
   usePhraseLinkByIdMap,
@@ -865,6 +866,22 @@ function MorphemeWriter({
 }
 
 /**
+ * Renders a button that dispatches a morpheme breakdown deletion, used to test
+ * `useMorphemeDeleteDispatch`.
+ *
+ * @param props.tokenRef - Token ref whose breakdown to delete.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function MorphemeDeleter({ tokenRef }: Readonly<{ tokenRef: string }>) {
+  const dispatch = useMorphemeDeleteDispatch();
+  return (
+    <button onClick={() => dispatch(tokenRef)} type="button">
+      delete-morphemes
+    </button>
+  );
+}
+
+/**
  * Renders a button that dispatches a morpheme gloss, used to test `useMorphemeGlossDispatch`.
  *
  * @param props.tokenRef - Token ref to write.
@@ -922,6 +939,16 @@ function MorphemeBreakdownDispatchUser() {
  */
 function MorphemeGlossDispatchUser() {
   useMorphemeGlossDispatch();
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `useMorphemeDeleteDispatch` without a provider.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function MorphemeDeleteDispatchUser() {
+  useMorphemeDeleteDispatch();
   return undefined;
 }
 
@@ -1014,6 +1041,55 @@ describe('useMorphemeBreakdownDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<MorphemeBreakdownDispatchUser />)).toThrow(
       'useMorphemeBreakdownDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useMorphemeDeleteDispatch', () => {
+  it('removes the morpheme breakdown and calls onSave', async () => {
+    const onSave = jest.fn();
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cat',
+      morphemes: [
+        { id: 'm-1', form: 'ca', writingSystem: 'und' },
+        { id: 'm-2', form: '-t', writingSystem: 'und' },
+      ],
+    };
+    const link: TokenAnalysisLink = {
+      analysisId: 'ta-1',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'cat' },
+    };
+    const analysis: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [ta],
+      tokenAnalysisLinks: [link],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und" onSave={onSave}>
+        <MorphemeDeleter tokenRef="tok-1" />
+        <MorphemeReader tokenRef="tok-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'delete-morphemes' }));
+
+    expect(screen.getByTestId('morphemes')).toHaveTextContent('');
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // The analysis carried no gloss, so the now-empty record and its link are removed entirely.
+    expect(saved.tokenAnalyses).toHaveLength(0);
+    expect(saved.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<MorphemeDeleteDispatchUser />)).toThrow(
+      'useMorphemeDeleteDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

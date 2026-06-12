@@ -110,6 +110,15 @@ export function useMorphemeBreakdownDispatch(): (
 }
 
 /**
+ * Returns a no-op dispatch for deleting morpheme breakdowns in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
+  return () => {};
+}
+
+/**
  * Returns a no-op dispatch for writing morpheme glosses in mock context.
  *
  * @returns A no-op function matching the real signature.

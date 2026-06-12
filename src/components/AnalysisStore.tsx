@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
   createPhrase,
+  deleteMorphemes,
   deletePhrase,
   mergePhrases,
   selectAnalysis,
@@ -227,6 +228,32 @@ export function useMorphemeBreakdownDispatch(): (
   return useCallback(
     (tokenRef: string, surfaceText: string, forms: string[]) => {
       dispatch(writeMorphemes(tokenRef, surfaceText, forms));
+      const { analysis } = store.getState().analysis;
+      callbacks.onSaveRef.current?.(analysis);
+    },
+    [dispatch, store, callbacks],
+  );
+}
+
+/**
+ * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
+ * for a given token (deleting the analysis record entirely when it carries no gloss). Dispatches
+ * the `deleteMorphemes` action and triggers `onSave`.
+ *
+ * @returns A function `(tokenRef) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
+  const callbacks = useContext(AnalysisCallbackCtx);
+  if (!callbacks)
+    throw new Error('useMorphemeDeleteDispatch must be used inside an AnalysisStoreProvider');
+
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(
+    (tokenRef: string) => {
+      dispatch(deleteMorphemes({ tokenRef }));
       const { analysis } = store.getState().analysis;
       callbacks.onSaveRef.current?.(analysis);
     },

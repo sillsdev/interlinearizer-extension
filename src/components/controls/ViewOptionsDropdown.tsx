@@ -70,8 +70,8 @@ type ViewOptionsDropdownProps = Readonly<{
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and four view-mode toggles (hide
- * inactive link buttons, simplify phrases, chapter label in verse, show morphology). Opens and
+ * Toolbar dropdown that groups the continuous-scroll toggle and four view-mode toggles (show
+ * morphology, hide inactive link buttons, simplify phrases, chapter label in verse). Opens and
  * closes via a gear icon button.
  *
  * @param props - Component props
@@ -187,6 +187,11 @@ export default function ViewOptionsDropdown({
                 onCheckedChange={onContinuousScrollChange}
               />
               <ViewToggle
+                checked={showMorphology}
+                label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
+                onCheckedChange={onShowMorphologyChange}
+              />
+              <ViewToggle
                 checked={hideInactiveLinkButtons}
                 label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
                 onCheckedChange={onHideInactiveLinkButtonsChange}
@@ -200,11 +205,6 @@ export default function ViewOptionsDropdown({
                 checked={chapterLabelInVerse}
                 label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
                 onCheckedChange={onChapterLabelInVerseChange}
-              />
-              <ViewToggle
-                checked={showMorphology}
-                label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
-                onCheckedChange={onShowMorphologyChange}
               />
             </div>
           </>,

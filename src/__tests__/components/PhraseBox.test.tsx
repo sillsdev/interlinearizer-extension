@@ -58,6 +58,8 @@ jest.mock('../../components/TokenChip', () => {
    * @param props.token - The word token to render.
    * @param props.isSplitFree - When true, marks the chip as a would-be-free token.
    * @param props.onRemove - Called when the remove button is clicked; omitted for edge tokens.
+   * @param props.showMorphology - Exposed as a data attribute so tests can verify every PhraseBox
+   *   render path forwards the strip-wide morphology toggle.
    * @returns A span containing the surface text, a gloss input, and an optional remove button.
    */
   function MockTokenChip({
@@ -65,16 +67,22 @@ jest.mock('../../components/TokenChip', () => {
     token,
     isSplitFree,
     onRemove,
+    showMorphology,
   }: Readonly<{
     onFocus?: () => void;
     token: Token;
     isSplitFree?: boolean;
     onRemove?: () => void;
+    showMorphology?: boolean;
   }>) {
     const gloss = mockUseGloss(token.ref);
     const dispatch = mockUseGlossDispatch();
     return (
-      <span data-testid={`token-${token.ref}`} data-split-free={isSplitFree ? 'true' : 'false'}>
+      <span
+        data-testid={`token-${token.ref}`}
+        data-split-free={isSplitFree ? 'true' : 'false'}
+        data-show-morphology={showMorphology ? 'true' : 'false'}
+      >
         {token.surfaceText}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
@@ -509,6 +517,21 @@ describe('PhraseBox', () => {
     );
 
     expect(screen.getByTestId('inert-punct-1')).toBeInTheDocument();
+  });
+
+  it('forwards showMorphology to chips in a non-edit-target box during edit mode', () => {
+    renderBox(
+      <PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />,
+      // Edit mode is active for a different phrase, so this free box renders via the fallback
+      // path; its chips must keep their morpheme rows rather than collapsing while editing.
+      {
+        phraseMode: { kind: 'edit', phraseId: 'other-phrase', originalTokens: [] },
+        showMorphology: true,
+      },
+    );
+
+    expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-show-morphology', 'true');
+    expect(screen.getByTestId('token-token-2')).toHaveAttribute('data-show-morphology', 'true');
   });
 
   it('renders punctuation between tokens in confirm-unlink mode', () => {

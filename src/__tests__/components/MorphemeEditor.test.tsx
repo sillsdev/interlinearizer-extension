@@ -13,7 +13,6 @@ describe('MorphemeBreakdownPopover', () => {
   it('renders with the initial value pre-filled', () => {
     render(
       <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
         initialValue="un- believe -able"
         onSave={jest.fn()}
         onClose={jest.fn()}
@@ -24,14 +23,7 @@ describe('MorphemeBreakdownPopover', () => {
   });
 
   it('auto-focuses and selects the input on mount', () => {
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="word"
-        onSave={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="word" onSave={jest.fn()} onClose={jest.fn()} />);
     expect(screen.getByRole('textbox')).toHaveFocus();
   });
 
@@ -39,12 +31,7 @@ describe('MorphemeBreakdownPopover', () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
     render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="un- believe"
-        onSave={onSave}
-        onClose={onClose}
-      />,
+      <MorphemeBreakdownPopover initialValue="un- believe" onSave={onSave} onClose={onClose} />,
     );
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onSave).toHaveBeenCalledWith('un- believe');
@@ -53,14 +40,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('calls onSave with the edited value', async () => {
     const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="word"
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="word" onSave={onSave} onClose={jest.fn()} />);
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), 'wor -d');
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -70,14 +50,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('commits on Enter key', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={onSave}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={onClose} />);
     await userEvent.keyboard('{Enter}');
     expect(onSave).toHaveBeenCalledWith('test');
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -86,14 +59,7 @@ describe('MorphemeBreakdownPopover', () => {
   it('dismisses without saving on Escape key', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={onSave}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={onClose} />);
     await userEvent.keyboard('{Escape}');
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -102,62 +68,25 @@ describe('MorphemeBreakdownPopover', () => {
   it('dismisses without saving when Cancel button is clicked', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={onSave}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={onClose} />);
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('saves when the backdrop is clicked and a breakdown already exists', async () => {
-    const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown
-        initialValue="test"
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
-    // The backdrop is the fixed full-screen div; getByRole won't find it, so query the DOM.
-    const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
-    if (!backdrop) throw new Error('Backdrop not found');
-    await userEvent.click(backdrop);
-    expect(onSave).toHaveBeenCalledWith('test');
-  });
-
   it('closes when the backdrop is clicked', async () => {
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={onClose} />);
+    // The backdrop is the fixed full-screen div; getByRole won't find it, so query the DOM.
     const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
     if (!backdrop) throw new Error('Backdrop not found');
     await userEvent.click(backdrop);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('saves on backdrop click when no breakdown exists but the text was edited', async () => {
+  it('saves on backdrop click when the text was edited', async () => {
     const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={jest.fn()} />);
     await userEvent.type(screen.getByRole('textbox'), ' -er');
     const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
     if (!backdrop) throw new Error('Backdrop not found');
@@ -165,17 +94,10 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).toHaveBeenCalledWith('test -er');
   });
 
-  it('does not save on backdrop click when no breakdown exists and the text is unchanged', async () => {
+  it('does not save on backdrop click when the text is unchanged', async () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={onSave}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={onSave} onClose={onClose} />);
     const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
     if (!backdrop) throw new Error('Backdrop not found');
     await userEvent.click(backdrop);
@@ -185,14 +107,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not save on backdrop click when the input is only whitespace', async () => {
     const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown
-        initialValue="   "
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="   " onSave={onSave} onClose={jest.fn()} />);
     const backdrop = document.querySelector('.tw\\:fixed.tw\\:inset-0');
     if (!backdrop) throw new Error('Backdrop not found');
     await userEvent.click(backdrop);
@@ -201,14 +116,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not dismiss when clicking inside the popover panel', async () => {
     const onClose = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={onClose}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={onClose} />);
     const label = screen.getByText('Split into morphemes');
     await userEvent.click(label);
     expect(onClose).not.toHaveBeenCalled();
@@ -216,41 +124,20 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not call onSave when the input is empty', async () => {
     const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue=""
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="" onSave={onSave} onClose={jest.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onSave).not.toHaveBeenCalled();
   });
 
   it('does not call onSave when the input is only whitespace', async () => {
     const onSave = jest.fn();
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="   "
-        onSave={onSave}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="   " onSave={onSave} onClose={jest.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(onSave).not.toHaveBeenCalled();
   });
 
   it('does not render a Delete button when onDelete is not provided', () => {
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
   });
 
@@ -260,7 +147,6 @@ describe('MorphemeBreakdownPopover', () => {
     const onClose = jest.fn();
     render(
       <MorphemeBreakdownPopover
-        hasExistingBreakdown
         initialValue="un- believe"
         onSave={onSave}
         onClose={onClose}
@@ -274,14 +160,7 @@ describe('MorphemeBreakdownPopover', () => {
   });
 
   it('portals the panel to document.body so segment rows cannot stack above it', () => {
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
     const panel = screen.getByText('Split into morphemes').closest('div');
     expect(panel?.parentElement).toBe(document.body);
   });
@@ -292,14 +171,7 @@ describe('MorphemeBreakdownPopover', () => {
       .spyOn(Element.prototype, 'getBoundingClientRect')
       .mockReturnValueOnce(new DOMRect(50, 100, 40, 20))
       .mockReturnValueOnce(new DOMRect(0, 0, 200, 100));
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
     const panel = screen.getByText('Split into morphemes').closest('div');
     // Anchor bottom (120) plus the 4px margin.
     expect(panel).toHaveStyle({ top: '124px', left: '50px' });
@@ -312,14 +184,7 @@ describe('MorphemeBreakdownPopover', () => {
       .spyOn(Element.prototype, 'getBoundingClientRect')
       .mockReturnValueOnce(new DOMRect(50, 700, 40, 20))
       .mockReturnValueOnce(new DOMRect(0, 0, 200, 100));
-    render(
-      <MorphemeBreakdownPopover
-        hasExistingBreakdown={false}
-        initialValue="test"
-        onSave={jest.fn()}
-        onClose={jest.fn()}
-      />,
-    );
+    render(<MorphemeBreakdownPopover initialValue="test" onSave={jest.fn()} onClose={jest.fn()} />);
     const panel = screen.getByText('Split into morphemes').closest('div');
     // Anchor top (700) minus panel height (100) minus the 4px margin.
     expect(panel).toHaveStyle({ top: '596px', left: '50px' });

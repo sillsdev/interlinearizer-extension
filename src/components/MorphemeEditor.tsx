@@ -4,7 +4,7 @@
  *   morpheme forms; {@link MorphemeGlossInput} provides a per-morpheme gloss field.
  */
 import type { MorphemeAnalysis } from 'interlinearizer';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useMorphemeGlossDispatch } from './AnalysisStore';
@@ -16,16 +16,14 @@ const POPOVER_MARGIN_PX = 4;
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
  * space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter, Done, or by
  * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
- * Escape dismiss without saving, as does an outside click when the token had no breakdown yet and
- * the text was not edited — committing then would create a single-morpheme breakdown equal to the
- * pre-filled surface text.
+ * Escape dismiss without saving, as does an outside click when the text was not edited — committing
+ * an unedited draft would either create a single-morpheme breakdown equal to the pre-filled surface
+ * text (no existing breakdown) or pointlessly re-save identical forms under fresh morpheme ids
+ * (existing breakdown).
  *
  * @param props - Component props.
  * @param props.initialValue - Pre-filled text for the input (current morpheme forms joined by
  *   spaces, or the full surface text when no breakdown exists yet).
- * @param props.hasExistingBreakdown - Whether the token already had a morpheme breakdown when the
- *   editor opened. When false, an outside click with an unedited draft dismisses instead of
- *   committing.
  * @param props.onSave - Called with the raw input string when the user commits.
  * @param props.onClose - Called to dismiss the popover.
  * @param props.onDelete - When provided, a Delete button is shown that calls this to remove the
@@ -39,17 +37,16 @@ const POPOVER_MARGIN_PX = 4;
  */
 export function MorphemeBreakdownPopover({
   initialValue,
-  hasExistingBreakdown,
   onSave,
   onClose,
   onDelete,
 }: Readonly<{
   initialValue: string;
-  hasExistingBreakdown: boolean;
   onSave: (value: string) => void;
   onClose: () => void;
   onDelete?: () => void;
 }>) {
+  const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
   // eslint-disable-next-line no-null/no-null
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -123,16 +120,18 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Commits the draft when the user clicks outside the popover, except when the token had no
-   * breakdown yet and the text was not edited — then the click acts like Cancel so the pre-filled
-   * surface text is not committed as a single-morpheme breakdown. `preventDefault` cancels any
+   * Commits the draft when the user clicks outside the popover, except when the text was not edited
+   * — then the click acts like Cancel. For a token with no breakdown yet, committing the unedited
+   * draft would create a single-morpheme breakdown equal to the pre-filled surface text; for a
+   * token with an existing breakdown, it would re-save identical forms while regenerating every
+   * morpheme id (which `MorphemeLink.morphemeId` cross-references). `preventDefault` cancels any
    * default action of whatever sits under the backdrop (see {@link handlePanelClick}).
    *
    * @param e - The mouse event on the full-screen backdrop.
    */
   const handleBackdropClick = (e: MouseEvent) => {
     e.preventDefault();
-    if (!hasExistingBreakdown && draft.trim() === initialValue.trim()) {
+    if (draft.trim() === initialValue.trim()) {
       onClose();
       return;
     }
@@ -154,13 +153,13 @@ export function MorphemeBreakdownPopover({
             style={position ?? { visibility: 'hidden' }}
             onClick={handlePanelClick}
           >
-            <label className="tw:text-xs tw:text-muted-foreground" htmlFor="morpheme-input">
+            <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
               Split into morphemes
             </label>
             <input
               ref={inputRef}
               className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
-              id="morpheme-input"
+              id={inputId}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={handleKeyDown}

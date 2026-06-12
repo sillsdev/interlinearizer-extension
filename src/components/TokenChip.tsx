@@ -186,7 +186,6 @@ export function TokenChip({
             )}
             {popoverOpen && (
               <MorphemeBreakdownPopover
-                hasExistingBreakdown={hasMorphemes}
                 initialValue={
                   hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
                 }

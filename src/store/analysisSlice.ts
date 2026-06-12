@@ -235,9 +235,16 @@ const analysisSlice = createSlice({
             (ta) => ta.id === existingLink.analysisId,
           );
           if (existingAnalysis) {
-            const oldByForm = new Map((existingAnalysis.morphemes ?? []).map((m) => [m.form, m]));
+            // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
+            // match a distinct old morpheme in order, instead of all inheriting the last one.
+            const oldByForm = new Map<string, MorphemeAnalysis[]>();
+            (existingAnalysis.morphemes ?? []).forEach((m) => {
+              const bucket = oldByForm.get(m.form);
+              if (bucket) bucket.push(m);
+              else oldByForm.set(m.form, [m]);
+            });
             existingAnalysis.morphemes = morphemes.map(({ id, form }) => {
-              const old = oldByForm.get(form);
+              const old = oldByForm.get(form)?.shift();
               if (old) return { ...old, id };
               return { id, form, writingSystem };
             });

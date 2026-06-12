@@ -17,10 +17,13 @@
       "%interlinearizer_viewOption_continuousScroll%": "Continuous Scroll",
       "%interlinearizer_viewOption_hideInactiveLinkButtons%": "Hide out-of-segment link buttons",
       "%interlinearizer_viewOption_simplifyPhrases%": "Show phrase controls on focus only",
+      "%interlinearizer_viewOption_chapterLabelInVerse%": "Show chapter in verse label",
       "%interlinearizer_projectSettings_hideInactiveLinkButtons%": "Hide Out-of-Segment Link Buttons",
       "%interlinearizer_projectSettings_hideInactiveLinkButtonsDescription%": "Hide link buttons between phrases in segments that are not currently active",
       "%interlinearizer_projectSettings_simplifyPhrases%": "Show Phrase Controls on Focus Only",
       "%interlinearizer_projectSettings_simplifyPhrasesDescription%": "Hide interactive controls (split, unlink, remove-token) on phrases that are not currently focused, leaving only their style change on hover",
+      "%interlinearizer_projectSettings_chapterLabelInVerse%": "Show Chapter in Verse Label",
+      "%interlinearizer_projectSettings_chapterLabelInVerseDescription%": "Mark chapter boundaries by labeling the first verse of each chapter as chapter:verse instead of showing an inline chapter header above it",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Cross-segment phrases are not supported. This link button is outside the current segment.",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",

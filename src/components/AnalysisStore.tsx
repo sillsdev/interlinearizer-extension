@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
   createPhrase,
-  defaultAnalysis,
   deletePhrase,
   mergePhrases,
   selectAnalysis,
@@ -18,6 +17,7 @@ import {
   writePhraseGloss,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
+import { emptyAnalysis } from '../types/empty-factories';
 
 // #region Internal context
 
@@ -86,7 +86,7 @@ export function AnalysisStoreProvider({
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
   if (!storeRef.current) {
     storeRef.current = createAnalysisStore({
-      analysis: { analysis: initialAnalysis ?? defaultAnalysis, analysisLanguage },
+      analysis: { analysis: initialAnalysis ?? emptyAnalysis(), analysisLanguage },
     });
   }
   const store = storeRef.current;

@@ -5,7 +5,7 @@ import type { Book } from 'interlinearizer';
 import { extractBookFromUsj } from 'parsers/papi/usjBookExtractor';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { isPlatformError } from 'platform-bible-utils';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 
 /** Arguments for the {@link useInterlinearizerBookData} hook. */
 export interface UseInterlinearizerBookDataArgs {
@@ -19,8 +19,6 @@ export interface UseInterlinearizerBookDataArgs {
 export interface UseInterlinearizerBookDataResult {
   /** The fully tokenized book, or `undefined` while loading or on error. */
   book: Book | undefined;
-  /** Segments belonging to the current chapter (`scrRef.chapterNum`); empty while loading. */
-  chapterSegments: Book['segments'];
   /** `true` while the USJ book data is being fetched from the platform. */
   isLoading: boolean;
   /** Human-readable error string when the platform returns an error or no USJ data. */
@@ -30,12 +28,17 @@ export interface UseInterlinearizerBookDataResult {
 }
 
 /**
- * Fetches and tokenizes the USJ book for the given project and scripture reference.
+ * Fetches and tokenizes the USJ book for the given project and scripture reference. The returned
+ * `book` reference is stabilized across duplicate USJ payloads that PAPI can deliver (e.g. the
+ * scripture picker firing two signals in quick succession): when the serialized content is
+ * identical to the previous result, the prior reference is preserved so consumers avoid redundant
+ * tokenization and recenter churn.
  *
  * @param args - Hook arguments.
  * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
  * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
- * @returns The tokenized book, chapter segments, loading state, and any errors encountered.
+ * @returns The tokenized book (reference-stable across duplicate USJ results), loading state, and
+ *   any errors encountered.
  */
 export default function useInterlinearizerBookData({
   projectId,
@@ -46,11 +49,34 @@ export default function useInterlinearizerBookData({
     [scrRef.book],
   );
 
-  const [bookResult, , isLoading] = useProjectData('platformScripture.USJ_Book', projectId).BookUSJ(
-    bookScrRef,
-    undefined,
-  );
+  const [rawBookResult, , isLoading] = useProjectData(
+    'platformScripture.USJ_Book',
+    projectId,
+  ).BookUSJ(bookScrRef, undefined);
   const [writingSystem] = useProjectSetting(projectId, 'platform.languageTag', '');
+
+  // PAPI can deliver duplicate results for the same book (e.g. the scripture picker fires two
+  // signals in quick succession). Each new object reference would re-trigger tokenization and
+  // produce a new Book identity, which cascades into a redundant recenter fade. Stabilize by
+  // comparing the JSON serialization: when the content is identical, keep the previous reference
+  // so downstream consumers see no change.
+  const stableBookResultRef = useRef(rawBookResult);
+  const prevJsonRef = useRef<string | undefined>(undefined);
+  const bookResult = useMemo(() => {
+    if (rawBookResult === stableBookResultRef.current) return stableBookResultRef.current;
+    prevJsonRef.current ??= JSON.stringify(stableBookResultRef.current);
+    const json = JSON.stringify(rawBookResult);
+    if (json === prevJsonRef.current) return stableBookResultRef.current;
+    prevJsonRef.current = json;
+    stableBookResultRef.current = rawBookResult;
+    return rawBookResult;
+  }, [rawBookResult]);
+
+  /**
+   * Writing-system tag used for tokenization and error logging; falls back to `'und'` when the
+   * project setting is unavailable or empty.
+   */
+  const writingSystemTag = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
 
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,
@@ -59,33 +85,22 @@ export default function useInterlinearizerBookData({
     if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
 
     try {
-      const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
+      return [tokenizeBook(extractBookFromUsj(bookResult, writingSystemTag)), undefined];
     } catch (err) {
       return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
     }
-  }, [bookResult, writingSystem]);
+  }, [bookResult, writingSystemTag]);
 
   useEffect(() => {
     if (!tokenizeError) return;
 
-    /* v8 ignore next -- isPlatformError branch for writingSystem is unreachable through the mock setup */
-    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
     logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
-      writingSystem: ws,
+      writingSystem: writingSystemTag,
       projectId,
       book: scrRef.book,
     });
-  }, [tokenizeError, writingSystem, projectId, scrRef.book]);
-
-  const chapterSegments = useMemo(
-    () =>
-      book?.segments.filter(
-        (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
-      ) ?? [],
-    [book, scrRef.book, scrRef.chapterNum],
-  );
+  }, [tokenizeError, writingSystemTag, projectId, scrRef.book]);
 
   let bookError: string | undefined;
   if (isPlatformError(bookResult)) {
@@ -94,5 +109,5 @@ export default function useInterlinearizerBookData({
     bookError = `No USJ book available for ${scrRef.book} in project ${projectId}`;
   }
 
-  return { book, chapterSegments, isLoading, bookError, tokenizeError };
+  return { book, isLoading, bookError, tokenizeError };
 }

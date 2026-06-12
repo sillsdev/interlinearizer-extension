@@ -79,12 +79,9 @@ interface WritePhraseGlossPayload {
 
 // #region Default state
 
-/** Empty `TextAnalysis` used when no `initialAnalysis` is provided to the store. */
-export const defaultAnalysis: TextAnalysis = emptyAnalysis();
-
 /** Default `AnalysisState` used as the Redux initial state. */
 export const defaultState: AnalysisState = {
-  analysis: { ...defaultAnalysis },
+  analysis: emptyAnalysis(),
   analysisLanguage: 'und',
 };
 

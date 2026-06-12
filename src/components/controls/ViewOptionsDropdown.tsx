@@ -9,6 +9,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
   '%interlinearizer_viewOption_hideInactiveLinkButtons%',
   '%interlinearizer_viewOption_simplifyPhrases%',
+  '%interlinearizer_viewOption_chapterLabelInVerse%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -57,11 +58,16 @@ type ViewOptionsDropdownProps = Readonly<{
   simplifyPhrases: boolean;
   /** Called when the dim-inactive-segments toggle changes. */
   onSimplifyPhrasesChange: (checked: boolean) => void;
+  /** Current value of the show-chapter-in-verse-label toggle. */
+  chapterLabelInVerse: boolean;
+  /** Called when the show-chapter-in-verse-label toggle changes. */
+  onChapterLabelInVerseChange: (checked: boolean) => void;
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and two view-mode toggles (hide
- * inactive link buttons, dim inactive segments). Opens and closes via a gear icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and three view-mode toggles (hide
+ * inactive link buttons, simplify phrases, chapter label in verse). Opens and closes via a gear
+ * icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.
@@ -70,6 +76,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
  * @param props.simplifyPhrases - Current dim-inactive-segments value.
  * @param props.onSimplifyPhrasesChange - Dim-inactive-segments change callback.
+ * @param props.chapterLabelInVerse - Current show-chapter-in-verse-label value.
+ * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -79,6 +87,8 @@ export default function ViewOptionsDropdown({
   onHideInactiveLinkButtonsChange,
   simplifyPhrases,
   onSimplifyPhrasesChange,
+  chapterLabelInVerse,
+  onChapterLabelInVerseChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -143,9 +153,14 @@ export default function ViewOptionsDropdown({
         createPortal(
           /* Clicking outside the panel closes it. */
           <>
+            {/* The invisible backdrop must stay BELOW the toolbar's stacking context (tw:z-10,
+                from the sticky TabToolbarContainer) so the gear button's onClick — not the
+                backdrop — closes the dropdown. Raising the button instead wouldn't work: the
+                toolbar caps its descendants at z-10 against this portaled sibling.
+                Keep panel (z-30) > backdrop. */}
             <div
               aria-hidden="true"
-              className="tw:fixed tw:inset-0 tw:z-20"
+              className="tw:fixed tw:inset-0 tw:z-5"
               onClick={close}
               onKeyDown={undefined}
               role="presentation"
@@ -171,6 +186,11 @@ export default function ViewOptionsDropdown({
                 checked={simplifyPhrases}
                 label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
                 onCheckedChange={onSimplifyPhrasesChange}
+              />
+              <ViewToggle
+                checked={chapterLabelInVerse}
+                label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
+                onCheckedChange={onChapterLabelInVerseChange}
               />
             </div>
           </>,

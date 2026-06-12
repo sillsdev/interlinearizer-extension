@@ -4,13 +4,18 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import {
+  useArcSplitHandler,
+  useCandidatePhraseIds,
+  useEditPhraseTokens,
+  usePhraseStripContextValue,
+} from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { RenderUnit } from '../types/token-layout';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
-import { type PhraseStripContextValue, PhraseStripProvider } from './PhraseStripContext';
+import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, type StripItem } from './PhraseStripParts';
 
 /**
@@ -78,6 +83,12 @@ type SegmentViewProps = Readonly<{
    * every phrase except the focused one. Passed through to {@link PhraseStripContextValue}.
    */
   simplifyPhrases: boolean;
+  /**
+   * When `true`, every segment is labeled `chapter:verse`. When `false`, segments show a bare verse
+   * number (the chapter is shown by an inline header that {@link SegmentListView} renders above each
+   * chapter's first segment).
+   */
+  chapterLabelInVerse: boolean;
 }>;
 
 /**
@@ -109,6 +120,8 @@ type SegmentViewProps = Readonly<{
  *   this segment is the active verse.
  * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
  *   the focused one.
+ * @param props.chapterLabelInVerse - When true, every segment is labeled `chapter:verse`; when
+ *   false, segments show a bare verse number.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
  */
@@ -128,6 +141,7 @@ export function SegmentView({
   wordTokenByRef,
   hideInactiveLinkButtons,
   simplifyPhrases,
+  chapterLabelInVerse,
 }: SegmentViewProps) {
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
@@ -136,31 +150,9 @@ export function SegmentView({
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
 
-  /**
-   * Bridges an {@link ArcOverlay} split-button click into phrase-store writes via
-   * {@link splitPhraseAtBoundary}, which calls {@link createPhrase}, {@link updatePhrase}, and
-   * {@link deletePhrase} to divide the phrase at the chosen boundary. Early-returns when `phraseId`
-   * has no corresponding link in the store.
-   *
-   * @param phraseId - The id of the phrase to split.
-   * @param splitAfterTokenRef - Token ref after which the phrase is divided; tokens at or before
-   *   this ref go to the first half, tokens after go to the second.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = phraseLinkById.get(phraseId);
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        { createPhrase, updatePhrase, deletePhrase },
-        tokenDocOrder,
-      );
-    },
-    [phraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
-  );
+  /** Bridges an {@link ArcOverlay} split-button click into the phrase-store split dispatch. */
+  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
@@ -181,19 +173,22 @@ export function SegmentView({
     [segment.tokens, phraseLinkByRef],
   );
 
+  // The inactive border is transparent rather than absent so activating a segment only recolors
+  // it: adding/removing a real border would change the segment's height by 2px, shifting every
+  // segment below it — a visible jump in the list whenever the active verse moves on a click.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
-    : 'tw:w-full tw:rounded tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+    : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
-  const verseLabel = (
+  // When chapter info is folded into the verse label, every verse reads `chapter:verse`; otherwise
+  // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
+  const verseLabelText = chapterLabelInVerse ? `${chapter}:${verse}` : `${verse}`;
+
+  const segmentHeader = (
     <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-      {verse}
+      {verseLabelText}
     </span>
   );
-
-  /** Ref to the flex token row; used by mouse-leave handling. */
-  // eslint-disable-next-line no-null/no-null
-  const tokenRowRef = useRef<HTMLSpanElement | null>(null);
 
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the
@@ -229,14 +224,13 @@ export function SegmentView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
-    if (candidateTokenRefs.size === 0) return new Set();
-    const ids = new Set<string>();
-    phraseLinkByRef.forEach((link) => {
-      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
-    });
-    return ids;
-  }, [candidateTokenRefs, phraseLinkByRef]);
+  /** Clears both the hovered phrase id and all hover-preview state on mouse leave. */
+  const clearAllHoverState = useCallback(() => {
+    onHoverPhrase(undefined);
+    clearHoverState();
+  }, [onHoverPhrase, clearHoverState]);
+
+  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, phraseLinkByRef);
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
@@ -303,60 +297,31 @@ export function SegmentView({
     [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef],
   );
 
-  /**
-   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
-   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
-   */
-  const editPhraseTokens = useMemo(
-    () =>
-      phraseMode.kind === 'edit'
-        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          phraseLinkById.get(phraseMode.phraseId)?.tokens
-        : undefined,
-    [phraseMode, phraseLinkById],
-  );
+  const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot in this segment. Memoized
-   * so the leaf `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers don't re-render on
-   * unrelated changes. `onHoverPhrase` doubles as the candidate-phrase hover callback.
+   * Strip-wide context value shared by every phrase group and link slot in this segment.
+   * `onHoverPhrase` doubles as the candidate-phrase hover callback. The active segment is this
+   * segment only while it is the active verse; the link-slot transition is suppressed until just
+   * after first paint so the initial state snaps in without a flash.
    */
-  const stripContext = useMemo<PhraseStripContextValue>(
-    () => ({
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase,
-      onHoverCandidateTokens: setCandidateTokenRefs,
-      onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      activeSegmentId: isActive ? segment.id : undefined,
-      crossSegmentLinkTooltip:
-        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: !hasMounted,
-    }),
-    [
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase,
-      setCandidateTokenRefs,
-      handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      isActive,
-      segment.id,
-      localizedStrings,
-      hasMounted,
-    ],
-  );
+  const stripContext = usePhraseStripContextValue({
+    phraseMode,
+    setPhraseMode,
+    editPhraseTokens,
+    editPhraseSegmentId,
+    tokenSegmentMap,
+    tokenDocOrder,
+    onHoverPhrase,
+    onHoverCandidateTokens: setCandidateTokenRefs,
+    onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    activeSegmentId: isActive ? segment.id : undefined,
+    crossSegmentLinkTooltip:
+      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    skipLinkTransition: !hasMounted,
+  });
 
   /** True when any committed phrase exists in this segment. */
   const hasRealPhraseInSegment = tokenGroups.some((g) => g.phraseLink !== undefined);
@@ -428,12 +393,13 @@ export function SegmentView({
       <button
         aria-current={isActive ? 'true' : undefined}
         className={`${sharedClassName} tw:text-left`}
+        data-segment-id={segment.id}
         data-testid="segment-container"
         tabIndex={-1}
-        onClick={() => onSelect?.(ref)}
+        onClick={() => onSelect(ref)}
         type="button"
       >
-        {verseLabel}
+        {segmentHeader}
         <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
       </button>
     );
@@ -449,10 +415,11 @@ export function SegmentView({
     <div
       aria-current={isActive ? 'true' : undefined}
       className={sharedClassName}
+      data-segment-id={segment.id}
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      {verseLabel}
+      {segmentHeader}
       <div className="tw:arc-container" ref={arcContainerRef}>
         <MemoizedArcOverlay
           arcPaths={arcPaths}
@@ -470,17 +437,13 @@ export function SegmentView({
         <PhraseStripProvider value={stripContext}>
           <span
             className="tw:token-row tw:pointer-events-none"
-            ref={tokenRowRef}
             style={{
               paddingTop: `${tokenRowTopPadding}px`,
               paddingLeft: `${stripLeftPadding}px`,
               paddingRight: `${stripRightPadding}px`,
               rowGap: `${stripRowGap}px`,
             }}
-            onMouseLeave={() => {
-              onHoverPhrase(undefined);
-              clearHoverState();
-            }}
+            onMouseLeave={clearAllHoverState}
           >
             <PhraseStrip
               items={stripItems}

@@ -187,7 +187,7 @@ describe('useInterlinearizerBookData', () => {
     expect(result.current.tokenizeError?.raw).toBe(nonErrorValue);
   });
 
-  it('filters segments to current chapter', () => {
+  it('returns the whole tokenized book without filtering segments by chapter', () => {
     jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
     jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
 
@@ -195,24 +195,8 @@ describe('useInterlinearizerBookData', () => {
       useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
     );
 
-    expect(result.current.chapterSegments).toHaveLength(2); // Only GEN 1:1 and GEN 1:2
-    expect(result.current.chapterSegments[0].id).toBe('GEN 1:1');
-    expect(result.current.chapterSegments[1].id).toBe('GEN 1:2');
-  });
-
-  it('filters segments for different chapters correctly', () => {
-    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
-    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
-
-    const { result } = renderHook(() =>
-      useInterlinearizerBookData({
-        projectId: 'test-project',
-        scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
-      }),
-    );
-
-    expect(result.current.chapterSegments).toHaveLength(1); // Only GEN 2:1
-    expect(result.current.chapterSegments[0].id).toBe('GEN 2:1');
+    expect(result.current.book).toBe(TEST_BOOK);
+    expect(result.current.book?.segments).toBe(TEST_BOOK.segments);
   });
 
   it('falls back to "und" writing system when useProjectSetting returns PlatformError', () => {
@@ -267,6 +251,61 @@ describe('useInterlinearizerBookData', () => {
         writingSystem: 'en',
       },
     );
+  });
+
+  it('preserves book identity when PAPI delivers a duplicate result for the same book', () => {
+    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+    const usjPayload = { USJ: 'mock-usj' };
+    jest.mocked(useProjectData).mockReturnValue({
+      BookUSJ: () => [usjPayload, jest.fn(), false],
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+    );
+
+    const firstBook = result.current.book;
+    expect(firstBook).toBe(TEST_BOOK);
+
+    const callsBefore = jest.mocked(extractBookFromUsj).mock.calls.length;
+
+    const duplicatePayload = { USJ: 'mock-usj' };
+    jest.mocked(useProjectData).mockReturnValue({
+      BookUSJ: () => [duplicatePayload, jest.fn(), false],
+    });
+
+    rerender();
+
+    expect(result.current.book).toBe(firstBook);
+    expect(jest.mocked(extractBookFromUsj).mock.calls.length).toBe(callsBefore);
+  });
+
+  it('re-tokenizes when PAPI delivers genuinely new content', () => {
+    jest.mocked(extractBookFromUsj).mockReturnValue(TEST_RAW_BOOK);
+    jest.mocked(tokenizeBook).mockReturnValue(TEST_BOOK);
+
+    jest.mocked(useProjectData).mockReturnValue({
+      BookUSJ: () => [{ USJ: 'first-usj' }, jest.fn(), false],
+    });
+
+    const { result, rerender } = renderHook(() =>
+      useInterlinearizerBookData({ projectId: 'test-project', scrRef: { ...GEN_1_1_SRC_REF } }),
+    );
+
+    expect(result.current.book).toBe(TEST_BOOK);
+
+    const updatedBook: Book = { ...TEST_BOOK, textVersion: 'v2' };
+    jest.mocked(tokenizeBook).mockReturnValue(updatedBook);
+    jest.mocked(useProjectData).mockReturnValue({
+      BookUSJ: () => [{ USJ: 'updated-usj' }, jest.fn(), false],
+    });
+
+    rerender();
+
+    expect(result.current.book).toBe(updatedBook);
+    expect(jest.mocked(extractBookFromUsj)).toHaveBeenCalledTimes(2);
   });
 
   it('logs tokenization error with the resolved writing system', () => {

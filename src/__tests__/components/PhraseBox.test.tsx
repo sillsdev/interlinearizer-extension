@@ -256,6 +256,19 @@ describe('PhraseBox', () => {
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
   });
 
+  it('forwards box-click focus with preventScroll so the list never realigns under the click', async () => {
+    const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+    renderBox(<PhraseBox {...requiredProps()} tokens={[TEST_TOKEN, TEST_TOKEN_2]} />);
+
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    await userEvent.click(phraseBox ?? document.body);
+
+    // The clicked box is already on screen; the browser's default scroll-focused-input-into-view
+    // would realign the segment list (the first input can sit on another wrapped row), so the
+    // forwarded focus must opt out of scrolling.
+    expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
+  });
+
   it('clicking a nested non-chip element inside the box also focuses the first gloss input', async () => {
     const onFocusPhrase = jest.fn();
     renderBox(

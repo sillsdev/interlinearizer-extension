@@ -375,17 +375,24 @@ const scrollIntoViewMock = jest.fn();
  */
 function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
+  tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 } {
   const tokenSegmentMap = new Map<string, string>();
+  const tokenDocOrder = new Map<string, number>();
   const wordTokenByRef = new Map<string, Token & { type: 'word' }>();
+  let wordIndex = 0;
   book.segments.forEach((seg) => {
     seg.tokens.forEach((t) => {
       tokenSegmentMap.set(t.ref, seg.id);
-      if (isWordToken(t)) wordTokenByRef.set(t.ref, t);
+      if (isWordToken(t)) {
+        wordTokenByRef.set(t.ref, t);
+        tokenDocOrder.set(t.ref, wordIndex);
+        wordIndex += 1;
+      }
     });
   });
-  return { tokenSegmentMap, wordTokenByRef };
+  return { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
 }
 
 /**
@@ -408,11 +415,12 @@ function requiredProps(
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
+  tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   hideInactiveLinkButtons: boolean;
   simplifyPhrases: boolean;
 } {
-  const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+  const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
     book,
     editPhraseSegmentId: undefined,
@@ -421,6 +429,7 @@ function requiredProps(
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap,
+    tokenDocOrder,
     wordTokenByRef,
     hideInactiveLinkButtons: false,
     simplifyPhrases: false,
@@ -523,6 +532,71 @@ describe('ContinuousView initial render', () => {
 
     const focusedBox = screen.getByText('beginning').closest('[data-phrase-box="true"]');
     expect(focusedBox).toHaveAttribute('data-focus-state', 'focused');
+  });
+
+  it('falls back to focusedTokenRef when the lagging displayed ref is from another book', () => {
+    // During a book change displayFocusedTokenRef lags by one fade, so it briefly names a token from
+    // the previous book that no longer exists in the new book. The focus must follow the live
+    // focusedTokenRef (the new book's active verse) rather than collapsing to the book's first phrase.
+    const book = makeBook();
+    const { rerender } = render(
+      <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
+      withAnalysisStore,
+    );
+
+    // Swap to a different book whose token refs share none of the previous book's. The displayed ref
+    // ('tok-2') is now absent; focusedTokenRef points at the new book's *second* phrase.
+    const otherBook: Book = {
+      id: 'MAT',
+      bookRef: 'MAT',
+      textVersion: '1',
+      segments: [
+        {
+          id: 'MAT 1:1',
+          startRef: { book: 'MAT', chapter: 1, verse: 1 },
+          endRef: { book: 'MAT', chapter: 1, verse: 1 },
+          baselineText: 'Alpha',
+          tokens: [
+            {
+              ref: 'mat-tok-0',
+              surfaceText: 'Alpha',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+          ],
+        },
+        {
+          id: 'MAT 1:2',
+          startRef: { book: 'MAT', chapter: 1, verse: 2 },
+          endRef: { book: 'MAT', chapter: 1, verse: 2 },
+          baselineText: 'Beta',
+          tokens: [
+            {
+              ref: 'mat-tok-1',
+              surfaceText: 'Beta',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 4,
+            },
+          ],
+        },
+      ],
+    };
+
+    scrollIntoViewMock.mockClear();
+    rerender(<ContinuousView {...requiredProps(otherBook, { focusedTokenRef: 'mat-tok-1' })} />);
+
+    // The scroll target is resolved through focusPhraseIndex, which falls back to focusedTokenRef
+    // ('mat-tok-1', the second phrase) rather than collapsing to phrase 0. So the element scrolled
+    // into view is the one containing "Beta", never "Alpha".
+    const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
+      el instanceof HTMLElement ? el.textContent : undefined,
+    );
+    expect(scrolledTexts.some((t) => t?.includes('Beta'))).toBe(true);
+    expect(scrolledTexts.some((t) => t?.includes('Alpha'))).toBe(false);
   });
 });
 
@@ -719,6 +793,31 @@ describe('ContinuousView arrow navigation', () => {
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-1');
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-2');
   });
+
+  it('steps from the externally-imposed focus, not the stale pending index, after an external change interrupts an in-flight internal nav', async () => {
+    // Sequence: an external nav (tok-3) starts its fade while tok-1 is still displayed; the user
+    // clicks Next during the fade (internal nav in flight — this parent never echoes it); then a
+    // second external change lands back on the still-displayed tok-1. Because that value equals the
+    // displayed ref, the focus-change effect early-returns without clearing the in-flight marker,
+    // so only the render-phase external-override detection resyncs the pending index. Without it,
+    // the next step would advance from the stale pending index (group 2 → tok-1) instead of the
+    // externally-imposed position (group 1 → tok-0).
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    // External nav while idle: the fade starts; the displayed focus is still tok-1.
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-3" />);
+    // Internal nav in flight: Next from the displayed group (tok-1) emits tok-2.
+    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-2');
+
+    // The parent imposes an external position (not the tok-2 echo) that matches the displayed ref.
+    rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+    expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-0');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -755,13 +854,36 @@ describe('ContinuousView scroll behavior', () => {
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
+  it('snaps the link slots (no transition) during an external jump so they do not slide after the fade-in', () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { container, rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    act(() => {
+      jest.useFakeTimers();
+    });
+    // External nav into the other verse: the active segment commits instantly behind the fade, so
+    // the slots must snap to their new widths rather than animating (which would slide the boxes for
+    // ~200ms after the strip fades back in).
+    rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-3' }} />);
+
+    const slotWrapper = container.querySelector('[data-link-slot] > span');
+    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    expect(slotWrapper.style.transitionDuration).toBe('0ms');
+
+    act(() => {
+      jest.advanceTimersByTime(600);
+      jest.useRealTimers();
+    });
+  });
+
   it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
     // The smooth-scroll path requires the displayed focus to already agree with the prop and the
     // strip to be visible when the scroll effect runs. That only happens when a real (stateful)
     // parent reflects the internal ref change straight back, so simulate one here rather than
     // driving the ref via a jest.fn() that never updates the prop.
     const book = makeBook();
-    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-0');
       return (
@@ -773,6 +895,7 @@ describe('ContinuousView scroll behavior', () => {
           phraseMode={{ kind: 'view' }}
           setPhraseMode={jest.fn()}
           tokenSegmentMap={tokenSegmentMap}
+          tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons={false}
           simplifyPhrases={false}
@@ -806,7 +929,7 @@ describe('ContinuousView scroll behavior', () => {
    */
   function renderHideInactiveCrossing(): () => boolean {
     const book = makeBook();
-    const { tokenSegmentMap, wordTokenByRef } = buildLookups(book);
+    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-1');
       return (
@@ -818,6 +941,7 @@ describe('ContinuousView scroll behavior', () => {
           phraseMode={{ kind: 'view' }}
           setPhraseMode={jest.fn()}
           tokenSegmentMap={tokenSegmentMap}
+          tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
           hideInactiveLinkButtons
           simplifyPhrases={false}

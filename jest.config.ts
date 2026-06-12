@@ -108,7 +108,11 @@ const config: Config = {
   modulePathIgnorePatterns: ['<rootDir>/dist'],
 
   /** Load @testing-library/jest-dom matchers and browser API stubs for React component tests. */
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.resize-observer.js', '<rootDir>/jest.setup.ts'],
+  setupFilesAfterEnv: [
+    '<rootDir>/jest.setup.resize-observer.js',
+    '<rootDir>/jest.setup.intersection-observer.js',
+    '<rootDir>/jest.setup.ts',
+  ],
 
   /** Use jsdom for React component tests; parser tests run fine in jsdom (no DOM use). */
   testEnvironment: 'jsdom',

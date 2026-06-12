@@ -16,6 +16,11 @@
         "label": "%interlinearizer_projectSettings_simplifyPhrases%",
         "description": "%interlinearizer_projectSettings_simplifyPhrasesDescription%",
         "default": false
+      },
+      "interlinearizer.chapterLabelInVerse": {
+        "label": "%interlinearizer_projectSettings_chapterLabelInVerse%",
+        "description": "%interlinearizer_projectSettings_chapterLabelInVerseDescription%",
+        "default": false
       }
     }
   }

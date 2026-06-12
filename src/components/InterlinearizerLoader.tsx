@@ -14,11 +14,23 @@ import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
 import ScriptureNavControls from './controls/ScriptureNavControls';
+import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
+import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /**
- * Root component for the Interlinearizer WebView. Loads book data and settings, manages modal state
- * for project creation/selection/metadata, then renders error and loading states or delegates to
- * {@link Interlinearizer} when data is ready.
+ * WebView menu holding only the platform defaults. Used both as the `useData` default while the
+ * provider's menu is loading and as the fallback when it returns an error.
+ */
+const DEFAULT_WEB_VIEW_MENU = {
+  topMenu: undefined,
+  includeDefaults: true,
+  contextMenu: undefined,
+};
+
+/**
+ * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
+ * loader and the whole {@link Interlinearizer} subtree read and write navigation through one source
+ * of truth, then delegates the actual loading/rendering to {@link InterlinearizerLoaderInner}.
  *
  * @param props - Component props
  * @param props.projectId - PAPI project ID passed from the host
@@ -26,8 +38,7 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
  *   reference and its setter
  * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
  *   by the PAPI host
- * @returns The toolbar and either an error/loading state or the fully rendered
- *   {@link Interlinearizer}
+ * @returns The nav provider wrapping {@link InterlinearizerLoaderInner}
  */
 export default function InterlinearizerLoader({
   projectId,
@@ -38,7 +49,42 @@ export default function InterlinearizerLoader({
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   useWebViewState: UseWebViewStateHook;
 }>) {
-  const [scrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
+  return (
+    <InterlinearNavProvider useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}>
+      <InterlinearizerLoaderInner projectId={projectId} useWebViewState={useWebViewState} />
+    </InterlinearNavProvider>
+  );
+}
+
+/**
+ * Loads book data and settings, manages modal state for project creation/selection/metadata, then
+ * renders error and loading states or delegates to {@link Interlinearizer} when data is ready. Reads
+ * the scripture reference and scroll-group linkage from {@link useInterlinearNav} rather than
+ * calling the host hook directly.
+ *
+ * @param props - Component props
+ * @param props.projectId - PAPI project ID passed from the host
+ * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
+ *   by the PAPI host
+ * @returns The toolbar and either an error/loading state or the fully rendered
+ *   {@link Interlinearizer}
+ */
+function InterlinearizerLoaderInner({
+  projectId,
+  useWebViewState,
+}: Readonly<{
+  projectId: string;
+  useWebViewState: UseWebViewStateHook;
+}>) {
+  const {
+    rawScrRef,
+    liveScrRef: scrRef,
+    navigate,
+    scrollGroupId,
+    setScrollGroupId,
+    fadePhase,
+    cancelFade,
+  } = useInterlinearNav();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -126,7 +172,7 @@ export default function InterlinearizerLoader({
       }
     };
 
-    loadAnalysis().catch(() => {});
+    loadAnalysis();
 
     return () => {
       canceled = true;
@@ -168,15 +214,38 @@ export default function InterlinearizerLoader({
     value: simplifyPhrases,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
-  const { book, chapterSegments, isLoading, bookError, tokenizeError } = useInterlinearizerBookData(
-    { projectId, scrRef },
-  );
+  const {
+    isLoading: isChapterLabelInVerseLoading,
+    onChange: handleChapterLabelInVerseChange,
+    value: chapterLabelInVerse,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.chapterLabelInVerse', false);
+
+  const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
+    projectId,
+    scrRef,
+  });
 
   const hasError = !!bookError || !!tokenizeError;
   const isSettingLoading =
-    isContinuousScrollLoading || isHideInactiveLinkButtonsLoading || isSimplifyPhrasesLoading;
-  const showLoading = isLoading || isAnalysisLoading || isSettingLoading;
+    isContinuousScrollLoading ||
+    isHideInactiveLinkButtonsLoading ||
+    isSimplifyPhrasesLoading ||
+    isChapterLabelInVerseLoading;
+  // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
+  // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
+  // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
+  // components stay visible while the new book loads, so the swap is seen before the fade hides it.
+  // Treating this window as loading swaps the old view for the Loading… curtain immediately, so
+  // nothing of either book shows until the new one has mounted and fades in.
+  const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
+  const showLoading = isLoading || isAnalysisLoading || isSettingLoading || isCrossBookSwap;
   const isLoaded = !hasError && !showLoading && !!book;
+
+  // Abort any in-flight cross-book fade when the new book fails to load, so the error is revealed
+  // rather than left hidden behind a curtain that will never receive a settle.
+  useEffect(() => {
+    if (hasError) cancelFade();
+  }, [hasError, cancelFade]);
 
   const [modal, setModal] = useState<ModalState>('none');
 
@@ -216,7 +285,7 @@ export default function InterlinearizerLoader({
    */
   const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
     'interlinearizer.mainWebView',
-    { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
+    DEFAULT_WEB_VIEW_MENU,
   );
 
   /**
@@ -230,7 +299,7 @@ export default function InterlinearizerLoader({
     const menu =
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
         ? webViewMenuPossiblyError
-        : { topMenu: undefined, includeDefaults: true, contextMenu: undefined };
+        : DEFAULT_WEB_VIEW_MENU;
     if (!menu.topMenu || activeProject) return menu.topMenu;
     const { items } = menu.topMenu;
     /* v8 ignore next */ if (!Array.isArray(items)) return menu.topMenu;
@@ -250,8 +319,8 @@ export default function InterlinearizerLoader({
         startAreaChildren={
           interfaceMode === 'power' ? (
             <ScriptureNavControls
-              scrRef={scrRef}
-              handleSubmit={setScrRef}
+              scrRef={rawScrRef}
+              handleSubmit={navigate}
               scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}
             />
@@ -266,6 +335,8 @@ export default function InterlinearizerLoader({
               onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
               simplifyPhrases={simplifyPhrases}
               onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
+              chapterLabelInVerse={chapterLabelInVerse}
+              onChapterLabelInVerseChange={handleChapterLabelInVerseChange}
             />
           ) : undefined
         }
@@ -276,43 +347,59 @@ export default function InterlinearizerLoader({
         }}
       />
 
-      {hasError || showLoading || !book ? (
-        <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
-          {bookError && (
-            <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:error-heading">Error loading book</h2>
-              <pre className="tw:error-pre">{bookError}</pre>
-            </div>
-          )}
+      <div
+        data-testid="book-fade-wrapper"
+        className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+        // The fade-out must hide content instantly, not transition to 0: the old book is swapped
+        // for the Loading… placeholder in the same commit the curtain drops, so a gradual descent
+        // has nothing left to fade — it only lets the new book ghost in at partial opacity when a
+        // fast load mounts it mid-descent, then dim and rise again (the "false-start fade"). A
+        // zero-duration descent enforces the intended contract — nothing of either book shows
+        // until the new one has mounted and fades in — while the rise (`in` → `idle`) keeps the
+        // shared recenter timing.
+        style={{
+          opacity: fadePhase === 'out' ? 0 : 1,
+          ...RECENTER_FADE_TRANSITION_STYLE,
+          ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
+        }}
+      >
+        {hasError || showLoading || !book ? (
+          <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
+            {bookError && (
+              <div className="tw:flex tw:flex-col tw:gap-2">
+                <h2 className="tw:error-heading">Error loading book</h2>
+                <pre className="tw:error-pre">{bookError}</pre>
+              </div>
+            )}
 
-          {tokenizeError && (
-            <div className="tw:flex tw:flex-col tw:gap-2">
-              <h2 className="tw:error-heading">Error processing book</h2>
-              <pre className="tw:error-pre">{tokenizeError.message}</pre>
-            </div>
-          )}
+            {tokenizeError && (
+              <div className="tw:flex tw:flex-col tw:gap-2">
+                <h2 className="tw:error-heading">Error processing book</h2>
+                <pre className="tw:error-pre">{tokenizeError.message}</pre>
+              </div>
+            )}
 
-          {!hasError && showLoading && (
-            <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
-          )}
-        </div>
-      ) : (
-        <Interlinearizer
-          key={activeProject?.id ?? ''}
-          book={book}
-          chapterSegments={chapterSegments}
-          continuousScroll={continuousScroll}
-          scrRef={scrRef}
-          setScrRef={setScrRef}
-          analysisLanguage={analysisLanguage}
-          initialAnalysis={activeProjectAnalysis}
-          onSaveAnalysis={handleSaveAnalysis}
-          phraseMode={phraseMode}
-          setPhraseMode={setPhraseMode}
-          hideInactiveLinkButtons={hideInactiveLinkButtons}
-          simplifyPhrases={simplifyPhrases}
-        />
-      )}
+            {!hasError && showLoading && (
+              <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
+            )}
+          </div>
+        ) : (
+          <Interlinearizer
+            key={`${activeProject?.id ?? ''}:${book.bookRef}`}
+            book={book}
+            continuousScroll={continuousScroll}
+            scrRef={scrRef}
+            analysisLanguage={analysisLanguage}
+            initialAnalysis={activeProjectAnalysis}
+            onSaveAnalysis={handleSaveAnalysis}
+            phraseMode={phraseMode}
+            setPhraseMode={setPhraseMode}
+            hideInactiveLinkButtons={hideInactiveLinkButtons}
+            simplifyPhrases={simplifyPhrases}
+            chapterLabelInVerse={chapterLabelInVerse}
+          />
+        )}
+      </div>
 
       <ProjectModals
         activeProject={activeProject}

@@ -25,6 +25,8 @@ const DEFAULT_PROPS = {
   onHideInactiveLinkButtonsChange: jest.fn(),
   simplifyPhrases: false,
   onSimplifyPhrasesChange: jest.fn(),
+  chapterLabelInVerse: false,
+  onChapterLabelInVerseChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -193,6 +195,33 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(checkboxes[2]);
 
       expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('chapter label in verse toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} chapterLabelInVerse />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      const checkboxes = screen.getAllByRole('checkbox');
+      expect(checkboxes[3]).toBeChecked();
+    });
+
+    it('calls onChapterLabelInVerseChange when toggled', async () => {
+      const onChapterLabelInVerseChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          chapterLabelInVerse={false}
+          onChapterLabelInVerseChange={onChapterLabelInVerseChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      const checkboxes = screen.getAllByRole('checkbox');
+      await userEvent.click(checkboxes[3]);
+
+      expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
     });
   });
 });

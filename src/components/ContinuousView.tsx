@@ -2,18 +2,23 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { usePhraseDispatch, usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
-import { isWordToken } from '../types/type-guards';
 import { PhraseStripProvider } from './PhraseStripContext';
-import type { PhraseStripContextValue } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import {
+  useArcSplitHandler,
+  useCandidatePhraseIds,
+  useEditPhraseTokens,
+  usePhraseStripContextValue,
+} from '../hooks/usePhraseStripSetup';
+import useLatestRef from '../hooks/useLatestRef';
 import MemoizedArcOverlay from './ArcOverlay';
+import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /**
  * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
@@ -27,18 +32,6 @@ function clampIndex(index: number, len: number): number {
   if (len === 0) return 0;
   return Math.max(0, Math.min(index, len - 1));
 }
-
-/**
- * CSS easing for the strip opacity fade-in/out animation. Uses a sine-like curve for a natural feel
- * at both ends of the transition.
- */
-const STRIP_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
-
-/**
- * Duration of the strip fade animation in milliseconds. Must match the `setTimeout` in the
- * pending-jump effect.
- */
-const STRIP_FADE_MS = 500;
 
 /**
  * Backstop, in milliseconds, for committing the deferred inactive-link relayout after an
@@ -110,6 +103,8 @@ type ContinuousViewProps = Readonly<{
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Token ref → segment id lookup; used to resolve the focused token's segment for slot rules. */
   tokenSegmentMap: ReadonlyMap<string, string>;
+  /** Word token ref → flat book-level index; used to sort phrase tokens in document order. */
+  tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
@@ -144,6 +139,8 @@ type ContinuousViewProps = Readonly<{
  * @param props.phraseMode - Current phrase-interaction mode; controls token click behavior
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
  * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
+ * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
+ *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
  * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
  *   the focused token's segment.
@@ -159,6 +156,7 @@ export default function ContinuousView({
   phraseMode,
   setPhraseMode,
   tokenSegmentMap,
+  tokenDocOrder,
   wordTokenByRef,
   hideInactiveLinkButtons,
   simplifyPhrases,
@@ -175,25 +173,7 @@ export default function ContinuousView({
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
 
-  /**
-   * Token list of the phrase currently being edited, or `undefined` outside edit mode. Hoisted to a
-   * single lookup here rather than recomputed per group; passed into each `PhraseGroup`.
-   */
-  const editPhraseTokens = useMemo(
-    () =>
-      phraseMode.kind === 'edit'
-        ? /* v8 ignore next -- phrase always exists in the store when edit mode is entered */
-          committedPhraseLinkById.get(phraseMode.phraseId)?.tokens
-        : undefined,
-    [phraseMode, committedPhraseLinkById],
-  );
-
-  /** Maps each word token ref to its flat document index for document-order phrase merges. */
-  const tokenDocOrder = useMemo(() => {
-    const map = new Map<string, number>();
-    allTokens.filter(isWordToken).forEach((t, i) => map.set(t.ref, i));
-    return map;
-  }, [allTokens]);
+  const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
   /** Phrase groups built from the flat token list, respecting the committed phrase-link map. */
   const phraseGroups = useMemo(
@@ -210,12 +190,6 @@ export default function ContinuousView({
     return map;
   }, [phraseGroups]);
 
-  /** Flat token index -> owning segment lookup; used for per-slot segment resolution. */
-  const tokenSegment = useMemo(
-    () => book.segments.flatMap((seg) => seg.tokens.map(() => seg)),
-    [book.segments],
-  );
-
   /**
    * Token ref that the strip is currently displaying as focused. Lags `focusedTokenRef` during the
    * fade-out for external jumps so the window/scroll/highlight don't shift until the strip has
@@ -229,15 +203,35 @@ export default function ContinuousView({
   /**
    * Group index of the displayed focused token, or `0` when nothing is focused. Single source of
    * truth for scroll position, windowing, arrow disabled state, and per-group focus highlighting.
+   *
+   * During a book change `displayFocusedTokenRef` lags the new book by one fade (it only catches up
+   * when the fade timeout fires), so for a few frames it names a token from the previous book that
+   * no longer exists in this book's `groupIndexByTokenRef`. Falling straight back to `0` then parks
+   * the strip on the new book's very first phrase instead of the verse the user navigated to. Fall
+   * back to the live `focusedTokenRef` first — the parent reseeds it to the new book's active verse
+   * on the book change — so the transient lands on the intended verse rather than book start.
    */
   const focusPhraseIndex = useMemo(() => {
-    if (displayFocusedTokenRef === undefined) return 0;
-    const gi = groupIndexByTokenRef.get(displayFocusedTokenRef);
-    /* v8 ignore next -- gi is always defined when displayFocusedTokenRef is set */
-    return gi === undefined ? 0 : clampIndex(gi, phraseGroups.length);
-  }, [displayFocusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
+    const resolved =
+      (displayFocusedTokenRef !== undefined
+        ? groupIndexByTokenRef.get(displayFocusedTokenRef)
+        : undefined) ??
+      (focusedTokenRef !== undefined ? groupIndexByTokenRef.get(focusedTokenRef) : undefined);
+    return resolved === undefined ? 0 : clampIndex(resolved, phraseGroups.length);
+  }, [displayFocusedTokenRef, focusedTokenRef, groupIndexByTokenRef, phraseGroups.length]);
 
   const [isVisible, setIsVisible] = useState(false);
+
+  /**
+   * True for the single render in which an instant jump (external nav or initial mount) flips
+   * {@link committedActiveSegmentId}, so the link slots snap to their new widths instead of
+   * animating. `isVisible` alone can't gate this: the scroll effect's cleanup restores visibility
+   * before the new effect commits the segment, so by the time the slots want their new widths
+   * `isVisible` is already `true` and the transition would play — sliding the boxes (and yanking
+   * the recentered phrase) for ~200ms after the fade-in. Cleared in the deferred fade-in frame, one
+   * paint after the snap, so genuine in-view toggles still animate.
+   */
+  const [skipSlotTransitionForJump, setSkipSlotTransitionForJump] = useState(false);
 
   /** True until the first scroll-into-view completes; suppresses smooth scroll on initial mount. */
   const isInitialLoadInProgressRef = useRef(true);
@@ -259,6 +253,28 @@ export default function ContinuousView({
    * group instead of two.
    */
   const pendingPhraseIndexRef = useRef(0);
+
+  /**
+   * `focusedTokenRef` prop value from the previous render. Lets the sync block below distinguish a
+   * prop that merely hasn't echoed an in-flight internal nav yet (unchanged since last render) from
+   * one the parent changed to an external position (changed to something other than the in-flight
+   * ref).
+   */
+  const prevFocusedTokenRefPropRef = useRef(focusedTokenRef);
+  // If the prop changed to anything other than the in-flight internal ref, the parent imposed an
+  // external position instead of echoing the nav. Clear the in-flight marker so the pending index
+  // resyncs below; otherwise the next step() would advance from the stale pending index rather
+  // than the externally-imposed position. The focus-change effect can't cover this case: it
+  // early-returns without clearing the marker when the external value already matches the
+  // displayed ref.
+  if (
+    internalFocusedTokenRefRef.current !== undefined &&
+    focusedTokenRef !== prevFocusedTokenRefPropRef.current &&
+    focusedTokenRef !== internalFocusedTokenRefRef.current
+  ) {
+    internalFocusedTokenRefRef.current = undefined;
+  }
+  prevFocusedTokenRefPropRef.current = focusedTokenRef;
   // Keep in sync with the rendered value so external jumps reset the pending index. When an
   // internal nav is still in flight (the parent hasn't echoed back yet), do not overwrite: a rapid
   // second click needs to read the already-advanced pending index rather than the stale rendered
@@ -269,6 +285,24 @@ export default function ContinuousView({
 
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
+
+  /**
+   * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
+   * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
+   * `behavior`, so they route through here. Stable identity (reads `phraseRefs` and takes the index
+   * explicitly) so the effects that center a snapshot index keep their intentionally-narrow dep
+   * arrays.
+   *
+   * @param groupIndex - Index into `phraseRefs` of the group to center.
+   * @param behavior - `'auto'` for an instant jump, `'smooth'` for an animated glide.
+   */
+  const centerGroup = useCallback((groupIndex: number, behavior: ScrollBehavior) => {
+    phraseRefs.current[groupIndex]?.scrollIntoView({
+      behavior,
+      block: 'nearest',
+      inline: 'center',
+    });
+  }, []);
 
   /** Ref to the token-strip row; the content row and mouse-leave target. */
   // eslint-disable-next-line no-null/no-null
@@ -303,17 +337,33 @@ export default function ContinuousView({
     focusedTokenRef !== undefined ? tokenSegmentMap.get(focusedTokenRef) : undefined;
 
   /** Ref mirror of the target so the post-scroll timeout reads the latest value without a dep. */
-  const targetActiveSegmentIdRef = useRef(targetActiveSegmentId);
-  targetActiveSegmentIdRef.current = targetActiveSegmentId;
+  const targetActiveSegmentIdRef = useLatestRef(targetActiveSegmentId);
 
   /** Snaps the committed active segment to the current target; runs after an internal-nav scroll. */
   const commitPendingActiveSegment = useCallback(() => {
     setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
-  }, []);
+  }, [targetActiveSegmentIdRef]);
 
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
-  const onFocusedTokenRefChangeRef = useRef(onFocusedTokenRefChange);
-  onFocusedTokenRefChangeRef.current = onFocusedTokenRefChange;
+  const onFocusedTokenRefChangeRef = useLatestRef(onFocusedTokenRefChange);
+
+  /**
+   * Emits a focus change that originated _inside_ the strip (arrow nav, phrase click, edit-mode
+   * jump). Records the ref as internally-originated, then notifies the parent. When the parent
+   * echoes the same ref back through `focusedTokenRef`, the focus-change effect recognizes the
+   * match and applies it immediately with a smooth scroll instead of the fade-then-snap used for
+   * external jumps. Folds the stamp and the notify into one call so the "this is an internal emit"
+   * intent lives in a single place rather than being restated at each call site.
+   *
+   * @param ref - The word-token ref to focus.
+   */
+  const emitInternalFocus = useCallback(
+    (ref: string) => {
+      internalFocusedTokenRefRef.current = ref;
+      onFocusedTokenRefChangeRef.current(ref);
+    },
+    [onFocusedTokenRefChangeRef],
+  );
 
   // Notify the parent of the initially-focused token on mount so the segment list scrolls the
   // active verse into view on first render. Only fires when no token was already focused.
@@ -377,12 +427,9 @@ export default function ContinuousView({
       if (clamped === pendingPhraseIndexRef.current) return;
       pendingPhraseIndexRef.current = clamped;
       const nextRef = phraseGroups[clamped]?.tokens[0]?.ref;
-      if (nextRef !== undefined) {
-        internalFocusedTokenRefRef.current = nextRef;
-        onFocusedTokenRefChangeRef.current(nextRef);
-      }
+      if (nextRef !== undefined) emitInternalFocus(nextRef);
     },
-    [phraseGroups],
+    [phraseGroups, emitInternalFocus],
   );
 
   /** Moves focus one phrase backward. */
@@ -404,34 +451,13 @@ export default function ContinuousView({
       const currentGroupIndex =
         focusedTokenRef === undefined ? undefined : groupIndexByTokenRef.get(focusedTokenRef);
       if (targetGroupIndex !== undefined && targetGroupIndex === currentGroupIndex) return;
-      internalFocusedTokenRefRef.current = ref;
-      onFocusedTokenRefChangeRef.current(ref);
+      emitInternalFocus(ref);
     },
-    [focusedTokenRef, groupIndexByTokenRef],
+    [focusedTokenRef, groupIndexByTokenRef, emitInternalFocus],
   );
 
-  const { createPhrase, updatePhrase, deletePhrase } = usePhraseDispatch();
-
-  /**
-   * Splits a phrase arc at a token boundary and dispatches the resulting create/update/delete
-   * operations. No-ops if `phraseId` is not in `committedPhraseLinkById`.
-   *
-   * @param phraseId - Id of the phrase arc to split.
-   * @param splitAfterTokenRef - Token ref at whose trailing boundary the split is made.
-   */
-  const handleArcSplit = useCallback(
-    (phraseId: string, splitAfterTokenRef: string) => {
-      const phraseLink = committedPhraseLinkById.get(phraseId);
-      if (!phraseLink) return;
-      splitPhraseAtBoundary(
-        phraseLink,
-        splitAfterTokenRef,
-        { createPhrase, updatePhrase, deletePhrase },
-        tokenDocOrder,
-      );
-    },
-    [committedPhraseLinkById, tokenDocOrder, createPhrase, updatePhrase, deletePhrase],
-  );
+  /** Splits a phrase arc at a token boundary and dispatches the resulting phrase-store writes. */
+  const handleArcSplit = useArcSplitHandler(tokenDocOrder);
 
   // React to changes in the prop `focusedTokenRef`. For internal nav (arrow/click in this view),
   // apply the change immediately and smooth-scroll. For external jumps (segment-mode click,
@@ -450,7 +476,7 @@ export default function ContinuousView({
     setIsVisible(false);
     const timeout = setTimeout(() => {
       setDisplayFocusedTokenRef(focusedTokenRef);
-    }, STRIP_FADE_MS);
+    }, RECENTER_FADE_MS);
     return () => clearTimeout(timeout);
   }, [focusedTokenRef, displayFocusedTokenRef]);
 
@@ -466,12 +492,9 @@ export default function ContinuousView({
     if (shouldJumpInstantly) {
       // External jumps fade the strip out and the initial mount is static, so there is no animation
       // to disturb — commit the active segment now alongside the instant scroll.
+      setSkipSlotTransitionForJump(true);
       commitPendingActiveSegment();
-      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
+      centerGroup(focusPhraseIndex, 'auto');
     }
 
     if (isInternal && !isInitialLoad) {
@@ -480,11 +503,7 @@ export default function ContinuousView({
       // Scrolling synchronously here animates toward a position that then shifts, producing a visible
       // overshoot-and-return ("yank") when crossing a verse boundary.
       const navRafId = requestAnimationFrame(() => {
-        phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'nearest',
-          inline: 'center',
-        });
+        centerGroup(focusPhraseIndex, 'smooth');
       });
       // Commit the active-segment change (which toggles inactive link-icon visibility, re-laying out
       // the strip) only once the smooth scroll has actually settled. Updating it mid-scroll would
@@ -519,12 +538,16 @@ export default function ContinuousView({
     if (isInitialLoad) isInitialLoadInProgressRef.current = false;
 
     // Defer the fade-in until after the browser applies the instant scroll position.
-    const rafId = requestAnimationFrame(() => setIsVisible(true));
+    const rafId = requestAnimationFrame(() => {
+      setIsVisible(true);
+      // The snapped-slot paint has happened; re-enable the transition for later in-view toggles.
+      setSkipSlotTransitionForJump(false);
+    });
     return () => {
       cancelAnimationFrame(rafId);
       setIsVisible(true);
     };
-  }, [focusPhraseIndex, commitPendingActiveSegment]);
+  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup]);
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
@@ -542,13 +565,7 @@ export default function ContinuousView({
       return undefined;
     }
     /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
-    const recenter = () => {
-      phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-        behavior: 'auto',
-        block: 'nearest',
-        inline: 'center',
-      });
-    };
+    const recenter = () => centerGroup(focusPhraseIndex, 'auto');
     recenter();
     const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
     let rafId = requestAnimationFrame(function recenterFrame() {
@@ -567,13 +584,9 @@ export default function ContinuousView({
   // when hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does
   // not shift the layout.
   useEffect(() => {
-    phraseRefs.current[focusPhraseIndex]?.scrollIntoView({
-      behavior: 'auto',
-      block: 'nearest',
-      inline: 'center',
-    });
+    centerGroup(focusPhraseIndex, 'auto');
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
-    // only re-centers in response to layout-affecting option toggles.
+    // only re-centers in response to layout-affecting option toggles. centerGroup is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [simplifyPhrases]);
 
@@ -587,10 +600,9 @@ export default function ContinuousView({
     const nextRef = group?.tokens[0]?.ref;
     /* v8 ignore next -- phrase always has tokens; focusedTokenRef differs at mode entry */
     if (nextRef === undefined || nextRef === focusedTokenRef) return;
-    internalFocusedTokenRefRef.current = nextRef;
-    onFocusedTokenRefChangeRef.current(nextRef);
+    emitInternalFocus(nextRef);
     // phraseGroups and focusedTokenRef are read once per mode change; intentionally not deps so the
-    // effect only fires on actual mode transitions.
+    // effect only fires on actual mode transitions. emitInternalFocus has a stable identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phraseMode]);
 
@@ -621,55 +633,37 @@ export default function ContinuousView({
     clearAll: clearHoverState,
   } = usePhraseHoverState();
 
-  const candidatePhraseIds = useMemo<ReadonlySet<string>>(() => {
-    if (candidateTokenRefs.size === 0) return new Set();
-    const ids = new Set<string>();
-    committedPhraseLinkByRef.forEach((link) => {
-      if (link.tokens.some((t) => candidateTokenRefs.has(t.tokenRef))) ids.add(link.analysisId);
-    });
-    return ids;
-  }, [candidateTokenRefs, committedPhraseLinkByRef]);
+  /** Clears both the hovered phrase id and all hover-preview state on mouse leave. */
+  const clearAllHoverState = useCallback(() => {
+    setHoveredPhraseId(undefined);
+    clearHoverState();
+  }, [clearHoverState]);
+
+  const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot. Memoized so the leaf
-   * `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers don't re-render on unrelated changes.
-   * `setHoveredPhraseId` doubles as both the phrase-hover and candidate-phrase hover callback.
+   * Strip-wide context value shared by every phrase group and link slot. `setHoveredPhraseId`
+   * doubles as both the phrase-hover and candidate-phrase hover callback. The active segment lags
+   * the focus (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip
+   * is faded out or snapping into place after an instant jump.
    */
-  const stripContext = useMemo<PhraseStripContextValue>(
-    () => ({
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      onHoverPhrase: setHoveredPhraseId,
-      onHoverCandidateTokens: setCandidateTokenRefs,
-      onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      activeSegmentId: committedActiveSegmentId,
-      crossSegmentLinkTooltip:
-        localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
-      skipLinkTransition: !isVisible,
-    }),
-    [
-      phraseMode,
-      setPhraseMode,
-      editPhraseTokens,
-      editPhraseSegmentId,
-      tokenSegmentMap,
-      tokenDocOrder,
-      setHoveredPhraseId,
-      setCandidateTokenRefs,
-      handleHoverSplitFreeTokens,
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      committedActiveSegmentId,
-      isVisible,
-      localizedStrings,
-    ],
-  );
+  const stripContext = usePhraseStripContextValue({
+    phraseMode,
+    setPhraseMode,
+    editPhraseTokens,
+    editPhraseSegmentId,
+    tokenSegmentMap,
+    tokenDocOrder,
+    onHoverPhrase: setHoveredPhraseId,
+    onHoverCandidateTokens: setCandidateTokenRefs,
+    onHoverSplitFreeTokens: handleHoverSplitFreeTokens,
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    activeSegmentId: committedActiveSegmentId,
+    crossSegmentLinkTooltip:
+      localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    skipLinkTransition: !isVisible || skipSlotTransitionForJump,
+  });
 
   /**
    * Group index of the focused token, derived from `focusedTokenRef`. Used per-slot to compute
@@ -683,18 +677,22 @@ export default function ContinuousView({
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
-   * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
-   * SegmentView exactly.
+   * from the fade-gated `displayFocusedTokenRef` (not the live `focusedTokenRef`) so every
+   * highlight and link-button active/disabled decision moves only at the recenter midpoint, behind
+   * the fade — never re-evaluating (and dimming the buttons) on the still-visible old strip the
+   * instant an external nav reseeds the live focus. The scroll target (`focusedGroupIndex`) still
+   * uses the live ref so the jump lands on the new verse behind the curtain. Mirrors SegmentView,
+   * which is fed the segment window's own gated display ref.
    */
   const focus = useMemo(
     () =>
       resolveFocusContext(
-        focusedTokenRef,
+        displayFocusedTokenRef,
         wordTokenByRef,
         committedPhraseLinkByRef,
         tokenSegmentMap,
       ),
-    [focusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
+    [displayFocusedTokenRef, wordTokenByRef, committedPhraseLinkByRef, tokenSegmentMap],
   );
 
   /** True when any committed phrase exists in the visible window. */
@@ -786,11 +784,11 @@ export default function ContinuousView({
           const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
           const prevSegmentId =
             item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
-              ? tokenSegment[phraseGroups[item.prevGroupIndex].firstIndex]?.id
+              ? tokenSegmentMap.get(phraseGroups[item.prevGroupIndex].tokens[0].ref)
               : undefined;
           const nextSegmentId =
             item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
-              ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
+              ? tokenSegmentMap.get(phraseGroups[item.nextGroupIndex].tokens[0].ref)
               : undefined;
           return {
             kind: 'slot',
@@ -815,14 +813,7 @@ export default function ContinuousView({
           },
         };
       }),
-    [
-      renderItems,
-      phraseGroups,
-      tokenSegment,
-      focusedSideIsPrevByItem,
-      displayFocusedTokenRef,
-      phraseRefs,
-    ],
+    [renderItems, phraseGroups, tokenSegmentMap, focusedSideIsPrevByItem, displayFocusedTokenRef],
   );
 
   return (
@@ -867,10 +858,7 @@ export default function ContinuousView({
           data-testid="strip-fade-wrapper"
           ref={arcContainerRef}
           className={`tw:arc-container tw:transition-opacity ${stripOpacityClass}`}
-          style={{
-            transitionDuration: `${STRIP_FADE_MS}ms`,
-            transitionTimingFunction: STRIP_FADE_EASING,
-          }}
+          style={RECENTER_FADE_TRANSITION_STYLE}
         >
           <MemoizedArcOverlay
             arcPaths={arcPaths}
@@ -895,10 +883,7 @@ export default function ContinuousView({
                 paddingLeft: `${stripLeftPadding}px`,
                 paddingRight: `${stripRightPadding}px`,
               }}
-              onMouseLeave={() => {
-                setHoveredPhraseId(undefined);
-                clearHoverState();
-              }}
+              onMouseLeave={clearAllHoverState}
             >
               <PhraseStrip
                 items={stripItems}

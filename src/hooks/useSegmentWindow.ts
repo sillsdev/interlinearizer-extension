@@ -3,6 +3,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
+import { isSameVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
 import useRecenterSnap from './useRecenterSnap';
 
@@ -61,10 +62,11 @@ export interface UseSegmentWindowArgs {
    */
   focusedTokenRef: string | undefined;
   /**
-   * Current continuous-scroll mode. Gated alongside {@link UseSegmentWindowResult.displayScrRef} so
-   * a mode toggle swaps the rendered view (the horizontal strip and the segments' display mode)
-   * only at the recenter midpoint — behind the fade — rather than re-laying-out the old,
-   * still-visible content the instant the toggle flips.
+   * Current continuous-scroll mode. Reported back through
+   * {@link UseSegmentWindowArgs.onDisplayContinuousScrollChange} at the recenter midpoint so a mode
+   * toggle swaps the rendered view (the horizontal strip and the segments' display mode) only
+   * behind the fade — never re-laying-out the old, still-visible content the instant the toggle
+   * flips.
    */
   continuousScroll: boolean;
   /** Ref to the scrollable list container; used to read/adjust scroll position and host sentinels. */
@@ -84,10 +86,10 @@ export interface UseSegmentWindowArgs {
    * continuous-scroll value the views should now render. The parent owns the horizontal strip,
    * which must mount/unmount in the _same_ React commit as the window rebuild here, so the
    * post-recenter re-snap loop measures the active verse against the final layout (strip included).
-   * Routing this through a callback in the timeout (rather than the parent reacting to the returned
-   * {@link UseSegmentWindowResult.displayContinuousScroll} via an effect, which would land a commit
-   * later) keeps the two in one commit — otherwise the strip mounts after the snap has already
-   * settled and the verse lands off screen.
+   * Routing this through a callback in the timeout (rather than the parent reacting to a
+   * hook-returned value via an effect, which would land a commit later) keeps the two in one commit
+   * — otherwise the strip mounts after the snap has already settled and the verse lands off
+   * screen.
    *
    * @param displayContinuousScroll - The continuous-scroll mode to render from now on.
    */
@@ -123,13 +125,6 @@ export interface UseSegmentWindowResult {
    * immediately for internal nav and the initial mount.
    */
   displayFocusedTokenRef: string | undefined;
-  /**
-   * Continuous-scroll mode the views should render. Gated on the same clock as {@link displayScrRef}
-   * so a mode toggle swaps the view at the recenter midpoint, behind the fade — never on the old
-   * content the instant the toggle flips. Tracks `continuousScroll` immediately on the initial
-   * mount.
-   */
-  displayContinuousScroll: boolean;
   /** Ref callback for the invisible sentinel placed above the first segment. */
   topSentinelRef: (el: HTMLElement | null) => void;
   /** Ref callback for the invisible sentinel placed below the last segment. */
@@ -161,12 +156,7 @@ export interface UseSegmentWindowResult {
  * @returns The index of the anchor segment, clamped to a valid position (or `0` when empty).
  */
 function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
-  const exact = segments.findIndex(
-    (seg) =>
-      seg.startRef.book === scrRef.book &&
-      seg.startRef.chapter === scrRef.chapterNum &&
-      seg.startRef.verse === scrRef.verseNum,
-  );
+  const exact = segments.findIndex((seg) => isSameVerse(seg.startRef, scrRef));
   if (exact !== -1) return exact;
   const chapter = segments.findIndex(
     (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
@@ -268,13 +258,6 @@ export default function useSegmentWindow({
   const [displayFocusedTokenRef, setDisplayFocusedTokenRef] = useState<string | undefined>(
     focusedTokenRef,
   );
-
-  /**
-   * Continuous-scroll mode the views render. Gated on the same clock as {@link displayScrRef}: a
-   * mode toggle defers it to the recenter midpoint so the view swaps behind the fade, never on the
-   * old content the instant the toggle flips. Set immediately for the initial value.
-   */
-  const [displayContinuousScroll, setDisplayContinuousScroll] = useState(continuousScroll);
 
   // #endregion
 
@@ -524,10 +507,10 @@ export default function useSegmentWindow({
       beginRecenterSettle();
       setDisplayScrRef(scrRefRef.current);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);
-      setDisplayContinuousScroll(continuousScrollRef.current);
-      // Flip the parent's strip visibility in this same state batch so the strip mounts/unmounts in
-      // the same commit as the window rebuild above — the re-snap loop then measures the active verse
-      // against the final, strip-included layout instead of snapping before the strip exists.
+      // Flip the parent's strip visibility (and the segments' display mode, which the parent passes
+      // back down) in this same state batch so the strip mounts/unmounts in the same commit as the
+      // window rebuild above — the re-snap loop then measures the active verse against the final,
+      // strip-included layout instead of snapping before the strip exists.
       onDisplayContinuousScrollChangeRef.current(continuousScrollRef.current);
       setIsFaded(false);
     }, RECENTER_FADE_MS);
@@ -748,7 +731,6 @@ export default function useSegmentWindow({
     isFaded,
     displayScrRef,
     displayFocusedTokenRef,
-    displayContinuousScroll,
     topSentinelRef,
     bottomSentinelRef,
     contentRef,

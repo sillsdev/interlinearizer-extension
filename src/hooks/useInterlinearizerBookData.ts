@@ -72,6 +72,12 @@ export default function useInterlinearizerBookData({
     return rawBookResult;
   }, [rawBookResult]);
 
+  /**
+   * Writing-system tag used for tokenization and error logging; falls back to `'und'` when the
+   * project setting is unavailable or empty.
+   */
+  const writingSystemTag = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
+
   const [book, tokenizeError] = useMemo((): [
     Book | undefined,
     { message: string; raw: unknown } | undefined,
@@ -79,25 +85,22 @@ export default function useInterlinearizerBookData({
     if (!bookResult || isPlatformError(bookResult)) return [undefined, undefined];
 
     try {
-      const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
-      return [tokenizeBook(extractBookFromUsj(bookResult, ws)), undefined];
+      return [tokenizeBook(extractBookFromUsj(bookResult, writingSystemTag)), undefined];
     } catch (err) {
       return [undefined, { message: err instanceof Error ? err.message : String(err), raw: err }];
     }
-  }, [bookResult, writingSystem]);
+  }, [bookResult, writingSystemTag]);
 
   useEffect(() => {
     if (!tokenizeError) return;
 
-    /* v8 ignore next -- isPlatformError branch for writingSystem is unreachable through the mock setup */
-    const ws = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
     logger.error('Failed to parse/tokenize USJ book', tokenizeError.raw, {
       message: tokenizeError.message,
-      writingSystem: ws,
+      writingSystem: writingSystemTag,
       projectId,
       book: scrRef.book,
     });
-  }, [tokenizeError, writingSystem, projectId, scrRef.book]);
+  }, [tokenizeError, writingSystemTag, projectId, scrRef.book]);
 
   let bookError: string | undefined;
   if (isPlatformError(bookResult)) {

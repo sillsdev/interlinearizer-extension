@@ -190,12 +190,6 @@ export default function ContinuousView({
     return map;
   }, [phraseGroups]);
 
-  /** Flat token index -> owning segment lookup; used for per-slot segment resolution. */
-  const tokenSegment = useMemo(
-    () => book.segments.flatMap((seg) => seg.tokens.map(() => seg)),
-    [book.segments],
-  );
-
   /**
    * Token ref that the strip is currently displaying as focused. Lags `focusedTokenRef` during the
    * fade-out for external jumps so the window/scroll/highlight don't shift until the strip has
@@ -790,11 +784,11 @@ export default function ContinuousView({
           const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
           const prevSegmentId =
             item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
-              ? tokenSegment[phraseGroups[item.prevGroupIndex].firstIndex]?.id
+              ? tokenSegmentMap.get(phraseGroups[item.prevGroupIndex].tokens[0].ref)
               : undefined;
           const nextSegmentId =
             item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
-              ? tokenSegment[phraseGroups[item.nextGroupIndex].firstIndex]?.id
+              ? tokenSegmentMap.get(phraseGroups[item.nextGroupIndex].tokens[0].ref)
               : undefined;
           return {
             kind: 'slot',
@@ -819,14 +813,7 @@ export default function ContinuousView({
           },
         };
       }),
-    [
-      renderItems,
-      phraseGroups,
-      tokenSegment,
-      focusedSideIsPrevByItem,
-      displayFocusedTokenRef,
-      phraseRefs,
-    ],
+    [renderItems, phraseGroups, tokenSegmentMap, focusedSideIsPrevByItem, displayFocusedTokenRef],
   );
 
   return (

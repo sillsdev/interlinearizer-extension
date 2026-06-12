@@ -396,7 +396,7 @@ export function SegmentView({
         data-segment-id={segment.id}
         data-testid="segment-container"
         tabIndex={-1}
-        onClick={() => onSelect?.(ref)}
+        onClick={() => onSelect(ref)}
         type="button"
       >
         {segmentHeader}

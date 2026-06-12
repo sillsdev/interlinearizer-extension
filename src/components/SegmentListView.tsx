@@ -6,6 +6,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
+import { isSameVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** Props for {@link SegmentListView}. */
@@ -18,6 +19,12 @@ type SegmentListViewProps = Readonly<{
   focusedTokenRef: string | undefined;
   /** When true, the horizontal token strip is shown above this list (changes display mode). */
   continuousScroll: boolean;
+  /**
+   * Continuous-scroll mode the segments actually render. Owned by the parent and updated through
+   * {@link SegmentListViewProps.onDisplayContinuousScrollChange} at the recenter midpoint, so the
+   * parent's strip and this list's display mode swap in the same React commit, behind the fade.
+   */
+  displayContinuousScroll: boolean;
   /**
    * Reports the gated continuous-scroll value — the mode that should actually be rendered, which a
    * toggle defers to the recenter midpoint (behind the fade). Forwarded straight into
@@ -74,6 +81,8 @@ type SegmentListViewProps = Readonly<{
  * @param props.scrRef - Current scripture reference; its verse is the recenter anchor.
  * @param props.focusedTokenRef - Token ref of the currently focused word token, or `undefined`.
  * @param props.continuousScroll - When true, the horizontal token strip is shown above this list.
+ * @param props.displayContinuousScroll - Continuous-scroll mode the segments actually render; owned
+ *   by the parent and updated at the recenter midpoint.
  * @param props.onDisplayContinuousScrollChange - Reports the gated continuous-scroll value
  *   (deferred to the recenter midpoint) so the parent mounts/unmounts the strip in lockstep with
  *   this list.
@@ -101,6 +110,7 @@ export default function SegmentListView({
   scrRef,
   focusedTokenRef,
   continuousScroll,
+  displayContinuousScroll,
   onDisplayContinuousScrollChange,
   consumeInternalNav,
   reportSettled,
@@ -153,7 +163,6 @@ export default function SegmentListView({
     isFaded,
     displayScrRef,
     displayFocusedTokenRef,
-    displayContinuousScroll,
     topSentinelRef,
     bottomSentinelRef,
     contentRef,
@@ -229,11 +238,7 @@ export default function SegmentListView({
                   editPhraseSegmentId={editPhraseSegmentId}
                   focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
                   hoveredPhraseId={hoveredPhraseId}
-                  isActive={
-                    seg.startRef.book === displayScrRef.book &&
-                    seg.startRef.chapter === displayScrRef.chapterNum &&
-                    seg.startRef.verse === displayScrRef.verseNum
-                  }
+                  isActive={isSameVerse(seg.startRef, displayScrRef)}
                   onHoverPhrase={setHoveredPhraseId}
                   onSelect={onSelect}
                   phraseMode={phraseMode}

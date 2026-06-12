@@ -419,6 +419,13 @@ describe('Interlinearizer', () => {
     expect(capturedSegmentViewPropsList[1].isActive).toBeFalsy();
   });
 
+  it('renders all segments when the reference names a verse absent from the data', () => {
+    const missingVerseRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 99 };
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, scrRef: missingVerseRef });
+
+    expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
+  });
+
   it('calls setScrRef with the segment ref when a segment fires onSelect', () => {
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, navigate: mockNavigate });

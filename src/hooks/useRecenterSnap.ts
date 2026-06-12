@@ -29,9 +29,9 @@ const RECENTER_SETTLE_QUIET_MS = 100;
 /** Arguments for {@link useRecenterSnap}. */
 export interface UseRecenterSnapArgs {
   /**
-   * Snaps the recenter target (the active verse, or the chapter heading for a verse-0 reference) to
-   * the top of the scroll container. Called after paint and on each settling wave; must have a
-   * stable identity so the settle effect only re-runs per recenter.
+   * Snaps the recenter target (the active verse) to the top of the scroll container. Called after
+   * paint and on each settling wave; must have a stable identity so the settle effect only re-runs
+   * per recenter.
    */
   snapActiveToTop: () => void;
   /**

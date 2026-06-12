@@ -589,23 +589,20 @@ describe('useSegmentWindow', () => {
 
   it('reports the gated continuous-scroll value only at the recenter midpoint', () => {
     const book = makeBook(60, 0);
-    const { result, rerender, displayContinuousScrollReports } = renderSegmentWindow(
+    const { rerender, displayContinuousScrollReports } = renderSegmentWindow(
       book,
       { book: 'GEN', chapterNum: 1, verseNum: 1 },
       undefined,
     );
-    expect(result.current.displayContinuousScroll).toBe(false);
 
     // Toggle continuous scroll on while triggering a recenter (external nav). The report must NOT fire
     // during the fade-out — only when the window rebuilds at the midpoint, so the parent's strip
     // mounts in the same commit.
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, cont: true }));
     expect(displayContinuousScrollReports).toEqual([]);
-    expect(result.current.displayContinuousScroll).toBe(false);
 
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(displayContinuousScrollReports).toEqual([true]);
-    expect(result.current.displayContinuousScroll).toBe(true);
   });
 
   it('moves displayScrRef immediately for internal navigation (no fade)', () => {

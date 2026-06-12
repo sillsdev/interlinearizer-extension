@@ -5,9 +5,11 @@ import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
+import useBookIndexes from '../hooks/useBookIndexes';
 import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import { isWordToken } from '../types/type-guards';
+import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { useInterlinearNav } from './InterlinearNavContext';
@@ -110,14 +112,8 @@ function InterlinearizerInner({
    * @returns The active verse's segment, or `undefined` when no segment matches.
    */
   const findActiveSegment = useCallback(
-    () =>
-      book.segments.find(
-        (seg) =>
-          seg.startRef.book === scrRef.book &&
-          seg.startRef.chapter === scrRef.chapterNum &&
-          seg.startRef.verse === scrRef.verseNum,
-      ),
-    [book.segments, scrRef.book, scrRef.chapterNum, scrRef.verseNum],
+    () => book.segments.find((seg) => isSameVerse(seg.startRef, scrRef)),
+    [book.segments, scrRef],
   );
 
   // Seed focusedTokenRef from the active verse on first render so the views always see a defined
@@ -135,54 +131,19 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
-  /** Maps every segment id to the segment; used to resolve a focused token's verse. */
-  const segmentById = useMemo(() => {
-    const map = new Map<string, Segment>();
-    book.segments.forEach((seg) => map.set(seg.id, seg));
-    return map;
-  }, [book.segments]);
-
-  /** All word tokens in book order — index into this array is the phrase index. */
-  const wordTokens = useMemo(
-    () => book.segments.flatMap((seg) => seg.tokens).filter(isWordToken),
-    [book.segments],
-  );
-
-  /**
-   * Maps every word token ref to its flat book-level index; used to sort phrase tokens in document
-   * order.
-   */
-  const tokenDocOrder = useMemo(() => {
-    const map = new Map<string, number>();
-    wordTokens.forEach((t, i) => map.set(t.ref, i));
-    return map;
-  }, [wordTokens]);
-
-  /** Maps every token ref to the id of the segment that contains it. */
-  const tokenSegmentMap = useMemo(() => {
-    const map = new Map<string, string>();
-    book.segments.forEach((seg) => {
-      seg.tokens.forEach((t) => map.set(t.ref, seg.id));
-    });
-    return map;
-  }, [book.segments]);
-
-  /** Maps every word token ref to the token; used by views to resolve focus context. */
-  const wordTokenByRef = useMemo(() => {
-    const map = new Map<string, (typeof wordTokens)[number]>();
-    wordTokens.forEach((t) => map.set(t.ref, t));
-    return map;
-  }, [wordTokens]);
+  // Book-wide lookup indexes the views share, built in one pass over the segment list.
+  const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
 
-  // Continuous-scroll mode actually rendered. A toggle defers this to the recenter midpoint so the
-  // horizontal strip mounts/unmounts in lockstep with the segments' display swap — never on the old
-  // content the instant the toggle flips. The fade clock lives in `useSegmentWindow` (inside
-  // SegmentListView), which flips this setter inside its midpoint state batch — so the strip below
-  // mounts/unmounts in the *same* React commit as the list's window rebuild, and the post-recenter
-  // re-snap measures the active verse against the strip-included layout.
+  // Continuous-scroll mode actually rendered, passed back down to SegmentListView as the display
+  // mode its segments render. A toggle defers this to the recenter midpoint so the horizontal strip
+  // mounts/unmounts in lockstep with the segments' display swap — never on the old content the
+  // instant the toggle flips. The fade clock lives in `useSegmentWindow` (inside SegmentListView),
+  // which flips this setter inside its midpoint state batch — so the strip below mounts/unmounts in
+  // the *same* React commit as the list's window rebuild, and the post-recenter re-snap measures
+  // the active verse against the strip-included layout.
   const [displayContinuousScroll, setDisplayContinuousScroll] = useState(continuousScroll);
 
   // Fade the whole interlinearizer (strip + list) out and back in across a continuous-scroll toggle,
@@ -269,13 +230,8 @@ function InterlinearizerInner({
       if (!seg) return;
       const { current } = scrRefRef;
       if (seg.startRef.book !== current.book) return;
-      if (seg.startRef.chapter === current.chapterNum && seg.startRef.verse === current.verseNum) {
-        return;
-      }
-      navigate(
-        { book: seg.startRef.book, chapterNum: seg.startRef.chapter, verseNum: seg.startRef.verse },
-        'internal',
-      );
+      if (isSameVerse(seg.startRef, current)) return;
+      navigate(toSerializedVerseRef(seg.startRef), 'internal');
     },
     [segmentById, tokenSegmentMap, navigate, scrRefRef],
   );
@@ -291,12 +247,8 @@ function InterlinearizerInner({
   const handleSegmentSelect = useCallback(
     (ref: ScriptureRef, tokenRef?: string) => {
       const { current } = scrRefRef;
-      if (
-        ref.book !== current.book ||
-        ref.chapter !== current.chapterNum ||
-        ref.verse !== current.verseNum
-      ) {
-        navigate({ book: ref.book, chapterNum: ref.chapter, verseNum: ref.verse }, 'internal');
+      if (!isSameVerse(ref, current)) {
+        navigate(toSerializedVerseRef(ref), 'internal');
       }
       if (tokenRef) setFocusedTokenRef(tokenRef);
     },
@@ -341,6 +293,7 @@ function InterlinearizerInner({
           scrRef={scrRef}
           focusedTokenRef={focusedTokenRef}
           continuousScroll={continuousScroll}
+          displayContinuousScroll={displayContinuousScroll}
           onDisplayContinuousScrollChange={setDisplayContinuousScroll}
           consumeInternalNav={consumeInternalNav}
           reportSettled={reportSettled}

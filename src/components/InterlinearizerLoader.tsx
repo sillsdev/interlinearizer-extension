@@ -18,6 +18,16 @@ import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavConte
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /**
+ * WebView menu holding only the platform defaults. Used both as the `useData` default while the
+ * provider's menu is loading and as the fallback when it returns an error.
+ */
+const DEFAULT_WEB_VIEW_MENU = {
+  topMenu: undefined,
+  includeDefaults: true,
+  contextMenu: undefined,
+};
+
+/**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
  * loader and the whole {@link Interlinearizer} subtree read and write navigation through one source
  * of truth, then delegates the actual loading/rendering to {@link InterlinearizerLoaderInner}.
@@ -162,7 +172,7 @@ function InterlinearizerLoaderInner({
       }
     };
 
-    loadAnalysis().catch(() => {});
+    loadAnalysis();
 
     return () => {
       canceled = true;
@@ -275,7 +285,7 @@ function InterlinearizerLoaderInner({
    */
   const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
     'interlinearizer.mainWebView',
-    { topMenu: undefined, includeDefaults: true, contextMenu: undefined },
+    DEFAULT_WEB_VIEW_MENU,
   );
 
   /**
@@ -289,7 +299,7 @@ function InterlinearizerLoaderInner({
     const menu =
       webViewMenuPossiblyError && !isPlatformError(webViewMenuPossiblyError)
         ? webViewMenuPossiblyError
-        : { topMenu: undefined, includeDefaults: true, contextMenu: undefined };
+        : DEFAULT_WEB_VIEW_MENU;
     if (!menu.topMenu || activeProject) return menu.topMenu;
     const { items } = menu.topMenu;
     /* v8 ignore next */ if (!Array.isArray(items)) return menu.topMenu;

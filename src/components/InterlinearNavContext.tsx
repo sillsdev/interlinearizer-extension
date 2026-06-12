@@ -89,14 +89,11 @@ export function verseKey(ref: SerializedVerseRef): string {
 }
 
 /**
- * How long an unconsumed internal-navigation marker stays valid, in milliseconds. A marker is
- * normally consumed by the host's echo of the navigated reference within a few milliseconds; one
- * can only go unconsumed when React batches rapid internal clicks (verse A then verse B in one
- * frame) and the host echoes just the final value, leaving A's marker stranded. Without an expiry,
- * a much-later _external_ navigation to A would consume the stale marker and skip the recenter fade
- * it should show. A few seconds is orders of magnitude beyond any echo round-trip, so a legitimate
- * marker can never expire early, while a stranded one is gone long before the user could plausibly
- * navigate back to that verse externally.
+ * How long an unconsumed internal-navigation marker stays valid, in milliseconds. The host's echo
+ * normally consumes a marker within milliseconds, but when React batches rapid clicks (verse A then
+ * B in one frame) the host echoes only the final value, stranding A's marker. Without expiry, a
+ * much-later external navigation to A would consume the stale marker and skip its recenter fade. 3s
+ * is far beyond any echo round-trip yet well before the user could plausibly navigate back.
  */
 export const INTERNAL_NAV_TTL_MS = 3000;
 
@@ -271,15 +268,12 @@ export function InterlinearNavProvider({
 
   /**
    * Verse keys of internal navigations still awaiting their host round-trip, each mapped to its
-   * `Date.now()` stamp. A `navigate(ref, 'internal')` records `verseKey(ref)`; `consumeInternalNav`
-   * removes it on match. A keyed collection (not a single value) handles rapid successive internal
-   * clicks: if two verses are clicked before the host delivers the first `liveScrRef`, both keys
-   * stay pending so neither delivery is misread as external. The stamp puts a TTL
-   * ({@link INTERNAL_NAV_TTL_MS}) on each marker: when React batches such rapid clicks into one
-   * update, the host echoes only the final value, stranding the earlier marker — unexpired, it
-   * would misclassify a later external navigation to that verse as internal and suppress its
-   * recenter fade. BOTH readers honor the TTL: `consumeInternalNav` (which also evicts expired
-   * markers) and the render-phase mid-reveal guard (a pure read — no eviction during render).
+   * `Date.now()` stamp. `navigate(ref, 'internal')` records `verseKey(ref)`; `consumeInternalNav`
+   * removes it on match. Keyed (not a single value) so that rapid successive clicks both stay
+   * pending and neither host delivery is misread as external. The stamp gives each marker a TTL
+   * ({@link INTERNAL_NAV_TTL_MS} — see its doc for why stranded markers must expire), honored by
+   * BOTH readers: `consumeInternalNav` (which also evicts expired markers) and the render-phase
+   * mid-reveal guard (a pure read — no eviction during render).
    */
   const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
@@ -341,18 +335,14 @@ export function InterlinearNavProvider({
     verseKey(liveScrRef) !== verseKey(prevLiveScrRef) &&
     !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(verseKey(liveScrRef)))
   ) {
-    // A follow-up external navigation landing while the cross-book reveal is still animating. The
-    // host resolves one picker selection as two navigations — the book change first, the precise
-    // target a beat later — so the second routinely arrives mid-fade-in. Left alone it would fade
-    // the freshly revealed content a second time (curtain up, content out, content in: the "double
-    // fade"). Instead, fold it into the same curtain cycle: re-engage the curtain (the CSS
-    // transition carries the opacity smoothly down from wherever the rise had reached), let the
-    // views re-anchor on the new verse behind it, and lift once on their settle. Internal echoes
-    // (a click made during the reveal) are exempt — the curtain must not drop over a navigation
-    // whose target is already on screen — but the exemption honors the marker TTL, so an expired
-    // stranded marker (a batched rapid-click whose echo never arrived) cannot suppress the
-    // re-engage. The read is pure (no eviction): this runs during render, so the map must not be
-    // mutated here; `consumeInternalNav` handles eviction.
+    // A follow-up external navigation landing mid-fade-in: the host resolves one picker selection
+    // as two navigations (book change, then precise target), so the second routinely arrives while
+    // the reveal is still animating and would fade the fresh content a second time. Instead,
+    // re-engage the curtain (the CSS transition carries opacity smoothly down from wherever the
+    // rise reached) and lift once when the views settle on the new verse. Internal echoes (a click
+    // made during the reveal) are exempt — their target is already on screen — but the exemption
+    // honors the marker TTL, so a stranded marker cannot suppress the re-engage. Pure read, no
+    // eviction: this runs during render; `consumeInternalNav` handles eviction.
     /* v8 ignore next -- defensive: reportSettled always arms the fade-in timer alongside 'in' */
     if (fadeInTimeoutRef.current !== undefined) clearTimeout(fadeInTimeoutRef.current);
     fadeInTimeoutRef.current = undefined;

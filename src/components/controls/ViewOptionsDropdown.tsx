@@ -153,12 +153,11 @@ export default function ViewOptionsDropdown({
         createPortal(
           /* Clicking outside the panel closes it. */
           <>
-            {/* The backdrop is an invisible click-catcher, so its z-index only affects hit
-                testing. It must stay BELOW the toolbar's stacking context (tw:z-10, created by the
-                sticky TabToolbarContainer) so the gear button itself receives clicks while the
-                dropdown is open and its onClick toggle — not the backdrop — closes it. Raising the
-                button instead would not work: the toolbar's stacking context caps every descendant
-                at level 10 against this portaled sibling. Keep panel (z-30) > backdrop. */}
+            {/* The invisible backdrop must stay BELOW the toolbar's stacking context (tw:z-10,
+                from the sticky TabToolbarContainer) so the gear button's onClick — not the
+                backdrop — closes the dropdown. Raising the button instead wouldn't work: the
+                toolbar caps its descendants at z-10 against this portaled sibling.
+                Keep panel (z-30) > backdrop. */}
             <div
               aria-hidden="true"
               className="tw:fixed tw:inset-0 tw:z-5"

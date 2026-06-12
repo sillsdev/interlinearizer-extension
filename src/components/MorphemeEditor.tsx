@@ -116,16 +116,16 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Stops the click from reaching ancestor click handlers and cancels the click's default action.
-   * The panel is portaled to document.body, so the browser's native label activation cannot fire,
-   * but React synthetic events still bubble through the React tree (portal boundary included) to
-   * the token chip and its phrase-selection handlers.
+   * Stops the click from reaching ancestor click handlers. The panel is portaled to document.body,
+   * so the browser's native label activation cannot fire, but React synthetic events still bubble
+   * through the React tree (portal boundary included) to the token chip and its phrase-selection
+   * handlers. The click's default action is left alone so interactions inside the panel (e.g. the
+   * panel's own label focusing its input) keep their native behavior.
    *
    * @param e - The mouse event on the popover panel.
    */
   const handlePanelClick = (e: MouseEvent) => {
     e.stopPropagation();
-    e.preventDefault();
   };
 
   /**
@@ -134,7 +134,7 @@ export function MorphemeBreakdownPopover({
    * when the token has no breakdown yet ({@link handleSave} would otherwise create a single-morpheme
    * breakdown equal to the pre-filled surface text), because an accidental outside click is not a
    * deliberate commit. `preventDefault` cancels any default action of whatever sits under the
-   * backdrop (see {@link handlePanelClick}).
+   * backdrop.
    *
    * @param e - The mouse event on the full-screen backdrop.
    */

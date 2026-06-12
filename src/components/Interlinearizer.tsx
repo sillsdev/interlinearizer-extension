@@ -33,9 +33,9 @@ type InterlinearizerProps = Readonly<{
   continuousScroll: boolean;
   /**
    * Current scripture reference used to highlight the active verse. Must carry a normalized verse
-   * number (>= 1): production refs flow through `normalizeScrRef` in `InterlinearNavContext`,
-   * which maps a verse-0 (chapter heading) selection to verse 1 before it reaches this component.
-   * A raw verse-0 ref would match no segment, leaving focus unseeded and nothing highlighted.
+   * number (>= 1): production refs flow through `normalizeScrRef` in `InterlinearNavContext`, which
+   * maps a verse-0 (chapter heading) selection to verse 1 before it reaches this component. A raw
+   * verse-0 ref would match no segment, leaving focus unseeded and nothing highlighted.
    */
   scrRef: SerializedVerseRef;
   /**

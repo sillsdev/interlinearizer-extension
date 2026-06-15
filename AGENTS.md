@@ -107,6 +107,17 @@ Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Cove
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
 
+### Branches not worth testing
+
+100% coverage is enforced, but coverage is a floor, not a goal — chasing it produces low-value tests that bloat the suite and slow it down. Do **not** write a dedicated test for a branch whose only purpose is to satisfy the coverage gate when the branch carries no real behavior. Such branches should instead be excluded from coverage (via `/* v8 ignore next */` with a one-line reason, or the explicit exclusions in the Jest config) rather than tested. Branches not worth a dedicated test:
+
+- **Defensive/unreachable guards** — null/undefined checks for values that the type system or call sites already guarantee, `default` cases on exhaustive switches, and "this should never happen" throws.
+- **Trivial pass-throughs** — branches that only forward arguments, return a constant, or pick between two equivalent literals with no logic.
+- **Framework/wiring glue** — branches that exist only to satisfy a library's API shape (e.g., optional-prop fallbacks that mirror the library default).
+- **Logging-only branches** — code paths that differ only in what they log.
+
+This is purely about which branches may be explicitly ignored from coverage. It is **not** license to consolidate tests: where a branch does carry real behavior, still prefer a separate, dedicated test for each side of the condition.
+
 ### Mock internals
 
 Key semantic properties of the mock setup:

@@ -234,6 +234,36 @@ function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLEl
   });
 }
 
+/**
+ * Mounts a stub segment marked `aria-current="true"` — the recenter target the window hook snaps to
+ * the top — into `container`.
+ *
+ * @param container - The scroll container to mount into.
+ * @returns The mounted active-segment element.
+ */
+function mountActiveSegment(container: HTMLElement): HTMLElement {
+  const active = document.createElement('div');
+  active.setAttribute('aria-current', 'true');
+  container.appendChild(active);
+  return active;
+}
+
+/**
+ * Mounts a stub `[data-snap-spacer]` div — the element `snapActiveToTop` grows when
+ * `scrollIntoView` can't reach the top — into `container`.
+ *
+ * @param container - The scroll container to mount into.
+ * @param initialHeight - Optional starting `style.height` (e.g. to assert it resets to `0px`).
+ * @returns The mounted spacer element.
+ */
+function mountSnapSpacer(container: HTMLElement, initialHeight?: string): HTMLElement {
+  const spacer = document.createElement('div');
+  spacer.setAttribute('data-snap-spacer', '');
+  if (initialHeight !== undefined) spacer.style.height = initialHeight;
+  container.appendChild(spacer);
+  return spacer;
+}
+
 beforeEach(() => {
   jest.useFakeTimers();
   global.ioInstances = [];
@@ -652,9 +682,7 @@ describe('useSegmentWindow', () => {
     });
 
     // Mark the newly-active segment so the layout effect can find it via aria-current.
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     act(() => {
       rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } });
@@ -677,13 +705,8 @@ describe('useSegmentWindow', () => {
       verseNum: 1,
     });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
-
-    const spacer = document.createElement('div');
-    spacer.setAttribute('data-snap-spacer', '');
-    container.appendChild(spacer);
+    const active = mountActiveSegment(container);
+    const spacer = mountSnapSpacer(container);
 
     // Simulate scrollIntoView failing to reach the top: after the call the target still reports a
     // positive offset below the container top (the content below is too short for the browser to
@@ -714,14 +737,8 @@ describe('useSegmentWindow', () => {
       verseNum: 1,
     });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
-
-    const spacer = document.createElement('div');
-    spacer.setAttribute('data-snap-spacer', '');
-    spacer.style.height = '50px';
-    container.appendChild(spacer);
+    mountActiveSegment(container);
+    const spacer = mountSnapSpacer(container, '50px');
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
@@ -741,9 +758,7 @@ describe('useSegmentWindow', () => {
       verseNum: 1,
     });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
@@ -766,9 +781,7 @@ describe('useSegmentWindow', () => {
       verseNum: 1,
     });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
@@ -799,9 +812,7 @@ describe('useSegmentWindow', () => {
         undefined,
         onSettled,
       );
-      const active = document.createElement('div');
-      active.setAttribute('aria-current', 'true');
-      container.appendChild(active);
+      mountActiveSegment(container);
       // Mount the segment wrapper so the compensation/relay observer subscribes.
       const wrapper = document.createElement('div');
       container.appendChild(wrapper);
@@ -836,9 +847,7 @@ describe('useSegmentWindow', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     const { container } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 1 });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     // Flush any pending frames; the initial mount must not snap (no recenter happened).
     act(() => jest.advanceTimersByTime(16));
@@ -853,9 +862,7 @@ describe('useSegmentWindow', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     const { container } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 30 });
 
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     // The mount-snap loop runs on this fresh mid-book mount (skipped when the anchor is at the book
     // start), pulling the active verse to the top behind the loader curtain.
@@ -884,9 +891,7 @@ describe('useSegmentWindow', () => {
       undefined,
       onSettled,
     );
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     // The mount snap re-snaps once after paint, then — no further resize waves fire in jsdom — the
     // quiet window elapses and it reports settled. Advance past the rAF, the quiet window, and the
@@ -905,9 +910,7 @@ describe('useSegmentWindow', () => {
       undefined,
       onSettled,
     );
-    const active = document.createElement('div');
-    active.setAttribute('aria-current', 'true');
-    container.appendChild(active);
+    mountActiveSegment(container);
 
     // Drain the initial-mount settle (anchor at book start → next-frame settle).
     act(() => jest.advanceTimersByTime(16));
@@ -932,9 +935,7 @@ describe('useSegmentWindow', () => {
         undefined,
         onSettled,
       );
-      const active = document.createElement('div');
-      active.setAttribute('aria-current', 'true');
-      container.appendChild(active);
+      mountActiveSegment(container);
       const wrapper = document.createElement('div');
       container.appendChild(wrapper);
       act(() => result.current.contentRef(wrapper));

@@ -1,5 +1,5 @@
 /** @file Type guards for narrowing interlinearizer types and validating parsed JSON payloads. */
-import type { AssignmentStatus, TextAnalysis, Token } from 'interlinearizer';
+import type { AssignmentStatus, DraftProject, TextAnalysis, Token } from 'interlinearizer';
 import type { InterlinearProjectSummary } from './interlinear-project-summary';
 
 /**
@@ -191,5 +191,33 @@ export function isTextAnalysis(value: unknown): value is TextAnalysis {
     'phraseAnalysisLinks' in value &&
     Array.isArray(value.phraseAnalysisLinks) &&
     value.phraseAnalysisLinks.every(isPhraseAnalysisLink)
+  );
+}
+
+/**
+ * Type guard for {@link DraftProject} parsed from unknown JSON. Validates the envelope fields and
+ * delegates the `analysis` to {@link isTextAnalysis}, so malformed drafts are rejected before
+ * persisting.
+ *
+ * @param value - The value to test, typically a parsed JSON object of unknown shape.
+ * @returns `true` if `value` satisfies the {@link DraftProject} shape, narrowing its type
+ *   accordingly.
+ */
+export function isDraftProject(value: unknown): value is DraftProject {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'sourceProjectId' in value &&
+    typeof value.sourceProjectId === 'string' &&
+    'analysisLanguages' in value &&
+    Array.isArray(value.analysisLanguages) &&
+    value.analysisLanguages.every((l) => typeof l === 'string') &&
+    'dirty' in value &&
+    typeof value.dirty === 'boolean' &&
+    (!('targetProjectId' in value) || typeof value.targetProjectId === 'string') &&
+    (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
+    (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&
+    'analysis' in value &&
+    isTextAnalysis(value.analysis)
   );
 }

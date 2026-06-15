@@ -119,6 +119,34 @@ declare module 'papi-shared-types' {
     'interlinearizer.openProjectInfoModal': () => Promise<void>;
 
     /**
+     * Saves the current draft's analysis to the active project (the Save target), or opens the Save
+     * As modal when there is no active project. The backend registers this command to make it
+     * visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.save': () => Promise<void>;
+
+    /**
+     * Opens the Save As modal in the Interlinearizer WebView, where the user can save the draft to
+     * a new project or overwrite an existing one. The backend registers this command to make it
+     * visible to the platform menu system; all logic executes in the WebView.
+     */
+    'interlinearizer.openSaveAsModal': () => Promise<void>;
+
+    /**
+     * Removes the currently viewed book's analysis from the draft (after an in-WebView
+     * confirmation). The backend registers this command to make it visible to the platform menu
+     * system; all logic executes in the WebView.
+     */
+    'interlinearizer.wipeBook': () => Promise<void>;
+
+    /**
+     * Removes the entire draft's analysis (after an in-WebView confirmation). The backend registers
+     * this command to make it visible to the platform menu system; all logic executes in the
+     * WebView.
+     */
+    'interlinearizer.wipeDraft': () => Promise<void>;
+
+    /**
      * Returns the interlinearizer project with the given UUID as a JSON string, including its full
      * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
      * analysis.
@@ -143,6 +171,34 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       analysisJson: string,
     ) => Promise<void>;
+
+    /**
+     * Returns the draft working buffer for the given source project, serialized as a JSON string.
+     * Creates and returns a fresh empty draft when none has been written. The WebView loads this on
+     * mount to seed the editor. The draft is decoupled from saved projects and never appears in the
+     * project picker.
+     *
+     * @param sourceProjectId Platform.Bible source project ID whose draft to fetch.
+     * @returns JSON-stringified `DraftProject`.
+     * @throws {SyntaxError} If the stored draft contains invalid JSON.
+     * @throws If `papi.storage.readUserData` rejects for a reason other than the draft not
+     *   existing.
+     */
+    'interlinearizer.getDraft': (sourceProjectId: string) => Promise<string>;
+
+    /**
+     * Persists the draft working buffer for the given source project. Called from the WebView after
+     * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
+     * wiped.
+     *
+     * @param sourceProjectId Platform.Bible source project ID whose draft to write.
+     * @param draftJson JSON-stringified `DraftProject` to persist.
+     * @returns Promise that resolves to void once the draft has been written to storage.
+     * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
+     *   notification is sent before rethrowing so callers do not need to send a second
+     *   notification.
+     */
+    'interlinearizer.saveDraft': (sourceProjectId: string, draftJson: string) => Promise<void>;
 
     /**
      * Updates the metadata of an existing interlinearizer project. Returns the updated project as a
@@ -1095,6 +1151,58 @@ declare module 'interlinearizer' {
      * aligns source and target tokens.
      */
     links?: AlignmentLink[];
+  }
+
+  /**
+   * The always-present, auto-saved working buffer for a single source project. Decoupled from the
+   * user's saved {@link InterlinearProject}s: it is stored under its own `draft:{sourceProjectId}`
+   * key, is never added to the `projectIds` index, and is never shown in the project picker.
+   *
+   * The draft is the runtime source of truth for the analysis being edited. Every gloss / phrase
+   * write is persisted here (so work is never lost), independent of the active project. The active
+   * project — the **Save target** — is tracked separately in WebView state; `Save` copies the
+   * draft's analysis into it, and `Save As` copies it into a new or existing project.
+   *
+   * As with {@link InterlinearProject}, the `Book` hierarchy is not stored — it is rebuilt from USJ
+   * on load. Alignment `links` are intentionally not carried here yet (there is no link-editing
+   * feature); `Save` preserves a target project's existing links via `updateAnalysis`.
+   */
+  export interface DraftProject {
+    /** Platform.Bible source project ID this draft belongs to; equals the storage key suffix. */
+    sourceProjectId: string;
+
+    /**
+     * BCP 47 tags for the gloss / annotation languages used while editing this draft. Seeded from
+     * the platform UI language for a fresh source, or copied from a project when one is opened into
+     * the draft. Used as the new project's `analysisLanguages` on Save As.
+     */
+    analysisLanguages: string[];
+
+    /**
+     * Platform.Bible target-text project ID, present only when the draft was opened from a
+     * bilateral alignment project. Carried so Save As can recreate the bilateral binding.
+     */
+    targetProjectId?: string;
+
+    /**
+     * Name typed in the "New" dialog, retained only to prefill the Save As dialog. A draft has no
+     * project name of its own; this is never shown as one until the draft is saved to a project.
+     */
+    suggestedName?: string;
+
+    /** Description typed in the "New" dialog, retained only to prefill the Save As dialog. */
+    suggestedDescription?: string;
+
+    /** The live analysis being edited and auto-saved. Empty for a fresh draft. */
+    analysis: TextAnalysis;
+
+    /**
+     * Whether the draft has diverged from its active project (the Save target) since the last Save
+     * / Save As / Open / New. Drives the discard confirmation and the tab's unsaved-changes
+     * indicator. `true` after any edit; reset to `false` whenever the draft is synced to a
+     * project.
+     */
+    dirty: boolean;
   }
 
   // ---------------------------------------------------------------------------

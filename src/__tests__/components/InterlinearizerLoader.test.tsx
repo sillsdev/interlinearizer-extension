@@ -7,13 +7,13 @@ import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Book, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
+import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
 import type { Dispatch, SetStateAction } from 'react';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
-import { emptyAnalysis } from '../../types/empty-factories';
+import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
@@ -77,6 +77,37 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
 jest.mock('../../components/controls/ScriptureNavControls', () => ({
   __esModule: true,
   default: () => <div data-testid="scripture-nav-controls" />,
+}));
+
+jest.mock('../../components/modals/WipeConfirm', () => ({
+  __esModule: true,
+  /**
+   * Minimal WipeConfirm stand-in exposing the scope and confirm/cancel actions so tests can drive
+   * the loader's wipe handlers without the real dialog's localization.
+   *
+   * @param scope - Which wipe is being confirmed (`'book'` or `'all'`).
+   * @param onConfirm - Invoked when the user confirms the wipe.
+   * @param onCancel - Invoked when the user backs out.
+   * @returns A confirm/cancel panel tagged with the scope.
+   */
+  WipeConfirm: ({
+    scope,
+    onConfirm,
+    onCancel,
+  }: {
+    scope: 'book' | 'all';
+    onConfirm: () => void;
+    onCancel: () => void;
+  }) => (
+    <div data-testid="wipe-confirm-panel" data-scope={scope}>
+      <button type="button" data-testid="wipe-confirm" onClick={onConfirm}>
+        Confirm
+      </button>
+      <button type="button" data-testid="wipe-confirm-cancel" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  ),
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
@@ -145,12 +176,14 @@ jest.mock('../../components/modals/ProjectModals', () => ({
   /**
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
    * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
-   * without mounting the full modal tree.
+   * without mounting the full modal tree. Accepts (and ignores) the draft-related props the loader
+   * now passes (`dirty`, `getDraftSnapshot`, `loadFromProject`, `markSynced`, `resetDraft`).
    *
    * @param modal - Current modal identifier controlling which stub panel is rendered.
    * @param setModal - Callback to transition to a different modal state.
    * @param activeProject - The currently active interlinear project, or undefined when none is
    *   selected.
+   * @param defaultAnalysisLanguage - BCP 47 tag forwarded as the create modal's default language.
    * @param useWebViewState - Injected hook used to read and write persisted WebView state; must
    *   support the `'activeProject'` key.
    * @returns A JSX element containing the stub modal panels keyed by `modal`.
@@ -166,6 +199,11 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     setModal: (m: string) => void;
     activeProject: MockProject | undefined;
     defaultAnalysisLanguage?: string;
+    dirty: boolean;
+    getDraftSnapshot: () => DraftProject | undefined;
+    loadFromProject: (project: unknown) => void;
+    markSynced: () => void;
+    resetDraft: (config: unknown) => void;
     useWebViewState: (
       key: string,
       def: MockProject | undefined,
@@ -227,6 +265,17 @@ jest.mock('../../components/modals/ProjectModals', () => ({
             </button>
           </div>
         )}
+        {modal === 'saveAs' && (
+          <div data-testid="save-as-modal">
+            <button
+              type="button"
+              data-testid="save-as-modal-close"
+              onClick={() => setModal('none')}
+            >
+              Close
+            </button>
+          </div>
+        )}
         {modal === 'metadata' && activeProject && (
           <div data-testid="metadata-modal">
             <button
@@ -273,6 +322,37 @@ function makeScrollGroupHook(ref: SerializedVerseRef = defaultScrRef) {
     number | undefined,
     (id: number | undefined) => void,
   ] => [ref, () => {}, undefined, () => {}];
+}
+
+/**
+ * Renders {@link InterlinearizerLoader} with the given props, supplying a fresh
+ * `updateWebViewDefinition` spy (which tests can read back) and sensible defaults for the scroll
+ * group and WebView-state hooks. Centralizing the render keeps every call site supplying the
+ * required `updateWebViewDefinition` prop.
+ *
+ * @param options - Optional overrides.
+ * @param options.useWebViewScrollGroupScrRef - Scroll-group hook; defaults to a GEN 1:1 stub.
+ * @param options.useWebViewState - WebView-state hook; defaults to a fresh empty store.
+ * @param options.projectId - Source project ID; defaults to {@link testProjectId}.
+ * @returns The Testing Library render result plus the `updateWebViewDefinition` spy.
+ */
+function renderLoader(
+  options: {
+    useWebViewScrollGroupScrRef?: ReturnType<typeof makeScrollGroupHook>;
+    useWebViewState?: ReturnType<typeof makeWebViewState>;
+    projectId?: string;
+  } = {},
+) {
+  const updateWebViewDefinition = jest.fn(() => true);
+  const result = render(
+    <InterlinearizerLoader
+      projectId={options.projectId ?? testProjectId}
+      useWebViewScrollGroupScrRef={options.useWebViewScrollGroupScrRef ?? makeScrollGroupHook()}
+      useWebViewState={options.useWebViewState ?? makeWebViewState()}
+      updateWebViewDefinition={updateWebViewDefinition}
+    />,
+  );
+  return { ...result, updateWebViewDefinition };
 }
 
 /**
@@ -348,7 +428,9 @@ describe('InterlinearizerLoader', () => {
     interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();
-    mockSendCommand.mockResolvedValue(undefined);
+    // The loader's draft hook calls `interlinearizer.getDraft` on mount; default to a valid empty
+    // draft so the editor renders. Individual tests override with mockResolvedValueOnce.
+    mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
     jest
       .mocked(useData)
       .mockReturnValue(
@@ -358,45 +440,35 @@ describe('InterlinearizerLoader', () => {
     mockSettings();
   });
 
-  it('shows nav controls when interface mode is power', () => {
+  it('shows nav controls when interface mode is power', async () => {
     mockSettings('power');
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByTestId('scripture-nav-controls')).toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('hides nav controls when interface mode is simple', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('hides nav controls when interface mode is simple', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.queryByTestId('scripture-nav-controls')).not.toBeInTheDocument();
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('normalizes a chapter-level (verse 0) reference to verse 1 before passing it to Interlinearizer', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook({
+  it('normalizes a chapter-level (verse 0) reference to verse 1 before passing it to Interlinearizer', async () => {
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
           chapterNum: 3,
           verseNum: 0,
-        })}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+        }),
+      });
+    });
 
     expect(capturedInterlinearizerProps?.scrRef).toEqual({
       book: 'GEN',
@@ -405,18 +477,16 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  it('passes a verse-level reference through to Interlinearizer unchanged', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook({
+  it('passes a verse-level reference through to Interlinearizer unchanged', async () => {
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
           book: 'GEN',
           chapterNum: 3,
           verseNum: 4,
-        })}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+        }),
+      });
+    });
 
     expect(capturedInterlinearizerProps?.scrRef).toEqual({
       book: 'GEN',
@@ -425,90 +495,66 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  it('shows Loading when book data has not arrived', () => {
+  it('shows Loading when book data has not arrived', async () => {
     mockBookData({ book: undefined, isLoading: true });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 
-  it('shows an error heading and message when bookError is set', () => {
+  it('shows an error heading and message when bookError is set', async () => {
     mockBookData({ book: undefined, bookError: 'Project not found' });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
-  it('shows an error heading and message when tokenization throws an Error', () => {
+  it('shows an error heading and message when tokenization throws an Error', async () => {
     mockBookData({
       book: undefined,
       tokenizeError: { message: 'parse failure', raw: new Error('parse failure') },
     });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
     expect(screen.getByText('parse failure')).toBeInTheDocument();
   });
 
-  it('shows an error message when tokenization throws a non-Error value', () => {
+  it('shows an error message when tokenization throws a non-Error value', async () => {
     mockBookData({
       book: undefined,
       tokenizeError: { message: 'unexpected string error', raw: 'unexpected string error' },
     });
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
-  it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', () => {
+  it('passes the checked value from useOptimisticBooleanSetting to ViewOptionsDropdown', async () => {
     mockOptimisticSetting(true);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     const toggle = screen.getByTestId('continuous-scroll-toggle');
     expect(toggle).toHaveAttribute('data-checked', 'true');
   });
 
-  it('gates rendering until the persisted display settings have loaded', () => {
+  it('gates rendering until the persisted display settings have loaded', async () => {
     mockOptimisticSetting(false, jest.fn(), true);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     // The saved settings must arrive before the view renders so the user's stored choices apply on
     // the first paint instead of flashing the hard-coded defaults.
@@ -519,200 +565,131 @@ describe('InterlinearizerLoader', () => {
 
   it('wires ViewOptionsDropdown continuous scroll to the onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     await userEvent.click(screen.getByTestId('continuous-scroll-toggle'));
     expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
   });
 
-  it('passes hideInactiveLinkButtons=false to Interlinearizer by default', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('passes hideInactiveLinkButtons=false to Interlinearizer by default', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.hideInactiveLinkButtons).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     await userEvent.click(screen.getByTestId('hide-inactive-link-buttons-toggle'));
     expect(onChangeByKey.get('interlinearizer.hideInactiveLinkButtons')).toHaveBeenCalledWith(true);
   });
 
-  it('passes simplifyPhrases=false to Interlinearizer by default', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('passes simplifyPhrases=false to Interlinearizer by default', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.simplifyPhrases).toBe(false);
   });
 
   it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
     expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
   });
 
-  it('passes chapterLabelInVerse=false to Interlinearizer by default', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('passes chapterLabelInVerse=false to Interlinearizer by default', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.chapterLabelInVerse).toBe(false);
   });
 
   it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     await userEvent.click(screen.getByTestId('chapter-label-in-verse-toggle'));
     expect(onChangeByKey.get('interlinearizer.chapterLabelInVerse')).toHaveBeenCalledWith(true);
   });
 
-  it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {
+  it('passes continuousScroll=true to Interlinearizer when the setting is true', async () => {
     mockOptimisticSetting(true);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.continuousScroll).toBe(true);
   });
 
-  it('passes continuousScroll=false to Interlinearizer when the setting is false', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('passes continuousScroll=false to Interlinearizer when the setting is false', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.continuousScroll).toBe(false);
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('passes the first analysisLanguages tag from the active project as analysisLanguage', async () => {
-    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
-    await act(async () =>
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={state}
-        />,
-      ),
+  it('takes analysisLanguage from the draft analysisLanguages, not the active project', async () => {
+    // The draft owns the analysis language now; a draft configured for French must win even when
+    // the active project's summary lists a different language.
+    mockSendCommand.mockResolvedValueOnce(
+      JSON.stringify({ ...emptyDraft(testProjectId), analysisLanguages: ['fr'] }),
     );
-
-    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
-  });
-
-  it('prefers the project analysisLanguage over the platform interface language', async () => {
-    mockSettings('simple', ['fr']);
-    const state = makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT });
     await act(async () =>
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={state}
-        />,
-      ),
-    );
-
-    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('en');
-  });
-
-  it('falls back to the first interfaceLanguage tag when no project is active', () => {
-    mockSettings('simple', ['fr', 'en']);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
+      renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
     );
 
     expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
   });
 
-  it('passes the platform language to ProjectModals as defaultAnalysisLanguage', () => {
+  it('falls back to the first interfaceLanguage tag when the draft has no analysis language', async () => {
+    // A brand-new source seeds the draft's analysis language from the platform UI language.
+    mockSettings('simple', ['fr', 'en']);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
+  });
+
+  it('passes the platform language to ProjectModals as defaultAnalysisLanguage', async () => {
     mockSettings('simple', ['de']);
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(screen.getByTestId('project-modals')).toHaveAttribute('data-default-lang', 'de');
   });
 
-  it('falls back to "und" as analysisLanguage when no project is active and interfaceLanguage is empty', () => {
-    render(
-      <InterlinearizerLoader
-        projectId={testProjectId}
-        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-        useWebViewState={makeWebViewState()}
-      />,
-    );
+  it('falls back to "und" as analysisLanguage when the draft has no language and interfaceLanguage is empty', async () => {
+    await act(async () => {
+      renderLoader();
+    });
 
     expect(capturedInterlinearizerProps?.analysisLanguage).toBe('und');
   });
 
   describe('modal interactions', () => {
     it('opens the select modal when the project menu selectProject item is clicked', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
 
@@ -720,13 +697,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the create modal directly when the openNewProjectModal menu item is clicked', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
 
@@ -735,13 +708,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes the create modal without showing another when close is clicked from menu source', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-new-project'));
       await userEvent.click(screen.getByTestId('create-modal-close'));
@@ -751,13 +720,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes the select modal when its close button is clicked', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-close'));
@@ -766,13 +731,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the create modal from the select modal create-new button', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-create-new'));
@@ -781,13 +742,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('closes all modals after a project is created from the select modal', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-create-new'));
@@ -798,13 +755,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('sets the active project and closes the select modal when a project is selected', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
@@ -816,14 +769,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('opens the metadata modal from the openProjectInfoModal menu item when a project is active', async () => {
-      const state = makeWebViewState();
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={state}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       // First create a project to set activeProject
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
@@ -834,13 +782,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('does not open the metadata modal from openProjectInfoModal when no project is active', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));
 
@@ -848,13 +792,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('dismisses to none when metadata is closed after being opened from the menu', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
@@ -866,13 +806,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('dismisses to none and clears active project when the active project is deleted from the menu', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
@@ -883,13 +819,9 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('updates the active project name when its metadata is saved', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
@@ -899,7 +831,7 @@ describe('InterlinearizerLoader', () => {
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
     });
 
-    it('renders without error when useData provides a topMenu with items', () => {
+    it('renders without error when useData provides a topMenu with items', async () => {
       const mockWebViewMenu = {
         topMenu: {
           label: 'top',
@@ -931,140 +863,270 @@ describe('InterlinearizerLoader', () => {
             { get: () => jest.fn().mockReturnValue([mockWebViewMenu, jest.fn(), false]) },
           ),
         );
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       expect(screen.getByTestId('tab-toolbar')).toBeInTheDocument();
     });
   });
 
-  describe('project analysis loading', () => {
-    it('passes the stored analysis as initialAnalysis when getProject returns valid JSON', async () => {
+  describe('draft loading', () => {
+    it('loads the draft on mount and passes its analysis as initialAnalysis', async () => {
+      const draftAnalysis = emptyAnalysis();
+      draftAnalysis.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
       mockSendCommand.mockResolvedValueOnce(
-        JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }),
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
       );
-      await act(async () =>
-        render(
-          <InterlinearizerLoader
-            projectId={testProjectId}
-            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-          />,
-        ),
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
-      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(emptyAnalysis());
-      expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getProject', 'proj-1');
+      expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getDraft', testProjectId);
+      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(draftAnalysis);
     });
 
-    it('logs an error and leaves initialAnalysis undefined when getProject rejects', async () => {
+    it('falls back to an empty draft and logs an error when getDraft rejects', async () => {
       const error = new Error('network error');
       mockSendCommand.mockRejectedValueOnce(error);
-      await act(async () =>
-        render(
-          <InterlinearizerLoader
-            projectId={testProjectId}
-            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-          />,
-        ),
-      );
+      await act(async () => {
+        renderLoader();
+      });
 
       expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
-        'Interlinearizer: failed to load project analysis',
+        'Interlinearizer: failed to load draft',
         error,
       );
-      expect(capturedInterlinearizerProps?.initialAnalysis).toBeUndefined();
+      // The fallback empty draft still renders the editor with an empty analysis.
+      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(emptyAnalysis());
     });
 
-    it('skips state updates when the component unmounts before getProject resolves', async () => {
-      let resolveGetProject: ((value: string | undefined) => void) | undefined;
+    it('skips state updates when the component unmounts before getDraft resolves', async () => {
+      let resolveGetDraft: ((value: string) => void) | undefined;
       mockSendCommand.mockReturnValueOnce(
-        new Promise<string | undefined>((resolve) => {
-          resolveGetProject = resolve;
+        new Promise<string>((resolve) => {
+          resolveGetDraft = resolve;
         }),
       );
 
-      const { unmount } = render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-        />,
-      );
+      const { unmount } = renderLoader();
 
       unmount();
-      resolveGetProject?.(JSON.stringify({ id: 'proj-1', analysis: emptyAnalysis() }));
-      await Promise.resolve();
+      resolveGetDraft?.(JSON.stringify(emptyDraft(testProjectId)));
+      await act(async () => {
+        await Promise.resolve();
+      });
 
       expect(jest.mocked(logger.error)).not.toHaveBeenCalled();
     });
   });
 
-  describe('handleSaveAnalysis', () => {
-    it('calls saveAnalysis command with the project id and serialized analysis', async () => {
+  describe('autosave analysis', () => {
+    it('persists edits to the draft via saveDraft when onSaveAnalysis fires', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      const edited = emptyAnalysis();
+      edited.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(edited);
+      });
+
+      const saveDraftCall = mockSendCommand.mock.calls.find(
+        ([command]) => command === 'interlinearizer.saveDraft',
+      );
+      expect(saveDraftCall?.[1]).toBe(testProjectId);
+      const json = saveDraftCall?.[2];
+      const persisted: DraftProject = typeof json === 'string' ? JSON.parse(json) : emptyDraft('x');
+      expect(persisted.analysis).toEqual(edited);
+      expect(persisted.dirty).toBe(true);
+    });
+  });
+
+  describe('save command', () => {
+    it('saves the draft analysis to the active project when Save is clicked with an active project', async () => {
+      const draftAnalysis = emptyAnalysis();
+      draftAnalysis.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+      mockSendCommand.mockResolvedValueOnce(
+        JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
+      );
       await act(async () =>
-        render(
-          <InterlinearizerLoader
-            projectId={testProjectId}
-            useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-            useWebViewState={makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT })}
-          />,
-        ),
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
       expect(mockSendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',
-        JSON.stringify(emptyAnalysis()),
+        JSON.stringify(draftAnalysis),
       );
     });
 
-    it('does not call saveAnalysis when no active project is set', () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
+    it('marks the draft synced after a successful Save, clearing the tab unsaved marker', async () => {
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader({
+          useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
+        });
+      });
+      const updateWebViewDefinition = result?.updateWebViewDefinition;
+
+      // Dirty the draft via an edit so the marker appears, then Save.
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
+
+      updateWebViewDefinition?.mockClear();
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+    });
+
+    it('logs an error when the saveAnalysis command rejects during Save', async () => {
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
       );
 
-      capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      const error = new Error('save failed');
+      mockSendCommand.mockRejectedValueOnce(error);
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
+      expect(jest.mocked(logger.error)).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save draft to project',
+        error,
+      );
+    });
+
+    it('opens the Save As modal when Save is clicked with no active project', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
+      expect(screen.getByTestId('save-as-modal')).toBeInTheDocument();
+      // Nothing was saved to a project since there is no Save target.
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveAnalysis'),
       ).toHaveLength(0);
     });
+
+    it('opens the Save As modal when the openSaveAsModal menu item is clicked', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-save-as'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-modal', 'saveAs');
+    });
+  });
+
+  describe('wipe commands', () => {
+    it('wipes the current book through the draft after confirming the wipe-book dialog', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-book'));
+      // The destructive confirmation must appear before anything is wiped.
+      expect(screen.getByTestId('wipe-confirm')).toBeInTheDocument();
+      expect(
+        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
+      ).toHaveLength(0);
+
+      await userEvent.click(screen.getByTestId('wipe-confirm'));
+
+      // Confirming a book wipe replaces the draft (saveDraft) and dismisses the confirmation.
+      expect(
+        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft').length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
+    });
+
+    it('wipes the whole draft through the draft after confirming the wipe-draft dialog', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
+      expect(screen.getByTestId('wipe-confirm')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('wipe-confirm'));
+
+      const wiped: DraftProject | undefined = (() => {
+        const call = [...mockSendCommand.mock.calls]
+          .reverse()
+          .find(([c]) => c === 'interlinearizer.saveDraft');
+        const json = call?.[2];
+        return typeof json === 'string' ? JSON.parse(json) : undefined;
+      })();
+      expect(wiped?.analysis).toEqual(emptyAnalysis());
+      expect(wiped?.dirty).toBe(true);
+      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
+    });
+
+    it('leaves the draft untouched when the wipe confirmation is canceled', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
+      mockSendCommand.mockClear();
+      await userEvent.click(screen.getByTestId('wipe-confirm-cancel'));
+
+      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
+      expect(
+        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
+      ).toHaveLength(0);
+    });
+  });
+
+  describe('tab unsaved-changes marker', () => {
+    it('reports the plain tab title while the draft is clean', async () => {
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader();
+      });
+
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+      expect(result?.updateWebViewDefinition).not.toHaveBeenCalledWith({
+        title: 'Interlinearizer ●',
+      });
+    });
+
+    it('appends the unsaved marker to the tab title after an autosave dirties the draft', async () => {
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader();
+      });
+
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      });
+
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
+    });
   });
 
   describe('phrase mode plumbing', () => {
-    it('forwards setPhraseMode through to Interlinearizer', () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+    it('forwards setPhraseMode through to Interlinearizer', async () => {
+      await act(async () => {
+        renderLoader();
+      });
 
       expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
       expect(typeof capturedInterlinearizerProps?.setPhraseMode).toBe('function');
     });
 
-    it('updates the captured phraseMode when setPhraseMode is invoked', () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+    it('updates the captured phraseMode when setPhraseMode is invoked', async () => {
+      await act(async () => {
+        renderLoader();
+      });
 
       const originalTokens: PhraseAnalysisLink['tokens'] = [
         { tokenRef: 'tok-1', surfaceText: 'In' },
@@ -1084,14 +1146,10 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('resets phraseMode to view when the active project changes', async () => {
-      render(
-        <InterlinearizerLoader
-          projectId={testProjectId}
-          useWebViewScrollGroupScrRef={makeScrollGroupHook()}
-          useWebViewState={makeWebViewState()}
-        />,
-      );
+    it('resets phraseMode to view when the draft is replaced (wipe)', async () => {
+      await act(async () => {
+        renderLoader();
+      });
 
       // Enter edit mode.
       const originalTokens: PhraseAnalysisLink['tokens'] = [
@@ -1106,13 +1164,9 @@ describe('InterlinearizerLoader', () => {
       });
       expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
 
-      // Simulate a project change: open the select modal and choose a project. The project-modals
-      // stub calls setActiveProject (from useWebViewState) which updates the stored slot; the
-      // subsequent setModal('none') call triggers a React re-render so InterlinearizerLoader reads
-      // the new activeProject value. The useEffect that watches activeProject.id then fires and
-      // resets phraseMode to view.
-      await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
-      await userEvent.click(screen.getByTestId('select-modal-select'));
+      // Wiping the whole draft bumps draftVersion, which the loader watches to reset phraseMode.
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
+      await userEvent.click(screen.getByTestId('wipe-confirm'));
 
       expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });
@@ -1165,34 +1219,42 @@ describe('InterlinearizerLoader', () => {
      * @param initial - The scroll-group reference reported on the first render.
      * @returns `setRef` to stage the next reference and `rerenderNow` to re-render with it.
      */
-    function renderLoader(initial: SerializedVerseRef) {
+    function renderFadeLoader(initial: SerializedVerseRef) {
       const [scrollGroupHook, setRef] = makeMutableScrollGroupHook(initial);
       const webViewState = makeWebViewState();
+      const updateWebViewDefinition = jest.fn(() => true);
       const buildUi = () => (
         <InterlinearizerLoader
           projectId={testProjectId}
           useWebViewScrollGroupScrRef={scrollGroupHook}
           useWebViewState={webViewState}
+          updateWebViewDefinition={updateWebViewDefinition}
         />
       );
       const { rerender } = render(buildUi());
       return { setRef, rerenderNow: () => rerender(buildUi()) };
     }
 
-    it('fades the content out the moment scrRef names a new book', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+    it('fades the content out the moment scrRef names a new book', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
       // Initial GEN load shows no fade.
       expect(fadeOpacity()).toBe('1');
 
       // External jump to MAT: the context detects the book change and the curtain fades out.
-      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, isLoading: true });
-      rerenderNow();
+      controls?.rerenderNow();
       expect(fadeOpacity()).toBe('0');
     });
 
-    it('drops the curtain instantly (no transition) during the fade-out', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+    it('drops the curtain instantly (no transition) during the fade-out', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
       const wrapper = () => screen.getByTestId('book-fade-wrapper');
       // At idle the shared recenter timing is armed for the next rise.
       expect(wrapper().style.transitionDuration).toBe(`${RECENTER_FADE_MS}ms`);
@@ -1200,29 +1262,32 @@ describe('InterlinearizerLoader', () => {
       // Cross-book jump: the old book is swapped for Loading… in the same commit, so a gradual
       // descent has nothing to fade — it would only let a fast-loading new book ghost in at
       // partial opacity (the "false-start fade"). The descent must be instant.
-      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, isLoading: true });
-      rerenderNow();
+      controls?.rerenderNow();
       expect(fadeOpacity()).toBe('0');
       expect(wrapper().style.transitionDuration).toBe('0ms');
     });
 
-    it('shows the Loading curtain (not the old book) during a cross-book swap', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+    it('shows the Loading curtain (not the old book) during a cross-book swap', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 5 });
+      });
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
 
       // Cross-book jump to MAT while the loaded book is still GEN (the window before the USJ arrives /
       // Interlinearizer remounts). Rather than leave the previous book's views mounted — where they
       // would show through the fade as the swap happens — the loader shows the Loading curtain, so
       // nothing of either book is visible until the new one mounts and fades in.
-      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
-      rerenderNow();
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      controls?.rerenderNow();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
       expect(screen.getByText('Loading…')).toBeInTheDocument();
 
       // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
-      rerenderNow();
+      controls?.rerenderNow();
       expect(capturedInterlinearizerProps?.scrRef).toEqual({
         book: 'MAT',
         chapterNum: 5,
@@ -1230,46 +1295,55 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    it('remounts Interlinearizer on a book change but not on a same-book verse change', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+    it('remounts Interlinearizer on a book change but not on a same-book verse change', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
       expect(interlinearizerMountCount).toBe(1);
 
       // A same-book verse change must keep the same Interlinearizer instance (no remount): its
       // scroll/focus state and in-component recenter fade carry the within-book navigation.
-      setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
-      rerenderNow();
+      controls?.setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
+      controls?.rerenderNow();
       expect(interlinearizerMountCount).toBe(1);
 
       // A book change must tear down the old instance and mount a fresh one keyed by the new book, so
       // it never updates in place against carried-over (wrong-book) scroll/focus state — the shuffle
       // that surfaced before the curtain settled.
-      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
-      rerenderNow();
+      controls?.rerenderNow();
       expect(interlinearizerMountCount).toBe(2);
     });
 
-    it('reveals the error instead of staying faded when the new book fails to load', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+    it('reveals the error instead of staying faded when the new book fails to load', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
       expect(fadeOpacity()).toBe('1');
 
       // Cross-book nav whose target book errors: cancelFade must reveal the content rather than
       // leave the error hidden behind a curtain that will never receive a settle.
-      setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
+      controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: undefined, bookError: 'No USJ book available' });
-      rerenderNow();
+      controls?.rerenderNow();
       expect(fadeOpacity()).toBe('1');
       expect(screen.getByText('No USJ book available')).toBeInTheDocument();
     });
 
-    it('does not fade for a same-book external navigation', () => {
-      const { setRef, rerenderNow } = renderLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+    it('does not fade for a same-book external navigation', async () => {
+      let controls: ReturnType<typeof renderFadeLoader> | undefined;
+      await act(async () => {
+        controls = renderFadeLoader({ book: 'GEN', chapterNum: 1, verseNum: 1 });
+      });
       expect(fadeOpacity()).toBe('1');
 
       // A verse change within the same book keeps Interlinearizer mounted; the loader curtain stays
       // up (its own in-component fade handles within-book recenters).
-      setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
-      rerenderNow();
+      controls?.setRef({ book: 'GEN', chapterNum: 1, verseNum: 40 });
+      controls?.rerenderNow();
       expect(fadeOpacity()).toBe('1');
     });
   });

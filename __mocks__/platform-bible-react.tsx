@@ -65,6 +65,42 @@ export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
+/** Sentinel menu item passed by the mock toolbar when the save button is clicked. */
+export const MOCK_SAVE_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_save%',
+  command: 'interlinearizer.save',
+  group: 'interlinearizer.file.actions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the save-as button is clicked. */
+export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_saveAs%',
+  command: 'interlinearizer.openSaveAsModal',
+  group: 'interlinearizer.file.actions',
+  order: 2,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the wipe-book button is clicked. */
+export const MOCK_WIPE_BOOK_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_wipeBook%',
+  command: 'interlinearizer.wipeBook',
+  group: 'interlinearizer.draft.actions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the wipe-draft button is clicked. */
+export const MOCK_WIPE_DRAFT_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_wipeDraft%',
+  command: 'interlinearizer.wipeDraft',
+  group: 'interlinearizer.draft.actions',
+  order: 2,
+  localizeNotes: '',
+};
+
 
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
@@ -125,6 +161,42 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_VIEW_PROJECT_INFO_MENU_ITEM)}
         >
           View project info
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-save"
+          onClick={() => onSelectProjectMenuItem(MOCK_SAVE_MENU_ITEM)}
+        >
+          Save
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-save-as"
+          onClick={() => onSelectProjectMenuItem(MOCK_SAVE_AS_MENU_ITEM)}
+        >
+          Save as
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-wipe-book"
+          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_BOOK_MENU_ITEM)}
+        >
+          Wipe book
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-wipe-draft"
+          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_DRAFT_MENU_ITEM)}
+        >
+          Wipe draft
         </button>
       )}
       {onSelectViewInfoMenuItem && (

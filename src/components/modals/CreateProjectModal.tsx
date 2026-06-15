@@ -1,9 +1,6 @@
-import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
-import { useState, useCallback, useRef } from 'react';
-import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../../types/type-guards';
+import { useState, useCallback } from 'react';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
 const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -18,97 +15,67 @@ const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_cancel%',
 ];
 
+/** Configuration collected by {@link CreateProjectModal} for a new draft. */
+export type CreateDraftConfig = {
+  /**
+   * BCP 47 analysis language tags parsed from the language field (never empty; falls back to
+   * `und`).
+   */
+  analysisLanguages: string[];
+  /** Trimmed name, or `undefined` when the field was left blank. */
+  name?: string;
+  /** Trimmed description, or `undefined` when the field was left blank. */
+  description?: string;
+};
+
 /**
- * Modal dialog that collects project name, description, and analysis language tag before creating a
- * new interlinear project. Submitting sends the `interlinearizer.createProject` command with the
- * known source project ID and the entered values.
+ * Modal dialog that collects the configuration for a new draft — name, description, and analysis
+ * language(s) — then hands it back via {@link onCreateDraft}. No project is persisted here: "New"
+ * resets the working draft to an empty baseline, and a project is only materialized later via Save
+ * As. The typed name/description are retained on the draft to prefill that Save As dialog.
  *
  * @param props - Component props
- * @param props.projectId - Source project to create the interlinear project for
  * @param props.defaultAnalysisLanguage - BCP 47 tag pre-populated in the analysis language field;
  *   caller should pass the platform UI language so the user sees a sensible starting value.
  *   Defaults to `'und'` when absent.
- * @param props.onClose - Callback invoked when the modal should be dismissed (cancel or submit)
- * @param props.onProjectCreated - Optional callback invoked with the full persisted project after
- *   successful creation, before `onClose` is called.
- * @returns The modal overlay with name, description, language inputs and submit/cancel buttons, or
- *   nothing while localized strings are loading.
+ * @param props.onClose - Callback invoked when the modal should be dismissed (cancel).
+ * @param props.onCreateDraft - Callback invoked with the collected configuration on submit.
+ * @returns The modal overlay with name, description, and language inputs, or nothing while
+ *   localized strings are loading.
  */
 export function CreateProjectModal({
-  projectId,
   defaultAnalysisLanguage,
   onClose,
-  onProjectCreated,
+  onCreateDraft,
 }: Readonly<{
-  projectId: string;
   /** BCP 47 tag pre-populated in the analysis language field; defaults to `'und'` when absent. */
   defaultAnalysisLanguage?: string;
   onClose: () => void;
-  onProjectCreated?: (project: InterlinearProjectSummary) => void;
+  onCreateDraft: (config: CreateDraftConfig) => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [analysisLanguages, setAnalysisLanguages] = useState(defaultAnalysisLanguage ?? 'und');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
 
   /**
-   * Sends the `interlinearizer.createProject` command with the collected form values, then notifies
-   * the caller via `onProjectCreated` and closes the modal. Shows a user-visible error notification
-   * if the response cannot be parsed (SyntaxError); for other errors, logs and defers to the
-   * backend command handler to surface the notification.
-   *
-   * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
-   * are trimmed and empty entries dropped. Falls back to `['und']` when the user clears the field.
-   *
-   * @returns A promise that resolves when the command completes or the error is handled.
+   * Parses the analysis-languages input (comma-separated BCP 47 tags; entries trimmed and empties
+   * dropped; falls back to `['und']` when cleared) and hands the configuration to
+   * {@link onCreateDraft}.
    */
-  const handleSubmit = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
-    setIsSubmitting(true);
+  const handleSubmit = useCallback(() => {
     const parsedLanguages = analysisLanguages
       .split(',')
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
     const normalizedAnalysisLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
-    try {
-      const projectJson = await papi.commands.sendCommand(
-        'interlinearizer.createProject',
-        projectId,
-        normalizedAnalysisLanguages,
-        undefined,
-        name.trim() || undefined,
-        description.trim() || undefined,
-      );
-      const parsed: unknown = JSON.parse(projectJson);
-      if (!isInterlinearProjectSummary(parsed)) {
-        await papi.notifications.send({
-          message: '%interlinearizer_error_create_project_failed%',
-          severity: 'error',
-        });
-        return;
-      }
-      onProjectCreated?.(parsed);
-      onClose();
-    } catch (e) {
-      if (e instanceof SyntaxError) {
-        logger.error('Interlinearizer: failed to parse create project response', e);
-        await papi.notifications.send({
-          message: '%interlinearizer_error_create_project_failed%',
-          severity: 'error',
-        });
-        return;
-      }
-      logger.error('Interlinearizer: failed to create project', e);
-    } finally {
-      isSubmittingRef.current = false;
-      setIsSubmitting(false);
-    }
-  }, [projectId, analysisLanguages, name, description, onClose, onProjectCreated]);
+    onCreateDraft({
+      analysisLanguages: normalizedAnalysisLanguages,
+      name: name.trim() || undefined,
+      description: description.trim() || undefined,
+    });
+  }, [analysisLanguages, name, description, onCreateDraft]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -155,10 +122,10 @@ export function CreateProjectModal({
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
         <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+          <Button variant="secondary" onClick={onClose}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
+          <Button onClick={handleSubmit}>
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>

@@ -1,11 +1,15 @@
-import type { UseWebViewScrollGroupScrRefHook, UseWebViewStateHook } from '@papi/core';
+import type {
+  UseWebViewScrollGroupScrRefHook,
+  UseWebViewStateHook,
+  WebViewProps,
+} from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import { useData, useSetting } from '@papi/frontend/react';
-import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
@@ -13,9 +17,13 @@ import Interlinearizer from './Interlinearizer';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
+import { WipeConfirm } from './modals/WipeConfirm';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+
+/** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
+type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
 
 /**
  * WebView menu holding only the platform defaults. Used both as the `useData` default while the
@@ -28,6 +36,16 @@ const DEFAULT_WEB_VIEW_MENU = {
 };
 
 /**
+ * Base tab title for the Interlinearizer WebView. PAPI exposes no native unsaved-changes indicator,
+ * so {@link UNSAVED_TAB_MARKER} is appended to this via `updateWebViewDefinition` while the draft
+ * has unsaved changes.
+ */
+const BASE_TAB_TITLE = 'Interlinearizer';
+
+/** Glyph appended to the tab title while the draft has unsaved changes. */
+const UNSAVED_TAB_MARKER = ' ●';
+
+/**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
  * loader and the whole {@link Interlinearizer} subtree read and write navigation through one source
  * of truth, then delegates the actual loading/rendering to {@link InterlinearizerLoaderInner}.
@@ -38,20 +56,28 @@ const DEFAULT_WEB_VIEW_MENU = {
  *   reference and its setter
  * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
  *   by the PAPI host
+ * @param props.updateWebViewDefinition - Host-injected callback to update this WebView's
+ *   definition; used to toggle the tab's unsaved-changes title marker
  * @returns The nav provider wrapping {@link InterlinearizerLoaderInner}
  */
 export default function InterlinearizerLoader({
   projectId,
   useWebViewScrollGroupScrRef,
   useWebViewState,
+  updateWebViewDefinition,
 }: Readonly<{
   projectId: string;
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
   useWebViewState: UseWebViewStateHook;
+  updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
   return (
     <InterlinearNavProvider useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}>
-      <InterlinearizerLoaderInner projectId={projectId} useWebViewState={useWebViewState} />
+      <InterlinearizerLoaderInner
+        projectId={projectId}
+        useWebViewState={useWebViewState}
+        updateWebViewDefinition={updateWebViewDefinition}
+      />
     </InterlinearNavProvider>
   );
 }
@@ -66,15 +92,19 @@ export default function InterlinearizerLoader({
  * @param props.projectId - PAPI project ID passed from the host
  * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
  *   by the PAPI host
+ * @param props.updateWebViewDefinition - Host-injected callback used to toggle the tab's
+ *   unsaved-changes title marker
  * @returns The toolbar and either an error/loading state or the fully rendered
  *   {@link Interlinearizer}
  */
 function InterlinearizerLoaderInner({
   projectId,
   useWebViewState,
+  updateWebViewDefinition,
 }: Readonly<{
   projectId: string;
   useWebViewState: UseWebViewStateHook;
+  updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
   const {
     rawScrRef,
@@ -104,97 +134,35 @@ function InterlinearizerLoaderInner({
     undefined,
   );
 
-  /**
-   * BCP 47 tag used for reading and writing gloss values. Prefers the active project's first
-   * configured analysis language; falls back to the platform UI language when no project is
-   * active.
-   */
-  const analysisLanguage = activeProject?.analysisLanguages[0] ?? platformLanguage;
+  // The always-present draft is the runtime source of truth for the analysis being edited. Edits
+  // auto-save here (not to the active project); Save / Save As copy the draft into a project.
+  const {
+    isDraftLoading,
+    draft,
+    draftVersion,
+    dirty,
+    autosaveAnalysis,
+    resetDraft,
+    loadFromProject,
+    getDraftSnapshot,
+    markSynced,
+    wipeBook,
+    wipeAll,
+  } = useDraftProject(projectId, platformLanguage);
 
   /**
-   * `TextAnalysis` loaded from storage for the currently active interlinear project, or `undefined`
-   * when no project is active or the load is still in flight. Passed to {@link Interlinearizer} as
-   * `initialAnalysis` to seed the Redux store on mount.
+   * BCP 47 tag used for reading and writing gloss values. Prefers the draft's first configured
+   * analysis language; falls back to the platform UI language for a brand-new source.
    */
-  const [activeProjectAnalysis, setActiveProjectAnalysis] = useState<TextAnalysis | undefined>(
-    undefined,
-  );
+  const analysisLanguage = draft?.analysisLanguages[0] ?? platformLanguage;
 
-  /**
-   * `true` while the `interlinearizer.getProject` command is in flight for the current
-   * `activeProject`. Blocks rendering {@link Interlinearizer} until the analysis is ready so the
-   * store is never seeded with stale data from a previous project.
-   */
-  const [isAnalysisLoading, setIsAnalysisLoading] = useState(false);
-
+  // Reflect the draft's unsaved-changes state in the tab title. PAPI has no native dirty indicator,
+  // so we append a marker to the title via the host-injected `updateWebViewDefinition`.
   useEffect(() => {
-    if (!activeProject) {
-      setActiveProjectAnalysis(undefined);
-      setIsAnalysisLoading(false);
-      return;
-    }
-
-    let canceled = false;
-    setIsAnalysisLoading(true);
-
-    /**
-     * Fetches the stored `TextAnalysis` for the active project and updates component state.
-     *
-     * Writes `activeProjectAnalysis` on success (or `undefined` when the project record is absent)
-     * and clears `isAnalysisLoading` in the `finally` block. Both state updates are suppressed when
-     * `canceled` is `true` (i.e. the effect was cleaned up before the fetch completed).
-     *
-     * @returns Promise that resolves to void once state has been updated or the update has been
-     *   suppressed due to cancellation.
-     * @throws Never — errors are caught internally and logged; `activeProjectAnalysis` is set to
-     *   `undefined` on failure.
-     */
-    const loadAnalysis = async () => {
-      try {
-        const json = await papi.commands.sendCommand(
-          'interlinearizer.getProject',
-          activeProject.id,
-        );
-        if (canceled) return;
-        if (json) {
-          const project: InterlinearProject = JSON.parse(json);
-          setActiveProjectAnalysis(project.analysis);
-        } else {
-          setActiveProjectAnalysis(undefined);
-        }
-      } catch (e) {
-        if (!canceled) {
-          logger.error('Interlinearizer: failed to load project analysis', e);
-          setActiveProjectAnalysis(undefined);
-        }
-      } finally {
-        if (!canceled) setIsAnalysisLoading(false);
-      }
-    };
-
-    loadAnalysis();
-
-    return () => {
-      canceled = true;
-    };
-  }, [activeProject?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /**
-   * Persists an updated analysis to the backend after each gloss write. No-ops when no project is
-   * active. Errors are logged but not surfaced — the backend already sends an error notification.
-   *
-   * @param analysis - The updated `TextAnalysis` to persist.
-   * @returns Void — the underlying command is fire-and-forget; errors are caught and logged.
-   */
-  const handleSaveAnalysis = useCallback(
-    (analysis: TextAnalysis) => {
-      if (!activeProject) return;
-      papi.commands
-        .sendCommand('interlinearizer.saveAnalysis', activeProject.id, JSON.stringify(analysis))
-        .catch((e) => logger.error('Interlinearizer: failed to save analysis', e));
-    },
-    [activeProject],
-  );
+    updateWebViewDefinition({
+      title: dirty ? `${BASE_TAB_TITLE}${UNSAVED_TAB_MARKER}` : BASE_TAB_TITLE,
+    });
+  }, [dirty, updateWebViewDefinition]);
 
   const {
     isLoading: isContinuousScrollLoading,
@@ -254,7 +222,7 @@ function InterlinearizerLoaderInner({
   // Treating this window as loading swaps the old view for the Loading… curtain immediately, so
   // nothing of either book shows until the new one has mounted and fades in.
   const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
-  const showLoading = isLoading || isAnalysisLoading || isSettingLoading || isCrossBookSwap;
+  const showLoading = isLoading || isDraftLoading || isSettingLoading || isCrossBookSwap;
   const isLoaded = !hasError && !showLoading && !!book;
 
   // Abort any in-flight cross-book fade when the new book fails to load, so the error is revealed
@@ -265,18 +233,61 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
+  /** Which destructive wipe confirmation is showing, or `undefined` when none. */
+  const [wipeConfirm, setWipeConfirm] = useState<'book' | 'all' | undefined>(undefined);
+
   const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
 
-  // Reset phraseMode when the active project changes so stale edit/confirm-unlink state from a
-  // previous project is never passed to the newly mounted Interlinearizer.
+  // Reset phraseMode whenever the draft is replaced wholesale (New / Open / Wipe) so stale
+  // edit/confirm-unlink state is never passed to the newly mounted Interlinearizer.
   useEffect(() => {
     setPhraseMode({ kind: 'view' });
-  }, [activeProject?.id]);
+  }, [draftVersion]);
 
   /**
-   * Routes top-menu commands to the appropriate modal. `openSelectProjectModal` opens the select
-   * modal; `openNewProjectModal` opens the create modal directly; `openProjectInfoModal` opens the
-   * metadata modal for the currently active project.
+   * Saves the current draft to the active project. When no project is active there is nothing to
+   * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
+   * notification.
+   *
+   * @returns A promise that resolves once the save completes or Save As is opened.
+   */
+  const handleSave = useCallback(async () => {
+    if (!activeProject) {
+      setModal('saveAs');
+      return;
+    }
+    const snapshot = getDraftSnapshot();
+    /* v8 ignore next -- save is only reachable once the editor (and draft) have loaded */
+    if (!snapshot) return;
+    try {
+      await papi.commands.sendCommand(
+        'interlinearizer.saveAnalysis',
+        activeProject.id,
+        JSON.stringify(snapshot.analysis),
+      );
+      markSynced();
+    } catch (e) {
+      logger.error('Interlinearizer: failed to save draft to project', e);
+    }
+  }, [activeProject, getDraftSnapshot, markSynced, setModal]);
+
+  /** Performs the confirmed wipe (current book or whole draft) and dismisses the confirmation. */
+  const handleWipeConfirm = useCallback(() => {
+    if (wipeConfirm === 'book') {
+      /* v8 ignore next -- wipe-book is only offered once a book is loaded */
+      if (book) wipeBook(book.bookRef);
+    } else {
+      wipeAll();
+    }
+    setWipeConfirm(undefined);
+  }, [wipeConfirm, book, wipeBook, wipeAll]);
+
+  /** Dismisses the wipe confirmation, leaving the draft untouched. */
+  const handleWipeCancel = useCallback(() => setWipeConfirm(undefined), []);
+
+  /**
+   * Routes top-menu commands to the appropriate action. The project commands open their modals; the
+   * file commands save (or open Save As); the draft commands open a wipe confirmation.
    *
    * @param item - The menu item that was activated.
    */
@@ -290,9 +301,17 @@ function InterlinearizerLoaderInner({
         if (activeProject) {
           setModal('metadata');
         }
+      } else if (item.command === 'interlinearizer.save') {
+        handleSave();
+      } else if (item.command === 'interlinearizer.openSaveAsModal') {
+        setModal('saveAs');
+      } else if (item.command === 'interlinearizer.wipeBook') {
+        setWipeConfirm('book');
+      } else if (item.command === 'interlinearizer.wipeDraft') {
+        setWipeConfirm('all');
       }
     },
-    [activeProject],
+    [activeProject, handleSave],
   );
 
   /**
@@ -403,13 +422,13 @@ function InterlinearizerLoaderInner({
           </div>
         ) : (
           <Interlinearizer
-            key={`${activeProject?.id ?? ''}:${book.bookRef}`}
+            key={`${draftVersion}:${book.bookRef}`}
             book={book}
             continuousScroll={continuousScroll}
             scrRef={scrRef}
             analysisLanguage={analysisLanguage}
-            initialAnalysis={activeProjectAnalysis}
-            onSaveAnalysis={handleSaveAnalysis}
+            initialAnalysis={draft?.analysis}
+            onSaveAnalysis={autosaveAnalysis}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}
@@ -420,11 +439,24 @@ function InterlinearizerLoaderInner({
       <ProjectModals
         activeProject={activeProject}
         defaultAnalysisLanguage={platformLanguage}
+        dirty={dirty}
+        getDraftSnapshot={getDraftSnapshot}
+        loadFromProject={loadFromProject}
+        markSynced={markSynced}
         modal={modal}
         projectId={projectId}
+        resetDraft={resetDraft}
         setModal={setModal}
         useWebViewState={useWebViewState}
       />
+
+      {wipeConfirm && (
+        <WipeConfirm
+          scope={wipeConfirm}
+          onConfirm={handleWipeConfirm}
+          onCancel={handleWipeCancel}
+        />
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import type { InterlinearProject, TextAnalysis } from 'interlinearizer';
-import { emptyAnalysis } from '../types/empty-factories';
+import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -20,6 +20,13 @@ let indexQueue: Promise<unknown> = Promise.resolve();
 const projectQueues = new Map<string, Promise<unknown>>();
 
 /**
+ * Per-source draft serialization queues. Keyed by `sourceProjectId`; serializes writes to a single
+ * draft record so a WebView's rapid auto-saves cannot interleave at await boundaries and persist
+ * out of order.
+ */
+const draftQueues = new Map<string, Promise<unknown>>();
+
+/**
  * Enqueues `fn` on the index serialization queue and returns a promise that resolves or rejects
  * with `fn`'s result. The queue always advances regardless of whether `fn` throws.
  *
@@ -35,8 +42,36 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Enqueues `fn` on the per-project serialization queue for `id` and returns a promise that resolves
- * or rejects with `fn`'s result. Cleans up the queue entry when the operation settles.
+ * Enqueues `fn` on the serialization queue identified by `key` within `queues` and returns a
+ * promise that resolves or rejects with `fn`'s result. Cleans up the queue entry when the operation
+ * settles.
+ *
+ * @param queues - The queue map to serialize on; one chain per `key`.
+ * @param key - The key whose queue `fn` should join.
+ * @param fn - The async function to serialize.
+ * @returns A promise that resolves or rejects with the return value of `fn`.
+ * @throws Whatever `fn` throws; the queue entry is removed and the rejection propagates to the
+ *   caller.
+ */
+function enqueueSerialized<T>(
+  queues: Map<string, Promise<unknown>>,
+  key: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const previous = queues.get(key) ?? Promise.resolve();
+  const result = previous.then(fn);
+  let settled: Promise<void>;
+  const cleanup = () => {
+    if (queues.get(key) === settled) queues.delete(key);
+  };
+  settled = result.then(cleanup, cleanup);
+  queues.set(key, settled);
+  return result;
+}
+
+/**
+ * Enqueues `fn` on the per-project serialization queue for `id`. Thin wrapper over
+ * {@link enqueueSerialized} bound to {@link projectQueues}.
  *
  * @param id - The project UUID whose queue `fn` should join.
  * @param fn - The async function to serialize.
@@ -45,15 +80,7 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
  *   caller.
  */
 function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  const previous = projectQueues.get(id) ?? Promise.resolve();
-  const result = previous.then(fn);
-  let settled: Promise<void>;
-  const cleanup = () => {
-    if (projectQueues.get(id) === settled) projectQueues.delete(id);
-  };
-  settled = result.then(cleanup, cleanup);
-  projectQueues.set(id, settled);
-  return result;
+  return enqueueSerialized(projectQueues, id, fn);
 }
 
 /**
@@ -64,6 +91,16 @@ function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
  */
 function projectKey(id: string): string {
   return `project:${id}`;
+}
+
+/**
+ * Returns the storage key for a source project's draft.
+ *
+ * @param sourceProjectId - The Platform.Bible source project ID the draft belongs to.
+ * @returns The storage key string used to read and write the draft record.
+ */
+function draftKey(sourceProjectId: string): string {
+  return `draft:${sourceProjectId}`;
 }
 
 /**
@@ -320,11 +357,57 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 }
 
 /**
+ * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
+ * been written yet (ENOENT). Drafts are never added to the `projectIds` index, so they stay out of
+ * {@link listProjects} and {@link getProjectsForSource} and never appear in the project picker.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible source project ID whose draft to read.
+ * @returns The stored {@link DraftProject}, or a fresh empty draft when none exists.
+ * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+export async function getDraft(
+  token: ExecutionToken,
+  sourceProjectId: string,
+): Promise<DraftProject> {
+  try {
+    return JSON.parse(await papi.storage.readUserData(token, draftKey(sourceProjectId)));
+  } catch (e) {
+    if (isNotFound(e)) return emptyDraft(sourceProjectId);
+    throw e;
+  }
+}
+
+/**
+ * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
+ * serialized per source (via {@link draftQueues}) so a WebView's rapid auto-saves cannot persist out
+ * of order. The caller owns the whole envelope — including the `dirty` flag — so this function is a
+ * plain write with no read-modify-merge.
+ *
+ * @param token - The execution token for storage access.
+ * @param sourceProjectId - The Platform.Bible source project ID whose draft to write.
+ * @param draft - The full {@link DraftProject} envelope to persist.
+ * @returns A promise that resolves once the draft has been written.
+ * @throws If `papi.storage.writeUserData` rejects.
+ */
+export async function saveDraft(
+  token: ExecutionToken,
+  sourceProjectId: string,
+  draft: DraftProject,
+): Promise<void> {
+  await enqueueSerialized(draftQueues, sourceProjectId, () =>
+    papi.storage.writeUserData(token, draftKey(sourceProjectId), JSON.stringify(draft)),
+  );
+}
+
+/**
  * Resets module-level queue state between tests. Jest's `resetMocks` resets mock implementations
- * but does not re-execute modules, so `indexQueue` and `projectQueues` would otherwise persist
- * across tests and allow promise chains from one test to bleed into the next.
+ * but does not re-execute modules, so `indexQueue`, `projectQueues`, and `draftQueues` would
+ * otherwise persist across tests and allow promise chains from one test to bleed into the next.
  */
 export function resetQueuesForTesting(): void {
   indexQueue = Promise.resolve();
   projectQueues.clear();
+  draftQueues.clear();
 }

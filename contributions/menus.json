@@ -27,6 +27,14 @@
           "interlinearizer.projectActions": {
             "column": "interlinearizer.project",
             "order": 1
+          },
+          "interlinearizer.fileActions": {
+            "column": "interlinearizer.project",
+            "order": 2
+          },
+          "interlinearizer.draftActions": {
+            "column": "interlinearizer.project",
+            "order": 3
           }
         },
         "items": [
@@ -50,6 +58,34 @@
             "group": "interlinearizer.projectActions",
             "order": 3,
             "command": "interlinearizer.openProjectInfoModal"
+          },
+          {
+            "label": "%interlinearizer_save%",
+            "localizeNotes": "Interlinearizer top menu > Save the current draft to the active project",
+            "group": "interlinearizer.fileActions",
+            "order": 1,
+            "command": "interlinearizer.save"
+          },
+          {
+            "label": "%interlinearizer_saveAs%",
+            "localizeNotes": "Interlinearizer top menu > Save the draft to a new project or overwrite an existing one",
+            "group": "interlinearizer.fileActions",
+            "order": 2,
+            "command": "interlinearizer.openSaveAsModal"
+          },
+          {
+            "label": "%interlinearizer_wipeBook%",
+            "localizeNotes": "Interlinearizer top menu > Remove the current book's analysis from the draft",
+            "group": "interlinearizer.draftActions",
+            "order": 1,
+            "command": "interlinearizer.wipeBook"
+          },
+          {
+            "label": "%interlinearizer_wipeDraft%",
+            "localizeNotes": "Interlinearizer top menu > Remove all analysis from the draft",
+            "group": "interlinearizer.draftActions",
+            "order": 2,
+            "command": "interlinearizer.wipeDraft"
           }
         ]
       }

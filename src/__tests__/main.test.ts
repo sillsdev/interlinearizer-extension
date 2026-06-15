@@ -6,7 +6,7 @@ import papiBackendMock from '@papi/backend';
 import { activate, deactivate } from '@main';
 import type { InterlinearizerOpenOptions } from '@main';
 import * as projectStorage from '../services/projectStorage';
-import { emptyAnalysis } from '../types/empty-factories';
+import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from './test-helpers';
 
 jest.mock('../services/projectStorage');
@@ -174,6 +174,16 @@ const getSaveAnalysisHandler = () =>
     'interlinearizer.saveAnalysis',
   );
 
+/** Activates the extension and returns the `interlinearizer.getDraft` handler. */
+const getGetDraftHandler = () =>
+  activateAndGetHandler<(sourceProjectId: string) => Promise<string>>('interlinearizer.getDraft');
+
+/** Activates the extension and returns the `interlinearizer.saveDraft` handler. */
+const getSaveDraftHandler = () =>
+  activateAndGetHandler<(sourceProjectId: string, draftJson: string) => Promise<void>>(
+    'interlinearizer.saveDraft',
+  );
+
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
  *
@@ -246,6 +256,8 @@ describe('main', () => {
           'interlinearizer.getProject',
           'interlinearizer.saveAnalysis',
           'interlinearizer.getProjectsForSource',
+          'interlinearizer.getDraft',
+          'interlinearizer.saveDraft',
           'interlinearizer.openSelectProjectModal',
           'interlinearizer.openNewProjectModal',
           'interlinearizer.openProjectInfoModal',
@@ -264,7 +276,7 @@ describe('main', () => {
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(18);
+      expect(context.registrations.unsubscribers.size).toBe(24);
     });
 
     it('logs activation start and finish', async () => {
@@ -933,6 +945,114 @@ describe('main', () => {
         expect.objectContaining({ severity: 'error' }),
       );
       expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('interlinearizer.getDraft command', () => {
+    const mockGetDraft = jest.mocked(projectStorage.getDraft);
+    const stubDraft = emptyDraft('src-project');
+
+    it('registers the interlinearizer.getDraft command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.getDraft',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('delegates to projectStorage.getDraft and returns the JSON-serialized draft', async () => {
+      mockGetDraft.mockResolvedValue(stubDraft);
+      const handler = await getGetDraftHandler();
+
+      const result = await handler('src-project');
+
+      expect(mockGetDraft).toHaveBeenCalledWith(expect.anything(), 'src-project');
+      expect(result).toBe(JSON.stringify(stubDraft));
+    });
+
+    it('logs the error and rethrows when storage throws', async () => {
+      mockGetDraft.mockRejectedValue(new Error('disk full'));
+      const handler = await getGetDraftHandler();
+
+      await expect(handler('src-project')).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to get draft',
+        expect.any(Error),
+      );
+    });
+  });
+
+  describe('interlinearizer.saveDraft command', () => {
+    const mockSaveDraft = jest.mocked(projectStorage.saveDraft);
+    const stubDraft = { ...emptyDraft('src-project'), analysisLanguages: ['en'], dirty: true };
+
+    it('registers the interlinearizer.saveDraft command', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(__mockRegisterCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveDraft',
+        expect.any(Function),
+        expect.any(Object),
+      );
+    });
+
+    it('parses the JSON, validates it, and delegates to projectStorage.saveDraft', async () => {
+      mockSaveDraft.mockResolvedValue(undefined);
+      const handler = await getSaveDraftHandler();
+
+      await handler('src-project', JSON.stringify(stubDraft));
+
+      expect(mockSaveDraft).toHaveBeenCalledWith(expect.anything(), 'src-project', stubDraft);
+    });
+
+    it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
+      mockSaveDraft.mockRejectedValue(new Error('disk full'));
+      const handler = await getSaveDraftHandler();
+
+      await expect(handler('src-project', JSON.stringify(stubDraft))).rejects.toThrow('disk full');
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save draft',
+        expect.any(Error),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+    });
+
+    it('logs the error, sends an error notification, and rethrows when draftJson is not valid JSON', async () => {
+      const handler = await getSaveDraftHandler();
+
+      await expect(handler('src-project', 'not-json')).rejects.toThrow(SyntaxError);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save draft',
+        expect.any(SyntaxError),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+      expect(mockSaveDraft).not.toHaveBeenCalled();
+    });
+
+    it('logs the error, sends an error notification, and rethrows when draftJson does not conform to DraftProject', async () => {
+      const handler = await getSaveDraftHandler();
+
+      await expect(
+        handler('src-project', JSON.stringify({ sourceProjectId: 'x' })),
+      ).rejects.toThrow(TypeError);
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        'Interlinearizer: failed to save draft',
+        expect.any(TypeError),
+      );
+      expect(__mockNotificationsSend).toHaveBeenCalledWith(
+        expect.objectContaining({ severity: 'error' }),
+      );
+      expect(mockSaveDraft).not.toHaveBeenCalled();
     });
   });
 

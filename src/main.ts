@@ -10,7 +10,7 @@ import type {
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
-import { isTextAnalysis } from './types/type-guards';
+import { isDraftProject, isTextAnalysis } from './types/type-guards';
 
 // #region WebView provider
 
@@ -292,6 +292,56 @@ async function saveInterlinearAnalysis(
 }
 
 /**
+ * Returns the draft working buffer for a source project as a JSON string, creating a fresh empty
+ * draft when none has been written. The WebView loads this on mount to seed the editor.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
+ * @returns JSON-stringified `DraftProject`.
+ * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
+ *   before rethrowing.
+ */
+async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
+  try {
+    const draft = await projectStorage.getDraft(executionToken, sourceProjectId);
+    return JSON.stringify(draft);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to get draft', e);
+    throw e;
+  }
+}
+
+/**
+ * Persists the draft working buffer for a source project. Called from the WebView after every edit
+ * (auto-save) and whenever the draft is reset (New), opened from a project, or wiped.
+ *
+ * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
+ * @param draftJson - JSON-stringified `DraftProject` to persist.
+ * @returns A promise that resolves when the draft has been written to storage.
+ * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
+ *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
+ *   second notification.
+ */
+async function saveInterlinearDraft(sourceProjectId: string, draftJson: string): Promise<void> {
+  try {
+    const draft = JSON.parse(draftJson);
+    if (!isDraftProject(draft)) {
+      throw new TypeError('saveInterlinearDraft: draftJson does not conform to DraftProject');
+    }
+    await projectStorage.saveDraft(executionToken, sourceProjectId, draft);
+  } catch (e) {
+    logger.error('Interlinearizer: failed to save draft', e);
+    await papi.notifications
+      .send({
+        message: '%interlinearizer_error_save_draft_failed%',
+        severity: 'error',
+      })
+      .catch(() => {});
+    throw e;
+  }
+}
+
+/**
  * Returns all interlinearizer projects for the given source project as a JSON string. The WebView
  * deserializes this to populate its project picker and to decide whether to prompt "create new" or
  * "select existing" when the user opens the project menu.
@@ -519,6 +569,54 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const getDraftCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.getDraft',
+    getInterlinearDraft,
+    {
+      method: {
+        summary: 'Return the draft working buffer for a source project as a JSON string',
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose draft to fetch',
+            schema: { type: 'string' },
+          },
+        ],
+        result: {
+          name: 'return value',
+          summary: 'JSON-stringified DraftProject; a fresh empty draft when none exists',
+          schema: { type: 'string' },
+        },
+      },
+    },
+  );
+
+  const saveDraftCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.saveDraft',
+    saveInterlinearDraft,
+    {
+      method: {
+        summary: 'Persist the draft working buffer for a source project',
+        params: [
+          {
+            name: 'sourceProjectId',
+            required: true,
+            summary: 'Platform.Bible source project ID whose draft to write',
+            schema: { type: 'string' },
+          },
+          {
+            name: 'draftJson',
+            required: true,
+            summary: 'JSON-stringified DraftProject to persist',
+            schema: { type: 'string' },
+          },
+        ],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const updateProjectMetadataCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.updateProjectMetadata',
     updateProjectMetadata,
@@ -628,6 +726,59 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  const saveCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.save',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary:
+          'Save the current draft to the active project (handled in the Interlinearizer WebView)',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const openSaveAsModalCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.openSaveAsModal',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: 'Open the Save As modal in the Interlinearizer WebView',
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const wipeBookCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.wipeBook',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: "Wipe the current book's analysis from the draft (handled in the WebView)",
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
+  const wipeDraftCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.wipeDraft',
+    // Handled entirely in the WebView; backend registration makes the command known to the platform.
+    /* v8 ignore next */ async () => {},
+    {
+      method: {
+        summary: "Wipe the entire draft's analysis (handled in the WebView)",
+        params: [],
+        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+      },
+    },
+  );
+
   const webViewOpenUnsubscriber = papi.webViews.onDidOpenWebView(({ webView }) => {
     if (webView.webViewType !== mainWebViewType || !webView.projectId) return;
     openWebViewsByProject.set(webView.projectId, webView.id);
@@ -651,11 +802,17 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,
     getProjectsForSourceCommandRegistration,
+    getDraftCommandRegistration,
+    saveDraftCommandRegistration,
     updateProjectMetadataCommandRegistration,
     deleteProjectCommandRegistration,
     openSelectProjectModalCommandRegistration,
     openNewProjectModalCommandRegistration,
     openProjectInfoModalCommandRegistration,
+    saveCommandRegistration,
+    openSaveAsModalCommandRegistration,
+    wipeBookCommandRegistration,
+    wipeDraftCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

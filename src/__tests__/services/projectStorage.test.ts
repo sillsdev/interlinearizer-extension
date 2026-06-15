@@ -5,14 +5,16 @@ import papiBackendMock from '@papi/backend';
 import {
   createProject,
   deleteProject,
+  getDraft,
   getProject,
   getProjectsForSource,
   listProjects,
   resetQueuesForTesting,
+  saveDraft,
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
-import { emptyAnalysis } from '../../types/empty-factories';
+import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import { createTestActivationContext, makeStubProject } from '../test-helpers';
 
 /**
@@ -556,6 +558,98 @@ describe('projectStorage', () => {
         expect.stringContaining('abc'),
         expect.any(SyntaxError),
       );
+    });
+  });
+
+  describe('getDraft', () => {
+    it('returns the parsed stored draft read from the draft key', async () => {
+      const stored = { ...emptyDraft('src-proj'), analysisLanguages: ['fr'], dirty: true };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(stored);
+      expect(__mockReadUserData).toHaveBeenCalledWith(token, 'draft:src-proj');
+    });
+
+    it('returns a fresh empty draft when no draft has been written (ENOENT)', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(emptyDraft('src-proj'));
+    });
+
+    it('does not write to storage when returning a fresh empty draft', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      await getDraft(token, 'src-proj');
+
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('rethrows a non-ENOENT error from storage', async () => {
+      __mockReadUserData.mockRejectedValue(new Error('permission denied'));
+
+      await expect(getDraft(token, 'src-proj')).rejects.toThrow('permission denied');
+    });
+
+    it('propagates a JSON parse error when the stored draft is corrupt', async () => {
+      __mockReadUserData.mockResolvedValue('not valid json');
+
+      await expect(getDraft(token, 'src-proj')).rejects.toThrow(SyntaxError);
+    });
+  });
+
+  describe('saveDraft', () => {
+    it('writes the draft JSON under the draft key', async () => {
+      const draft = { ...emptyDraft('src-proj'), analysisLanguages: ['en'], dirty: true };
+
+      await saveDraft(token, 'src-proj', draft);
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'draft:src-proj',
+        JSON.stringify(draft),
+      );
+    });
+
+    it('never writes the projectIds index key', async () => {
+      await saveDraft(token, 'src-proj', emptyDraft('src-proj'));
+
+      expect(__mockWriteUserData).not.toHaveBeenCalledWith(token, 'projectIds', expect.anything());
+    });
+
+    it('serializes concurrent writes to the same source so they resolve in order', async () => {
+      const order: string[] = [];
+      let resolveFirstWrite!: () => void;
+      const firstWriteGate = new Promise<void>((resolve) => {
+        resolveFirstWrite = resolve;
+      });
+
+      let writeCallCount = 0;
+      __mockWriteUserData.mockImplementation((): Promise<void> => {
+        writeCallCount += 1;
+        if (writeCallCount === 1) return firstWriteGate;
+        return Promise.resolve();
+      });
+
+      const first = saveDraft(token, 'src-proj', { ...emptyDraft('src-proj'), dirty: false }).then(
+        () => order.push('first'),
+      );
+      const second = saveDraft(token, 'src-proj', { ...emptyDraft('src-proj'), dirty: true }).then(
+        () => order.push('second'),
+      );
+
+      // The second write must not begin until the first settles: only one write has been issued.
+      await Promise.resolve();
+      expect(writeCallCount).toBe(1);
+
+      resolveFirstWrite();
+      await Promise.all([first, second]);
+
+      expect(order).toEqual(['first', 'second']);
+      expect(writeCallCount).toBe(2);
     });
   });
 });

@@ -10,6 +10,10 @@
       "%interlinearizer_openSelectProjectModal%": "Select Interlinear Project…",
       "%interlinearizer_openNewProjectModal%": "New Interlinear Project…",
       "%interlinearizer_openProjectInfoModal%": "View Project Info…",
+      "%interlinearizer_save%": "Save",
+      "%interlinearizer_saveAs%": "Save As…",
+      "%interlinearizer_wipeBook%": "Wipe Current Book…",
+      "%interlinearizer_wipeDraft%": "Wipe Draft…",
 
       "%interlinearizer_projectSettings_title%": "Interlinearizer",
       "%interlinearizer_projectSettings_continuousScroll%": "Continuous Scroll",
@@ -71,11 +75,35 @@
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",
 
+      "%interlinearizer_confirm_discard_title%": "Discard unsaved changes?",
+      "%interlinearizer_confirm_discard_body%": "Your draft has changes that haven't been saved to a project. Continuing will discard them.",
+      "%interlinearizer_confirm_discard_ok%": "Discard",
+      "%interlinearizer_confirm_discard_cancel%": "Cancel",
+
+      "%interlinearizer_modal_saveAs_title%": "Save As",
+      "%interlinearizer_modal_saveAs_new_section%": "Save as a new project",
+      "%interlinearizer_modal_saveAs_save_new%": "Save as New Project",
+      "%interlinearizer_modal_saveAs_existing_section%": "Or overwrite an existing project",
+      "%interlinearizer_modal_saveAs_none%": "No existing projects for this source yet.",
+      "%interlinearizer_modal_saveAs_overwrite%": "Overwrite",
+      "%interlinearizer_modal_saveAs_overwrite_confirm_body%": "Overwrite this project? Its saved analysis will be replaced with the current draft.",
+      "%interlinearizer_modal_saveAs_overwrite_confirm_ok%": "Overwrite",
+      "%interlinearizer_modal_saveAs_overwrite_confirm_cancel%": "Cancel",
+      "%interlinearizer_modal_saveAs_cancel%": "Cancel",
+
+      "%interlinearizer_confirm_wipe_book_title%": "Wipe current book?",
+      "%interlinearizer_confirm_wipe_book_body%": "This removes all analysis for the current book from the draft. Save afterward to persist the change to a project.",
+      "%interlinearizer_confirm_wipe_draft_title%": "Wipe entire draft?",
+      "%interlinearizer_confirm_wipe_draft_body%": "This removes all analysis from the draft. Save afterward to persist the change to a project.",
+      "%interlinearizer_confirm_wipe_ok%": "Wipe",
+      "%interlinearizer_confirm_wipe_cancel%": "Cancel",
+
       "%interlinearizer_error_create_project_failed%": "Could not create the interlinearizer project. Please try again.",
       "%interlinearizer_error_save_metadata_failed%": "Could not save project info. Please try again.",
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",
       "%interlinearizer_error_update_project_failed%": "Could not update the interlinearizer project. Please try again.",
-      "%interlinearizer_error_load_projects_failed%": "Could not load interlinear projects. Please try again."
+      "%interlinearizer_error_load_projects_failed%": "Could not load interlinear projects. Please try again.",
+      "%interlinearizer_error_save_draft_failed%": "Could not save your working draft. Please try again."
     }
   }
 }

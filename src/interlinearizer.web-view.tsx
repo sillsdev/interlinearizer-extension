@@ -11,12 +11,15 @@ import InterlinearizerLoader from './components/InterlinearizerLoader';
  *   reference and its setter
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores)
+ * @param props.updateWebViewDefinition - Host-injected callback to update this WebView's
+ *   definition; forwarded so the loader can toggle the tab's unsaved-changes title marker
  * @returns The full interlinearizer WebView layout
  */
 globalThis.webViewComponent = function InterlinearizerWebView({
   projectId,
   useWebViewScrollGroupScrRef,
   useWebViewState,
+  updateWebViewDefinition,
 }: WebViewProps) {
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
@@ -25,6 +28,7 @@ globalThis.webViewComponent = function InterlinearizerWebView({
           projectId={projectId}
           useWebViewScrollGroupScrRef={useWebViewScrollGroupScrRef}
           useWebViewState={useWebViewState}
+          updateWebViewDefinition={updateWebViewDefinition}
         />
       ) : (
         <p className="tw:text-sm tw:text-muted-foreground">

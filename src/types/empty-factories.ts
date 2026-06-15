@@ -2,7 +2,7 @@
  * @file Factory functions that return zero-value instances of core types, giving each caller a
  *   fresh independent object.
  */
-import type { TextAnalysis } from 'interlinearizer';
+import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import type { FocusContext } from './token-layout';
 
 /**
@@ -19,6 +19,23 @@ export function emptyAnalysis(): TextAnalysis {
     tokenAnalysisLinks: [],
     phraseAnalyses: [],
     phraseAnalysisLinks: [],
+  };
+}
+
+/**
+ * Returns a fresh, empty {@link DraftProject} for a source project: empty analysis, no analysis
+ * languages yet, and `dirty: false`. Used by the storage layer when no draft has been written and
+ * as the seed for the "New" (reset) flow. Each call produces a fresh object with its own analysis.
+ *
+ * @param sourceProjectId - The Platform.Bible source project ID the draft belongs to.
+ * @returns A new, empty `DraftProject` for the given source.
+ */
+export function emptyDraft(sourceProjectId: string): DraftProject {
+  return {
+    sourceProjectId,
+    analysisLanguages: [],
+    analysis: emptyAnalysis(),
+    dirty: false,
   };
 }
 

@@ -10,6 +10,7 @@ import type { ReactNode } from 'react';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import { SegmentView } from '../../components/SegmentView';
+import type { ViewOptions } from '../../types/view-options';
 import { makePhraseLink } from '../test-helpers';
 import { withAnalysisStore } from './test-helpers';
 
@@ -190,10 +191,7 @@ function requiredProps(): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  hideInactiveLinkButtons: boolean;
-  simplifyPhrases: boolean;
-  chapterLabelInVerse: boolean;
-  showMorphology: boolean;
+  viewOptions: ViewOptions;
 } {
   return {
     displayMode: 'token-chip',
@@ -209,10 +207,12 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
-    hideInactiveLinkButtons: false,
-    simplifyPhrases: false,
-    chapterLabelInVerse: false,
-    showMorphology: false,
+    viewOptions: {
+      hideInactiveLinkButtons: false,
+      simplifyPhrases: false,
+      chapterLabelInVerse: false,
+      showMorphology: false,
+    },
   };
 }
 
@@ -274,7 +274,13 @@ describe('SegmentView', () => {
   });
 
   it('folds the chapter into the verse label when chapterLabelInVerse is set', () => {
-    render(<SegmentView {...requiredProps()} chapterLabelInVerse />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, chapterLabelInVerse: true }}
+      />,
+      withAnalysisStore,
+    );
 
     expect(screen.getByText('1:1')).toBeInTheDocument();
   });
@@ -283,7 +289,12 @@ describe('SegmentView', () => {
     const { rerender } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
 
-    rerender(<SegmentView {...requiredProps()} chapterLabelInVerse />);
+    rerender(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, chapterLabelInVerse: true }}
+      />,
+    );
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
   });
 
@@ -578,7 +589,11 @@ describe('SegmentView', () => {
       // its link button to zero width, leaving an empty clickable gap. Clicking that gap must NOT
       // snap focus to the segment's first phrase (the reported out-of-segment bug); it should be a
       // no-op, matching the buttons-visible case where the button absorbs it.
-      <SegmentView {...requiredProps()} hideInactiveLinkButtons onSelect={handleSelect} />,
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, hideInactiveLinkButtons: true }}
+        onSelect={handleSelect}
+      />,
       withAnalysisStore,
     );
 

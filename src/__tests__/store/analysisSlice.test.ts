@@ -150,6 +150,73 @@ describe('writeGloss', () => {
     expect(tokenAnalyses[0].surfaceText).toBe('words');
     expect(tokenAnalysisLinks[0].token.surfaceText).toBe('words');
   });
+
+  it('removes the record and link when a blank gloss empties a gloss-only analysis', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', '   '));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('clears the active-language gloss but keeps the record when other content remains', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'hi' },
+          morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
+        }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', ''));
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].gloss).toBeUndefined();
+    expect(tokenAnalyses[0].morphemes).toHaveLength(1);
+  });
+
+  it('clears only the active-language gloss when another language gloss remains', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: makeAnalysis({
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'hi', fr: 'bonjour' },
+        }),
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', ''));
+
+    const { tokenAnalyses } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ fr: 'bonjour' });
+  });
+
+  it('is a no-op when a blank gloss is written to a token with no approved analysis', () => {
+    const store = createAnalysisStore({
+      analysis: { analysis: emptyAnalysis(), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeGloss('tok-1', 'word', '  '));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
 });
 
 describe('selectApprovedGloss', () => {

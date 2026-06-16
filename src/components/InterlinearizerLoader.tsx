@@ -403,10 +403,12 @@ function InterlinearizerLoaderInner({
             onSaveAnalysis={handleSaveAnalysis}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
-            hideInactiveLinkButtons={hideInactiveLinkButtons}
-            simplifyPhrases={simplifyPhrases}
-            chapterLabelInVerse={chapterLabelInVerse}
-            showMorphology={showMorphology}
+            viewOptions={{
+              hideInactiveLinkButtons,
+              simplifyPhrases,
+              chapterLabelInVerse,
+              showMorphology,
+            }}
           />
         )}
       </div>

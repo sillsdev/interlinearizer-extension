@@ -11,6 +11,7 @@ import {
   usePhraseStripContextValue,
 } from '../hooks/usePhraseStripSetup';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -74,23 +75,11 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * When `true`, the link/unlink buttons between phrase boxes are hidden unless this segment is the
-   * active verse. Passed through to {@link PhraseStripContextValue}.
+   * Bundled display toggles. `hideInactiveLinkButtons`, `simplifyPhrases`, and `showMorphology` are
+   * passed through to {@link PhraseStripContextValue}; `chapterLabelInVerse` controls this segment's
+   * verse label.
    */
-  hideInactiveLinkButtons: boolean;
-  /**
-   * When `true`, phrase-level controls (split, intra-phrase unlink, remove-token) are hidden on
-   * every phrase except the focused one. Passed through to {@link PhraseStripContextValue}.
-   */
-  simplifyPhrases: boolean;
-  /**
-   * When `true`, every segment is labeled `chapter:verse`. When `false`, segments show a bare verse
-   * number (the chapter is shown by an inline header that {@link SegmentListView} renders above each
-   * chapter's first segment).
-   */
-  chapterLabelInVerse: boolean;
-  /** When `true`, morpheme rows and per-morpheme glosses are shown beneath each word token. */
-  showMorphology: boolean;
+  viewOptions: ViewOptions;
 }>;
 
 /**
@@ -118,14 +107,8 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden unless
- *   this segment is the active verse.
- * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
- *   the focused one.
- * @param props.chapterLabelInVerse - When true, every segment is labeled `chapter:verse`; when
- *   false, segments show a bare verse number.
- * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
- *   each word token.
+ * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label,
+ *   the rest pass through to the phrase strip context.
  * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
  *   segment content
  */
@@ -143,11 +126,10 @@ export function SegmentView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  hideInactiveLinkButtons,
-  simplifyPhrases,
-  chapterLabelInVerse,
-  showMorphology,
+  viewOptions,
 }: SegmentViewProps) {
+  const { hideInactiveLinkButtons, simplifyPhrases, chapterLabelInVerse, showMorphology } =
+    viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 

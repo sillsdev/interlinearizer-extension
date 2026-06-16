@@ -165,19 +165,39 @@ function appendApprovedAnalysis(
 }
 
 /**
+ * Removes a `TokenAnalysis` record and its `TokenAnalysisLink` from the draft in a single step,
+ * keeping the two collections in sync. Called when an edit empties an analysis of all content so
+ * empty records do not accumulate in storage.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param analysis - The `TokenAnalysis` record to remove.
+ * @param link - The `TokenAnalysisLink` referencing it.
+ */
+function removeTokenAnalysis(
+  state: AnalysisState,
+  analysis: TokenAnalysis,
+  link: TokenAnalysisLink,
+): void {
+  state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+  state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter((l) => l !== link);
+}
+
+/**
  * Determines whether a `TokenAnalysis` carries no analysis content, so a reducer that just emptied
  * one field can decide to drop the whole record instead of letting empty records accumulate in
  * storage. Checks every content field of the type — `gloss`, `morphemes`, `pos`, `features`, and
  * `glossSenseRef` — not only the field the caller emptied, so records carrying imported
- * morphosyntactic or lexicon data are never discarded by an unrelated edit.
+ * morphosyntactic or lexicon data are never discarded by an unrelated edit. A gloss counts as empty
+ * when it has no entries or every entry is blank, so a record left holding only whitespace glosses
+ * (junk from clearing a gloss field) is treated the same as one with no gloss at all.
  *
  * @param analysis - The `TokenAnalysis` to inspect.
  * @returns `true` when the record holds no analysis content worth keeping.
  */
 function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
   return (
-    (!analysis.gloss || Object.keys(analysis.gloss).length === 0) &&
-    /* v8 ignore next -- the only current caller deletes morphemes first; kept for future callers */
+    (!analysis.gloss || Object.values(analysis.gloss).every((g) => g.trim() === '')) &&
+    /* v8 ignore next -- the length===0 sub-branch needs an empty-but-defined morphemes array, which no caller produces */
     (!analysis.morphemes || analysis.morphemes.length === 0) &&
     analysis.pos === undefined &&
     analysis.features === undefined &&
@@ -221,23 +241,39 @@ const analysisSlice = createSlice({
        * first; see {@link resolveApprovedAnalysis}). Non-approved analyses for the token are left
        * untouched.
        *
+       * A blank `value` (empty or whitespace) is treated as clearing the gloss rather than writing
+       * junk: the active language's entry is removed, and when that leaves the analysis with no
+       * content ({@link isEmptyTokenAnalysis}) the record and its link are removed entirely. A blank
+       * write to a token with no approved analysis is a no-op, so a focus/blur cycle on an empty
+       * gloss never creates a record.
+       *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the `WriteGlossPayload`.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id } = action.payload;
         const lang = state.analysisLanguage;
+        const isBlank = value.trim() === '';
 
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved) {
           const { link, analysis } = resolved;
           analysis.surfaceText = surfaceText;
           link.token.surfaceText = surfaceText;
+          if (isBlank) {
+            if (analysis.gloss) {
+              delete analysis.gloss[lang];
+              if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
+            }
+            if (isEmptyTokenAnalysis(analysis)) removeTokenAnalysis(state, analysis, link);
+            return;
+          }
           if (!analysis.gloss) analysis.gloss = {};
           analysis.gloss[lang] = value;
           return;
         }
 
+        if (isBlank) return;
         appendApprovedAnalysis(state, { id, surfaceText, gloss: { [lang]: value } }, tokenRef);
       },
     },
@@ -345,12 +381,7 @@ const analysisSlice = createSlice({
       const { link, analysis } = resolved;
 
       delete analysis.morphemes;
-      if (isEmptyTokenAnalysis(analysis)) {
-        state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
-        state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter(
-          (l) => l !== link,
-        );
-      }
+      if (isEmptyTokenAnalysis(analysis)) removeTokenAnalysis(state, analysis, link);
     },
     /**
      * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
@@ -606,15 +637,11 @@ export const selectPhraseLinks = createSelector(selectPhraseAnalysisLinksRaw, (l
  * containing it. When a token appears in multiple approved links (data-model violation), the last
  * wins. Recomputes only when approved phrase links change.
  */
-export const selectPhraseLinkByTokenRef = createSelector(selectPhraseLinks, (links) =>
-  links.reduce((map, link) => {
-    link.tokens.reduce((m, snap) => {
-      m.set(snap.tokenRef, link);
-      return m;
-    }, map);
-    return map;
-  }, new Map<string, PhraseAnalysisLink>()),
-);
+export const selectPhraseLinkByTokenRef = createSelector(selectPhraseLinks, (links) => {
+  const map = new Map<string, PhraseAnalysisLink>();
+  links.forEach((link) => link.tokens.forEach((snap) => map.set(snap.tokenRef, link)));
+  return map;
+});
 
 /**
  * Memoized selector that builds a `Map` from `analysisId` to approved `PhraseAnalysisLink` for O(1)

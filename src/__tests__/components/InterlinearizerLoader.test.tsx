@@ -15,6 +15,7 @@ import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
+import type { ViewOptions } from '../../types/view-options';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -94,9 +95,7 @@ type CapturedInterlinearizerProps = {
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
-  hideInactiveLinkButtons: boolean;
-  simplifyPhrases: boolean;
-  chapterLabelInVerse: boolean;
+  viewOptions: ViewOptions;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -540,7 +539,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.hideInactiveLinkButtons).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.hideInactiveLinkButtons).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
@@ -566,7 +565,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.simplifyPhrases).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
   });
 
   it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
@@ -592,7 +591,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.chapterLabelInVerse).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
   });
 
   it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {

@@ -8,6 +8,7 @@ import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
 import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { ViewOptions } from '../types/view-options';
 import { isWordToken } from '../types/type-guards';
 import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import SegmentListView from './SegmentListView';
@@ -53,18 +54,8 @@ type InterlinearizerProps = Readonly<{
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
-  /** When true, link buttons between phrases are hidden in segments other than the active verse. */
-  hideInactiveLinkButtons: boolean;
-  /** When true, phrase-level controls are hidden on every phrase except the focused one. */
-  simplifyPhrases: boolean;
-  /**
-   * When true, every verse is labeled `chapter:verse` and no inline chapter header is shown; when
-   * false, an inline chapter header precedes the first verse of each chapter and verse labels stay
-   * bare verse numbers.
-   */
-  chapterLabelInVerse: boolean;
-  /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
-  showMorphology: boolean;
+  /** Bundled display toggles forwarded to the segment list and continuous views. */
+  viewOptions: ViewOptions;
 }>;
 
 /**
@@ -79,14 +70,8 @@ type InterlinearizerProps = Readonly<{
  * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
  * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
  *   transition modes.
- * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden in
- *   segments other than the active verse.
- * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
- *   the focused one.
- * @param props.chapterLabelInVerse - When true, every verse is labeled `chapter:verse` instead of
- *   showing an inline chapter header.
- * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
- *   each word token.
+ * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
+ *   views.
  * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
@@ -95,10 +80,7 @@ function InterlinearizerInner({
   scrRef,
   phraseMode,
   setPhraseMode,
-  hideInactiveLinkButtons,
-  simplifyPhrases,
-  chapterLabelInVerse,
-  showMorphology,
+  viewOptions,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
@@ -287,9 +269,7 @@ function InterlinearizerInner({
               tokenSegmentMap={tokenSegmentMap}
               tokenDocOrder={tokenDocOrder}
               wordTokenByRef={wordTokenByRef}
-              hideInactiveLinkButtons={hideInactiveLinkButtons}
-              simplifyPhrases={simplifyPhrases}
-              showMorphology={showMorphology}
+              viewOptions={viewOptions}
             />
           </div>
         )}
@@ -305,10 +285,7 @@ function InterlinearizerInner({
           reportSettled={reportSettled}
           phraseMode={phraseMode}
           setPhraseMode={setPhraseMode}
-          hideInactiveLinkButtons={hideInactiveLinkButtons}
-          simplifyPhrases={simplifyPhrases}
-          chapterLabelInVerse={chapterLabelInVerse}
-          showMorphology={showMorphology}
+          viewOptions={viewOptions}
           hoveredPhraseId={hoveredPhraseId}
           setHoveredPhraseId={setHoveredPhraseId}
           editPhraseSegmentId={editPhraseSegmentId}
@@ -337,12 +314,8 @@ function InterlinearizerInner({
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
  * @param props.phraseMode - Current phrase-interaction mode owned by the parent
  * @param props.setPhraseMode - Setter for `phraseMode`
- * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden in
- *   segments other than the active verse.
- * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
- *   the focused one.
- * @param props.showMorphology - When true, morpheme rows and per-morpheme glosses are shown beneath
- *   each word token.
+ * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
+ *   views.
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({

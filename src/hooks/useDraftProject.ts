@@ -77,7 +77,10 @@ export type UseDraftProjectResult = {
    * @param bookCode - The 3-letter book code (e.g. `"GEN"`) to wipe.
    */
   wipeBook: (bookCode: string) => void;
-  /** Clears the draft's analysis entirely and marks it dirty. */
+  /**
+   * Clears the draft's analysis entirely and marks it **not** dirty — a wiped draft is treated as a
+   * clean baseline, so the unsaved-changes indicator clears. The active project is left untouched.
+   */
   wipeAll: () => void;
   /**
    * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
@@ -251,7 +254,11 @@ export default function useDraftProject(
     const { current } = draftRef;
     /* v8 ignore next -- wipe is only reachable from the mounted editor */
     if (!current) return;
-    applyReplacement({ ...current, analysis: emptyAnalysis(), dirty: true });
+    // Wiping the whole draft is treated as a clean baseline rather than an unsaved edit: it clears
+    // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
+    // draft. The active project is intentionally left untouched, so a subsequent Save still targets
+    // it. Per-book wipe stays dirty, since it is a partial edit the user will usually want to save.
+    applyReplacement({ ...current, analysis: emptyAnalysis(), dirty: false });
   }, [applyReplacement]);
 
   const markSynced = useCallback(

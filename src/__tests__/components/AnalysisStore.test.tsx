@@ -21,6 +21,7 @@ import {
   usePhraseDispatch,
   usePhraseGloss,
   usePhraseGlossDispatch,
+  useReportGlossEditing,
 } from '../../components/AnalysisStore';
 
 // ---------------------------------------------------------------------------
@@ -1143,6 +1144,114 @@ describe('useMorphemeGlossDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<MorphemeGlossDispatchUser />)).toThrow(
       'useMorphemeGlossDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+/**
+ * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
+ * pending-edits accounting from tests.
+ *
+ * @param props - Component props.
+ * @param props.isEditing - Whether this stand-in input currently holds uncommitted text.
+ * @returns An empty fragment; the component exists only for its hook side effect.
+ */
+function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
+  useReportGlossEditing(isEditing);
+  return undefined;
+}
+
+describe('useReportGlossEditing', () => {
+  it('reports true when the first input starts editing and false when it stops', () => {
+    const onPendingEditsChange = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing={false} />
+      </AnalysisStoreProvider>,
+    );
+    // No editor active yet: nothing reported.
+    expect(onPendingEditsChange).not.toHaveBeenCalled();
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing />
+      </AnalysisStoreProvider>,
+    );
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing={false} />
+      </AnalysisStoreProvider>,
+    );
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports only the 0↔non-0 transitions when multiple inputs edit concurrently', () => {
+    const onPendingEditsChange = jest.fn();
+    const renderWith = (a: boolean, b: boolean) => (
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing={a} />
+        <EditingReporter isEditing={b} />
+      </AnalysisStoreProvider>
+    );
+    const { rerender } = render(renderWith(false, false));
+    expect(onPendingEditsChange).not.toHaveBeenCalled();
+
+    rerender(renderWith(true, false));
+    expect(onPendingEditsChange).toHaveBeenCalledTimes(1);
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+
+    // Second input also starts editing: still pending, no new transition reported.
+    rerender(renderWith(true, true));
+    expect(onPendingEditsChange).toHaveBeenCalledTimes(1);
+
+    // First input stops: one editor remains, so still no transition.
+    rerender(renderWith(false, true));
+    expect(onPendingEditsChange).toHaveBeenCalledTimes(1);
+
+    // Last editor stops: now we cross back to zero.
+    rerender(renderWith(false, false));
+    expect(onPendingEditsChange).toHaveBeenCalledTimes(2);
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('reports false when an actively-editing input unmounts', () => {
+    const onPendingEditsChange = jest.fn();
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <EditingReporter isEditing />
+      </AnalysisStoreProvider>,
+    );
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(true);
+
+    rerender(
+      <AnalysisStoreProvider analysisLanguage="und" onPendingEditsChange={onPendingEditsChange}>
+        <span />
+      </AnalysisStoreProvider>,
+    );
+    expect(onPendingEditsChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('does not throw when no onPendingEditsChange is provided', () => {
+    const { rerender } = render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <EditingReporter isEditing={false} />
+      </AnalysisStoreProvider>,
+    );
+    expect(() =>
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <EditingReporter isEditing />
+        </AnalysisStoreProvider>,
+      ),
+    ).not.toThrow();
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<EditingReporter isEditing={false} />)).toThrow(
+      'useReportGlossEditing must be used inside an AnalysisStoreProvider',
     );
   });
 });

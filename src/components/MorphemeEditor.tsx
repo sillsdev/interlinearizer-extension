@@ -7,7 +7,7 @@ import type { MorphemeAnalysis } from 'interlinearizer';
 import { PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { useMorphemeGlossDispatch } from './AnalysisStore';
+import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
 
 /**
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
@@ -210,6 +210,9 @@ export function MorphemeGlossInput({
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
+  useReportGlossEditing(!disabled && draft !== committed);
 
   return (
     <input

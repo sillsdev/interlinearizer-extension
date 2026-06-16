@@ -45,6 +45,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: (...args: Parameters<typeof mockUsePhraseGloss>) => mockUsePhraseGloss(...args),
   usePhraseGlossDispatch: () => mockUsePhraseGlossDispatch(),
+  useReportGlossEditing: () => {},
 }));
 
 jest.mock('../../components/TokenChip', () => {

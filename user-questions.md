@@ -42,3 +42,21 @@ Decisions made during development that we'd like reviewed:
 5. **New dialog fields.** The "New" dialog still collects name/description (retained on the draft to
    prefill Save As) even though no project is created until Save As. Is collecting them at "New" time
    useful, or should they be collected only at Save As?
+
+6. **Active-project indication.** It was previously impossible to tell which saved project the draft
+   was working against. The "Select Interlinear Project" list now highlights the active project's row
+   (accent border/background) and shows an "Active" badge on it. This is currently the _only_ place
+   the active project is surfaced. Alternatives considered: showing the project name in the tab title
+   and/or a persistent toolbar label/badge. Should the active project also be shown outside the
+   select modal?
+
+7. **Unsaved indicator timing.** The `●` marker now appears as soon as the user starts typing in a
+   gloss field, not only after the field loses focus (gloss values are still committed/persisted on
+   blur — only the indicator is eager). Is reflecting in-progress typing as "unsaved" the right
+   behavior, or should the marker wait until an edit is actually committed?
+
+8. **Wipe and the unsaved indicator.** "Wipe Entire Draft" is treated as a clean baseline: it clears
+   the `●` marker (the empty draft is not flagged as unsaved) while keeping the active project as the
+   Save target, so a subsequent Save still writes the (now empty) draft to it. "Wipe Current Book"
+   stays flagged as unsaved, since it is a partial edit the user will usually want to save. Is this
+   split right, or should both wipes behave the same?

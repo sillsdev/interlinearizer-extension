@@ -156,13 +156,22 @@ function InterlinearizerLoaderInner({
    */
   const analysisLanguage = draft?.analysisLanguages[0] ?? platformLanguage;
 
+  // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
+  // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
+  // unsaved indicator light up the moment the user starts typing. A draft swap (New / Open / Wipe /
+  // book change) remounts the editor, whose gloss inputs unregister on unmount, so the provider
+  // reports `false` and this clears back to a clean baseline.
+  const [pendingEdits, setPendingEdits] = useState(false);
+
   // Reflect the draft's unsaved-changes state in the tab title. PAPI has no native dirty indicator,
-  // so we append a marker to the title via the host-injected `updateWebViewDefinition`.
+  // so we append a marker to the title via the host-injected `updateWebViewDefinition`. The marker
+  // shows for both committed changes (`dirty`) and in-progress typing (`pendingEdits`).
+  const hasUnsavedChanges = dirty || pendingEdits;
   useEffect(() => {
     updateWebViewDefinition({
-      title: dirty ? `${BASE_TAB_TITLE}${UNSAVED_TAB_MARKER}` : BASE_TAB_TITLE,
+      title: hasUnsavedChanges ? `${BASE_TAB_TITLE}${UNSAVED_TAB_MARKER}` : BASE_TAB_TITLE,
     });
-  }, [dirty, updateWebViewDefinition]);
+  }, [hasUnsavedChanges, updateWebViewDefinition]);
 
   const {
     isLoading: isContinuousScrollLoading,
@@ -430,6 +439,7 @@ function InterlinearizerLoaderInner({
             analysisLanguage={analysisLanguage}
             initialAnalysis={draft?.analysis}
             onSaveAnalysis={autosaveAnalysis}
+            onPendingEditsChange={setPendingEdits}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}

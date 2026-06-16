@@ -18,6 +18,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_cancel%': 'Cancel',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
   '%interlinearizer_modal_select_info_button_label%': 'Project info',
+  '%interlinearizer_modal_select_active_badge%': 'Active',
 };
 
 const STUB_PROJECT: InterlinearProjectSummary = {
@@ -70,6 +71,28 @@ describe('SelectInterlinearProjectModal', () => {
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
     expect(screen.getByText('Unnamed')).toBeInTheDocument();
+  });
+
+  it('badges the active project and marks its row aria-current', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    // The active badge appears on the active project's row, not the other one.
+    expect(screen.getByRole('button', { name: /french glosses/i })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: /unnamed/i })).not.toHaveAttribute('aria-current');
+  });
+
+  it('shows no active badge when no project matches activeProjectId', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} activeProjectId="not-in-list" />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
   });
 
   it('shows the analysis writing system code in each row', async () => {

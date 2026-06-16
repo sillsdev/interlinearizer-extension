@@ -135,6 +135,7 @@ type CapturedInterlinearizerProps = {
   analysisLanguage: string;
   initialAnalysis?: TextAnalysis;
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
+  onPendingEditsChange?: (pending: boolean) => void;
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   viewOptions: ViewOptions;
@@ -1013,6 +1014,28 @@ describe('InterlinearizerLoader', () => {
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
 
+    it('shows the tab unsaved marker for in-progress typing before the gloss commits', async () => {
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader();
+      });
+      const updateWebViewDefinition = result?.updateWebViewDefinition;
+
+      // A gloss input begins holding uncommitted text: the marker appears even though no gloss has
+      // been written (the persisted draft is still clean).
+      act(() => {
+        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+      });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
+
+      // The edit is reverted or the input unmounts with nothing committed: the marker clears.
+      updateWebViewDefinition?.mockClear();
+      act(() => {
+        capturedInterlinearizerProps?.onPendingEditsChange?.(false);
+      });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+    });
+
     it('logs an error when the saveAnalysis command rejects during Save', async () => {
       await act(async () =>
         renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
@@ -1094,7 +1117,8 @@ describe('InterlinearizerLoader', () => {
         return typeof json === 'string' ? JSON.parse(json) : undefined;
       })();
       expect(wiped?.analysis).toEqual(emptyAnalysis());
-      expect(wiped?.dirty).toBe(true);
+      // Wiping the whole draft is treated as a clean baseline, so it persists not-dirty.
+      expect(wiped?.dirty).toBe(false);
       expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
     });
 

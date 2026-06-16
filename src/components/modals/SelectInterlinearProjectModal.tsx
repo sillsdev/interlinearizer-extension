@@ -14,6 +14,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_info_button_label%',
+  '%interlinearizer_modal_select_active_badge%',
 ];
 
 /**
@@ -23,6 +24,9 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  *
  * @param props - Component props.
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
+ * @param props.activeProjectId - ID of the project currently open as the active Save target, if
+ *   any; the matching list entry is highlighted and badged so the user can tell which project the
+ *   draft is currently working against.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onClose - Called when the user cancels without selecting.
@@ -32,12 +36,14 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  */
 export function SelectInterlinearProjectModal({
   sourceProjectId,
+  activeProjectId,
   onSelect,
   onCreateNew,
   onClose,
   onViewInfo,
 }: Readonly<{
   sourceProjectId: string;
+  activeProjectId?: string;
   onSelect: (project: InterlinearProjectSummary) => void;
   onCreateNew: () => void;
   onClose: () => void;
@@ -117,32 +123,47 @@ export function SelectInterlinearProjectModal({
           </p>
         ) : (
           <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-96 tw:overflow-y-auto">
-            {projects.map((project) => (
-              <li key={project.id} className="tw:flex tw:items-center tw:gap-1">
-                <button
-                  type="button"
-                  className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:hover:bg-muted/70 tw:transition-colors tw:min-w-0"
-                  onClick={() => onSelect(project)}
-                >
-                  <span className="tw:font-medium tw:text-foreground tw:truncate">
-                    {project.name ??
-                      localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                  </span>
-                  <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0">
-                    {project.analysisLanguages.join(', ')}
-                  </span>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
-                  className="tw:shrink-0"
-                  onClick={() => onViewInfo(project)}
-                >
-                  <Info size={15} />
-                </Button>
-              </li>
-            ))}
+            {projects.map((project) => {
+              const isActive = project.id === activeProjectId;
+              return (
+                <li key={project.id} className="tw:flex tw:items-center tw:gap-1">
+                  <button
+                    type="button"
+                    aria-current={isActive ? 'true' : undefined}
+                    className={`tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
+                      isActive
+                        ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
+                        : 'tw:border-border tw:bg-muted/40 tw:hover:bg-muted/70'
+                    }`}
+                    onClick={() => onSelect(project)}
+                  >
+                    <span className="tw:font-medium tw:text-foreground tw:truncate">
+                      {project.name ??
+                        localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                    </span>
+                    {isActive && (
+                      <span className="tw:shrink-0 tw:rounded tw:bg-primary tw:px-1.5 tw:py-0.5 tw:text-xs tw:font-medium tw:text-primary-foreground">
+                        {localizedStrings['%interlinearizer_modal_select_active_badge%']}
+                      </span>
+                    )}
+                    <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0 tw:ms-auto">
+                      {project.analysisLanguages.join(', ')}
+                    </span>
+                  </button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={
+                      localizedStrings['%interlinearizer_modal_select_info_button_label%']
+                    }
+                    className="tw:shrink-0"
+                    onClick={() => onViewInfo(project)}
+                  >
+                    <Info size={15} />
+                  </Button>
+                </li>
+              );
+            })}
           </ul>
         )}
 

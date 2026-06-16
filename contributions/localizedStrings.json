@@ -72,6 +72,7 @@
       "%interlinearizer_modal_select_none%": "No interlinear projects exist for this source yet.",
       "%interlinearizer_modal_select_name_unnamed%": "Unnamed",
       "%interlinearizer_modal_select_info_button_label%": "Project info",
+      "%interlinearizer_modal_select_active_badge%": "Active",
       "%interlinearizer_modal_select_create_new%": "Create New",
       "%interlinearizer_modal_select_cancel%": "Cancel",
 

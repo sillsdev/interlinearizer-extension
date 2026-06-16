@@ -136,3 +136,11 @@ export function useMorphemeGlossDispatch(): (
 ) => void {
   return () => {};
 }
+
+/**
+ * No-op stand-in for the real pending-edits reporter. The mock has no provider-level editing
+ * accounting, so it simply ignores the flag.
+ *
+ * @param _isEditing - Whether the input currently holds uncommitted text (unused in mock).
+ */
+export function useReportGlossEditing(_isEditing: boolean): void {}

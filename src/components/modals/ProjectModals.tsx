@@ -363,6 +363,7 @@ export default function ProjectModals({
       {modal === 'select' && (
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
+          activeProjectId={activeProject?.id}
           onSelect={handleSelectProject}
           onCreateNew={handleSelectCreateNew}
           onClose={handleSelectClose}

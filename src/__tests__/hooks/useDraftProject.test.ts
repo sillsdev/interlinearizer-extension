@@ -300,9 +300,11 @@ describe('useDraftProject', () => {
   });
 
   describe('wipeAll', () => {
-    it('clears the analysis entirely, marks the draft dirty, bumps the version, and persists', async () => {
-      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-wipe-all') }));
+    it('clears the analysis entirely, clears dirty (clean baseline), bumps the version, and persists', async () => {
+      // Start from a dirty draft so the transition to clean is observable.
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-wipe-all'), dirty: true }));
       const { result } = await renderLoaded();
+      expect(result.current.dirty).toBe(true);
       const versionBefore = result.current.draftVersion;
 
       act(() => {
@@ -310,9 +312,9 @@ describe('useDraftProject', () => {
       });
 
       expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
-      expect(result.current.dirty).toBe(true);
+      expect(result.current.dirty).toBe(false);
       expect(result.current.draftVersion).toBe(versionBefore + 1);
-      expect(lastSavedDraft().dirty).toBe(true);
+      expect(lastSavedDraft().dirty).toBe(false);
     });
   });
 

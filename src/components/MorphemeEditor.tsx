@@ -8,7 +8,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { useMorphemeGlossDispatch } from './AnalysisStore';
+import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
 
 const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_splitLabel%',
@@ -263,6 +263,9 @@ export function MorphemeGlossInput({
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
+  useReportGlossEditing(!disabled && draft !== committed);
 
   return (
     <input

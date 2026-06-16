@@ -1,6 +1,6 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject } from 'interlinearizer';
+import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -23,11 +23,12 @@ type PendingReplace =
   | { kind: 'open'; project: InterlinearProjectSummary };
 
 /**
- * Single mount point for all project-related dialogs. Renders at most one of
- * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, {@link ProjectMetadataModal},
- * {@link SaveAsProjectModal}, or the {@link DiscardDraftConfirm} guard; manages the shared WebView
- * state for the active project; and routes New / Open / Save As through the draft (rather than
- * persisting projects directly on every edit).
+ * Single mount point for all project-related dialogs. Renders the active one of
+ * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, {@link ProjectMetadataModal}, or
+ * {@link SaveAsProjectModal}, with the {@link DiscardDraftConfirm} guard overlaid on top when a
+ * draft-replacing action is pending (so canceling returns to the underlying modal with its state
+ * intact); manages the shared WebView state for the active project; and routes New / Open / Save As
+ * through the draft (rather than persisting projects directly on every edit).
  *
  * @param props - Component props
  * @param props.activeProject - The currently active interlinear project (the Save target), read
@@ -40,7 +41,8 @@ type PendingReplace =
  *   on Save As.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
- * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As.
+ * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As,
+ *   given the analysis that was persisted; a no-op if an edit landed during the save.
  * @param props.modal - Which modal is currently open.
  * @param props.projectId - PAPI source project ID passed from the host.
  * @param props.resetDraft - Resets the draft to an empty baseline with the given config (the "New"
@@ -68,7 +70,7 @@ export default function ProjectModals({
   dirty: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   loadFromProject: (project: OpenableProject) => void;
-  markSynced: () => void;
+  markSynced: (savedAnalysis: TextAnalysis) => void;
   modal: ModalState;
   projectId: string;
   resetDraft: (config: NewDraftConfig) => void;
@@ -282,7 +284,7 @@ export default function ProjectModals({
           JSON.stringify(snapshot.analysis),
         );
         setActiveProject(created);
-        markSynced();
+        markSynced(snapshot.analysis);
         setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to save draft as new project', e);
@@ -311,7 +313,7 @@ export default function ProjectModals({
           JSON.stringify(snapshot.analysis),
         );
         setActiveProject(project);
-        markSynced();
+        markSynced(snapshot.analysis);
         setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to overwrite project with draft', e);
@@ -358,54 +360,55 @@ export default function ProjectModals({
 
   return (
     <div>
-      {pendingReplace ? (
+      {modal === 'select' && (
+        <SelectInterlinearProjectModal
+          sourceProjectId={projectId}
+          onSelect={handleSelectProject}
+          onCreateNew={handleSelectCreateNew}
+          onClose={handleSelectClose}
+          onViewInfo={handleViewInfo}
+        />
+      )}
+
+      {modal === 'create' && (
+        <CreateProjectModal
+          defaultAnalysisLanguage={defaultAnalysisLanguage}
+          onClose={handleCreateClose}
+          onCreateDraft={handleCreateDraft}
+        />
+      )}
+
+      {modal === 'saveAs' && (
+        <SaveAsProjectModal
+          sourceProjectId={projectId}
+          defaultName={draftSnapshot?.suggestedName}
+          defaultDescription={draftSnapshot?.suggestedDescription}
+          onSaveNew={handleSaveAsNew}
+          onOverwrite={handleOverwrite}
+          onClose={handleSaveAsClose}
+        />
+      )}
+
+      {modal === 'metadata' && resolvedMetadataProject && (
+        <ProjectMetadataModal
+          interlinearProjectId={resolvedMetadataProject.id}
+          name={resolvedMetadataProject.name}
+          description={resolvedMetadataProject.description}
+          sourceProjectId={resolvedMetadataProject.sourceProjectId}
+          targetProjectId={resolvedMetadataProject.targetProjectId}
+          analysisLanguages={resolvedMetadataProject.analysisLanguages}
+          createdAt={resolvedMetadataProject.createdAt}
+          onClose={handleMetadataClose}
+          onProjectSaved={handleMetadataProjectSaved}
+          onProjectDeleted={handleMetadataProjectDeleted}
+        />
+      )}
+
+      {/* The discard guard overlays the active modal rather than replacing it, so canceling
+          returns to that modal with its in-progress input intact, and confirming an Open does not
+          unmount (and re-fetch) the still-open select modal underneath. */}
+      {pendingReplace && (
         <DiscardDraftConfirm onConfirm={handleConfirmReplace} onCancel={handleCancelReplace} />
-      ) : (
-        <>
-          {modal === 'select' && (
-            <SelectInterlinearProjectModal
-              sourceProjectId={projectId}
-              onSelect={handleSelectProject}
-              onCreateNew={handleSelectCreateNew}
-              onClose={handleSelectClose}
-              onViewInfo={handleViewInfo}
-            />
-          )}
-
-          {modal === 'create' && (
-            <CreateProjectModal
-              defaultAnalysisLanguage={defaultAnalysisLanguage}
-              onClose={handleCreateClose}
-              onCreateDraft={handleCreateDraft}
-            />
-          )}
-
-          {modal === 'saveAs' && (
-            <SaveAsProjectModal
-              sourceProjectId={projectId}
-              defaultName={draftSnapshot?.suggestedName}
-              defaultDescription={draftSnapshot?.suggestedDescription}
-              onSaveNew={handleSaveAsNew}
-              onOverwrite={handleOverwrite}
-              onClose={handleSaveAsClose}
-            />
-          )}
-
-          {modal === 'metadata' && resolvedMetadataProject && (
-            <ProjectMetadataModal
-              interlinearProjectId={resolvedMetadataProject.id}
-              name={resolvedMetadataProject.name}
-              description={resolvedMetadataProject.description}
-              sourceProjectId={resolvedMetadataProject.sourceProjectId}
-              targetProjectId={resolvedMetadataProject.targetProjectId}
-              analysisLanguages={resolvedMetadataProject.analysisLanguages}
-              createdAt={resolvedMetadataProject.createdAt}
-              onClose={handleMetadataClose}
-              onProjectSaved={handleMetadataProjectSaved}
-              onProjectDeleted={handleMetadataProjectDeleted}
-            />
-          )}
-        </>
       )}
     </div>
   );

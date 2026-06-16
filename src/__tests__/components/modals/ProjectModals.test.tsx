@@ -471,9 +471,10 @@ describe('ProjectModals', () => {
       render(<ProjectModals {...buildProps({ modal: 'select', dirty: true, loadFromProject })} />);
 
       await userEvent.click(screen.getByTestId('select-select'));
-      // The discard confirm replaces the select modal; the project is not opened yet.
+      // The discard confirm overlays the still-mounted select modal (so confirming Open does not
+      // unmount and re-fetch it); the project is not opened yet.
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
-      expect(screen.queryByTestId('select-modal')).toBeNull();
+      expect(screen.getByTestId('select-modal')).toBeInTheDocument();
       expect(loadFromProject).not.toHaveBeenCalled();
 
       await userEvent.click(screen.getByTestId('discard-confirm'));

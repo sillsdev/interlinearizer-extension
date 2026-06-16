@@ -265,7 +265,7 @@ function InterlinearizerLoaderInner({
         activeProject.id,
         JSON.stringify(snapshot.analysis),
       );
-      markSynced();
+      markSynced(snapshot.analysis);
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
     }

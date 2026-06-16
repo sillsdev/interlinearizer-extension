@@ -79,8 +79,16 @@ export type UseDraftProjectResult = {
   wipeBook: (bookCode: string) => void;
   /** Clears the draft's analysis entirely and marks it dirty. */
   wipeAll: () => void;
-  /** Marks the draft as synced (not dirty) after a successful Save / Save As. */
-  markSynced: () => void;
+  /**
+   * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
+   * draft has not changed since the snapshot that was persisted. Pass the exact analysis that was
+   * written; if a later auto-save replaced it (an edit made during the save round-trip), the draft
+   * is left dirty so the unsaved-changes indicator and the next Save reflect that un-persisted edit
+   * rather than being cleared against a now-stale snapshot.
+   *
+   * @param savedAnalysis - The `TextAnalysis` reference that was actually persisted to the project.
+   */
+  markSynced: (savedAnalysis: TextAnalysis) => void;
 };
 
 /**
@@ -246,15 +254,23 @@ export default function useDraftProject(
     applyReplacement({ ...current, analysis: emptyAnalysis(), dirty: true });
   }, [applyReplacement]);
 
-  const markSynced = useCallback(() => {
-    const { current } = draftRef;
-    /* v8 ignore next -- save is only reachable from the mounted editor */
-    if (!current) return;
-    const next: DraftProject = { ...current, dirty: false };
-    draftRef.current = next;
-    persist(next);
-    setDirty(false);
-  }, [persist]);
+  const markSynced = useCallback(
+    (savedAnalysis: TextAnalysis) => {
+      const { current } = draftRef;
+      /* v8 ignore next -- save is only reachable from the mounted editor */
+      if (!current) return;
+      // If an edit landed during the save round-trip, autosaveAnalysis has already swapped a newer
+      // analysis (a fresh object) into the ref and marked the draft dirty. Leave it dirty so the
+      // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
+      // against the now-stale snapshot we just wrote.
+      if (current.analysis !== savedAnalysis) return;
+      const next: DraftProject = { ...current, dirty: false };
+      draftRef.current = next;
+      persist(next);
+      setDirty(false);
+    },
+    [persist],
+  );
 
   return {
     isDraftLoading,

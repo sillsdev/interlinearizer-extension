@@ -320,19 +320,41 @@ describe('useDraftProject', () => {
     it('clears dirty and persists the synced draft without bumping the version', async () => {
       const { result } = await renderLoaded();
       // Make the draft dirty first so the transition to synced is observable.
+      const synced = analysisWithToken('tok-sync');
       act(() => {
-        result.current.autosaveAnalysis(analysisWithToken('tok-sync'));
+        result.current.autosaveAnalysis(synced);
       });
       expect(result.current.dirty).toBe(true);
       const versionBefore = result.current.draftVersion;
 
       act(() => {
-        result.current.markSynced();
+        result.current.markSynced(synced);
       });
 
       expect(result.current.dirty).toBe(false);
       expect(result.current.draftVersion).toBe(versionBefore);
       expect(lastSavedDraft().dirty).toBe(false);
+    });
+
+    it('leaves the draft dirty when an edit landed since the saved snapshot', async () => {
+      const { result } = await renderLoaded();
+      // The analysis that a Save captured and persisted.
+      const savedSnapshot = analysisWithToken('tok-saved');
+      act(() => {
+        result.current.autosaveAnalysis(savedSnapshot);
+      });
+      // A newer edit lands during the save round-trip, replacing the ref's analysis.
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-newer'));
+      });
+      expect(result.current.dirty).toBe(true);
+
+      // Syncing against the now-stale snapshot must not clear the unsaved-changes flag.
+      act(() => {
+        result.current.markSynced(savedSnapshot);
+      });
+
+      expect(result.current.dirty).toBe(true);
     });
   });
 

@@ -54,8 +54,8 @@ export function SaveAsProjectModal({
   sourceProjectId: string;
   defaultName?: string;
   defaultDescription?: string;
-  onSaveNew: (name?: string, description?: string) => void;
-  onOverwrite: (project: InterlinearProjectSummary) => void;
+  onSaveNew: (name?: string, description?: string) => void | Promise<void>;
+  onOverwrite: (project: InterlinearProjectSummary) => void | Promise<void>;
   onClose: () => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(SAVE_AS_MODAL_STRING_KEYS);
@@ -64,6 +64,15 @@ export function SaveAsProjectModal({
   const [description, setDescription] = useState(defaultDescription ?? '');
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  /**
+   * True while a save (new or overwrite) is in flight; disables the save controls to block
+   * re-submits.
+   */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Ref mirror of `isSubmitting` so a submit handler can short-circuit a second invocation
+  // synchronously, before the re-render that disables the button lands (guards programmatic races).
+  const isSubmittingRef = useRef(false);
 
   /** The existing project pending an overwrite confirmation, or `undefined`. */
   const [confirmOverwrite, setConfirmOverwrite] = useState<InterlinearProjectSummary | undefined>(
@@ -96,6 +105,9 @@ export function SaveAsProjectModal({
         throw new TypeError('getProjectsForSource did not return an array');
       setProjects(parsed.filter(isInterlinearProjectSummary));
     } catch (e) {
+      // Ignore a failure from a load that a newer one has superseded (mirrors the success-path stale
+      // guard above) so a stale rejection cannot fire a spurious error notification.
+      if (gen !== loadGenRef.current) return;
       logger.error('Interlinearizer: failed to load projects for Save As', e);
       await papi.notifications
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
@@ -109,10 +121,45 @@ export function SaveAsProjectModal({
     loadProjects();
   }, [loadProjects]);
 
-  /** Saves the draft as a new project with the trimmed name/description (blank fields → undefined). */
-  const handleSaveNew = useCallback(() => {
-    onSaveNew(name.trim() || undefined, description.trim() || undefined);
+  /**
+   * Saves the draft as a new project with the trimmed name/description (blank fields → undefined),
+   * blocking re-entry while the save is in flight so a double-click cannot create duplicate
+   * projects.
+   */
+  const handleSaveNew = useCallback(async () => {
+    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+    try {
+      await onSaveNew(name.trim() || undefined, description.trim() || undefined);
+    } finally {
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
+    }
   }, [name, description, onSaveNew]);
+
+  /**
+   * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
+   * flight so a double-click cannot fire the overwrite (or another save) twice.
+   *
+   * @param project - The existing project to overwrite.
+   */
+  const handleConfirmOverwrite = useCallback(
+    async (project: InterlinearProjectSummary) => {
+      /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
+      if (isSubmittingRef.current) return;
+      isSubmittingRef.current = true;
+      setIsSubmitting(true);
+      try {
+        await onOverwrite(project);
+      } finally {
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
+      }
+    },
+    [onOverwrite],
+  );
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
@@ -153,7 +200,7 @@ export function SaveAsProjectModal({
           placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
         />
         <div className="tw:flex tw:justify-end tw:mb-4">
-          <Button onClick={handleSaveNew} data-testid="save-as-new">
+          <Button onClick={handleSaveNew} data-testid="save-as-new" disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
           </Button>
         </div>
@@ -199,7 +246,8 @@ export function SaveAsProjectModal({
                 variant="destructive"
                 size="sm"
                 data-testid="save-as-overwrite-confirm"
-                onClick={() => onOverwrite(confirmOverwrite)}
+                onClick={() => handleConfirmOverwrite(confirmOverwrite)}
+                disabled={isSubmitting}
               >
                 {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
               </Button>
@@ -208,7 +256,7 @@ export function SaveAsProjectModal({
         )}
 
         <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isLoading}>
+          <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
             {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
           </Button>
         </div>

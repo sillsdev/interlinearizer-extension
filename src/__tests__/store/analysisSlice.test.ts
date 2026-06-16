@@ -1023,6 +1023,56 @@ describe('writeMorphemeGloss', () => {
     expect(updated?.morphemes?.[1].gloss).toBeUndefined();
   });
 
+  it('drops the gloss object when a blank value clears its only entry', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: '  ' }));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].gloss).toBeUndefined();
+  });
+
+  it('removes only the active language entry from a multi-language gloss when cleared', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [
+        { id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not', fr: 'non' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: '' }));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].gloss).toStrictEqual({ fr: 'non' });
+  });
+
+  it('no-ops when a blank value clears a morpheme that has no gloss', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [{ id: 'm-1', form: 'un-', writingSystem: 'und' }],
+    };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: '' }));
+
+    const updated = store.getState().analysis.analysis.tokenAnalyses.find((a) => a.id === 'ta-1');
+    expect(updated?.morphemes?.[0].gloss).toBeUndefined();
+  });
+
   it('no-ops when the token has no approved link', () => {
     const store = createAnalysisStore();
     store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: 'not' }));

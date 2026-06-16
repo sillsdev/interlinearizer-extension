@@ -388,6 +388,12 @@ const analysisSlice = createSlice({
      * given token. No-ops when the token has no approved analysis or the morpheme id is not found
      * (an orphaned approved link is still repaired; see {@link resolveApprovedAnalysis}).
      *
+     * A blank `value` (empty or whitespace) clears the gloss rather than storing junk: the active
+     * language's entry is removed, and when that leaves the morpheme with no glosses the `gloss`
+     * object is dropped entirely — mirroring the token-level {@link writeGloss}. The morpheme record
+     * itself is kept (a breakdown is content in its own right), so unlike `writeGloss` this never
+     * removes the enclosing analysis.
+     *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the morpheme gloss payload.
      */
@@ -401,6 +407,14 @@ const analysisSlice = createSlice({
       const resolved = resolveApprovedAnalysis(state, tokenRef);
       const morpheme = resolved?.analysis.morphemes?.find((m) => m.id === morphemeId);
       if (!morpheme) return;
+
+      if (value.trim() === '') {
+        if (morpheme.gloss) {
+          delete morpheme.gloss[lang];
+          if (Object.keys(morpheme.gloss).length === 0) delete morpheme.gloss;
+        }
+        return;
+      }
 
       if (!morpheme.gloss) morpheme.gloss = {};
       morpheme.gloss[lang] = value;

@@ -200,4 +200,57 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() => expect(screen.queryByText('Unnamed')).not.toBeInTheDocument());
     expect(screen.getByText('French glosses')).toBeInTheDocument();
   });
+
+  it('disables the save-as-new button while a save is in flight to block duplicate submits', async () => {
+    let resolveSave: () => void = () => {};
+    const onSaveNew = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    render(<SaveAsProjectModal {...defaultProps} onSaveNew={onSaveNew} />);
+
+    // Let the mount's project-list load settle before interacting, so its state update is flushed.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeDisabled());
+
+    const saveButton = screen.getByTestId('save-as-new');
+    await userEvent.click(saveButton);
+
+    // While the save promise is pending the button is disabled, so the user cannot submit again.
+    expect(saveButton).toBeDisabled();
+    expect(onSaveNew).toHaveBeenCalledTimes(1);
+
+    // Resolving the save re-enables the button (this unit test keeps the modal mounted).
+    resolveSave();
+    await waitFor(() => expect(saveButton).not.toBeDisabled());
+  });
+
+  it('ignores an error from a project-list load that a newer load has superseded', async () => {
+    let rejectFirst: (reason: unknown) => void = () => {};
+    mockSendCommand
+      .mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectFirst = reject;
+          }),
+      )
+      .mockResolvedValue(JSON.stringify([STUB_PROJECT_2]));
+
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} />);
+
+    // Supersede the first (still-pending) load by changing the source before it settles.
+    rerender(<SaveAsProjectModal {...defaultProps} sourceProjectId="src-proj-2" />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    // Fail the stale first load: because it has been superseded, it must not log or notify.
+    rejectFirst(new Error('stale failure'));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
+    expect(screen.getByText('French glosses')).toBeInTheDocument();
+  });
 });

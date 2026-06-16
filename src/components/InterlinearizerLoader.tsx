@@ -276,9 +276,10 @@ function InterlinearizerLoaderInner({
     if (wipeConfirm === 'book') {
       /* v8 ignore next -- wipe-book is only offered once a book is loaded */
       if (book) wipeBook(book.bookRef);
-    } else {
-      wipeAll();
     }
+    // Match 'all' explicitly rather than via an else, so a future wipe scope can't fall through to
+    // the destructive whole-draft wipe.
+    if (wipeConfirm === 'all') wipeAll();
     setWipeConfirm(undefined);
   }, [wipeConfirm, book, wipeBook, wipeAll]);
 

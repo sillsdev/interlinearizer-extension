@@ -148,6 +148,26 @@ describe('SaveAsProjectModal', () => {
     expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
   });
 
+  it('clears an armed overwrite confirm when the source changes so a stale target cannot be used', async () => {
+    mockSendCommand
+      .mockResolvedValueOnce(JSON.stringify([STUB_PROJECT]))
+      .mockResolvedValueOnce(JSON.stringify([STUB_PROJECT_2]));
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} />);
+
+    // Arm the overwrite confirm against the first source's project.
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const row = screen.getByText('Unnamed').closest('li');
+    if (!row) throw new Error('expected the project row to be present');
+    await userEvent.click(within(row).getByRole('button', { name: 'Overwrite' }));
+    expect(screen.getByText('Overwrite this project with the draft?')).toBeInTheDocument();
+
+    // Switching sources must drop the stale confirm rather than carry it into the new list.
+    rerender(<SaveAsProjectModal {...defaultProps} sourceProjectId="src-proj-2" />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
+  });
+
   it('logs and notifies when loading the project list rejects', async () => {
     const loadError = new Error('network error');
     mockSendCommand.mockRejectedValue(loadError);

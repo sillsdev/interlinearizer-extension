@@ -93,6 +93,7 @@ export function SaveAsProjectModal({
     const gen = loadGenRef.current;
     setIsLoading(true);
     setProjects([]);
+    setConfirmOverwrite(undefined);
     try {
       const json = await papi.commands.sendCommand(
         'interlinearizer.getProjectsForSource',

@@ -362,9 +362,16 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  // All interlinearizer view-toggle settings are booleans, so they share one validator.
-  /* v8 ignore next */
-  const isBoolean = async (newValue: unknown) => typeof newValue === 'boolean';
+  /**
+   * Returns whether the supplied project-setting value is a boolean.
+   *
+   * @param newValue - Candidate project-setting value.
+   * @returns A promise that resolves to `true` when `newValue` is a boolean.
+   */
+  /* v8 ignore next 3 */
+  function isBoolean(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(typeof newValue === 'boolean');
+  }
 
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',

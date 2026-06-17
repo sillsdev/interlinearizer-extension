@@ -4,10 +4,22 @@
  *   morpheme forms; {@link MorphemeGlossInput} provides a per-morpheme gloss field.
  */
 import type { MorphemeAnalysis } from 'interlinearizer';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { useMorphemeGlossDispatch } from './AnalysisStore';
+
+const POPOVER_STRING_KEYS = [
+  '%interlinearizer_morphemeEditor_splitLabel%',
+  '%interlinearizer_morphemeEditor_delete%',
+  '%interlinearizer_morphemeEditor_cancel%',
+  '%interlinearizer_morphemeEditor_done%',
+] as const satisfies `%${string}%`[];
+
+const MORPHEME_GLOSS_STRING_KEYS = [
+  '%interlinearizer_morphemeGloss_label%',
+] as const satisfies `%${string}%`[];
 
 /**
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
@@ -15,9 +27,9 @@ import { useMorphemeGlossDispatch } from './AnalysisStore';
  * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
  * Escape dismiss without saving. An unedited draft is never re-saved over an existing breakdown —
  * Enter, Done, and outside clicks all dismiss instead, because re-saving identical forms would only
- * rewrite identical data. When no breakdown exists yet, Enter and Done with the unedited pre-filled
- * surface text deliberately record the token as a single whole-word morpheme, but an outside click
- * dismisses without saving so an accidental click cannot create one.
+ * rewrite identical data. A breakdown that is empty or just the whole word as a single morpheme
+ * carries no real segmentation, so it is never saved either: the Done button is disabled for it and
+ * the Enter / outside-click paths dismiss without writing.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -33,6 +45,10 @@ import { useMorphemeGlossDispatch } from './AnalysisStore';
  *   token's existing morpheme breakdown, then dismisses the popover. Callers should omit it when
  *   the token has no breakdown to delete; its presence is also how the popover knows a breakdown
  *   already exists when deciding whether an unedited commit should save.
+ * @param props.surfaceText - The token's surface text, used to reject a "breakdown" that is just
+ *   the whole word as a single morpheme (no real segmentation).
+ * @param props.glossInputId - Id of the token's gloss input; focus is restored to it when the
+ *   popover closes, rather than to the non-tabbable morpheme trigger.
  * @returns A popover panel with a text input and Cancel/Done buttons.
  */
 export function MorphemeBreakdownPopover({
@@ -40,12 +56,17 @@ export function MorphemeBreakdownPopover({
   onSave,
   onClose,
   onDelete,
+  surfaceText,
+  glossInputId,
 }: Readonly<{
   initialValue: string;
   onSave: (value: string) => void;
   onClose: () => void;
   onDelete?: () => void;
+  surfaceText: string;
+  glossInputId: string;
 }>) {
+  const [localizedStrings] = useLocalizedStrings(POPOVER_STRING_KEYS);
   const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
   // eslint-disable-next-line no-null/no-null
@@ -72,15 +93,24 @@ export function MorphemeBreakdownPopover({
   // comparing normalized text avoids a no-op persistence round-trip.
   const isUnedited = normalize(draft) === normalize(initialValue);
 
+  // A breakdown carries no real segmentation when it is empty or is just the whole word as a single
+  // morpheme equal to the surface text; in both cases there is nothing worth persisting.
+  const normalized = normalize(draft);
+  const forms = normalized === '' ? [] : normalized.split(' ');
+  const isMeaningless = forms.length === 0 || (forms.length === 1 && forms[0] === surfaceText);
+
   /**
-   * Commits the current draft and closes the popover. Skips the save when the token already has a
+   * Commits the current draft and closes the popover. Skips the save when the breakdown is
+   * meaningless (empty, or the whole word as one morpheme), or when the token already has a
    * breakdown (`onDelete` provided) and the text was not edited — re-saving identical forms would
-   * only rewrite identical data. An unedited commit on a token with _no_ breakdown is kept: it
-   * deliberately records the token as a single whole-word morpheme.
+   * only rewrite identical data.
    */
   const handleSave = () => {
-    const trimmed = draft.trim();
-    if (trimmed && !(onDelete && isUnedited)) onSave(trimmed);
+    if (isMeaningless || (onDelete && isUnedited)) {
+      onClose();
+      return;
+    }
+    onSave(draft.trim());
     onClose();
   };
 
@@ -98,10 +128,9 @@ export function MorphemeBreakdownPopover({
 
   /**
    * Commits the draft when the user interacts outside the popover, except when the text was not
-   * edited — then the interaction acts like Cancel. Unlike Enter and Done, the unedited check here
-   * applies even when the token has no breakdown yet ({@link handleSave} would otherwise create a
-   * single-morpheme breakdown equal to the pre-filled surface text), because an accidental outside
-   * click is not a deliberate commit.
+   * edited — then the interaction acts like Cancel, because an accidental outside click is not a
+   * deliberate commit. An edited-but-meaningless draft is also dismissed without saving by
+   * {@link handleSave}.
    */
   const handleInteractOutside = () => {
     if (isUnedited) {
@@ -134,9 +163,15 @@ export function MorphemeBreakdownPopover({
       onEscapeKeyDown={onClose}
       onInteractOutside={handleInteractOutside}
       onOpenAutoFocus={(e) => e.preventDefault()}
+      onCloseAutoFocus={(e) => {
+        // Restore focus to the token's gloss input rather than the non-tabbable morpheme trigger
+        // (Radix's default). preventScroll keeps the React-controlled scroll the sole scroller.
+        e.preventDefault();
+        document.getElementById(glossInputId)?.focus({ preventScroll: true });
+      }}
     >
       <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
-        Split into morphemes
+        {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}
       </label>
       <input
         ref={inputRef}
@@ -157,7 +192,7 @@ export function MorphemeBreakdownPopover({
               onClose();
             }}
           >
-            Delete
+            {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
           </button>
         )}
         <button
@@ -165,14 +200,15 @@ export function MorphemeBreakdownPopover({
           type="button"
           onClick={onClose}
         >
-          Cancel
+          {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
         </button>
         <button
-          className="tw:rounded tw:bg-primary tw:px-3 tw:py-0.5 tw:text-xs tw:text-primary-foreground tw:hover:bg-primary/90"
+          className="tw:rounded tw:bg-primary tw:px-3 tw:py-0.5 tw:text-xs tw:text-primary-foreground tw:hover:bg-primary/90 tw:disabled:opacity-50 tw:disabled:pointer-events-none"
+          disabled={isMeaningless}
           type="button"
           onClick={handleSave}
         >
-          Done
+          {localizedStrings['%interlinearizer_morphemeEditor_done%']}
         </button>
       </div>
     </PopoverContent>
@@ -206,6 +242,7 @@ export function MorphemeGlossInput({
   const committed = morpheme.gloss?.[analysisLanguage] ?? '';
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
   const [draft, setDraft] = useState(committed);
+  const [localizedStrings] = useLocalizedStrings(MORPHEME_GLOSS_STRING_KEYS);
 
   useEffect(() => {
     setDraft(committed);
@@ -213,7 +250,10 @@ export function MorphemeGlossInput({
 
   return (
     <input
-      aria-label={`Gloss for morpheme ${morpheme.form}`}
+      aria-label={localizedStrings['%interlinearizer_morphemeGloss_label%'].replace(
+        '{form}',
+        morpheme.form,
+      )}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"
       disabled={disabled}

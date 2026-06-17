@@ -75,8 +75,9 @@ function isTokenSnapshot(v: unknown): boolean {
 }
 
 /**
- * Checks that `v` satisfies the base `Analysis` shape (`id` and `surfaceText`). Used as the
- * `.every()` predicate for `segmentAnalyses`, `tokenAnalyses`, and `phraseAnalyses`.
+ * Checks that `v` satisfies the base `Analysis` shape (`id` and `surfaceText`). Used directly as
+ * the `.every()` predicate for `segmentAnalyses` and `phraseAnalyses`, and as the base of
+ * {@link isTokenAnalysisRecord} for `tokenAnalyses`.
  *
  * @param v - The value to test.
  * @returns `true` if `v` is an object with string `id` and `surfaceText` properties.
@@ -89,6 +90,45 @@ function isAnalysisRecord(v: unknown): boolean {
     typeof v.id === 'string' &&
     'surfaceText' in v &&
     typeof v.surfaceText === 'string'
+  );
+}
+
+/**
+ * Checks that `v` has the required fields of a `MorphemeAnalysis` (`id`, `form`, `writingSystem`).
+ * Used to validate the elements of a `TokenAnalysis.morphemes` array at the persistence boundary.
+ *
+ * @param v - The value to test.
+ * @returns `true` if `v` is an object with string `id`, `form`, and `writingSystem` properties.
+ */
+function isMorphemeAnalysis(v: unknown): boolean {
+  return (
+    !!v &&
+    typeof v === 'object' &&
+    'id' in v &&
+    typeof v.id === 'string' &&
+    'form' in v &&
+    typeof v.form === 'string' &&
+    'writingSystem' in v &&
+    typeof v.writingSystem === 'string'
+  );
+}
+
+/**
+ * Checks that `v` satisfies the `TokenAnalysis` shape: the base `Analysis` fields plus, when
+ * present, a `morphemes` array whose every element passes {@link isMorphemeAnalysis}. Morphemes are
+ * first-class data read by the UI (`m.id` keys, `m.form`, `m.writingSystem`), so a malformed array
+ * must be rejected before persisting rather than surfacing as a render-time fault.
+ *
+ * @param v - The value to test.
+ * @returns `true` if `v` is a valid analysis record with a well-formed (or absent) `morphemes`
+ *   array.
+ */
+function isTokenAnalysisRecord(v: unknown): boolean {
+  return (
+    isAnalysisRecord(v) &&
+    !!v &&
+    typeof v === 'object' &&
+    (!('morphemes' in v) || (Array.isArray(v.morphemes) && v.morphemes.every(isMorphemeAnalysis)))
   );
 }
 
@@ -181,7 +221,7 @@ export function isTextAnalysis(value: unknown): value is TextAnalysis {
     value.segmentAnalysisLinks.every(isSegmentAnalysisLink) &&
     'tokenAnalyses' in value &&
     Array.isArray(value.tokenAnalyses) &&
-    value.tokenAnalyses.every(isAnalysisRecord) &&
+    value.tokenAnalyses.every(isTokenAnalysisRecord) &&
     'tokenAnalysisLinks' in value &&
     Array.isArray(value.tokenAnalysisLinks) &&
     value.tokenAnalysisLinks.every(isTokenAnalysisLink) &&

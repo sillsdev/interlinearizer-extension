@@ -2,6 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
@@ -10,6 +11,15 @@ import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 
 jest.mock('../../components/AnalysisStore');
+
+const LOCALIZED = {
+  '%interlinearizer_tokenChip_editMorphemes%': 'Edit morpheme breakdown for {token}',
+  '%interlinearizer_tokenChip_defineMorphemes%': 'Define morpheme breakdown for {token}',
+};
+
+beforeEach(() => {
+  jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+});
 jest.mock('../../components/MorphemeEditor', () => ({
   /**
    * Stub popover that renders a save button so tests can trigger onSave.

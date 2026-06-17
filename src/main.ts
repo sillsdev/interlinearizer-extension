@@ -362,29 +362,32 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  // All interlinearizer view-toggle settings are booleans, so they share one validator.
+  const isBoolean = async (newValue: unknown) => typeof newValue === 'boolean';
+
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const hideInactiveLinkButtonsValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.hideInactiveLinkButtons',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const simplifyPhrasesValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.simplifyPhrases',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const chapterLabelInVerseValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.chapterLabelInVerse',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showMorphology',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const createProjectCommandRegistration = await papi.commands.registerCommand(

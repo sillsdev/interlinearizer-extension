@@ -1,4 +1,5 @@
 import type { Token } from 'interlinearizer';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { X } from 'lucide-react';
 import { Popover, PopoverAnchor } from 'platform-bible-react';
 import { memo, type MouseEventHandler, useEffect, useId, useRef, useState } from 'react';
@@ -11,6 +12,11 @@ import {
   useMorphemes,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
+
+const STRING_KEYS = [
+  '%interlinearizer_tokenChip_editMorphemes%',
+  '%interlinearizer_tokenChip_defineMorphemes%',
+] as const satisfies `%${string}%`[];
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
@@ -51,6 +57,7 @@ export function TokenChip({
   isSplitFree?: boolean;
   showMorphology?: boolean;
 }>) {
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const committedGloss = useGloss(token.ref);
   const onGlossChange = useGlossDispatch();
   const morphemes = useMorphemes(token.ref);
@@ -172,12 +179,11 @@ export function TokenChip({
             <PopoverAnchor asChild>
               <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">
                 <button
-                  aria-label={
-                    hasMorphemes
-                      ? `Edit morpheme breakdown for ${token.surfaceText}`
-                      : `Define morpheme breakdown for ${token.surfaceText}`
-                  }
-                  className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:cursor-pointer tw:transition-colors tw:hover:bg-accent ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
+                  aria-label={(hasMorphemes
+                    ? localizedStrings['%interlinearizer_tokenChip_editMorphemes%']
+                    : localizedStrings['%interlinearizer_tokenChip_defineMorphemes%']
+                  ).replace('{token}', token.surfaceText)}
+                  className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'} ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
                   tabIndex={-1}
                   type="button"
                   onClick={(e) => {
@@ -214,12 +220,14 @@ export function TokenChip({
             </PopoverAnchor>
             {popoverOpen && (
               <MorphemeBreakdownPopover
+                glossInputId={glossInputId}
                 initialValue={
                   hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
                 }
                 onClose={() => setPopoverOpen(false)}
                 onDelete={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}
+                surfaceText={token.surfaceText}
               />
             )}
           </Popover>

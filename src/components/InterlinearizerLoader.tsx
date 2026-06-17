@@ -226,7 +226,7 @@ function InterlinearizerLoaderInner({
     value: showMorphology,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showMorphology', false);
 
-  // Bundle the display toggles into one stable object. Memoizing on the four primitive values keeps
+  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps
   // the reference identical across the loader's frequent re-renders (driven by `useData`,
   // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
   // of re-rendering every windowed segment when no toggle actually changed.

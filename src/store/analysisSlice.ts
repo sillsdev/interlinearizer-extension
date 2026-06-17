@@ -195,8 +195,8 @@ function removeTokenAnalysis(
  * content: they describe who/what produced an analysis, not an analysis worth keeping on their own.
  * A record holding only provenance and no glosses/morphemes/pos/features is therefore considered
  * empty and may be dropped when its last content field is cleared. This is a deliberate choice — if
- * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a gloss
- * clear, add the relevant fields to the check below.
+ * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a
+ * gloss clear, add the relevant fields to the check below.
  *
  * @param analysis - The `TokenAnalysis` to inspect.
  * @returns `true` when the record holds no analysis content worth keeping.

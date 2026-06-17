@@ -156,29 +156,35 @@ export function MorphemeBreakdownPopover({
     e.stopPropagation();
   };
 
+  /**
+   * Overrides Radix's default close-focus behavior to land focus on the chip's first morpheme gloss
+   * field. The morpheme gloss inputs sit before the token gloss input inside the same label, so the
+   * lookup is scoped to that label — the panel is portaled to `document.body`, so a document-wide
+   * query could match another token's field. Falls back to the token gloss input when no morpheme
+   * field exists (dismissed with no breakdown, or deleted).
+   *
+   * @param e - The Radix close auto-focus event.
+   */
+  const handleCloseAutoFocus = (e: Event) => {
+    e.preventDefault();
+    const glossInput = document.getElementById(glossInputId);
+    const firstMorphemeGloss = glossInput
+      ?.closest('label')
+      ?.querySelector<HTMLInputElement>('input[data-morpheme-gloss]');
+    // `preventScroll` keeps the React-controlled scroll the sole scroller.
+    (firstMorphemeGloss ?? glossInput)?.focus({ preventScroll: true });
+  };
+
   return (
     <PopoverContent
       align="start"
       className="tw:flex tw:w-auto tw:min-w-48 tw:flex-col tw:gap-1.5 tw:p-2"
       onClick={stopMouseEvents}
-      onMouseDown={stopMouseEvents}
+      onCloseAutoFocus={handleCloseAutoFocus}
       onEscapeKeyDown={onClose}
       onInteractOutside={handleInteractOutside}
+      onMouseDown={stopMouseEvents}
       onOpenAutoFocus={(e) => e.preventDefault()}
-      onCloseAutoFocus={(e) => {
-        // On close, land focus on the chip's first morpheme gloss field rather than Radix's default
-        // (the non-tabbable trigger). The morpheme gloss inputs sit before the token gloss input
-        // inside the same label, so scope the lookup to that label — the panel is portaled to
-        // document.body, so a document-wide query could match another token's field. Fall back to
-        // the token gloss input when no morpheme field exists (dismissed with no breakdown, or
-        // deleted). preventScroll keeps the React-controlled scroll the sole scroller.
-        e.preventDefault();
-        const glossInput = document.getElementById(glossInputId);
-        const firstMorphemeGloss = glossInput
-          ?.closest('label')
-          ?.querySelector<HTMLInputElement>('input[data-morpheme-gloss]');
-        (firstMorphemeGloss ?? glossInput)?.focus({ preventScroll: true });
-      }}
     >
       <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
         {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}

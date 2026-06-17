@@ -382,6 +382,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     async (newValue) => typeof newValue === 'boolean',
   );
 
+  const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.showMorphology',
+    async (newValue) => typeof newValue === 'boolean',
+  );
+
   const createProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createProject',
     createInterlinearProject,
@@ -630,6 +635,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     hideInactiveLinkButtonsValidatorRegistration,
     simplifyPhrasesValidatorRegistration,
     chapterLabelInVerseValidatorRegistration,
+    showMorphologyValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

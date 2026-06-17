@@ -27,6 +27,13 @@
       "%interlinearizer_viewOption_showMorphology%": "Show morphology",
       "%interlinearizer_projectSettings_showMorphology%": "Show Morphology",
       "%interlinearizer_projectSettings_showMorphologyDescription%": "Display morpheme breakdown and per-morpheme glosses beneath each word token",
+      "%interlinearizer_morphemeEditor_splitLabel%": "Split into morphemes",
+      "%interlinearizer_morphemeEditor_delete%": "Delete",
+      "%interlinearizer_morphemeEditor_cancel%": "Cancel",
+      "%interlinearizer_morphemeEditor_done%": "Done",
+      "%interlinearizer_morphemeGloss_label%": "Gloss for morpheme {form}",
+      "%interlinearizer_tokenChip_editMorphemes%": "Edit morpheme breakdown for {token}",
+      "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Cross-segment phrases are not supported. This link button is outside the current segment.",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",

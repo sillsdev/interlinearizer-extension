@@ -191,6 +191,13 @@ function removeTokenAnalysis(
  * when it has no entries or every entry is blank, so a record left holding only whitespace glosses
  * (junk from clearing a gloss field) is treated the same as one with no gloss at all.
  *
+ * Provenance fields (`confidence`, `producer`, `sourceUser`) are intentionally NOT treated as
+ * content: they describe who/what produced an analysis, not an analysis worth keeping on their own.
+ * A record holding only provenance and no glosses/morphemes/pos/features is therefore considered
+ * empty and may be dropped when its last content field is cleared. This is a deliberate choice — if
+ * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a gloss
+ * clear, add the relevant fields to the check below.
+ *
  * @param analysis - The `TokenAnalysis` to inspect.
  * @returns `true` when the record holds no analysis content worth keeping.
  */

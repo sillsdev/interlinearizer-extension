@@ -361,6 +361,8 @@ export function PopoverAnchor({
  * - An Escape keydown anywhere inside the content invokes `onEscapeKeyDown`.
  * - A sentinel `data-testid="popover-outside"` button invokes `onInteractOutside` on click,
  *   simulating a pointer interaction outside the popover.
+ * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
+ *   simulating Radix's focus-restoration event fired as the popover closes.
  *
  * @param props - Component props.
  * @param props.children - Panel content.
@@ -371,6 +373,8 @@ export function PopoverAnchor({
  *   in `detail.originalEvent` when the sentinel outside button is clicked, matching the shape of
  *   Radix's `PointerDownOutsideEvent`.
  * @param props.onOpenAutoFocus - Called once on mount with a plain `Event`.
+ * @param props.onCloseAutoFocus - Called with a plain `Event` when the sentinel close button is
+ *   clicked, mirroring Radix's close-time focus-restoration event.
  * @param props.onClick - Click handler forwarded to the div.
  * @param props.onMouseDown - Mouse-down handler forwarded to the div.
  * @returns A `<div data-testid="popover-content">` with the panel content and sentinel controls.
@@ -381,6 +385,7 @@ export function PopoverContent({
   onEscapeKeyDown,
   onInteractOutside,
   onOpenAutoFocus,
+  onCloseAutoFocus,
   onClick,
   onMouseDown,
 }: Readonly<{
@@ -391,6 +396,7 @@ export function PopoverContent({
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onInteractOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
+  onCloseAutoFocus?: (event: Event) => void;
   onClick?: MouseEventHandler<HTMLDivElement>;
   onMouseDown?: MouseEventHandler<HTMLDivElement>;
 }>): ReactElement {
@@ -424,6 +430,15 @@ export function PopoverContent({
           }
         >
           outside
+        </button>
+      )}
+      {onCloseAutoFocus && (
+        <button
+          data-testid="popover-close"
+          type="button"
+          onClick={() => onCloseAutoFocus(new Event('closeAutoFocus'))}
+        >
+          close
         </button>
       )}
     </div>

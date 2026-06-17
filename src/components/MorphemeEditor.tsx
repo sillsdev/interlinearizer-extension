@@ -98,7 +98,8 @@ export function MorphemeBreakdownPopover({
   // morpheme equal to the surface text; in both cases there is nothing worth persisting.
   const normalized = normalize(draft);
   const forms = normalized === '' ? [] : normalized.split(' ');
-  const isMeaningless = forms.length === 0 || (forms.length === 1 && forms[0] === surfaceText);
+  const isMeaningless =
+    forms.length === 0 || (forms.length === 1 && forms[0] === normalize(surfaceText));
 
   /**
    * Commits the current draft and closes the popover. Skips the save when the breakdown is
@@ -261,7 +262,7 @@ export function MorphemeGlossInput({
     <input
       aria-label={localizedStrings['%interlinearizer_morphemeGloss_label%'].replace(
         '{form}',
-        morpheme.form,
+        () => morpheme.form,
       )}
       className="tw:gloss-input tw:text-xs"
       data-morpheme-gloss="true"

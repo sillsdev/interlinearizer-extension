@@ -151,8 +151,7 @@ describe('ViewOptionsDropdown', () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} showMorphology />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[1]).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /morphology/i })).toBeChecked();
     });
 
     it('calls onShowMorphologyChange when toggled', async () => {
@@ -166,8 +165,7 @@ describe('ViewOptionsDropdown', () => {
       );
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[1]);
+      await userEvent.click(screen.getByRole('checkbox', { name: /morphology/i }));
 
       expect(onShowMorphologyChange).toHaveBeenCalledWith(true);
     });

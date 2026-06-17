@@ -584,6 +584,26 @@ describe('TokenChip', () => {
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
 
+    it('closes the popover when the chip becomes disabled', async () => {
+      const { rerender } = render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      // The popover content renders on `popoverOpen` alone, not gated on `disabled`; a chip whose
+      // popover is open while it transitions to disabled would otherwise stay editable.
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology disabled />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
+
     it('closes the popover via onClose', async () => {
       render(
         <AnalysisStoreProvider analysisLanguage="und">

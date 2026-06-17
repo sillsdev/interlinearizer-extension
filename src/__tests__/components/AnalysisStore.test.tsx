@@ -8,8 +8,13 @@ import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinear
 import {
   AnalysisStoreProvider,
   useAnalysis,
+  useAnalysisLanguage,
   useGloss,
   useGlossDispatch,
+  useMorphemeBreakdownDispatch,
+  useMorphemeDeleteDispatch,
+  useMorphemeGlossDispatch,
+  useMorphemes,
   usePhraseLinkByIdMap,
   usePhraseLinkForToken,
   usePhraseLinkMap,
@@ -809,6 +814,335 @@ describe('usePhraseGlossDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<PhraseGlossDispatchUser />)).toThrow(
       'usePhraseGlossDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Morpheme hooks
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders the morpheme forms for a token, used to assert on `useMorphemes`.
+ *
+ * @param props.tokenRef - Token ref to subscribe to.
+ * @returns JSX element with joined morpheme forms.
+ */
+function MorphemeReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
+  const morphemes = useMorphemes(tokenRef);
+  return <span data-testid="morphemes">{morphemes.map((m) => m.form).join(',')}</span>;
+}
+
+/**
+ * Renders the analysis language, used to assert on `useAnalysisLanguage`.
+ *
+ * @returns JSX element with the analysis language string.
+ */
+function LanguageReader() {
+  const lang = useAnalysisLanguage();
+  return <span data-testid="lang">{lang}</span>;
+}
+
+/**
+ * Renders a button that dispatches a morpheme breakdown, used to test
+ * `useMorphemeBreakdownDispatch`.
+ *
+ * @param props.tokenRef - Token ref to write.
+ * @param props.surfaceText - Surface text of the token.
+ * @param props.forms - Morpheme forms to write.
+ * @param props.writingSystem - Writing system of the token's surface text.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function MorphemeWriter({
+  tokenRef,
+  surfaceText,
+  forms,
+  writingSystem,
+}: Readonly<{ tokenRef: string; surfaceText: string; forms: string[]; writingSystem: string }>) {
+  const dispatch = useMorphemeBreakdownDispatch();
+  return (
+    <button onClick={() => dispatch(tokenRef, surfaceText, forms, writingSystem)} type="button">
+      break
+    </button>
+  );
+}
+
+/**
+ * Renders a button that dispatches a morpheme breakdown deletion, used to test
+ * `useMorphemeDeleteDispatch`.
+ *
+ * @param props.tokenRef - Token ref whose breakdown to delete.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function MorphemeDeleter({ tokenRef }: Readonly<{ tokenRef: string }>) {
+  const dispatch = useMorphemeDeleteDispatch();
+  return (
+    <button onClick={() => dispatch(tokenRef)} type="button">
+      delete-morphemes
+    </button>
+  );
+}
+
+/**
+ * Renders a button that dispatches a morpheme gloss, used to test `useMorphemeGlossDispatch`.
+ *
+ * @param props.tokenRef - Token ref to write.
+ * @param props.morphemeId - Morpheme id to gloss.
+ * @param props.value - Gloss value.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function MorphemeGlossWriter({
+  tokenRef,
+  morphemeId,
+  value,
+}: Readonly<{ tokenRef: string; morphemeId: string; value: string }>) {
+  const dispatch = useMorphemeGlossDispatch();
+  return (
+    <button onClick={() => dispatch(tokenRef, morphemeId, value)} type="button">
+      gloss
+    </button>
+  );
+}
+
+/**
+ * Renders a component that calls `useMorphemes` without a provider, used to test the error.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function MorphemesUser() {
+  useMorphemes('tok-1');
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `useAnalysisLanguage` without a provider, used to test the error.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function LanguageUser() {
+  useAnalysisLanguage();
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `useMorphemeBreakdownDispatch` without a provider.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function MorphemeBreakdownDispatchUser() {
+  useMorphemeBreakdownDispatch();
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `useMorphemeGlossDispatch` without a provider.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function MorphemeGlossDispatchUser() {
+  useMorphemeGlossDispatch();
+  return undefined;
+}
+
+/**
+ * Renders a component that calls `useMorphemeDeleteDispatch` without a provider.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function MorphemeDeleteDispatchUser() {
+  useMorphemeDeleteDispatch();
+  return undefined;
+}
+
+describe('useMorphemes', () => {
+  it('returns empty array when no morphemes exist', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <MorphemeReader tokenRef="tok-1" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('morphemes')).toHaveTextContent('');
+  });
+
+  it('returns morphemes from an approved analysis with morphemes', () => {
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'unbelievable',
+      morphemes: [
+        { id: 'm-1', form: 'un-', writingSystem: 'und' },
+        { id: 'm-2', form: 'believe', writingSystem: 'und' },
+      ],
+    };
+    const link: TokenAnalysisLink = {
+      analysisId: 'ta-1',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'unbelievable' },
+    };
+    const analysis: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [ta],
+      tokenAnalysisLinks: [link],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und">
+        <MorphemeReader tokenRef="tok-1" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('morphemes')).toHaveTextContent('un-,believe');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<MorphemesUser />)).toThrow(
+      'useMorphemes must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useAnalysisLanguage', () => {
+  it('returns the analysis language from the provider', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="fr">
+        <LanguageReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('lang')).toHaveTextContent('fr');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<LanguageUser />)).toThrow(
+      'useAnalysisLanguage must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useMorphemeBreakdownDispatch', () => {
+  it('writes morphemes and calls onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
+        <MorphemeWriter
+          tokenRef="tok-1"
+          surfaceText="cat"
+          forms={['ca', '-t']}
+          writingSystem="en"
+        />
+        <MorphemeReader tokenRef="tok-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+
+    expect(screen.getByTestId('morphemes')).toHaveTextContent('ca,-t');
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    expect(saved.tokenAnalyses[0].morphemes).toHaveLength(2);
+    expect(saved.tokenAnalyses[0].morphemes?.[0].writingSystem).toBe('en');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<MorphemeBreakdownDispatchUser />)).toThrow(
+      'useMorphemeBreakdownDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useMorphemeDeleteDispatch', () => {
+  it('removes the morpheme breakdown and calls onSave', async () => {
+    const onSave = jest.fn();
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cat',
+      morphemes: [
+        { id: 'm-1', form: 'ca', writingSystem: 'und' },
+        { id: 'm-2', form: '-t', writingSystem: 'und' },
+      ],
+    };
+    const link: TokenAnalysisLink = {
+      analysisId: 'ta-1',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'cat' },
+    };
+    const analysis: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [ta],
+      tokenAnalysisLinks: [link],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und" onSave={onSave}>
+        <MorphemeDeleter tokenRef="tok-1" />
+        <MorphemeReader tokenRef="tok-1" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'delete-morphemes' }));
+
+    expect(screen.getByTestId('morphemes')).toHaveTextContent('');
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // The analysis carried no gloss, so the now-empty record and its link are removed entirely.
+    expect(saved.tokenAnalyses).toHaveLength(0);
+    expect(saved.tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<MorphemeDeleteDispatchUser />)).toThrow(
+      'useMorphemeDeleteDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useMorphemeGlossDispatch', () => {
+  it('writes a morpheme gloss and calls onSave', async () => {
+    const onSave = jest.fn();
+    const ta: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cat',
+      morphemes: [
+        { id: 'm-1', form: 'ca', writingSystem: 'und' },
+        { id: 'm-2', form: '-t', writingSystem: 'und' },
+      ],
+    };
+    const link: TokenAnalysisLink = {
+      analysisId: 'ta-1',
+      status: 'approved',
+      token: { tokenRef: 'tok-1', surfaceText: 'cat' },
+    };
+    const analysis: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [ta],
+      tokenAnalysisLinks: [link],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und" onSave={onSave}>
+        <MorphemeGlossWriter tokenRef="tok-1" morphemeId="m-1" value="prefix" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'gloss' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ und: 'prefix' });
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<MorphemeGlossDispatchUser />)).toThrow(
+      'useMorphemeGlossDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

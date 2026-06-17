@@ -2,14 +2,15 @@
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AssignmentStatus } from 'interlinearizer';
+import type { AssignmentStatus, MorphemeAnalysis } from 'interlinearizer';
 
 type GlossMap = Record<string, string>;
 type MockCtxValue = {
   glosses: GlossMap;
   dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
+  language: string;
 };
-const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {} });
+const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {}, language: 'und' });
 
 /**
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
@@ -51,7 +52,10 @@ export function AnalysisStoreProvider({
     },
     [onGlossChange],
   );
-  const ctx = useMemo(() => ({ glosses, dispatch }), [glosses, dispatch]);
+  const ctx = useMemo(
+    () => ({ glosses, dispatch, language: analysisLanguage }),
+    [glosses, dispatch, analysisLanguage],
+  );
   return <MockCtx value={ctx}>{children}</MockCtx>;
 }
 
@@ -72,4 +76,63 @@ export function useGloss(tokenRef: string) {
  */
 export function useGlossDispatch() {
   return useContext(MockCtx).dispatch;
+}
+
+/** Empty morphemes array returned by {@link useMorphemes} when no breakdown exists. */
+const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
+
+/**
+ * Returns the morpheme breakdown for a token. Always returns an empty array in mock context.
+ *
+ * @param _tokenRef - The token reference key (unused in mock).
+ * @returns An empty readonly morpheme array.
+ */
+export function useMorphemes(_tokenRef: string): readonly MorphemeAnalysis[] {
+  return EMPTY_MORPHEMES;
+}
+
+/**
+ * Returns the analysis language string from mock context, mirroring the `analysisLanguage` prop
+ * passed to the mock provider.
+ *
+ * @returns The BCP 47 tag from mock context (defaults to `'und'` outside a provider).
+ */
+export function useAnalysisLanguage(): string {
+  return useContext(MockCtx).language;
+}
+
+/**
+ * Returns a no-op dispatch for writing morpheme breakdowns in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeBreakdownDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+  writingSystem: string,
+) => void {
+  return () => {};
+}
+
+/**
+ * Returns a no-op dispatch for deleting morpheme breakdowns in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
+  return () => {};
+}
+
+/**
+ * Returns a no-op dispatch for writing morpheme glosses in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useMorphemeGlossDispatch(): (
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+) => void {
+  return () => {};
 }

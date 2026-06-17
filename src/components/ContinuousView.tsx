@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { ViewOptions } from '../types/view-options';
 import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
@@ -108,15 +109,10 @@ type ContinuousViewProps = Readonly<{
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * When `true`, link/unlink buttons between phrases are hidden except in the segment containing
-   * the focused token (the active verse within the strip).
+   * Bundled display toggles. The strip reads `hideInactiveLinkButtons`, `simplifyPhrases`, and
+   * `showMorphology`; `chapterLabelInVerse` does not apply to the continuous strip.
    */
-  hideInactiveLinkButtons: boolean;
-  /**
-   * When `true`, phrase-level controls (split, intra-phrase unlink, remove-token) are hidden on
-   * every phrase except the focused one.
-   */
-  simplifyPhrases: boolean;
+  viewOptions: ViewOptions;
 }>;
 
 /**
@@ -142,10 +138,8 @@ type ContinuousViewProps = Readonly<{
  * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
  *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
- * @param props.hideInactiveLinkButtons - When true, link buttons between phrases are hidden outside
- *   the focused token's segment.
- * @param props.simplifyPhrases - When true, phrase-level controls are hidden on every phrase except
- *   the focused one.
+ * @param props.viewOptions - Bundled display toggles; the strip reads all but
+ *   `chapterLabelInVerse`.
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
@@ -158,9 +152,9 @@ export default function ContinuousView({
   tokenSegmentMap,
   tokenDocOrder,
   wordTokenByRef,
-  hideInactiveLinkButtons,
-  simplifyPhrases,
+  viewOptions,
 }: ContinuousViewProps) {
+  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology } = viewOptions;
   const isRtl = document.documentElement.dir === 'rtl';
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
@@ -578,17 +572,18 @@ export default function ContinuousView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [committedActiveSegmentId]);
 
-  // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` changes
-  // the strip's layout, so the previously-centered group may drift off-center; snap it back into
-  // view. `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even
-  // when hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does
-  // not shift the layout.
+  // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` or
+  // `showMorphology` changes the strip's layout (morpheme rows can widen phrase boxes), so the
+  // previously-centered group may drift off-center; snap it back into view.
+  // `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even when
+  // hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does not
+  // shift the layout.
   useEffect(() => {
     centerGroup(focusPhraseIndex, 'auto');
     // focusPhraseIndex is intentionally excluded: it has its own scroll effect above. This effect
     // only re-centers in response to layout-affecting option toggles. centerGroup is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [simplifyPhrases]);
+  }, [simplifyPhrases, showMorphology]);
 
   // When entering edit or confirm-unlink mode, smooth-scroll to the first group of the active
   // phrase by notifying the parent of the new focused token. Scroll then follows automatically
@@ -663,6 +658,7 @@ export default function ContinuousView({
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
     skipLinkTransition: !isVisible || skipSlotTransitionForJump,
+    showMorphology,
   });
 
   /**

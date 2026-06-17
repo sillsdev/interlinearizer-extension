@@ -21,6 +21,11 @@
         "label": "%interlinearizer_projectSettings_chapterLabelInVerse%",
         "description": "%interlinearizer_projectSettings_chapterLabelInVerseDescription%",
         "default": false
+      },
+      "interlinearizer.showMorphology": {
+        "label": "%interlinearizer_projectSettings_showMorphology%",
+        "description": "%interlinearizer_projectSettings_showMorphologyDescription%",
+        "default": false
       }
     }
   }

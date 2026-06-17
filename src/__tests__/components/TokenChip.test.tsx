@@ -2,13 +2,64 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
+import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
 
 jest.mock('../../components/AnalysisStore');
+
+const LOCALIZED = {
+  '%interlinearizer_tokenChip_editMorphemes%': 'Edit morpheme breakdown for {token}',
+  '%interlinearizer_tokenChip_defineMorphemes%': 'Define morpheme breakdown for {token}',
+};
+
+beforeEach(() => {
+  jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+});
+jest.mock('../../components/MorphemeEditor', () => ({
+  /**
+   * Stub popover that renders a save button so tests can trigger onSave.
+   *
+   * @param props - Receives the same props as the real popover.
+   * @returns A test stub element with a save button.
+   */
+  MorphemeBreakdownPopover({
+    onSave,
+    onClose,
+    onDelete,
+  }: Readonly<{ onSave: (v: string) => void; onClose: () => void; onDelete?: () => void }>) {
+    return (
+      <div data-testid="morpheme-popover">
+        <button onClick={() => onSave('hel -lo')} type="button">
+          mock-save
+        </button>
+        <button onClick={() => onSave('   ')} type="button">
+          mock-save-empty
+        </button>
+        <button onClick={onClose} type="button">
+          mock-close
+        </button>
+        {onDelete && (
+          <button onClick={onDelete} type="button">
+            mock-delete
+          </button>
+        )}
+      </div>
+    );
+  },
+  /**
+   * Stub gloss input that renders a placeholder for test assertions.
+   *
+   * @returns A test stub element.
+   */
+  MorphemeGlossInput() {
+    return <input data-testid="morpheme-gloss" />;
+  },
+}));
 
 const WORD_TOKEN = {
   ref: 'GEN 1:1:0',
@@ -307,5 +358,274 @@ describe('TokenChip', () => {
     );
     const label = screen.getByText('hello').closest('label');
     expect(label?.className).not.toContain('tw:border-destructive');
+  });
+
+  describe('morphology UI', () => {
+    it('does not render morpheme row when showMorphology is false', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology={false} />
+        </AnalysisStoreProvider>,
+      );
+      expect(
+        screen.queryByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('renders a "define" button when showMorphology is true and no morphemes exist', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      ).toBeInTheDocument();
+    });
+
+    it('shows surface text on the define button for unanalyzed tokens', () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      const btn = screen.getByRole('button', { name: 'Define morpheme breakdown for hello' });
+      expect(btn).toHaveTextContent('hello');
+    });
+
+    it('opens the popover when the define button is clicked', async () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+    });
+
+    it('does not open the popover when disabled', async () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology disabled />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
+
+    it('renders morpheme forms when morphemes exist', () => {
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
+        { id: 'm-1', form: 'hel', writingSystem: 'und' },
+        { id: 'm-2', form: '-lo', writingSystem: 'und' },
+      ]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(
+        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
+      ).toBeInTheDocument();
+      expect(screen.getByText('hel')).toBeInTheDocument();
+      expect(screen.getByText('-lo')).toBeInTheDocument();
+    });
+
+    it('renders morpheme gloss inputs when morphemes exist', () => {
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
+        { id: 'm-1', form: 'hel', writingSystem: 'und' },
+        { id: 'm-2', form: '-lo', writingSystem: 'und' },
+      ]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.getAllByTestId('morpheme-gloss')).toHaveLength(2);
+    });
+
+    it('opens the popover when the edit button is clicked on analyzed token', async () => {
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+    });
+
+    it('dispatches morpheme breakdown when saving from the popover', async () => {
+      const mockDispatch = jest.fn();
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-save' }));
+      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0', 'hello', ['hel', '-lo'], 'en');
+    });
+
+    it('does not dispatch when the popover saves only whitespace', async () => {
+      const mockDispatch = jest.fn();
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-save-empty' }));
+      expect(mockDispatch).not.toHaveBeenCalled();
+    });
+
+    it('dispatches morpheme deletion when the popover delete is clicked', async () => {
+      const mockDispatch = jest.fn();
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      jest.spyOn(AnalysisStore, 'useMorphemeDeleteDispatch').mockReturnValue(mockDispatch);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-delete' }));
+      expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0');
+    });
+
+    it('passes no onDelete to the popover when the token has no breakdown', async () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'mock-delete' })).not.toBeInTheDocument();
+    });
+
+    it('focuses the main gloss input on a surface-text mouse-down when morpheme inputs precede it', () => {
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      // The morpheme gloss inputs sit before the main gloss input inside the label; the label
+      // handler must still route focus to the main gloss input, not the first input it finds.
+      fireEvent.mouseDown(screen.getByText('hello'));
+
+      expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();
+    });
+
+    it('leaves a mouse-down on the morpheme button to the button itself', () => {
+      const focusSpy = jest.spyOn(HTMLElement.prototype, 'focus');
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+
+      // The button opens the popover via its own click handler; the label handler must not focus
+      // an input as a side effect of the same mouse-down.
+      const defaultAllowed = fireEvent.mouseDown(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+
+      expect(defaultAllowed).toBe(true);
+      expect(focusSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not reopen the popover when showMorphology is toggled off and back on', async () => {
+      const { rerender } = render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      // Toggling morphology off unmounts the popover tree; the open state must not survive and
+      // resurrect the popover when morphology comes back.
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology={false} />
+        </AnalysisStoreProvider>,
+      );
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes the popover when the chip becomes disabled', async () => {
+      const { rerender } = render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      // The popover content renders on `popoverOpen` alone, not gated on `disabled`; a chip whose
+      // popover is open while it transitions to disabled would otherwise stay editable.
+      rerender(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology disabled />
+        </AnalysisStoreProvider>,
+      );
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
+
+    it('closes the popover via onClose', async () => {
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'mock-close' }));
+      expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
+    });
   });
 });

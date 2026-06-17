@@ -362,24 +362,40 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
+  /**
+   * Returns whether the supplied project-setting value is a boolean.
+   *
+   * @param newValue - Candidate project-setting value.
+   * @returns A promise that resolves to `true` when `newValue` is a boolean.
+   */
+  /* v8 ignore next 3 */
+  function isBoolean(newValue: unknown): Promise<boolean> {
+    return Promise.resolve(typeof newValue === 'boolean');
+  }
+
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.continuousScroll',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const hideInactiveLinkButtonsValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.hideInactiveLinkButtons',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const simplifyPhrasesValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.simplifyPhrases',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
   );
 
   const chapterLabelInVerseValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.chapterLabelInVerse',
-    async (newValue) => typeof newValue === 'boolean',
+    isBoolean,
+  );
+
+  const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.showMorphology',
+    isBoolean,
   );
 
   const createProjectCommandRegistration = await papi.commands.registerCommand(
@@ -630,6 +646,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     hideInactiveLinkButtonsValidatorRegistration,
     simplifyPhrasesValidatorRegistration,
     chapterLabelInVerseValidatorRegistration,
+    showMorphologyValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

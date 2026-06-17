@@ -4,6 +4,7 @@ import { LocateFixed } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { ViewOptions } from '../types/view-options';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import { isSameVerse } from '../utils/verse-ref';
@@ -43,16 +44,8 @@ type SegmentListViewProps = Readonly<{
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
-  /** When true, link buttons between phrases are hidden in segments other than the active verse. */
-  hideInactiveLinkButtons: boolean;
-  /** When true, phrase-level controls are hidden on every phrase except the focused one. */
-  simplifyPhrases: boolean;
-  /**
-   * When true, every verse is labeled `chapter:verse` and no inline chapter header is shown; when
-   * false, verse labels stay bare verse numbers and an inline chapter header precedes the first
-   * verse of each chapter.
-   */
-  chapterLabelInVerse: boolean;
+  /** Bundled display toggles forwarded unchanged to each {@link SegmentView}. */
+  viewOptions: ViewOptions;
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   hoveredPhraseId: string | undefined;
   /** Sets the hovered phraseId when the pointer enters or leaves a phrase box. */
@@ -90,12 +83,7 @@ type SegmentListViewProps = Readonly<{
  * @param props.reportSettled - Reports the window has settled; lifts the cross-book curtain.
  * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
  * @param props.setPhraseMode - Setter for `phraseMode`.
- * @param props.hideInactiveLinkButtons - When true, link buttons are hidden outside the active
- *   verse.
- * @param props.simplifyPhrases - When true, phrase controls are hidden except on the focused
- *   phrase.
- * @param props.chapterLabelInVerse - When true, every verse is labeled `chapter:verse` instead of
- *   showing an inline chapter header.
+ * @param props.viewOptions - Bundled display toggles forwarded unchanged to each segment.
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer.
  * @param props.setHoveredPhraseId - Sets the hovered phraseId.
  * @param props.editPhraseSegmentId - Segment id containing the phrase being edited, or `undefined`.
@@ -116,9 +104,7 @@ export default function SegmentListView({
   reportSettled,
   phraseMode,
   setPhraseMode,
-  hideInactiveLinkButtons,
-  simplifyPhrases,
-  chapterLabelInVerse,
+  viewOptions,
   hoveredPhraseId,
   setHoveredPhraseId,
   editPhraseSegmentId,
@@ -127,6 +113,10 @@ export default function SegmentListView({
   tokenDocOrder,
   wordTokenByRef,
 }: SegmentListViewProps) {
+  // Read directly here for the inline chapter headers; the rest of `viewOptions` is forwarded
+  // unchanged to each SegmentView.
+  const { chapterLabelInVerse } = viewOptions;
+
   /**
    * Ids of the segments that begin a new chapter — the first segment of the book and every segment
    * whose chapter differs from the immediately preceding segment in book order. Computed over the
@@ -247,9 +237,7 @@ export default function SegmentListView({
                   tokenSegmentMap={tokenSegmentMap}
                   tokenDocOrder={tokenDocOrder}
                   wordTokenByRef={wordTokenByRef}
-                  hideInactiveLinkButtons={hideInactiveLinkButtons}
-                  simplifyPhrases={simplifyPhrases}
-                  chapterLabelInVerse={chapterLabelInVerse}
+                  viewOptions={viewOptions}
                 />
               </Fragment>
             ))}

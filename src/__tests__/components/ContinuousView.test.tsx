@@ -10,6 +10,7 @@ import { useState, type ReactNode } from 'react';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
 import { isWordToken } from '../../types/type-guards';
+import type { ViewOptions } from '../../types/view-options';
 import { withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -417,8 +418,7 @@ function requiredProps(
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  hideInactiveLinkButtons: boolean;
-  simplifyPhrases: boolean;
+  viewOptions: ViewOptions;
 } {
   const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
   return {
@@ -431,8 +431,12 @@ function requiredProps(
     tokenSegmentMap,
     tokenDocOrder,
     wordTokenByRef,
-    hideInactiveLinkButtons: false,
-    simplifyPhrases: false,
+    viewOptions: {
+      hideInactiveLinkButtons: false,
+      simplifyPhrases: false,
+      chapterLabelInVerse: false,
+      showMorphology: false,
+    },
   };
 }
 
@@ -897,8 +901,12 @@ describe('ContinuousView scroll behavior', () => {
           tokenSegmentMap={tokenSegmentMap}
           tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />
       );
     }
@@ -943,8 +951,12 @@ describe('ContinuousView scroll behavior', () => {
           tokenSegmentMap={tokenSegmentMap}
           tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
-          hideInactiveLinkButtons
-          simplifyPhrases={false}
+          viewOptions={{
+            hideInactiveLinkButtons: true,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />
       );
     }
@@ -1111,11 +1123,38 @@ describe('ContinuousView scroll behavior', () => {
     scrollIntoViewMock.mockClear();
 
     // Toggling hideInactiveLinkButtons should not cause any re-centering.
-    rerender(<ContinuousView {...props} hideInactiveLinkButtons />);
+    rerender(
+      <ContinuousView
+        {...props}
+        viewOptions={{ ...props.viewOptions, hideInactiveLinkButtons: true }}
+      />,
+    );
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
     // Toggling simplifyPhrases re-centers exactly once (no rAF loop needed).
-    rerender(<ContinuousView {...props} hideInactiveLinkButtons simplifyPhrases />);
+    rerender(
+      <ContinuousView
+        {...props}
+        viewOptions={{ ...props.viewOptions, hideInactiveLinkButtons: true, simplifyPhrases: true }}
+      />,
+    );
+    expect(scrollIntoViewMock).toHaveBeenCalledWith(
+      expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+    );
+    expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-centers once when showMorphology toggles', () => {
+    // Morpheme rows beneath tokens can widen phrase boxes, shifting the strip layout, so the
+    // focused group must be snapped back to center when the toggle flips.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+    scrollIntoViewMock.mockClear();
+
+    rerender(
+      <ContinuousView {...props} viewOptions={{ ...props.viewOptions, showMorphology: true }} />,
+    );
     expect(scrollIntoViewMock).toHaveBeenCalledWith(
       expect.objectContaining({ behavior: 'auto', inline: 'center' }),
     );

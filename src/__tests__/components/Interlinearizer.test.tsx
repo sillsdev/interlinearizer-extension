@@ -353,6 +353,7 @@ function renderInterlinearizer({
   hideInactiveLinkButtons = false,
   simplifyPhrases = false,
   chapterLabelInVerse = false,
+  showMorphology = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -361,6 +362,7 @@ function renderInterlinearizer({
   hideInactiveLinkButtons?: boolean;
   simplifyPhrases?: boolean;
   chapterLabelInVerse?: boolean;
+  showMorphology?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -371,9 +373,12 @@ function renderInterlinearizer({
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
-        hideInactiveLinkButtons={hideInactiveLinkButtons}
-        simplifyPhrases={simplifyPhrases}
-        chapterLabelInVerse={chapterLabelInVerse}
+        viewOptions={{
+          hideInactiveLinkButtons,
+          simplifyPhrases,
+          chapterLabelInVerse,
+          showMorphology,
+        }}
       />,
       navigate,
     ),
@@ -511,9 +516,12 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            hideInactiveLinkButtons={false}
-            simplifyPhrases={false}
-            chapterLabelInVerse={false}
+            viewOptions={{
+              hideInactiveLinkButtons: false,
+              simplifyPhrases: false,
+              chapterLabelInVerse: false,
+              showMorphology: false,
+            }}
           />,
         ),
       );
@@ -623,9 +631,12 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            hideInactiveLinkButtons={false}
-            simplifyPhrases={false}
-            chapterLabelInVerse={false}
+            viewOptions={{
+              hideInactiveLinkButtons: false,
+              simplifyPhrases: false,
+              chapterLabelInVerse: false,
+              showMorphology: false,
+            }}
           />,
         ),
       );
@@ -659,9 +670,12 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            hideInactiveLinkButtons={false}
-            simplifyPhrases={false}
-            chapterLabelInVerse={false}
+            viewOptions={{
+              hideInactiveLinkButtons: false,
+              simplifyPhrases: false,
+              chapterLabelInVerse: false,
+              showMorphology: false,
+            }}
           />,
         ),
       );
@@ -700,9 +714,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -718,9 +735,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -761,9 +781,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -798,9 +821,12 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            hideInactiveLinkButtons={false}
-            simplifyPhrases={false}
-            chapterLabelInVerse={false}
+            viewOptions={{
+              hideInactiveLinkButtons: false,
+              simplifyPhrases: false,
+              chapterLabelInVerse: false,
+              showMorphology: false,
+            }}
           />,
         ),
       );
@@ -894,9 +920,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -919,9 +948,12 @@ describe('Interlinearizer', () => {
             originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
           }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -938,9 +970,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -959,9 +994,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
           setPhraseMode={setPhraseMode}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -980,9 +1018,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
           setPhraseMode={setPhraseMode}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />,
       ),
     );
@@ -1000,9 +1041,12 @@ describe('Interlinearizer', () => {
         analysisLanguage: 'und',
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
-        hideInactiveLinkButtons: false,
-        simplifyPhrases: false,
-        chapterLabelInVerse: false,
+        viewOptions: {
+          hideInactiveLinkButtons: false,
+          simplifyPhrases: false,
+          chapterLabelInVerse: false,
+          showMorphology: false,
+        },
       };
       const { container, rerender } = render(
         withNav(
@@ -1068,9 +1112,12 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          hideInactiveLinkButtons={false}
-          simplifyPhrases={false}
-          chapterLabelInVerse={false}
+          viewOptions={{
+            hideInactiveLinkButtons: false,
+            simplifyPhrases: false,
+            chapterLabelInVerse: false,
+            showMorphology: false,
+          }}
         />
       );
     }
@@ -1099,9 +1146,12 @@ describe('Interlinearizer', () => {
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
-        hideInactiveLinkButtons: false,
-        simplifyPhrases: false,
-        chapterLabelInVerse: false,
+        viewOptions: {
+          hideInactiveLinkButtons: false,
+          simplifyPhrases: false,
+          chapterLabelInVerse: false,
+          showMorphology: false,
+        },
       };
       const { container, rerender } = render(
         withNav(<Interlinearizer {...props} continuousScroll={false} />),

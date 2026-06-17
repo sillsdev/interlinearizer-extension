@@ -220,6 +220,21 @@ function InterlinearizerLoaderInner({
     value: chapterLabelInVerse,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.chapterLabelInVerse', false);
 
+  const {
+    isLoading: isShowMorphologyLoading,
+    onChange: handleShowMorphologyChange,
+    value: showMorphology,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showMorphology', false);
+
+  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps
+  // the reference identical across the loader's frequent re-renders (driven by `useData`,
+  // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
+  // of re-rendering every windowed segment when no toggle actually changed.
+  const viewOptions = useMemo(
+    () => ({ hideInactiveLinkButtons, simplifyPhrases, chapterLabelInVerse, showMorphology }),
+    [hideInactiveLinkButtons, simplifyPhrases, chapterLabelInVerse, showMorphology],
+  );
+
   const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
     projectId,
     scrRef,
@@ -230,7 +245,8 @@ function InterlinearizerLoaderInner({
     isContinuousScrollLoading ||
     isHideInactiveLinkButtonsLoading ||
     isSimplifyPhrasesLoading ||
-    isChapterLabelInVerseLoading;
+    isChapterLabelInVerseLoading ||
+    isShowMorphologyLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
   // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
   // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
@@ -337,6 +353,8 @@ function InterlinearizerLoaderInner({
               onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
               chapterLabelInVerse={chapterLabelInVerse}
               onChapterLabelInVerseChange={handleChapterLabelInVerseChange}
+              showMorphology={showMorphology}
+              onShowMorphologyChange={handleShowMorphologyChange}
             />
           ) : undefined
         }
@@ -394,9 +412,7 @@ function InterlinearizerLoaderInner({
             onSaveAnalysis={handleSaveAnalysis}
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
-            hideInactiveLinkButtons={hideInactiveLinkButtons}
-            simplifyPhrases={simplifyPhrases}
-            chapterLabelInVerse={chapterLabelInVerse}
+            viewOptions={viewOptions}
           />
         )}
       </div>

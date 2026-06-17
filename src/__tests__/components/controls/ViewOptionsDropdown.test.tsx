@@ -27,6 +27,8 @@ const DEFAULT_PROPS = {
   onSimplifyPhrasesChange: jest.fn(),
   chapterLabelInVerse: false,
   onChapterLabelInVerseChange: jest.fn(),
+  showMorphology: false,
+  onShowMorphologyChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -144,13 +146,38 @@ describe('ViewOptionsDropdown', () => {
     });
   });
 
+  describe('show morphology toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showMorphology />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /morphology/i })).toBeChecked();
+    });
+
+    it('calls onShowMorphologyChange when toggled', async () => {
+      const onShowMorphologyChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showMorphology={false}
+          onShowMorphologyChange={onShowMorphologyChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /morphology/i }));
+
+      expect(onShowMorphologyChange).toHaveBeenCalledWith(true);
+    });
+  });
+
   describe('hide inactive link buttons toggle', () => {
     it('reflects the checked value', async () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} hideInactiveLinkButtons />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[1]).toBeChecked();
+      expect(checkboxes[2]).toBeChecked();
     });
 
     it('calls onHideInactiveLinkButtonsChange when toggled', async () => {
@@ -165,7 +192,7 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[1]);
+      await userEvent.click(checkboxes[2]);
 
       expect(onHideInactiveLinkButtonsChange).toHaveBeenCalledWith(true);
     });
@@ -177,7 +204,7 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[2]).toBeChecked();
+      expect(checkboxes[3]).toBeChecked();
     });
 
     it('calls onSimplifyPhrasesChange when toggled', async () => {
@@ -192,7 +219,7 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[2]);
+      await userEvent.click(checkboxes[3]);
 
       expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
     });
@@ -204,7 +231,7 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[3]).toBeChecked();
+      expect(checkboxes[4]).toBeChecked();
     });
 
     it('calls onChapterLabelInVerseChange when toggled', async () => {
@@ -219,7 +246,7 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByTestId('view-options-button'));
 
       const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[3]);
+      await userEvent.click(checkboxes[4]);
 
       expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
     });

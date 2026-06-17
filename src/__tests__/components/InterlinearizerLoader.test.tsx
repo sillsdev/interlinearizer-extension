@@ -15,6 +15,7 @@ import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
+import type { ViewOptions } from '../../types/view-options';
 import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -31,6 +32,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onSimplifyPhrasesChange,
     chapterLabelInVerse,
     onChapterLabelInVerseChange,
+    showMorphology,
+    onShowMorphologyChange,
   }: {
     continuousScroll: boolean;
     onContinuousScrollChange: (v: boolean) => void;
@@ -40,6 +43,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onSimplifyPhrasesChange: (v: boolean) => void;
     chapterLabelInVerse: boolean;
     onChapterLabelInVerseChange: (v: boolean) => void;
+    showMorphology: boolean;
+    onShowMorphologyChange: (v: boolean) => void;
   }) => (
     <div data-testid="view-options-dropdown">
       <button
@@ -70,6 +75,13 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         onClick={() => onChapterLabelInVerseChange(!chapterLabelInVerse)}
         type="button"
       />
+      <button
+        aria-label="show morphology"
+        data-testid="show-morphology-toggle"
+        data-checked={String(showMorphology)}
+        onClick={() => onShowMorphologyChange(!showMorphology)}
+        type="button"
+      />
     </div>
   ),
 }));
@@ -94,9 +106,7 @@ type CapturedInterlinearizerProps = {
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
-  hideInactiveLinkButtons: boolean;
-  simplifyPhrases: boolean;
-  chapterLabelInVerse: boolean;
+  viewOptions: ViewOptions;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -540,7 +550,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.hideInactiveLinkButtons).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.hideInactiveLinkButtons).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
@@ -566,7 +576,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.simplifyPhrases).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
   });
 
   it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
@@ -592,7 +602,7 @@ describe('InterlinearizerLoader', () => {
       />,
     );
 
-    expect(capturedInterlinearizerProps?.chapterLabelInVerse).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
   });
 
   it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {
@@ -607,6 +617,32 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('chapter-label-in-verse-toggle'));
     expect(onChangeByKey.get('interlinearizer.chapterLabelInVerse')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes showMorphology=false to Interlinearizer by default', () => {
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
+  });
+
+  it('wires ViewOptionsDropdown show-morphology to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    render(
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={makeScrollGroupHook()}
+        useWebViewState={makeWebViewState()}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('show-morphology-toggle'));
+    expect(onChangeByKey.get('interlinearizer.showMorphology')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', () => {

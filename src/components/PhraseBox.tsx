@@ -162,6 +162,7 @@ export function PhraseBox({
     tokenSegmentMap,
     tokenDocOrder,
     simplifyPhrases,
+    showMorphology,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
   // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
@@ -189,13 +190,17 @@ export function PhraseBox({
    * background handler, which focused the segment's first phrase instead. Focus is forwarded with
    * `preventScroll` — the user clicked something already on screen, so the browser's default
    * scroll-focused-element-into-view would realign the segment list for no reason (the input may
-   * sit on another wrapped row of the phrase, partially out of view).
+   * sit on another wrapped row of the phrase, partially out of view). Morpheme gloss inputs are
+   * excluded from the lookup — when morphology is shown they precede the token gloss input in DOM
+   * order, and only the token gloss input fires the `onFocus` → {@link onFocusPhrase} chain.
    *
    * @param e - The container's click event.
    */
   const focusFirstGlossOnSelfClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (e.target instanceof Element && e.target.closest('input, button, a, label')) return;
-    e.currentTarget.querySelector('input')?.focus({ preventScroll: true });
+    e.currentTarget
+      .querySelector<HTMLInputElement>('input:not([data-morpheme-gloss])')
+      ?.focus({ preventScroll: true });
   }, []);
 
   /**
@@ -209,7 +214,7 @@ export function PhraseBox({
     if (e.target !== e.currentTarget) return;
     if (e.key !== 'Enter' && e.key !== ' ') return;
     e.preventDefault();
-    e.currentTarget.querySelector('input')?.focus();
+    e.currentTarget.querySelector<HTMLInputElement>('input:not([data-morpheme-gloss])')?.focus();
   }, []);
 
   const handleEditClick = useCallback(() => {
@@ -394,6 +399,7 @@ export function PhraseBox({
                       ? () => handleViewPopOut(token.ref)
                       : undefined
                   }
+                  showMorphology={showMorphology}
                   token={token}
                 />
               </span>
@@ -432,7 +438,12 @@ export function PhraseBox({
                     ))}
                   </span>
                 )}
-                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+                <MemoizedTokenChip
+                  disabled
+                  onFocus={handleFocus}
+                  showMorphology={showMorphology}
+                  token={token}
+                />
               </span>
             ))}
           </span>
@@ -488,7 +499,12 @@ export function PhraseBox({
                 onClick={() => handleEditRemove(token.ref)}
                 onKeyDown={handlePerTokenKeyDown(token.ref)}
               >
-                <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+                <MemoizedTokenChip
+                  disabled
+                  onFocus={handleFocus}
+                  showMorphology={showMorphology}
+                  token={token}
+                />
               </span>
             </span>
           ))}
@@ -530,7 +546,12 @@ export function PhraseBox({
           <span key={token.ref} className="tw:phrase-token-row">
             {i > 0 &&
               punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
-            <MemoizedTokenChip disabled onFocus={handleFocus} token={token} />
+            <MemoizedTokenChip
+              disabled
+              onFocus={handleFocus}
+              showMorphology={showMorphology}
+              token={token}
+            />
           </span>
         ))}
       </span>

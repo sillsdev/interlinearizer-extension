@@ -1,19 +1,29 @@
 /** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
-import type { PhraseAnalysisLink, TextAnalysis, TokenSnapshot } from 'interlinearizer';
+import type {
+  MorphemeAnalysis,
+  PhraseAnalysisLink,
+  TextAnalysis,
+  TokenSnapshot,
+} from 'interlinearizer';
 import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
   createPhrase,
+  deleteMorphemes,
   deletePhrase,
   mergePhrases,
   selectAnalysis,
+  selectAnalysisLanguage,
   selectApprovedGloss,
+  selectApprovedMorphemes,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   updatePhrase,
   writeGloss,
+  writeMorphemeGloss,
+  writeMorphemes,
   writePhraseGloss,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
@@ -108,6 +118,48 @@ export function AnalysisStoreProvider({
 
 // #endregion
 
+// #region Internal hooks
+
+/**
+ * Reads the nearest {@link AnalysisStoreProvider}'s callback refs, throwing a hook-named error when
+ * called outside a provider. Centralizes the guard every analysis hook shares.
+ *
+ * @param hookName - Name of the calling hook, used in the thrown error message.
+ * @returns The provider's {@link CallbackRefs}.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+function useRequiredCallbacks(hookName: string): CallbackRefs {
+  const ctx = useContext(AnalysisCallbackCtx);
+  if (!ctx) throw new Error(`${hookName} must be used inside an AnalysisStoreProvider`);
+  return ctx;
+}
+
+/**
+ * Shared setup for the mutation hooks: resolves the provider callbacks and Redux dispatch, and
+ * returns a stable `save` that reads the latest analysis from the store and forwards it to
+ * `onSave`. Factors out the dispatch-then-save pattern every write hook repeats.
+ *
+ * @param hookName - Name of the calling hook, used in the guard's error message.
+ * @returns The provider callbacks, the typed `dispatch`, and a stable `save` callback.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+function useAnalysisSave(hookName: string): {
+  callbacks: CallbackRefs;
+  dispatch: AnalysisDispatch;
+  save: () => void;
+} {
+  const callbacks = useRequiredCallbacks(hookName);
+  const dispatch = useDispatch<AnalysisDispatch>();
+  const store = useStore<AnalysisRootState>();
+  const save = useCallback(() => {
+    const { analysis } = store.getState().analysis;
+    callbacks.onSaveRef.current?.(analysis);
+  }, [store, callbacks]);
+  return { callbacks, dispatch, save };
+}
+
+// #endregion
+
 // #region Token hooks
 
 /**
@@ -119,10 +171,38 @@ export function AnalysisStoreProvider({
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGloss(tokenRef: string): string {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('useGloss must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('useGloss');
 
   return useSelector((state: AnalysisRootState) => selectApprovedGloss(state.analysis, tokenRef));
+}
+
+/**
+ * Returns the morpheme breakdown from the approved `TokenAnalysis` for `tokenRef`, re-rendering
+ * only when the morpheme array changes. Returns a stable empty array when no approved analysis
+ * exists or it has no morphemes.
+ *
+ * @param tokenRef - The `Token.ref` to look up.
+ * @returns The morpheme array from the approved analysis, or a stable empty array.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
+  useRequiredCallbacks('useMorphemes');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectApprovedMorphemes(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns the active BCP 47 analysis-language tag from the nearest {@link AnalysisStoreProvider}.
+ *
+ * @returns The analysis language string.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useAnalysisLanguage(): string {
+  useRequiredCallbacks('useAnalysisLanguage');
+
+  return useSelector((state: AnalysisRootState) => selectAnalysisLanguage(state.analysis));
 }
 
 /**
@@ -133,8 +213,7 @@ export function useGloss(tokenRef: string): string {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysis(): TextAnalysis {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('useAnalysis must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('useAnalysis');
 
   return useSelector((state: AnalysisRootState) => selectAnalysis(state.analysis));
 }
@@ -148,20 +227,85 @@ export function useAnalysis(): TextAnalysis {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
-  const callbacks = useContext(AnalysisCallbackCtx);
-  if (!callbacks) throw new Error('useGlossDispatch must be used inside an AnalysisStoreProvider');
-
-  const dispatch = useDispatch<AnalysisDispatch>();
-  const store = useStore<AnalysisRootState>();
+  const { callbacks, dispatch, save } = useAnalysisSave('useGlossDispatch');
 
   return useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
       dispatch(writeGloss(tokenRef, surfaceText, value));
-      const { analysis } = store.getState().analysis;
-      callbacks.onSaveRef.current?.(analysis);
+      save();
       callbacks.onGlossChangeRef.current?.(tokenRef, value);
     },
-    [dispatch, store, callbacks],
+    [dispatch, save, callbacks],
+  );
+}
+
+/**
+ * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
+ * for a given token. Dispatches the `writeMorphemes` action and triggers `onSave`.
+ *
+ * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
+ *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
+ *   on each morpheme as the writing system of its form.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeBreakdownDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  forms: string[],
+  writingSystem: string,
+) => void {
+  const { dispatch, save } = useAnalysisSave('useMorphemeBreakdownDispatch');
+
+  return useCallback(
+    (tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) => {
+      dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
+      save();
+    },
+    [dispatch, save],
+  );
+}
+
+/**
+ * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
+ * for a given token (deleting the analysis record entirely when it carries no gloss). Dispatches
+ * the `deleteMorphemes` action and triggers `onSave`.
+ *
+ * @returns A function `(tokenRef) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
+  const { dispatch, save } = useAnalysisSave('useMorphemeDeleteDispatch');
+
+  return useCallback(
+    (tokenRef: string) => {
+      dispatch(deleteMorphemes({ tokenRef }));
+      save();
+    },
+    [dispatch, save],
+  );
+}
+
+/**
+ * Returns a stable callback that writes a gloss on a single morpheme within the approved
+ * `TokenAnalysis` for a given token. Dispatches the `writeMorphemeGloss` action and triggers
+ * `onSave`.
+ *
+ * @returns A function `(tokenRef, morphemeId, value) => void`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeGlossDispatch(): (
+  tokenRef: string,
+  morphemeId: string,
+  value: string,
+) => void {
+  const { dispatch, save } = useAnalysisSave('useMorphemeGlossDispatch');
+
+  return useCallback(
+    (tokenRef: string, morphemeId: string, value: string) => {
+      dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
+      save();
+    },
+    [dispatch, save],
   );
 }
 
@@ -177,8 +321,7 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('usePhraseLinkMap must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('usePhraseLinkMap');
 
   return useSelector((state: AnalysisRootState) => selectPhraseLinkByTokenRef(state.analysis));
 }
@@ -191,8 +334,7 @@ export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('usePhraseLinkByIdMap must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('usePhraseLinkByIdMap');
 
   return useSelector((state: AnalysisRootState) => selectPhraseLinkByAnalysisId(state.analysis));
 }
@@ -207,8 +349,7 @@ export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('usePhraseLinkForToken must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('usePhraseLinkForToken');
 
   return useSelector((state: AnalysisRootState) =>
     selectPhraseLinkByTokenRef(state.analysis).get(tokenRef),
@@ -224,8 +365,7 @@ export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | un
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseGloss(phraseId: string): string {
-  const ctx = useContext(AnalysisCallbackCtx);
-  if (!ctx) throw new Error('usePhraseGloss must be used inside an AnalysisStoreProvider');
+  useRequiredCallbacks('usePhraseGloss');
 
   return useSelector((state: AnalysisRootState) => selectPhraseGloss(state.analysis, phraseId));
 }
@@ -237,20 +377,14 @@ export function usePhraseGloss(phraseId: string): string {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
-  const callbacks = useContext(AnalysisCallbackCtx);
-  if (!callbacks)
-    throw new Error('usePhraseGlossDispatch must be used inside an AnalysisStoreProvider');
-
-  const dispatch = useDispatch<AnalysisDispatch>();
-  const store = useStore<AnalysisRootState>();
+  const { dispatch, save } = useAnalysisSave('usePhraseGlossDispatch');
 
   return useCallback(
     (phraseId: string, value: string) => {
       dispatch(writePhraseGloss({ phraseId, value }));
-      const { analysis } = store.getState().analysis;
-      callbacks.onSaveRef.current?.(analysis);
+      save();
     },
-    [dispatch, store, callbacks],
+    [dispatch, save],
   );
 }
 
@@ -303,16 +437,7 @@ export type PhraseDispatch = {
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseDispatch(): PhraseDispatch {
-  const callbacks = useContext(AnalysisCallbackCtx);
-  if (!callbacks) throw new Error('usePhraseDispatch must be used inside an AnalysisStoreProvider');
-
-  const dispatch = useDispatch<AnalysisDispatch>();
-  const store = useStore<AnalysisRootState>();
-
-  const save = useCallback(() => {
-    const { analysis } = store.getState().analysis;
-    callbacks.onSaveRef.current?.(analysis);
-  }, [store, callbacks]);
+  const { dispatch, save } = useAnalysisSave('usePhraseDispatch');
 
   const handleCreatePhrase = useCallback(
     (tokens: TokenSnapshot[]): string => {

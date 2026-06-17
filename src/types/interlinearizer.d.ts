@@ -29,6 +29,11 @@ declare module 'papi-shared-types' {
      * each chapter is labeled `chapter:verse` instead of a bare verse number.
      */
     'interlinearizer.chapterLabelInVerse': boolean;
+    /**
+     * When true, each word token displays its morpheme breakdown and per-morpheme glosses beneath
+     * the token-level gloss input.
+     */
+    'interlinearizer.showMorphology': boolean;
   }
 
   /**
@@ -845,6 +850,13 @@ declare module 'interlinearizer' {
      * exposure — see `GrammarRef`). Absent when MSA-level detail is not available.
      */
     grammarRef?: GrammarRef;
+
+    /**
+     * Free-form gloss string keyed by BCP 47 analysis-language tag. Analogous to
+     * `TokenAnalysis.gloss` but scoped to a single morpheme. Takes precedence over any gloss
+     * resolved through `senseRef` when both are present.
+     */
+    gloss?: MultiString;
   }
 
   // ---------------------------------------------------------------------------

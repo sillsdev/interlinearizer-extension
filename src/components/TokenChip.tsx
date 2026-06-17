@@ -161,6 +161,11 @@ export function TokenChip({
           // otherwise paint later segment rows over it. The popover is modal so interactions
           // outside the panel are blocked while it is open. The popover component is mounted only
           // while open so its draft state re-initializes from the current forms on every open.
+          //
+          // `onOpenChange` is intentionally omitted: this consumer owns every dismissal path
+          // (onEscapeKeyDown, onInteractOutside, explicit button clicks), so Radix's internal close
+          // requests aren't needed. Don't wire onOpenChange without also removing those, or closes
+          // would double-fire.
           <Popover modal open={popoverOpen}>
             <PopoverAnchor asChild>
               <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">

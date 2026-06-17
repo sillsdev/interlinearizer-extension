@@ -58,9 +58,19 @@ export function MorphemeBreakdownPopover({
     inputRef.current?.select();
   }, []);
 
+  /**
+   * Collapses leading/trailing and repeated internal whitespace to a single space.
+   *
+   * @param s - The string to normalize.
+   * @returns The string with surrounding whitespace trimmed and internal runs collapsed.
+   */
+  const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
+
   // Whether the draft matches the pre-filled value. Shared by the Done/Enter and outside-click
-  // commit paths so the two can never disagree about what counts as an edit.
-  const isUnedited = draft.trim() === initialValue.trim();
+  // commit paths so the two can never disagree about what counts as an edit. Whitespace is
+  // normalized because the save path splits on /\s+/, so differing spacing yields identical forms —
+  // comparing normalized text avoids a no-op persistence round-trip.
+  const isUnedited = normalize(draft) === normalize(initialValue);
 
   /**
    * Commits the current draft and closes the popover. Skips the save when the token already has a

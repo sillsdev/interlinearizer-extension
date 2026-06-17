@@ -225,7 +225,12 @@ export function SaveAsProjectModal({
                     {project.analysisLanguages.join(', ')}
                   </span>
                 </span>
-                <Button variant="secondary" size="sm" onClick={() => setConfirmOverwrite(project)}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setConfirmOverwrite(project)}
+                  disabled={isSubmitting}
+                >
                   {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
                 </Button>
               </li>

@@ -42,7 +42,7 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
 export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_select_project%',
   command: 'interlinearizer.openSelectProjectModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 1,
   localizeNotes: '',
 };
@@ -51,7 +51,7 @@ export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_new_project%',
   command: 'interlinearizer.openNewProjectModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 2,
   localizeNotes: '',
 };
@@ -60,7 +60,7 @@ export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_view_project_info%',
   command: 'interlinearizer.openProjectInfoModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 3,
   localizeNotes: '',
 };
@@ -69,7 +69,7 @@ export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_SAVE_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_save%',
   command: 'interlinearizer.save',
-  group: 'interlinearizer.file.actions',
+  group: 'interlinearizer.fileActions',
   order: 1,
   localizeNotes: '',
 };
@@ -78,7 +78,7 @@ export const MOCK_SAVE_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_saveAs%',
   command: 'interlinearizer.openSaveAsModal',
-  group: 'interlinearizer.file.actions',
+  group: 'interlinearizer.fileActions',
   order: 2,
   localizeNotes: '',
 };
@@ -87,7 +87,7 @@ export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_WIPE_BOOK_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_wipeBook%',
   command: 'interlinearizer.wipeBook',
-  group: 'interlinearizer.draft.actions',
+  group: 'interlinearizer.draftActions',
   order: 1,
   localizeNotes: '',
 };
@@ -96,7 +96,7 @@ export const MOCK_WIPE_BOOK_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_WIPE_DRAFT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_wipeDraft%',
   command: 'interlinearizer.wipeDraft',
-  group: 'interlinearizer.draft.actions',
+  group: 'interlinearizer.draftActions',
   order: 2,
   localizeNotes: '',
 };

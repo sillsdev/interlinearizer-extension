@@ -47,8 +47,9 @@ const MORPHEME_GLOSS_STRING_KEYS = [
  *   already exists when deciding whether an unedited commit should save.
  * @param props.surfaceText - The token's surface text, used to reject a "breakdown" that is just
  *   the whole word as a single morpheme (no real segmentation).
- * @param props.glossInputId - Id of the token's gloss input; focus is restored to it when the
- *   popover closes, rather than to the non-tabbable morpheme trigger.
+ * @param props.glossInputId - Id of the token's gloss input; used to locate the chip on close so
+ *   focus lands on its first morpheme gloss field (falling back to the gloss input itself), rather
+ *   than on the non-tabbable morpheme trigger.
  * @returns A popover panel with a text input and Cancel/Done buttons.
  */
 export function MorphemeBreakdownPopover({
@@ -164,10 +165,18 @@ export function MorphemeBreakdownPopover({
       onInteractOutside={handleInteractOutside}
       onOpenAutoFocus={(e) => e.preventDefault()}
       onCloseAutoFocus={(e) => {
-        // Restore focus to the token's gloss input rather than the non-tabbable morpheme trigger
-        // (Radix's default). preventScroll keeps the React-controlled scroll the sole scroller.
+        // On close, land focus on the chip's first morpheme gloss field rather than Radix's default
+        // (the non-tabbable trigger). The morpheme gloss inputs sit before the token gloss input
+        // inside the same label, so scope the lookup to that label — the panel is portaled to
+        // document.body, so a document-wide query could match another token's field. Fall back to
+        // the token gloss input when no morpheme field exists (dismissed with no breakdown, or
+        // deleted). preventScroll keeps the React-controlled scroll the sole scroller.
         e.preventDefault();
-        document.getElementById(glossInputId)?.focus({ preventScroll: true });
+        const glossInput = document.getElementById(glossInputId);
+        const firstMorphemeGloss = glossInput
+          ?.closest('label')
+          ?.querySelector<HTMLInputElement>('input[data-morpheme-gloss]');
+        (firstMorphemeGloss ?? glossInput)?.focus({ preventScroll: true });
       }}
     >
       <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>

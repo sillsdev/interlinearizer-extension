@@ -254,6 +254,43 @@ describe('MorphemeBreakdownPopover', () => {
     const content = screen.getByTestId('popover-content');
     expect(content).toContainElement(screen.getByText('Split into morphemes'));
   });
+
+  it('focuses the first morpheme gloss field of the chip when the popover closes', async () => {
+    // The chip label holds the morpheme gloss inputs before the token gloss input; on close, focus
+    // should land on the first morpheme gloss, scoped to this token's label via glossInputId.
+    render(
+      <label>
+        <input aria-label="morpheme gloss" data-morpheme-gloss="true" />
+        <input aria-label="token gloss" id="gloss-1" />
+        <MorphemeBreakdownPopover
+          glossInputId="gloss-1"
+          initialValue="word"
+          onClose={jest.fn()}
+          onSave={jest.fn()}
+          surfaceText="word"
+        />
+      </label>,
+    );
+    await userEvent.click(screen.getByTestId('popover-close'));
+    expect(screen.getByRole('textbox', { name: 'morpheme gloss' })).toHaveFocus();
+  });
+
+  it('falls back to the token gloss input on close when the chip has no morpheme gloss field', async () => {
+    render(
+      <label>
+        <input aria-label="token gloss" id="gloss-1" />
+        <MorphemeBreakdownPopover
+          glossInputId="gloss-1"
+          initialValue="word"
+          onClose={jest.fn()}
+          onSave={jest.fn()}
+          surfaceText="word"
+        />
+      </label>,
+    );
+    await userEvent.click(screen.getByTestId('popover-close'));
+    expect(screen.getByRole('textbox', { name: 'token gloss' })).toHaveFocus();
+  });
 });
 
 describe('MorphemeGlossInput', () => {

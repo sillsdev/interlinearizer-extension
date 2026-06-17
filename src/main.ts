@@ -363,6 +363,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
   );
 
   // All interlinearizer view-toggle settings are booleans, so they share one validator.
+  /* v8 ignore next */
   const isBoolean = async (newValue: unknown) => typeof newValue === 'boolean';
 
   const continuousScrollValidatorRegistration = await papi.projectSettings.registerValidator(

@@ -60,3 +60,20 @@ Decisions made during development that we'd like reviewed:
    Save target, so a subsequent Save still writes the (now empty) draft to it. "Wipe Current Book"
    stays flagged as unsaved, since it is a partial edit the user will usually want to save. Is this
    split right, or should both wipes behave the same?
+
+9. **Save As → Overwrite and the target's metadata.** "Save As → Overwrite an existing project"
+   replaces that project's analysis with the draft's. The draft's _config_ (analysis languages and
+   alignment target) can differ from the chosen project's — e.g. you Open project A (languages
+   `[en]`), then Save As → Overwrite project B (languages `[fr]`). We currently push the draft's
+   analysis languages and alignment target onto the overwritten project so its declared metadata
+   matches the glosses now stored in it, while keeping the project's existing **name and
+   description** (overwriting an existing named project keeps its identity). This mirrors how
+   Save As → New carries the draft's config into the newly created project. Is this the right split?
+   Options to review:
+   - Should overwrite also adopt the draft's **name/description** (i.e. fully replace the target),
+     or keep the target's identity as it does now?
+   - Should overwrite instead be **analysis-only**, leaving the target's languages/target untouched
+     (accepting that the stored glosses may then be tagged with languages the project doesn't
+     declare)?
+   - Should the Overwrite confirmation surface when the draft's languages differ from the target's,
+     so the user is aware their language tags are about to change?

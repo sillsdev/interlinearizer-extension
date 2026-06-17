@@ -295,8 +295,10 @@ export default function ProjectModals({
 
   /**
    * Overwrites an existing project with the current draft: writes the draft's analysis into the
-   * chosen project, makes it the active Save target, and clears the dirty flag. The backend
-   * surfaces its own error notification; here we only log.
+   * chosen project, reconciles the project's declared config (analysis languages / alignment
+   * target) with the draft so the metadata matches the glosses now stored in it, makes it the
+   * active Save target, and clears the dirty flag. The backend surfaces its own error notification;
+   * here we only log.
    *
    * @param project - The existing project to overwrite.
    * @returns A promise that resolves once the overwrite completes or the failure has been handled.
@@ -312,7 +314,25 @@ export default function ProjectModals({
           project.id,
           JSON.stringify(snapshot.analysis),
         );
-        setActiveProject(project);
+        // Push the draft's analysis languages / alignment target onto the project so its declared
+        // metadata stays consistent with the glosses just written (mirroring how Save As → New
+        // carries the draft's config into the created project). The project's name and description
+        // are intentionally preserved — overwriting keeps the target's identity.
+        await papi.commands.sendCommand(
+          'interlinearizer.updateProjectMetadata',
+          project.id,
+          project.name,
+          project.description,
+          snapshot.analysisLanguages,
+          snapshot.targetProjectId,
+        );
+        setActiveProject({
+          ...project,
+          analysisLanguages: snapshot.analysisLanguages,
+          // Assign explicitly (rather than a conditional spread) so a target binding on the
+          // overwritten project is cleared when the draft has none, matching what was persisted.
+          targetProjectId: snapshot.targetProjectId,
+        });
         markSynced(snapshot.analysis);
         setModal('none');
       } catch (e) {

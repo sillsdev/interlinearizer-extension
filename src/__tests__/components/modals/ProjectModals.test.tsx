@@ -578,6 +578,36 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
+    it('reconciles the overwritten project metadata with the draft config', async () => {
+      const draftWithConfig: DraftProject = {
+        sourceProjectId: 'source-proj',
+        analysisLanguages: ['sw', 'fr'],
+        targetProjectId: 'tgt-9',
+        analysis: emptyAnalysis(),
+        dirty: true,
+      };
+      render(
+        <ProjectModals
+          {...buildProps({ modal: 'saveAs', getDraftSnapshot: () => draftWithConfig })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      // The project keeps its own name ('My Project') / description (undefined) but adopts the
+      // draft's analysis languages and alignment target so its metadata matches the stored glosses.
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.updateProjectMetadata',
+          'proj-1',
+          'My Project',
+          undefined,
+          ['sw', 'fr'],
+          'tgt-9',
+        ),
+      );
+    });
+
     it('does not crash when overwriting rejects', async () => {
       jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('boom'));
       const markSynced = jest.fn();

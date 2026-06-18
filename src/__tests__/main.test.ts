@@ -276,7 +276,7 @@ describe('main', () => {
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(23);
+      expect(context.registrations.unsubscribers.size).toBe(24);
     });
 
     it('logs activation start and finish', async () => {

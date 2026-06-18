@@ -13,10 +13,12 @@ import {
   useReportGlossEditing,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_editMorphemes%',
   '%interlinearizer_tokenChip_defineMorphemes%',
+  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -241,7 +243,9 @@ export function TokenChip({
           className="tw:gloss-input"
           disabled={disabled}
           id={glossInputId}
-          placeholder="gloss"
+          placeholder={resolvedOrEmpty(
+            localizedStrings['%interlinearizer_glossInput_placeholder%'],
+          )}
           style={{ fieldSizing: 'content', minWidth: '5ch' }}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

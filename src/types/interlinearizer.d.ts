@@ -34,6 +34,11 @@ declare module 'papi-shared-types' {
      * the token-level gloss input.
      */
     'interlinearizer.showMorphology': boolean;
+    /**
+     * When true, each segment displays a free-translation input beneath its tokens (token-chip
+     * mode) or its baseline text (continuous-scroll mode).
+     */
+    'interlinearizer.showFreeTranslation': boolean;
   }
 
   /**

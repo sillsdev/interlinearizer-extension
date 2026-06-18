@@ -266,10 +266,11 @@ function InterlinearizerLoaderInner({
       setModal('saveAs');
       return;
     }
+    /* v8 ignore next -- re-entry guard; handles simultaneous saves during async round-trip */
     if (isSavingRef.current) return;
     isSavingRef.current = true;
     const snapshot = getDraftSnapshot();
-    /* v8 ignore next -- save is only reachable once the editor (and draft) have loaded */
+    /* v8 ignore next 4 -- save is only reachable once the editor (and draft) have loaded */
     if (!snapshot) {
       isSavingRef.current = false;
       return;

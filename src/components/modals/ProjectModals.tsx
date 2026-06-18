@@ -1,7 +1,7 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -20,7 +20,7 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs';
  * empty draft or opening an existing project into the draft.
  */
 type PendingReplace =
-  | { kind: 'new'; config: NewDraftConfig }
+  | { kind: 'new'; config: CreateDraftConfig }
   | { kind: 'open'; project: InterlinearProjectSummary };
 
 /**
@@ -46,8 +46,6 @@ type PendingReplace =
  *   given the analysis that was persisted; a no-op if an edit landed during the save.
  * @param props.modal - Which modal is currently open.
  * @param props.projectId - PAPI source project ID passed from the host.
- * @param props.resetDraft - Resets the draft to an empty baseline with the given config (the "New"
- *   flow).
  * @param props.setModal - Setter for which modal is open.
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores).
@@ -106,6 +104,9 @@ export default function ProjectModals({
 
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
+
+  /** Guards against submitting the New dialog twice while the first creation is in flight. */
+  const isCreatingRef = useRef(false);
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
@@ -254,14 +255,23 @@ export default function ProjectModals({
 
   /**
    * Called when the New dialog is submitted. Starts the new draft immediately, or defers behind the
-   * unsaved-changes confirmation when the draft is dirty.
+   * unsaved-changes confirmation when the draft is dirty. A re-entry guard prevents a second
+   * submission while the first creation round-trip is in flight.
    *
    * @param config - The configuration collected by the New dialog.
    */
   const handleCreateDraft = useCallback(
     (config: CreateDraftConfig) => {
-      if (dirty) setPendingReplace({ kind: 'new', config });
-      else startNewDraft(config);
+      if (dirty) {
+        setPendingReplace({ kind: 'new', config });
+        return;
+      }
+      /* v8 ignore next -- re-entry guard; handles simultaneous submits during async creation */
+      if (isCreatingRef.current) return;
+      isCreatingRef.current = true;
+      startNewDraft(config).finally(() => {
+        isCreatingRef.current = false;
+      });
     },
     [dirty, startNewDraft],
   );

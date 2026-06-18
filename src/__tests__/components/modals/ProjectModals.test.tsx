@@ -238,7 +238,6 @@ type ModalsOverrides = Partial<{
   loadFromProject: jest.Mock;
   markSynced: jest.Mock;
   modal: ModalState;
-  resetDraft: jest.Mock;
   setModal: jest.Mock;
   useWebViewState: ReturnType<typeof makeWebViewState>;
 }>;
@@ -260,7 +259,6 @@ function buildProps(overrides: ModalsOverrides = {}) {
     markSynced: overrides.markSynced ?? jest.fn(),
     modal: overrides.modal ?? 'none',
     projectId: 'source-proj',
-    resetDraft: overrides.resetDraft ?? jest.fn(),
     setModal: overrides.setModal ?? jest.fn(),
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
   };
@@ -426,19 +424,63 @@ describe('ProjectModals', () => {
   });
 
   describe('new (create) flow', () => {
-    it('resets the draft and closes when not dirty', async () => {
-      const resetDraft = jest.fn();
+    it('creates a project via createProject and closes when not dirty', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
       const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', resetDraft, setModal })} />);
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      expect(resetDraft).toHaveBeenCalledWith({
-        analysisLanguages: ['en'],
-        name: 'New',
-        description: 'Desc',
-      });
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.createProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'New',
+          'Desc',
+        ),
+      );
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('carries targetProjectId into the draft for a bilateral created project', async () => {
+      const bilateral = { ...MOCK_PROJECT, targetProjectId: 'tgt-new' };
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(bilateral));
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() =>
+        expect(loadFromProject).toHaveBeenCalledWith({
+          analysisLanguages: ['en'],
+          targetProjectId: 'tgt-new',
+          analysis: emptyAnalysis(),
+        }),
+      );
+    });
+
+    it('notifies and does not close when createProject returns a non-project shape', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
+    it('does not crash when createProject throws', async () => {
+      jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('network'));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
+      expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {
@@ -494,19 +536,32 @@ describe('ProjectModals', () => {
     });
 
     it('confirms before starting a new draft when the draft is dirty', async () => {
-      const resetDraft = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true, resetDraft })} />);
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
-      expect(resetDraft).not.toHaveBeenCalled();
+      // createProject must not have been called yet.
+      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
-      expect(resetDraft).toHaveBeenCalledWith({
-        analysisLanguages: ['en'],
-        name: 'New',
-        description: 'Desc',
-      });
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.createProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'New',
+          'Desc',
+        ),
+      );
     });
   });
 

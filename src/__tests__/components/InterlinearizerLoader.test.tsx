@@ -958,9 +958,16 @@ describe('InterlinearizerLoader', () => {
 
       const edited = emptyAnalysis();
       edited.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+
+      // Switch to fake timers only for this test so we can advance past the 300ms debounce.
+      jest.useFakeTimers();
       act(() => {
         capturedInterlinearizerProps?.onSaveAnalysis?.(edited);
       });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
 
       const saveDraftCall = mockSendCommand.mock.calls.find(
         ([command]) => command === 'interlinearizer.saveDraft',

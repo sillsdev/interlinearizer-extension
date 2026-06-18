@@ -150,10 +150,16 @@ describe('useDraftProject', () => {
     it('stores the edited analysis, marks the draft dirty, and persists with dirty:true', async () => {
       const { result } = await renderLoaded();
 
+      jest.useFakeTimers();
       const edited = analysisWithToken('tok-autosave');
       act(() => {
         result.current.autosaveAnalysis(edited);
       });
+      // Advance past the debounce window so the scheduled persist fires.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('tok-autosave');
@@ -165,12 +171,18 @@ describe('useDraftProject', () => {
     it('does not error or re-render when called again while already dirty', async () => {
       const { result } = await renderLoaded();
 
+      jest.useFakeTimers();
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('first'));
       });
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('second'));
       });
+      // The second call replaces the first timer; advance past the debounce to flush the write.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
       // The second autosave does not bump draftVersion and dirty was already true, so it does not
@@ -215,6 +227,31 @@ describe('useDraftProject', () => {
       expect(result.current.draft?.targetProjectId).toBe('target-1');
       expect(result.current.draft?.suggestedName).toBe('My Draft');
       expect(result.current.draft?.suggestedDescription).toBe('A description');
+    });
+
+    it('cancels a pending autosave timer so the stale dirty write does not follow the reset', async () => {
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      // Schedule a debounced autosave that would persist {dirty:true}.
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('tok-pending'));
+      });
+      // A wholesale reset fires before the 300ms window closes.
+      act(() => {
+        result.current.resetDraft({ analysisLanguages: ['es'] });
+      });
+      // Advance past the original debounce window — the stale timer must not fire.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      // The last persist is the reset draft; the cancelled autosave never wrote {dirty:true}.
+      const saved = lastSavedDraft();
+      expect(saved.dirty).toBe(false);
+      expect(saved.analysisLanguages).toEqual(['es']);
+      expect(saved.analysis.tokenAnalyses).toHaveLength(0);
     });
 
     it('seeds the platform language when the New config supplies no analysis languages', async () => {

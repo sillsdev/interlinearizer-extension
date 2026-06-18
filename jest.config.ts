@@ -105,11 +105,10 @@ const config: Config = {
   },
 
   /**
-   * Exclude dist and any git worktrees nested under .claude/ from module resolution. Without the
-   * .claude exclusion, running Jest from the repo root finds duplicate __mocks__ inside worktrees
-   * and uses non-deterministically whichever one jest-haste-map encounters first.
+   * Exclude `.claude` from module resolution to avoid nested git worktrees. Exclude `dist` from
+   * module resolution to avoid Haste naming collision with root package.json.
    */
-  modulePathIgnorePatterns: ['<rootDir>/dist', '<rootDir>/.claude'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude', '<rootDir>/dist'],
 
   /** Load @testing-library/jest-dom matchers and browser API stubs for React component tests. */
   setupFilesAfterEnv: [

@@ -97,6 +97,20 @@ describe('CreateProjectModal', () => {
     });
   });
 
+  it('disables both buttons when isSubmitting is true', () => {
+    render(<CreateProjectModal isSubmitting onClose={() => {}} onCreateDraft={() => {}} />);
+
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeDisabled();
+  });
+
+  it('keeps both buttons enabled when isSubmitting is false', () => {
+    render(<CreateProjectModal isSubmitting={false} onClose={() => {}} onCreateDraft={() => {}} />);
+
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^create$/i })).toBeEnabled();
+  });
+
   it('defaults the language to ["und"] when the field contains only whitespace', async () => {
     const onCreateDraft = jest.fn();
     render(<CreateProjectModal onClose={() => {}} onCreateDraft={onCreateDraft} />);

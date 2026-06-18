@@ -1,7 +1,7 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { OpenableProject } from '../../hooks/useDraftProject';
 import { emptyAnalysis } from '../../types/empty-factories';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -105,8 +105,11 @@ export default function ProjectModals({
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
 
-  /** Guards against submitting the New dialog twice while the first creation is in flight. */
-  const isCreatingRef = useRef(false);
+  /**
+   * Whether a backend project-creation round-trip is in progress; drives `isSubmitting` on the
+   * Create modal.
+   */
+  const [isCreating, setIsCreating] = useState(false);
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
@@ -270,15 +273,15 @@ export default function ProjectModals({
         return;
       }
 
-      /* v8 ignore next -- re-entry guard; handles simultaneous submits during async creation */
-      if (isCreatingRef.current) return;
+      /* v8 ignore next -- button is disabled while creating; guards against programmatic double-invocation */
+      if (isCreating) return;
 
-      isCreatingRef.current = true;
+      setIsCreating(true);
       await startNewDraft(config).finally(() => {
-        isCreatingRef.current = false;
+        setIsCreating(false);
       });
     },
-    [dirty, startNewDraft],
+    [dirty, isCreating, startNewDraft],
   );
 
   /** Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. */
@@ -289,18 +292,18 @@ export default function ProjectModals({
     if (pendingReplace.kind === 'open') {
       await openProject(pendingReplace.project);
     } else {
-      /* v8 ignore next -- re-entry guard; handles simultaneous submits during async creation */
-      if (isCreatingRef.current) return;
+      /* v8 ignore next -- button is disabled while creating; guards against programmatic double-invocation */
+      if (isCreating) return;
 
-      isCreatingRef.current = true;
+      setIsCreating(true);
       try {
         await startNewDraft(pendingReplace.config);
       } finally {
-        isCreatingRef.current = false;
+        setIsCreating(false);
       }
     }
     setPendingReplace(undefined);
-  }, [pendingReplace, openProject, startNewDraft]);
+  }, [isCreating, pendingReplace, openProject, startNewDraft]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
@@ -454,6 +457,7 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           defaultAnalysisLanguage={defaultAnalysisLanguage}
+          isSubmitting={isCreating}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
         />

@@ -228,6 +228,35 @@ describe('useDraftProject', () => {
 
       expect(result.current.draft?.targetProjectId).toBeUndefined();
     });
+
+    it('cancels a pending autosave so the stale edit is not written after the replacement', async () => {
+      const { result } = await renderLoaded();
+      const savesBefore = mockSendCommand.mock.calls.filter(
+        (c) => c[0] === 'interlinearizer.saveDraft',
+      ).length;
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('pending'));
+      });
+      act(() => {
+        result.current.loadFromProject({
+          analysis: analysisWithToken('replaced'),
+          analysisLanguages: ['de'],
+        });
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      // loadFromProject itself persists once; the cancelled autosave must not add a second save.
+      const savesAfter = mockSendCommand.mock.calls.filter(
+        (c) => c[0] === 'interlinearizer.saveDraft',
+      ).length;
+      expect(savesAfter - savesBefore).toBe(1);
+      expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('replaced');
+    });
   });
 
   describe('wipeBook', () => {

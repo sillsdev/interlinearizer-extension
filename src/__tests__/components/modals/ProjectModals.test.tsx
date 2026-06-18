@@ -93,10 +93,12 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
   __esModule: true,
   CreateProjectModal: ({
     defaultAnalysisLanguage,
+    isSubmitting,
     onClose,
     onCreateDraft,
   }: {
     defaultAnalysisLanguage?: string;
+    isSubmitting?: boolean;
     onClose: () => void;
     onCreateDraft: (config: {
       analysisLanguages: string[];
@@ -111,6 +113,7 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
       <button
         type="button"
         data-testid="create-submit"
+        disabled={isSubmitting}
         onClick={() =>
           onCreateDraft({ analysisLanguages: ['en'], name: 'New', description: 'Desc' })
         }
@@ -481,6 +484,25 @@ describe('ProjectModals', () => {
 
       await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
       expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
+    it('disables the create-submit button while createProject is in flight', async () => {
+      let resolveCreate!: (value: string) => void;
+      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          resolveCreate = resolve;
+        }),
+      );
+      render(<ProjectModals {...buildProps({ modal: 'create' })} />);
+
+      expect(screen.getByTestId('create-submit')).toBeEnabled();
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      expect(screen.getByTestId('create-submit')).toBeDisabled();
+
+      resolveCreate(JSON.stringify(MOCK_PROJECT));
+      await waitFor(() => expect(screen.getByTestId('create-submit')).toBeEnabled());
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {

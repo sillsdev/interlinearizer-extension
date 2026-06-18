@@ -493,7 +493,11 @@ export default function ProjectModals({
           returns to that modal with its in-progress input intact, and confirming an Open does not
           unmount (and re-fetch) the still-open select modal underneath. */}
       {pendingReplace && (
-        <DiscardDraftConfirm onConfirm={handleConfirmReplace} onCancel={handleCancelReplace} />
+        <DiscardDraftConfirm
+          isSubmitting={isCreating}
+          onCancel={handleCancelReplace}
+          onConfirm={handleConfirmReplace}
+        />
       )}
     </div>
   );

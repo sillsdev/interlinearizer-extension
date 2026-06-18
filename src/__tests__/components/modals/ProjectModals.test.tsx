@@ -162,14 +162,21 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
 jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
   __esModule: true,
   DiscardDraftConfirm: ({
-    onConfirm,
+    isSubmitting,
     onCancel,
+    onConfirm,
   }: {
-    onConfirm: () => void;
+    isSubmitting?: boolean;
     onCancel: () => void;
+    onConfirm: () => void;
   }) => (
     <div data-testid="discard-modal">
-      <button type="button" data-testid="discard-confirm" onClick={onConfirm}>
+      <button
+        data-testid="discard-confirm"
+        disabled={isSubmitting}
+        onClick={onConfirm}
+        type="button"
+      >
         Discard
       </button>
       <button type="button" data-testid="discard-cancel" onClick={onCancel}>
@@ -584,6 +591,25 @@ describe('ProjectModals', () => {
           'Desc',
         ),
       );
+    });
+
+    it('disables the discard-confirm button while createProject is in flight', async () => {
+      let resolveCreate!: (value: string) => void;
+      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          resolveCreate = resolve;
+        }),
+      );
+      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+      expect(screen.getByTestId('discard-confirm')).toBeEnabled();
+
+      await userEvent.click(screen.getByTestId('discard-confirm'));
+      expect(screen.getByTestId('discard-confirm')).toBeDisabled();
+
+      resolveCreate(JSON.stringify(MOCK_PROJECT));
+      await waitFor(() => expect(screen.queryByTestId('discard-modal')).toBeNull());
     });
   });
 

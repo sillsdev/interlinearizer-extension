@@ -40,6 +40,20 @@ describe('DiscardDraftConfirm', () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  it('disables both buttons when isSubmitting is true', () => {
+    render(<DiscardDraftConfirm isSubmitting {...defaultProps} />);
+
+    expect(screen.getByTestId('discard-draft-confirm')).toBeDisabled();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeDisabled();
+  });
+
+  it('keeps both buttons enabled when isSubmitting is false', () => {
+    render(<DiscardDraftConfirm isSubmitting={false} {...defaultProps} />);
+
+    expect(screen.getByTestId('discard-draft-confirm')).toBeEnabled();
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeEnabled();
+  });
+
   it('calls onCancel when the Cancel button is clicked', async () => {
     const onCancel = jest.fn();
     render(<DiscardDraftConfirm {...defaultProps} onCancel={onCancel} />);

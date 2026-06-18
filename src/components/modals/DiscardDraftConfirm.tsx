@@ -15,16 +15,20 @@ const DISCARD_DRAFT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  * returns to the previous dialog.
  *
  * @param props - Component props
- * @param props.onConfirm - Called when the user accepts discarding the draft's unsaved changes.
+ * @param props.isSubmitting - When `true`, both buttons are disabled to prevent interaction while
+ *   the caller is processing the confirmed action.
  * @param props.onCancel - Called when the user backs out, leaving the draft untouched.
+ * @param props.onConfirm - Called when the user accepts discarding the draft's unsaved changes.
  * @returns The confirmation overlay, or nothing while localized strings are loading.
  */
 export function DiscardDraftConfirm({
+  isSubmitting = false,
   onConfirm,
   onCancel,
 }: Readonly<{
-  onConfirm: () => void;
+  isSubmitting?: boolean;
   onCancel: () => void;
+  onConfirm: () => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(DISCARD_DRAFT_CONFIRM_STRING_KEYS);
 
@@ -45,10 +49,15 @@ export function DiscardDraftConfirm({
           {localizedStrings['%interlinearizer_confirm_discard_body%']}
         </p>
         <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onCancel}>
+          <Button disabled={isSubmitting} onClick={onCancel} variant="secondary">
             {localizedStrings['%interlinearizer_confirm_discard_cancel%']}
           </Button>
-          <Button variant="destructive" onClick={onConfirm} data-testid="discard-draft-confirm">
+          <Button
+            data-testid="discard-draft-confirm"
+            disabled={isSubmitting}
+            onClick={onConfirm}
+            variant="destructive"
+          >
             {localizedStrings['%interlinearizer_confirm_discard_ok%']}
           </Button>
         </div>

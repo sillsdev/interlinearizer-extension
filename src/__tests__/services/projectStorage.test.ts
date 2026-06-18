@@ -599,6 +599,17 @@ describe('projectStorage', () => {
 
       await expect(getDraft(token, 'src-proj')).rejects.toThrow(SyntaxError);
     });
+
+    it('returns an empty draft and warns when the stored value does not match DraftProject shape', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify({ not: 'a draft' }));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result).toEqual(emptyDraft('src-proj'));
+      expect(__mockLogger.warn).toHaveBeenCalledWith(
+        'Interlinearizer: stored draft failed validation; resetting to empty draft',
+      );
+    });
   });
 
   describe('saveDraft', () => {

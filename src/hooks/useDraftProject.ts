@@ -5,17 +5,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { removeBookFromAnalysis } from '../utils/analysis-book';
 
-/** Configuration captured by the "New" flow when resetting the draft to an empty baseline. */
-export type NewDraftConfig = {
-  /** BCP 47 gloss / annotation language tags for the new draft. */
-  analysisLanguages: string[];
-  /** Optional alignment target-text project ID. */
-  targetProjectId?: string;
-  /** Optional name typed in the New dialog, retained on the draft to prefill Save As. */
-  name?: string;
-  /** Optional description typed in the New dialog, retained on the draft to prefill Save As. */
-  description?: string;
-};
+/** Milliseconds to wait after the last keystroke before flushing an autosave write. */
+const AUTOSAVE_DEBOUNCE_MS = 300;
 
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
@@ -58,12 +49,6 @@ export type UseDraftProjectResult = {
    * @param analysis - The updated analysis from the store.
    */
   autosaveAnalysis: (analysis: TextAnalysis) => void;
-  /**
-   * Resets the draft to an empty analysis with the given config — the "New" flow.
-   *
-   * @param config - Gloss languages and optional alignment target for the fresh draft.
-   */
-  resetDraft: (config: NewDraftConfig) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
@@ -117,10 +102,15 @@ export default function useDraftProject(
   const [draftVersion, setDraftVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
 
-  // Read the latest platform language via a ref so the load effect (keyed only on sourceProjectId)
+  // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
   // does not re-run when the UI language changes after the draft has loaded.
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
+
+  // Pending debounced-autosave timer. Flushed on unmount/source change (so the last edit is not
+  // lost), and cancelled on any wholesale replacement (applyReplacement) so stale keystroke data
+  // is never written after a New / Open / Wipe.
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /**
    * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
@@ -157,6 +147,7 @@ export default function useDraftProject(
         draft = emptyDraft(sourceProjectId);
       }
       if (canceled) return;
+
       // Seed a gloss language in memory when the stored draft has none (a brand-new source). Not
       // persisted here — the first auto-save / New / Open carries it to storage.
       if (draft.analysisLanguages.length === 0)
@@ -169,8 +160,14 @@ export default function useDraftProject(
     load();
     return () => {
       canceled = true;
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+        // Flush the pending write so the last edit before unmount/source-change is not lost.
+        if (draftRef.current) persist(draftRef.current);
+      }
     };
-  }, [sourceProjectId]);
+  }, [persist, sourceProjectId]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 
@@ -182,6 +179,12 @@ export default function useDraftProject(
    */
   const applyReplacement = useCallback(
     (next: DraftProject) => {
+      // Cancel any pending debounced autosave so stale keystroke data is not written after a
+      // wholesale replacement (New / Open / Wipe).
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+      }
       draftRef.current = next;
       persist(next);
       setDirty(next.dirty);
@@ -195,32 +198,19 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
       if (!current) return;
+
       const next: DraftProject = { ...current, analysis, dirty: true };
       draftRef.current = next;
-      persist(next);
+      // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
+      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = setTimeout(() => {
+        autosaveTimeoutRef.current = undefined;
+        persist(next);
+      }, AUTOSAVE_DEBOUNCE_MS);
       // No version bump (no remount) and a no-op when already dirty, so editing does not re-render.
       setDirty(true);
     },
     [persist],
-  );
-
-  const resetDraft = useCallback(
-    (config: NewDraftConfig) => {
-      const analysisLanguages =
-        config.analysisLanguages.length > 0
-          ? config.analysisLanguages
-          : [platformLanguageRef.current];
-      applyReplacement({
-        sourceProjectId,
-        analysisLanguages,
-        ...(config.targetProjectId !== undefined && { targetProjectId: config.targetProjectId }),
-        ...(config.name !== undefined && { suggestedName: config.name }),
-        ...(config.description !== undefined && { suggestedDescription: config.description }),
-        analysis: emptyAnalysis(),
-        dirty: false,
-      });
-    },
-    [applyReplacement, sourceProjectId],
   );
 
   const loadFromProject = useCallback(
@@ -241,6 +231,7 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- wipe is only reachable from the mounted editor */
       if (!current) return;
+
       applyReplacement({
         ...current,
         analysis: removeBookFromAnalysis(current.analysis, bookCode),
@@ -254,6 +245,7 @@ export default function useDraftProject(
     const { current } = draftRef;
     /* v8 ignore next -- wipe is only reachable from the mounted editor */
     if (!current) return;
+
     // Wiping the whole draft is treated as a clean baseline rather than an unsaved edit: it clears
     // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
     // draft. The active project is intentionally left untouched, so a subsequent Save still targets
@@ -266,11 +258,19 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- save is only reachable from the mounted editor */
       if (!current) return;
+
       // If an edit landed during the save round-trip, autosaveAnalysis has already swapped a newer
       // analysis (a fresh object) into the ref and marked the draft dirty. Leave it dirty so the
       // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
       // against the now-stale snapshot we just wrote.
       if (current.analysis !== savedAnalysis) return;
+
+      // Cancel any pending debounced autosave before persisting the clean state so a stale
+      // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+      }
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
       persist(next);
@@ -286,7 +286,6 @@ export default function useDraftProject(
     dirty,
     getDraftSnapshot,
     autosaveAnalysis,
-    resetDraft,
     loadFromProject,
     wipeBook,
     wipeAll,

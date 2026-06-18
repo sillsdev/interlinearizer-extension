@@ -30,14 +30,14 @@ export type CreateDraftConfig = {
 
 /**
  * Modal dialog that collects the configuration for a new draft — name, description, and analysis
- * language(s) — then hands it back via {@link onCreateDraft}. No project is persisted here: "New"
- * resets the working draft to an empty baseline, and a project is only materialized later via Save
- * As. The typed name/description are retained on the draft to prefill that Save As dialog.
+ * language(s) — then hands it back via {@link onCreateDraft}.
  *
  * @param props - Component props
  * @param props.defaultAnalysisLanguage - BCP 47 tag pre-populated in the analysis language field;
  *   caller should pass the platform UI language so the user sees a sensible starting value.
  *   Defaults to `'und'` when absent.
+ * @param props.isSubmitting - When `true`, both buttons are disabled to prevent interaction while
+ *   the caller is processing the submitted configuration.
  * @param props.onClose - Callback invoked when the modal should be dismissed (cancel).
  * @param props.onCreateDraft - Callback invoked with the collected configuration on submit.
  * @returns The modal overlay with name, description, and language inputs, or nothing while
@@ -45,11 +45,14 @@ export type CreateDraftConfig = {
  */
 export function CreateProjectModal({
   defaultAnalysisLanguage,
+  isSubmitting = false,
   onClose,
   onCreateDraft,
 }: Readonly<{
   /** BCP 47 tag pre-populated in the analysis language field; defaults to `'und'` when absent. */
   defaultAnalysisLanguage?: string;
+  /** When `true`, both buttons are disabled while the caller processes the submitted config. */
+  isSubmitting?: boolean;
   onClose: () => void;
   onCreateDraft: (config: CreateDraftConfig) => void;
 }>) {
@@ -122,10 +125,10 @@ export function CreateProjectModal({
           placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
         />
         <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_create_cancel%']}
           </Button>
-          <Button onClick={handleSubmit}>
+          <Button onClick={handleSubmit} disabled={isSubmitting}>
             {localizedStrings['%interlinearizer_modal_create_submit%']}
           </Button>
         </div>

@@ -93,10 +93,12 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
   __esModule: true,
   CreateProjectModal: ({
     defaultAnalysisLanguage,
+    isSubmitting,
     onClose,
     onCreateDraft,
   }: {
     defaultAnalysisLanguage?: string;
+    isSubmitting?: boolean;
     onClose: () => void;
     onCreateDraft: (config: {
       analysisLanguages: string[];
@@ -105,12 +107,13 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
     }) => void;
   }) => (
     <div data-testid="create-modal" data-default-lang={defaultAnalysisLanguage}>
-      <button type="button" data-testid="create-close" onClick={onClose}>
+      <button data-testid="create-close" disabled={isSubmitting} onClick={onClose} type="button">
         Close
       </button>
       <button
         type="button"
         data-testid="create-submit"
+        disabled={isSubmitting}
         onClick={() =>
           onCreateDraft({ analysisLanguages: ['en'], name: 'New', description: 'Desc' })
         }
@@ -159,17 +162,24 @@ jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
 jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
   __esModule: true,
   DiscardDraftConfirm: ({
-    onConfirm,
+    isSubmitting,
     onCancel,
+    onConfirm,
   }: {
-    onConfirm: () => void;
+    isSubmitting?: boolean;
     onCancel: () => void;
+    onConfirm: () => void;
   }) => (
     <div data-testid="discard-modal">
-      <button type="button" data-testid="discard-confirm" onClick={onConfirm}>
+      <button
+        data-testid="discard-confirm"
+        disabled={isSubmitting}
+        onClick={onConfirm}
+        type="button"
+      >
         Discard
       </button>
-      <button type="button" data-testid="discard-cancel" onClick={onCancel}>
+      <button data-testid="discard-cancel" disabled={isSubmitting} onClick={onCancel} type="button">
         Cancel
       </button>
     </div>
@@ -238,7 +248,6 @@ type ModalsOverrides = Partial<{
   loadFromProject: jest.Mock;
   markSynced: jest.Mock;
   modal: ModalState;
-  resetDraft: jest.Mock;
   setModal: jest.Mock;
   useWebViewState: ReturnType<typeof makeWebViewState>;
 }>;
@@ -260,7 +269,6 @@ function buildProps(overrides: ModalsOverrides = {}) {
     markSynced: overrides.markSynced ?? jest.fn(),
     modal: overrides.modal ?? 'none',
     projectId: 'source-proj',
-    resetDraft: overrides.resetDraft ?? jest.fn(),
     setModal: overrides.setModal ?? jest.fn(),
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
   };
@@ -426,19 +434,82 @@ describe('ProjectModals', () => {
   });
 
   describe('new (create) flow', () => {
-    it('resets the draft and closes when not dirty', async () => {
-      const resetDraft = jest.fn();
+    it('creates a project via createProject and closes when not dirty', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
       const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', resetDraft, setModal })} />);
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      expect(resetDraft).toHaveBeenCalledWith({
-        analysisLanguages: ['en'],
-        name: 'New',
-        description: 'Desc',
-      });
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.createProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'New',
+          'Desc',
+        ),
+      );
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('carries targetProjectId into the draft for a bilateral created project', async () => {
+      const bilateral = { ...MOCK_PROJECT, targetProjectId: 'tgt-new' };
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(bilateral));
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() =>
+        expect(loadFromProject).toHaveBeenCalledWith({
+          analysisLanguages: ['en'],
+          targetProjectId: 'tgt-new',
+          analysis: emptyAnalysis(),
+        }),
+      );
+    });
+
+    it('notifies and does not close when createProject returns a non-project shape', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
+    it('does not crash when createProject throws', async () => {
+      jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('network'));
+      const setModal = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
+      expect(setModal).not.toHaveBeenCalledWith('none');
+    });
+
+    it('disables the create-submit button while createProject is in flight', async () => {
+      let resolveCreate!: (value: string) => void;
+      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          resolveCreate = resolve;
+        }),
+      );
+      render(<ProjectModals {...buildProps({ modal: 'create' })} />);
+
+      expect(screen.getByTestId('create-submit')).toBeEnabled();
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      expect(screen.getByTestId('create-submit')).toBeDisabled();
+
+      resolveCreate(JSON.stringify(MOCK_PROJECT));
+      await waitFor(() => expect(screen.getByTestId('create-submit')).toBeEnabled());
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {
@@ -494,19 +565,51 @@ describe('ProjectModals', () => {
     });
 
     it('confirms before starting a new draft when the draft is dirty', async () => {
-      const resetDraft = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true, resetDraft })} />);
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
-      expect(resetDraft).not.toHaveBeenCalled();
+      // createProject must not have been called yet.
+      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
-      expect(resetDraft).toHaveBeenCalledWith({
-        analysisLanguages: ['en'],
-        name: 'New',
-        description: 'Desc',
-      });
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.createProject',
+          'source-proj',
+          ['en'],
+          undefined,
+          'New',
+          'Desc',
+        ),
+      );
+    });
+
+    it('disables the discard-confirm button while createProject is in flight', async () => {
+      let resolveCreate!: (value: string) => void;
+      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
+        new Promise<string>((resolve) => {
+          resolveCreate = resolve;
+        }),
+      );
+      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+      expect(screen.getByTestId('discard-confirm')).toBeEnabled();
+
+      await userEvent.click(screen.getByTestId('discard-confirm'));
+      expect(screen.getByTestId('discard-confirm')).toBeDisabled();
+
+      resolveCreate(JSON.stringify(MOCK_PROJECT));
+      await waitFor(() => expect(screen.queryByTestId('discard-modal')).toBeNull());
     });
   });
 

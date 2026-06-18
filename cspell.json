@@ -77,6 +77,7 @@
     "verseref",
     "versification",
     "wordform",
+    "worktrees",
     "ZWNJ"
   ],
   "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],

@@ -33,6 +33,9 @@ temp-build
 
 # #endregion
 
+# AI files
+.claude
+
 # Playwright test output
 e2e-tests/playwright-report
 e2e-tests/test-results

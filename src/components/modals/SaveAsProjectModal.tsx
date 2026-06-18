@@ -70,9 +70,6 @@ export function SaveAsProjectModal({
    * re-submits.
    */
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // Ref mirror of `isSubmitting` so a submit handler can short-circuit a second invocation
-  // synchronously, before the re-render that disables the button lands (guards programmatic races).
-  const isSubmittingRef = useRef(false);
 
   /** The existing project pending an overwrite confirmation, or `undefined`. */
   const [confirmOverwrite, setConfirmOverwrite] = useState<InterlinearProjectSummary | undefined>(
@@ -128,17 +125,15 @@ export function SaveAsProjectModal({
    * projects.
    */
   const handleSaveNew = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
+    /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       await onSaveNew(name.trim() || undefined, description.trim() || undefined);
     } finally {
-      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [name, description, onSaveNew]);
+  }, [description, isSubmitting, name, onSaveNew]);
 
   /**
    * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
@@ -148,18 +143,16 @@ export function SaveAsProjectModal({
    */
   const handleConfirmOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {
-      /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-      if (isSubmittingRef.current) return;
-      isSubmittingRef.current = true;
+      /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
+      if (isSubmitting) return;
       setIsSubmitting(true);
       try {
         await onOverwrite(project);
       } finally {
-        isSubmittingRef.current = false;
         setIsSubmitting(false);
       }
     },
-    [onOverwrite],
+    [isSubmitting, onOverwrite],
   );
 
   /* v8 ignore next */ if (stringsLoading) return undefined;

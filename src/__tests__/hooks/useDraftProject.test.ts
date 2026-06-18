@@ -150,10 +150,16 @@ describe('useDraftProject', () => {
     it('stores the edited analysis, marks the draft dirty, and persists with dirty:true', async () => {
       const { result } = await renderLoaded();
 
+      jest.useFakeTimers();
       const edited = analysisWithToken('tok-autosave');
       act(() => {
         result.current.autosaveAnalysis(edited);
       });
+      // Advance past the debounce window so the scheduled persist fires.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('tok-autosave');
@@ -165,12 +171,18 @@ describe('useDraftProject', () => {
     it('does not error or re-render when called again while already dirty', async () => {
       const { result } = await renderLoaded();
 
+      jest.useFakeTimers();
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('first'));
       });
       act(() => {
         result.current.autosaveAnalysis(analysisWithToken('second'));
       });
+      // The second call replaces the first timer; advance past the debounce to flush the write.
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
       // The second autosave does not bump draftVersion and dirty was already true, so it does not
@@ -179,55 +191,6 @@ describe('useDraftProject', () => {
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('first');
       expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe('second');
       expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('second');
-    });
-  });
-
-  describe('resetDraft', () => {
-    it('resets to an empty analysis, clears dirty, bumps the version, and persists', async () => {
-      const { result } = await renderLoaded();
-      const versionBefore = result.current.draftVersion;
-
-      act(() => {
-        result.current.resetDraft({ analysisLanguages: ['es'] });
-      });
-
-      expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
-      expect(result.current.draft?.analysisLanguages).toEqual(['es']);
-      expect(result.current.dirty).toBe(false);
-      expect(result.current.draftVersion).toBe(versionBefore + 1);
-      const saved = lastSavedDraft();
-      expect(saved.dirty).toBe(false);
-      expect(saved.analysisLanguages).toEqual(['es']);
-    });
-
-    it('carries name, description, and target project id onto the reset draft', async () => {
-      const { result } = await renderLoaded();
-
-      act(() => {
-        result.current.resetDraft({
-          analysisLanguages: ['es'],
-          targetProjectId: 'target-1',
-          name: 'My Draft',
-          description: 'A description',
-        });
-      });
-
-      expect(result.current.draft?.targetProjectId).toBe('target-1');
-      expect(result.current.draft?.suggestedName).toBe('My Draft');
-      expect(result.current.draft?.suggestedDescription).toBe('A description');
-    });
-
-    it('seeds the platform language when the New config supplies no analysis languages', async () => {
-      const { result } = await renderLoaded();
-
-      act(() => {
-        result.current.resetDraft({ analysisLanguages: [] });
-      });
-
-      expect(result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
-      expect(result.current.draft?.targetProjectId).toBeUndefined();
-      expect(result.current.draft?.suggestedName).toBeUndefined();
-      expect(result.current.draft?.suggestedDescription).toBeUndefined();
     });
   });
 
@@ -264,6 +227,35 @@ describe('useDraftProject', () => {
       });
 
       expect(result.current.draft?.targetProjectId).toBeUndefined();
+    });
+
+    it('cancels a pending autosave so the stale edit is not written after the replacement', async () => {
+      const { result } = await renderLoaded();
+      const savesBefore = mockSendCommand.mock.calls.filter(
+        (c) => c[0] === 'interlinearizer.saveDraft',
+      ).length;
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveAnalysis(analysisWithToken('pending'));
+      });
+      act(() => {
+        result.current.loadFromProject({
+          analysis: analysisWithToken('replaced'),
+          analysisLanguages: ['de'],
+        });
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      // loadFromProject itself persists once; the cancelled autosave must not add a second save.
+      const savesAfter = mockSendCommand.mock.calls.filter(
+        (c) => c[0] === 'interlinearizer.saveDraft',
+      ).length;
+      expect(savesAfter - savesBefore).toBe(1);
+      expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('replaced');
     });
   });
 

@@ -104,8 +104,11 @@ const config: Config = {
     '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
   },
 
-  /** Exclude dist from module resolution to avoid Haste naming collision with root package.json. */
-  modulePathIgnorePatterns: ['<rootDir>/dist'],
+  /**
+   * Exclude `.claude` from module resolution to avoid nested git worktrees. Exclude `dist` from
+   * module resolution to avoid Haste naming collision with root package.json.
+   */
+  modulePathIgnorePatterns: ['<rootDir>/.claude', '<rootDir>/dist'],
 
   /** Load @testing-library/jest-dom matchers and browser API stubs for React component tests. */
   setupFilesAfterEnv: [
@@ -129,9 +132,15 @@ const config: Config = {
   /**
    * Transform TS/TSX with ts-jest (webpack uses SWC; Jest does not run webpack). Explicitly list
    * ts-jest so other preprocessors can be added later without dropping TS support.
+   *
+   * `isolatedModules: true` transpiles each file individually without a full type-check pass. This
+   * is required when running from a git worktree whose `typeRoots` relative paths (e.g.
+   * `../paranext-core/lib`) do not resolve from the worktree subdirectory; those paths are correct
+   * for the repo root but would cause every test suite to fail with TS2307 otherwise. Type-safety
+   * is still enforced by `npm run lint:typecheck` (tsc --noEmit) from the repo root.
    */
   transform: {
-    '\\.tsx?$': 'ts-jest',
+    '\\.tsx?$': ['ts-jest', { isolatedModules: true }],
   },
 };
 

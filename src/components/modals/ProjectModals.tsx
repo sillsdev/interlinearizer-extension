@@ -2,7 +2,8 @@ import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
-import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
+import type { OpenableProject } from '../../hooks/useDraftProject';
+import { emptyAnalysis } from '../../types/empty-factories';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary, isTextAnalysis } from '../../types/type-guards';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
@@ -19,7 +20,7 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs';
  * empty draft or opening an existing project into the draft.
  */
 type PendingReplace =
-  | { kind: 'new'; config: NewDraftConfig }
+  | { kind: 'new'; config: CreateDraftConfig }
   | { kind: 'open'; project: InterlinearProjectSummary };
 
 /**
@@ -45,8 +46,6 @@ type PendingReplace =
  *   given the analysis that was persisted; a no-op if an edit landed during the save.
  * @param props.modal - Which modal is currently open.
  * @param props.projectId - PAPI source project ID passed from the host.
- * @param props.resetDraft - Resets the draft to an empty baseline with the given config (the "New"
- *   flow).
  * @param props.setModal - Setter for which modal is open.
  * @param props.useWebViewState - Hook for reading and writing values persisted in the WebView's
  *   saved state (survives tab restores).
@@ -61,7 +60,6 @@ export default function ProjectModals({
   markSynced,
   modal,
   projectId,
-  resetDraft,
   setModal,
   useWebViewState,
 }: Readonly<{
@@ -73,7 +71,6 @@ export default function ProjectModals({
   markSynced: (savedAnalysis: TextAnalysis) => void;
   modal: ModalState;
   projectId: string;
-  resetDraft: (config: NewDraftConfig) => void;
   setModal: (modal: ModalState) => void;
   useWebViewState: UseWebViewStateHook;
 }>) {
@@ -107,6 +104,18 @@ export default function ProjectModals({
 
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
+
+  /**
+   * Whether a backend project-creation round-trip is in progress; drives `isSubmitting` on the
+   * Create modal.
+   */
+  const [isCreating, setIsCreating] = useState(false);
+
+  /**
+   * Whether the discard-and-replace confirmation flow is in flight (either opening an existing
+   * project or creating a new draft); disables DiscardDraftConfirm buttons to prevent races.
+   */
+  const [isReplacing, setIsReplacing] = useState(false);
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
@@ -175,6 +184,7 @@ export default function ProjectModals({
             .catch(() => {});
           return;
         }
+
         loadFromProject({
           analysisLanguages: parsed.analysisLanguages,
           ...(parsed.targetProjectId !== undefined && { targetProjectId: parsed.targetProjectId }),
@@ -193,19 +203,58 @@ export default function ProjectModals({
   );
 
   /**
-   * Resets the draft to a fresh empty baseline with the chosen config and clears the Save target so
-   * the next Save behaves as Save As.
+   * Creates a new interlinear project with the given config, loads it into the draft as the active
+   * working copy, and dismisses the modal. Logs and notifies on failure, leaving the draft
+   * untouched.
    *
    * @param config - The configuration collected by the New dialog.
+   * @returns A promise that resolves once the project is created and loaded, or the failure is
+   *   handled.
    */
   const startNewDraft = useCallback(
-    (config: CreateDraftConfig) => {
-      resetDraft(config);
-      resetActiveProject();
+    async (config: CreateDraftConfig) => {
+      try {
+        const createdJson = await papi.commands.sendCommand(
+          'interlinearizer.createProject',
+          projectId,
+          config.analysisLanguages,
+          undefined,
+          config.name,
+          config.description,
+        );
+        const created: unknown = JSON.parse(createdJson);
+        if (!isInterlinearProjectSummary(created)) {
+          await papi.notifications
+            .send({
+              message: '%interlinearizer_error_create_project_failed%',
+              severity: 'error',
+            })
+            .catch(() => {});
+          return;
+        }
+
+        loadFromProject({
+          analysisLanguages: created.analysisLanguages,
+          ...(created.targetProjectId !== undefined && {
+            targetProjectId: created.targetProjectId,
+          }),
+          analysis: emptyAnalysis(),
+        });
+        setActiveProject(created);
+      } catch (e) {
+        logger.error('Interlinearizer: failed to create interlinear project', e);
+        await papi.notifications
+          .send({
+            message: '%interlinearizer_error_create_project_failed%',
+            severity: 'error',
+          })
+          .catch(() => {});
+        return;
+      }
       setCreateSourceIsSelect(false);
       setModal('none');
     },
-    [resetDraft, resetActiveProject, setModal],
+    [projectId, loadFromProject, setActiveProject, setModal],
   );
 
   /**
@@ -224,26 +273,49 @@ export default function ProjectModals({
 
   /**
    * Called when the New dialog is submitted. Starts the new draft immediately, or defers behind the
-   * unsaved-changes confirmation when the draft is dirty.
+   * unsaved-changes confirmation when the draft is dirty. A re-entry guard prevents a second
+   * submission while the first creation round-trip is in flight.
    *
    * @param config - The configuration collected by the New dialog.
    */
   const handleCreateDraft = useCallback(
-    (config: CreateDraftConfig) => {
-      if (dirty) setPendingReplace({ kind: 'new', config });
-      else startNewDraft(config);
+    async (config: CreateDraftConfig) => {
+      if (dirty) {
+        setPendingReplace({ kind: 'new', config });
+        return;
+      }
+
+      /* v8 ignore next -- button is disabled while creating; guards against programmatic double-invocation */
+      if (isCreating) return;
+
+      setIsCreating(true);
+      await startNewDraft(config).finally(() => {
+        setIsCreating(false);
+      });
     },
-    [dirty, startNewDraft],
+    [dirty, isCreating, startNewDraft],
   );
 
   /** Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. */
-  const handleConfirmReplace = useCallback(() => {
+  const handleConfirmReplace = useCallback(async () => {
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
-    if (pendingReplace.kind === 'open') openProject(pendingReplace.project);
-    else startNewDraft(pendingReplace.config);
+
+    /* v8 ignore next -- buttons are disabled while replacing; guards against programmatic double-invocation */
+    if (isReplacing) return;
+
+    setIsReplacing(true);
+    try {
+      if (pendingReplace.kind === 'open') {
+        await openProject(pendingReplace.project);
+      } else {
+        await startNewDraft(pendingReplace.config);
+      }
+    } finally {
+      setIsReplacing(false);
+    }
     setPendingReplace(undefined);
-  }, [pendingReplace, openProject, startNewDraft]);
+  }, [isReplacing, openProject, pendingReplace, startNewDraft]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
@@ -262,6 +334,7 @@ export default function ProjectModals({
       const snapshot = getDraftSnapshot();
       /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
       if (!snapshot) return;
+
       try {
         const createdJson = await papi.commands.sendCommand(
           'interlinearizer.createProject',
@@ -278,6 +351,7 @@ export default function ProjectModals({
             .catch(() => {});
           return;
         }
+
         await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',
           created.id,
@@ -308,6 +382,7 @@ export default function ProjectModals({
       const snapshot = getDraftSnapshot();
       /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
       if (!snapshot) return;
+
       try {
         await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',
@@ -394,6 +469,7 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           defaultAnalysisLanguage={defaultAnalysisLanguage}
+          isSubmitting={isCreating}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
         />
@@ -429,7 +505,11 @@ export default function ProjectModals({
           returns to that modal with its in-progress input intact, and confirming an Open does not
           unmount (and re-fetch) the still-open select modal underneath. */}
       {pendingReplace && (
-        <DiscardDraftConfirm onConfirm={handleConfirmReplace} onCancel={handleCancelReplace} />
+        <DiscardDraftConfirm
+          isSubmitting={isReplacing}
+          onCancel={handleCancelReplace}
+          onConfirm={handleConfirmReplace}
+        />
       )}
     </div>
   );

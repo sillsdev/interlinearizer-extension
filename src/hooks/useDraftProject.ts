@@ -164,6 +164,7 @@ export default function useDraftProject(
         draft = emptyDraft(sourceProjectId);
       }
       if (canceled) return;
+
       // Seed a gloss language in memory when the stored draft has none (a brand-new source). Not
       // persisted here — the first auto-save / New / Open carries it to storage.
       if (draft.analysisLanguages.length === 0)
@@ -179,6 +180,8 @@ export default function useDraftProject(
       if (autosaveTimeoutRef.current !== undefined) {
         clearTimeout(autosaveTimeoutRef.current);
         autosaveTimeoutRef.current = undefined;
+        // Flush the pending write so the last edit before unmount/source-change is not lost.
+        if (draftRef.current) persist(draftRef.current);
       }
     };
   }, [sourceProjectId]);
@@ -212,6 +215,7 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
       if (!current) return;
+
       const next: DraftProject = { ...current, analysis, dirty: true };
       draftRef.current = next;
       // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
@@ -263,6 +267,7 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- wipe is only reachable from the mounted editor */
       if (!current) return;
+
       applyReplacement({
         ...current,
         analysis: removeBookFromAnalysis(current.analysis, bookCode),
@@ -276,6 +281,7 @@ export default function useDraftProject(
     const { current } = draftRef;
     /* v8 ignore next -- wipe is only reachable from the mounted editor */
     if (!current) return;
+
     // Wiping the whole draft is treated as a clean baseline rather than an unsaved edit: it clears
     // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
     // draft. The active project is intentionally left untouched, so a subsequent Save still targets
@@ -288,11 +294,13 @@ export default function useDraftProject(
       const { current } = draftRef;
       /* v8 ignore next -- save is only reachable from the mounted editor */
       if (!current) return;
+
       // If an edit landed during the save round-trip, autosaveAnalysis has already swapped a newer
       // analysis (a fresh object) into the ref and marked the draft dirty. Leave it dirty so the
       // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
       // against the now-stale snapshot we just wrote.
       if (current.analysis !== savedAnalysis) return;
+
       // Cancel any pending debounced autosave before persisting the clean state so a stale
       // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.
       if (autosaveTimeoutRef.current !== undefined) {

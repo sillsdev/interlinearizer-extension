@@ -175,6 +175,7 @@ export default function ProjectModals({
             .catch(() => {});
           return;
         }
+
         loadFromProject({
           analysisLanguages: parsed.analysisLanguages,
           ...(parsed.targetProjectId !== undefined && { targetProjectId: parsed.targetProjectId }),
@@ -194,7 +195,8 @@ export default function ProjectModals({
 
   /**
    * Creates a new interlinear project with the given config, loads it into the draft as the active
-   * working copy, and dismisses the modal. Logs and notifies on failure, leaving the draft untouched.
+   * working copy, and dismisses the modal. Logs and notifies on failure, leaving the draft
+   * untouched.
    *
    * @param config - The configuration collected by the New dialog.
    * @returns A promise that resolves once the project is created and loaded, or the failure is
@@ -221,6 +223,7 @@ export default function ProjectModals({
             .catch(() => {});
           return;
         }
+
         loadFromProject({
           analysisLanguages: created.analysisLanguages,
           ...(created.targetProjectId !== undefined && {
@@ -266,8 +269,10 @@ export default function ProjectModals({
         setPendingReplace({ kind: 'new', config });
         return;
       }
+
       /* v8 ignore next -- re-entry guard; handles simultaneous submits during async creation */
       if (isCreatingRef.current) return;
+
       isCreatingRef.current = true;
       startNewDraft(config).finally(() => {
         isCreatingRef.current = false;
@@ -280,8 +285,20 @@ export default function ProjectModals({
   const handleConfirmReplace = useCallback(async () => {
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
-    if (pendingReplace.kind === 'open') await openProject(pendingReplace.project);
-    else await startNewDraft(pendingReplace.config);
+
+    if (pendingReplace.kind === 'open') {
+      await openProject(pendingReplace.project);
+    } else {
+      /* v8 ignore next -- re-entry guard; handles simultaneous submits during async creation */
+      if (isCreatingRef.current) return;
+
+      isCreatingRef.current = true;
+      try {
+        await startNewDraft(pendingReplace.config);
+      } finally {
+        isCreatingRef.current = false;
+      }
+    }
     setPendingReplace(undefined);
   }, [pendingReplace, openProject, startNewDraft]);
 
@@ -302,6 +319,7 @@ export default function ProjectModals({
       const snapshot = getDraftSnapshot();
       /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
       if (!snapshot) return;
+
       try {
         const createdJson = await papi.commands.sendCommand(
           'interlinearizer.createProject',
@@ -318,6 +336,7 @@ export default function ProjectModals({
             .catch(() => {});
           return;
         }
+
         await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',
           created.id,
@@ -348,6 +367,7 @@ export default function ProjectModals({
       const snapshot = getDraftSnapshot();
       /* v8 ignore next -- the Save As modal is only open once the draft has loaded */
       if (!snapshot) return;
+
       try {
         await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',

@@ -8,7 +8,7 @@ import { useData, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
@@ -253,6 +253,8 @@ function InterlinearizerLoaderInner({
     setPhraseMode({ kind: 'view' });
   }, [draftVersion]);
 
+  const isSavingRef = useRef(false);
+
   /**
    * Saves the current draft to the active project. When no project is active there is nothing to
    * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
@@ -265,9 +267,14 @@ function InterlinearizerLoaderInner({
       setModal('saveAs');
       return;
     }
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
     const snapshot = getDraftSnapshot();
     /* v8 ignore next -- save is only reachable once the editor (and draft) have loaded */
-    if (!snapshot) return;
+    if (!snapshot) {
+      isSavingRef.current = false;
+      return;
+    }
     try {
       await papi.commands.sendCommand(
         'interlinearizer.saveAnalysis',
@@ -277,6 +284,8 @@ function InterlinearizerLoaderInner({
       markSynced(snapshot.analysis);
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
+    } finally {
+      isSavingRef.current = false;
     }
   }, [activeProject, getDraftSnapshot, markSynced, setModal]);
 

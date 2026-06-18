@@ -237,10 +237,10 @@ export default function ProjectModals({
   );
 
   /** Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. */
-  const handleConfirmReplace = useCallback(() => {
+  const handleConfirmReplace = useCallback(async () => {
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
-    if (pendingReplace.kind === 'open') openProject(pendingReplace.project);
+    if (pendingReplace.kind === 'open') await openProject(pendingReplace.project);
     else startNewDraft(pendingReplace.config);
     setPendingReplace(undefined);
   }, [pendingReplace, openProject, startNewDraft]);

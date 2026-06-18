@@ -5,6 +5,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { removeBookFromAnalysis } from '../utils/analysis-book';
 
+/** Milliseconds to wait after the last keystroke before flushing an autosave write. */
+const AUTOSAVE_DEBOUNCE_MS = 300;
+
 /** Configuration captured by the "New" flow when resetting the draft to an empty baseline. */
 export type NewDraftConfig = {
   /** BCP 47 gloss / annotation language tags for the new draft. */
@@ -122,6 +125,10 @@ export default function useDraftProject(
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
 
+  // Pending debounced-autosave timer. Cancelled on source change and on any wholesale replacement
+  // (applyReplacement) so stale keystroke data is never written after a New / Open / Wipe.
+  const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
   /**
    * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
    * failure; here we only log so a rejected write never throws into a render or event handler.
@@ -169,6 +176,10 @@ export default function useDraftProject(
     load();
     return () => {
       canceled = true;
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+      }
     };
   }, [sourceProjectId]);
 
@@ -182,6 +193,12 @@ export default function useDraftProject(
    */
   const applyReplacement = useCallback(
     (next: DraftProject) => {
+      // Cancel any pending debounced autosave so stale keystroke data is not written after a
+      // wholesale replacement (New / Open / Wipe).
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+      }
       draftRef.current = next;
       persist(next);
       setDirty(next.dirty);
@@ -197,7 +214,12 @@ export default function useDraftProject(
       if (!current) return;
       const next: DraftProject = { ...current, analysis, dirty: true };
       draftRef.current = next;
-      persist(next);
+      // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
+      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = setTimeout(() => {
+        autosaveTimeoutRef.current = undefined;
+        persist(next);
+      }, AUTOSAVE_DEBOUNCE_MS);
       // No version bump (no remount) and a no-op when already dirty, so editing does not re-render.
       setDirty(true);
     },

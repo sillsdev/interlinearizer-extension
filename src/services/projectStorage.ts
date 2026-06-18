@@ -2,6 +2,7 @@ import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
 import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
+import { isDraftProject } from '../types/type-guards';
 
 const PROJECT_IDS_KEY = 'projectIds';
 
@@ -372,7 +373,14 @@ export async function getDraft(
   sourceProjectId: string,
 ): Promise<DraftProject> {
   try {
-    return JSON.parse(await papi.storage.readUserData(token, draftKey(sourceProjectId)));
+    const parsed: unknown = JSON.parse(
+      await papi.storage.readUserData(token, draftKey(sourceProjectId)),
+    );
+    if (!isDraftProject(parsed)) {
+      logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
+      return emptyDraft(sourceProjectId);
+    }
+    return parsed;
   } catch (e) {
     if (isNotFound(e)) return emptyDraft(sourceProjectId);
     throw e;

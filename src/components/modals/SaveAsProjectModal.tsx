@@ -133,7 +133,7 @@ export function SaveAsProjectModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, name, description, onSaveNew]);
+  }, [description, isSubmitting, name, onSaveNew]);
 
   /**
    * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in

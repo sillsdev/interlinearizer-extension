@@ -237,6 +237,12 @@ export default function ProjectModals({
         setActiveProject(created);
       } catch (e) {
         logger.error('Interlinearizer: failed to create interlinear project', e);
+        await papi.notifications
+          .send({
+            message: '%interlinearizer_error_create_project_failed%',
+            severity: 'error',
+          })
+          .catch(() => {});
         return;
       }
       setCreateSourceIsSelect(false);

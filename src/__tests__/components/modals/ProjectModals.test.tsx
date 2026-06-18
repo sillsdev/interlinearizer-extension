@@ -107,7 +107,7 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
     }) => void;
   }) => (
     <div data-testid="create-modal" data-default-lang={defaultAnalysisLanguage}>
-      <button type="button" data-testid="create-close" onClick={onClose}>
+      <button data-testid="create-close" disabled={isSubmitting} onClick={onClose} type="button">
         Close
       </button>
       <button
@@ -179,7 +179,7 @@ jest.mock('../../../components/modals/DiscardDraftConfirm', () => ({
       >
         Discard
       </button>
-      <button type="button" data-testid="discard-cancel" onClick={onCancel}>
+      <button data-testid="discard-cancel" disabled={isSubmitting} onClick={onCancel} type="button">
         Cancel
       </button>
     </div>

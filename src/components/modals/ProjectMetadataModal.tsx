@@ -158,7 +158,7 @@ export function ProjectMetadataModal({
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, interlinearProjectId, onProjectDeleted, onClose]);
+  }, [interlinearProjectId, isSubmitting, onClose, onProjectDeleted]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 

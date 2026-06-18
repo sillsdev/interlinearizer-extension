@@ -376,7 +376,7 @@ export async function getDraft(
     const parsed: unknown = JSON.parse(
       await papi.storage.readUserData(token, draftKey(sourceProjectId)),
     );
-    if (!isDraftProject(parsed)) {
+    if (!isDraftProject(parsed) || parsed.sourceProjectId !== sourceProjectId) {
       logger.warn('Interlinearizer: stored draft failed validation; resetting to empty draft');
       return emptyDraft(sourceProjectId);
     }

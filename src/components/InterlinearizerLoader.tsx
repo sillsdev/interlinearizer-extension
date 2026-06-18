@@ -142,7 +142,6 @@ function InterlinearizerLoaderInner({
     draftVersion,
     dirty,
     autosaveAnalysis,
-    resetDraft,
     loadFromProject,
     getDraftSnapshot,
     markSynced,
@@ -465,7 +464,6 @@ function InterlinearizerLoaderInner({
         markSynced={markSynced}
         modal={modal}
         projectId={projectId}
-        resetDraft={resetDraft}
         setModal={setModal}
         useWebViewState={useWebViewState}
       />

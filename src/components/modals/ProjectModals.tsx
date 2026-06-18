@@ -2,7 +2,8 @@ import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
-import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
+import type { OpenableProject } from '../../hooks/useDraftProject';
+import { emptyAnalysis } from '../../types/empty-factories';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary, isTextAnalysis } from '../../types/type-guards';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
@@ -61,7 +62,6 @@ export default function ProjectModals({
   markSynced,
   modal,
   projectId,
-  resetDraft,
   setModal,
   useWebViewState,
 }: Readonly<{
@@ -73,7 +73,6 @@ export default function ProjectModals({
   markSynced: (savedAnalysis: TextAnalysis) => void;
   modal: ModalState;
   projectId: string;
-  resetDraft: (config: NewDraftConfig) => void;
   setModal: (modal: ModalState) => void;
   useWebViewState: UseWebViewStateHook;
 }>) {
@@ -193,19 +192,50 @@ export default function ProjectModals({
   );
 
   /**
-   * Resets the draft to a fresh empty baseline with the chosen config and clears the Save target so
-   * the next Save behaves as Save As.
+   * Creates a new interlinear project with the given config, loads it into the draft as the active
+   * working copy, and dismisses the modal. Logs and notifies on failure, leaving the draft untouched.
    *
    * @param config - The configuration collected by the New dialog.
+   * @returns A promise that resolves once the project is created and loaded, or the failure is
+   *   handled.
    */
   const startNewDraft = useCallback(
-    (config: CreateDraftConfig) => {
-      resetDraft(config);
-      resetActiveProject();
+    async (config: CreateDraftConfig) => {
+      try {
+        const createdJson = await papi.commands.sendCommand(
+          'interlinearizer.createProject',
+          projectId,
+          config.analysisLanguages,
+          undefined,
+          config.name,
+          config.description,
+        );
+        const created: unknown = JSON.parse(createdJson);
+        if (!isInterlinearProjectSummary(created)) {
+          await papi.notifications
+            .send({
+              message: '%interlinearizer_error_create_project_failed%',
+              severity: 'error',
+            })
+            .catch(() => {});
+          return;
+        }
+        loadFromProject({
+          analysisLanguages: created.analysisLanguages,
+          ...(created.targetProjectId !== undefined && {
+            targetProjectId: created.targetProjectId,
+          }),
+          analysis: emptyAnalysis(),
+        });
+        setActiveProject(created);
+      } catch (e) {
+        logger.error('Interlinearizer: failed to create interlinear project', e);
+        return;
+      }
       setCreateSourceIsSelect(false);
       setModal('none');
     },
-    [resetDraft, resetActiveProject, setModal],
+    [projectId, loadFromProject, setActiveProject, setModal],
   );
 
   /**
@@ -241,7 +271,7 @@ export default function ProjectModals({
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
     if (pendingReplace.kind === 'open') await openProject(pendingReplace.project);
-    else startNewDraft(pendingReplace.config);
+    else await startNewDraft(pendingReplace.config);
     setPendingReplace(undefined);
   }, [pendingReplace, openProject, startNewDraft]);
 

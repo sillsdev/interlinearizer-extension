@@ -264,7 +264,7 @@ export default function ProjectModals({
    * @param config - The configuration collected by the New dialog.
    */
   const handleCreateDraft = useCallback(
-    (config: CreateDraftConfig) => {
+    async (config: CreateDraftConfig) => {
       if (dirty) {
         setPendingReplace({ kind: 'new', config });
         return;
@@ -274,7 +274,7 @@ export default function ProjectModals({
       if (isCreatingRef.current) return;
 
       isCreatingRef.current = true;
-      startNewDraft(config).finally(() => {
+      await startNewDraft(config).finally(() => {
         isCreatingRef.current = false;
       });
     },

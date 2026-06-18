@@ -8,18 +8,6 @@ import { removeBookFromAnalysis } from '../utils/analysis-book';
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
 
-/** Configuration captured by the "New" flow when resetting the draft to an empty baseline. */
-export type NewDraftConfig = {
-  /** BCP 47 gloss / annotation language tags for the new draft. */
-  analysisLanguages: string[];
-  /** Optional alignment target-text project ID. */
-  targetProjectId?: string;
-  /** Optional name typed in the New dialog, retained on the draft to prefill Save As. */
-  name?: string;
-  /** Optional description typed in the New dialog, retained on the draft to prefill Save As. */
-  description?: string;
-};
-
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
   InterlinearProject,
@@ -61,12 +49,6 @@ export type UseDraftProjectResult = {
    * @param analysis - The updated analysis from the store.
    */
   autosaveAnalysis: (analysis: TextAnalysis) => void;
-  /**
-   * Resets the draft to an empty analysis with the given config — the "New" flow.
-   *
-   * @param config - Gloss languages and optional alignment target for the fresh draft.
-   */
-  resetDraft: (config: NewDraftConfig) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
@@ -120,13 +102,14 @@ export default function useDraftProject(
   const [draftVersion, setDraftVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
 
-  // Read the latest platform language via a ref so the load effect (keyed only on sourceProjectId)
+  // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
   // does not re-run when the UI language changes after the draft has loaded.
   const platformLanguageRef = useRef(platformLanguage);
   platformLanguageRef.current = platformLanguage;
 
-  // Pending debounced-autosave timer. Cancelled on source change and on any wholesale replacement
-  // (applyReplacement) so stale keystroke data is never written after a New / Open / Wipe.
+  // Pending debounced-autosave timer. Flushed on unmount/source change (so the last edit is not
+  // lost), and cancelled on any wholesale replacement (applyReplacement) so stale keystroke data
+  // is never written after a New / Open / Wipe.
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /**
@@ -184,7 +167,7 @@ export default function useDraftProject(
         if (draftRef.current) persist(draftRef.current);
       }
     };
-  }, [sourceProjectId]);
+  }, [persist, sourceProjectId]);
 
   const getDraftSnapshot = useCallback(() => draftRef.current, []);
 
@@ -228,25 +211,6 @@ export default function useDraftProject(
       setDirty(true);
     },
     [persist],
-  );
-
-  const resetDraft = useCallback(
-    (config: NewDraftConfig) => {
-      const analysisLanguages =
-        config.analysisLanguages.length > 0
-          ? config.analysisLanguages
-          : [platformLanguageRef.current];
-      applyReplacement({
-        sourceProjectId,
-        analysisLanguages,
-        ...(config.targetProjectId !== undefined && { targetProjectId: config.targetProjectId }),
-        ...(config.name !== undefined && { suggestedName: config.name }),
-        ...(config.description !== undefined && { suggestedDescription: config.description }),
-        analysis: emptyAnalysis(),
-        dirty: false,
-      });
-    },
-    [applyReplacement, sourceProjectId],
   );
 
   const loadFromProject = useCallback(
@@ -322,7 +286,6 @@ export default function useDraftProject(
     dirty,
     getDraftSnapshot,
     autosaveAnalysis,
-    resetDraft,
     loadFromProject,
     wipeBook,
     wipeAll,

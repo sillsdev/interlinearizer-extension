@@ -188,7 +188,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
    * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
    * without mounting the full modal tree. Accepts (and ignores) the draft-related props the loader
-   * now passes (`dirty`, `getDraftSnapshot`, `loadFromProject`, `markSynced`, `resetDraft`).
+   * now passes (`dirty`, `getDraftSnapshot`, `loadFromProject`, `markSynced`).
    *
    * @param modal - Current modal identifier controlling which stub panel is rendered.
    * @param setModal - Callback to transition to a different modal state.
@@ -214,7 +214,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     getDraftSnapshot: () => DraftProject | undefined;
     loadFromProject: (project: unknown) => void;
     markSynced: () => void;
-    resetDraft: (config: unknown) => void;
     useWebViewState: (
       key: string,
       def: MockProject | undefined,

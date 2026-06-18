@@ -111,6 +111,12 @@ export default function ProjectModals({
    */
   const [isCreating, setIsCreating] = useState(false);
 
+  /**
+   * Whether the discard-and-replace confirmation flow is in flight (either opening an existing
+   * project or creating a new draft); disables DiscardDraftConfirm buttons to prevent races.
+   */
+  const [isReplacing, setIsReplacing] = useState(false);
+
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
   /**
@@ -295,21 +301,21 @@ export default function ProjectModals({
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
 
-    if (pendingReplace.kind === 'open') {
-      await openProject(pendingReplace.project);
-    } else {
-      /* v8 ignore next -- button is disabled while creating; guards against programmatic double-invocation */
-      if (isCreating) return;
+    /* v8 ignore next -- buttons are disabled while replacing; guards against programmatic double-invocation */
+    if (isReplacing) return;
 
-      setIsCreating(true);
-      try {
+    setIsReplacing(true);
+    try {
+      if (pendingReplace.kind === 'open') {
+        await openProject(pendingReplace.project);
+      } else {
         await startNewDraft(pendingReplace.config);
-      } finally {
-        setIsCreating(false);
       }
+    } finally {
+      setIsReplacing(false);
     }
     setPendingReplace(undefined);
-  }, [isCreating, pendingReplace, openProject, startNewDraft]);
+  }, [isReplacing, openProject, pendingReplace, startNewDraft]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
@@ -500,7 +506,7 @@ export default function ProjectModals({
           unmount (and re-fetch) the still-open select modal underneath. */}
       {pendingReplace && (
         <DiscardDraftConfirm
-          isSubmitting={isCreating}
+          isSubmitting={isReplacing}
           onCancel={handleCancelReplace}
           onConfirm={handleConfirmReplace}
         />

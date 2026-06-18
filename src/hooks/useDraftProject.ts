@@ -293,6 +293,12 @@ export default function useDraftProject(
       // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
       // against the now-stale snapshot we just wrote.
       if (current.analysis !== savedAnalysis) return;
+      // Cancel any pending debounced autosave before persisting the clean state so a stale
+      // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.
+      if (autosaveTimeoutRef.current !== undefined) {
+        clearTimeout(autosaveTimeoutRef.current);
+        autosaveTimeoutRef.current = undefined;
+      }
       const next: DraftProject = { ...current, dirty: false };
       draftRef.current = next;
       persist(next);

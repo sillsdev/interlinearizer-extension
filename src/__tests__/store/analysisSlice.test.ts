@@ -3,6 +3,8 @@
 
 import type {
   PhraseAnalysisLink,
+  SegmentAnalysis,
+  SegmentAnalysisLink,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -24,11 +26,13 @@ import {
   selectPhraseGloss,
   selectPhraseLinks,
   setAnalysis,
+  selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
   writeMorphemes,
   writePhraseGloss,
+  writeSegmentFreeTranslation,
 } from '../../store/analysisSlice';
 
 /**
@@ -628,6 +632,208 @@ describe('selectPhraseGloss', () => {
   it('returns empty string when the phrase id is not found', () => {
     const store = createAnalysisStore();
     expect(selectPhraseGloss(store.getState().analysis, 'nonexistent')).toBe('');
+  });
+});
+
+/**
+ * Builds a `TextAnalysis` seeded with a single approved `SegmentAnalysis` for `seg-1`.
+ *
+ * @param analysis - The `SegmentAnalysis` payload to include.
+ * @param link - Optional override for the link; defaults to an approved link for `seg-1`.
+ * @returns A `TextAnalysis` with the segment analysis and its link.
+ */
+function makeAnalysisWithSegment(
+  analysis: SegmentAnalysis,
+  link?: SegmentAnalysisLink,
+): TextAnalysis {
+  return {
+    ...emptyAnalysis(),
+    segmentAnalyses: [analysis],
+    segmentAnalysisLinks: [
+      link ?? { analysisId: analysis.id, status: 'approved', segmentId: 'seg-1' },
+    ],
+  };
+}
+
+describe('writeSegmentFreeTranslation', () => {
+  it('creates a new approved segment analysis and link when none exists', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', 'au commencement'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toHaveLength(1);
+    expect(segmentAnalyses[0]).toMatchObject({
+      surfaceText: 'In the beginning',
+      freeTranslation: { und: 'au commencement' },
+    });
+    expect(segmentAnalysisLinks).toEqual([
+      { analysisId: segmentAnalyses[0].id, status: 'approved', segmentId: 'seg-1' },
+    ]);
+  });
+
+  it('no-ops on a blank write when the segment has no approved analysis', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', '   '));
+
+    expect(store.getState().analysis.analysis.segmentAnalyses).toHaveLength(0);
+    expect(store.getState().analysis.analysis.segmentAnalysisLinks).toHaveLength(0);
+  });
+
+  it('updates an existing analysis in place and refreshes the surface text', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'old surface',
+      freeTranslation: { und: 'old' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'new surface', 'new'));
+
+    const { segmentAnalyses } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toHaveLength(1);
+    expect(segmentAnalyses[0]).toMatchObject({
+      id: 'sa-1',
+      surfaceText: 'new surface',
+      freeTranslation: { und: 'new' },
+    });
+  });
+
+  it('initializes the free translation on an existing analysis that has none', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      literalTranslation: { und: 'word for word' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', 'idiomatic'));
+
+    const sa = store.getState().analysis.analysis.segmentAnalyses[0];
+    expect(sa.freeTranslation).toStrictEqual({ und: 'idiomatic' });
+    expect(sa.literalTranslation).toStrictEqual({ und: 'word for word' });
+  });
+
+  it('removes the record and its link when a blank write empties the analysis', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', ''));
+
+    expect(store.getState().analysis.analysis.segmentAnalyses).toHaveLength(0);
+    expect(store.getState().analysis.analysis.segmentAnalysisLinks).toHaveLength(0);
+  });
+
+  it('keeps the record when another language still has a free translation', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value', fr: 'valeur' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', ''));
+
+    expect(store.getState().analysis.analysis.segmentAnalyses[0].freeTranslation).toStrictEqual({
+      fr: 'valeur',
+    });
+  });
+
+  it('keeps the record when a literal translation remains after clearing the free translation', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value' },
+      literalTranslation: { und: 'word for word' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', ''));
+
+    const { segmentAnalyses } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toHaveLength(1);
+    expect(segmentAnalyses[0].freeTranslation).toBeUndefined();
+    expect(segmentAnalyses[0].literalTranslation).toStrictEqual({ und: 'word for word' });
+  });
+
+  it('treats whitespace-only entries in other languages as empty and removes the record', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: '   ', fr: 'valeur' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'fr' } });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', ''));
+
+    expect(store.getState().analysis.analysis.segmentAnalyses).toHaveLength(0);
+    expect(store.getState().analysis.analysis.segmentAnalysisLinks).toHaveLength(0);
+  });
+
+  it('repairs an orphaned approved link and creates a fresh analysis', () => {
+    const orphanLink: SegmentAnalysisLink = {
+      analysisId: 'old-uuid',
+      status: 'approved',
+      segmentId: 'seg-1',
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), segmentAnalysisLinks: [orphanLink] },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'surface', 'fresh'));
+
+    const { segmentAnalyses, segmentAnalysisLinks } = store.getState().analysis.analysis;
+    expect(segmentAnalyses).toHaveLength(1);
+    expect(segmentAnalysisLinks).toHaveLength(1);
+    expect(segmentAnalysisLinks[0].analysisId).not.toBe('old-uuid');
+    expect(segmentAnalysisLinks[0].analysisId).toBe(segmentAnalyses[0].id);
+  });
+});
+
+describe('selectSegmentFreeTranslation', () => {
+  it('returns the free translation for the active language', () => {
+    const seeded = makeAnalysisWithSegment({
+      id: 'sa-1',
+      surfaceText: 'surface',
+      freeTranslation: { und: 'value' },
+    });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('value');
+  });
+
+  it('returns empty string when the segment has no approved link', () => {
+    const store = createAnalysisStore();
+    expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('');
+  });
+
+  it('returns empty string when the approved link references a missing analysis', () => {
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          segmentAnalysisLinks: [{ analysisId: 'gone', status: 'approved', segmentId: 'seg-1' }],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('');
+  });
+
+  it('returns empty string when the analysis has no free translation for the active language', () => {
+    const seeded = makeAnalysisWithSegment({ id: 'sa-1', surfaceText: 'surface' });
+    const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
+
+    expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('');
   });
 });
 

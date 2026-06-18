@@ -11,6 +11,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_simplifyPhrases%',
   '%interlinearizer_viewOption_chapterLabelInVerse%',
   '%interlinearizer_viewOption_showMorphology%',
+  '%interlinearizer_viewOption_showFreeTranslation%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -67,12 +68,16 @@ type ViewOptionsDropdownProps = Readonly<{
   showMorphology: boolean;
   /** Called when the show-morphology toggle changes. */
   onShowMorphologyChange: (checked: boolean) => void;
+  /** Current value of the show-free-translation toggle. */
+  showFreeTranslation: boolean;
+  /** Called when the show-free-translation toggle changes. */
+  onShowFreeTranslationChange: (checked: boolean) => void;
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and four view-mode toggles (show
- * morphology, hide inactive link buttons, simplify phrases, chapter label in verse). Opens and
- * closes via a gear icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and five view-mode toggles (show
+ * morphology, show free translation, hide inactive link buttons, simplify phrases, chapter label in
+ * verse). Opens and closes via a gear icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.
@@ -85,6 +90,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
  * @param props.showMorphology - Current show-morphology value.
  * @param props.onShowMorphologyChange - Show-morphology change callback.
+ * @param props.showFreeTranslation - Current show-free-translation value.
+ * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -98,6 +105,8 @@ export default function ViewOptionsDropdown({
   onChapterLabelInVerseChange,
   showMorphology,
   onShowMorphologyChange,
+  showFreeTranslation,
+  onShowFreeTranslationChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -190,6 +199,11 @@ export default function ViewOptionsDropdown({
                 checked={showMorphology}
                 label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
                 onCheckedChange={onShowMorphologyChange}
+              />
+              <ViewToggle
+                checked={showFreeTranslation}
+                label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
+                onCheckedChange={onShowFreeTranslationChange}
               />
               <ViewToggle
                 checked={hideInactiveLinkButtons}

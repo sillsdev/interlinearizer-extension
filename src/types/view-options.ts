@@ -17,4 +17,6 @@ export type ViewOptions = Readonly<{
   chapterLabelInVerse: boolean;
   /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
   showMorphology: boolean;
+  /** When true, a free-translation input is shown beneath each segment's tokens or baseline text. */
+  showFreeTranslation: boolean;
 }>;

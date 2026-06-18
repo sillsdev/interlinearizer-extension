@@ -34,6 +34,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onChapterLabelInVerseChange,
     showMorphology,
     onShowMorphologyChange,
+    showFreeTranslation,
+    onShowFreeTranslationChange,
   }: {
     continuousScroll: boolean;
     onContinuousScrollChange: (v: boolean) => void;
@@ -45,6 +47,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onChapterLabelInVerseChange: (v: boolean) => void;
     showMorphology: boolean;
     onShowMorphologyChange: (v: boolean) => void;
+    showFreeTranslation: boolean;
+    onShowFreeTranslationChange: (v: boolean) => void;
   }) => (
     <div data-testid="view-options-dropdown">
       <button
@@ -80,6 +84,13 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="show-morphology-toggle"
         data-checked={String(showMorphology)}
         onClick={() => onShowMorphologyChange(!showMorphology)}
+        type="button"
+      />
+      <button
+        aria-label="show free translation"
+        data-testid="show-free-translation-toggle"
+        data-checked={String(showFreeTranslation)}
+        onClick={() => onShowFreeTranslationChange(!showFreeTranslation)}
         type="button"
       />
     </div>
@@ -621,6 +632,25 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('show-morphology-toggle'));
     expect(onChangeByKey.get('interlinearizer.showMorphology')).toHaveBeenCalledWith(true);
+  });
+
+  it('passes showFreeTranslation through to Interlinearizer from useOptimisticBooleanSetting', async () => {
+    mockOptimisticSetting(true);
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(true);
+  });
+
+  it('wires ViewOptionsDropdown show-free-translation to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    await act(async () => {
+      renderLoader();
+    });
+
+    await userEvent.click(screen.getByTestId('show-free-translation-toggle'));
+    expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', async () => {

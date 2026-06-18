@@ -2,6 +2,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
@@ -238,6 +239,13 @@ function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> =
 
 describe('PhraseBox', () => {
   beforeEach(() => {
+    // Restore key-as-value behavior cleared by resetMocks: true, so the gloss placeholder resolves.
+    jest
+      .mocked(useLocalizedStrings)
+      .mockImplementation((keys: readonly string[]) => [
+        Object.fromEntries(keys.map((k) => [k, k])),
+        false,
+      ]);
     mockUseGloss.mockReturnValue('');
     mockUseGlossDispatch.mockReturnValue(jest.fn());
     mockUsePhraseGloss.mockReturnValue('');

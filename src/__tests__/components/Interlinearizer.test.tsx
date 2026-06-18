@@ -354,6 +354,7 @@ function renderInterlinearizer({
   simplifyPhrases = false,
   chapterLabelInVerse = false,
   showMorphology = false,
+  showFreeTranslation = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -363,6 +364,7 @@ function renderInterlinearizer({
   simplifyPhrases?: boolean;
   chapterLabelInVerse?: boolean;
   showMorphology?: boolean;
+  showFreeTranslation?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -378,6 +380,7 @@ function renderInterlinearizer({
           simplifyPhrases,
           chapterLabelInVerse,
           showMorphology,
+          showFreeTranslation,
         }}
       />,
       navigate,
@@ -521,6 +524,7 @@ describe('Interlinearizer', () => {
               simplifyPhrases: false,
               chapterLabelInVerse: false,
               showMorphology: false,
+              showFreeTranslation: false,
             }}
           />,
         ),
@@ -636,6 +640,7 @@ describe('Interlinearizer', () => {
               simplifyPhrases: false,
               chapterLabelInVerse: false,
               showMorphology: false,
+              showFreeTranslation: false,
             }}
           />,
         ),
@@ -675,6 +680,7 @@ describe('Interlinearizer', () => {
               simplifyPhrases: false,
               chapterLabelInVerse: false,
               showMorphology: false,
+              showFreeTranslation: false,
             }}
           />,
         ),
@@ -719,6 +725,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -740,6 +747,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -786,6 +794,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -826,6 +835,7 @@ describe('Interlinearizer', () => {
               simplifyPhrases: false,
               chapterLabelInVerse: false,
               showMorphology: false,
+              showFreeTranslation: false,
             }}
           />,
         ),
@@ -925,6 +935,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -953,6 +964,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -975,6 +987,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -999,6 +1012,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -1023,6 +1037,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />,
       ),
@@ -1046,6 +1061,7 @@ describe('Interlinearizer', () => {
           simplifyPhrases: false,
           chapterLabelInVerse: false,
           showMorphology: false,
+          showFreeTranslation: false,
         },
       };
       const { container, rerender } = render(
@@ -1117,6 +1133,7 @@ describe('Interlinearizer', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />
       );
@@ -1151,6 +1168,7 @@ describe('Interlinearizer', () => {
           simplifyPhrases: false,
           chapterLabelInVerse: false,
           showMorphology: false,
+          showFreeTranslation: false,
         },
       };
       const { container, rerender } = render(

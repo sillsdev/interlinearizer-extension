@@ -1,4 +1,5 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
@@ -14,7 +15,15 @@ import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
+
+/**
+ * Localized string keys this module needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders (a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render).
+ */
+const STRING_KEYS = ['%interlinearizer_glossInput_placeholder%'] as const satisfies `%${string}%`[];
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -34,6 +43,7 @@ function PhraseGlossInput({
 }: Readonly<{ phraseId: string; disabled?: boolean; onFocus?: () => void }>) {
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [draft, setDraft] = useState(committed);
 
   useEffect(() => {
@@ -49,7 +59,7 @@ function PhraseGlossInput({
       className="tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
-      placeholder="gloss"
+      placeholder={resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])}
       style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}

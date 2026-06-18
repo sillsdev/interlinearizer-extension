@@ -3,6 +3,8 @@ import type {
   MorphemeAnalysis,
   PhraseAnalysis,
   PhraseAnalysisLink,
+  SegmentAnalysis,
+  SegmentAnalysisLink,
   TextAnalysis,
   TokenAnalysis,
   TokenAnalysisLink,
@@ -76,6 +78,18 @@ interface WritePhraseGlossPayload {
   value: string;
 }
 
+/** Payload for the {@link writeSegmentFreeTranslation} action, extended with a pre-generated UUID. */
+interface WriteSegmentFreeTranslationPayload {
+  /** `Segment.id` of the segment being translated. */
+  segmentId: string;
+  /** Current baseline text of the segment, stored on the `SegmentAnalysis` record. */
+  surfaceText: string;
+  /** New free-translation string to assign in the active analysis language. */
+  value: string;
+  /** Pre-generated UUID for a new `SegmentAnalysis` record, produced by the `prepare` callback. */
+  id: string;
+}
+
 // #endregion
 
 // #region Default state
@@ -111,6 +125,72 @@ function removePhraseById(state: AnalysisState, phraseId: string): void {
   state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter((pa) => pa.id !== phraseId);
   state.analysis.phraseAnalysisLinks = state.analysis.phraseAnalysisLinks.filter(
     (pl) => pl.analysisId !== phraseId,
+  );
+}
+
+/**
+ * Finds the approved `SegmentAnalysisLink` for `segmentId` together with the `SegmentAnalysis` it
+ * references. When the approved link references a missing analysis (an orphaned link from
+ * corruption or a migration), the link is removed from the draft — so the corruption never persists
+ * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
+ * existed. Mirrors {@link resolveApprovedAnalysis} for the segment layer.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param segmentId - `Segment.id` of the segment to look up.
+ * @returns The approved link and its analysis, or `undefined` when the segment has none.
+ */
+function resolveApprovedSegmentAnalysis(
+  state: AnalysisState,
+  segmentId: string,
+): { link: SegmentAnalysisLink; analysis: SegmentAnalysis } | undefined {
+  const link = state.analysis.segmentAnalysisLinks.find(
+    (l) => l.status === 'approved' && l.segmentId === segmentId,
+  );
+  if (!link) return undefined;
+  const analysis = state.analysis.segmentAnalyses.find((sa) => sa.id === link.analysisId);
+  if (!analysis) {
+    state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
+      (l) => l !== link,
+    );
+    return undefined;
+  }
+  return { link, analysis };
+}
+
+/**
+ * Determines whether a `SegmentAnalysis` carries no content worth keeping, so a reducer that just
+ * emptied the free translation can drop the whole record instead of accumulating empty records in
+ * storage. A `freeTranslation` counts as empty when it has no entries or every entry is blank.
+ * `literalTranslation` is treated as content so an imported word-for-word translation survives a
+ * free-translation clear, mirroring how {@link isEmptyTokenAnalysis} preserves morphemes/pos.
+ *
+ * @param analysis - The `SegmentAnalysis` to inspect.
+ * @returns `true` when the record holds no content worth keeping.
+ */
+function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
+  return (
+    (!analysis.freeTranslation ||
+      Object.values(analysis.freeTranslation).every((t) => t.trim() === '')) &&
+    analysis.literalTranslation === undefined
+  );
+}
+
+/**
+ * Removes a `SegmentAnalysis` record and its `SegmentAnalysisLink` from the draft in a single step,
+ * keeping the two collections in sync. Called when an edit empties an analysis of all content.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param analysis - The `SegmentAnalysis` record to remove.
+ * @param link - The `SegmentAnalysisLink` referencing it.
+ */
+function removeSegmentAnalysis(
+  state: AnalysisState,
+  analysis: SegmentAnalysis,
+  link: SegmentAnalysisLink,
+): void {
+  state.analysis.segmentAnalyses = state.analysis.segmentAnalyses.filter((sa) => sa !== analysis);
+  state.analysis.segmentAnalysisLinks = state.analysis.segmentAnalysisLinks.filter(
+    (l) => l !== link,
   );
 }
 
@@ -522,6 +602,70 @@ const analysisSlice = createSlice({
       if (!pa.gloss) pa.gloss = {};
       pa.gloss[lang] = value;
     },
+    writeSegmentFreeTranslation: {
+      /**
+       * Generates a UUID for a potential new `SegmentAnalysis` record before the action reaches the
+       * reducer, keeping the reducer pure.
+       *
+       * @param segmentId - `Segment.id` of the segment being translated.
+       * @param surfaceText - Baseline text of the segment.
+       * @param value - New free-translation string.
+       * @returns The prepared action payload including a pre-generated `id`.
+       */
+      prepare(segmentId: string, surfaceText: string, value: string) {
+        return { payload: { segmentId, surfaceText, value, id: crypto.randomUUID() } };
+      },
+      /**
+       * Creates or updates the approved `SegmentAnalysis` carrying a segment's free translation. If
+       * an approved link already exists for `segmentId`, its analysis is updated in place and the
+       * stored surface text is refreshed, so it never goes stale when the baseline text changed
+       * since the analysis was first written. Otherwise a new `SegmentAnalysis` and approved
+       * `SegmentAnalysisLink` are appended (an orphaned approved link is repaired first; see
+       * {@link resolveApprovedSegmentAnalysis}).
+       *
+       * A blank `value` (empty or whitespace) clears the free translation rather than writing junk:
+       * the active language's entry is removed, and when that leaves the analysis with no content
+       * ({@link isEmptySegmentAnalysis}) the record and its link are removed entirely. A blank write
+       * to a segment with no approved analysis is a no-op, so a focus/blur cycle on an empty input
+       * never creates a record.
+       *
+       * @param state - Current slice state (Immer draft).
+       * @param action - Action carrying the `WriteSegmentFreeTranslationPayload`.
+       */
+      reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
+        const { segmentId, surfaceText, value, id } = action.payload;
+        const lang = state.analysisLanguage;
+        const isBlank = value.trim() === '';
+
+        const resolved = resolveApprovedSegmentAnalysis(state, segmentId);
+        if (resolved) {
+          const { link, analysis } = resolved;
+          analysis.surfaceText = surfaceText;
+          if (isBlank) {
+            if (analysis.freeTranslation) {
+              delete analysis.freeTranslation[lang];
+              if (Object.keys(analysis.freeTranslation).length === 0)
+                delete analysis.freeTranslation;
+            }
+            if (isEmptySegmentAnalysis(analysis)) removeSegmentAnalysis(state, analysis, link);
+            return;
+          }
+          if (!analysis.freeTranslation) analysis.freeTranslation = {};
+          analysis.freeTranslation[lang] = value;
+          return;
+        }
+
+        if (isBlank) return;
+        const newAnalysis: SegmentAnalysis = {
+          id,
+          surfaceText,
+          freeTranslation: { [lang]: value },
+        };
+        const newLink: SegmentAnalysisLink = { analysisId: id, status: 'approved', segmentId };
+        state.analysis.segmentAnalyses.push(newAnalysis);
+        state.analysis.segmentAnalysisLinks.push(newLink);
+      },
+    },
   },
 });
 
@@ -536,6 +680,7 @@ export const {
   deletePhrase,
   mergePhrases,
   writePhraseGloss,
+  writeSegmentFreeTranslation,
 } = analysisSlice.actions;
 export default analysisSlice.reducer;
 
@@ -698,6 +843,25 @@ export function selectPhraseAnalysisById(
 export function selectPhraseGloss(state: AnalysisState, phraseId: string): string {
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
   return pa?.gloss?.[state.analysisLanguage] ?? '';
+}
+
+/**
+ * Returns the approved free-translation string for the given segment in the active analysis
+ * language, or `''` when no approved analysis exists or it has no free translation for the active
+ * language. An approved link referencing a missing analysis is treated as absent (read-only here;
+ * the orphan is repaired on the next write through {@link resolveApprovedSegmentAnalysis}).
+ *
+ * @param state - The analysis slice state.
+ * @param segmentId - The `Segment.id` to look up.
+ * @returns The free-translation string, or `''` when absent.
+ */
+export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: string): string {
+  const link = state.analysis.segmentAnalysisLinks.find(
+    (l) => l.status === 'approved' && l.segmentId === segmentId,
+  );
+  if (!link) return '';
+  const sa = state.analysis.segmentAnalyses.find((a) => a.id === link.analysisId);
+  return sa?.freeTranslation?.[state.analysisLanguage] ?? '';
 }
 
 // #endregion

@@ -436,6 +436,7 @@ function requiredProps(
       simplifyPhrases: false,
       chapterLabelInVerse: false,
       showMorphology: false,
+      showFreeTranslation: false,
     },
   };
 }
@@ -906,6 +907,7 @@ describe('ContinuousView scroll behavior', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />
       );
@@ -956,6 +958,7 @@ describe('ContinuousView scroll behavior', () => {
             simplifyPhrases: false,
             chapterLabelInVerse: false,
             showMorphology: false,
+            showFreeTranslation: false,
           }}
         />
       );

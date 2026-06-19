@@ -271,12 +271,22 @@ describe('main', () => {
       );
     });
 
-    it('adds all registrations to the activation context', async () => {
+    it('adds every created registration to the activation context for disposal', async () => {
       const context = createTestActivationContext();
 
       await activate(context);
 
-      expect(context.registrations.unsubscribers.size).toBe(24);
+      // Every registration produced during activation must be handed to the context so the platform
+      // disposes it on deactivation: the WebView provider, one per command and validator, plus the
+      // two WebView lifecycle subscriptions. Deriving the count from the mock calls keeps this
+      // resilient when commands or validators are added or removed.
+      const expectedRegistrationCount =
+        __mockRegisterWebViewProvider.mock.calls.length +
+        __mockRegisterCommand.mock.calls.length +
+        __mockRegisterValidator.mock.calls.length +
+        __mockOnDidOpenWebView.mock.calls.length +
+        __mockOnDidCloseWebView.mock.calls.length;
+      expect(context.registrations.unsubscribers.size).toBe(expectedRegistrationCount);
     });
 
     it('logs activation start and finish', async () => {

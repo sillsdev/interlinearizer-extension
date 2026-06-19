@@ -5,7 +5,7 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
-import { createContext, useCallback, useContext, useMemo, useRef } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
@@ -41,6 +41,14 @@ type CallbackRefs = {
   onSaveRef: { current: ((analysis: TextAnalysis) => void) | undefined };
   /** Ref to the `onGlossChange` spy prop of the nearest {@link AnalysisStoreProvider}. */
   onGlossChangeRef: { current: ((tokenRef: string, value: string) => void) | undefined };
+  /**
+   * Stable callback a gloss input calls to register (`true`) or unregister (`false`) itself as
+   * currently holding uncommitted text. Gloss edits are committed to the store only on blur, so
+   * without this the provider could not tell the parent that an edit is in progress until then. The
+   * provider counts active editors and reports the 0↔non-0 crossings via the `onPendingEditsChange`
+   * prop, driving the tab's unsaved indicator while the user types.
+   */
+  reportEditing: (active: boolean) => void;
 };
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
@@ -70,6 +78,12 @@ type AnalysisStoreProviderProps = Readonly<{
    * effect on store behavior.
    */
   onGlossChange?: (tokenRef: string, value: string) => void;
+  /**
+   * Called with `true` when at least one gloss input begins holding uncommitted text and `false`
+   * when none do (the last edit is committed on blur, reverted, or the input unmounts). Lets the
+   * caller reflect in-progress typing in the tab's unsaved indicator before the edit commits.
+   */
+  onPendingEditsChange?: (pending: boolean) => void;
 }>;
 
 /**
@@ -83,6 +97,8 @@ type AnalysisStoreProviderProps = Readonly<{
  * @param props.analysisLanguage - BCP 47 tag for reading/writing gloss values
  * @param props.onSave - Callback receiving the updated `TextAnalysis` after each mutation
  * @param props.onGlossChange - Spy called after each gloss write; for test observability only
+ * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
+ *   uncommitted text, so the caller can show the unsaved indicator while the user types
  * @returns A context provider wrapping the subtree
  */
 export function AnalysisStoreProvider({
@@ -91,6 +107,7 @@ export function AnalysisStoreProvider({
   analysisLanguage,
   onSave,
   onGlossChange,
+  onPendingEditsChange,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -106,8 +123,24 @@ export function AnalysisStoreProvider({
   onSaveRef.current = onSave;
   const onGlossChangeRef = useRef(onGlossChange);
   onGlossChangeRef.current = onGlossChange;
+  const onPendingEditsChangeRef = useRef(onPendingEditsChange);
+  onPendingEditsChangeRef.current = onPendingEditsChange;
 
-  const callbackRefs = useMemo(() => ({ onSaveRef, onGlossChangeRef }), []);
+  // Count of gloss inputs currently holding uncommitted text. Kept in a ref (not state) so
+  // registering/unregistering an editor never re-renders the provider; only the 0↔non-0 crossings
+  // are forwarded to the parent, which owns the indicator.
+  const editingCountRef = useRef(0);
+  const reportEditing = useCallback((active: boolean) => {
+    const wasPending = editingCountRef.current > 0;
+    editingCountRef.current += active ? 1 : -1;
+    const isPending = editingCountRef.current > 0;
+    if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
+  }, []);
+
+  const callbackRefs = useMemo(
+    () => ({ onSaveRef, onGlossChangeRef, reportEditing }),
+    [reportEditing],
+  );
 
   return (
     <ReduxProvider store={store}>
@@ -156,6 +189,25 @@ function useAnalysisSave(hookName: string): {
     callbacks.onSaveRef.current?.(analysis);
   }, [store, callbacks]);
   return { callbacks, dispatch, save };
+}
+
+/**
+ * Registers a gloss input as currently holding uncommitted text whenever `isEditing` is true,
+ * unregistering it when `isEditing` turns false or the input unmounts. The provider aggregates
+ * these across all inputs and reports whether any edit is in progress, so the tab's unsaved
+ * indicator can light up the moment the user starts typing — gloss writes themselves are deferred
+ * to blur, which would otherwise leave the indicator dark mid-edit.
+ *
+ * @param isEditing - Whether this input's draft currently differs from its committed value.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useReportGlossEditing(isEditing: boolean): void {
+  const { reportEditing } = useRequiredCallbacks('useReportGlossEditing');
+  useEffect(() => {
+    if (!isEditing) return undefined;
+    reportEditing(true);
+    return () => reportEditing(false);
+  }, [isEditing, reportEditing]);
 }
 
 // #endregion

@@ -42,7 +42,7 @@ export const BOOK_CHAPTER_CONTROL_STRING_KEYS = [
 export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_select_project%',
   command: 'interlinearizer.openSelectProjectModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 1,
   localizeNotes: '',
 };
@@ -51,7 +51,7 @@ export const MOCK_SELECT_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_new_project%',
   command: 'interlinearizer.openNewProjectModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 2,
   localizeNotes: '',
 };
@@ -60,8 +60,35 @@ export const MOCK_NEW_PROJECT_MENU_ITEM: MenuItemContainingCommand = {
 export const MOCK_VIEW_PROJECT_INFO_MENU_ITEM: MenuItemContainingCommand = {
   label: '%interlinearizer_menu_view_project_info%',
   command: 'interlinearizer.openProjectInfoModal',
-  group: 'interlinearizer.project.actions',
+  group: 'interlinearizer.projectActions',
   order: 3,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the save button is clicked. */
+export const MOCK_SAVE_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_save%',
+  command: 'interlinearizer.save',
+  group: 'interlinearizer.fileActions',
+  order: 1,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the save-as button is clicked. */
+export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_saveAs%',
+  command: 'interlinearizer.openSaveAsModal',
+  group: 'interlinearizer.fileActions',
+  order: 2,
+  localizeNotes: '',
+};
+
+/** Sentinel menu item passed by the mock toolbar when the wipe button is clicked. */
+export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_wipe%',
+  command: 'interlinearizer.wipe',
+  group: 'interlinearizer.draftActions',
+  order: 1,
   localizeNotes: '',
 };
 
@@ -125,6 +152,33 @@ export function TabToolbar({
           onClick={() => onSelectProjectMenuItem(MOCK_VIEW_PROJECT_INFO_MENU_ITEM)}
         >
           View project info
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-save"
+          onClick={() => onSelectProjectMenuItem(MOCK_SAVE_MENU_ITEM)}
+        >
+          Save
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-save-as"
+          onClick={() => onSelectProjectMenuItem(MOCK_SAVE_AS_MENU_ITEM)}
+        >
+          Save as
+        </button>
+      )}
+      {onSelectProjectMenuItem && (
+        <button
+          type="button"
+          data-testid="tab-toolbar-wipe"
+          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
+        >
+          Wipe
         </button>
       )}
       {onSelectViewInfoMenuItem && (

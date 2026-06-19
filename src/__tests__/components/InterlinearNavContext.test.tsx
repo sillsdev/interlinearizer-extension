@@ -11,33 +11,7 @@ import {
   useInterlinearNav,
 } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-
-/** Tuple shape returned by the PAPI scroll-group hook. */
-type ScrollGroupTuple = [
-  SerializedVerseRef,
-  (r: SerializedVerseRef) => void,
-  number | undefined,
-  (id: number | undefined) => void,
-];
-
-/**
- * Builds a `useWebViewScrollGroupScrRef` stub returning the given tuple parts. Defaults cover the
- * common case so a test only overrides what it asserts on.
- *
- * @param ref - The scripture reference the stub reports.
- * @param setScrRef - The reference setter; defaults to a noop.
- * @param scrollGroupId - The active scroll-group id; defaults to `undefined` (unlinked).
- * @param setScrollGroupId - The scroll-group setter; defaults to a noop.
- * @returns A hook returning the assembled tuple.
- */
-function makeScrollGroupHook(
-  ref: SerializedVerseRef,
-  setScrRef: (r: SerializedVerseRef) => void = () => {},
-  scrollGroupId: number | undefined = undefined,
-  setScrollGroupId: (id: number | undefined) => void = () => {},
-) {
-  return (): ScrollGroupTuple => [ref, setScrRef, scrollGroupId, setScrollGroupId];
-}
+import { makeScrollGroupHook, type ScrollGroupTuple } from '../test-helpers';
 
 /**
  * Renders {@link useInterlinearNav} inside a provider wired to the given scroll-group hook.

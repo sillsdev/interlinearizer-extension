@@ -94,6 +94,33 @@ export function makePhraseStripContext(
 /** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
 export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
+/** Tuple shape returned by the PAPI scroll-group hook (`useWebViewScrollGroupScrRef`). */
+export type ScrollGroupTuple = [
+  SerializedVerseRef,
+  (r: SerializedVerseRef) => void,
+  number | undefined,
+  (id: number | undefined) => void,
+];
+
+/**
+ * Builds a `useWebViewScrollGroupScrRef` host-hook stub returning the given tuple parts. Every
+ * parameter defaults to the common case so a test overrides only what it asserts on.
+ *
+ * @param ref - The scripture reference the stub reports; defaults to {@link defaultScrRef}.
+ * @param setScrRef - The reference setter; defaults to a no-op.
+ * @param scrollGroupId - The active scroll-group id; defaults to `undefined` (unlinked).
+ * @param setScrollGroupId - The scroll-group setter; defaults to a no-op.
+ * @returns A hook returning the assembled tuple.
+ */
+export function makeScrollGroupHook(
+  ref: SerializedVerseRef = defaultScrRef,
+  setScrRef: (r: SerializedVerseRef) => void = () => {},
+  scrollGroupId: number | undefined = undefined,
+  setScrollGroupId: (id: number | undefined) => void = () => {},
+): () => ScrollGroupTuple {
+  return () => [ref, setScrRef, scrollGroupId, setScrollGroupId];
+}
+
 /** Pre-built Book with one GEN 1:1 segment and a single word token. */
 export const GEN_1_1_BOOK: Book = {
   id: 'GEN',

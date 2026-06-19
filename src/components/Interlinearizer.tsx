@@ -50,6 +50,11 @@ type InterlinearizerProps = Readonly<{
   initialAnalysis?: TextAnalysis;
   /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
   onSaveAnalysis?: (analysis: TextAnalysis) => void;
+  /**
+   * Called with whether any gloss input currently holds uncommitted text, so the caller can show
+   * the unsaved indicator while the user is typing — before the edit commits on blur.
+   */
+  onPendingEditsChange?: (pending: boolean) => void;
   /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
@@ -312,6 +317,8 @@ function InterlinearizerInner({
  * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
  * @param props.analysisLanguage - BCP 47 tag for gloss read/write
  * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
+ * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
+ *   uncommitted text, so the caller can show the unsaved indicator while the user types
  * @param props.phraseMode - Current phrase-interaction mode owned by the parent
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
@@ -322,6 +329,7 @@ export default function Interlinearizer({
   initialAnalysis,
   analysisLanguage,
   onSaveAnalysis,
+  onPendingEditsChange,
   ...innerProps
 }: InterlinearizerProps) {
   return (
@@ -329,6 +337,7 @@ export default function Interlinearizer({
       initialAnalysis={initialAnalysis}
       analysisLanguage={analysisLanguage}
       onSave={onSaveAnalysis}
+      onPendingEditsChange={onPendingEditsChange}
     >
       <InterlinearizerInner {...innerProps} />
     </AnalysisStoreProvider>

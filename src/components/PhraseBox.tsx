@@ -8,6 +8,7 @@ import {
   usePhraseGloss,
   usePhraseGlossDispatch,
   usePhraseLinkForToken,
+  useReportGlossEditing,
 } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
@@ -38,6 +39,9 @@ function PhraseGlossInput({
   useEffect(() => {
     setDraft(committed);
   }, [committed]);
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
+  useReportGlossEditing(!disabled && draft !== committed);
 
   return (
     <input

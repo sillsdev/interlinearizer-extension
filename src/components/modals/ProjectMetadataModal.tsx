@@ -2,7 +2,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -82,7 +82,6 @@ export function ProjectMetadataModal({
   const [editLanguages, setEditLanguages] = useState(analysisLanguages.join(', '));
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const isSubmittingRef = useRef(false);
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
 
@@ -98,9 +97,8 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
+    /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
+    if (isSubmitting) return;
     setIsSubmitting(true);
     const newName = editName.trim() || undefined;
     const newDescription = editDescription.trim() || undefined;
@@ -127,10 +125,10 @@ export function ProjectMetadataModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to save project metadata', e);
     } finally {
-      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   }, [
+    isSubmitting,
     editName,
     editDescription,
     editLanguages,
@@ -148,9 +146,8 @@ export function ProjectMetadataModal({
    * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; ref guards against programmatic races */
-    if (isSubmittingRef.current) return;
-    isSubmittingRef.current = true;
+    /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
+    if (isSubmitting) return;
     setIsSubmitting(true);
     try {
       await papi.commands.sendCommand('interlinearizer.deleteProject', interlinearProjectId);
@@ -159,10 +156,9 @@ export function ProjectMetadataModal({
     } catch (e) {
       logger.error('Interlinearizer: failed to delete project', e);
     } finally {
-      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
-  }, [interlinearProjectId, onProjectDeleted, onClose]);
+  }, [interlinearProjectId, isSubmitting, onClose, onProjectDeleted]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 

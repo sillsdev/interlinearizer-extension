@@ -10,6 +10,7 @@ import {
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
   useMorphemes,
+  useReportGlossEditing,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 
@@ -82,6 +83,9 @@ export function TokenChip({
   useEffect(() => {
     setDraft(committedGloss);
   }, [committedGloss]);
+
+  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
+  useReportGlossEditing(!disabled && draft !== committedGloss);
 
   // The popover tree unmounts with the morpheme row when showMorphology turns off, but this state
   // lives on the chip and would survive — silently reopening the popover when morphology is shown

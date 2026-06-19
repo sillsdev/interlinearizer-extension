@@ -1,5 +1,5 @@
 // Adapted from paranext-core/e2e-tests/fixtures/helpers.ts
-import { _electron as electron, ElectronApplication, Page } from '@playwright/test';
+import { _electron as electron, ElectronApplication, expect, Page } from '@playwright/test';
 import fs from 'fs';
 import { createRequire } from 'module';
 import os from 'os';
@@ -396,4 +396,53 @@ export async function waitForInterlinearizerReady(timeoutMs = 90_000): Promise<v
     DEFAULT_WEBSOCKET_PORT,
     timeoutMs,
   );
+}
+
+/**
+ * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu. Prerequisite stage
+ * shared by all e2e tests that require the Interlinearizer to be open. Assumes no project has been
+ * loaded yet.
+ *
+ * Steps:
+ *
+ * 1. Click the "Scripture Editor" dock tab to bring it to the front.
+ * 2. Enter the Scripture Editor iframe and click the ≡ ("Project") menu button.
+ * 3. Click "Open Interlinearizer for this Project".
+ * 4. In the "Open Interlinearizer" project-picker dialog, click the named project.
+ * 5. Wait for the "Interlinearizer" dock tab and click it to focus it.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param projectName Name of the project to select in the project-picker (default: `"WEB"`).
+ * @returns Resolves when the Interlinearizer tab is focused and visible.
+ * @throws If any step does not complete within its timeout.
+ */
+export async function openInterlinearizerFromScriptureEditor(
+  page: Page,
+  projectName = 'WEB',
+): Promise<void> {
+  // Focus the Scripture Editor tab (opens without a project at fresh start).
+  const editorTab = page.locator('.dock-tab', { hasText: 'Scripture Editor' }).first();
+  await expect(editorTab).toBeVisible({ timeout: 15_000 });
+  await editorTab.click();
+
+  // The Scripture Editor renders its own toolbar inside its iframe. Click the ≡ ("Project") button.
+  const editorFrame = page.frameLocator('iframe[title*="Scripture Editor" i]');
+  await editorFrame.locator("button[aria-label='Project']").first().click();
+
+  // Click the "Open Interlinearizer for this Project" item contributed by this extension.
+  await editorFrame
+    .getByRole('menuitem', { name: /Open Interlinearizer for this Project/i })
+    .first()
+    .click();
+
+  // The command calls papi.dialogs.selectProject (because the editor has no project at fresh start),
+  // which opens a floating "Open Interlinearizer" dock tab with the project list.
+  const selectProjectDialog = page.locator('.select-project-dialog');
+  await expect(selectProjectDialog).toBeVisible({ timeout: 15_000 });
+  await selectProjectDialog.getByRole('button', { name: new RegExp(projectName) }).click();
+
+  // Wait for the Interlinearizer tab to appear and focus it.
+  const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();
+  await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
+  await interlinearizerTab.click();
 }

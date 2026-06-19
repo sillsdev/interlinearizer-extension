@@ -149,12 +149,14 @@ The ESLint rule `no-type-assertion/no-type-assertion` is enforced. **Never use `
 
 ## Documentation
 
-Every function and method — exported or internal — must have a JSDoc block with:
+Every named function and method — exported or internal — must have a JSDoc block with:
 
 - A summary sentence describing what the function does and why it exists (non-obvious behavior only; don't restate the name).
 - `@param` for every parameter.
 - `@returns` describing the return value (omit only for `void`/`Promise<void>`).
 - `@throws` for every error condition the caller must handle; omit if the function never throws.
+
+This function rule does not apply to unnamed inline callbacks passed directly to framework APIs (e.g., `describe()`, `test()`) — in those cases the test-title string serves as the documentation.
 
 Type declarations (interfaces, type aliases, enums) must have a JSDoc summary on the type itself and on each field or member whose purpose is not self-evident from its name and type. We document each field individually rather than describing the fields in the type-level summary.
 

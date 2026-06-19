@@ -110,8 +110,7 @@ type SegmentViewProps = Readonly<{
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
  * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label,
  *   the rest pass through to the phrase strip context.
- * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
- *   segment content
+ * @returns A div containing a verse label and the segment content (baseline text or token chips)
  */
 export function SegmentView({
   displayMode,

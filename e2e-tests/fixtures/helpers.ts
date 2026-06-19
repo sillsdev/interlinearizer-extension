@@ -435,11 +435,12 @@ export async function openInterlinearizerFromScriptureEditor(
     .first()
     .click();
 
-  // The command calls papi.dialogs.selectProject (because the editor has no project at fresh start),
+  // The command calls papi.dialogs.selectProject (because no project is selected in a fresh start),
   // which opens a floating "Open Interlinearizer" dock tab with the project list.
   const selectProjectDialog = page.locator('.select-project-dialog');
   await expect(selectProjectDialog).toBeVisible({ timeout: 15_000 });
-  await selectProjectDialog.getByRole('button', { name: new RegExp(projectName) }).click();
+  const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await selectProjectDialog.getByRole('button', { name: new RegExp(escapedProjectName) }).click();
 
   // Wait for the Interlinearizer tab to appear and focus it.
   const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();

@@ -1,7 +1,7 @@
 import { test, expect } from '../../fixtures/app.fixture';
 import { waitForAppReady, waitForInterlinearizerReady } from '../../fixtures/helpers';
 
-test.describe('Interlinearizer Extension Smoke Tests', () => {
+test.describe('Launch app and register Interlinearizer', () => {
   test('should launch Platform.Bible and create at least one window', async ({ electronApp }) => {
     expect(electronApp.windows().length).toBeGreaterThanOrEqual(1);
   });
@@ -18,10 +18,8 @@ test.describe('Interlinearizer Extension Smoke Tests', () => {
     await expect(dock).toBeAttached({ timeout: 60_000 });
   });
 
-  test('should register interlinearizer PAPI commands', async ({ mainPage }) => {
+  test('should register Interlinearizer PAPI commands', async ({ mainPage }) => {
     await waitForAppReady(mainPage);
-    // Waits for interlinearizer.openForWebView to appear in rpc.discover, confirming the
-    // extension activated successfully.
     await waitForInterlinearizerReady();
   });
 });

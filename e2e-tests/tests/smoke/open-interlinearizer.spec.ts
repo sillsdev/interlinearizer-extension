@@ -1,4 +1,4 @@
-import { test, expect } from '../../fixtures/app.fixture';
+import { expect, test } from '../../fixtures/app.fixture';
 import {
   openInterlinearizerFromScriptureEditor,
   waitForAppReady,
@@ -12,8 +12,8 @@ test.describe('Open Interlinearizer', () => {
 
     await openInterlinearizerFromScriptureEditor(mainPage);
 
-    // The Interlinearizer WebView renders its toolbar (and both menu buttons) inside its iframe.
-    const interlinearizerFrame = mainPage.frameLocator('iframe[title="Interlinearizer"]');
+    // The Interlinearizer WebView renders its toolbar (with menu buttons) inside its iframe.
+    const interlinearizerFrame = mainPage.frameLocator('iframe[title*="Interlinearizer" i]');
 
     // Verify the ≡ (Project) menu button is visible and opens a menu.
     const projectMenuButton = interlinearizerFrame.locator("button[aria-label='Project']").first();
@@ -23,7 +23,7 @@ test.describe('Open Interlinearizer', () => {
     await mainPage.keyboard.press('Escape');
     await expect(interlinearizerFrame.locator('[role="menu"]')).not.toBeVisible({ timeout: 3_000 });
 
-    // The ⚙ (View options) button only appears once the book data has loaded (isLoaded = true).
+    // The ⚙ (View options) button only appears once the book data has loaded.
     const viewOptionsButton = interlinearizerFrame.getByTestId('view-options-button');
     await expect(viewOptionsButton).toBeVisible({ timeout: 30_000 });
     await viewOptionsButton.click();

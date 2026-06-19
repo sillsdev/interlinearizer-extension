@@ -270,8 +270,9 @@ export default function ProjectModals({
       }
     } finally {
       setIsReplacing(false);
+      // Cleared in finally so the dialog dismisses even if openProject or startNewDraft ever throws.
+      setPendingReplace(undefined);
     }
-    setPendingReplace(undefined);
   }, [isReplacing, openProject, pendingReplace, startNewDraft]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
@@ -408,6 +409,9 @@ export default function ProjectModals({
     setMetadataProject(undefined);
   }, [metadataSourceIsSelect, setModal]);
 
+  // Read the draft snapshot at render time rather than inside SaveAsProjectModal's mount effect.
+  // getDraftSnapshot reads a ref synchronously (no allocation), so it is effectively free every
+  // render. The value is only consumed when modal === 'saveAs'; it does not drive any other branch.
   const draftSnapshot = getDraftSnapshot();
 
   return (

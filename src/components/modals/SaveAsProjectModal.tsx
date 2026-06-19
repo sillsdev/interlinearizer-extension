@@ -219,6 +219,9 @@ export function SaveAsProjectModal({
                     {project.analysisLanguages.join(', ')}
                   </span>
                 </span>
+                {/* Clicking this button only opens the inline confirmation dialog; the actual
+                    overwrite is triggered by the confirm button inside that panel. Disabled while
+                    submitting to prevent switching the pending target mid-save. */}
                 <Button
                   variant="secondary"
                   size="sm"

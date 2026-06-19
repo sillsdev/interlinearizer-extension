@@ -440,7 +440,8 @@ export async function openInterlinearizerFromScriptureEditor(
   const selectProjectDialog = page.locator('.select-project-dialog');
   await expect(selectProjectDialog).toBeVisible({ timeout: 15_000 });
   const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  await selectProjectDialog.getByRole('button', { name: new RegExp(escapedProjectName) }).click();
+  const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
+  await selectProjectDialog.getByRole('button', { name: projectNameRegex }).click();
 
   // Wait for the Interlinearizer tab to appear and focus it.
   const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();

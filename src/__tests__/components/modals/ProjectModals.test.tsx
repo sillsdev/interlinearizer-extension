@@ -246,6 +246,7 @@ type ModalsOverrides = Partial<{
   dirty: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   loadFromProject: jest.Mock;
+  newDraft: jest.Mock;
   markSynced: jest.Mock;
   modal: ModalState;
   setModal: jest.Mock;
@@ -266,12 +267,29 @@ function buildProps(overrides: ModalsOverrides = {}) {
     dirty: overrides.dirty ?? false,
     getDraftSnapshot: overrides.getDraftSnapshot ?? (() => MOCK_DRAFT),
     loadFromProject: overrides.loadFromProject ?? jest.fn(),
+    newDraft: overrides.newDraft ?? jest.fn(),
     markSynced: overrides.markSynced ?? jest.fn(),
     modal: overrides.modal ?? 'none',
     projectId: 'source-proj',
     setModal: overrides.setModal ?? jest.fn(),
     useWebViewState: overrides.useWebViewState ?? makeWebViewState(),
   };
+}
+
+/**
+ * Builds a `useWebViewState` stub whose reset callback for the `'activeProject'` key is the given
+ * spy, so a test can assert the active project was cleared (other keys get a no-op reset). Mirrors
+ * {@link makeWebViewState}'s `[value, setter, reset]` shape without type assertions.
+ *
+ * @param resetActiveProject - Spy invoked when the `'activeProject'` slot is reset.
+ * @returns A `useWebViewState`-shaped hook stub.
+ */
+function makeWebViewStateWithResetSpy(resetActiveProject: () => void) {
+  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
+    defaultValue,
+    () => {},
+    key === 'activeProject' ? resetActiveProject : () => {},
+  ];
 }
 
 describe('ProjectModals', () => {
@@ -434,82 +452,40 @@ describe('ProjectModals', () => {
   });
 
   describe('new (create) flow', () => {
-    it('creates a project via createProject and closes when not dirty', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+    it('starts an empty draft, clears the active project, and closes when not dirty', async () => {
+      const newDraft = jest.fn();
       const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
+      const resetActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'create',
+            newDraft,
+            setModal,
+            useWebViewState: makeWebViewStateWithResetSpy(resetActiveProject),
+          })}
+        />,
+      );
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.createProject',
-          'source-proj',
-          ['en'],
-          undefined,
-          'New',
-          'Desc',
-        ),
+      // New starts a draft locally (carrying the typed name/description for the Save As prefill) and
+      // clears the active project so Save routes to Save As; no backend project is created.
+      expect(newDraft).toHaveBeenCalledWith({
+        analysisLanguages: ['en'],
+        suggestedName: 'New',
+        suggestedDescription: 'Desc',
+      });
+      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
       );
+      expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
-    });
-
-    it('carries targetProjectId into the draft for a bilateral created project', async () => {
-      const bilateral = { ...MOCK_PROJECT, targetProjectId: 'tgt-new' };
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(bilateral));
-      const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', loadFromProject })} />);
-
-      await userEvent.click(screen.getByTestId('create-submit'));
-
-      await waitFor(() =>
-        expect(loadFromProject).toHaveBeenCalledWith({
-          analysisLanguages: ['en'],
-          targetProjectId: 'tgt-new',
-          analysis: emptyAnalysis(),
-        }),
-      );
-    });
-
-    it('notifies and does not close when createProject returns a non-project shape', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
-      const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
-
-      await userEvent.click(screen.getByTestId('create-submit'));
-
-      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
-      expect(setModal).not.toHaveBeenCalledWith('none');
-    });
-
-    it('does not crash when createProject throws', async () => {
-      jest.mocked(papi.commands.sendCommand).mockRejectedValueOnce(new Error('network'));
-      const setModal = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', setModal })} />);
-
-      await userEvent.click(screen.getByTestId('create-submit'));
-
-      await waitFor(() => expect(papi.commands.sendCommand).toHaveBeenCalled());
-      expect(setModal).not.toHaveBeenCalledWith('none');
-    });
-
-    it('disables the create-submit button while createProject is in flight', async () => {
-      let resolveCreate!: (value: string) => void;
-      jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
-        new Promise<string>((resolve) => {
-          resolveCreate = resolve;
-        }),
-      );
-      render(<ProjectModals {...buildProps({ modal: 'create' })} />);
-
-      expect(screen.getByTestId('create-submit')).toBeEnabled();
-
-      await userEvent.click(screen.getByTestId('create-submit'));
-
-      expect(screen.getByTestId('create-submit')).toBeDisabled();
-
-      resolveCreate(JSON.stringify(MOCK_PROJECT));
-      await waitFor(() => expect(screen.getByTestId('create-submit')).toBeEnabled());
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {
@@ -565,50 +541,40 @@ describe('ProjectModals', () => {
     });
 
     it('confirms before starting a new draft when the draft is dirty', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
-      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
+      const newDraft = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true, newDraft })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
-      // createProject must not have been called yet.
-      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
-        'interlinearizer.createProject',
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-      );
+      // The new draft must not start until the user confirms discarding the current one.
+      expect(newDraft).not.toHaveBeenCalled();
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
       await waitFor(() =>
-        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
-          'interlinearizer.createProject',
-          'source-proj',
-          ['en'],
-          undefined,
-          'New',
-          'Desc',
-        ),
+        expect(newDraft).toHaveBeenCalledWith({
+          analysisLanguages: ['en'],
+          suggestedName: 'New',
+          suggestedDescription: 'Desc',
+        }),
       );
     });
 
-    it('disables the discard-confirm button while createProject is in flight', async () => {
-      let resolveCreate!: (value: string) => void;
+    it('disables the discard-confirm button while an open is in flight', async () => {
+      let resolveGet!: (value: string) => void;
       jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(
         new Promise<string>((resolve) => {
-          resolveCreate = resolve;
+          resolveGet = resolve;
         }),
       );
-      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true })} />);
+      render(<ProjectModals {...buildProps({ modal: 'select', dirty: true })} />);
 
-      await userEvent.click(screen.getByTestId('create-submit'));
+      await userEvent.click(screen.getByTestId('select-select'));
       expect(screen.getByTestId('discard-confirm')).toBeEnabled();
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
       expect(screen.getByTestId('discard-confirm')).toBeDisabled();
 
-      resolveCreate(JSON.stringify(MOCK_PROJECT));
+      resolveGet(JSON.stringify(MOCK_FULL_PROJECT));
       await waitFor(() => expect(screen.queryByTestId('discard-modal')).toBeNull());
     });
   });

@@ -138,18 +138,12 @@ declare module 'papi-shared-types' {
     'interlinearizer.openSaveAsModal': () => Promise<void>;
 
     /**
-     * Removes the currently viewed book's analysis from the draft (after an in-WebView
-     * confirmation). The backend registers this command to make it visible to the platform menu
-     * system; all logic executes in the WebView.
+     * Opens the wipe dialog in the Interlinearizer WebView, where the user chooses to remove the
+     * currently viewed book's analysis or the entire draft's analysis and confirms. The backend
+     * registers this command to make it visible to the platform menu system; all logic executes in
+     * the WebView.
      */
-    'interlinearizer.wipeBook': () => Promise<void>;
-
-    /**
-     * Removes the entire draft's analysis (after an in-WebView confirmation). The backend registers
-     * this command to make it visible to the platform menu system; all logic executes in the
-     * WebView.
-     */
-    'interlinearizer.wipeDraft': () => Promise<void>;
+    'interlinearizer.wipe': () => Promise<void>;
 
     /**
      * Returns the interlinearizer project with the given UUID as a JSON string, including its full

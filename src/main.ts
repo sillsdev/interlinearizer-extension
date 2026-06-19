@@ -753,26 +753,14 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  const wipeBookCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.wipeBook',
+  const wipeCommandRegistration = await papi.commands.registerCommand(
+    'interlinearizer.wipe',
     // Handled entirely in the WebView; backend registration makes the command known to the platform.
     /* v8 ignore next */ async () => {},
     {
       method: {
-        summary: "Wipe the current book's analysis from the draft (handled in the WebView)",
-        params: [],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
-      },
-    },
-  );
-
-  const wipeDraftCommandRegistration = await papi.commands.registerCommand(
-    'interlinearizer.wipeDraft',
-    // Handled entirely in the WebView; backend registration makes the command known to the platform.
-    /* v8 ignore next */ async () => {},
-    {
-      method: {
-        summary: "Wipe the entire draft's analysis (handled in the WebView)",
+        summary:
+          "Open the wipe dialog to remove the current book's or the whole draft's analysis (handled in the WebView)",
         params: [],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },
@@ -811,8 +799,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     openProjectInfoModalCommandRegistration,
     saveCommandRegistration,
     openSaveAsModalCommandRegistration,
-    wipeBookCommandRegistration,
-    wipeDraftCommandRegistration,
+    wipeCommandRegistration,
     webViewOpenUnsubscriber,
     webViewCloseUnsubscriber,
   );

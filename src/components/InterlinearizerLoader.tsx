@@ -17,7 +17,7 @@ import Interlinearizer from './Interlinearizer';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
-import { WipeConfirm } from './modals/WipeConfirm';
+import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
@@ -143,6 +143,7 @@ function InterlinearizerLoaderInner({
     dirty,
     autosaveAnalysis,
     loadFromProject,
+    newDraft,
     getDraftSnapshot,
     markSynced,
     wipeBook,
@@ -241,8 +242,8 @@ function InterlinearizerLoaderInner({
 
   const [modal, setModal] = useState<ModalState>('none');
 
-  /** Which destructive wipe confirmation is showing, or `undefined` when none. */
-  const [wipeConfirm, setWipeConfirm] = useState<'book' | 'all' | undefined>(undefined);
+  /** Whether the destructive wipe dialog (book / whole-draft scope picker) is open. */
+  const [wipeModalOpen, setWipeModalOpen] = useState(false);
 
   const [phraseMode, setPhraseMode] = useState<PhraseMode>({ kind: 'view' });
 
@@ -289,24 +290,32 @@ function InterlinearizerLoaderInner({
     }
   }, [activeProject, getDraftSnapshot, markSynced, setModal]);
 
-  /** Performs the confirmed wipe (current book or whole draft) and dismisses the confirmation. */
-  const handleWipeConfirm = useCallback(() => {
-    if (wipeConfirm === 'book') {
-      /* v8 ignore next -- wipe-book is only offered once a book is loaded */
-      if (book) wipeBook(book.bookRef);
-    }
-    // Match 'all' explicitly rather than via an else, so a future wipe scope can't fall through to
-    // the destructive whole-draft wipe.
-    if (wipeConfirm === 'all') wipeAll();
-    setWipeConfirm(undefined);
-  }, [wipeConfirm, book, wipeBook, wipeAll]);
+  /**
+   * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses
+   * the dialog.
+   *
+   * @param scope - The wipe scope the user selected in the dialog.
+   */
+  const handleWipeConfirm = useCallback(
+    (scope: WipeScope) => {
+      if (scope === 'book') {
+        /* v8 ignore next -- defensive: the dialog disables the book scope unless a book is loaded */
+        if (book) wipeBook(book.bookRef);
+      }
+      // Match 'all' explicitly rather than via an else, so a future wipe scope can't fall through to
+      // the destructive whole-draft wipe.
+      if (scope === 'all') wipeAll();
+      setWipeModalOpen(false);
+    },
+    [book, wipeBook, wipeAll],
+  );
 
-  /** Dismisses the wipe confirmation, leaving the draft untouched. */
-  const handleWipeCancel = useCallback(() => setWipeConfirm(undefined), []);
+  /** Dismisses the wipe dialog, leaving the draft untouched. */
+  const handleWipeCancel = useCallback(() => setWipeModalOpen(false), []);
 
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
-   * file commands save (or open Save As); the draft commands open a wipe confirmation.
+   * file commands save (or open Save As); the draft command opens the wipe dialog.
    *
    * @param item - The menu item that was activated.
    */
@@ -324,10 +333,8 @@ function InterlinearizerLoaderInner({
         handleSave();
       } else if (item.command === 'interlinearizer.openSaveAsModal') {
         setModal('saveAs');
-      } else if (item.command === 'interlinearizer.wipeBook') {
-        setWipeConfirm('book');
-      } else if (item.command === 'interlinearizer.wipeDraft') {
-        setWipeConfirm('all');
+      } else if (item.command === 'interlinearizer.wipe') {
+        setWipeModalOpen(true);
       }
     },
     [activeProject, handleSave],
@@ -462,6 +469,7 @@ function InterlinearizerLoaderInner({
         dirty={dirty}
         getDraftSnapshot={getDraftSnapshot}
         loadFromProject={loadFromProject}
+        newDraft={newDraft}
         markSynced={markSynced}
         modal={modal}
         projectId={projectId}
@@ -469,9 +477,9 @@ function InterlinearizerLoaderInner({
         useWebViewState={useWebViewState}
       />
 
-      {wipeConfirm && (
-        <WipeConfirm
-          scope={wipeConfirm}
+      {wipeModalOpen && (
+        <WipeModal
+          hasActiveBook={!!book}
           onConfirm={handleWipeConfirm}
           onCancel={handleWipeCancel}
         />

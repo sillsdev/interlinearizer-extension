@@ -16,7 +16,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
-import { defaultScrRef, GEN_1_1_BOOK, makeWebViewState } from '../test-helpers';
+import { GEN_1_1_BOOK, makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -91,31 +91,35 @@ jest.mock('../../components/controls/ScriptureNavControls', () => ({
   default: () => <div data-testid="scripture-nav-controls" />,
 }));
 
-jest.mock('../../components/modals/WipeConfirm', () => ({
+jest.mock('../../components/modals/WipeModal', () => ({
   __esModule: true,
   /**
-   * Minimal WipeConfirm stand-in exposing the scope and confirm/cancel actions so tests can drive
-   * the loader's wipe handlers without the real dialog's localization.
+   * Minimal WipeModal stand-in exposing per-scope confirm buttons and cancel so tests can drive the
+   * loader's wipe handlers without the real dialog's localization or scope-picker UI.
    *
-   * @param scope - Which wipe is being confirmed (`'book'` or `'all'`).
-   * @param onConfirm - Invoked when the user confirms the wipe.
+   * @param hasActiveBook - Whether a book is loaded; surfaced so tests can assert the loader passes
+   *   it through.
+   * @param onConfirm - Invoked with the chosen scope (`'book'` or `'all'`) when the user confirms.
    * @param onCancel - Invoked when the user backs out.
-   * @returns A confirm/cancel panel tagged with the scope.
+   * @returns A panel with a confirm button per scope plus cancel.
    */
-  WipeConfirm: ({
-    scope,
+  WipeModal: ({
+    hasActiveBook,
     onConfirm,
     onCancel,
   }: {
-    scope: 'book' | 'all';
-    onConfirm: () => void;
+    hasActiveBook: boolean;
+    onConfirm: (scope: 'book' | 'all') => void;
     onCancel: () => void;
   }) => (
-    <div data-testid="wipe-confirm-panel" data-scope={scope}>
-      <button type="button" data-testid="wipe-confirm" onClick={onConfirm}>
-        Confirm
+    <div data-testid="wipe-modal-panel" data-has-active-book={String(hasActiveBook)}>
+      <button type="button" data-testid="wipe-confirm-book" onClick={() => onConfirm('book')}>
+        Wipe book
       </button>
-      <button type="button" data-testid="wipe-confirm-cancel" onClick={onCancel}>
+      <button type="button" data-testid="wipe-confirm-all" onClick={() => onConfirm('all')}>
+        Wipe draft
+      </button>
+      <button type="button" data-testid="wipe-modal-cancel" onClick={onCancel}>
         Cancel
       </button>
     </div>
@@ -318,21 +322,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     );
   },
 }));
-
-/**
- * Returns a `useWebViewScrollGroupScrRef` hook stub fixed to a scripture reference.
- *
- * @param ref - The reference the stub reports; defaults to GEN 1:1.
- * @returns A hook returning `[ref, noop setScrRef, undefined scrollGroupId, noop setter]`.
- */
-function makeScrollGroupHook(ref: SerializedVerseRef = defaultScrRef) {
-  return (): [
-    SerializedVerseRef,
-    (r: SerializedVerseRef) => void,
-    number | undefined,
-    (id: number | undefined) => void,
-  ] => [ref, () => {}, undefined, () => {}];
-}
 
 /**
  * Renders {@link InterlinearizerLoader} with the given props, supplying a fresh
@@ -583,12 +572,15 @@ describe('InterlinearizerLoader', () => {
     expect(onChangeByKey.get('interlinearizer.continuousScroll')).toHaveBeenCalledWith(true);
   });
 
-  it('passes hideInactiveLinkButtons=false to Interlinearizer by default', async () => {
+  it('passes all view-option booleans as false to Interlinearizer by default', async () => {
     await act(async () => {
       renderLoader();
     });
 
     expect(capturedInterlinearizerProps?.viewOptions.hideInactiveLinkButtons).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
@@ -601,14 +593,6 @@ describe('InterlinearizerLoader', () => {
     expect(onChangeByKey.get('interlinearizer.hideInactiveLinkButtons')).toHaveBeenCalledWith(true);
   });
 
-  it('passes simplifyPhrases=false to Interlinearizer by default', async () => {
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
-  });
-
   it('wires ViewOptionsDropdown dim-inactive-segments to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
     await act(async () => {
@@ -619,14 +603,6 @@ describe('InterlinearizerLoader', () => {
     expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
   });
 
-  it('passes chapterLabelInVerse=false to Interlinearizer by default', async () => {
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
-  });
-
   it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {
     const onChangeByKey = mockOptimisticSetting();
     await act(async () => {
@@ -635,14 +611,6 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('chapter-label-in-verse-toggle'));
     expect(onChangeByKey.get('interlinearizer.chapterLabelInVerse')).toHaveBeenCalledWith(true);
-  });
-
-  it('passes showMorphology=false to Interlinearizer by default', async () => {
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
   });
 
   it('wires ViewOptionsDropdown show-morphology to onChange from useOptimisticBooleanSetting', async () => {
@@ -1083,37 +1051,46 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  describe('wipe commands', () => {
-    it('wipes the current book through the draft after confirming the wipe-book dialog', async () => {
+  describe('wipe command', () => {
+    it('opens the wipe dialog with the active-book flag set when a book is loaded', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-book'));
-      // The destructive confirmation must appear before anything is wiped.
-      expect(screen.getByTestId('wipe-confirm')).toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+
+      // The dialog must appear before anything is wiped, with the loaded book reflected.
+      expect(screen.getByTestId('wipe-modal-panel')).toHaveAttribute(
+        'data-has-active-book',
+        'true',
+      );
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
       ).toHaveLength(0);
-
-      await userEvent.click(screen.getByTestId('wipe-confirm'));
-
-      // Confirming a book wipe replaces the draft (saveDraft) and dismisses the confirmation.
-      expect(
-        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft').length,
-      ).toBeGreaterThan(0);
-      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
     });
 
-    it('wipes the whole draft through the draft after confirming the wipe-draft dialog', async () => {
+    it('wipes the current book through the draft after confirming the book scope', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
-      expect(screen.getByTestId('wipe-confirm')).toBeInTheDocument();
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('wipe-confirm-book'));
 
-      await userEvent.click(screen.getByTestId('wipe-confirm'));
+      // Confirming a book wipe replaces the draft (saveDraft) and dismisses the dialog.
+      expect(
+        mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft').length,
+      ).toBeGreaterThan(0);
+      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
+    });
+
+    it('wipes the whole draft through the draft after confirming the all scope', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
 
       const wiped: DraftProject | undefined = (() => {
         const call = [...mockSendCommand.mock.calls]
@@ -1125,19 +1102,19 @@ describe('InterlinearizerLoader', () => {
       expect(wiped?.analysis).toEqual(emptyAnalysis());
       // Wiping the whole draft is treated as a clean baseline, so it persists not-dirty.
       expect(wiped?.dirty).toBe(false);
-      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
     });
 
-    it('leaves the draft untouched when the wipe confirmation is canceled', async () => {
+    it('leaves the draft untouched when the wipe dialog is canceled', async () => {
       await act(async () => {
         renderLoader();
       });
 
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
       mockSendCommand.mockClear();
-      await userEvent.click(screen.getByTestId('wipe-confirm-cancel'));
+      await userEvent.click(screen.getByTestId('wipe-modal-cancel'));
 
-      expect(screen.queryByTestId('wipe-confirm')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('wipe-modal-panel')).not.toBeInTheDocument();
       expect(
         mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft'),
       ).toHaveLength(0);
@@ -1223,8 +1200,8 @@ describe('InterlinearizerLoader', () => {
       expect(capturedInterlinearizerProps?.phraseMode.kind).toBe('edit');
 
       // Wiping the whole draft bumps draftVersion, which the loader watches to reset phraseMode.
-      await userEvent.click(screen.getByTestId('tab-toolbar-wipe-draft'));
-      await userEvent.click(screen.getByTestId('wipe-confirm'));
+      await userEvent.click(screen.getByTestId('tab-toolbar-wipe'));
+      await userEvent.click(screen.getByTestId('wipe-confirm-all'));
 
       expect(capturedInterlinearizerProps?.phraseMode).toEqual({ kind: 'view' });
     });

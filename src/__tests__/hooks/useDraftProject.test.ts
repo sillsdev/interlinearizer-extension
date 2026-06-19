@@ -259,6 +259,49 @@ describe('useDraftProject', () => {
     });
   });
 
+  describe('newDraft', () => {
+    it('starts an empty, clean draft carrying the chosen languages and suggested name/description', async () => {
+      // Start from a dirty draft with analysis so the reset to a clean, empty draft is observable.
+      mockGetDraftResolves(makeDraft({ analysis: analysisWithToken('tok-old'), dirty: true }));
+      const { result } = await renderLoaded();
+      expect(result.current.dirty).toBe(true);
+      const versionBefore = result.current.draftVersion;
+
+      act(() => {
+        result.current.newDraft({
+          analysisLanguages: ['sw'],
+          suggestedName: 'My Draft',
+          suggestedDescription: 'A description',
+        });
+      });
+
+      expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
+      expect(result.current.draft?.analysisLanguages).toEqual(['sw']);
+      expect(result.current.draft?.suggestedName).toBe('My Draft');
+      expect(result.current.draft?.suggestedDescription).toBe('A description');
+      expect(result.current.dirty).toBe(false);
+      expect(result.current.draftVersion).toBe(versionBefore + 1);
+      // The suggested name/description must survive the persist so Save As can prefill from it.
+      const saved = lastSavedDraft();
+      expect(saved.dirty).toBe(false);
+      expect(saved.suggestedName).toBe('My Draft');
+      expect(saved.suggestedDescription).toBe('A description');
+    });
+
+    it('omits suggested name/description when the New dialog left them blank', async () => {
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.newDraft({ analysisLanguages: ['de'] });
+      });
+
+      expect(result.current.draft?.suggestedName).toBeUndefined();
+      expect(result.current.draft?.suggestedDescription).toBeUndefined();
+      expect(result.current.draft?.analysisLanguages).toEqual(['de']);
+      expect(result.current.dirty).toBe(false);
+    });
+  });
+
   describe('wipeBook', () => {
     it('removes the book, marks the draft dirty, bumps the version, and persists', async () => {
       const genToken = analysisWithToken('gen-tok');

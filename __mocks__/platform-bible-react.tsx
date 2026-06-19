@@ -83,21 +83,12 @@ export const MOCK_SAVE_AS_MENU_ITEM: MenuItemContainingCommand = {
   localizeNotes: '',
 };
 
-/** Sentinel menu item passed by the mock toolbar when the wipe-book button is clicked. */
-export const MOCK_WIPE_BOOK_MENU_ITEM: MenuItemContainingCommand = {
-  label: '%interlinearizer_wipeBook%',
-  command: 'interlinearizer.wipeBook',
+/** Sentinel menu item passed by the mock toolbar when the wipe button is clicked. */
+export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
+  label: '%interlinearizer_wipe%',
+  command: 'interlinearizer.wipe',
   group: 'interlinearizer.draftActions',
   order: 1,
-  localizeNotes: '',
-};
-
-/** Sentinel menu item passed by the mock toolbar when the wipe-draft button is clicked. */
-export const MOCK_WIPE_DRAFT_MENU_ITEM: MenuItemContainingCommand = {
-  label: '%interlinearizer_wipeDraft%',
-  command: 'interlinearizer.wipeDraft',
-  group: 'interlinearizer.draftActions',
-  order: 2,
   localizeNotes: '',
 };
 
@@ -184,19 +175,10 @@ export function TabToolbar({
       {onSelectProjectMenuItem && (
         <button
           type="button"
-          data-testid="tab-toolbar-wipe-book"
-          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_BOOK_MENU_ITEM)}
+          data-testid="tab-toolbar-wipe"
+          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_MENU_ITEM)}
         >
-          Wipe book
-        </button>
-      )}
-      {onSelectProjectMenuItem && (
-        <button
-          type="button"
-          data-testid="tab-toolbar-wipe-draft"
-          onClick={() => onSelectProjectMenuItem(MOCK_WIPE_DRAFT_MENU_ITEM)}
-        >
-          Wipe draft
+          Wipe
         </button>
       )}
       {onSelectViewInfoMenuItem && (

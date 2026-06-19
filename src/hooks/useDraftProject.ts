@@ -14,6 +14,16 @@ export type OpenableProject = Pick<
   'analysis' | 'analysisLanguages' | 'targetProjectId'
 >;
 
+/** Configuration for starting a fresh, empty draft via {@link UseDraftProjectResult.newDraft}. */
+export type NewDraftConfig = {
+  /** BCP 47 tags for the gloss / annotation languages the new draft should use. */
+  analysisLanguages: string[];
+  /** Name typed in the New dialog, retained to prefill Save As; omitted when left blank. */
+  suggestedName?: string;
+  /** Description typed in the New dialog, retained to prefill Save As; omitted when left blank. */
+  suggestedDescription?: string;
+};
+
 /** Return value of {@link useDraftProject}. */
 export type UseDraftProjectResult = {
   /** True while the initial draft load is in flight; gates rendering the editor. */
@@ -56,6 +66,15 @@ export type UseDraftProjectResult = {
    * @param project - The project whose analysis / languages / target to copy into the draft.
    */
   loadFromProject: (project: OpenableProject) => void;
+  /**
+   * Starts a fresh, empty draft for the current source — the "New" flow. Seeds the chosen analysis
+   * languages and retains the typed name/description as `suggestedName`/`suggestedDescription` to
+   * prefill Save As; no backend project is created until the user explicitly saves. The new draft
+   * is clean (`dirty: false`), so the unsaved-changes indicator stays clear until the first edit.
+   *
+   * @param config - The languages and optional suggested name/description from the New dialog.
+   */
+  newDraft: (config: NewDraftConfig) => void;
   /**
    * Removes one book's analysis from the draft and marks it dirty.
    *
@@ -226,6 +245,22 @@ export default function useDraftProject(
     [applyReplacement, sourceProjectId],
   );
 
+  const newDraft = useCallback(
+    (config: NewDraftConfig) => {
+      applyReplacement({
+        sourceProjectId,
+        analysisLanguages: config.analysisLanguages,
+        ...(config.suggestedName !== undefined && { suggestedName: config.suggestedName }),
+        ...(config.suggestedDescription !== undefined && {
+          suggestedDescription: config.suggestedDescription,
+        }),
+        analysis: emptyAnalysis(),
+        dirty: false,
+      });
+    },
+    [applyReplacement, sourceProjectId],
+  );
+
   const wipeBook = useCallback(
     (bookCode: string) => {
       const { current } = draftRef;
@@ -287,6 +322,7 @@ export default function useDraftProject(
     getDraftSnapshot,
     autosaveAnalysis,
     loadFromProject,
+    newDraft,
     wipeBook,
     wipeAll,
     markSynced,

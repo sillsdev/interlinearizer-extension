@@ -218,7 +218,7 @@ function requiredProps(): {
       simplifyPhrases: false,
       chapterLabelInVerse: false,
       showMorphology: false,
-      showFreeTranslation: true,
+      showFreeTranslation: false,
     },
   };
 }
@@ -340,7 +340,14 @@ describe('SegmentView', () => {
   });
 
   it('renders a free-translation input below the plain text in baseline-text mode', () => {
-    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
 
     expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
   });
@@ -348,7 +355,12 @@ describe('SegmentView', () => {
   it('selects the segment once (via focus) when the baseline free-translation input is clicked', async () => {
     const handleSelect = jest.fn();
     render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
       withAnalysisStore,
     );
 
@@ -657,7 +669,13 @@ describe('SegmentView', () => {
   });
 
   it('renders a free-translation input below the segment tokens', () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
 
     expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
   });
@@ -688,7 +706,13 @@ describe('SegmentView', () => {
   });
 
   it('commits the free translation on blur when the draft changed', async () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
 
     const input = screen.getByTestId('segment-free-translation-input');
     await userEvent.type(input, 'au commencement');
@@ -702,7 +726,13 @@ describe('SegmentView', () => {
   });
 
   it('does not commit on blur when the draft is unchanged', async () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
 
     const input = screen.getByTestId('segment-free-translation-input');
     await userEvent.click(input);
@@ -713,7 +743,14 @@ describe('SegmentView', () => {
 
   it('makes the segment active when the free-translation input is focused', async () => {
     const handleSelect = jest.fn();
-    render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
+      withAnalysisStore,
+    );
 
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
@@ -723,7 +760,12 @@ describe('SegmentView', () => {
   it('does not select on free-translation focus when the segment has no word token', async () => {
     const handleSelect = jest.fn();
     render(
-      <SegmentView {...requiredProps()} segment={PUNCT_SEGMENT} onSelect={handleSelect} />,
+      <SegmentView
+        {...requiredProps()}
+        segment={PUNCT_SEGMENT}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
       withAnalysisStore,
     );
 

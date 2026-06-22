@@ -11,6 +11,7 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
+import { isEmptyMultiString } from '../utils/multi-string';
 
 // #region Types
 
@@ -160,18 +161,18 @@ function resolveApprovedSegmentAnalysis(
 /**
  * Determines whether a `SegmentAnalysis` carries no content worth keeping, so a reducer that just
  * emptied the free translation can drop the whole record instead of accumulating empty records in
- * storage. A `freeTranslation` counts as empty when it has no entries or every entry is blank.
- * `literalTranslation` is treated as content so an imported word-for-word translation survives a
- * free-translation clear, mirroring how {@link isEmptyTokenAnalysis} preserves morphemes/pos.
+ * storage. `freeTranslation` and `literalTranslation` each count as empty when they have no entries
+ * or every entry is blank ({@link isEmptyMultiString}), so a populated `literalTranslation` (e.g. an
+ * imported word-for-word translation) still survives a free-translation clear while a record left
+ * holding only whitespace is dropped — mirroring how {@link isEmptyTokenAnalysis} preserves
+ * morphemes/pos.
  *
  * @param analysis - The `SegmentAnalysis` to inspect.
  * @returns `true` when the record holds no content worth keeping.
  */
 function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   return (
-    (!analysis.freeTranslation ||
-      Object.values(analysis.freeTranslation).every((t) => t.trim() === '')) &&
-    analysis.literalTranslation === undefined
+    isEmptyMultiString(analysis.freeTranslation) && isEmptyMultiString(analysis.literalTranslation)
   );
 }
 
@@ -283,7 +284,7 @@ function removeTokenAnalysis(
  */
 function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
   return (
-    (!analysis.gloss || Object.values(analysis.gloss).every((g) => g.trim() === '')) &&
+    isEmptyMultiString(analysis.gloss) &&
     /* v8 ignore next -- the length===0 sub-branch needs an empty-but-defined morphemes array, which no caller produces */
     (!analysis.morphemes || analysis.morphemes.length === 0) &&
     analysis.pos === undefined &&

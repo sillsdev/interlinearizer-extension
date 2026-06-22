@@ -76,9 +76,8 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles. `hideInactiveLinkButtons`, `simplifyPhrases`, and `showMorphology` are
-   * passed through to {@link PhraseStripContextValue}; `chapterLabelInVerse` controls this segment's
-   * verse label.
+   * Bundled display toggles; `chapterLabelInVerse` sets the verse label, the rest pass through to
+   * {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
 }>;

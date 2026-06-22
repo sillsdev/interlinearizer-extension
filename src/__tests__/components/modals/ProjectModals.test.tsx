@@ -511,7 +511,7 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('falls back to resetActiveProject and closes when backend project creation fails', async () => {
+    it('falls back to resetActiveProject and keeps modal open when backend project creation fails', async () => {
       // Default mock returns undefined; JSON.parse(undefined) throws into the catch block.
       const newDraft = jest.fn();
       const setModal = jest.fn();
@@ -529,7 +529,7 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      await waitFor(() => expect(resetActiveProject).toHaveBeenCalledTimes(1));
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
         suggestedName: 'New',
@@ -543,14 +543,10 @@ describe('ProjectModals', () => {
         'New',
         'Desc',
       );
-      expect(papi.notifications.send).toHaveBeenCalledWith({
-        message: '%interlinearizer_error_create_project_failed%',
-        severity: 'error',
-      });
-      expect(resetActiveProject).toHaveBeenCalledTimes(1);
+      expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
-    it('notifies and falls back to resetActiveProject when backend returns a non-project shape', async () => {
+    it('notifies and falls back to resetActiveProject and keeps modal open when backend returns a non-project shape', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
       const setModal = jest.fn();
       const resetActiveProject = jest.fn();
@@ -566,12 +562,12 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      await waitFor(() => expect(resetActiveProject).toHaveBeenCalledTimes(1));
       expect(papi.notifications.send).toHaveBeenCalledWith({
         message: '%interlinearizer_error_create_project_failed%',
         severity: 'error',
       });
-      expect(resetActiveProject).toHaveBeenCalledTimes(1);
+      expect(setModal).not.toHaveBeenCalledWith('none');
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {

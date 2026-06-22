@@ -68,9 +68,9 @@ export type UseDraftProjectResult = {
   loadFromProject: (project: OpenableProject) => void;
   /**
    * Starts a fresh, empty draft for the current source — the "New" flow. Seeds the chosen analysis
-   * languages and retains the typed name/description as `suggestedName`/`suggestedDescription` to
-   * prefill Save As; no backend project is created until the user explicitly saves. The new draft
-   * is clean (`dirty: false`), so the unsaved-changes indicator stays clear until the first edit.
+   * languages and retains the typed name/description as `suggestedName`/`suggestedDescription`. The
+   * new draft is clean (`dirty: false`), so the unsaved-changes indicator stays clear until the
+   * first edit. The caller is responsible for immediately persisting the project to the backend.
    *
    * @param config - The languages and optional suggested name/description from the New dialog.
    */

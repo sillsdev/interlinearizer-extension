@@ -220,15 +220,17 @@ export default function ProjectModals({
    * project or the draft was empty — nothing is lost. When dirty is `true` the
    * {@link DiscardDraftConfirm} dialog has already obtained explicit user consent to discard.
    *
-   * Sends an error notification on any failure path (matching the convention in {@link openProject})
-   * so the user always gets feedback even when the backend error notification does not reach the
-   * frontend (e.g. a transport-level rejection).
+   * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
+   * so the catch block only needs to log — callers do not need to send a second notification. This
+   * matches {@link handleSaveAsNew}, which uses the same command and follows the same pattern.
    *
    * @param config - The configuration collected by the New dialog.
-   * @returns A promise that resolves once the project is created (or the failure is handled).
+   * @returns `true` if the project was created and persisted successfully; `false` otherwise.
+   *   Callers are responsible for closing the modal on success and keeping it open on failure so
+   *   the user can retry without re-entering their inputs.
    */
   const createAndPersistProject = useCallback(
-    async (config: CreateDraftConfig) => {
+    async (config: CreateDraftConfig): Promise<boolean> => {
       newDraft({
         analysisLanguages: config.analysisLanguages,
         ...(config.name !== undefined && { suggestedName: config.name }),
@@ -254,19 +256,15 @@ export default function ProjectModals({
         }
       } catch (e) {
         logger.error('Interlinearizer: failed to create project from New dialog', e);
-        await papi.notifications
-          .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
-          .catch(() => {});
       }
       if (created) {
         setActiveProject(created);
       } else {
         resetActiveProject();
       }
-      setCreateSourceIsSelect(false);
-      setModal('none');
+      return created !== undefined;
     },
-    [newDraft, projectId, resetActiveProject, setActiveProject, setModal],
+    [newDraft, projectId, resetActiveProject, setActiveProject],
   );
 
   /**
@@ -286,7 +284,8 @@ export default function ProjectModals({
   /**
    * Called when the New dialog is submitted. Creates and persists the project immediately, or
    * defers behind the unsaved-changes confirmation when the draft is dirty. Disables the modal
-   * buttons via `isCreating` during the backend round-trip.
+   * buttons via `isCreating` during the backend round-trip. Closes on success; stays open on
+   * failure so the user can retry without re-entering their inputs.
    *
    * @param config - The configuration collected by the New dialog.
    */
@@ -298,15 +297,24 @@ export default function ProjectModals({
       }
       setIsCreating(true);
       try {
-        await createAndPersistProject(config);
+        const success = await createAndPersistProject(config);
+        if (success) {
+          setCreateSourceIsSelect(false);
+          setModal('none');
+        }
       } finally {
         setIsCreating(false);
       }
     },
-    [createAndPersistProject, dirty],
+    [createAndPersistProject, dirty, setCreateSourceIsSelect, setModal],
   );
 
-  /** Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. */
+  /**
+   * Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. For
+   * a deferred Open, delegates entirely to {@link openProject}. For a deferred New, closes on
+   * success; on failure the discard confirm is dismissed but the underlying create modal stays
+   * visible so the user can retry.
+   */
   const handleConfirmReplace = useCallback(async () => {
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
@@ -321,7 +329,11 @@ export default function ProjectModals({
       } else {
         setIsCreating(true);
         try {
-          await createAndPersistProject(pendingReplace.config);
+          const success = await createAndPersistProject(pendingReplace.config);
+          if (success) {
+            setCreateSourceIsSelect(false);
+            setModal('none');
+          }
         } finally {
           setIsCreating(false);
         }
@@ -330,7 +342,14 @@ export default function ProjectModals({
       setIsReplacing(false);
       setPendingReplace(undefined);
     }
-  }, [createAndPersistProject, isReplacing, openProject, pendingReplace]);
+  }, [
+    createAndPersistProject,
+    isReplacing,
+    openProject,
+    pendingReplace,
+    setCreateSourceIsSelect,
+    setModal,
+  ]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);

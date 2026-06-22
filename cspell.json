@@ -55,6 +55,7 @@
     "recentering",
     "recenters",
     "relayout",
+    "resegment",
     "resnap",
     "sandboxed",
     "scriptio",
@@ -80,6 +81,11 @@
     "worktrees",
     "ZWNJ"
   ],
-  "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],
+  "ignoreWords": [
+    "Ελληνικά",
+    "homme",
+    "ʼelohim",
+    "ʻokina"
+  ],
   "import": []
 }

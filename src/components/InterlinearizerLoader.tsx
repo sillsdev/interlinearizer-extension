@@ -10,9 +10,17 @@ import type { SelectMenuItemHandler } from 'platform-bible-react';
 import type { ScriptureRef } from 'interlinearizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import useDraftProject from '../hooks/useDraftProject';
 import useInterlinearizerBookData from '../hooks/useInterlinearizerBookData';
 import useOptimisticBooleanSetting from '../hooks/useOptimisticBooleanSetting';
+import {
+  isDefaultSegmentation,
+  mergeSegments,
+  moveBoundary,
+  splitSegmentBefore,
+} from '../utils/segmentation';
+import type { SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
@@ -137,6 +145,7 @@ function InterlinearizerLoaderInner({
     draftVersion,
     dirty,
     autosaveAnalysis,
+    autosaveSegmentation,
     loadFromProject,
     newDraft,
     getDraftSnapshot,
@@ -215,6 +224,10 @@ function InterlinearizerLoaderInner({
   // the reference identical across the loader's frequent re-renders (driven by `useData`,
   // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
   // of re-rendering every windowed segment when no toggle actually changed.
+  // Editing segment boundaries is a transient mode rather than a saved preference, so it lives in
+  // local state (not a persisted project setting) and resets to off whenever the WebView reloads.
+  const [boundaryEditMode, setBoundaryEditMode] = useState(false);
+
   const viewOptions = useMemo(
     () => ({
       hideInactiveLinkButtons,
@@ -222,6 +235,7 @@ function InterlinearizerLoaderInner({
       chapterLabelInVerse,
       showMorphology,
       showFreeTranslation,
+      boundaryEditMode,
     }),
     [
       hideInactiveLinkButtons,
@@ -229,29 +243,69 @@ function InterlinearizerLoaderInner({
       chapterLabelInVerse,
       showMorphology,
       showFreeTranslation,
+      boundaryEditMode,
     ],
   );
 
-  const { book, isLoading, bookError, tokenizeError } = useInterlinearizerBookData({
+  const {
+    book: verseBook,
+    isLoading,
+    bookError,
+    tokenizeError,
+  } = useInterlinearizerBookData({
     projectId,
     scrRef,
   });
 
-  // The active reference handed to the interlinearizer, resolved so it always names a verse some
-  // segment starts at (when the requested chapter has segments at all). A reference whose verse is
-  // a segment start passes through unchanged. Otherwise:
-  //
-  // - Verse 0 with no verse-0 segment is a plain whole-chapter selection (the host emits
-  //   `verseNum: 0` for those as well as for superscriptions), so it falls back to the chapter's
-  //   first numbered verse rather than leaving nothing highlighted.
-  // - Any other unmatched verse resolves to the nearest preceding segment start in the same
-  //   chapter. This covers the host's next-verse button, which emits `verseNum + 1` without
-  //   clamping — bumping forward from a chapter's last verse delivers a verse past the chapter's
-  //   end, which must land on the chapter's last segment, not fall through to the views' anchor
-  //   fallback (the start of the book). It also covers verses inside a multi-verse segment, which
-  //   resolve to the segment that contains them.
-  // - A reference to a chapter with no segments (including any book mismatch during a cross-book
-  //   swap) passes through unchanged; the views' own fallbacks handle that transient.
+  /** The user's custom segment boundaries from the draft, or `undefined` for verse segmentation. */
+  const segmentation = draft?.segmentation;
+
+  /**
+   * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
+   * Identical (by reference) to `verseBook` when no custom boundaries are set, so the common case
+   * incurs no extra work. `verseBook` is retained separately because the segmentation operations
+   * need the default verse boundaries it carries.
+   */
+  const book = useMemo(
+    () => (verseBook ? resegmentBook(verseBook, segmentation) : undefined),
+    [verseBook, segmentation],
+  );
+
+  /**
+   * Boundary-editing operations passed down to the views. Each reads the draft's latest boundary
+   * delta synchronously (so rapid edits compose correctly), applies the relevant pure transform
+   * against the original verse book, and auto-saves the normalized result — clearing the field back
+   * to `undefined` when the edit restores the default verse segmentation.
+   */
+  const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
+    const apply = (next: ReturnType<typeof mergeSegments>) => {
+      autosaveSegmentation(isDefaultSegmentation(next) ? undefined : next);
+    };
+    return {
+      merge: (secondSegmentStartRef) => {
+        /* v8 ignore next -- boundary controls only render once the book has loaded */
+        if (!verseBook) return;
+        apply(mergeSegments(verseBook, getDraftSnapshot()?.segmentation, secondSegmentStartRef));
+      },
+      split: (tokenRef) => {
+        /* v8 ignore next -- boundary controls only render once the book has loaded */
+        if (!verseBook) return;
+        apply(splitSegmentBefore(verseBook, getDraftSnapshot()?.segmentation, tokenRef));
+      },
+      move: (fromRef, toRef) => {
+        /* v8 ignore next -- the cross-segment link only renders once the book has loaded */
+        if (!verseBook) return;
+        apply(moveBoundary(verseBook, getDraftSnapshot()?.segmentation, fromRef, toRef));
+      },
+    };
+  }, [verseBook, getDraftSnapshot, autosaveSegmentation]);
+
+  // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
+  // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
+  // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
+  // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
+  // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
+  // rather than leaving nothing highlighted. Non-verse-0 references pass through unchanged.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => isSameVerse(segment.startRef, scrRef))) return scrRef;
@@ -330,6 +384,10 @@ function InterlinearizerLoaderInner({
         'interlinearizer.saveAnalysis',
         activeProject.id,
         JSON.stringify(snapshot.analysis),
+        // Send the draft's boundary state on every Save; `null` clears any stored boundaries so a
+        // reverted segmentation propagates to the project rather than leaving it stale.
+        // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
+        JSON.stringify(snapshot.segmentation ?? null),
       );
       markSynced(snapshot.analysis);
     } catch (e) {
@@ -454,6 +512,8 @@ function InterlinearizerLoaderInner({
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
+              boundaryEditMode={boundaryEditMode}
+              onBoundaryEditModeChange={setBoundaryEditMode}
             />
           ) : undefined
         }
@@ -514,6 +574,7 @@ function InterlinearizerLoaderInner({
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}
             showSuggestions={showSuggestions}
+            segmentationDispatch={segmentationDispatch}
           />
         )}
       </div>

@@ -41,8 +41,9 @@ type PendingReplace =
  *   on Save As.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
- * @param props.newDraft - Starts a fresh, empty draft (the "New" flow); no backend project is
- *   created until Save As.
+ * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
+ *   called by {@link createAndPersistProject} before the backend round-trip so the editor is ready
+ *   regardless of whether persistence succeeds.
  * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As,
  *   given the analysis that was persisted; a no-op if an edit landed during the save.
  * @param props.modal - Which modal is currently open.
@@ -107,6 +108,12 @@ export default function ProjectModals({
 
   /** A draft-replacing action awaiting confirmation because the draft has unsaved changes. */
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
+
+  /**
+   * Whether the project-creation round-trip is in flight. Used to disable the Create / Cancel
+   * buttons in the create modal while the backend persists the new project.
+   */
+  const [isCreating, setIsCreating] = useState(false);
 
   /**
    * Whether the discard-and-replace confirmation flow is in flight (either opening an existing
@@ -200,25 +207,49 @@ export default function ProjectModals({
   );
 
   /**
-   * Starts a fresh, empty draft with the given config — the "New" flow. Seeds the draft (carrying
-   * the typed name/description as the Save As prefill), clears the active project so there is no
-   * Save target yet — Save routes to Save As until the draft is saved — and dismisses the modal. No
-   * backend project is created until the user explicitly saves.
+   * Creates a new project in storage with the given config and an empty analysis, then seeds the
+   * draft from it so Save targets the newly created project. This is the "New" flow: the project is
+   * persisted immediately so it shows up in "Select Interlinear Project" right away. On failure the
+   * backend has already sent an error notification; here we only log and clear the active project.
    *
    * @param config - The configuration collected by the New dialog.
+   * @returns A promise that resolves once the project is created (or the failure is handled).
    */
-  const startNewDraft = useCallback(
-    (config: CreateDraftConfig) => {
+  const createAndPersistProject = useCallback(
+    async (config: CreateDraftConfig) => {
       newDraft({
         analysisLanguages: config.analysisLanguages,
         ...(config.name !== undefined && { suggestedName: config.name }),
         ...(config.description !== undefined && { suggestedDescription: config.description }),
       });
-      resetActiveProject();
+      try {
+        const createdJson = await papi.commands.sendCommand(
+          'interlinearizer.createProject',
+          projectId,
+          config.analysisLanguages,
+          undefined,
+          config.name,
+          config.description,
+        );
+        const created: unknown = JSON.parse(createdJson);
+        if (!isInterlinearProjectSummary(created)) {
+          await papi.notifications
+            .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
+            .catch(() => {});
+          resetActiveProject();
+          setCreateSourceIsSelect(false);
+          setModal('none');
+          return;
+        }
+        setActiveProject(created);
+      } catch (e) {
+        logger.error('Interlinearizer: failed to create project from New dialog', e);
+        resetActiveProject();
+      }
       setCreateSourceIsSelect(false);
       setModal('none');
     },
-    [newDraft, resetActiveProject, setModal],
+    [newDraft, projectId, resetActiveProject, setActiveProject, setModal],
   );
 
   /**
@@ -236,21 +267,26 @@ export default function ProjectModals({
   );
 
   /**
-   * Called when the New dialog is submitted. Starts the new draft immediately, or defers behind the
-   * unsaved-changes confirmation when the draft is dirty. Starting a draft is synchronous (no
-   * backend round-trip), so no in-flight re-entry guard is needed.
+   * Called when the New dialog is submitted. Creates and persists the project immediately, or
+   * defers behind the unsaved-changes confirmation when the draft is dirty. Disables the modal
+   * buttons via `isCreating` during the backend round-trip.
    *
    * @param config - The configuration collected by the New dialog.
    */
   const handleCreateDraft = useCallback(
-    (config: CreateDraftConfig) => {
+    async (config: CreateDraftConfig) => {
       if (dirty) {
         setPendingReplace({ kind: 'new', config });
         return;
       }
-      startNewDraft(config);
+      setIsCreating(true);
+      try {
+        await createAndPersistProject(config);
+      } finally {
+        setIsCreating(false);
+      }
     },
-    [dirty, startNewDraft],
+    [createAndPersistProject, dirty],
   );
 
   /** Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. */
@@ -266,13 +302,13 @@ export default function ProjectModals({
       if (pendingReplace.kind === 'open') {
         await openProject(pendingReplace.project);
       } else {
-        startNewDraft(pendingReplace.config);
+        await createAndPersistProject(pendingReplace.config);
       }
     } finally {
       setIsReplacing(false);
       setPendingReplace(undefined);
     }
-  }, [isReplacing, openProject, pendingReplace, startNewDraft]);
+  }, [createAndPersistProject, isReplacing, openProject, pendingReplace]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
@@ -426,6 +462,7 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           defaultAnalysisLanguage={defaultAnalysisLanguage}
+          isSubmitting={isCreating}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
         />

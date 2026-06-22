@@ -448,6 +448,11 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
+  const showFreeTranslationValidatorRegistration = await papi.projectSettings.registerValidator(
+    'interlinearizer.showFreeTranslation',
+    isBoolean,
+  );
+
   const createProjectCommandRegistration = await papi.commands.registerCommand(
     'interlinearizer.createProject',
     createInterlinearProject,
@@ -786,6 +791,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     simplifyPhrasesValidatorRegistration,
     chapterLabelInVerseValidatorRegistration,
     showMorphologyValidatorRegistration,
+    showFreeTranslationValidatorRegistration,
     createProjectCommandRegistration,
     getProjectCommandRegistration,
     saveAnalysisCommandRegistration,

@@ -16,6 +16,7 @@ import type { RenderUnit } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
+import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, type StripItem } from './PhraseStripParts';
 
@@ -75,9 +76,8 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles. `hideInactiveLinkButtons`, `simplifyPhrases`, and `showMorphology` are
-   * passed through to {@link PhraseStripContextValue}; `chapterLabelInVerse` controls this segment's
-   * verse label.
+   * Bundled display toggles; `chapterLabelInVerse` sets the verse label, the rest pass through to
+   * {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
 }>;
@@ -109,8 +109,7 @@ type SegmentViewProps = Readonly<{
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
  * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label,
  *   the rest pass through to the phrase strip context.
- * @returns A button (baseline-text mode) or div (token-chip mode) containing a verse label and
- *   segment content
+ * @returns A div containing a verse label and the segment content (baseline text or token chips)
  */
 export function SegmentView({
   displayMode,
@@ -128,8 +127,13 @@ export function SegmentView({
   wordTokenByRef,
   viewOptions,
 }: SegmentViewProps) {
-  const { hideInactiveLinkButtons, simplifyPhrases, chapterLabelInVerse, showMorphology } =
-    viewOptions;
+  const {
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    chapterLabelInVerse,
+    showMorphology,
+    showFreeTranslation,
+  } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
@@ -360,6 +364,30 @@ export function SegmentView({
     [firstWordTokenRef, onSelect, ref],
   );
 
+  /**
+   * Makes this segment the active verse when the free-translation input gains focus, so editing a
+   * segment's translation behaves like selecting it. A no-op when the segment has no word token to
+   * anchor the selection on.
+   */
+  const handleFreeTranslationFocus = useCallback(() => {
+    if (firstWordTokenRef !== undefined) onSelect(ref, firstWordTokenRef);
+  }, [firstWordTokenRef, onSelect, ref]);
+
+  /**
+   * Selects this segment when its baseline-text body is clicked. Clicks that originate inside the
+   * free-translation input are ignored: that input fires its own {@link handleFreeTranslationFocus}
+   * on focus, so letting the container also fire would double-select the verse.
+   *
+   * @param event - The click event on the baseline-text container.
+   */
+  const handleBaselineClick = useCallback(
+    (event: MouseEvent) => {
+      if (event.target instanceof Element && event.target.closest('input')) return;
+      onSelect(ref);
+    },
+    [onSelect, ref],
+  );
+
   // Measure phrase boxes inside this segment and compute arcs. Disabled in baseline-text mode,
   // where the arc container is unmounted, so the result resets to empty.
   const {
@@ -377,19 +405,33 @@ export function SegmentView({
   ]);
 
   if (displayMode === 'baseline-text') {
+    // Intentional: baseline-text mode renders a clickable div, not a button, so the
+    // free-translation input can sit inside the same box (an input may not be nested in a button).
+    // The free-translation input is the only interactive child and handles its own focus, so the
+    // container only needs a click handler; a redundant key handler / role / tabIndex would add a
+    // non-functional tab stop, so the relevant a11y rules are disabled here (matching token-chip
+    // mode below).
     return (
-      <button
+      // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+      <div
         aria-current={isActive ? 'true' : undefined}
         className={`${sharedClassName} tw:text-left`}
         data-segment-id={segment.id}
         data-testid="segment-container"
-        tabIndex={-1}
-        onClick={() => onSelect(ref)}
-        type="button"
+        onClick={handleBaselineClick}
       >
         {segmentHeader}
-        <span className="tw:font-mono tw:text-sm tw:text-foreground">{segment.baselineText}</span>
-      </button>
+        <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
+          {segment.baselineText}
+        </span>
+        {showFreeTranslation && (
+          <SegmentFreeTranslationInput
+            segmentId={segment.id}
+            surfaceText={segment.baselineText}
+            onFocus={handleFreeTranslationFocus}
+          />
+        )}
+      </div>
     );
   }
 
@@ -448,6 +490,13 @@ export function SegmentView({
           </span>
         </PhraseStripProvider>
       </div>
+      {showFreeTranslation && (
+        <SegmentFreeTranslationInput
+          segmentId={segment.id}
+          surfaceText={segment.baselineText}
+          onFocus={handleFreeTranslationFocus}
+        />
+      )}
     </div>
   );
 }

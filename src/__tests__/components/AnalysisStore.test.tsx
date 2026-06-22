@@ -22,6 +22,8 @@ import {
   usePhraseGloss,
   usePhraseGlossDispatch,
   useReportGlossEditing,
+  useSegmentFreeTranslation,
+  useSegmentFreeTranslationDispatch,
 } from '../../components/AnalysisStore';
 
 // ---------------------------------------------------------------------------
@@ -815,6 +817,144 @@ describe('usePhraseGlossDispatch', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<PhraseGlossDispatchUser />)).toThrow(
       'usePhraseGlossDispatch must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useSegmentFreeTranslation
+// ---------------------------------------------------------------------------
+
+/** A `TextAnalysis` with an approved segment analysis carrying a free translation in `'und'`. */
+const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
+  segmentAnalyses: [
+    { id: 'sa-1', surfaceText: 'In the beginning', freeTranslation: { und: 'au commencement' } },
+  ],
+  segmentAnalysisLinks: [{ analysisId: 'sa-1', status: 'approved', segmentId: 'seg-1' }],
+  tokenAnalyses: [],
+  tokenAnalysisLinks: [],
+  phraseAnalyses: [],
+  phraseAnalysisLinks: [],
+};
+
+/**
+ * Renders the free translation for a given segmentId, used to assert on
+ * `useSegmentFreeTranslation`.
+ *
+ * @param props - Component props.
+ * @param props.segmentId - Segment id to look up.
+ * @returns JSX element.
+ */
+function SegmentTranslationReader({ segmentId }: Readonly<{ segmentId: string }>) {
+  const value = useSegmentFreeTranslation(segmentId);
+  return <span data-testid="segment-translation">{value}</span>;
+}
+
+/**
+ * Renders a component that calls `useSegmentFreeTranslation` without a provider, to assert it
+ * throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function SegmentTranslationUser() {
+  useSegmentFreeTranslation('seg-1');
+  return undefined;
+}
+
+describe('useSegmentFreeTranslation', () => {
+  it('returns empty string when the segment has no approved analysis', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <SegmentTranslationReader segmentId="seg-1" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('segment-translation')).toHaveTextContent('');
+  });
+
+  it('returns the free translation for the active analysis language', () => {
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={SEGMENT_ANALYSIS_WITH_TRANSLATION}
+        analysisLanguage="und"
+      >
+        <SegmentTranslationReader segmentId="seg-1" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('segment-translation')).toHaveTextContent('au commencement');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<SegmentTranslationUser />)).toThrow(
+      'useSegmentFreeTranslation must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// useSegmentFreeTranslationDispatch
+// ---------------------------------------------------------------------------
+
+/**
+ * Renders a button that writes a segment free translation via `useSegmentFreeTranslationDispatch`.
+ *
+ * @param props - Component props.
+ * @param props.segmentId - Segment id to write.
+ * @param props.surfaceText - Segment baseline text to store.
+ * @param props.value - Free-translation value to write.
+ * @returns JSX element.
+ */
+function SegmentTranslationWriter({
+  segmentId,
+  surfaceText,
+  value,
+}: Readonly<{ segmentId: string; surfaceText: string; value: string }>) {
+  const dispatch = useSegmentFreeTranslationDispatch();
+  return (
+    <button onClick={() => dispatch(segmentId, surfaceText, value)} type="button">
+      write
+    </button>
+  );
+}
+
+/**
+ * Renders a component that calls `useSegmentFreeTranslationDispatch` without a provider, to assert
+ * it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function SegmentTranslationDispatchUser() {
+  useSegmentFreeTranslationDispatch();
+  return undefined;
+}
+
+describe('useSegmentFreeTranslationDispatch', () => {
+  it('writes the segment free translation and triggers onSave', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
+        <SegmentTranslationWriter
+          segmentId="seg-1"
+          surfaceText="In the beginning"
+          value="au commencement"
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.segmentAnalyses[0]).toMatchObject({
+      surfaceText: 'In the beginning',
+      freeTranslation: { und: 'au commencement' },
+    });
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<SegmentTranslationDispatchUser />)).toThrow(
+      'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

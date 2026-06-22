@@ -12,7 +12,7 @@ import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import { SegmentView } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import { makePhraseLink } from '../test-helpers';
-import { withAnalysisStore } from './test-helpers';
+import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -30,6 +30,9 @@ const mockUsePhraseDispatch = jest.fn<jest.MockedObject<PhraseDispatch>, []>().m
   mergePhrases: jest.fn(),
 });
 
+/** Stable mock fn capturing `useSegmentFreeTranslationDispatch` calls so tests can assert on them. */
+const mockSegmentFreeTranslationDispatch = jest.fn<void, [string, string, string]>();
+
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode; analysisLanguage: string }>) {
@@ -46,6 +49,9 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseDispatch: () => mockUsePhraseDispatch(),
   usePhraseGloss: () => '',
   usePhraseGlossDispatch: () => () => {},
+  useReportGlossEditing: () => {},
+  useSegmentFreeTranslation: () => '',
+  useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
 }));
 
 // The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
@@ -207,12 +213,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
-    viewOptions: {
-      hideInactiveLinkButtons: false,
-      simplifyPhrases: false,
-      chapterLabelInVerse: false,
-      showMorphology: false,
-    },
+    viewOptions: { ...allFalseViewOptions },
   };
 }
 
@@ -330,6 +331,39 @@ describe('SegmentView', () => {
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 });
+  });
+
+  it('renders a free-translation input below the plain text in baseline-text mode', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
+  });
+
+  it('selects the segment once (via focus) when the baseline free-translation input is clicked', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
+      withAnalysisStore,
+    );
+
+    // Focusing the input selects the verse via its token ref; the container's click handler must
+    // not also fire a bare-ref select, so onSelect lands exactly once.
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    expect(handleSelect).toHaveBeenCalledTimes(1);
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
   });
 
   it('calls onSelect with the verse ref and token id when a word token is clicked', async () => {
@@ -626,5 +660,111 @@ describe('SegmentView', () => {
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
     // ArcOverlay receives candidatePhraseIds; it renders so no assertion needed beyond no crash
     expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
+  });
+
+  it('renders a free-translation input below the segment tokens', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-free-translation-input')).toBeInTheDocument();
+  });
+
+  it('hides the free-translation input when showFreeTranslation is false (token-chip mode)', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: false }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByTestId('segment-free-translation-input')).not.toBeInTheDocument();
+  });
+
+  it('hides the free-translation input when showFreeTranslation is false (baseline-text mode)', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: false }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByTestId('segment-free-translation-input')).not.toBeInTheDocument();
+  });
+
+  it('commits the free translation on blur when the draft changed', async () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    const input = screen.getByTestId('segment-free-translation-input');
+    await userEvent.type(input, 'au commencement');
+    await userEvent.tab();
+
+    expect(mockSegmentFreeTranslationDispatch).toHaveBeenCalledWith(
+      'GEN 1:1',
+      'In the beginning.',
+      'au commencement',
+    );
+  });
+
+  it('does not commit on blur when the draft is unchanged', async () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    const input = screen.getByTestId('segment-free-translation-input');
+    await userEvent.click(input);
+    await userEvent.tab();
+
+    expect(mockSegmentFreeTranslationDispatch).not.toHaveBeenCalled();
+  });
+
+  it('makes the segment active when the free-translation input is focused', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <SegmentView
+        {...requiredProps()}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
+      withAnalysisStore,
+    );
+
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+  });
+
+  it('does not select on free-translation focus when the segment has no word token', async () => {
+    const handleSelect = jest.fn();
+    render(
+      <SegmentView
+        {...requiredProps()}
+        segment={PUNCT_SEGMENT}
+        viewOptions={{ ...requiredProps().viewOptions, showFreeTranslation: true }}
+        onSelect={handleSelect}
+      />,
+      withAnalysisStore,
+    );
+
+    await userEvent.click(screen.getByTestId('segment-free-translation-input'));
+
+    expect(handleSelect).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,11 @@
         "label": "%interlinearizer_projectSettings_showMorphology%",
         "description": "%interlinearizer_projectSettings_showMorphologyDescription%",
         "default": false
+      },
+      "interlinearizer.showFreeTranslation": {
+        "label": "%interlinearizer_projectSettings_showFreeTranslation%",
+        "description": "%interlinearizer_projectSettings_showFreeTranslationDescription%",
+        "default": false
       }
     }
   }

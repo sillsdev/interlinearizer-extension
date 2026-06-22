@@ -11,7 +11,7 @@ import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
-import { withAnalysisStore } from './test-helpers';
+import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -431,12 +431,7 @@ function requiredProps(
     tokenSegmentMap,
     tokenDocOrder,
     wordTokenByRef,
-    viewOptions: {
-      hideInactiveLinkButtons: false,
-      simplifyPhrases: false,
-      chapterLabelInVerse: false,
-      showMorphology: false,
-    },
+    viewOptions: { ...allFalseViewOptions },
   };
 }
 
@@ -901,12 +896,7 @@ describe('ContinuousView scroll behavior', () => {
           tokenSegmentMap={tokenSegmentMap}
           tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />
       );
     }
@@ -951,12 +941,7 @@ describe('ContinuousView scroll behavior', () => {
           tokenSegmentMap={tokenSegmentMap}
           tokenDocOrder={tokenDocOrder}
           wordTokenByRef={wordTokenByRef}
-          viewOptions={{
-            hideInactiveLinkButtons: true,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions, hideInactiveLinkButtons: true }}
         />
       );
     }

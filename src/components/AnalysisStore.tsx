@@ -20,11 +20,13 @@ import {
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
+  selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
   writeMorphemeGloss,
   writeMorphemes,
   writePhraseGloss,
+  writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
@@ -532,6 +534,51 @@ export function usePhraseDispatch(): PhraseDispatch {
       mergePhrases: handleMergePhrases,
     }),
     [handleCreatePhrase, handleUpdatePhrase, handleDeletePhrase, handleMergePhrases],
+  );
+}
+
+// #endregion
+
+// #region Segment hooks
+
+/**
+ * Returns the approved free-translation string for the given segment in the store's active analysis
+ * language, re-rendering only when that segment's free translation changes.
+ *
+ * @param segmentId - The `Segment.id` whose free translation to read.
+ * @returns The current free-translation string, or `''` when absent.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSegmentFreeTranslation(segmentId: string): string {
+  useRequiredCallbacks('useSegmentFreeTranslation');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectSegmentFreeTranslation(state.analysis, segmentId),
+  );
+}
+
+/**
+ * Returns a stable callback that writes a free-translation value for the given segment, then calls
+ * `onSave`. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may drop the
+ * now-empty `SegmentAnalysis` record.
+ *
+ * @returns A function `(segmentId, surfaceText, value) => void`, where `surfaceText` is the
+ *   segment's current baseline text, stored on the `SegmentAnalysis` record.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSegmentFreeTranslationDispatch(): (
+  segmentId: string,
+  surfaceText: string,
+  value: string,
+) => void {
+  const { dispatch, save } = useAnalysisSave('useSegmentFreeTranslationDispatch');
+
+  return useCallback(
+    (segmentId: string, surfaceText: string, value: string) => {
+      dispatch(writeSegmentFreeTranslation(segmentId, surfaceText, value));
+      save();
+    },
+    [dispatch, save],
   );
 }
 

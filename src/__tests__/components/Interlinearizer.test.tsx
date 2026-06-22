@@ -12,6 +12,7 @@ import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
+import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -354,6 +355,7 @@ function renderInterlinearizer({
   simplifyPhrases = false,
   chapterLabelInVerse = false,
   showMorphology = false,
+  showFreeTranslation = false,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -363,6 +365,7 @@ function renderInterlinearizer({
   simplifyPhrases?: boolean;
   chapterLabelInVerse?: boolean;
   showMorphology?: boolean;
+  showFreeTranslation?: boolean;
 } = {}) {
   return render(
     withNav(
@@ -378,6 +381,7 @@ function renderInterlinearizer({
           simplifyPhrases,
           chapterLabelInVerse,
           showMorphology,
+          showFreeTranslation,
         }}
       />,
       navigate,
@@ -516,12 +520,7 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            viewOptions={{
-              hideInactiveLinkButtons: false,
-              simplifyPhrases: false,
-              chapterLabelInVerse: false,
-              showMorphology: false,
-            }}
+            viewOptions={{ ...allFalseViewOptions }}
           />,
         ),
       );
@@ -631,12 +630,7 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            viewOptions={{
-              hideInactiveLinkButtons: false,
-              simplifyPhrases: false,
-              chapterLabelInVerse: false,
-              showMorphology: false,
-            }}
+            viewOptions={{ ...allFalseViewOptions }}
           />,
         ),
       );
@@ -670,12 +664,7 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            viewOptions={{
-              hideInactiveLinkButtons: false,
-              simplifyPhrases: false,
-              chapterLabelInVerse: false,
-              showMorphology: false,
-            }}
+            viewOptions={{ ...allFalseViewOptions }}
           />,
         ),
       );
@@ -714,12 +703,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -735,12 +719,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -781,12 +760,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -821,12 +795,7 @@ describe('Interlinearizer', () => {
             analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
-            viewOptions={{
-              hideInactiveLinkButtons: false,
-              simplifyPhrases: false,
-              chapterLabelInVerse: false,
-              showMorphology: false,
-            }}
+            viewOptions={{ ...allFalseViewOptions }}
           />,
         ),
       );
@@ -920,12 +889,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -948,12 +912,7 @@ describe('Interlinearizer', () => {
             originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
           }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -970,12 +929,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -994,12 +948,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
           setPhraseMode={setPhraseMode}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -1018,12 +967,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
           setPhraseMode={setPhraseMode}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />,
       ),
     );
@@ -1041,12 +985,7 @@ describe('Interlinearizer', () => {
         analysisLanguage: 'und',
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
-        viewOptions: {
-          hideInactiveLinkButtons: false,
-          simplifyPhrases: false,
-          chapterLabelInVerse: false,
-          showMorphology: false,
-        },
+        viewOptions: { ...allFalseViewOptions },
       };
       const { container, rerender } = render(
         withNav(
@@ -1112,12 +1051,7 @@ describe('Interlinearizer', () => {
           analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
-          viewOptions={{
-            hideInactiveLinkButtons: false,
-            simplifyPhrases: false,
-            chapterLabelInVerse: false,
-            showMorphology: false,
-          }}
+          viewOptions={{ ...allFalseViewOptions }}
         />
       );
     }
@@ -1146,12 +1080,7 @@ describe('Interlinearizer', () => {
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
-        viewOptions: {
-          hideInactiveLinkButtons: false,
-          simplifyPhrases: false,
-          chapterLabelInVerse: false,
-          showMorphology: false,
-        },
+        viewOptions: { ...allFalseViewOptions },
       };
       const { container, rerender } = render(
         withNav(<Interlinearizer {...props} continuousScroll={false} />),

@@ -29,6 +29,8 @@ const DEFAULT_PROPS = {
   onChapterLabelInVerseChange: jest.fn(),
   showMorphology: false,
   onShowMorphologyChange: jest.fn(),
+  showFreeTranslation: false,
+  onShowFreeTranslationChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -124,8 +126,7 @@ describe('ViewOptionsDropdown', () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} continuousScroll />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[0]).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /continuousScroll/i })).toBeChecked();
     });
 
     it('calls onContinuousScrollChange when toggled', async () => {
@@ -139,8 +140,7 @@ describe('ViewOptionsDropdown', () => {
       );
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[0]);
+      await userEvent.click(screen.getByRole('checkbox', { name: /continuousScroll/i }));
 
       expect(onContinuousScrollChange).toHaveBeenCalledWith(true);
     });
@@ -171,13 +171,37 @@ describe('ViewOptionsDropdown', () => {
     });
   });
 
+  describe('show free translation toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showFreeTranslation />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /freeTranslation/i })).toBeChecked();
+    });
+
+    it('calls onShowFreeTranslationChange when toggled', async () => {
+      const onShowFreeTranslationChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showFreeTranslation={false}
+          onShowFreeTranslationChange={onShowFreeTranslationChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /freeTranslation/i }));
+
+      expect(onShowFreeTranslationChange).toHaveBeenCalledWith(true);
+    });
+  });
+
   describe('hide inactive link buttons toggle', () => {
     it('reflects the checked value', async () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} hideInactiveLinkButtons />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[2]).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /hideInactiveLinkButtons/i })).toBeChecked();
     });
 
     it('calls onHideInactiveLinkButtonsChange when toggled', async () => {
@@ -191,8 +215,7 @@ describe('ViewOptionsDropdown', () => {
       );
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[2]);
+      await userEvent.click(screen.getByRole('checkbox', { name: /hideInactiveLinkButtons/i }));
 
       expect(onHideInactiveLinkButtonsChange).toHaveBeenCalledWith(true);
     });
@@ -203,8 +226,7 @@ describe('ViewOptionsDropdown', () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} simplifyPhrases />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[3]).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /simplifyPhrases/i })).toBeChecked();
     });
 
     it('calls onSimplifyPhrasesChange when toggled', async () => {
@@ -218,8 +240,7 @@ describe('ViewOptionsDropdown', () => {
       );
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[3]);
+      await userEvent.click(screen.getByRole('checkbox', { name: /simplifyPhrases/i }));
 
       expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
     });
@@ -230,8 +251,7 @@ describe('ViewOptionsDropdown', () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} chapterLabelInVerse />);
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes[4]).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i })).toBeChecked();
     });
 
     it('calls onChapterLabelInVerseChange when toggled', async () => {
@@ -245,8 +265,7 @@ describe('ViewOptionsDropdown', () => {
       );
       await userEvent.click(screen.getByTestId('view-options-button'));
 
-      const checkboxes = screen.getAllByRole('checkbox');
-      await userEvent.click(checkboxes[4]);
+      await userEvent.click(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i }));
 
       expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
     });

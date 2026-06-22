@@ -3,6 +3,12 @@ import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer'
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
+import {
+  NO_OP_SEGMENTATION_DISPATCH,
+  SegmentationProvider,
+  type SegmentationContextValue,
+  type SegmentationDispatch,
+} from './SegmentationStore';
 import ContinuousView from './ContinuousView';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
@@ -62,6 +68,11 @@ type InterlinearizerProps = Readonly<{
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
+  /**
+   * Boundary-editing operations provided to the views via {@link SegmentationProvider}. Optional so
+   * isolated tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
+   */
+  segmentationDispatch?: SegmentationDispatch;
 }>;
 
 /**
@@ -87,6 +98,7 @@ function InterlinearizerInner({
   phraseMode,
   setPhraseMode,
   viewOptions,
+  segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
 }: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
@@ -126,6 +138,24 @@ function InterlinearizerInner({
 
   // Book-wide lookup indexes the views share, built in one pass over the segment list.
   const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
+
+  /** Segment id → its index in document order; used to test segment adjacency for boundary edits. */
+  const segmentOrder = useMemo(() => {
+    const order = new Map<string, number>();
+    book.segments.forEach((seg, i) => order.set(seg.id, i));
+    return order;
+  }, [book.segments]);
+
+  /** Segmentation context shared by the views — the dispatch plus the lookups its call sites need. */
+  const segmentationValue = useMemo<SegmentationContextValue>(
+    () => ({
+      dispatch: segmentationDispatch,
+      boundaryEditMode: viewOptions.boundaryEditMode,
+      segmentById,
+      segmentOrder,
+    }),
+    [segmentationDispatch, viewOptions.boundaryEditMode, segmentById, segmentOrder],
+  );
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
   const [hoveredPhraseId, setHoveredPhraseId] = useState<string | undefined>();
@@ -255,59 +285,61 @@ function InterlinearizerInner({
   );
 
   return (
-    <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
-      {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
-        <div className="tw:confirm-bar">
-          {phraseMode.kind === 'confirm-unlink' ? (
-            <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
-          ) : (
-            <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
-          )}
-        </div>
-      )}
-      <div
-        className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
-      >
-        {displayContinuousScroll && (
-          <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
-            <ContinuousView
-              book={book}
-              editPhraseSegmentId={editPhraseSegmentId}
-              focusedTokenRef={focusedTokenRef}
-              onFocusedTokenRefChange={focusToken}
-              phraseMode={phraseMode}
-              setPhraseMode={setPhraseMode}
-              tokenSegmentMap={tokenSegmentMap}
-              tokenDocOrder={tokenDocOrder}
-              wordTokenByRef={wordTokenByRef}
-              viewOptions={viewOptions}
-            />
+    <SegmentationProvider value={segmentationValue}>
+      <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
+        {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
+          <div className="tw:confirm-bar">
+            {phraseMode.kind === 'confirm-unlink' ? (
+              <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
+            ) : (
+              <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
+            )}
           </div>
         )}
+        <div
+          className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+          style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+        >
+          {displayContinuousScroll && (
+            <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
+              <ContinuousView
+                book={book}
+                editPhraseSegmentId={editPhraseSegmentId}
+                focusedTokenRef={focusedTokenRef}
+                onFocusedTokenRefChange={focusToken}
+                phraseMode={phraseMode}
+                setPhraseMode={setPhraseMode}
+                tokenSegmentMap={tokenSegmentMap}
+                tokenDocOrder={tokenDocOrder}
+                wordTokenByRef={wordTokenByRef}
+                viewOptions={viewOptions}
+              />
+            </div>
+          )}
 
-        <SegmentListView
-          book={book}
-          scrRef={scrRef}
-          focusedTokenRef={focusedTokenRef}
-          continuousScroll={continuousScroll}
-          displayContinuousScroll={displayContinuousScroll}
-          onDisplayContinuousScrollChange={setDisplayContinuousScroll}
-          consumeInternalNav={consumeInternalNav}
-          reportSettled={reportSettled}
-          phraseMode={phraseMode}
-          setPhraseMode={setPhraseMode}
-          viewOptions={viewOptions}
-          hoveredPhraseId={hoveredPhraseId}
-          setHoveredPhraseId={setHoveredPhraseId}
-          editPhraseSegmentId={editPhraseSegmentId}
-          onSelect={handleSegmentSelect}
-          tokenSegmentMap={tokenSegmentMap}
-          tokenDocOrder={tokenDocOrder}
-          wordTokenByRef={wordTokenByRef}
-        />
+          <SegmentListView
+            book={book}
+            scrRef={scrRef}
+            focusedTokenRef={focusedTokenRef}
+            continuousScroll={continuousScroll}
+            displayContinuousScroll={displayContinuousScroll}
+            onDisplayContinuousScrollChange={setDisplayContinuousScroll}
+            consumeInternalNav={consumeInternalNav}
+            reportSettled={reportSettled}
+            phraseMode={phraseMode}
+            setPhraseMode={setPhraseMode}
+            viewOptions={viewOptions}
+            hoveredPhraseId={hoveredPhraseId}
+            setHoveredPhraseId={setHoveredPhraseId}
+            editPhraseSegmentId={editPhraseSegmentId}
+            onSelect={handleSegmentSelect}
+            tokenSegmentMap={tokenSegmentMap}
+            tokenDocOrder={tokenDocOrder}
+            wordTokenByRef={wordTokenByRef}
+          />
+        </div>
       </div>
-    </div>
+    </SegmentationProvider>
   );
 }
 

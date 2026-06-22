@@ -16,6 +16,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
+import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import { GEN_1_1_BOOK, makeScrollGroupHook, makeWebViewState } from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
@@ -154,6 +155,7 @@ type CapturedInterlinearizerProps = {
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   viewOptions: ViewOptions;
+  segmentationDispatch: SegmentationDispatch;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -1024,6 +1026,115 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  describe('segmentation dispatch', () => {
+    /** A two-verse book so boundary edits produce real, non-default deltas. */
+    const TWO_VERSE_BOOK: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 1:1',
+          startRef: { book: 'GEN', chapter: 1, verse: 1 },
+          endRef: { book: 'GEN', chapter: 1, verse: 1 },
+          baselineText: 'Alpha beta.',
+          tokens: [
+            {
+              ref: 'GEN 1:1:0',
+              surfaceText: 'Alpha',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+            {
+              ref: 'GEN 1:1:6',
+              surfaceText: 'beta',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 6,
+              charEnd: 10,
+            },
+          ],
+        },
+        {
+          id: 'GEN 1:2',
+          startRef: { book: 'GEN', chapter: 1, verse: 2 },
+          endRef: { book: 'GEN', chapter: 1, verse: 2 },
+          baselineText: 'Gamma.',
+          tokens: [
+            {
+              ref: 'GEN 1:2:0',
+              surfaceText: 'Gamma',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+          ],
+        },
+      ],
+    };
+
+    /**
+     * Returns the segmentation delta from the most recent saveDraft call.
+     *
+     * @returns The persisted draft's `segmentation`, or `undefined` when not set / no call.
+     */
+    function lastPersistedSegmentation(): DraftProject['segmentation'] {
+      const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
+      const last = calls[calls.length - 1];
+      const json = last?.[2];
+      return typeof json === 'string' ? JSON.parse(json).segmentation : undefined;
+    }
+
+    it('persists split, merge, and move boundary edits made through the dispatch', async () => {
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+
+      jest.useFakeTimers();
+      // Split verse 1 before "beta" — a non-default delta is persisted.
+      act(() => dispatch.split('GEN 1:1:6'));
+      act(() => jest.advanceTimersByTime(300));
+      expect(lastPersistedSegmentation()).toEqual({
+        removedVerseStarts: [],
+        addedStarts: ['GEN 1:1:6'],
+      });
+
+      // Merge verse 2 into its predecessor — adds a removed verse start.
+      act(() => dispatch.merge('GEN 1:2:0'));
+      act(() => jest.advanceTimersByTime(300));
+      expect(lastPersistedSegmentation()?.removedVerseStarts).toContain('GEN 1:2:0');
+
+      // Move the verse-2 boundary back onto "beta".
+      act(() => dispatch.move('GEN 1:2:0', 'GEN 1:1:6'));
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+      expect(lastPersistedSegmentation()).toBeDefined();
+    });
+
+    it('clears the segmentation field when an edit restores the default segmentation', async () => {
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+
+      jest.useFakeTimers();
+      // Merging the book's first token is a no-op, so the result is the default segmentation and the
+      // persisted field is cleared to undefined.
+      act(() => dispatch.merge('GEN 1:1:0'));
+      act(() => jest.advanceTimersByTime(300));
+      jest.useRealTimers();
+      expect(lastPersistedSegmentation()).toBeUndefined();
+    });
+  });
+
   describe('save command', () => {
     it('saves the draft analysis to the active project when Save is clicked with an active project', async () => {
       const draftAnalysis = emptyAnalysis();
@@ -1041,6 +1152,8 @@ describe('InterlinearizerLoader', () => {
         'interlinearizer.saveAnalysis',
         'proj-1',
         JSON.stringify(draftAnalysis),
+        // The draft has no custom boundaries, so Save sends "null" to clear any stored ones.
+        'null',
       );
     });
 

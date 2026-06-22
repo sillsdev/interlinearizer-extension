@@ -74,3 +74,23 @@ export function Link2Off(props: Readonly<{ size?: number; className?: string }>)
 export function Settings(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="settings-icon" {...props} />;
 }
+
+/**
+ * Stub for the Combine icon used by the merge boundary control.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a merge icon stub in tests.
+ */
+export function Combine(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="combine-icon" {...props} />;
+}
+
+/**
+ * Stub for the Scissors icon used by the split boundary control.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a split icon stub in tests.
+ */
+export function Scissors(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="scissors-icon" {...props} />;
+}

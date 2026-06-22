@@ -162,11 +162,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
 
     /**
-     * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView
-     * after each gloss write so that analysis changes survive tab restores and project switches.
+     * Persists an updated `TextAnalysis` (and optionally custom segment boundaries) for an
+     * interlinearizer project. Called from the WebView on Save so analysis and boundary changes
+     * survive tab restores and project switches.
      *
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param analysisJson JSON-stringified `TextAnalysis` to persist.
+     * @param segmentationJson Optional JSON-stringified `SegmentationDelta` to persist, or the
+     *   string `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
+     *   existing boundaries unchanged.
      * @returns Promise that resolves to void once the analysis has been written to storage.
      * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
      *   before rethrowing so callers do not need to send a second notification.
@@ -174,6 +178,7 @@ declare module 'papi-shared-types' {
     'interlinearizer.saveAnalysis': (
       interlinearProjectId: string,
       analysisJson: string,
+      segmentationJson?: string,
     ) => Promise<void>;
 
     /**
@@ -1095,7 +1100,47 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §6 InterlinearProject — persisted project envelope
+  // §6 SegmentationDelta — user-defined segment boundaries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * A user's custom segment boundaries, stored as a **delta from the default one-segment-per-verse
+   * segmentation** rather than as explicit segment definitions.
+   *
+   * The text layer is rebuilt from USJ on every load as one `Segment` per verse (see {@link Book}).
+   * A segment is otherwise just a maximal contiguous run of the book's document-order token stream
+   * between "start" tokens; the default start tokens are each verse's first token. This delta
+   * records where the user's boundaries differ from that default:
+   *
+   * - A verse's first token listed in `removedVerseStarts` no longer starts a segment, so that verse
+   *   is **merged** into the preceding segment.
+   * - A mid-verse token listed in `addedStarts` starts a new segment, **splitting** its verse.
+   *
+   * Boundaries are anchored to token refs (stable opaque ids), so the model degrades gracefully
+   * when the baseline text drifts: an anchor whose token no longer exists is ignored on load,
+   * leaving every other boundary intact. Because a segment can only ever be a contiguous run
+   * between start tokens, discontiguous segments are unrepresentable by construction.
+   *
+   * Absent (`undefined`) ⇒ the default verse segmentation. The empty delta (both arrays empty) is
+   * equivalent.
+   */
+  export interface SegmentationDelta {
+    /**
+     * Word-token refs that are a verse's first token in the default segmentation but should **not**
+     * start a segment — i.e. the verse is merged into the preceding segment. A ref whose token no
+     * longer exists is ignored on load.
+     */
+    removedVerseStarts: string[];
+
+    /**
+     * Mid-verse word-token refs that should start a new segment — i.e. the verse is split before
+     * this token. A ref whose token no longer exists is ignored on load.
+     */
+    addedStarts: string[];
+  }
+
+  // ---------------------------------------------------------------------------
+  // §7 InterlinearProject — persisted project envelope
   // ---------------------------------------------------------------------------
 
   /**
@@ -1166,6 +1211,13 @@ declare module 'interlinearizer' {
      * aligns source and target tokens.
      */
     links?: AlignmentLink[];
+
+    /**
+     * User-defined segment boundaries as a delta from the default verse segmentation. Absent
+     * (`undefined`) ⇒ the default one-segment-per-verse segmentation. See
+     * {@link SegmentationDelta}.
+     */
+    segmentation?: SegmentationDelta;
   }
 
   /**
@@ -1218,10 +1270,17 @@ declare module 'interlinearizer' {
      * project.
      */
     dirty: boolean;
+
+    /**
+     * User-defined segment boundaries being edited, as a delta from the default verse segmentation.
+     * Absent (`undefined`) ⇒ the default one-segment-per-verse segmentation. Carried to the active
+     * project on Save. See {@link SegmentationDelta}.
+     */
+    segmentation?: SegmentationDelta;
   }
 
   // ---------------------------------------------------------------------------
-  // §7 ActiveProject — runtime pairing of project envelope and text layers
+  // §8 ActiveProject — runtime pairing of project envelope and text layers
   // ---------------------------------------------------------------------------
 
   /**

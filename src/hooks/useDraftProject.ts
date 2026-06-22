@@ -1,6 +1,11 @@
 /** @file Hook owning the always-present, auto-saved draft buffer for one source project. */
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  DraftProject,
+  InterlinearProject,
+  SegmentationDelta,
+  TextAnalysis,
+} from 'interlinearizer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { removeBookFromAnalysis } from '../utils/analysis-book';
@@ -11,7 +16,7 @@ const AUTOSAVE_DEBOUNCE_MS = 300;
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
   InterlinearProject,
-  'analysis' | 'analysisLanguages' | 'targetProjectId'
+  'analysis' | 'analysisLanguages' | 'targetProjectId' | 'segmentation'
 >;
 
 /** Configuration for starting a fresh, empty draft via {@link UseDraftProjectResult.newDraft}. */
@@ -59,6 +64,13 @@ export type UseDraftProjectResult = {
    * @param analysis - The updated analysis from the store.
    */
   autosaveAnalysis: (analysis: TextAnalysis) => void;
+  /**
+   * Persists an edited segment-boundary delta into the draft and marks it dirty. Pass `undefined`
+   * (or a default/empty delta) to clear custom boundaries back to the default verse segmentation.
+   *
+   * @param segmentation - The updated boundary delta, or `undefined` for the default segmentation.
+   */
+  autosaveSegmentation: (segmentation: SegmentationDelta | undefined) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
@@ -239,12 +251,35 @@ export default function useDraftProject(
     [persist],
   );
 
+  const autosaveSegmentation = useCallback(
+    (segmentation: SegmentationDelta | undefined) => {
+      const { current } = draftRef;
+      /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
+      if (!current) return;
+
+      const next: DraftProject = { ...current, dirty: true };
+      // Store custom boundaries when present; clear the field for the default segmentation so the
+      // persisted draft stays minimal.
+      if (segmentation === undefined) delete next.segmentation;
+      else next.segmentation = segmentation;
+      draftRef.current = next;
+      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = setTimeout(() => {
+        autosaveTimeoutRef.current = undefined;
+        persist(next);
+      }, AUTOSAVE_DEBOUNCE_MS);
+      setDirty(true);
+    },
+    [persist],
+  );
+
   const loadFromProject = useCallback(
     (project: OpenableProject) => {
       applyReplacement({
         sourceProjectId,
         analysisLanguages: project.analysisLanguages,
         ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
+        ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
         analysis: project.analysis,
         dirty: false,
       });
@@ -292,7 +327,10 @@ export default function useDraftProject(
     // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
     // draft. The active project is intentionally left untouched, so a subsequent Save still targets
     // it. Per-book wipe stays dirty, since it is a partial edit the user will usually want to save.
-    applyReplacement({ ...current, analysis: emptyAnalysis(), dirty: false });
+    // Custom segment boundaries are part of the working state, so a whole-draft wipe clears them too.
+    const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
+    delete next.segmentation;
+    applyReplacement(next);
   }, [applyReplacement]);
 
   const markSynced = useCallback(
@@ -328,6 +366,7 @@ export default function useDraftProject(
     dirty,
     getDraftSnapshot,
     autosaveAnalysis,
+    autosaveSegmentation,
     loadFromProject,
     newDraft,
     wipeBook,

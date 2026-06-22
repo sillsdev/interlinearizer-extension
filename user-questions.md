@@ -86,3 +86,41 @@ Decisions made during development that we'd like reviewed:
     (the less destructive option) and disables that option when no book is loaded. Alternative: keep
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
+
+## User-defined segment boundaries
+
+Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
+their own segment boundaries: a **Edit segment boundaries** view toggle exposes per-slot **merge**
+(combine a segment into the one before it) and **split** (start a new segment at a token) controls,
+and linking a phrase across a verse boundary pulls the adjacent segment's **edge** token into the
+focused segment (only the immediate adjacent-edge link buttons are active for this). Boundaries are
+stored as a delta from the default verse segmentation on the draft and carried to the project on
+Save; discontiguous segments are not supported.
+
+Decisions made during development that we'd like reviewed:
+
+1. **Merged-segment separator.** When two verses are merged into one segment, their baseline texts
+   are joined with a single space. This is reasonable for whitespace-delimited scripts but wrong for
+   scriptio continua (Chinese, Thai, …) and for cases where the USFM implied a different break.
+   Should the separator be configurable per project/writing system, or derived from the source?
+
+2. **Split-segment baseline display.** A segment created by splitting a verse currently keeps the
+   **whole verse's** baseline text (token offsets unchanged; the invariant holds trivially). In the
+   baseline-text display mode this duplicates the verse text under each half. The alternative is to
+   trim each half's baseline to just its tokens' span (cleaner, but drops edge whitespace and
+   punctuation). Current choice: keep the full-verse baseline for simplicity and safety.
+
+3. **Free translation when merging.** A segment's free translation is keyed by segment id. An
+   untouched or merged segment keeps the **leading** verse's id (so its free translation survives);
+   the **absorbed** verse's free translation is retained in storage but hidden while merged, and
+   reappears if the segments are split back apart. Splitting keeps the first half's free translation
+   and starts later halves blank. Is "hide-and-restore" the desired behavior, or should merging
+   prompt the user to keep/discard the absorbed verse's translation?
+
+4. **Boundary edits and the unsaved indicator.** Merging/splitting/pulling a boundary marks the
+   draft dirty (lighting the tab `●`), exactly like a gloss edit. Confirm this is desired, or whether
+   boundary edits should be treated differently from analysis edits.
+
+5. **Boundary editing is a transient mode.** The **Edit segment boundaries** toggle is local UI
+   state (off on reload), not a persisted project setting, since it changes what the link slots do
+   rather than a display preference. Confirm this is the right treatment.

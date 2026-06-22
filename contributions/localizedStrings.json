@@ -42,7 +42,10 @@
       "%interlinearizer_morphemeGloss_label%": "Gloss for morpheme {form}",
       "%interlinearizer_tokenChip_editMorphemes%": "Edit morpheme breakdown for {token}",
       "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",
-      "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Cross-segment phrases are not supported. This link button is outside the current segment.",
+      "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Only the edge token of an adjacent segment can be linked across a boundary.",
+      "%interlinearizer_viewOption_boundaryEditMode%": "Edit segment boundaries",
+      "%interlinearizer_boundaryControl_merge%": "Merge with previous segment",
+      "%interlinearizer_boundaryControl_split%": "Split segment here",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",
       "%interlinearizer_modal_create_name_label%": "Name (optional)",

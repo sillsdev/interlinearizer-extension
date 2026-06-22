@@ -24,4 +24,5 @@ export const allFalseViewOptions: ViewOptions = {
   chapterLabelInVerse: false,
   showMorphology: false,
   showFreeTranslation: false,
+  boundaryEditMode: false,
 };

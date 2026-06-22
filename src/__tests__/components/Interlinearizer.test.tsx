@@ -423,6 +423,7 @@ function renderInterlinearizer({
           chapterLabelInVerse,
           showMorphology,
           showFreeTranslation,
+          boundaryEditMode: false,
         }}
       />,
       navigate,

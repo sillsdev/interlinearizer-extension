@@ -19,4 +19,9 @@ export type ViewOptions = Readonly<{
   showMorphology: boolean;
   /** When true, a free-translation input is shown beneath each segment's tokens or baseline text. */
   showFreeTranslation: boolean;
+  /**
+   * When true, the link slots between phrases show merge/split controls for editing segment
+   * boundaries instead of the phrase link/unlink icons.
+   */
+  boundaryEditMode: boolean;
 }>;

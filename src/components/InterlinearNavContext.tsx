@@ -45,19 +45,6 @@ export type FadePhase = 'idle' | 'out' | 'in';
 export type NavOrigin = 'internal' | 'external';
 
 /**
- * Normalizes a chapter-level reference (verse 0, as the scripture controls emit for a chapter
- * selection) to the chapter's first verse. The host echoes navigations back through this same
- * mapping ({@link InterlinearNavProvider}'s `liveScrRef`), so applying it everywhere a reference is
- * keyed or compared keeps the stamped-at-click identity and the delivered identity in lockstep.
- *
- * @param ref - The reference to normalize.
- * @returns `ref` unchanged, or a copy with `verseNum` 0 mapped to 1.
- */
-export function normalizeScrRef(ref: SerializedVerseRef): SerializedVerseRef {
-  return ref.verseNum === 0 ? { ...ref, verseNum: 1 } : ref;
-}
-
-/**
  * Compares the verse coordinate of two serialized references: book, chapter, and verse number. Used
  * to detect the host's duplicate deliveries — the scripture picker fires each external navigation
  * twice in quick succession, as fresh objects naming the same verse. The optional `verse` segment
@@ -76,16 +63,15 @@ function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean 
 /**
  * Builds a stable string key identifying the verse a reference names. Used to match an internal
  * navigation against the `liveScrRef` the host later delivers, so the segment window can tell an
- * internally-originated change apart from an external one. Keys the {@link normalizeScrRef}-mapped
- * reference so a stamp and the later delivered (already-normalized) reference can never diverge on
- * the verse-0 boundary.
+ * internally-originated change apart from an external one. Verse 0 is keyed verbatim (as its own
+ * verse) so a deliberate navigation to a chapter's verse-0 superscription is distinct from verse
+ * 1.
  *
  * @param ref - The scripture reference to key.
  * @returns A `book:chapter:verse` string uniquely identifying the verse.
  */
 export function verseKey(ref: SerializedVerseRef): string {
-  const normalized = normalizeScrRef(ref);
-  return `${normalized.book}:${normalized.chapterNum}:${normalized.verseNum}`;
+  return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
 }
 
 /**
@@ -127,12 +113,16 @@ export interface InterlinearNav {
    */
   rawScrRef: SerializedVerseRef;
   /**
-   * `rawScrRef` with a chapter-level (verse 0) reference normalized to verse 1. Selecting a chapter
-   * in the scripture controls yields `verseNum: 0`, which names the chapter rather than a verse —
-   * no segment has verse 0, so the active-verse lookup, the `isActive` highlight, and the
-   * continuous strip's focus resolution would all miss, leaving the list parked on the book's first
-   * phrase with nothing highlighted. Mapping verse 0 to the chapter's first verse makes every
-   * downstream consumer resolve the intended verse.
+   * The active reference, equal to `rawScrRef` except that a verse-0 reference naming the chapter
+   * already shown is held sticky on the current verse. A verse-0 reference is otherwise passed
+   * through verbatim: when it names a chapter with a verse-0 superscription segment, that segment
+   * becomes the active verse. Whether a given chapter actually has verse-0 content is unknown here
+   * (the book is not loaded at this layer), so the loader resolves a verse-0 reference with no
+   * matching segment back to the chapter's first numbered verse before rendering.
+   *
+   * The sticky exception exists because, after a verse navigation, the host re-broadcasts the
+   * chapter as a separate `verseNum: 0` reference (an echo of the current location, not a real
+   * move); treating that as a jump to verse 0 would yank the view off the verse the user is on.
    */
   liveScrRef: SerializedVerseRef;
   /**
@@ -235,17 +225,16 @@ export function InterlinearNavProvider({
    * The last committed {@link liveScrRef}, mirrored so the verse-0 stickiness below can compare the
    * incoming `rawScrRef` against the verse currently shown.
    */
-  const liveScrRefRef = useRef<SerializedVerseRef>(normalizeScrRef(rawScrRef));
+  const liveScrRefRef = useRef<SerializedVerseRef>(rawScrRef);
 
   // After a verse navigation the host re-broadcasts the *chapter* to the scroll group as a separate
-  // `verseNum: 0` reference (an echo of the current location, not a real move). Normalizing that to
-  // verse 1 unconditionally would read as a fresh navigation to the chapter's first verse, fading and
-  // recentering the views off the verse the user is actually on. So a verse-0 reference that names the
-  // book+chapter already shown is treated as sticky: keep the current `liveScrRef` (its real verse)
-  // rather than snapping to verse 1. A verse-0 reference for a *different* chapter is a genuine
-  // chapter jump and normalizes to verse 1 as before. When two *different* deliveries normalize to
-  // the same verse (a verse-0 chapter jump followed by its verse-1 form), the previously committed
-  // object is reused so the second delivery never reads as a fresh navigation downstream.
+  // `verseNum: 0` reference (an echo of the current location, not a real move). Treating that as a
+  // jump to verse 0 would yank the views off the verse the user is actually on, so a verse-0
+  // reference that names the book+chapter already shown is held sticky: keep the current `liveScrRef`
+  // (its real verse). Every other reference — including a verse-0 reference for a *different* chapter
+  // (a genuine chapter jump, which the loader resolves to the verse-0 superscription when one exists,
+  // else to verse 1) — passes through verbatim. The duplicate-delivery guard reuses the previously
+  // committed object when a re-send is value-equal, so a duplicate never reads as a fresh navigation.
   const liveScrRef = useMemo(() => {
     const prev = liveScrRefRef.current;
     if (
@@ -255,8 +244,7 @@ export function InterlinearNavProvider({
     ) {
       return prev;
     }
-    const normalized = normalizeScrRef(rawScrRef);
-    return areScrRefsEqual(normalized, prev) ? prev : normalized;
+    return areScrRefsEqual(rawScrRef, prev) ? prev : rawScrRef;
   }, [rawScrRef]);
   /**
    * The {@link liveScrRef} committed on the previous render, captured before the mirror update below

@@ -21,6 +21,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
+import { isSameVerse } from '../utils/verse-ref';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -234,6 +235,18 @@ function InterlinearizerLoaderInner({
     projectId,
     scrRef,
   });
+
+  // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
+  // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
+  // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
+  // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
+  // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
+  // rather than leaving nothing highlighted. Non-verse-0 references pass through unchanged.
+  const activeScrRef = useMemo(() => {
+    if (scrRef.verseNum !== 0 || !book) return scrRef;
+    const hasVerseZero = book.segments.some((segment) => isSameVerse(segment.startRef, scrRef));
+    return hasVerseZero ? scrRef : { ...scrRef, verseNum: 1 };
+  }, [scrRef, book]);
 
   const hasError = !!bookError || !!tokenizeError;
   const isSettingLoading =
@@ -472,7 +485,7 @@ function InterlinearizerLoaderInner({
             key={`${draftVersion}:${book.bookRef}`}
             book={book}
             continuousScroll={continuousScroll}
-            scrRef={scrRef}
+            scrRef={activeScrRef}
             analysisLanguage={analysisLanguage}
             initialAnalysis={draft?.analysis}
             onSaveAnalysis={autosaveAnalysis}

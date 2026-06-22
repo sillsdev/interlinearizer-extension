@@ -64,9 +64,13 @@ export interface UsjDocument {
 // ---------------------------------------------------------------------------
 
 /**
- * Para markers whose content is not part of the verse baseline text (headings, titles, spacing,
- * speaker IDs, acrostic headings, etc.). Verse-content para markers (p, m, pi, q*, etc.) are absent
- * from this set and have their text accumulated as usual.
+ * Para markers whose content is not part of the verse baseline text (headings, spacing, speaker
+ * IDs, acrostic headings, etc.). Verse-content para markers (p, m, pi, q*, etc.) are absent from
+ * this set and have their text accumulated as usual.
+ *
+ * The descriptive-title marker `d` (a Psalm superscription, e.g. "A Psalm of David") is
+ * deliberately absent: its text is genuine scripture that the source omits a verse marker for, so
+ * it is accumulated as the chapter's verse-0 content (see {@link handleChapterNode}).
  */
 const HEADING_PARA_MARKERS = new Set([
   // Major section headings and reference ranges
@@ -75,7 +79,7 @@ const HEADING_PARA_MARKERS = new Set([
   'ms2',
   'ms3',
   'mr',
-  // Section headings, reference ranges, and descriptive titles
+  // Section headings and reference ranges
   's',
   's1',
   's2',
@@ -83,7 +87,6 @@ const HEADING_PARA_MARKERS = new Set([
   's4',
   'sr',
   'r',
-  'd',
   // Speaker, acrostic heading, blank lines
   'sp',
   'qa',
@@ -110,8 +113,33 @@ interface TraversalState {
   seenVerseIds: Set<string>;
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: { sid: string; text: string } | undefined;
+  /**
+   * `true` when `currentVerse` is the synthetic verse-0 scope opened at a chapter boundary (see
+   * {@link handleChapterNode}). A synthetic verse-0 is emitted only when it accumulates text, so
+   * chapters with no superscription don't produce an empty verse-0; real verse markers are always
+   * emitted even when empty.
+   */
+  currentVerseIsSynthetic: boolean;
   /** Completed verses in document order. */
   verses: RawVerse[];
+}
+
+/**
+ * Closes the verse currently being accumulated (if any): trims trailing whitespace and pushes it to
+ * the completed-verses list, then clears the open-verse state. A synthetic verse-0 scope is dropped
+ * rather than pushed when it accumulated no text, so chapters without a superscription emit no
+ * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
+ *
+ * @param state - Shared traversal state updated in place.
+ */
+function closeCurrentVerse(state: TraversalState): void {
+  if (state.currentVerse === undefined) return;
+  state.currentVerse.text = state.currentVerse.text.trimEnd();
+  if (!(state.currentVerseIsSynthetic && state.currentVerse.text.length === 0)) {
+    state.verses.push(state.currentVerse);
+  }
+  state.currentVerse = undefined;
+  state.currentVerseIsSynthetic = false;
 }
 
 /**
@@ -126,17 +154,24 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
 }
 
 /**
- * Closes the current open verse (if any) when a `chapter` node is encountered, then recurses into
- * the chapter's content to pick up verses inside it.
+ * Closes the current open verse (if any) when a `chapter` node is encountered, then opens a
+ * synthetic verse-0 scope for the new chapter before recursing into its content.
  *
- * @param node - The `chapter` USJ node.
+ * The verse-0 scope captures content that precedes the chapter's first `verse` marker — chiefly the
+ * `d` descriptive title (a Psalm superscription). Heading paragraphs (see
+ * {@link HEADING_PARA_MARKERS}) are still skipped while it is open, so a chapter with only a section
+ * heading before verse 1 accumulates nothing and the empty scope is dropped on close. The scope's
+ * SID is `"<book> <chapter>:0"`, parsed downstream into a verse-0 `Segment`. When the chapter node
+ * carries no `number` the scope cannot be named, so it is not opened.
+ *
+ * @param node - The `chapter` USJ node; `node.number` is the chapter number (e.g. `"3"`).
  * @param state - Shared traversal state updated in place.
  */
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
-  if (state.currentVerse !== undefined) {
-    state.currentVerse.text = state.currentVerse.text.trimEnd();
-    state.verses.push(state.currentVerse);
-    state.currentVerse = undefined;
+  closeCurrentVerse(state);
+  if (node.number) {
+    state.currentVerse = { sid: `${state.bookCode} ${node.number}:0`, text: '' };
+    state.currentVerseIsSynthetic = true;
   }
   if (node.content) traverse(node.content, state);
 }
@@ -150,10 +185,7 @@ function handleChapterNode(node: UsjNode, state: TraversalState): void {
  * @throws {SyntaxError} If the `verse` SID has already been seen (duplicate verse SID).
  */
 function handleVerseNode(node: UsjNode, state: TraversalState): void {
-  if (state.currentVerse !== undefined) {
-    state.currentVerse.text = state.currentVerse.text.trimEnd();
-    state.verses.push(state.currentVerse);
-  }
+  closeCurrentVerse(state);
   if (!node.sid) throw new SyntaxError('Invalid USJ: verse marker missing required sid attribute');
   if (state.seenVerseIds.has(node.sid))
     throw new SyntaxError(`Invalid USJ: duplicate verse SID "${node.sid}"`);
@@ -261,6 +293,10 @@ function fnv1a32(s: string): string {
  * verse scope are accumulated into `RawVerse.text`; `note` nodes are skipped entirely. Verse
  * markers with no following text produce an empty `RawVerse` (`text: ""`).
  *
+ * Content preceding a chapter's first `verse` marker — chiefly a `d` descriptive title (Psalm
+ * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
+ * but only when it has text; see {@link handleChapterNode}.
+ *
  * @param usj - USJ document returned by `useProjectData('platformScripture.USJ_Book', ...)`.
  * @param writingSystem - BCP 47 tag for the baseline, from `platform.languageTag`.
  * @returns A `RawBook` with `bookCode`, `writingSystem`, `contentHash`, and `verses` populated.
@@ -272,15 +308,13 @@ export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): Raw
     bookCode: '',
     seenVerseIds: new Set<string>(),
     currentVerse: undefined,
+    currentVerseIsSynthetic: false,
     verses: [],
   };
 
   traverse(usj.content, state);
 
-  if (state.currentVerse !== undefined) {
-    state.currentVerse.text = state.currentVerse.text.trimEnd();
-    state.verses.push(state.currentVerse);
-  }
+  closeCurrentVerse(state);
 
   if (!state.bookCode)
     throw new SyntaxError('Invalid USJ: no book marker with a code attribute found');

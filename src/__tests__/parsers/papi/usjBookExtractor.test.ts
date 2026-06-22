@@ -372,4 +372,111 @@ describe('extractBookFromUsj', () => {
     };
     expect(() => extractBookFromUsj(usj, WS)).toThrow('duplicate verse SID "GEN 1:1"');
   });
+
+  it('captures a d descriptive title before verse 1 as verse 0', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '3', sid: 'PSA 3' },
+        {
+          type: 'para',
+          marker: 'd',
+          content: ['A Psalm by David, when he fled from Absalom his son.'],
+        },
+        {
+          type: 'para',
+          marker: 'q1',
+          content: [
+            { type: 'verse', sid: 'PSA 3:1' },
+            'Yahweh, how my adversaries have increased!',
+          ],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(2);
+    expect(verses[0]).toEqual({
+      sid: 'PSA 3:0',
+      text: 'A Psalm by David, when he fled from Absalom his son.',
+    });
+    expect(verses[1]).toEqual({
+      sid: 'PSA 3:1',
+      text: 'Yahweh, how my adversaries have increased!',
+    });
+  });
+
+  it('does not emit a verse 0 when only a section heading precedes verse 1', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        { type: 'chapter', number: '1', sid: 'GEN 1' },
+        { type: 'para', marker: 's1', content: ['The Creation'] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:1' }, 'In the beginning.'],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(1);
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'In the beginning.' });
+  });
+
+  it('captures a verse 0 that ends the document with no following numbered verse', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '3', sid: 'PSA 3' },
+        { type: 'para', marker: 'd', content: ['A Psalm by David.'] },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toEqual([{ sid: 'PSA 3:0', text: 'A Psalm by David.' }]);
+  });
+
+  it('does not open a verse 0 scope for a chapter node without a number', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        // A chapter node missing its number cannot name a verse-0 SID, so pre-verse content is
+        // dropped rather than captured.
+        { type: 'chapter', sid: 'GEN 1' },
+        { type: 'para', marker: 'd', content: ['Stray title.'] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:1' }, 'In the beginning.'],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toEqual([{ sid: 'GEN 1:1', text: 'In the beginning.' }]);
+  });
+
+  it('captures an explicit verse-0 marker as verse 0', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '3', sid: 'PSA 3' },
+        {
+          type: 'para',
+          marker: 'q1',
+          content: [
+            { type: 'verse', sid: 'PSA 3:0' },
+            'A Psalm by David.',
+            { type: 'verse', sid: 'PSA 3:1' },
+            'Yahweh, how my adversaries have increased!',
+          ],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses).toHaveLength(2);
+    expect(verses[0]).toEqual({ sid: 'PSA 3:0', text: 'A Psalm by David.' });
+    expect(verses[1]).toEqual({
+      sid: 'PSA 3:1',
+      text: 'Yahweh, how my adversaries have increased!',
+    });
+  });
 });

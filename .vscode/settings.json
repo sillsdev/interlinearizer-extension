@@ -61,5 +61,6 @@
       "backgroundColor": "none",
       "overviewRulerColor": "#6cf5ff60"
     }
-  ]
+  ],
+  "js/ts.tsdk.path": "node_modules/typescript/lib"
 }

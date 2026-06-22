@@ -74,12 +74,13 @@ describe('InterlinearNavContext', () => {
     expect(result.current.liveScrRef).toEqual(ref);
   });
 
-  it('normalizes a chapter-level (verse 0) reference to verse 1 in liveScrRef', () => {
+  it('passes a chapter-level (verse 0) reference through to liveScrRef unchanged', () => {
+    // Verse 0 is a real verse (a Psalm superscription), so it is no longer mapped to verse 1 here.
+    // The loader resolves it to verse 1 only when the loaded book has no verse-0 segment.
     const ref: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 0 };
     const { result } = renderNav(makeScrollGroupHook(ref));
 
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 1 });
-    // The raw reference still reports verse 0 so the editable nav controls reflect the selection.
+    expect(result.current.liveScrRef).toEqual(ref);
     expect(result.current.rawScrRef).toEqual(ref);
   });
 
@@ -100,9 +101,10 @@ describe('InterlinearNavContext', () => {
     expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
   });
 
-  it('normalizes a verse-0 reference that names a different chapter (a real chapter jump)', () => {
+  it('passes a verse-0 reference for a different chapter through as a real chapter jump', () => {
     // A verse-0 reference for a chapter other than the one shown is a genuine chapter navigation, not
-    // an echo, so it still normalizes to that chapter's first verse.
+    // an echo, so it is honored as verse 0 (the loader maps it to verse 1 if that chapter has no
+    // verse-0 segment).
     const { result, setRef, rerender } = renderNavMutable({
       book: 'GEN',
       chapterNum: 3,
@@ -112,7 +114,7 @@ describe('InterlinearNavContext', () => {
     act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
     rerender();
 
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
   });
 
   describe('duplicate host deliveries', () => {
@@ -136,10 +138,10 @@ describe('InterlinearNavContext', () => {
       expect(result.current.liveScrRef).toBe(liveBefore);
     });
 
-    it('keeps liveScrRef identity when a verse-0 chapter jump is followed by its verse-1 form', () => {
-      // A chapter jump can arrive as a verse-0 reference (normalized to verse 1) followed by the
-      // explicit verse-1 reference. The raw references differ, but both normalize to the same
-      // verse, so the committed liveScrRef object must be reused for the second delivery.
+    it('treats a verse-0 chapter jump and its verse-1 form as two distinct deliveries', () => {
+      // A chapter jump can arrive as a verse-0 reference followed by an explicit verse-1 reference.
+      // Verse 0 and verse 1 are now distinct verses (verse 0 is the superscription), so the second
+      // delivery is a genuine move to verse 1 rather than a deduped duplicate.
       const { result, setRef, rerender } = renderNavMutable({
         book: 'GEN',
         chapterNum: 3,
@@ -149,12 +151,12 @@ describe('InterlinearNavContext', () => {
       act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
       rerender();
       const liveAfterJump = result.current.liveScrRef;
-      expect(liveAfterJump).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
+      expect(liveAfterJump).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
 
       act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 1 }));
       rerender();
 
-      expect(result.current.liveScrRef).toBe(liveAfterJump);
+      expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
     });
 
     it('reuses the previous reference when a duplicate differs only in the verse segment string', () => {
@@ -271,16 +273,20 @@ describe('InterlinearNavContext', () => {
       }
     });
 
-    it('matches a verse-0 internal mark against the host-normalized verse-1 reference', () => {
-      // An internal navigation stamped at chapter granularity (verse 0) must still be consumable
-      // when the host echoes it back normalized to the chapter's first verse (verse 1) — the keys
-      // are computed through the same normalization so they cannot diverge on the verse-0 boundary.
+    it('keys a verse-0 internal mark to verse 0, distinct from verse 1', () => {
+      // Verse 0 (a superscription) is its own verse, so a verse-0 internal navigation is consumable
+      // only by a verse-0 reference — not by verse 1 of the same chapter.
       const { result } = renderNav(
         makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
       );
 
       act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
       expect(result.current.consumeInternalNav({ book: 'GEN', chapterNum: 3, verseNum: 1 })).toBe(
+        false,
+      );
+
+      act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
+      expect(result.current.consumeInternalNav({ book: 'GEN', chapterNum: 3, verseNum: 0 })).toBe(
         true,
       );
     });

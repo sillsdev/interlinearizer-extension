@@ -592,6 +592,7 @@ describe('InterlinearizerLoader', () => {
     expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
@@ -632,15 +633,6 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('show-morphology-toggle'));
     expect(onChangeByKey.get('interlinearizer.showMorphology')).toHaveBeenCalledWith(true);
-  });
-
-  it('passes showFreeTranslation through to Interlinearizer from useOptimisticBooleanSetting', async () => {
-    mockOptimisticSetting(true);
-    await act(async () => {
-      renderLoader();
-    });
-
-    expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(true);
   });
 
   it('wires ViewOptionsDropdown show-free-translation to onChange from useOptimisticBooleanSetting', async () => {

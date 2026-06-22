@@ -130,6 +130,11 @@ interface TraversalState {
  * rather than pushed when it accumulated no text, so chapters without a superscription emit no
  * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
  *
+ * Every emitted verse's SID is recorded in `seenVerseIds`. Real verse markers are already recorded
+ * when opened (see {@link handleVerseNode}), so this matters for synthetic verse-0 scopes: it lets a
+ * later explicit verse marker with the same SID be rejected as a duplicate rather than silently
+ * emitting two verses with the same ID.
+ *
  * @param state - Shared traversal state updated in place.
  */
 function closeCurrentVerse(state: TraversalState): void {
@@ -137,6 +142,7 @@ function closeCurrentVerse(state: TraversalState): void {
   state.currentVerse.text = state.currentVerse.text.trimEnd();
   if (!(state.currentVerseIsSynthetic && state.currentVerse.text.length === 0)) {
     state.verses.push(state.currentVerse);
+    state.seenVerseIds.add(state.currentVerse.sid);
   }
   state.currentVerse = undefined;
   state.currentVerseIsSynthetic = false;

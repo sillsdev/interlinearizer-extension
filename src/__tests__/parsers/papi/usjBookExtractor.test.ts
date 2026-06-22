@@ -479,4 +479,19 @@ describe('extractBookFromUsj', () => {
       text: 'Yahweh, how my adversaries have increased!',
     });
   });
+
+  it('throws when an explicit verse-0 marker duplicates a non-empty synthetic verse 0', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'PSA', content: [] },
+        { type: 'chapter', number: '3', sid: 'PSA 3' },
+        // A `d` descriptive title opens a non-empty synthetic verse 0 (PSA 3:0)...
+        { type: 'para', marker: 'd', content: ['A Psalm by David.'] },
+        // ...then an explicit verse-0 marker with the same SID must be rejected as a duplicate
+        // rather than silently emitting two PSA 3:0 verses.
+        { type: 'para', marker: 'q1', content: [{ type: 'verse', sid: 'PSA 3:0' }, 'Yahweh.'] },
+      ],
+    };
+    expect(() => extractBookFromUsj(usj, WS)).toThrow('duplicate verse SID "PSA 3:0"');
+  });
 });

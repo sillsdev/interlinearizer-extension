@@ -12,7 +12,7 @@ import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import { SegmentView } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import { makePhraseLink } from '../test-helpers';
-import { withAnalysisStore } from './test-helpers';
+import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -213,13 +213,7 @@ function requiredProps(): {
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
     wordTokenByRef: new Map(),
-    viewOptions: {
-      hideInactiveLinkButtons: false,
-      simplifyPhrases: false,
-      chapterLabelInVerse: false,
-      showMorphology: false,
-      showFreeTranslation: false,
-    },
+    viewOptions: { ...allFalseViewOptions },
   };
 }
 

@@ -50,6 +50,27 @@ describe('tokenizeBook', () => {
     expect(segments[0].endRef).toEqual({ book: 'GEN', chapter: 1, verse: 1 });
   });
 
+  it('builds a verse-0 segment from a verse-0 SID (Psalm superscription)', () => {
+    const raw: RawBook = {
+      bookCode: 'PSA',
+      writingSystem: 'en',
+      contentHash: 'abc123',
+      verses: [{ sid: 'PSA 3:0', text: 'A Psalm by David.' }],
+    };
+    const { segments } = tokenizeBook(raw);
+    expect(segments).toHaveLength(1);
+    expect(segments[0].id).toBe('PSA 3:0');
+    expect(segments[0].startRef).toEqual({ book: 'PSA', chapter: 3, verse: 0 });
+    expect(segments[0].endRef).toEqual({ book: 'PSA', chapter: 3, verse: 0 });
+    expect(segments[0].tokens.map((t) => t.surfaceText)).toEqual([
+      'A',
+      'Psalm',
+      'by',
+      'David',
+      '.',
+    ]);
+  });
+
   it('upholds the charStart/charEnd invariant for every token', () => {
     const text = 'In the beginning, God created.';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));

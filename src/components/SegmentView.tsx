@@ -52,8 +52,10 @@ type SegmentViewProps = Readonly<{
   isActive: boolean;
   /**
    * Called when the segment or one of its word tokens is selected. In `baseline-text` mode the
-   * whole segment is clickable and `tokenRef` is omitted; in `token-chip` mode only word tokens
-   * trigger this and `tokenRef` is always provided.
+   * whole segment is clickable and selecting it passes the segment's first word token (so the
+   * segment gains focus and the active highlight); in `token-chip` mode only word tokens trigger
+   * this and `tokenRef` is the clicked token. `tokenRef` is omitted only when the segment has no
+   * word token to anchor on.
    */
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   /** The segment to render. */
@@ -93,9 +95,9 @@ type SegmentViewProps = Readonly<{
  *   focused state; only meaningful in `token-chip` mode.
  * @param props.isActive - Whether this segment is the currently selected verse
  * @param props.onSelect - Required callback invoked when the segment or one of its word tokens is
- *   interacted with. In `baseline-text` mode the whole segment is clickable and `tokenRef` is
- *   omitted. In `token-chip` mode only word tokens trigger this callback and `tokenRef` is always
- *   provided.
+ *   interacted with. In `baseline-text` mode the whole segment is clickable and selecting it passes
+ *   the segment's first word token; in `token-chip` mode only word tokens trigger this callback
+ *   with the clicked token. `tokenRef` is omitted only when the segment has no word token.
  * @param props.segment - The segment to render
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
@@ -374,18 +376,21 @@ export function SegmentView({
   }, [firstWordTokenRef, onSelect, ref]);
 
   /**
-   * Selects this segment when its baseline-text body is clicked. Clicks that originate inside the
-   * free-translation input are ignored: that input fires its own {@link handleFreeTranslationFocus}
-   * on focus, so letting the container also fire would double-select the verse.
+   * Selects this segment when its baseline-text body is clicked, focusing its first word token so
+   * the segment gains focus (and the active highlight) even when it is verse 0 — a superscription
+   * that cannot be written back to the host as the active verse, and so would otherwise never
+   * become active from a bare-ref select. Clicks that originate inside the free-translation input
+   * are ignored: that input fires its own {@link handleFreeTranslationFocus} on focus, so letting
+   * the container also fire would double-select the verse.
    *
    * @param event - The click event on the baseline-text container.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {
       if (event.target instanceof Element && event.target.closest('input')) return;
-      onSelect(ref);
+      onSelect(ref, firstWordTokenRef);
     },
-    [onSelect, ref],
+    [firstWordTokenRef, onSelect, ref],
   );
 
   // Measure phrase boxes inside this segment and compute arcs. Disabled in baseline-text mode,

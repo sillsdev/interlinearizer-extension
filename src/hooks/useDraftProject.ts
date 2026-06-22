@@ -135,6 +135,13 @@ export default function useDraftProject(
    * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
    * failure; here we only log so a rejected write never throws into a render or event handler.
    *
+   * Note: the draft is the **only** persistence path — there is no secondary write on blur or
+   * unmount that would retry a failed autosave. If storage is unavailable during editing, the
+   * backend sends one error notification per failed write; if that notification itself fails (the
+   * `.catch(() => {})` in `main.ts`), edits made in that window are silently lost on the next page
+   * refresh. The tab title's `●` marker stays lit because `dirty` is set optimistically before the
+   * write, not in response to its outcome.
+   *
    * @param draft - The draft envelope to write.
    */
   const persist = useCallback(

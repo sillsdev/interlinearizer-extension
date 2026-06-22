@@ -270,8 +270,8 @@ export default function ProjectModals({
       }
     } finally {
       setIsReplacing(false);
+      setPendingReplace(undefined);
     }
-    setPendingReplace(undefined);
   }, [isReplacing, openProject, pendingReplace, startNewDraft]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */

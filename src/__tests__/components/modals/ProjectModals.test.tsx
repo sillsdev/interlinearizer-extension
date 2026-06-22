@@ -292,6 +292,25 @@ function makeWebViewStateWithResetSpy(resetActiveProject: () => void) {
   ];
 }
 
+/**
+ * Builds a `useWebViewState` stub with spies on both the setter and the reset for the
+ * `'activeProject'` key, so tests can assert which path was taken after a create attempt.
+ *
+ * @param setActiveProject - Spy invoked when the `'activeProject'` slot is set.
+ * @param resetActiveProject - Spy invoked when the `'activeProject'` slot is reset.
+ * @returns A `useWebViewState`-shaped hook stub.
+ */
+function makeWebViewStateWithActiveProjectSpies(
+  setActiveProject: jest.Mock,
+  resetActiveProject: jest.Mock,
+) {
+  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
+    defaultValue,
+    key === 'activeProject' ? setActiveProject : () => {},
+    key === 'activeProject' ? resetActiveProject : () => {},
+  ];
+}
+
 describe('ProjectModals', () => {
   beforeEach(() => {
     jest.mocked(papi.notifications.send).mockResolvedValue('notification-id');
@@ -452,7 +471,48 @@ describe('ProjectModals', () => {
   });
 
   describe('new (create) flow', () => {
-    it('starts an empty draft, clears the active project, and closes when not dirty', async () => {
+    it('seeds the draft, calls createProject on the backend, and closes', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const newDraft = jest.fn();
+      const setModal = jest.fn();
+      const setActiveProject = jest.fn();
+      const resetActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'create',
+            newDraft,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies(
+              setActiveProject,
+              resetActiveProject,
+            ),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(setActiveProject).toHaveBeenCalledWith(MOCK_PROJECT));
+      expect(newDraft).toHaveBeenCalledWith({
+        analysisLanguages: ['en'],
+        suggestedName: 'New',
+        suggestedDescription: 'Desc',
+      });
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        'source-proj',
+        ['en'],
+        undefined,
+        'New',
+        'Desc',
+      );
+      expect(resetActiveProject).not.toHaveBeenCalled();
+      expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('falls back to resetActiveProject and closes when backend project creation fails', async () => {
+      // Default mock returns undefined; JSON.parse(undefined) throws into the catch block.
       const newDraft = jest.fn();
       const setModal = jest.fn();
       const resetActiveProject = jest.fn();
@@ -469,23 +529,45 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('create-submit'));
 
-      // New starts a draft locally (carrying the typed name/description for the Save As prefill) and
-      // clears the active project so Save routes to Save As; no backend project is created.
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
         suggestedName: 'New',
         suggestedDescription: 'Desc',
       });
-      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.createProject',
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
+        'source-proj',
+        ['en'],
+        undefined,
+        'New',
+        'Desc',
       );
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
-      expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('notifies and falls back to resetActiveProject when backend returns a non-project shape', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
+      const setModal = jest.fn();
+      const resetActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'create',
+            setModal,
+            useWebViewState: makeWebViewStateWithResetSpy(resetActiveProject),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_create_project_failed%',
+        severity: 'error',
+      });
+      expect(resetActiveProject).toHaveBeenCalledTimes(1);
     });
 
     it('calls setModal with none when the create modal closes without a select source', async () => {
@@ -540,14 +622,22 @@ describe('ProjectModals', () => {
       expect(loadFromProject).not.toHaveBeenCalled();
     });
 
-    it('confirms before starting a new draft when the draft is dirty', async () => {
+    it('confirms before creating a project when the draft is dirty', async () => {
       const newDraft = jest.fn();
       render(<ProjectModals {...buildProps({ modal: 'create', dirty: true, newDraft })} />);
 
       await userEvent.click(screen.getByTestId('create-submit'));
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
-      // The new draft must not start until the user confirms discarding the current one.
+      // Neither draft nor project creation should start until the user confirms discarding.
       expect(newDraft).not.toHaveBeenCalled();
+      expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+        expect.anything(),
+      );
 
       await userEvent.click(screen.getByTestId('discard-confirm'));
       await waitFor(() =>
@@ -556,6 +646,14 @@ describe('ProjectModals', () => {
           suggestedName: 'New',
           suggestedDescription: 'Desc',
         }),
+      );
+      expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+        'interlinearizer.createProject',
+        'source-proj',
+        ['en'],
+        undefined,
+        'New',
+        'Desc',
       );
     });
 

@@ -15,8 +15,9 @@ import { SelectInterlinearProjectModal } from './SelectInterlinearProjectModal';
 export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs';
 
 /**
- * A draft-replacing action deferred behind the unsaved-changes confirmation: either starting a new
- * empty draft or opening an existing project into the draft.
+ * A draft-replacing action deferred behind the unsaved-changes confirmation: either creating and
+ * persisting a new project (then seeding the draft from it), or opening an existing project into
+ * the draft.
  */
 type PendingReplace =
   | { kind: 'new'; config: CreateDraftConfig }
@@ -27,8 +28,10 @@ type PendingReplace =
  * {@link SelectInterlinearProjectModal}, {@link CreateProjectModal}, {@link ProjectMetadataModal}, or
  * {@link SaveAsProjectModal}, with the {@link DiscardDraftConfirm} guard overlaid on top when a
  * draft-replacing action is pending (so canceling returns to the underlying modal with its state
- * intact); manages the shared WebView state for the active project; and routes New / Open / Save As
- * through the draft (rather than persisting projects directly on every edit).
+ * intact); manages the shared WebView state for the active project; and routes project lifecycle
+ * actions through the draft: New creates and persists a project immediately (so it appears in
+ * Select right away) and seeds the draft from it; Open loads an existing project into the draft;
+ * Save / Save As write the draft's analysis back to the active project or create a new one.
  *
  * @param props - Component props
  * @param props.activeProject - The currently active interlinear project (the Save target), read
@@ -222,6 +225,7 @@ export default function ProjectModals({
         ...(config.name !== undefined && { suggestedName: config.name }),
         ...(config.description !== undefined && { suggestedDescription: config.description }),
       });
+      let created: InterlinearProjectSummary | undefined;
       try {
         const createdJson = await papi.commands.sendCommand(
           'interlinearizer.createProject',
@@ -231,19 +235,20 @@ export default function ProjectModals({
           config.name,
           config.description,
         );
-        const created: unknown = JSON.parse(createdJson);
-        if (!isInterlinearProjectSummary(created)) {
+        const parsed: unknown = JSON.parse(createdJson);
+        if (isInterlinearProjectSummary(parsed)) {
+          created = parsed;
+        } else {
           await papi.notifications
             .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
             .catch(() => {});
-          resetActiveProject();
-          setCreateSourceIsSelect(false);
-          setModal('none');
-          return;
         }
-        setActiveProject(created);
       } catch (e) {
         logger.error('Interlinearizer: failed to create project from New dialog', e);
+      }
+      if (created) {
+        setActiveProject(created);
+      } else {
         resetActiveProject();
       }
       setCreateSourceIsSelect(false);
@@ -302,7 +307,12 @@ export default function ProjectModals({
       if (pendingReplace.kind === 'open') {
         await openProject(pendingReplace.project);
       } else {
-        await createAndPersistProject(pendingReplace.config);
+        setIsCreating(true);
+        try {
+          await createAndPersistProject(pendingReplace.config);
+        } finally {
+          setIsCreating(false);
+        }
       }
     } finally {
       setIsReplacing(false);

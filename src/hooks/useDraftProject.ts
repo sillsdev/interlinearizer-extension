@@ -136,11 +136,11 @@ export default function useDraftProject(
    * failure; here we only log so a rejected write never throws into a render or event handler.
    *
    * Note: the draft is the **only** persistence path — there is no secondary write on blur or
-   * unmount that would retry a failed autosave. If storage is unavailable during editing, the backend
-   * sends one error notification per failed write (the user's signal); if that notification itself
-   * fails (the `.catch(() => {})` in `main.ts`), edits made in that window are silently lost on the
-   * next page refresh. The tab title's `●` marker stays lit because `dirty` is set optimistically
-   * before the write, not in response to its outcome.
+   * unmount that would retry a failed autosave. If storage is unavailable during editing, the
+   * backend sends one error notification per failed write; if that notification itself fails (the
+   * `.catch(() => {})` in `main.ts`), edits made in that window are silently lost on the next page
+   * refresh. The tab title's `●` marker stays lit because `dirty` is set optimistically before the
+   * write, not in response to its outcome.
    *
    * @param draft - The draft envelope to write.
    */
@@ -153,11 +153,6 @@ export default function useDraftProject(
     [sourceProjectId],
   );
 
-  // Note: when sourceProjectId changes, setIsDraftLoading(true) fires immediately but `dirty`
-  // retains its old value until the new draft loads and setDirty runs. During that brief window
-  // hasUnsavedChanges in InterlinearizerLoader uses the stale value, so the tab title may flash a
-  // stale `●`. This self-corrects once the load finishes and is nearly unreachable in practice
-  // because a projectId change from the PAPI host typically triggers a full WebView remount.
   useEffect(() => {
     let canceled = false;
     setIsDraftLoading(true);

@@ -8,11 +8,11 @@ describe('resolvedOrEmpty', () => {
     expect(resolvedOrEmpty('%interlinearizer_glossInput_placeholder%')).toBe('');
   });
 
-  it('returns a resolved localized string unchanged', () => {
-    expect(resolvedOrEmpty('gloss')).toBe('gloss');
+  it('does not treat a string with only an initial percent sign as a key', () => {
+    expect(resolvedOrEmpty('% interest?')).toBe('% interest?');
   });
 
-  it('does not treat a string that merely contains a percent sign as a key', () => {
-    expect(resolvedOrEmpty('50% complete')).toBe('50% complete');
+  it('does not treat a string with only a final percent sign as a key', () => {
+    expect(resolvedOrEmpty('complete: 50%')).toBe('complete: 50%');
   });
 });

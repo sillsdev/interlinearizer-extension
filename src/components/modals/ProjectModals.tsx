@@ -212,8 +212,17 @@ export default function ProjectModals({
   /**
    * Creates a new project in storage with the given config and an empty analysis, then seeds the
    * draft from it so Save targets the newly created project. This is the "New" flow: the project is
-   * persisted immediately so it shows up in "Select Interlinear Project" right away. On failure the
-   * backend has already sent an error notification; here we only log and clear the active project.
+   * persisted immediately so it shows up in "Select Interlinear Project" right away.
+   *
+   * `newDraft` is called synchronously before the backend round-trip so the editor is ready
+   * immediately regardless of whether persistence succeeds. This is safe: when dirty is `false` (no
+   * discard confirmation shown), any data in the draft is either already committed to the active
+   * project or the draft was empty — nothing is lost. When dirty is `true` the
+   * {@link DiscardDraftConfirm} dialog has already obtained explicit user consent to discard.
+   *
+   * Sends an error notification on any failure path (matching the convention in {@link openProject})
+   * so the user always gets feedback even when the backend error notification does not reach the
+   * frontend (e.g. a transport-level rejection).
    *
    * @param config - The configuration collected by the New dialog.
    * @returns A promise that resolves once the project is created (or the failure is handled).
@@ -245,6 +254,9 @@ export default function ProjectModals({
         }
       } catch (e) {
         logger.error('Interlinearizer: failed to create project from New dialog', e);
+        await papi.notifications
+          .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
+          .catch(() => {});
       }
       if (created) {
         setActiveProject(created);

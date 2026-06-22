@@ -543,6 +543,10 @@ describe('ProjectModals', () => {
         'New',
         'Desc',
       );
+      expect(papi.notifications.send).toHaveBeenCalledWith({
+        message: '%interlinearizer_error_create_project_failed%',
+        severity: 'error',
+      });
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
     });
 

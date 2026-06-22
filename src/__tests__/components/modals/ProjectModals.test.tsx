@@ -657,6 +657,29 @@ describe('ProjectModals', () => {
       );
     });
 
+    it('creates the project and closes after confirming the discard on a dirty draft', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const setModal = jest.fn();
+      const setActiveProject = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'create',
+            dirty: true,
+            setModal,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies(setActiveProject, jest.fn()),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('create-submit'));
+      expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('discard-confirm'));
+      await waitFor(() => expect(setModal).toHaveBeenCalledWith('none'));
+      expect(setActiveProject).toHaveBeenCalledWith(MOCK_PROJECT);
+    });
+
     it('disables the discard-confirm button while an open is in flight', async () => {
       let resolveGet!: (value: string) => void;
       jest.mocked(papi.commands.sendCommand).mockReturnValueOnce(

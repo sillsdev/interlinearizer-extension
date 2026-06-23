@@ -212,9 +212,9 @@ function InterlinearizerInner({
    * reference. (The loader's `viewScrRef` freeze normally keeps the two in sync, so this guards a
    * transient.)
    *
-   * Also never navigates to a verse-0 segment (a chapter superscription): the host scroll-group
-   * reference cannot hold verse 0 (it echoes the chapter back), so the token is focused locally
-   * without writing a reference the host would bounce.
+   * A verse-0 segment (a chapter superscription) navigates like any other: the write records an
+   * internal-nav marker so the host's chapter echo is recognized as our own move rather than
+   * bouncing the view back. (See the verse-0 stickiness exception in `InterlinearNavContext`.)
    *
    * @param tokenRef - The word-token ref to focus.
    */
@@ -227,7 +227,7 @@ function InterlinearizerInner({
       if (!seg) return;
       const { current } = scrRefRef;
       if (seg.startRef.book !== current.book) return;
-      if (seg.startRef.verse === 0 || isSameVerse(seg.startRef, current)) return;
+      if (isSameVerse(seg.startRef, current)) return;
       navigate(toSerializedVerseRef(seg.startRef), 'internal');
     },
     [segmentById, tokenSegmentMap, navigate, scrRefRef],
@@ -236,9 +236,9 @@ function InterlinearizerInner({
   /**
    * Updates the active scripture reference (when the verse actually changed) and, when a specific
    * token was clicked, focuses that token. Skips the write to PAPI when the clicked verse matches
-   * the current one, avoiding a gratuitous echo round-trip. Also skips the write for a verse-0
-   * segment (a chapter superscription) — the host scroll-group reference cannot hold verse 0 — so
-   * the superscription's tokens are still focusable even though it can't become the active verse.
+   * the current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
+   * superscription) writes like any other verse — the internal-nav marker keeps the host's chapter
+   * echo from bouncing the view (see the verse-0 stickiness exception in `InterlinearNavContext`).
    *
    * @param ref - The verse coordinate that was selected.
    * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.
@@ -246,7 +246,7 @@ function InterlinearizerInner({
   const handleSegmentSelect = useCallback(
     (ref: ScriptureRef, tokenRef?: string) => {
       const { current } = scrRefRef;
-      if (ref.verse !== 0 && !isSameVerse(ref, current)) {
+      if (!isSameVerse(ref, current)) {
         navigate(toSerializedVerseRef(ref), 'internal');
       }
       if (tokenRef) setFocusedTokenRef(tokenRef);

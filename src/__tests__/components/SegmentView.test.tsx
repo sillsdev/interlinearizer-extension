@@ -329,8 +329,8 @@ describe('SegmentView', () => {
 
     await userEvent.click(screen.getByTestId('segment-container'));
 
-    // Passes the first word token so the segment gains focus (and the active highlight) on click —
-    // the path that lets a verse-0 superscription become active without a host write.
+    // Passes the first word token so the segment gains focus (and the active highlight) on click,
+    // letting the parent both highlight the segment and navigate to its verse.
     expect(handleSelect).toHaveBeenCalledTimes(1);
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
   });

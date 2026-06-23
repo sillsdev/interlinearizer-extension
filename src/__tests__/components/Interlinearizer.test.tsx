@@ -533,9 +533,10 @@ describe('Interlinearizer', () => {
     expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
   });
 
-  it('focuses a verse-0 token on select without writing a verse-0 reference to the host', () => {
-    // Verse 0 (a superscription) cannot be expressed as a host scroll-group reference, so selecting
-    // one of its tokens must focus it locally without calling navigate.
+  it('writes a verse-0 reference to the host when a verse-0 token is selected', () => {
+    // Selecting a superscription token navigates the host to verse 0 like any other verse; the
+    // internal-nav marker keeps the host's chapter echo from bouncing the view (the stickiness
+    // exception in InterlinearNavContext). Default scrRef is GEN 1:1, so this is a real verse change.
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_SUPERSCRIPTION_BOOK, navigate: mockNavigate });
 
@@ -546,10 +547,10 @@ describe('Interlinearizer', () => {
       );
     });
 
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 0 });
   });
 
-  it('focuses a verse-0 token from the strip without writing a verse-0 reference to the host', () => {
+  it('writes a verse-0 reference to the host when a verse-0 token is focused from the strip', () => {
     const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_SUPERSCRIPTION_BOOK,
@@ -565,7 +566,7 @@ describe('Interlinearizer', () => {
       onFocusedTokenRefChange('GEN 1:0:0');
     });
 
-    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 0 });
     expect(capturedContinuousViewProps.focusedTokenRef).toBe('GEN 1:0:0');
   });
 

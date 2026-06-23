@@ -101,6 +101,25 @@ describe('InterlinearNavContext', () => {
     expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
   });
 
+  it('passes a same-chapter verse-0 echo through when it matches a fresh internal-nav marker', () => {
+    // Selecting a verse-0 superscription navigates the host to verse 0 of the chapter already shown,
+    // so the host's echo is shaped exactly like the spurious post-nav chapter echo. A fresh
+    // internal-nav marker for that verse-0 key marks it as our own deliberate move, so the stickiness
+    // exception lets it through to the superscription rather than holding the prior verse.
+    const { result, setRef, rerender } = renderNavMutable({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 7,
+    });
+
+    act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
+
+    act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
+    rerender();
+
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 0 });
+  });
+
   it('passes a verse-0 reference for a different chapter through as a real chapter jump', () => {
     // A verse-0 reference for a chapter other than the one shown is a genuine chapter navigation, not
     // an echo, so it is honored as verse 0 (the loader maps it to verse 1 if that chapter has no

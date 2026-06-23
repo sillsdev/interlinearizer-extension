@@ -181,11 +181,12 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
-  // Segment that wears the active highlight. It follows the focused token's segment so a verse-0
-  // superscription — which cannot become the host's active verse — still highlights when one of its
-  // tokens is focused. Normal navigation keeps the focused token inside the active verse, so this
-  // resolves to the same segment as the `displayScrRef` verse; it only diverges for a verse-0 focus.
-  // Falls back to the active verse when nothing is focused (e.g. the active verse has no word token).
+  // Segment that wears the active highlight. It follows the focused token's segment so the highlight
+  // lands on the segment whose token is focused — including a verse-0 superscription. Normal
+  // navigation keeps the focused token inside the active verse, so this resolves to the same segment
+  // as the `displayScrRef` verse; it can diverge briefly when a focus move and the host echo it
+  // triggers are not yet reconciled. Falls back to the active verse when nothing is focused (e.g. the
+  // active verse has no word token).
   const activeSegmentId = displayFocusedTokenRef
     ? tokenSegmentMap.get(displayFocusedTokenRef)
     : undefined;

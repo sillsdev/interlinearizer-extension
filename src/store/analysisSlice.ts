@@ -197,11 +197,14 @@ function removeSegmentAnalysis(
 
 /**
  * Finds the approved `TokenAnalysisLink` for `tokenRef` together with the `TokenAnalysis` it
- * references. When the approved link references a missing analysis (an orphaned link from
- * corruption or a migration), the link is removed from the draft — so the corruption never persists
- * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
- * existed. Every token-analysis reducer resolves through this helper so they all repair orphaned
- * links the same way.
+ * references. Uses `findLast` so that, in the data-model-violating case of multiple approved links
+ * for one token, the reducer mutates the same link the read selectors surface (both
+ * {@link selectApprovedIdByTokenRef} and the phrase-link selectors are last-wins); otherwise a write
+ * would land on a different link than `useGloss`/`useMorphemes` read and appear to no-op. When the
+ * approved link references a missing analysis (an orphaned link from corruption or a migration),
+ * the link is removed from the draft — so the corruption never persists or accumulates duplicate
+ * approved links — and `undefined` is returned as if no approved link existed. Every token-analysis
+ * reducer resolves through this helper so they all repair orphaned links the same way.
  *
  * @param state - Current slice state (Immer draft).
  * @param tokenRef - `Token.ref` of the token to look up.
@@ -211,7 +214,7 @@ function resolveApprovedAnalysis(
   state: AnalysisState,
   tokenRef: string,
 ): { link: TokenAnalysisLink; analysis: TokenAnalysis } | undefined {
-  const link = state.analysis.tokenAnalysisLinks.find(
+  const link = state.analysis.tokenAnalysisLinks.findLast(
     (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
   );
   if (!link) return undefined;
@@ -297,16 +300,6 @@ const analysisSlice = createSlice({
   name: 'analysis',
   initialState: defaultState,
   reducers: {
-    /**
-     * Replaces the entire `TextAnalysis` in state. Intended for project-switch scenarios where the
-     * caller loads a new analysis from storage and needs to reset all in-memory state.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action whose payload is the replacement `TextAnalysis`.
-     */
-    setAnalysis(state, action: PayloadAction<TextAnalysis>) {
-      state.analysis = action.payload;
-    },
     writeGloss: {
       /**
        * Generates a UUID for a potential new `TokenAnalysis` record before the action reaches the
@@ -671,7 +664,6 @@ const analysisSlice = createSlice({
 });
 
 export const {
-  setAnalysis,
   writeGloss,
   writeMorphemes,
   deleteMorphemes,
@@ -818,20 +810,6 @@ export const selectPhraseLinkByAnalysisId = createSelector(
   selectPhraseLinks,
   (links) => new Map(links.map((link) => [link.analysisId, link])),
 );
-
-/**
- * Returns the `PhraseAnalysis` with the given id, or `undefined` when absent.
- *
- * @param state - The analysis slice state.
- * @param phraseId - The `PhraseAnalysis.id` to look up.
- * @returns The matching `PhraseAnalysis`, or `undefined`.
- */
-export function selectPhraseAnalysisById(
-  state: AnalysisState,
-  phraseId: string,
-): PhraseAnalysis | undefined {
-  return state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
-}
 
 /**
  * Returns the approved gloss string for the given phrase in the active analysis language, or `''`

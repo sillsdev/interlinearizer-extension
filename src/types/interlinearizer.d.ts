@@ -1230,8 +1230,7 @@ declare module 'interlinearizer' {
    *
    * `source` and `target` are rebuilt from Platform.Bible's USJ on each load and are never
    * serialized. All annotation and alignment mutations target `project.analysis` and
-   * `project.links`; saving is done by writing those fields back to storage via
-   * `saveProjectAnalysis`.
+   * `project.links`; saving is done by writing those fields back to storage via `updateAnalysis`.
    *
    * `target` is present only when `project.targetProjectId` is set (bilateral alignment projects
    * such as BT Extension imports). When present, `AlignmentLink.targetEndpoints` token IDs resolve

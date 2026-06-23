@@ -91,6 +91,18 @@
   @apply tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm;
 }
 
+@utility modal-form-label {
+  @apply tw:block tw:text-sm tw:mb-1;
+}
+
+@utility modal-actions {
+  @apply tw:flex tw:gap-2 tw:justify-end;
+}
+
+@utility modal-error-box {
+  @apply tw:rounded tw:border tw:border-destructive/40 tw:bg-destructive/5;
+}
+
 @utility phrase-box-base {
   @apply tw:inline-flex tw:flex-col tw:rounded tw:border tw:px-0.5 tw:py-0.5;
 }

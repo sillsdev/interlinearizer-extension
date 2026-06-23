@@ -273,9 +273,9 @@ export function useAnalysis(): TextAnalysis {
 }
 
 /**
- * Returns the stable `onGlossChange` callback from the nearest {@link AnalysisStoreProvider}. The
- * callback creates or updates the approved `TokenAnalysis` for the token on each call, then
- * synchronously invokes `onSave` and the `onGlossChange` spy.
+ * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token, then
+ * synchronously invokes `onSave` and the optional `onGlossChange` spy. The `onGlossChange` spy is
+ * test-only observability and has no effect on store behavior (see {@link AnalysisStoreProvider}).
  *
  * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.

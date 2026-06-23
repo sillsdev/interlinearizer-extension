@@ -54,8 +54,9 @@ export type TokenGroup = {
   /** The phrase link shared by all tokens in this group, or `undefined` for ungrouped solo tokens. */
   phraseLink: PhraseAnalysisLink | undefined;
   /**
-   * The index of the first token in the flat token array from which this group was built — passed
-   * as `index` to `PhraseBox`.
+   * The index of the first token in this group within the flat token array it was built from. Used
+   * to slice the flat token list to the group's range (e.g. for the punctuation that renders
+   * between groups); not passed to `PhraseBox`.
    */
   firstIndex: number;
   /**

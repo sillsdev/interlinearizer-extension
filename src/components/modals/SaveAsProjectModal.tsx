@@ -4,6 +4,8 @@ import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary } from '../../types/type-guards';
+import useSubmitGuard from '../../hooks/useSubmitGuard';
+import { ModalShell } from './ModalShell';
 
 /** Localized string keys used by {@link SaveAsProjectModal}. */
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -65,11 +67,8 @@ export function SaveAsProjectModal({
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  /**
-   * True while a save (new or overwrite) is in flight; disables the save controls to block
-   * re-submits.
-   */
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
+  const { isSubmitting, runGuarded } = useSubmitGuard();
 
   /** The existing project pending an overwrite confirmation, or `undefined`. */
   const [confirmOverwrite, setConfirmOverwrite] = useState<InterlinearProjectSummary | undefined>(
@@ -124,16 +123,13 @@ export function SaveAsProjectModal({
    * blocking re-entry while the save is in flight so a double-click cannot create duplicate
    * projects.
    */
-  const handleSaveNew = useCallback(async () => {
-    /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    try {
-      await onSaveNew(name.trim() || undefined, description.trim() || undefined);
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [description, isSubmitting, name, onSaveNew]);
+  const handleSaveNew = useCallback(
+    () =>
+      runGuarded(async () => {
+        await onSaveNew(name.trim() || undefined, description.trim() || undefined);
+      }),
+    [name, description, onSaveNew, runGuarded],
+  );
 
   /**
    * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
@@ -142,124 +138,108 @@ export function SaveAsProjectModal({
    * @param project - The existing project to overwrite.
    */
   const handleConfirmOverwrite = useCallback(
-    async (project: InterlinearProjectSummary) => {
-      /* v8 ignore next -- button is disabled while submitting; guards against programmatic double-invocation */
-      if (isSubmitting) return;
-      setIsSubmitting(true);
-      try {
+    (project: InterlinearProjectSummary) =>
+      runGuarded(async () => {
         await onOverwrite(project);
-      } finally {
-        setIsSubmitting(false);
-      }
-    },
-    [isSubmitting, onOverwrite],
+      }),
+    [onOverwrite, runGuarded],
   );
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:modal-overlay">
-      <dialog
-        aria-labelledby="save-as-modal-title"
-        aria-modal="true"
-        className="tw:modal-dialog tw:rounded-lg tw:w-lg"
-        open
-      >
-        <h2 id="save-as-modal-title" className="tw:modal-title">
-          {localizedStrings['%interlinearizer_modal_saveAs_title%']}
-        </h2>
+    <ModalShell
+      titleId="save-as-modal-title"
+      title={localizedStrings['%interlinearizer_modal_saveAs_title%']}
+      width="tw:w-lg"
+      rounded="tw:rounded-lg"
+    >
+      <h3 className="tw:text-sm tw:font-medium tw:mb-2">
+        {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
+      </h3>
+      <label className="tw:modal-form-label" htmlFor="save-as-name">
+        {localizedStrings['%interlinearizer_modal_create_name_label%']}
+      </label>
+      <input
+        id="save-as-name"
+        className="tw:modal-form-input tw:mb-3"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+      />
+      <label className="tw:modal-form-label" htmlFor="save-as-description">
+        {localizedStrings['%interlinearizer_modal_create_description_label%']}
+      </label>
+      <textarea
+        id="save-as-description"
+        className="tw:modal-form-input tw:mb-3 tw:resize-none"
+        rows={2}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
+      />
+      <div className="tw:flex tw:justify-end tw:mb-4">
+        <Button onClick={handleSaveNew} data-testid="save-as-new" disabled={isSubmitting}>
+          {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
+        </Button>
+      </div>
 
-        <h3 className="tw:text-sm tw:font-medium tw:mb-2">
-          {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
-        </h3>
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="save-as-name">
-          {localizedStrings['%interlinearizer_modal_create_name_label%']}
-        </label>
-        <input
-          id="save-as-name"
-          className="tw:modal-form-input tw:mb-3"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
-        />
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="save-as-description">
-          {localizedStrings['%interlinearizer_modal_create_description_label%']}
-        </label>
-        <textarea
-          id="save-as-description"
-          className="tw:modal-form-input tw:mb-3 tw:resize-none"
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
-        />
-        <div className="tw:flex tw:justify-end tw:mb-4">
-          <Button onClick={handleSaveNew} data-testid="save-as-new" disabled={isSubmitting}>
-            {localizedStrings['%interlinearizer_modal_saveAs_save_new%']}
-          </Button>
-        </div>
-
-        <h3 className="tw:text-sm tw:font-medium tw:mb-2">
-          {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
-        </h3>
-        {projects.length === 0 ? (
-          <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
-            {localizedStrings['%interlinearizer_modal_saveAs_none%']}
-          </p>
-        ) : (
-          <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
-            {projects.map((project) => (
-              <li key={project.id} className="tw:flex tw:items-center tw:gap-2">
-                <span className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-sm tw:min-w-0">
-                  <span className="tw:font-medium tw:truncate">
-                    {project.name ??
-                      localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                  </span>
-                  <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0">
-                    {project.analysisLanguages.join(', ')}
-                  </span>
+      <h3 className="tw:text-sm tw:font-medium tw:mb-2">
+        {localizedStrings['%interlinearizer_modal_saveAs_existing_section%']}
+      </h3>
+      {projects.length === 0 ? (
+        <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
+          {localizedStrings['%interlinearizer_modal_saveAs_none%']}
+        </p>
+      ) : (
+        <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
+          {projects.map((project) => (
+            <li key={project.id} className="tw:flex tw:items-center tw:gap-2">
+              <span className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-sm tw:min-w-0">
+                <span className="tw:font-medium tw:truncate">
+                  {project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
                 </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setConfirmOverwrite(project)}
-                  disabled={isSubmitting}
-                >
-                  {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {confirmOverwrite && (
-          <div className="tw:border tw:border-destructive/40 tw:bg-destructive/5 tw:rounded tw:p-3 tw:mb-4">
-            <p className="tw:text-sm tw:mb-2">
-              {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
-            </p>
-            <div className="tw:flex tw:gap-2 tw:justify-end">
-              <Button variant="secondary" size="sm" onClick={() => setConfirmOverwrite(undefined)}>
-                {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_cancel%']}
-              </Button>
+              </span>
               <Button
-                variant="destructive"
+                variant="secondary"
                 size="sm"
-                data-testid="save-as-overwrite-confirm"
-                onClick={() => handleConfirmOverwrite(confirmOverwrite)}
+                onClick={() => setConfirmOverwrite(project)}
                 disabled={isSubmitting}
               >
-                {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
+                {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
               </Button>
-            </div>
-          </div>
-        )}
+            </li>
+          ))}
+        </ul>
+      )}
 
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
-            {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
-          </Button>
+      {confirmOverwrite && (
+        <div className="tw:modal-error-box tw:p-3 tw:mb-4">
+          <p className="tw:text-sm tw:mb-2">
+            {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
+          </p>
+          <div className="tw:modal-actions">
+            <Button variant="secondary" size="sm" onClick={() => setConfirmOverwrite(undefined)}>
+              {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_cancel%']}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              data-testid="save-as-overwrite-confirm"
+              onClick={() => handleConfirmOverwrite(confirmOverwrite)}
+              disabled={isSubmitting}
+            >
+              {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
+            </Button>
+          </div>
         </div>
-      </dialog>
-    </div>
+      )}
+
+      <div className="tw:modal-actions">
+        <Button variant="secondary" onClick={onClose} disabled={isLoading || isSubmitting}>
+          {localizedStrings['%interlinearizer_modal_saveAs_cancel%']}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }

@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button } from 'platform-bible-react';
+import { ConfirmDialog } from './ConfirmDialog';
 
 /** Localized string keys used by {@link DiscardDraftConfirm}. */
 const DISCARD_DRAFT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
@@ -35,33 +35,16 @@ export function DiscardDraftConfirm({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:modal-overlay">
-      <dialog
-        aria-labelledby="discard-draft-modal-title"
-        aria-modal="true"
-        className="tw:modal-dialog tw:rounded tw:w-96"
-        open
-      >
-        <h2 id="discard-draft-modal-title" className="tw:modal-title">
-          {localizedStrings['%interlinearizer_confirm_discard_title%']}
-        </h2>
-        <p className="tw:text-sm tw:mb-4">
-          {localizedStrings['%interlinearizer_confirm_discard_body%']}
-        </p>
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button disabled={isSubmitting} onClick={onCancel} variant="secondary">
-            {localizedStrings['%interlinearizer_confirm_discard_cancel%']}
-          </Button>
-          <Button
-            data-testid="discard-draft-confirm"
-            disabled={isSubmitting}
-            onClick={onConfirm}
-            variant="destructive"
-          >
-            {localizedStrings['%interlinearizer_confirm_discard_ok%']}
-          </Button>
-        </div>
-      </dialog>
-    </div>
+    <ConfirmDialog
+      titleId="discard-draft-modal-title"
+      title={localizedStrings['%interlinearizer_confirm_discard_title%']}
+      body={localizedStrings['%interlinearizer_confirm_discard_body%']}
+      confirmLabel={localizedStrings['%interlinearizer_confirm_discard_ok%']}
+      cancelLabel={localizedStrings['%interlinearizer_confirm_discard_cancel%']}
+      confirmTestId="discard-draft-confirm"
+      isSubmitting={isSubmitting}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
   );
 }

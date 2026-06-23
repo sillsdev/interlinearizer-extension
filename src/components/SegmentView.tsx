@@ -177,11 +177,7 @@ export function SegmentView({
   // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
   const verseLabelText = chapterLabelInVerse ? `${chapter}:${verse}` : `${verse}`;
 
-  const segmentHeader = (
-    <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-      {verseLabelText}
-    </span>
-  );
+  const segmentHeader = <span className="tw:section-label tw:mb-2 tw:block">{verseLabelText}</span>;
 
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the

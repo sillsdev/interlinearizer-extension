@@ -17,7 +17,7 @@ export const ARC_BASE_STEM = 10;
 export const ARC_LEVEL_STEP = 10;
 
 /** Corner radius (px) used in all arc bracket paths. */
-export const ARC_CORNER_RADIUS = 5;
+const ARC_CORNER_RADIUS = 5;
 
 /** Extra breathing room (px) above the topmost arc run so its corner doesn't graze the boundary. */
 const ARC_CLEARANCE_MARGIN_PX = 4;

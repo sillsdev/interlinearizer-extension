@@ -632,11 +632,11 @@ describe('ProjectModals', () => {
       expect(newDraft).not.toHaveBeenCalled();
       expect(papi.commands.sendCommand).not.toHaveBeenCalledWith(
         'interlinearizer.createProject',
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
-        expect.anything(),
+        'source-proj',
+        ['en'],
+        undefined,
+        'New',
+        'Desc',
       );
 
       await userEvent.click(screen.getByTestId('discard-confirm'));

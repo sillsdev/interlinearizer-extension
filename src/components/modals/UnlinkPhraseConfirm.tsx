@@ -25,11 +25,16 @@ type UnlinkPhraseConfirmProps = Readonly<{
 export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkPhraseConfirmProps) {
   const { deletePhrase } = usePhraseDispatch();
 
+  /**
+   * Dispatches `deletePhrase` to remove the phrase analysis and its link, then returns to view
+   * mode.
+   */
   const handleConfirm = () => {
     deletePhrase(phraseId);
     setPhraseMode({ kind: 'view' });
   };
 
+  /** Returns to view mode without deleting the phrase. */
   const handleCancel = () => {
     setPhraseMode({ kind: 'view' });
   };

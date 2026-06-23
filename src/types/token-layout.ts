@@ -1,6 +1,6 @@
 /**
  * @file Types describing the intermediate data structures produced when laying out tokens for
- *   rendering. These are pure structural types with no runtime behaviour; the functions that build
+ *   rendering. These are pure structural types with no runtime behavior; the functions that build
  *   and consume them live in `utils/token-layout.ts`.
  */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';

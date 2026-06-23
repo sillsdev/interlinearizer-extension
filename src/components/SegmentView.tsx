@@ -78,8 +78,9 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles; `chapterLabelInVerse` sets the verse label, the rest pass through to
-   * {@link PhraseStripContextValue}.
+   * Bundled display toggles; `chapterLabelInVerse` sets the verse label and `showFreeTranslation`
+   * gates the free-translation input, while `hideInactiveLinkButtons`, `simplifyPhrases`, and
+   * `showMorphology` pass through to {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
 }>;
@@ -109,8 +110,9 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label,
- *   the rest pass through to the phrase strip context.
+ * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label
+ *   and `showFreeTranslation` gates the free-translation input, while `hideInactiveLinkButtons`,
+ *   `simplifyPhrases`, and `showMorphology` pass through to the phrase strip context.
  * @returns A div containing a verse label and the segment content (baseline text or token chips)
  */
 export function SegmentView({

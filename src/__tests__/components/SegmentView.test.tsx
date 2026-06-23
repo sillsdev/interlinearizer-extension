@@ -7,6 +7,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
+import type { SlotFocusInfo } from '../../types/token-layout';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
 import { SegmentView } from '../../components/SegmentView';
@@ -58,6 +59,7 @@ jest.mock('../../components/AnalysisStore', () => ({
 // SegmentView's tests don't redundantly re-exercise the hook's internals; the view only forwards its
 // handlers, which a no-op stub satisfies.
 const mockCandidateTokenRefs = { current: new Set<string>() };
+const mockSplitFreeTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
   __esModule: true,
   usePhraseHoverState: () => ({
@@ -65,7 +67,7 @@ jest.mock('../../hooks/usePhraseHoverState', () => ({
     setHoveredGroupKey: () => {},
     candidateTokenRefs: mockCandidateTokenRefs.current,
     setCandidateTokenRefs: () => {},
-    splitFreeTokenRefs: new Set<string>(),
+    splitFreeTokenRefs: mockSplitFreeTokenRefs.current,
     handleSplitHoverChange: () => {},
     handleHoverSplitFreeTokens: () => {},
     clearAll: () => {},
@@ -76,17 +78,41 @@ jest.mock('../../components/TokenChip');
 
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
-  default: () => undefined,
+  // Surface the slot's focus side and its neighboring token refs so tests can assert which side of
+  // each slot SegmentView decided the focused group falls on (the focusedSideIsPrevByUnit walk).
+  default: ({
+    slotFocus,
+    prevToken,
+    nextToken,
+  }: Readonly<{
+    slotFocus: SlotFocusInfo;
+    prevToken: { ref: string } | undefined;
+    nextToken: { ref: string } | undefined;
+  }>) => (
+    <span
+      data-token-link-icon="true"
+      data-prev-ref={prevToken?.ref ?? 'none'}
+      data-next-ref={nextToken?.ref ?? 'none'}
+      data-focused-side-is-prev={String(slotFocus.focusedSideIsPrev)}
+    />
+  ),
 }));
 
 jest.mock('../../components/ArcOverlay', () => ({
   __esModule: true,
   default: ({
     onArcSplit,
-  }: Readonly<{ onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void }>) => (
+    candidatePhraseIds,
+  }: Readonly<{
+    onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
+    candidatePhraseIds: ReadonlySet<string>;
+  }>) => (
     <button
       type="button"
       data-testid="arc-split-btn"
+      // Surface candidatePhraseIds (computed by useCandidatePhraseIds) so tests can assert the memo
+      // resolved the hovered candidate tokens to the right phrase ids; sorted for a stable string.
+      data-candidate-phrase-ids={[...candidatePhraseIds].sort().join(',')}
       onClick={() => onArcSplit('phrase-1', 'tok-0')}
     >
       split
@@ -102,6 +128,7 @@ jest.mock('../../components/PhraseBox', () => ({
     onFocusPhrase,
     tokens,
     showGlossInput = true,
+    splitFreeTokenRefs,
   }: Readonly<{
     groupKey: string;
     isFocused: boolean;
@@ -111,11 +138,15 @@ jest.mock('../../components/PhraseBox', () => ({
     setPhraseMode: unknown;
     phraseLink: unknown;
     showGlossInput?: boolean;
+    splitFreeTokenRefs: ReadonlySet<string>;
   }>) => (
     <span
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
       data-show-gloss={showGlossInput}
+      // Surface the split-free refs PhraseStrip selected for this group so tests can assert the
+      // edit-mode branch swaps in EMPTY_SPLIT_FREE_REFS rather than the live hover set.
+      data-split-free-refs={[...splitFreeTokenRefs].sort().join(',')}
     >
       {tokens.map((t) => (
         <span key={t.ref}>
@@ -233,6 +264,7 @@ describe('SegmentView', () => {
       mergePhrases: jest.fn(),
     });
     mockCandidateTokenRefs.current = new Set();
+    mockSplitFreeTokenRefs.current = new Set();
   });
 
   it('renders word token chips in token-chip mode (default)', () => {
@@ -465,9 +497,15 @@ describe('SegmentView', () => {
   });
 
   it('sets focusedGroupSeen when focusedTokenRef matches a token in a group', () => {
+    // tok-0 and tok-1 are unlinked, so they form two solo groups with a slot between them. With
+    // tok-0 focused, the focusedSideIsPrevByUnit walk marks every slot *after* the tok-0 group as
+    // focusedSideIsPrev=true (focus is start-ward) and the leading slot before it as false.
     render(<SegmentView {...requiredProps()} focusedTokenRef="tok-0" />, withAnalysisStore);
-    // Just verifies no error — the focusedSideIsPrev computation runs with a matching token.
-    expect(screen.getByText('In')).toBeInTheDocument();
+
+    const leadingSlot = document.querySelector('[data-prev-ref="none"][data-next-ref="tok-0"]');
+    const middleSlot = document.querySelector('[data-prev-ref="tok-0"][data-next-ref="tok-1"]');
+    expect(leadingSlot).toHaveAttribute('data-focused-side-is-prev', 'false');
+    expect(middleSlot).toHaveAttribute('data-focused-side-is-prev', 'true');
   });
 
   it('renders with EMPTY_SPLIT_FREE_REFS when phraseMode is edit', () => {
@@ -485,6 +523,9 @@ describe('SegmentView', () => {
         ['tok-1', sharedLink],
       ]),
     );
+    // A non-empty live hover set so the edit-mode swap to EMPTY_SPLIT_FREE_REFS is observable: if the
+    // branch were absent, the box would receive this set instead of an empty one.
+    mockSplitFreeTokenRefs.current = new Set(['tok-0']);
     render(
       <SegmentView
         {...requiredProps()}
@@ -492,8 +533,34 @@ describe('SegmentView', () => {
       />,
       withAnalysisStore,
     );
-    // In edit mode, EMPTY_SPLIT_FREE_REFS is used — no errors expected.
-    expect(screen.getByText('In')).toBeInTheDocument();
+    // Edit mode forces EMPTY_SPLIT_FREE_REFS, so the box's split-free refs are empty even though the
+    // hover state has tok-0.
+    expect(document.querySelector('[data-phrase-box]')).toHaveAttribute('data-split-free-refs', '');
+  });
+
+  it('passes the live split-free refs to a phrase box in view mode', () => {
+    const sharedLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    mockUsePhraseLinkMap.mockReturnValue(
+      new Map<string, PhraseAnalysisLink>([
+        ['tok-0', sharedLink],
+        ['tok-1', sharedLink],
+      ]),
+    );
+    mockSplitFreeTokenRefs.current = new Set(['tok-0']);
+    render(<SegmentView {...requiredProps()} phraseMode={{ kind: 'view' }} />, withAnalysisStore);
+    // In view mode (controls allowed) the live hover set passes through unchanged — the contrast
+    // that makes the edit-mode EMPTY_SPLIT_FREE_REFS swap meaningful.
+    expect(document.querySelector('[data-phrase-box]')).toHaveAttribute(
+      'data-split-free-refs',
+      'tok-0',
+    );
   });
 
   it('fires mouse-leave on the token row without throwing', async () => {
@@ -658,10 +725,13 @@ describe('SegmentView', () => {
     };
     mockUsePhraseLinkMap.mockReturnValue(new Map([['tok-0', phraseLink]]));
     mockCandidateTokenRefs.current = new Set(['tok-0']);
-    // No throw and correct render = the candidatePhraseIds memo ran without error
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-    // ArcOverlay receives candidatePhraseIds; it renders so no assertion needed beyond no crash
-    expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
+    // useCandidatePhraseIds maps the hovered candidate token (tok-0) to its phrase id (phrase-1),
+    // and SegmentView passes that set to ArcOverlay's candidatePhraseIds prop.
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
+      'data-candidate-phrase-ids',
+      'phrase-1',
+    );
   });
 
   it('renders a free-translation input below the segment tokens', () => {

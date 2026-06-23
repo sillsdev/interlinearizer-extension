@@ -6,13 +6,18 @@ import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/
 
 /**
  * Identifies one specific arc boundary by phrase id and the token immediately before the split,
- * plus whether splitting there would free a token. `kind` drives the hovered arc's stroke: a `free`
- * split shows the destructive preview, while a `reshape` split (both halves stay ≥ 2 tokens) merely
- * dims the hovered segment to communicate that this one connection would disappear.
+ * plus whether splitting there would free a token.
  */
 export type ArcSplitTarget = {
+  /** Id of the phrase whose arc boundary this identifies. */
   phraseId: string;
+  /** Token ref immediately before the split boundary. */
   splitAfterTokenRef: string;
+  /**
+   * Whether splitting here would free a token, which drives the hovered arc's stroke: a `free`
+   * split shows the destructive preview, while a `reshape` split (both halves stay ≥ 2 tokens)
+   * merely dims the hovered segment to communicate that this one connection would disappear.
+   */
   kind: 'free' | 'reshape';
 };
 
@@ -180,6 +185,11 @@ export function ArcOverlay({
   /**
    * Assigns a paint-order priority so highlighted arcs render on top of dimmed ones inside the
    * single SVG (last element wins). Split-hovered > focused > hovered/candidate > everything else.
+   *
+   * @param phraseId - The arc segment's phrase id.
+   * @param splitAfterTokenRef - Token ref at whose right edge this segment's split would occur.
+   * @returns The paint-order priority: 3 = split-hovered, 2 = focused, 1 = hovered/candidate, 0 =
+   *   otherwise.
    */
   const paintPriority = (phraseId: string, splitAfterTokenRef: string): number => {
     if (isSplitHovered(phraseId, splitAfterTokenRef)) return 3;
@@ -250,6 +260,13 @@ export function ArcOverlay({
   // (but above the arcs) and remain hoverable and clickable in the gap below the boxes.
   // Destructive-hovered arc segments are promoted to the hovered layer so the red stroke is never
   // occluded by arcs above it, matching the hovered-tier button at z-6.
+  /**
+   * Like {@link tierOf}, but promotes a destructive (`free`) split-hovered segment to the `hovered`
+   * tier so its red stroke renders above other arcs.
+   *
+   * @param arc - The arc path to classify.
+   * @returns The emphasis tier the arc should be painted in.
+   */
   const effectiveTierOf = (arc: ArcPath): EmphasisTier => {
     if (isSplitHovered(arc.phraseId, arc.splitAfterTokenRef) && splitHoveredArc?.kind === 'free')
       return 'hovered';

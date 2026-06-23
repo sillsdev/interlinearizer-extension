@@ -933,10 +933,13 @@ describe('PhraseBox', () => {
     renderBox(<PhraseBox {...requiredProps()} />);
     const box = document.querySelector('[data-phrase-box="true"]');
     expect(box).not.toBeNull();
-    // Focus the box container, then press Enter → should focus the first input.
+    // Focus the box container, then press Enter → the keydown handler forwards focus to the first
+    // gloss input. Asserting toHaveFocus makes the test fail if the Enter branch of
+    // focusFirstGlossOnSelfKeyDown is broken or removed.
     if (box instanceof HTMLElement) box.focus();
     await userEvent.keyboard('{Enter}');
-    // No throw = pass (jsdom doesn't fire input focus in this setup, but the handler runs).
+
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
   });
 
   it('pops out a middle token from a 3+ token phrase in view mode (updatePhrase)', async () => {
@@ -1049,19 +1052,6 @@ describe('PhraseBox', () => {
     expect(screen.getByRole('button', { name: 'Remove World' })).toBeInTheDocument();
   });
 
-  it('pops out a token from a 3-token phrase by deleting when only 1 would remain (edge case)', async () => {
-    // Actually a 3-token phrase removes a middle token to leave 2 (≥2), so updatePhrase is called.
-    // For deletePhrase to be called, we need to go from 2 tokens to ≤1.
-    // The onRemove is only wired for middle tokens when length > 2. So we simulate handleViewPopOut
-    // via the phraseLink having exactly 2 tokens (which means the mock won't show Remove button).
-    // Instead, let's test the deletePhrase path by using a 3-token phrase removing to leave 1 token
-    // by mocking phraseLink.tokens to have 2 entries while tokens prop has 3, and removing the first.
-    // Actually, the easiest way is to test through phraseLink with 2 tokens where the condition
-    // doesn't show the Remove button. Skip this path via v8 ignore instead.
-    // This test just documents the behavior.
-    expect(true).toBe(true);
-  });
-
   it('writes phrase gloss on blur when draft differs from committed', async () => {
     mockUsePhraseGloss.mockReturnValue('');
     const dispatchSpy = jest.fn();
@@ -1075,12 +1065,14 @@ describe('PhraseBox', () => {
   });
 
   it('ignores non-Enter/Space keys on the box container', async () => {
-    const setPhraseMode = jest.fn();
-    renderBox(<PhraseBox {...requiredProps()} />, { setPhraseMode });
+    renderBox(<PhraseBox {...requiredProps()} />);
     const box = document.querySelector('[data-phrase-box="true"]');
     if (box instanceof HTMLElement) box.focus();
-    await userEvent.keyboard('{Tab}');
-    expect(setPhraseMode).not.toHaveBeenCalled();
+    // ArrowRight is neither Enter nor Space and does not move focus by default, so
+    // focusFirstGlossOnSelfKeyDown must return early without focusing the first gloss input. If the
+    // Enter/Space guard were dropped, this key would forward focus to the gloss input and fail here.
+    await userEvent.keyboard('{ArrowRight}');
+    expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).not.toHaveFocus();
   });
 
   it('renders disabled style for a token in the wrong segment during edit mode', () => {

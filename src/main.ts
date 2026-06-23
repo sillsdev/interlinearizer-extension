@@ -266,8 +266,9 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
  * @returns A promise that resolves when the analysis has been written to storage.
- * @throws If JSON parsing or storage fails. The error is logged and an error notification is sent
- *   before rethrowing so the frontend `catch` block can suppress it without a second notification.
+ * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
+ *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
+ *   second notification.
  */
 async function saveInterlinearAnalysis(
   interlinearProjectId: string,
@@ -348,7 +349,8 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
  * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
- * @throws {SyntaxError} If the project-IDs index or any project record contains invalid JSON.
+ * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
+ *   project records are logged and skipped, not thrown.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
  *   `projectStorage.getProjectsForSource`). Callers can use this to distinguish a storage outage
  *   from a legitimately empty list.

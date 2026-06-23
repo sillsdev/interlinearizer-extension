@@ -481,55 +481,6 @@ describe('TokenLinkIcon', () => {
     );
   });
 
-  it('candidatePhraseId falls back to nextPhraseLink analysisId when prevPhraseLink is undefined', () => {
-    const nextPhrase = makePhraseLink('p2', ['tok-b']);
-    renderIcon(
-      <TokenLinkIcon {...requiredProps()} prevPhraseLink={undefined} nextPhraseLink={nextPhrase} />,
-    );
-    // Just verify it renders without errors — the candidatePhraseId uses ?? nextPhraseLink
-    expect(screen.getByTestId('token-link-btn')).toBeInTheDocument();
-  });
-
-  it('candidatePhraseId uses prevPhraseLink analysisId when prevPhraseLink is defined and not inSamePhrase', () => {
-    const prevPhrase = makePhraseLink('p1', ['tok-a']);
-    const nextPhrase = makePhraseLink('p2', ['tok-b']);
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        prevPhraseLink={prevPhrase}
-        nextPhraseLink={nextPhrase}
-      />,
-    );
-    // prevPhraseLink.analysisId is defined and different from nextPhraseLink.analysisId (not same phrase)
-    // candidatePhraseId = prevPhraseLink.analysisId = 'p1'
-    expect(screen.getByTestId('token-link-btn')).toBeInTheDocument();
-  });
-
-  it('does not attach hover handlers to unlink button when no candidatePhraseId and no splitFreeRefs', () => {
-    // A 2-token phrase where both halves free (splitFreeRefs has 2 items).
-    // Set candidatePhraseId to undefined and splitFreeRefs to [] (no tokens to free).
-    // This is only possible when a phrase has ≥ 4 tokens and the boundary is in the middle
-    // (both halves ≥ 2 tokens). Use a 4-token phrase split at tok-b (before=[tok-a,tok-b], after=[tok-c,tok-d]).
-    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
-    renderIcon(
-      <TokenLinkIcon
-        {...requiredProps()}
-        prevPhraseLink={phraseLink}
-        nextPhraseLink={phraseLink}
-      />,
-      {
-        tokenDocOrder: new Map([
-          ['tok-a', 0],
-          ['tok-b', 1],
-          ['tok-c', 2],
-          ['tok-d', 3],
-        ]),
-      },
-    );
-    // Both halves have 2 tokens — no tokens become free — so onMouseEnter is not wired
-    expect(screen.getByTestId('token-unlink-btn')).toBeInTheDocument();
-  });
-
   it('highlights all tokens in a multi-token neighbor phrase when focus is free and neighbor is phrase', async () => {
     const neighborPhrase = makePhraseLink('p2', ['tok-b', 'tok-c']);
     const focusedFreeToken = makeWordToken('tok-a');

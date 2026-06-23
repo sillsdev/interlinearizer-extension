@@ -79,9 +79,9 @@ function parseSid(sid: string): ScriptureRef {
 /**
  * Splits a verse's plain text into an ordered array of {@link Token}s.
  *
- * Word tokens (`\p{L}\p{N}\p{M}` runs) and punctuation tokens (any single non-word, non-whitespace
- * character) are emitted in document order. Whitespace is not tokenized. Character offsets are
- * zero-based relative to `text`; `charEnd` is exclusive.
+ * Word tokens (`\p{L}\p{N}\p{M}\p{Join_Control}` runs) and punctuation tokens (any single non-word,
+ * non-whitespace character) are emitted in document order. Whitespace is not tokenized. Character
+ * offsets are zero-based relative to `text`; `charEnd` is exclusive.
  *
  * Each token inherits `writingSystem` from the book so that downstream consumers (renderers,
  * alignment tools) can identify the script without access to the parent `RawBook`.

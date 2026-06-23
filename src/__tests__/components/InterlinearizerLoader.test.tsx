@@ -241,6 +241,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-testid="project-modals"
         data-modal={modal}
         data-default-lang={defaultAnalysisLanguage}
+        data-active-project-name={activeProject?.name}
       >
         {modal === 'select' && (
           <div data-testid="select-modal">
@@ -313,7 +314,10 @@ jest.mock('../../components/modals/ProjectModals', () => ({
             <button
               type="button"
               data-testid="metadata-modal-saved"
-              onClick={() => setModal('none')}
+              onClick={() => {
+                setActiveProject({ ...STUB_ACTIVE_PROJECT, name: 'Renamed Project' });
+                setModal('none');
+              }}
             >
               Save
             </button>
@@ -889,6 +893,9 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('metadata-modal-deleted'));
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
+      // The deleted project was the active one, so the loader should now pass `activeProject:
+      // undefined` down to ProjectModals (the stub omits the attribute when there is no name).
+      expect(screen.getByTestId('project-modals')).not.toHaveAttribute('data-active-project-name');
     });
 
     it('updates the active project name when its metadata is saved', async () => {
@@ -902,6 +909,12 @@ describe('InterlinearizerLoader', () => {
       await userEvent.click(screen.getByTestId('metadata-modal-saved'));
 
       expect(screen.queryByTestId('metadata-modal')).not.toBeInTheDocument();
+      // Saving renamed the active project; the loader must reflect the new name it reads back from
+      // WebView state by passing it down to ProjectModals.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-name',
+        'Renamed Project',
+      );
     });
 
     it('renders without error when useData provides a topMenu with items', async () => {

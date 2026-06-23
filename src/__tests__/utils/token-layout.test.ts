@@ -198,7 +198,7 @@ describe('groupTokens', () => {
     expect(groups[0].phraseLink?.analysisId).toBe('p1');
   });
 
-  it('produces two groups for a discontiguous phrase', () => {
+  it('produces three groups (two phrase fragments plus the intervening free token) for a discontiguous phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-c']);
     const phraseLinkByRef = new Map([
       ['tok-a', link],

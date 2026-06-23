@@ -11,7 +11,10 @@ import { useEffect, useMemo, useRef } from 'react';
 export interface UseInterlinearizerBookDataArgs {
   /** PAPI project ID whose USJ book data should be loaded. */
   projectId: string;
-  /** Current scripture reference; only `book` and `chapterNum` are used to scope the data. */
+  /**
+   * Current scripture reference; only `book` is used to scope the data (chapter and verse are fixed
+   * to 1).
+   */
   scrRef: SerializedVerseRef;
 }
 
@@ -36,7 +39,8 @@ export interface UseInterlinearizerBookDataResult {
  *
  * @param args - Hook arguments.
  * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
- * @param args.scrRef - Current scripture reference; only `book` and `chapterNum` are used.
+ * @param args.scrRef - Current scripture reference; only `book` is used (chapter/verse are fixed to
+ *   1).
  * @returns The tokenized book (reference-stable across duplicate USJ results), loading state, and
  *   any errors encountered.
  */

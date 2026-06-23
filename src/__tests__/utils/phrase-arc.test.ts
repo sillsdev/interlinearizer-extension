@@ -533,8 +533,13 @@ describe('computeAllArcPaths', () => {
     const { paths } = computeAllArcPaths(container);
     const p1 = paths.find((p) => p.phraseId === 'p1');
     expect(p1).toBeDefined();
-    // The left gutter is content-left (10) minus the margin; the descent rides that x.
-    expect(p1?.d).toContain(`${10 - GUTTER_MARGIN_PX} `);
+    // The vertical descent rides the left gutter x = content-left (10) minus the margin. Read the x
+    // of the corner where the upper run turns down into the gutter (the SECOND rounded corner); a
+    // bare substring like '0 ' would also match the box-top of the 'M 30 0 ...' start and so could
+    // not distinguish left- from right-gutter routing.
+    const descentX = (d: string) =>
+      Number([...d.matchAll(/A [-\d.]+ [-\d.]+ 0 0 [01] ([-\d.]+) /g)][1]?.[1]);
+    expect(descentX(p1?.d ?? '')).toBe(10 - GUTTER_MARGIN_PX);
     // The run midpoint sits between the upper box center (30) and the left gutter → left of 30.
     expect(p1?.midX).toBeLessThan(30);
   });

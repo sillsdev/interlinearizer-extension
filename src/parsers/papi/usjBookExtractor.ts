@@ -307,6 +307,10 @@ function fnv1a32(s: string): string {
  * @param writingSystem - BCP 47 tag for the baseline, from `platform.languageTag`.
  * @returns A `RawBook` with `bookCode`, `writingSystem`, `contentHash`, and `verses` populated.
  * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
+ * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute (propagated
+ *   from {@link handleVerseNode} via {@link traverse}).
+ * @throws {SyntaxError} If a duplicate `verse` SID is encountered (propagated from
+ *   {@link handleVerseNode} via {@link traverse}).
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
   const contentHash = fnv1a32(stableStringify(usj.content));

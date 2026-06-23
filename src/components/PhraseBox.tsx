@@ -129,7 +129,7 @@ type PhraseBoxProps = Readonly<{
  * In `edit` mode:
  *
  * - Tokens belonging to the active target phrase render with a "selected" outline.
- * - Tokens belonging to a _different_ phrase render disabled (greyed, `aria-disabled`, no click).
+ * - Tokens belonging to a _different_ phrase render disabled (grayed, `aria-disabled`, no click).
  * - Tokens in segments other than the edited phrase's segment also render disabled, enforcing the
  *   single-segment phrase invariant.
  * - Free tokens (not in any phrase) in the same segment render as click targets for adding them to
@@ -154,6 +154,8 @@ type PhraseBoxProps = Readonly<{
  *   highlighted border style simultaneously
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
  *   matching chip renders with a destructive border as a preview
+ * @param props.punctuationBetween - Punctuation tokens between adjacent word tokens, in document
+ *   order; `punctuationBetween[i]` sits between `tokens[i]` and `tokens[i+1]`
  * @returns A bordered inline container
  */
 export function PhraseBox({
@@ -231,6 +233,11 @@ export function PhraseBox({
     e.currentTarget.querySelector<HTMLInputElement>('input:not([data-morpheme-gloss])')?.focus();
   }, []);
 
+  /**
+   * Enters phrase `edit` mode for this box's phrase, seeding the edit set with its current tokens
+   * (kept as `originalTokens` so the edit can be diffed or canceled). No-op when this box has no
+   * real phrase link.
+   */
   const handleEditClick = useCallback(() => {
     if (phraseLink)
       setPhraseMode({
@@ -240,6 +247,10 @@ export function PhraseBox({
       });
   }, [phraseLink, setPhraseMode]);
 
+  /**
+   * Begins the unlink-confirmation flow for this box's phrase by switching to `confirm-unlink`
+   * mode. No-op when this box has no real phrase link.
+   */
   const handleUnlinkClick = useCallback(() => {
     if (phraseLink) setPhraseMode({ kind: 'confirm-unlink', phraseId: phraseLink.analysisId });
   }, [phraseLink, setPhraseMode]);
@@ -487,6 +498,13 @@ export function PhraseBox({
   })();
 
   if (isInEditTarget) {
+    /**
+     * Builds a keydown handler that removes the given token from the edited phrase on Enter/Space,
+     * so each token chip is removable via the keyboard as well as by click.
+     *
+     * @param tokenRef - Ref of the token the returned handler removes.
+     * @returns A keydown event handler for that token's chip.
+     */
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -530,12 +548,22 @@ export function PhraseBox({
     );
   }
 
+  /**
+   * Adds this box's lone free token to the phrase being edited; no-op when the box is disabled or
+   * its token already belongs to a phrase.
+   */
   const handleBoxClick = () => {
     /* v8 ignore next -- isDisabled box uses aria-disabled; keyboard focus is prevented */
     if (isDisabled) return;
     if (!isInAnyPhrase) handleEditAdd(tokens[0].ref, tokens[0].surfaceText);
   };
 
+  /**
+   * Keyboard counterpart to {@link handleBoxClick}: Enter/Space add this box's free token to the
+   * edited phrase, ignored while the box is disabled.
+   *
+   * @param e - The container's keydown event.
+   */
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();

@@ -39,7 +39,7 @@ type TokenLinkIconProps = Readonly<{
  *
  * Otherwise renders `Link2` (link): clicking joins the non-focused-side neighbor to the focused
  * side. The icon is active whenever `focusedSideIsPrev` is defined and the resulting join is valid.
- * Both icon types are suppressed (return `undefined`) when neither side has a word token.
+ * Both icon types are suppressed (return `undefined`) when either side lacks a word token.
  *
  * **Link semantics** (`focusedSideIsPrev` determines direction; only active when both neighbors are
  * in the same segment as focus):
@@ -209,13 +209,11 @@ export function TokenLinkIcon({
   // In edit mode, unlink buttons for phrases other than the one being edited are disabled.
   const isEditMode = phraseMode.kind === 'edit';
 
-  // The phrase to highlight when hovering this icon: the shared phrase (unlink) or whichever side
-  // has a phrase (link). Used to light up the associated phrase box and arcs.
-  const candidatePhraseId = inSamePhrase
-    ? prevPhraseLink?.analysisId
-    : (prevPhraseLink?.analysisId ?? nextPhraseLink?.analysisId);
-
   if (inSamePhrase) {
+    // The phrase to highlight when hovering the unlink icon: the shared phrase. Used to light up the
+    // associated phrase box and arcs. Always defined here since `inSamePhrase` requires both links.
+    const candidatePhraseId = prevPhraseLink?.analysisId;
+
     const unlinkDisabled =
       isUnlinkMode || (isEditMode && prevPhraseLink?.analysisId !== phraseMode.phraseId);
 

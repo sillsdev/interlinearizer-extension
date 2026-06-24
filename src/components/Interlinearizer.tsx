@@ -146,6 +146,15 @@ function InterlinearizerInner({
     return order;
   }, [book.segments]);
 
+  /** Ids of verse-0 segments (superscriptions), whose boundaries are frozen against edits. */
+  const verseZeroSegmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    book.segments.forEach((seg) => {
+      if (seg.startRef.verse === 0) ids.add(seg.id);
+    });
+    return ids;
+  }, [book.segments]);
+
   /** Segmentation context shared by the views — the dispatch plus the lookups its call sites need. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
@@ -153,8 +162,15 @@ function InterlinearizerInner({
       boundaryEditMode: viewOptions.boundaryEditMode,
       segmentById,
       segmentOrder,
+      verseZeroSegmentIds,
     }),
-    [segmentationDispatch, viewOptions.boundaryEditMode, segmentById, segmentOrder],
+    [
+      segmentationDispatch,
+      viewOptions.boundaryEditMode,
+      segmentById,
+      segmentOrder,
+      verseZeroSegmentIds,
+    ],
   );
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */

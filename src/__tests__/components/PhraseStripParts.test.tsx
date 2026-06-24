@@ -337,6 +337,7 @@ describe('PhraseSlot boundary controls', () => {
       split: jest.fn(),
       move: jest.fn(),
     },
+    verseZeroSegmentIds: ReadonlySet<string> = new Set(),
   ) {
     const value: SegmentationContextValue = {
       dispatch,
@@ -346,6 +347,7 @@ describe('PhraseSlot boundary controls', () => {
         ['seg-1', 0],
         ['seg-2', 1],
       ]),
+      verseZeroSegmentIds,
     };
     render(
       <SegmentationProvider value={value}>
@@ -371,6 +373,26 @@ describe('PhraseSlot boundary controls', () => {
     fireEvent.click(button);
     // The next group's first token ref is the split anchor.
     expect(dispatch.split).toHaveBeenCalledWith('b');
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('still shows the merge control when the next segment is a verse-0 superscription', () => {
+    const dispatch = renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      undefined,
+      new Set(['seg-2']),
+    );
+    fireEvent.click(screen.getByTestId('boundary-merge-btn'));
+    expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
+  });
+
+  it('renders no split control inside a verse-0 superscription segment', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      undefined,
+      new Set(['seg-1']),
+    );
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
     expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
   });
 

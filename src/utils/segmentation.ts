@@ -57,6 +57,25 @@ function allTokenRefs(verseBook: Book): Set<string> {
 }
 
 /**
+ * The interior token refs of every verse-0 segment — each verse-0 segment's tokens except its
+ * first. A verse-0 segment is a chapter superscription (e.g. a Psalm title); its tokens must always
+ * stay together in one segment, so no boundary may ever fall strictly inside it. Verse 0 may still
+ * be merged wholesale into a neighbor (it travels as an intact unit) — only splitting it is
+ * forbidden.
+ *
+ * @param verseBook - The original verse-tokenized book.
+ * @returns The set of token refs interior to a verse-0 segment.
+ */
+function verseZeroInteriorRefs(verseBook: Book): Set<string> {
+  const interior = new Set<string>();
+  verseBook.segments.forEach((seg) => {
+    if (seg.startRef.verse !== 0) return;
+    seg.tokens.slice(1).forEach((t) => interior.add(t.ref));
+  });
+  return interior;
+}
+
+/**
  * Document-order index for every token ref, used to keep delta arrays canonically sorted.
  *
  * @param verseBook - The original verse-tokenized book.
@@ -141,7 +160,9 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
  *   `removedVerseStarts`).
  * - Otherwise `ref` is recorded as an added start.
  *
- * No-op (returns an equivalent normalized delta) when `ref` already begins a segment.
+ * No-op (returns an equivalent normalized delta) when `ref` already begins a segment, or when `ref`
+ * is an interior token of a verse-0 segment (splitting it would push tokens out of the
+ * superscription).
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.
@@ -154,6 +175,7 @@ export function addBoundaryBefore(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
+  if (verseZeroInteriorRefs(verseBook).has(ref)) return normalize(verseBook, current);
   const defaults = defaultVerseStarts(verseBook);
   if (defaults.has(ref)) {
     return normalize(verseBook, {
@@ -173,7 +195,10 @@ export function addBoundaryBefore(
  * - When `ref` is a default verse start, it is recorded in `removedVerseStarts`.
  * - Otherwise (it was an added split) it is dropped from `addedStarts`.
  *
- * No-op when `ref` is the book's first token (the first segment cannot be merged leftward).
+ * No-op when `ref` is the book's first token (the first segment cannot be merged leftward). A
+ * verse-0 boundary may be removed: that merges the superscription wholesale into a neighbor, which
+ * keeps its tokens together (a split, not a merge, is what is forbidden — see
+ * {@link addBoundaryBefore}).
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.
@@ -202,7 +227,9 @@ export function removeBoundaryAt(
 
 /**
  * Moves a boundary from `fromRef` to `toRef` in one step — the primitive behind pulling a single
- * edge token across a segment boundary. Removes the start at `fromRef` and adds one at `toRef`.
+ * edge token across a segment boundary. Removes the start at `fromRef` and adds one at `toRef`. If
+ * `toRef` falls inside a verse-0 segment the add half is a no-op (verse 0 can't be split), so the
+ * move degrades to a plain removal.
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.

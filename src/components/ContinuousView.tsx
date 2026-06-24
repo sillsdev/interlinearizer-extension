@@ -649,7 +649,6 @@ export default function ContinuousView({
     editPhraseSegmentId,
     tokenSegmentMap,
     tokenDocOrder,
-    phraseLinkByRef: committedPhraseLinkByRef,
     onHoverPhrase: setHoveredPhraseId,
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,

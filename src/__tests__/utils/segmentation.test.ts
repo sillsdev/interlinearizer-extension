@@ -38,6 +38,22 @@ const V3_START = 'GEN 1:3:0';
 // Second word of verse 1 ("beta" at charStart 6).
 const V1_BETA = 'GEN 1:1:6';
 
+/**
+ * A fixture with a mid-book verse-0 superscription: GEN 1:1, then GEN 2:0 (the superscription),
+ * then GEN 2:1. Verse 0 is deliberately not the book's first segment so its start-lock is distinct
+ * from the always-present book-first lock.
+ */
+const MID_VERSE_ZERO = makeBook([
+  { sid: 'GEN 1:1', text: 'Alpha beta.' },
+  { sid: 'GEN 2:0', text: 'Sup tee.' },
+  { sid: 'GEN 2:1', text: 'Gamma.' },
+]);
+// Verse-0 start, an interior verse-0 word ("tee" at charStart 4), and the start of the verse right
+// after verse 0 — the three refs frozen by the verse-0 locks.
+const VZ0_START = 'GEN 2:0:0';
+const VZ0_INTERIOR = 'GEN 2:0:4';
+const VZ_NEXT_START = 'GEN 2:1:0';
+
 describe('defaultVerseStarts', () => {
   it('returns the first-token ref of every verse', () => {
     expect(defaultVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START, V2_START, V3_START]));
@@ -130,6 +146,13 @@ describe('addBoundaryBefore', () => {
     const once = addBoundaryBefore(THREE_VERSES, undefined, V1_BETA);
     expect(addBoundaryBefore(THREE_VERSES, once, V1_BETA)).toEqual(once);
   });
+
+  it('is a no-op when splitting inside a verse-0 superscription (its tokens stay together)', () => {
+    expect(addBoundaryBefore(MID_VERSE_ZERO, undefined, VZ0_INTERIOR)).toEqual({
+      removedVerseStarts: [],
+      addedStarts: [],
+    });
+  });
 });
 
 describe('removeBoundaryAt', () => {
@@ -154,6 +177,20 @@ describe('removeBoundaryAt', () => {
       addedStarts: [],
     });
   });
+
+  it('merges a verse-0 superscription wholesale into the previous segment', () => {
+    expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ0_START)).toEqual({
+      removedVerseStarts: [VZ0_START],
+      addedStarts: [],
+    });
+  });
+
+  it('merges the verse after a superscription, sweeping verse 0 along with it', () => {
+    expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ_NEXT_START)).toEqual({
+      removedVerseStarts: [VZ_NEXT_START],
+      addedStarts: [],
+    });
+  });
 });
 
 describe('moveBoundary', () => {
@@ -161,6 +198,15 @@ describe('moveBoundary', () => {
     expect(moveBoundary(THREE_VERSES, undefined, V2_START, V1_BETA)).toEqual({
       removedVerseStarts: [V2_START],
       addedStarts: [V1_BETA],
+    });
+  });
+
+  it('moves a verse-0 boundary but never splits the superscription (add half is a no-op)', () => {
+    // Moving the after-superscription boundary back onto an interior verse-0 token can't split
+    // verse 0, so it degrades to merging the following verse in.
+    expect(moveBoundary(MID_VERSE_ZERO, undefined, VZ_NEXT_START, VZ0_INTERIOR)).toEqual({
+      removedVerseStarts: [VZ_NEXT_START],
+      addedStarts: [],
     });
   });
 });

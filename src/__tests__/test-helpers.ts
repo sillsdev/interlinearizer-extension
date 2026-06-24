@@ -78,7 +78,6 @@ export function makePhraseStripContext(
     editPhraseSegmentId: undefined,
     tokenSegmentMap: new Map(),
     tokenDocOrder: new Map(),
-    phraseLinkByRef: new Map(),
     onHoverPhrase: () => {},
     onHoverCandidateTokens: () => {},
     onHoverSplitFreeTokens: () => {},

@@ -193,46 +193,67 @@ export function SaveAsProjectModal({
         </p>
       ) : (
         <ul className="tw:flex tw:flex-col tw:gap-1 tw:mb-4 tw:max-h-72 tw:overflow-y-auto">
-          {projects.map((project) => (
-            <li key={project.id} className="tw:flex tw:items-center tw:gap-2">
-              <span className="tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:border-border tw:bg-muted/40 tw:px-3 tw:py-2 tw:text-sm tw:min-w-0">
-                <span className="tw:font-medium tw:truncate">
-                  {project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                </span>
-              </span>
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setConfirmOverwrite(project)}
-                disabled={isSubmitting}
-              >
-                {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
-              </Button>
-            </li>
-          ))}
+          {projects.map((project) => {
+            const projectName =
+              project.name ?? localizedStrings['%interlinearizer_modal_select_name_unnamed%'];
+            // Show the confirm inline under the row whose Overwrite was pressed, and highlight that
+            // row, so it is unambiguous which project the confirm will replace.
+            const isConfirming = confirmOverwrite?.id === project.id;
+            return (
+              <li key={project.id} className="tw:flex tw:flex-col tw:gap-2">
+                <div className="tw:flex tw:items-center tw:gap-2">
+                  <span
+                    className={`tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
+                      isConfirming
+                        ? 'tw:border-destructive tw:bg-destructive/10'
+                        : 'tw:border-border tw:bg-muted/40'
+                    }`}
+                  >
+                    <span className="tw:font-medium tw:truncate">{projectName}</span>
+                  </span>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setConfirmOverwrite(project)}
+                    disabled={isSubmitting || isConfirming}
+                  >
+                    {localizedStrings['%interlinearizer_modal_saveAs_overwrite%']}
+                  </Button>
+                </div>
+                {isConfirming && (
+                  <div className="tw:modal-error-box tw:p-3">
+                    <p className="tw:text-sm tw:mb-2">
+                      <span className="tw:font-medium tw:block tw:mb-1">{projectName}</span>
+                      {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
+                    </p>
+                    <div className="tw:modal-actions">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => setConfirmOverwrite(undefined)}
+                      >
+                        {
+                          localizedStrings[
+                            '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%'
+                          ]
+                        }
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        data-testid="save-as-overwrite-confirm"
+                        onClick={() => handleConfirmOverwrite(project)}
+                        disabled={isSubmitting}
+                      >
+                        {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
-      )}
-
-      {confirmOverwrite && (
-        <div className="tw:modal-error-box tw:p-3 tw:mb-4">
-          <p className="tw:text-sm tw:mb-2">
-            {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_body%']}
-          </p>
-          <div className="tw:modal-actions">
-            <Button variant="secondary" size="sm" onClick={() => setConfirmOverwrite(undefined)}>
-              {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_cancel%']}
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              data-testid="save-as-overwrite-confirm"
-              onClick={() => handleConfirmOverwrite(confirmOverwrite)}
-              disabled={isSubmitting}
-            >
-              {localizedStrings['%interlinearizer_modal_saveAs_overwrite_confirm_ok%']}
-            </Button>
-          </div>
-        </div>
       )}
 
       <div className="tw:modal-actions">

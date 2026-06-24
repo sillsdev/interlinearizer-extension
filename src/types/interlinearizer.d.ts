@@ -335,7 +335,11 @@ declare module 'interlinearizer' {
     book: string;
     /** 1-based chapter number. */
     chapter: number;
-    /** 1-based verse number. */
+    /**
+     * Verse number. Normally 1-based; `0` denotes a chapter's verse-0 content (a Psalm
+     * superscription / descriptive title that precedes verse 1), which the parser captures as its
+     * own segment.
+     */
     verse: number;
     /**
      * Zero-based character offset within the verse's baseline text. Absent when the reference is

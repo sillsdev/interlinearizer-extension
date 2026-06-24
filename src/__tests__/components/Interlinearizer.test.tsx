@@ -313,6 +313,47 @@ const GEN_TWO_CHAPTER_BOOK: Book = {
   ),
 };
 
+/** GEN book whose chapter 1 opens with a verse-0 superscription segment before verse 1. */
+const GEN_SUPERSCRIPTION_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:0',
+      startRef: { book: 'GEN', chapter: 1, verse: 0 },
+      endRef: { book: 'GEN', chapter: 1, verse: 0 },
+      baselineText: 'A song.',
+      tokens: [
+        {
+          ref: 'GEN 1:0:0',
+          surfaceText: 'A',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 1,
+        },
+      ],
+    },
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In the beginning.',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+      ],
+    },
+  ],
+};
+
 /**
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
  * `useInterlinearNav` call resolves. `Interlinearizer` now writes the reference through the
@@ -490,6 +531,70 @@ describe('Interlinearizer', () => {
     });
 
     expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 2 });
+  });
+
+  it('writes a verse-0 reference to the host when a verse-0 token is selected', () => {
+    // Selecting a superscription token navigates the host to verse 0 like any other verse; the
+    // internal-nav marker keeps the host's chapter echo from bouncing the view (the stickiness
+    // exception in InterlinearNavContext). Default scrRef is GEN 1:1, so this is a real verse change.
+    const mockNavigate = jest.fn();
+    renderInterlinearizer({ book: GEN_SUPERSCRIPTION_BOOK, navigate: mockNavigate });
+
+    act(() => {
+      capturedSegmentViewPropsList[0].onSelect?.(
+        { book: 'GEN', chapter: 1, verse: 0 },
+        'GEN 1:0:0',
+      );
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 0 });
+  });
+
+  it('writes a verse-0 reference to the host when a verse-0 token is focused from the strip', () => {
+    const mockNavigate = jest.fn();
+    renderInterlinearizer({
+      book: GEN_SUPERSCRIPTION_BOOK,
+      continuousScroll: true,
+      navigate: mockNavigate,
+    });
+
+    if (!capturedContinuousViewProps)
+      throw new Error('Expected ContinuousView to have been rendered');
+    const { onFocusedTokenRefChange } = capturedContinuousViewProps;
+
+    act(() => {
+      onFocusedTokenRefChange('GEN 1:0:0');
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({ book: 'GEN', chapterNum: 1, verseNum: 0 });
+    expect(capturedContinuousViewProps.focusedTokenRef).toBe('GEN 1:0:0');
+  });
+
+  it('moves the active-segment highlight to a verse-0 segment when its token is focused', () => {
+    renderInterlinearizer({
+      book: GEN_SUPERSCRIPTION_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+    });
+
+    // Active verse (1) is highlighted; the verse-0 superscription is not, yet.
+    const before = Object.fromEntries(
+      capturedSegmentViewPropsList.map((p) => [p.segment.id, p.isActive]),
+    );
+    expect(before['GEN 1:0']).toBeFalsy();
+    expect(before['GEN 1:1']).toBe(true);
+
+    const { onSelect } = capturedSegmentViewPropsList[0];
+    capturedSegmentViewPropsList = [];
+    act(() => {
+      onSelect({ book: 'GEN', chapter: 1, verse: 0 }, 'GEN 1:0:0');
+    });
+
+    // Focusing the superscription's token moves the active highlight onto its segment.
+    const after = Object.fromEntries(
+      capturedSegmentViewPropsList.map((p) => [p.segment.id, p.isActive]),
+    );
+    expect(after['GEN 1:0']).toBe(true);
+    expect(after['GEN 1:1']).toBeFalsy();
   });
 
   it('passes the clicked token through to ContinuousView as focusedTokenRef', () => {

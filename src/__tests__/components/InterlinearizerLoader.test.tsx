@@ -469,7 +469,9 @@ describe('InterlinearizerLoader', () => {
     expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
   });
 
-  it('normalizes a chapter-level (verse 0) reference to verse 1 before passing it to Interlinearizer', async () => {
+  it('resolves a verse-0 reference to verse 1 when the book has no verse-0 segment', async () => {
+    // GEN_1_1_BOOK has only a GEN 1:1 segment, so a whole-chapter (verse 0) selection falls back to
+    // the chapter's first numbered verse rather than leaving nothing highlighted.
     await act(async () => {
       renderLoader({
         useWebViewScrollGroupScrRef: makeScrollGroupHook({
@@ -485,6 +487,59 @@ describe('InterlinearizerLoader', () => {
       chapterNum: 3,
       verseNum: 1,
     });
+  });
+
+  it('keeps a verse-0 reference when the book has a verse-0 (superscription) segment', async () => {
+    const bookWithSuperscription: Book = {
+      id: 'PSA',
+      bookRef: 'PSA',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'PSA 3:0',
+          startRef: { book: 'PSA', chapter: 3, verse: 0 },
+          endRef: { book: 'PSA', chapter: 3, verse: 0 },
+          baselineText: 'A Psalm by David.',
+          tokens: [],
+        },
+      ],
+    };
+    mockBookData({ book: bookWithSuperscription });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'PSA',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'PSA',
+      chapterNum: 3,
+      verseNum: 0,
+    });
+  });
+
+  it('leaves a verse-0 reference untouched while the book is still loading', async () => {
+    // With no book loaded yet, the verse-0 resolution has nothing to consult, so the loader shows
+    // the loading placeholder and does not render the interlinearizer.
+    mockBookData({ book: undefined, isLoading: true });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 0,
+        }),
+      });
+    });
+
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
 
   it('passes a verse-level reference through to Interlinearizer unchanged', async () => {

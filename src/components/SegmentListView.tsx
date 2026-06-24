@@ -181,6 +181,16 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
+  // Segment that wears the active highlight. It follows the focused token's segment so the highlight
+  // lands on the segment whose token is focused — including a verse-0 superscription. Normal
+  // navigation keeps the focused token inside the active verse, so this resolves to the same segment
+  // as the `displayScrRef` verse; it can diverge briefly when a focus move and the host echo it
+  // triggers are not yet reconciled. Falls back to the active verse when nothing is focused (e.g. the
+  // active verse has no word token).
+  const activeSegmentId = displayFocusedTokenRef
+    ? tokenSegmentMap.get(displayFocusedTokenRef)
+    : undefined;
+
   return (
     <div
       ref={setScrollContainer}
@@ -228,7 +238,11 @@ export default function SegmentListView({
                   editPhraseSegmentId={editPhraseSegmentId}
                   focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
                   hoveredPhraseId={hoveredPhraseId}
-                  isActive={isSameVerse(seg.startRef, displayScrRef)}
+                  isActive={
+                    activeSegmentId !== undefined
+                      ? seg.id === activeSegmentId
+                      : isSameVerse(seg.startRef, displayScrRef)
+                  }
                   onHoverPhrase={setHoveredPhraseId}
                   onSelect={onSelect}
                   phraseMode={phraseMode}

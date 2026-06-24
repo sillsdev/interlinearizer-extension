@@ -320,7 +320,7 @@ describe('SegmentView', () => {
     expect(container.firstChild).toHaveAttribute('aria-current', 'true');
   });
 
-  it('calls onSelect when clicked in baseline-text mode', async () => {
+  it('calls onSelect with the first word token when clicked in baseline-text mode', async () => {
     const handleSelect = jest.fn();
     render(
       <SegmentView {...requiredProps()} displayMode="baseline-text" onSelect={handleSelect} />,
@@ -329,8 +329,10 @@ describe('SegmentView', () => {
 
     await userEvent.click(screen.getByTestId('segment-container'));
 
+    // Passes the first word token so the segment gains focus (and the active highlight) on click,
+    // letting the parent both highlight the segment and navigate to its verse.
     expect(handleSelect).toHaveBeenCalledTimes(1);
-    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 });
+    expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
   });
 
   it('renders a free-translation input below the plain text in baseline-text mode', () => {

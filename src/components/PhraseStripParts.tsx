@@ -31,16 +31,19 @@ type BoundaryControlProps = Readonly<{
  * Renders the boundary-edit control for one slot. A slot straddling two different segments shows a
  * merge control (combine the next segment into the previous one); a slot inside one segment shows a
  * split control (start a new segment at the next token). Leading/trailing slots (one side missing)
- * render nothing.
+ * render nothing. A merge that involves a verse-0 segment (a superscription) is allowed — verse 0
+ * merges as an intact unit — but a split _inside_ a verse-0 segment is suppressed, since its tokens
+ * must always stay together.
  *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
  * @param props.nextSegmentId - Segment id after the slot.
  * @param props.nextTokenRef - First word token after the slot (split anchor).
- * @returns A merge or split button, or `undefined` when the slot is at a book edge.
+ * @returns A merge or split button, or `undefined` when the slot is at a book edge or would split a
+ *   verse-0 segment.
  */
 function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: BoundaryControlProps) {
-  const { dispatch, segmentById } = useSegmentation();
+  const { dispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
   const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
   if (prevSegmentId === undefined || nextSegmentId === undefined || nextTokenRef === undefined) {
     return undefined;
@@ -63,6 +66,9 @@ function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: Boundar
       </button>
     );
   }
+  // An intra-segment slot inside a verse-0 superscription can't be split — its tokens must stay
+  // together — so render no split control there.
+  if (verseZeroSegmentIds.has(prevSegmentId)) return undefined;
   const splitLabel = localizedStrings['%interlinearizer_boundaryControl_split%'];
   return (
     <button

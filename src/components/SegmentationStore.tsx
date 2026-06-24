@@ -48,6 +48,12 @@ export type SegmentationContextValue = Readonly<{
   segmentById: ReadonlyMap<string, Segment>;
   /** Segment id → its index in document order, used to test segment adjacency. */
   segmentOrder: ReadonlyMap<string, number>;
+  /**
+   * Ids of the verse-0 segments (chapter superscriptions). Their boundaries are frozen: the merge/
+   * split controls and the cross-segment link pull are suppressed at any boundary touching one, so
+   * no token is ever moved into or out of a superscription.
+   */
+  verseZeroSegmentIds: ReadonlySet<string>;
 }>;
 
 /** No-op dispatch used as the default outside a provider (e.g. in isolated component tests). */
@@ -67,6 +73,7 @@ const DEFAULT_VALUE: SegmentationContextValue = {
   boundaryEditMode: false,
   segmentById: new Map(),
   segmentOrder: new Map(),
+  verseZeroSegmentIds: new Set(),
 };
 
 const SegmentationContext = createContext<SegmentationContextValue | undefined>(undefined);

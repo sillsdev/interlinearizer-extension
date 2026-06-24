@@ -40,6 +40,7 @@ describe('SegmentationStore', () => {
       boundaryEditMode: true,
       segmentById: new Map([['GEN 1:1', segment]]),
       segmentOrder: new Map([['GEN 1:1', 0]]),
+      verseZeroSegmentIds: new Set(),
     };
     render(
       <SegmentationProvider value={value}>

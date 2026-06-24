@@ -54,6 +54,17 @@ const VZ0_START = 'GEN 2:0:0';
 const VZ0_INTERIOR = 'GEN 2:0:4';
 const VZ_NEXT_START = 'GEN 2:1:0';
 
+/**
+ * A fixture whose final segment is a verse-0 superscription, so the superscription has no segment
+ * after it. Exercises the after-boundary branch of the verse-0 lock when verse 0 ends the book.
+ */
+const TRAILING_VERSE_ZERO = makeBook([
+  { sid: 'GEN 1:1', text: 'Alpha beta.' },
+  { sid: 'GEN 2:0', text: 'Sup tee.' },
+]);
+// Start of the trailing verse-0 superscription.
+const TVZ0_START = 'GEN 2:0:0';
+
 describe('defaultVerseStarts', () => {
   it('returns the first-token ref of every verse', () => {
     expect(defaultVerseStarts(THREE_VERSES)).toEqual(new Set([V1_START, V2_START, V3_START]));
@@ -178,16 +189,23 @@ describe('removeBoundaryAt', () => {
     });
   });
 
-  it('merges a verse-0 superscription wholesale into the previous segment', () => {
+  it('is a no-op when removing the boundary before a verse-0 superscription (would join the previous chapter)', () => {
     expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ0_START)).toEqual({
-      removedVerseStarts: [VZ0_START],
+      removedVerseStarts: [],
       addedStarts: [],
     });
   });
 
-  it('merges the verse after a superscription, sweeping verse 0 along with it', () => {
+  it('is a no-op when removing the boundary after a verse-0 superscription (would sweep verse 0 forward)', () => {
     expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ_NEXT_START)).toEqual({
-      removedVerseStarts: [VZ_NEXT_START],
+      removedVerseStarts: [],
+      addedStarts: [],
+    });
+  });
+
+  it('is a no-op when removing the boundary before a verse-0 superscription that ends the book', () => {
+    expect(removeBoundaryAt(TRAILING_VERSE_ZERO, undefined, TVZ0_START)).toEqual({
+      removedVerseStarts: [],
       addedStarts: [],
     });
   });
@@ -201,11 +219,11 @@ describe('moveBoundary', () => {
     });
   });
 
-  it('moves a verse-0 boundary but never splits the superscription (add half is a no-op)', () => {
-    // Moving the after-superscription boundary back onto an interior verse-0 token can't split
-    // verse 0, so it degrades to merging the following verse in.
+  it('is a no-op when both halves touch a verse-0 superscription', () => {
+    // The after-superscription boundary can't be removed (it borders verse 0), and an interior
+    // verse-0 token can't become a new start, so neither half of the move applies.
     expect(moveBoundary(MID_VERSE_ZERO, undefined, VZ_NEXT_START, VZ0_INTERIOR)).toEqual({
-      removedVerseStarts: [VZ_NEXT_START],
+      removedVerseStarts: [],
       addedStarts: [],
     });
   });

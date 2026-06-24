@@ -34,6 +34,12 @@ export type PhraseStripContextValue = Readonly<{
   /** Token ref → flat document index; used to keep merged phrase token lists in document order. */
   tokenDocOrder: ReadonlyMap<string, number>;
   /**
+   * Token ref → the committed phrase link containing it, for the whole strip. Used by the
+   * cross-segment link icon to resolve the phrase of a token it must reach across a verse-0
+   * superscription (which sits between the icon's slot and its real link target).
+   */
+  phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>;
+  /**
    * Called with a phraseId (or `undefined`) when a phrase or a link/unlink candidate is hovered, so
    * the parent can highlight the relevant phrase box and arcs. Merges what used to be two separate
    * callbacks (`onHoverPhrase` / `onHoverCandidatePhrase`) — both strips always passed the same

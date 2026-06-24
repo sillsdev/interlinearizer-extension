@@ -303,6 +303,7 @@ export function SegmentView({
     editPhraseSegmentId,
     tokenSegmentMap,
     tokenDocOrder,
+    phraseLinkByRef,
     onHoverPhrase,
     onHoverCandidateTokens: setCandidateTokenRefs,
     onHoverSplitFreeTokens: handleHoverSplitFreeTokens,

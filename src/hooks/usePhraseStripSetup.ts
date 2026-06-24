@@ -105,8 +105,6 @@ export type PhraseStripContextParams = Readonly<{
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Token ref → flat document index; used to keep merged phrase token lists in document order. */
   tokenDocOrder: ReadonlyMap<string, number>;
-  /** Token ref → committed phrase link, for resolving a cross-segment link target across verse 0. */
-  phraseLinkByRef: ReadonlyMap<string, PhraseAnalysisLink>;
   /** Called with a phraseId (or `undefined`) when a phrase or link candidate is hovered. */
   onHoverPhrase: (phraseId: string | undefined) => void;
   /** Called with the candidate token refs (or `undefined`) when a link icon is hovered. */
@@ -147,7 +145,6 @@ export function usePhraseStripContextValue(
     editPhraseSegmentId,
     tokenSegmentMap,
     tokenDocOrder,
-    phraseLinkByRef,
     onHoverPhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
@@ -167,7 +164,6 @@ export function usePhraseStripContextValue(
       editPhraseSegmentId,
       tokenSegmentMap,
       tokenDocOrder,
-      phraseLinkByRef,
       onHoverPhrase,
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,
@@ -185,7 +181,6 @@ export function usePhraseStripContextValue(
       editPhraseSegmentId,
       tokenSegmentMap,
       tokenDocOrder,
-      phraseLinkByRef,
       onHoverPhrase,
       onHoverCandidateTokens,
       onHoverSplitFreeTokens,

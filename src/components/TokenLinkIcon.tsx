@@ -1,31 +1,12 @@
 /** @file Inline link / unlink icon rendered between adjacent word token groups. */
-import type { PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Link2Off } from 'lucide-react';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { useSegmentation } from './SegmentationStore';
 import type { SlotFocusInfo } from '../types/token-layout';
-import { isWordToken } from '../types/type-guards';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
-
-/**
- * A resolved "reach past verse 0" link target. When the segment adjacent to a cross-segment slot is
- * a verse-0 superscription, the link can't pull the superscription's own token (its tokens must
- * stay together); instead it reaches past verse 0 to the next real segment. Acting on it sweeps
- * verse 0 wholesale into the focused segment and pulls {@link beyondToken} across, so the new phrase
- * lands in one segment.
- */
-type VerseZeroSkip = Readonly<{
-  /** First-token ref of the verse-0 segment, removed to merge it into the focused segment. */
-  verseZeroStartRef: string;
-  /** The real link/pull target: the first word past verse 0 (forward) or last word before it. */
-  beyondToken: Token & { type: 'word' };
-  /** The segment containing {@link beyondToken}. */
-  beyondSeg: Segment;
-  /** The phrase containing {@link beyondToken}, if any. */
-  beyondPhraseLink: PhraseAnalysisLink | undefined;
-}>;
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -96,66 +77,13 @@ export function TokenLinkIcon({
     phraseMode,
     tokenDocOrder,
     tokenSegmentMap,
-    phraseLinkByRef,
     onHoverPhrase: onHoverCandidatePhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
     crossSegmentLinkTooltip,
   } = usePhraseStripContext();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
-  const {
-    dispatch: segmentationDispatch,
-    segmentById,
-    segmentOrder,
-    verseZeroSegmentIds,
-  } = useSegmentation();
-
-  /**
-   * When the segment on the far (non-focused) side of this slot is a verse-0 superscription, the
-   * resolved target past it; otherwise `undefined`. Drives the "reach past verse 0" link: the
-   * superscription is swept into the focused segment as an intact unit and {@link beyondToken} is
-   * pulled across, rather than splitting the superscription.
-   */
-  const verseZeroSkip = useMemo<VerseZeroSkip | undefined>(() => {
-    if (focusedSideIsPrev === undefined || !prevToken || !nextToken) return undefined;
-    const neighborToken = focusedSideIsPrev ? nextToken : prevToken;
-    const verseZeroSegId = tokenSegmentMap.get(neighborToken.ref);
-    if (verseZeroSegId === undefined || !verseZeroSegmentIds.has(verseZeroSegId)) return undefined;
-    const verseZeroIndex = segmentOrder.get(verseZeroSegId);
-    /* v8 ignore next -- a verse-0 segment id always appears in segmentOrder (same source book) */
-    if (verseZeroIndex === undefined) return undefined;
-    // Reach to the real segment beyond verse 0 in the pull direction.
-    const beyondIndex = focusedSideIsPrev ? verseZeroIndex + 1 : verseZeroIndex - 1;
-    let beyondSeg: Segment | undefined;
-    segmentOrder.forEach((index, id) => {
-      if (index === beyondIndex) beyondSeg = segmentById.get(id);
-    });
-    if (!beyondSeg) return undefined;
-    // Forward pulls the first word after verse 0; backward pulls the last word before it.
-    const beyondToken = focusedSideIsPrev
-      ? beyondSeg.tokens.find(isWordToken)
-      : [...beyondSeg.tokens].reverse().find(isWordToken);
-    /* v8 ignore next -- a real segment beyond verse 0 always contains at least one word token */
-    if (!beyondToken) return undefined;
-    const verseZeroStartRef = segmentById.get(verseZeroSegId)?.tokens[0]?.ref;
-    /* v8 ignore next -- a verse-0 segment resolved from a rendered slot always has a first token */
-    if (verseZeroStartRef === undefined) return undefined;
-    return {
-      verseZeroStartRef,
-      beyondToken,
-      beyondSeg,
-      beyondPhraseLink: phraseLinkByRef.get(beyondToken.ref),
-    };
-  }, [
-    focusedSideIsPrev,
-    prevToken,
-    nextToken,
-    tokenSegmentMap,
-    verseZeroSegmentIds,
-    segmentOrder,
-    segmentById,
-    phraseLinkByRef,
-  ]);
+  const { dispatch: segmentationDispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
 
   const inSamePhrase =
     prevPhraseLink !== undefined &&
@@ -199,31 +127,6 @@ export function TokenLinkIcon({
   const performBoundaryPull = useCallback(() => {
     /* v8 ignore next -- only invoked from handleLinkClick after the same defined-token guards */
     if (!prevToken || !nextToken) return;
-    if (verseZeroSkip) {
-      // Sweep the whole superscription into the focused segment (it travels intact), then pull the
-      // token beyond it so the new cross-superscription phrase lands in one segment.
-      segmentationDispatch.merge(verseZeroSkip.verseZeroStartRef);
-      if (focusedSideIsPrev) {
-        const seg = verseZeroSkip.beyondSeg;
-        const currentStart = seg.tokens[0]?.ref;
-        /* v8 ignore next -- a reachable beyond segment always has at least one token */
-        if (currentStart === undefined) return;
-        const index = seg.tokens.findIndex((t) => t.ref === verseZeroSkip.beyondToken.ref);
-        const newStart = seg.tokens[index + 1]?.ref;
-        // The segment beyond verse 0 had only the pulled token, so it merges in wholly.
-        if (newStart === undefined) segmentationDispatch.merge(currentStart);
-        else segmentationDispatch.move(currentStart, newStart);
-      } else {
-        const focusedSegId = tokenSegmentMap.get(nextToken.ref);
-        /* v8 ignore next -- a rendered backward slot's next token always maps to the focused segment */
-        const focusedSeg = focusedSegId === undefined ? undefined : segmentById.get(focusedSegId);
-        const currentStart = focusedSeg?.tokens[0]?.ref;
-        /* v8 ignore next -- the focused segment of a rendered slot always has a first token */
-        if (currentStart === undefined) return;
-        segmentationDispatch.move(currentStart, verseZeroSkip.beyondToken.ref);
-      }
-      return;
-    }
     const adjacentSegmentId = tokenSegmentMap.get(nextToken.ref);
     const adjacentSegment =
       adjacentSegmentId === undefined ? undefined : segmentById.get(adjacentSegmentId);
@@ -240,15 +143,7 @@ export function TokenLinkIcon({
     } else {
       segmentationDispatch.move(currentStart, prevToken.ref);
     }
-  }, [
-    prevToken,
-    nextToken,
-    focusedSideIsPrev,
-    tokenSegmentMap,
-    segmentById,
-    segmentationDispatch,
-    verseZeroSkip,
-  ]);
+  }, [prevToken, nextToken, focusedSideIsPrev, tokenSegmentMap, segmentById, segmentationDispatch]);
 
   /**
    * Joins the neighbor on the far side of this slot into the focused phrase (or free token).
@@ -277,12 +172,9 @@ export function TokenLinkIcon({
     // segment; the phrase mutation below then proceeds as for a within-segment link.
     if (isAdjacentEdgeOfFocus) performBoundaryPull();
 
-    // The neighbor is the token/phrase on the opposite side of this slot from focus — or, when
-    // reaching past a verse-0 superscription, the resolved target beyond it.
-    const slotNeighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
-    const slotNeighborToken = focusedSideIsPrev ? nextToken : prevToken;
-    const neighborLink = verseZeroSkip ? verseZeroSkip.beyondPhraseLink : slotNeighborLink;
-    const neighborToken = verseZeroSkip ? verseZeroSkip.beyondToken : slotNeighborToken;
+    // The neighbor is the token/phrase on the opposite side of this slot from focus.
+    const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
+    const neighborToken = focusedSideIsPrev ? nextToken : prevToken;
     // The bridging token is on the focused side of this slot — the free token sitting between two
     // fragments of the focused phrase when the neighbor IS the focused phrase.
     const bridgingToken = focusedSideIsPrev ? prevToken : nextToken;
@@ -349,7 +241,6 @@ export function TokenLinkIcon({
     focusedFreeToken,
     isAdjacentEdgeOfFocus,
     performBoundaryPull,
-    verseZeroSkip,
     tokenDocOrder,
     createPhrase,
     updatePhrase,
@@ -416,8 +307,9 @@ export function TokenLinkIcon({
     );
   }
 
-  // The focused token's segment, and whether it is itself a verse-0 superscription — foreign tokens
-  // must never be pulled into a superscription, so its edges can't host a cross-segment pull.
+  // A verse-0 superscription is a hard wall: it is never pulled into a neighbor and never absorbs a
+  // foreign token, so no cross-segment link may touch one. That holds whether focus is itself inside
+  // the superscription or the superscription is the segment adjacent across this slot.
   const focusedRef = focusedFreeToken?.ref ?? focusedPhraseLink?.tokens[0]?.tokenRef;
   const focusedSegmentId = focusedRef === undefined ? undefined : tokenSegmentMap.get(focusedRef);
   const focusedIsVerseZero =
@@ -429,17 +321,14 @@ export function TokenLinkIcon({
       : tokenSegmentMap.get((focusedSideIsPrev ? nextToken : prevToken).ref);
   const adjacentIsVerseZero =
     adjacentSegmentId !== undefined && verseZeroSegmentIds.has(adjacentSegmentId);
-  // A cross-segment (adjacent-edge) pull is valid unless focus sits inside a superscription, or the
-  // adjacent segment is a superscription with no real segment reachable beyond it (no skip target).
-  const adjacentEdgeValid =
-    isAdjacentEdgeOfFocus &&
-    !focusedIsVerseZero &&
-    (!adjacentIsVerseZero || verseZeroSkip !== undefined);
+  // A cross-segment (adjacent-edge) pull is valid only when neither side of the boundary is a
+  // verse-0 superscription.
+  const adjacentEdgeValid = isAdjacentEdgeOfFocus && !focusedIsVerseZero && !adjacentIsVerseZero;
 
   // Link icon: active in view mode when focus is set and either both neighbors are in the focused
   // segment (a within-segment link) or this slot is a valid adjacent edge of the focused segment (a
-  // cross-segment link that pulls the edge token across and moves the boundary, reaching past a
-  // verse-0 superscription when one sits between).
+  // cross-segment link that pulls the edge token across and moves the boundary — never across a
+  // verse-0 superscription, which is a hard wall).
   const isActive =
     phraseMode.kind === 'view' &&
     focusedSideIsPrev !== undefined &&
@@ -457,14 +346,11 @@ export function TokenLinkIcon({
 
   // Highlight exactly what would be absorbed if the button were clicked — mirrors handleLinkClick.
   // Uses onHoverCandidateTokens (token-ref based) in all cases so only the directly adjacent
-  // fragment/box is highlighted, never all fragments of a discontiguous phrase. When reaching past a
-  // verse-0 superscription, the neighbor is the resolved target beyond it.
-  const slotNeighborToken = focusedSideIsPrev ? nextToken : prevToken;
-  const slotNeighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
-  const neighborRef = (verseZeroSkip ? verseZeroSkip.beyondToken : slotNeighborToken)?.ref;
-  const neighborLink = verseZeroSkip ? verseZeroSkip.beyondPhraseLink : slotNeighborLink;
+  // fragment/box is highlighted, never all fragments of a discontiguous phrase.
+  const neighborRef = (focusedSideIsPrev ? nextToken : prevToken)?.ref;
+  const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
   const bridgingToken = focusedSideIsPrev ? prevToken : nextToken;
-  const neighborIsPhrase = verseZeroSkip ? !!verseZeroSkip.beyondPhraseLink : !!slotNeighborLink;
+  const neighborIsPhrase = focusedSideIsPrev ? !!nextPhraseLink : !!prevPhraseLink;
   const neighborIsFocusedPhrase =
     neighborIsPhrase && neighborLink?.analysisId === focusedPhraseLink?.analysisId;
   const candidateTokenRefs = (() => {

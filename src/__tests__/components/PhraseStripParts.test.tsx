@@ -376,14 +376,24 @@ describe('PhraseSlot boundary controls', () => {
     expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('still shows the merge control when the next segment is a verse-0 superscription', () => {
-    const dispatch = renderBoundary(
+  it('renders no merge control when the next segment is a verse-0 superscription', () => {
+    renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
       undefined,
       new Set(['seg-2']),
     );
-    fireEvent.click(screen.getByTestId('boundary-merge-btn'));
-    expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders no merge control when the previous segment is a verse-0 superscription', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      undefined,
+      new Set(['seg-1']),
+    );
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
   });
 
   it('renders no split control inside a verse-0 superscription segment', () => {

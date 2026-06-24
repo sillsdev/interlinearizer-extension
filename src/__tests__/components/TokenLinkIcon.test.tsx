@@ -715,120 +715,45 @@ describe('TokenLinkIcon', () => {
     });
 
     // -------------------------------------------------------------------------
-    // Reach past a verse-0 superscription (sweep verse 0 + pull the token beyond it)
+    // Verse-0 superscriptions are a hard wall: no cross-segment link may touch one.
     // -------------------------------------------------------------------------
 
-    describe('reaching past a verse-0 superscription', () => {
+    describe('verse-0 superscription hard wall', () => {
       /**
-       * Builds a segment from word-token refs.
+       * Renders a cross-segment edge slot bordering a verse-0 superscription. seg-A (a real verse)
+       * and seg-B (the superscription) sit adjacent; `focusedSideIsPrev` picks which side holds
+       * focus. The slot's `nextToken` is seg-B's `tok-b` and `prevToken` is seg-A's `tok-a`.
        *
-       * @param id - Segment id.
-       * @param verse - Verse number (0 marks a superscription).
-       * @param refs - Word token refs in order.
-       * @returns The segment.
-       */
-      function makeSeg(id: string, verse: number, refs: string[]): Segment {
-        return {
-          id,
-          startRef: { book: 'GEN', chapter: 1, verse },
-          endRef: { book: 'GEN', chapter: 1, verse },
-          baselineText: refs.join(' '),
-          tokens: refs.map((r) => makeWordToken(r)),
-        };
-      }
-
-      /** Options for {@link renderSkip}. */
-      type SkipOpts = {
-        /** Pull direction: `true` = focus before verse 0 (forward), `false` = after it (backward). */
-        focusedSideIsPrev: boolean;
-        /** Word refs of the segment before verse 0. */
-        aTokens: string[];
-        /** Word refs of the verse-0 superscription. */
-        v0Tokens: string[];
-        /** Word refs of the segment after verse 0; omit to model verse 0 at the book edge. */
-        bTokens?: string[];
-        /** A phrase containing the resolved beyond-token, to exercise the neighbor-phrase path. */
-        beyondPhrase?: ReturnType<typeof makePhraseLink>;
-        /** Focused token ref override (defaults to the focused segment's edge word). */
-        focusedRef?: string;
-        /** Whether the focused token is itself inside the verse-0 segment. */
-        focusInVerseZero?: boolean;
-      };
-
-      /**
-       * Renders a link icon at the slot bordering a verse-0 superscription, with three segments (A
-       *
-       * | V0 | B) wired into both providers.
-       *
-       * @param dispatch - The segmentation dispatch to capture calls on.
-       * @param opts - Segment layout and focus configuration.
+       * @param opts - Which side holds focus and which segment id is the verse-0 superscription.
        * @returns The render result.
        */
-      function renderSkip(dispatch: SegmentationDispatch, opts: SkipOpts) {
-        const aSeg = makeSeg('seg-A', 1, opts.aTokens);
-        const v0Seg = makeSeg('seg-V0', 0, opts.v0Tokens);
-        const bSeg = opts.bTokens ? makeSeg('seg-B', 2, opts.bTokens) : undefined;
-        const segmentById = new Map<string, Segment>([
-          ['seg-A', aSeg],
-          ['seg-V0', v0Seg],
-        ]);
-        const segmentOrder = new Map([
-          ['seg-A', 0],
-          ['seg-V0', 1],
-        ]);
-        if (bSeg) {
-          segmentById.set('seg-B', bSeg);
-          segmentOrder.set('seg-B', 2);
-        }
-        const tokenSegmentMap = new Map<string, string>();
-        opts.aTokens.forEach((r) => tokenSegmentMap.set(r, 'seg-A'));
-        opts.v0Tokens.forEach((r) => tokenSegmentMap.set(r, 'seg-V0'));
-        opts.bTokens?.forEach((r) => tokenSegmentMap.set(r, 'seg-B'));
-
-        // Forward: slot sits between A's last word and verse 0's first word, focus is in A.
-        // Backward: slot sits between verse 0's last word and B's first word, focus is in B.
-        const lastAToken = opts.aTokens[opts.aTokens.length - 1];
-        const firstBToken =
-          /* v8 ignore next -- backward/forward tests always pass bTokens */
-          opts.bTokens?.[0] ?? 'none';
-        const prevToken = opts.focusedSideIsPrev
-          ? makeWordToken(lastAToken)
-          : makeWordToken(opts.v0Tokens[opts.v0Tokens.length - 1]);
-        const nextToken = opts.focusedSideIsPrev
-          ? makeWordToken(opts.v0Tokens[0])
-          : makeWordToken(firstBToken);
-        const edgeFocusedRef = opts.focusedSideIsPrev ? lastAToken : firstBToken;
-        const defaultFocusedRef = opts.focusInVerseZero ? opts.v0Tokens[0] : edgeFocusedRef;
-
+      function renderWall(opts: { focusedSideIsPrev: boolean; verseZeroSegId: 'seg-A' | 'seg-B' }) {
         const segmentation: SegmentationContextValue = {
-          dispatch,
+          dispatch: makeDispatch(),
           boundaryEditMode: false,
-          segmentById,
-          segmentOrder,
-          verseZeroSegmentIds: new Set(['seg-V0']),
+          segmentById: new Map([['seg-B', segB(['tok-b', 'tok-c'])]]),
+          segmentOrder: new Map([
+            ['seg-A', 0],
+            ['seg-B', 1],
+          ]),
+          verseZeroSegmentIds: new Set([opts.verseZeroSegId]),
         };
-        const allRefs = [...opts.aTokens, ...opts.v0Tokens, ...(opts.bTokens ?? [])];
-        const tokenDocOrder = new Map(allRefs.map((r, i) => [r, i]));
-        const phraseLinkByRef = new Map<string, ReturnType<typeof makePhraseLink>>();
-        if (opts.beyondPhrase) {
-          opts.beyondPhrase.tokens.forEach((t) => {
-            if (opts.beyondPhrase) phraseLinkByRef.set(t.tokenRef, opts.beyondPhrase);
-          });
-        }
+        const tokenSegmentMap = new Map([
+          ['tok-a', 'seg-A'],
+          ['tok-b', 'seg-B'],
+        ]);
         return render(
           <SegmentationProvider value={segmentation}>
             <PhraseStripProvider
-              value={makePhraseStripContext({ tokenSegmentMap, tokenDocOrder, phraseLinkByRef })}
+              value={makePhraseStripContext({ tokenSegmentMap, crossSegmentLinkTooltip: 'nope' })}
             >
               <TokenLinkIcon
                 {...requiredProps()}
-                prevToken={prevToken}
-                nextToken={nextToken}
                 slotFocus={slotFocus({
                   focusedSideIsPrev: opts.focusedSideIsPrev,
                   isSameSegmentAsFocus: false,
                   isAdjacentEdgeOfFocus: true,
-                  focusedFreeToken: makeWordToken(opts.focusedRef ?? defaultFocusedRef),
+                  focusedFreeToken: makeWordToken(opts.focusedSideIsPrev ? 'tok-a' : 'tok-b'),
                 })}
               />
             </PhraseStripProvider>
@@ -836,142 +761,18 @@ describe('TokenLinkIcon', () => {
         );
       }
 
-      it('sweeps verse 0 and pulls the first word beyond it when focus is the previous segment', async () => {
-        const dispatch = makeDispatch();
-        renderSkip(dispatch, {
-          focusedSideIsPrev: true,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1', 'z2'],
-          bTokens: ['b1', 'b2'],
-        });
-        await userEvent.click(screen.getByTestId('token-link-btn'));
-        // Merge verse 0 into A, then pull b1 (leaving b2 as B's new start).
-        expect(dispatch.merge).toHaveBeenCalledWith('z1');
-        expect(dispatch.move).toHaveBeenCalledWith('b1', 'b2');
-        // The phrase links the focused A token with the token beyond verse 0, not a verse-0 token.
-        expect(mockCreatePhrase).toHaveBeenCalledWith([
-          { tokenRef: 'a2', surfaceText: 'a2' },
-          { tokenRef: 'b1', surfaceText: 'b1' },
-        ]);
+      it('disables the link when the adjacent segment is a verse-0 superscription', () => {
+        renderWall({ focusedSideIsPrev: true, verseZeroSegId: 'seg-B' });
+        const button = screen.getByTestId('token-link-btn');
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'nope');
       });
 
-      it('merges the whole segment beyond verse 0 when it has only the pulled token', async () => {
-        const dispatch = makeDispatch();
-        renderSkip(dispatch, {
-          focusedSideIsPrev: true,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1'],
-          bTokens: ['b1'],
-        });
-        await userEvent.click(screen.getByTestId('token-link-btn'));
-        expect(dispatch.merge).toHaveBeenCalledWith('z1');
-        expect(dispatch.merge).toHaveBeenCalledWith('b1');
-      });
-
-      it('sweeps verse 0 and pulls the last word before it when focus is the next segment', async () => {
-        const dispatch = makeDispatch();
-        renderSkip(dispatch, {
-          focusedSideIsPrev: false,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1', 'z2'],
-          bTokens: ['b1', 'b2'],
-        });
-        await userEvent.click(screen.getByTestId('token-link-btn'));
-        // Merge verse 0 into A, then move B's start back to A's last word a2.
-        expect(dispatch.merge).toHaveBeenCalledWith('z1');
-        expect(dispatch.move).toHaveBeenCalledWith('b1', 'a2');
-      });
-
-      it('absorbs the focused token into the beyond-token phrase when one exists', async () => {
-        const dispatch = makeDispatch();
-        renderSkip(dispatch, {
-          focusedSideIsPrev: true,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1', 'z2'],
-          bTokens: ['b1', 'b2'],
-          beyondPhrase: makePhraseLink('p-beyond', ['b1']),
-        });
-        await userEvent.click(screen.getByTestId('token-link-btn'));
-        expect(dispatch.merge).toHaveBeenCalledWith('z1');
-        // Focused free token a2 is absorbed into the phrase that already contains b1.
-        expect(mockUpdatePhrase).toHaveBeenCalledWith(
-          'p-beyond',
-          expect.arrayContaining([{ tokenRef: 'a2', surfaceText: 'a2' }]),
-        );
-      });
-
-      it('disables the link when verse 0 is at the book edge with nothing beyond it', () => {
-        renderSkip(makeDispatch(), {
-          focusedSideIsPrev: true,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1', 'z2'],
-          // No bTokens: verse 0 ends the book, so there is no segment to reach.
-        });
-        expect(screen.getByTestId('token-link-btn')).toBeDisabled();
-      });
-
-      it('disables the link when the focused token is itself inside verse 0', () => {
-        renderSkip(makeDispatch(), {
-          focusedSideIsPrev: true,
-          aTokens: ['a1', 'a2'],
-          v0Tokens: ['z1', 'z2'],
-          bTokens: ['b1', 'b2'],
-          focusInVerseZero: true,
-        });
-        expect(screen.getByTestId('token-link-btn')).toBeDisabled();
-      });
-
-      it('highlights the token beyond verse 0 on hover', async () => {
-        const onHoverCandidateTokens = jest.fn();
-        const dispatch = makeDispatch();
-        const aSeg = makeSeg('seg-A', 1, ['a1', 'a2']);
-        const v0Seg = makeSeg('seg-V0', 0, ['z1', 'z2']);
-        const bSeg = makeSeg('seg-B', 2, ['b1', 'b2']);
-        const tokenSegmentMap = new Map([
-          ['a1', 'seg-A'],
-          ['a2', 'seg-A'],
-          ['z1', 'seg-V0'],
-          ['z2', 'seg-V0'],
-          ['b1', 'seg-B'],
-          ['b2', 'seg-B'],
-        ]);
-        render(
-          <SegmentationProvider
-            value={{
-              dispatch,
-              boundaryEditMode: false,
-              segmentById: new Map([
-                ['seg-A', aSeg],
-                ['seg-V0', v0Seg],
-                ['seg-B', bSeg],
-              ]),
-              segmentOrder: new Map([
-                ['seg-A', 0],
-                ['seg-V0', 1],
-                ['seg-B', 2],
-              ]),
-              verseZeroSegmentIds: new Set(['seg-V0']),
-            }}
-          >
-            <PhraseStripProvider
-              value={makePhraseStripContext({ tokenSegmentMap, onHoverCandidateTokens })}
-            >
-              <TokenLinkIcon
-                {...requiredProps()}
-                prevToken={makeWordToken('a2')}
-                nextToken={makeWordToken('z1')}
-                slotFocus={slotFocus({
-                  focusedSideIsPrev: true,
-                  isSameSegmentAsFocus: false,
-                  isAdjacentEdgeOfFocus: true,
-                  focusedFreeToken: makeWordToken('a2'),
-                })}
-              />
-            </PhraseStripProvider>
-          </SegmentationProvider>,
-        );
-        await userEvent.hover(screen.getByTestId('token-link-btn'));
-        expect(onHoverCandidateTokens).toHaveBeenCalledWith(['a2', 'b1']);
+      it('disables the link when the focused segment is itself a verse-0 superscription', () => {
+        renderWall({ focusedSideIsPrev: false, verseZeroSegId: 'seg-B' });
+        const button = screen.getByTestId('token-link-btn');
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'nope');
       });
     });
   });

@@ -31,16 +31,18 @@ type BoundaryControlProps = Readonly<{
  * Renders the boundary-edit control for one slot. A slot straddling two different segments shows a
  * merge control (combine the next segment into the previous one); a slot inside one segment shows a
  * split control (start a new segment at the next token). Leading/trailing slots (one side missing)
- * render nothing. A merge that involves a verse-0 segment (a superscription) is allowed — verse 0
- * merges as an intact unit — but a split _inside_ a verse-0 segment is suppressed, since its tokens
- * must always stay together.
+ * render nothing.
+ *
+ * A verse-0 segment (a chapter superscription) is a hard wall: its tokens must stay together and it
+ * must never join a neighbor. So no control renders at a boundary touching one — neither the merge
+ * control at a slot where verse 0 is on either side, nor the split control inside it.
  *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
  * @param props.nextSegmentId - Segment id after the slot.
  * @param props.nextTokenRef - First word token after the slot (split anchor).
- * @returns A merge or split button, or `undefined` when the slot is at a book edge or would split a
- *   verse-0 segment.
+ * @returns A merge or split button, or `undefined` when the slot is at a book edge or borders a
+ *   verse-0 superscription.
  */
 function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: BoundaryControlProps) {
   const { dispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
@@ -49,6 +51,11 @@ function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: Boundar
     return undefined;
   }
   if (prevSegmentId !== nextSegmentId) {
+    // A merge that would pull a verse-0 superscription into a neighbor, or pull a neighbor into one,
+    // is forbidden: render no merge control at a boundary where either side is verse 0.
+    if (verseZeroSegmentIds.has(prevSegmentId) || verseZeroSegmentIds.has(nextSegmentId)) {
+      return undefined;
+    }
     const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
     const secondStart = segmentById.get(nextSegmentId)?.tokens[0]?.ref;
     return (

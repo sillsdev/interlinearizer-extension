@@ -6,7 +6,6 @@ import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
-  rankPoolEntries,
   resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
@@ -33,24 +32,46 @@ describe('buildPoolIndex', () => {
     expect(index.get('dog')).toEqual([{ analysis: dog, frequency: 3 }]);
   });
 
-  it('groups two distinct payloads sharing a surface form under one key (homograph)', () => {
+  it('ranks homograph payloads best-first (most-approved first) regardless of input order', () => {
     const riverbank = ta('b1', 'bank', 'riverbank');
     const moneyBank = ta('b2', 'bank', 'money bank');
     const byId = new Map([
       ['b1', riverbank],
       ['b2', moneyBank],
     ]);
+    // Fed least-approved first, so an unranked (insertion-order) bucket would surface riverbank as
+    // the head. The bucket must come out most-approved first, because deriveTokenSuggestion reads
+    // the head as the suggested pick without re-sorting (the pool is pre-ranked here, once).
     const counts = new Map([
-      ['b1', 5],
-      ['b2', 2],
+      ['b1', 2],
+      ['b2', 7],
     ]);
 
     const index = buildPoolIndex(byId, counts);
 
     expect(index.get('bank')).toEqual([
-      { analysis: riverbank, frequency: 5 },
-      { analysis: moneyBank, frequency: 2 },
+      { analysis: moneyBank, frequency: 7 },
+      { analysis: riverbank, frequency: 2 },
     ]);
+  });
+
+  it('breaks frequency ties by ascending analysis id so the suggested pick never flickers', () => {
+    // Three equally-frequent homographs fed in scrambled id order must come out ascending by id, so
+    // the elected suggestion (the bucket head) is deterministic regardless of pool insertion order.
+    const byId = new Map([
+      ['c3', ta('c3', 'set', 'C')],
+      ['a1', ta('a1', 'set', 'A')],
+      ['b2', ta('b2', 'set', 'B')],
+    ]);
+    const counts = new Map([
+      ['c3', 3],
+      ['a1', 3],
+      ['b2', 3],
+    ]);
+
+    const index = buildPoolIndex(byId, counts);
+
+    expect(index.get('set')?.map((e) => e.analysis.id)).toEqual(['a1', 'b2', 'c3']);
   });
 
   it('files distinct surface forms under separate keys', () => {
@@ -81,45 +102,6 @@ describe('buildPoolIndex', () => {
 
     expect(index.has('The')).toBe(false);
     expect(index.get('the')).toEqual([{ analysis: the, frequency: 4 }]);
-  });
-});
-
-describe('rankPoolEntries', () => {
-  it('orders payloads by descending approval frequency', () => {
-    const rare = ta('a1', 'set', 'to place');
-    const common = ta('a2', 'set', 'a collection');
-
-    const ranked = rankPoolEntries([
-      { analysis: rare, frequency: 1 },
-      { analysis: common, frequency: 9 },
-    ]);
-
-    expect(ranked.map((e) => e.analysis)).toEqual([common, rare]);
-  });
-
-  it('breaks frequency ties by ascending analysis id so the pick never flickers', () => {
-    // Three equally-frequent homographs in scrambled id order must sort to ascending id, so the
-    // top pick is deterministic regardless of the order they happen to sit in the pool.
-    const ranked = rankPoolEntries([
-      { analysis: ta('c3', 'set', 'C'), frequency: 3 },
-      { analysis: ta('a1', 'set', 'A'), frequency: 3 },
-      { analysis: ta('b2', 'set', 'B'), frequency: 3 },
-    ]);
-
-    expect(ranked.map((e) => e.analysis.id)).toEqual(['a1', 'b2', 'c3']);
-  });
-
-  it('returns a sorted copy without mutating the input array', () => {
-    const rare = ta('a1', 'set', 'to place');
-    const common = ta('a2', 'set', 'a collection');
-    const input = [
-      { analysis: rare, frequency: 1 },
-      { analysis: common, frequency: 9 },
-    ];
-
-    rankPoolEntries(input);
-
-    expect(input.map((e) => e.analysis)).toEqual([rare, common]);
   });
 });
 

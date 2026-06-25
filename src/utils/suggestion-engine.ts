@@ -21,10 +21,12 @@ export interface PoolEntry {
 
 /**
  * The analysis pool indexed for matching: normalized surface form → the distinct approved payloads
- * sharing that form. A single-element list is the common case; multiple entries mean a homograph
- * (competing analyses of the same surface form).
+ * sharing that form, each bucket pre-ranked best-first ({@link comparePoolEntries}) so its head is
+ * the suggested pick. A single-element list is the common case; multiple entries mean a homograph
+ * (competing analyses of the same surface form). Buckets are read-only — they are ranked once at
+ * build time and never re-sorted per token.
  */
-export type PoolIndex = ReadonlyMap<string, PoolEntry[]>;
+export type PoolIndex = ReadonlyMap<string, readonly PoolEntry[]>;
 
 /** The engine's derived proposal for one un-approved token (never persisted — derived on read). */
 export interface TokenSuggestion {
@@ -53,6 +55,22 @@ export type ResolvedTokenAnalysis =
       /** The token has no approved analysis; the engine proposes one derived from the pool. */
       status: 'suggested';
     } & TokenSuggestion);
+
+/**
+ * Orders two competing pool entries best-first: the more-approved entry sorts before the less, and
+ * a frequency tie is broken by the lower `analysis.id`. The id tiebreak is deterministic and
+ * content-independent, so the elected suggestion never flickers between equally-frequent homographs
+ * as unrelated edits reorder the pool. Used by {@link buildPoolIndex} to pre-rank each bucket once
+ * at build time so per-token derives never re-sort.
+ *
+ * @param a - First pool entry.
+ * @param b - Second pool entry.
+ * @returns A negative number when `a` ranks first, positive when `b` ranks first.
+ */
+function comparePoolEntries(a: PoolEntry, b: PoolEntry): number {
+  if (a.frequency !== b.frequency) return b.frequency - a.frequency;
+  return a.analysis.id < b.analysis.id ? -1 : 1;
+}
 
 /**
  * Groups the approved analyses into the {@link PoolIndex} used for matching: each distinct payload
@@ -88,31 +106,20 @@ export function buildPoolIndex(
     if (bucket) bucket.push({ analysis, frequency });
     else index.set(key, [{ analysis, frequency }]);
   });
+  // Pre-rank each bucket best-first once here, at pool-build time. This runs only when the pool is
+  // rebuilt (a memoized selector recomputes it on an approved write), so the per-token
+  // deriveTokenSuggestion reads the head as the suggested pick without re-sorting on every render.
+  index.forEach((bucket) => bucket.sort(comparePoolEntries));
   return index;
 }
 
 /**
- * Orders the competing payloads for one surface form best-first: most-approved first, ties broken
- * by the lowest `analysis.id`. The id tiebreak is deterministic and content-independent, so the
- * elected suggestion never flickers between equally-frequent homographs as unrelated edits reorder
- * the pool. Returns a new array; the input is not mutated.
- *
- * @param entries - The pool entries sharing one normalized surface form.
- * @returns A new array sorted by descending frequency, then ascending `analysis.id`.
- */
-export function rankPoolEntries(entries: readonly PoolEntry[]): PoolEntry[] {
-  return [...entries].sort((a, b) => {
-    if (a.frequency !== b.frequency) return b.frequency - a.frequency;
-    return a.analysis.id < b.analysis.id ? -1 : 1;
-  });
-}
-
-/**
  * Derives the suggestion for one token from the pool by matching on its normalized surface form
- * ({@link normalizeSurfaceForm}). When the form matches, the most-approved payload becomes the
- * `suggested` analysis and the rest become ranked `candidate`s ({@link rankPoolEntries}); when it
- * does not match, there is no suggestion. The caller is responsible for only asking about tokens
- * that have no approved analysis (an approved token reads its decision, not a suggestion).
+ * ({@link normalizeSurfaceForm}). When the form matches, the matched bucket is already ranked
+ * best-first ({@link buildPoolIndex}), so its head is the `suggested` analysis and the rest are the
+ * ranked `candidate`s; when it does not match, there is no suggestion. The caller is responsible
+ * for only asking about tokens that have no approved analysis (an approved token reads its
+ * decision, not a suggestion).
  *
  * @param poolIndex - The pool indexed by normalized surface form.
  * @param surfaceText - The token's raw surface text.
@@ -124,8 +131,9 @@ export function deriveTokenSuggestion(
 ): TokenSuggestion | undefined {
   const entries = poolIndex.get(normalizeSurfaceForm(surfaceText));
   if (!entries) return undefined;
-  const ranked = rankPoolEntries(entries);
-  return { suggested: ranked[0].analysis, candidates: ranked.slice(1).map((e) => e.analysis) };
+  // The bucket is pre-ranked best-first by buildPoolIndex, so the head is the suggested pick and
+  // the tail are the candidates — no per-call re-sort.
+  return { suggested: entries[0].analysis, candidates: entries.slice(1).map((e) => e.analysis) };
 }
 
 /**

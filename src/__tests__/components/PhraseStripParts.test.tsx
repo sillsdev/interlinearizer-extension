@@ -2,8 +2,9 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
-import type { PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
 import type { ReactElement } from 'react';
 import {
   PhraseSlot,
@@ -12,6 +13,10 @@ import {
   type StripItem,
 } from '../../components/PhraseStripParts';
 import { PhraseStripProvider } from '../../components/PhraseStripContext';
+import {
+  SegmentationProvider,
+  type SegmentationContextValue,
+} from '../../components/SegmentationStore';
 import { emptyFocusContext } from '../../types/empty-factories';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
@@ -295,6 +300,138 @@ describe('PhraseSlot', () => {
     // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
     expect(icon.parentElement?.style.opacity).toBe('0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PhraseSlot boundary controls (boundary-edit mode)
+// ---------------------------------------------------------------------------
+
+describe('PhraseSlot boundary controls', () => {
+  // resetMocks clears the shared useLocalizedStrings implementation, so re-establish the
+  // key-to-itself mapping the BoundaryControl labels rely on.
+  beforeEach(() => {
+    jest
+      .mocked(useLocalizedStrings)
+      .mockImplementation((keys: readonly string[]) => [
+        keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}),
+        false,
+      ]);
+  });
+
+  const groupA: TokenGroup = {
+    tokens: [makeWordToken('a')],
+    phraseLink: undefined,
+    firstIndex: 0,
+    punctuationBetween: [],
+  };
+  const groupB: TokenGroup = {
+    tokens: [makeWordToken('b')],
+    phraseLink: undefined,
+    firstIndex: 1,
+    punctuationBetween: [],
+  };
+  const slot: LinkSlot = { prevGroup: groupA, nextGroup: groupB, punctuation: [] };
+
+  /** A segment whose first token ref identifies the boundary the merge control removes. */
+  const nextSegment: Segment = {
+    id: 'seg-2',
+    startRef: { book: 'GEN', chapter: 1, verse: 2 },
+    endRef: { book: 'GEN', chapter: 1, verse: 2 },
+    baselineText: 'b',
+    tokens: [makeWordToken('seg2-start')],
+  };
+
+  /**
+   * Renders a PhraseSlot inside both providers with boundary-edit mode on.
+   *
+   * @param props - Overrides for the slot props (e.g. prev/next segment ids).
+   * @param dispatch - The segmentation dispatch to capture calls on.
+   * @returns The render result.
+   */
+  function renderBoundary(
+    props: Partial<Parameters<typeof PhraseSlot>[0]>,
+    dispatch = {
+      merge: jest.fn(),
+      split: jest.fn(),
+      move: jest.fn(),
+    },
+    verseZeroSegmentIds: ReadonlySet<string> = new Set(),
+  ) {
+    const value: SegmentationContextValue = {
+      dispatch,
+      boundaryEditMode: true,
+      segmentById: new Map([['seg-2', nextSegment]]),
+      segmentOrder: new Map([
+        ['seg-1', 0],
+        ['seg-2', 1],
+      ]),
+      verseZeroSegmentIds,
+    };
+    render(
+      <SegmentationProvider value={value}>
+        <PhraseStripProvider value={makePhraseStripContext()}>
+          <PhraseSlot {...slotProps(slot)} {...props} />
+        </PhraseStripProvider>
+      </SegmentationProvider>,
+    );
+    return dispatch;
+  }
+
+  it('shows a merge control on a cross-segment slot and merges on click', () => {
+    const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+    const button = screen.getByTestId('boundary-merge-btn');
+    fireEvent.click(button);
+    expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
+  });
+
+  it('shows a split control on an intra-segment slot and splits on click', () => {
+    const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+    const button = screen.getByTestId('boundary-split-btn');
+    fireEvent.click(button);
+    // The next group's first token ref is the split anchor.
+    expect(dispatch.split).toHaveBeenCalledWith('b');
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders no merge control when the next segment is a verse-0 superscription', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      undefined,
+      new Set(['seg-2']),
+    );
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders no merge control when the previous segment is a verse-0 superscription', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      undefined,
+      new Set(['seg-1']),
+    );
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders no split control inside a verse-0 superscription segment', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      undefined,
+      new Set(['seg-1']),
+    );
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('renders no control at a leading slot with no previous segment', () => {
+    renderBoundary({
+      prevSegmentId: undefined,
+      nextSegmentId: 'seg-1',
+    });
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
   });
 });
 

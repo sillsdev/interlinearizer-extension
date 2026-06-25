@@ -4,12 +4,18 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Segment } from 'interlinearizer';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
+import {
+  SegmentationProvider,
+  type SegmentationContextValue,
+  type SegmentationDispatch,
+} from '../../components/SegmentationStore';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
@@ -48,6 +54,7 @@ function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
   return {
     focusedSideIsPrev: undefined,
     isSameSegmentAsFocus: true,
+    isAdjacentEdgeOfFocus: false,
     focusedPhraseLink: undefined,
     focusedFreeToken: undefined,
     ...overrides,
@@ -530,5 +537,194 @@ describe('TokenLinkIcon', () => {
     );
     await userEvent.hover(screen.getByTestId('token-unlink-btn'));
     expect(onHoverSplitFreeTokens).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Cross-segment edge link (pulls an adjacent segment's edge token + moves the boundary)
+  // ---------------------------------------------------------------------------
+
+  describe('cross-segment edge link', () => {
+    /** A fresh segmentation dispatch whose calls the tests assert on. */
+    function makeDispatch(): jest.Mocked<SegmentationDispatch> {
+      return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+    }
+
+    /**
+     * Builds an adjacent segment ("seg-B") containing the given token refs in order.
+     *
+     * @param refs - Word token refs composing the segment, in document order.
+     * @returns A segment with id `seg-B`.
+     */
+    function segB(refs: string[]): Segment {
+      return {
+        id: 'seg-B',
+        startRef: { book: 'GEN', chapter: 1, verse: 2 },
+        endRef: { book: 'GEN', chapter: 1, verse: 2 },
+        baselineText: refs.join(' '),
+        tokens: refs.map((r) => makeWordToken(r)),
+      };
+    }
+
+    /**
+     * Renders a cross-segment edge `TokenLinkIcon` inside both providers.
+     *
+     * @param dispatch - The segmentation dispatch to capture calls on.
+     * @param opts - `focusedSideIsPrev` and the adjacent segment's tokens.
+     * @returns The render result.
+     */
+    function renderEdge(
+      dispatch: SegmentationDispatch,
+      opts: { focusedSideIsPrev: boolean; segmentTokens: string[]; mapToken?: boolean },
+    ) {
+      const segmentation: SegmentationContextValue = {
+        dispatch,
+        boundaryEditMode: false,
+        segmentById: new Map([['seg-B', segB(opts.segmentTokens)]]),
+        segmentOrder: new Map([
+          ['seg-A', 0],
+          ['seg-B', 1],
+        ]),
+        verseZeroSegmentIds: new Set(),
+      };
+      const tokenSegmentMap =
+        opts.mapToken === false ? new Map<string, string>() : new Map([['tok-b', 'seg-B']]);
+      return render(
+        <SegmentationProvider value={segmentation}>
+          <PhraseStripProvider value={makePhraseStripContext({ tokenSegmentMap })}>
+            <TokenLinkIcon
+              {...requiredProps()}
+              slotFocus={slotFocus({
+                focusedSideIsPrev: opts.focusedSideIsPrev,
+                isSameSegmentAsFocus: false,
+                isAdjacentEdgeOfFocus: true,
+                focusedFreeToken: makeWordToken(opts.focusedSideIsPrev ? 'tok-a' : 'tok-b'),
+              })}
+            />
+          </PhraseStripProvider>
+        </SegmentationProvider>,
+      );
+    }
+
+    it('activates the link button at an adjacent edge even across a segment boundary', () => {
+      renderEdge(makeDispatch(), { focusedSideIsPrev: true, segmentTokens: ['tok-b', 'tok-c'] });
+      expect(screen.getByTestId('token-link-btn')).toBeEnabled();
+    });
+
+    it('pulls one token forward (move) when focus is the previous segment', async () => {
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: ['tok-b', 'tok-c'] });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      // The adjacent segment B starts at tok-b; pulling tok-b leaves tok-c as B's new start.
+      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-c');
+      expect(mockCreatePhrase).toHaveBeenCalled();
+    });
+
+    it('merges the whole adjacent segment when it has only the pulled token', async () => {
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: ['tok-b'] });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
+    });
+
+    it('moves the boundary back to the pulled token when focus is the next segment', async () => {
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, { focusedSideIsPrev: false, segmentTokens: ['tok-b', 'tok-c'] });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      // Focus is segment B (starting at tok-b); pulling the previous segment's tok-a moves B's start to tok-a.
+      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-a');
+    });
+
+    it('skips the boundary move but still phrases when the pulled token maps to no segment', async () => {
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, {
+        focusedSideIsPrev: true,
+        segmentTokens: ['tok-b', 'tok-c'],
+        mapToken: false,
+      });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(dispatch.move).not.toHaveBeenCalled();
+      expect(dispatch.merge).not.toHaveBeenCalled();
+      expect(mockCreatePhrase).toHaveBeenCalled();
+    });
+
+    it('leaves the link button inactive (with tooltip) for a non-edge cross-segment slot', () => {
+      render(
+        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
+          <TokenLinkIcon
+            {...requiredProps()}
+            slotFocus={slotFocus({
+              focusedSideIsPrev: true,
+              isSameSegmentAsFocus: false,
+              isAdjacentEdgeOfFocus: false,
+            })}
+          />
+        </PhraseStripProvider>,
+      );
+      const button = screen.getByTestId('token-link-btn');
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('title', 'nope');
+    });
+
+    // -------------------------------------------------------------------------
+    // Verse-0 superscriptions are a hard wall: no cross-segment link may touch one.
+    // -------------------------------------------------------------------------
+
+    describe('verse-0 superscription hard wall', () => {
+      /**
+       * Renders a cross-segment edge slot bordering a verse-0 superscription. seg-A (a real verse)
+       * and seg-B (the superscription) sit adjacent; `focusedSideIsPrev` picks which side holds
+       * focus. The slot's `nextToken` is seg-B's `tok-b` and `prevToken` is seg-A's `tok-a`.
+       *
+       * @param opts - Which side holds focus and which segment id is the verse-0 superscription.
+       * @returns The render result.
+       */
+      function renderWall(opts: { focusedSideIsPrev: boolean; verseZeroSegId: 'seg-A' | 'seg-B' }) {
+        const segmentation: SegmentationContextValue = {
+          dispatch: makeDispatch(),
+          boundaryEditMode: false,
+          segmentById: new Map([['seg-B', segB(['tok-b', 'tok-c'])]]),
+          segmentOrder: new Map([
+            ['seg-A', 0],
+            ['seg-B', 1],
+          ]),
+          verseZeroSegmentIds: new Set([opts.verseZeroSegId]),
+        };
+        const tokenSegmentMap = new Map([
+          ['tok-a', 'seg-A'],
+          ['tok-b', 'seg-B'],
+        ]);
+        return render(
+          <SegmentationProvider value={segmentation}>
+            <PhraseStripProvider
+              value={makePhraseStripContext({ tokenSegmentMap, crossSegmentLinkTooltip: 'nope' })}
+            >
+              <TokenLinkIcon
+                {...requiredProps()}
+                slotFocus={slotFocus({
+                  focusedSideIsPrev: opts.focusedSideIsPrev,
+                  isSameSegmentAsFocus: false,
+                  isAdjacentEdgeOfFocus: true,
+                  focusedFreeToken: makeWordToken(opts.focusedSideIsPrev ? 'tok-a' : 'tok-b'),
+                })}
+              />
+            </PhraseStripProvider>
+          </SegmentationProvider>,
+        );
+      }
+
+      it('disables the link when the adjacent segment is a verse-0 superscription', () => {
+        renderWall({ focusedSideIsPrev: true, verseZeroSegId: 'seg-B' });
+        const button = screen.getByTestId('token-link-btn');
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'nope');
+      });
+
+      it('disables the link when the focused segment is itself a verse-0 superscription', () => {
+        renderWall({ focusedSideIsPrev: false, verseZeroSegId: 'seg-B' });
+        const button = screen.getByTestId('token-link-btn');
+        expect(button).toBeDisabled();
+        expect(button).toHaveAttribute('title', 'nope');
+      });
+    });
   });
 });

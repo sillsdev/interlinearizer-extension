@@ -86,3 +86,66 @@ Decisions made during development that we'd like reviewed:
     (the less destructive option) and disables that option when no book is loaded. Alternative: keep
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
+
+## User-defined segment boundaries
+
+Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
+their own segment boundaries: an **Edit segment boundaries** view toggle exposes per-slot **merge**
+(combine a segment into the one before it) and **split** (start a new segment at a token) controls,
+and linking a phrase across a verse boundary pulls the adjacent segment's **edge** token into the
+focused segment (only the immediate adjacent-edge link buttons are active for this). Boundaries are
+stored as a delta from the default verse segmentation on the draft and carried to the project on
+Save; discontiguous segments are not supported.
+
+Decisions made during development that we'd like reviewed:
+
+1. **Merged-segment separator.** When two verses are merged into one segment, their baseline texts
+   are joined with a single space. This is reasonable for whitespace-delimited scripts but wrong for
+   scriptio continua (Chinese, Thai, …) and for cases where the USFM implied a different break.
+   Should the separator be configurable per project/writing system, or derived from the source?
+
+2. **Split-segment baseline display.** A segment created by splitting a verse currently keeps only
+   the baseline text spanning **its own tokens** — `buildSegment` slices the verse baseline from the
+   first token's `charStart` to the last token's `charEnd` and shifts each token's offsets into the
+   new string, so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still holds.
+   The trade-off is that any whitespace or punctuation sitting between the split boundary and the
+   adjacent token's edge is dropped from both halves (e.g. the space at position 5 between "Alpha"
+   and "beta" in "Alpha beta." belongs to neither half). The alternative — keeping the whole verse's
+   baseline text under each half — avoids dropping edge characters but duplicates the verse text in
+   the baseline-text display mode. Current choice: trim each half to its own span, accepting the
+   dropped edge whitespace.
+
+3. **Free translation when merging.** A segment's free translation is keyed by segment id. An
+   untouched or merged segment keeps the **leading** verse's id (so its free translation survives);
+   the **absorbed** verse's free translation is retained in storage but hidden while merged, and
+   reappears if the segments are split back apart. Splitting keeps the first half's free translation
+   and starts later halves blank. Is "hide-and-restore" the desired behavior, or should merging
+   prompt the user to keep/discard the absorbed verse's translation?
+
+4. **Boundary edits and the unsaved indicator.** Merging/splitting/pulling a boundary marks the
+   draft dirty (lighting the tab `●`), exactly like a gloss edit. Confirm this is desired, or whether
+   boundary edits should be treated differently from analysis edits.
+
+5. **Boundary editing is a transient mode.** The **Edit segment boundaries** toggle is local UI
+   state (off on reload), not a persisted project setting, since it changes what the link slots do
+   rather than a display preference. Confirm this is the right treatment.
+
+6. **Chapter superscriptions are a hard wall (interim).** A chapter heading (a `d` descriptive
+   title, e.g. a Psalm superscription) is extracted as a synthetic **verse 0** segment that sits in
+   document order between the previous chapter's last verse and the new chapter's verse 1. As an
+   interim fix, verse 0 is treated as a **hard wall**: no merge, split, move, or cross-segment link
+   may touch either of its boundaries, so its tokens always stay together and no neighboring token
+   is ever pulled into or across it. The cost is a lost capability — you **cannot currently draw a
+   segment boundary that spans a superscription** (e.g. group the end of one chapter with the start
+   of the next when a heading sits between them). The stated goal is for verse 0 to be _invisible_ to
+   boundary redrawing (a redraw acts on the real verses on either side as if the superscription
+   weren't there, while the heading stays its own intact segment), but that conflicts with the
+   contiguous-run segment model and needs a design decision before implementation. Options and the
+   recommendation are worked out in
+   [design-verse-0-agnostic-segmentation.md](design-verse-0-agnostic-segmentation.md). Two questions
+   for stakeholders:
+   - Is the hard wall acceptable as the shipped behavior for now, or is spanning-a-superscription a
+     blocker that must be resolved before release?
+   - When a segment _does_ eventually absorb tokens across a superscription, **where should the
+     heading render and how should its free translation be handled?** (This parallels item 3 above —
+     "Free translation when merging.")

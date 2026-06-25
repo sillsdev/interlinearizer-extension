@@ -148,6 +148,53 @@ describe('resolveSlotFocus', () => {
     expect(result.focusedPhraseLink).toBe(link);
     expect(result.focusedFreeToken).toBe(freeToken);
   });
+
+  /** Segment document order for the adjacent-edge tests: seg-0 < seg-1 < seg-2. */
+  const order = new Map([
+    ['seg-0', 0],
+    ['seg-1', 1],
+    ['seg-2', 2],
+  ]);
+
+  it('marks isAdjacentEdgeOfFocus true when the focused segment borders the next one', () => {
+    const result = resolveSlotFocus('seg-1', 'seg-2', focusWithSegment('seg-1'), true, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(true);
+  });
+
+  it('marks isAdjacentEdgeOfFocus true when the focused segment borders the previous one', () => {
+    const result = resolveSlotFocus('seg-0', 'seg-1', focusWithSegment('seg-1'), false, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(true);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false within one segment', () => {
+    const result = resolveSlotFocus('seg-1', 'seg-1', focusWithSegment('seg-1'), true, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false when nothing is focused', () => {
+    const result = resolveSlotFocus('seg-1', 'seg-2', focusWithSegment(undefined), true, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false when neither neighbor is the focused segment', () => {
+    const result = resolveSlotFocus('seg-0', 'seg-2', focusWithSegment('seg-1'), true, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false when the two segments are not adjacent', () => {
+    const result = resolveSlotFocus('seg-0', 'seg-2', focusWithSegment('seg-0'), true, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false when a leading slot has no previous segment', () => {
+    const result = resolveSlotFocus(undefined, 'seg-1', focusWithSegment('seg-1'), false, order);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
+
+  it('marks isAdjacentEdgeOfFocus false when segment order is unknown (default empty map)', () => {
+    const result = resolveSlotFocus('seg-1', 'seg-2', focusWithSegment('seg-1'), true);
+    expect(result.isAdjacentEdgeOfFocus).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -159,6 +206,7 @@ describe('NO_SLOT_FOCUS', () => {
     expect(NO_SLOT_FOCUS).toEqual({
       focusedSideIsPrev: undefined,
       isSameSegmentAsFocus: false,
+      isAdjacentEdgeOfFocus: false,
       focusedPhraseLink: undefined,
       focusedFreeToken: undefined,
     });

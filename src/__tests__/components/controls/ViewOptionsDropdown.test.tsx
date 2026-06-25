@@ -31,6 +31,8 @@ const DEFAULT_PROPS = {
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
+  boundaryEditMode: false,
+  onBoundaryEditModeChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {

@@ -7,10 +7,11 @@ import type {
   SavedWebViewDefinition,
   WebViewDefinition,
 } from '@papi/core';
+import type { SegmentationDelta } from 'interlinearizer';
 import interlinearizerReact from './interlinearizer.web-view?inline';
 import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
 import * as projectStorage from './services/projectStorage';
-import { isDraftProject, isTextAnalysis } from './types/type-guards';
+import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
 
 // #region WebView provider
 
@@ -265,6 +266,8 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
+ * @param segmentationJson - Optional JSON-stringified `SegmentationDelta` to persist, or `"null"`
+ *   to clear stored boundaries. Omit to leave the project's existing boundaries unchanged.
  * @returns A promise that resolves when the analysis has been written to storage.
  * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
  *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
@@ -273,13 +276,35 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
 async function saveInterlinearAnalysis(
   interlinearProjectId: string,
   analysisJson: string,
+  segmentationJson?: string,
 ): Promise<void> {
   try {
     const analysis = JSON.parse(analysisJson);
     if (!isTextAnalysis(analysis)) {
       throw new TypeError('saveInterlinearAnalysis: analysisJson does not conform to TextAnalysis');
     }
-    await projectStorage.updateAnalysis(executionToken, interlinearProjectId, analysis);
+    // undefined ⇒ leave boundaries unchanged; null ⇒ clear them; an object ⇒ set them.
+    let segmentation: SegmentationDelta | null | undefined;
+    if (segmentationJson !== undefined) {
+      const parsed: unknown = JSON.parse(segmentationJson);
+      // eslint-disable-next-line no-null/no-null -- JSON.parse('null') yields null, the clear sentinel
+      if (parsed === null) {
+        // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel from the WebView
+        segmentation = null;
+      } else if (isSegmentationDelta(parsed)) {
+        segmentation = parsed;
+      } else {
+        throw new TypeError(
+          'saveInterlinearAnalysis: segmentationJson does not conform to SegmentationDelta',
+        );
+      }
+    }
+    await projectStorage.updateAnalysis(
+      executionToken,
+      interlinearProjectId,
+      analysis,
+      segmentation,
+    );
   } catch (e) {
     logger.error('Interlinearizer: failed to save analysis', e);
     await papi.notifications

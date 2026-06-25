@@ -4,6 +4,7 @@ import { Link2, Link2Off } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
+import { useSegmentation } from './SegmentationStore';
 import type { SlotFocusInfo } from '../types/token-layout';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 
@@ -65,17 +66,24 @@ export function TokenLinkIcon({
   slotFocus,
   isPhraseRevealed,
 }: TokenLinkIconProps) {
-  const { focusedSideIsPrev, focusedPhraseLink, focusedFreeToken, isSameSegmentAsFocus } =
-    slotFocus;
+  const {
+    focusedSideIsPrev,
+    focusedPhraseLink,
+    focusedFreeToken,
+    isSameSegmentAsFocus,
+    isAdjacentEdgeOfFocus,
+  } = slotFocus;
   const {
     phraseMode,
     tokenDocOrder,
+    tokenSegmentMap,
     onHoverPhrase: onHoverCandidatePhrase,
     onHoverCandidateTokens,
     onHoverSplitFreeTokens,
     crossSegmentLinkTooltip,
   } = usePhraseStripContext();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
+  const { dispatch: segmentationDispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
 
   const inSamePhrase =
     prevPhraseLink !== undefined &&
@@ -107,6 +115,37 @@ export function TokenLinkIcon({
   ]);
 
   /**
+   * Moves the segment boundary at this slot so the pulled edge token joins the focused token's
+   * segment, when this is a cross-segment adjacent-edge link. The pulled token is the neighbor on
+   * the far side of the slot; moving the boundary by one token keeps both segments contiguous.
+   *
+   * `focusedSideIsPrev = true`: focus is the previous (left) segment; `nextToken` is the adjacent
+   * segment's first word, so the boundary moves forward to the token after it. `false`: focus is
+   * the next (right) segment; `prevToken` is the previous segment's last word, so the boundary
+   * moves back to start at it.
+   */
+  const performBoundaryPull = useCallback(() => {
+    /* v8 ignore next -- only invoked from handleLinkClick after the same defined-token guards */
+    if (!prevToken || !nextToken) return;
+    const adjacentSegmentId = tokenSegmentMap.get(nextToken.ref);
+    const adjacentSegment =
+      adjacentSegmentId === undefined ? undefined : segmentById.get(adjacentSegmentId);
+    if (!adjacentSegment) return;
+    const currentStart = adjacentSegment.tokens[0]?.ref;
+    /* v8 ignore next -- a rendered segment always has at least one token */
+    if (currentStart === undefined) return;
+    if (focusedSideIsPrev) {
+      const index = adjacentSegment.tokens.findIndex((t) => t.ref === nextToken.ref);
+      const newStart = adjacentSegment.tokens[index + 1]?.ref;
+      // The adjacent segment had only the pulled token, so it merges wholly into the focused one.
+      if (newStart === undefined) segmentationDispatch.merge(currentStart);
+      else segmentationDispatch.move(currentStart, newStart);
+    } else {
+      segmentationDispatch.move(currentStart, prevToken.ref);
+    }
+  }, [prevToken, nextToken, focusedSideIsPrev, tokenSegmentMap, segmentById, segmentationDispatch]);
+
+  /**
    * Joins the neighbor on the far side of this slot into the focused phrase (or free token).
    *
    * `focusedSideIsPrev = true`: focus is prev-ward; the neighbor to join is
@@ -128,6 +167,10 @@ export function TokenLinkIcon({
   const handleLinkClick = useCallback(() => {
     /* v8 ignore next -- button only renders when both tokens exist and focus is defined */
     if (!prevToken || !nextToken || focusedSideIsPrev === undefined) return;
+
+    // For a cross-segment edge link, first move the boundary so the pulled token joins the focused
+    // segment; the phrase mutation below then proceeds as for a within-segment link.
+    if (isAdjacentEdgeOfFocus) performBoundaryPull();
 
     // The neighbor is the token/phrase on the opposite side of this slot from focus.
     const neighborLink = focusedSideIsPrev ? nextPhraseLink : prevPhraseLink;
@@ -196,6 +239,8 @@ export function TokenLinkIcon({
     focusedSideIsPrev,
     focusedPhraseLink,
     focusedFreeToken,
+    isAdjacentEdgeOfFocus,
+    performBoundaryPull,
     tokenDocOrder,
     createPhrase,
     updatePhrase,
@@ -260,14 +305,41 @@ export function TokenLinkIcon({
     );
   }
 
-  // Link icon: active in view mode when focus is set and both neighbors are in the same segment.
+  // A verse-0 superscription is a hard wall: it is never pulled into a neighbor and never absorbs a
+  // foreign token, so no cross-segment link may touch one. That holds whether focus is itself inside
+  // the superscription or the superscription is the segment adjacent across this slot.
+  const focusedRef = focusedFreeToken?.ref ?? focusedPhraseLink?.tokens[0]?.tokenRef;
+  const focusedSegmentId = focusedRef === undefined ? undefined : tokenSegmentMap.get(focusedRef);
+  const focusedIsVerseZero =
+    focusedSegmentId !== undefined && verseZeroSegmentIds.has(focusedSegmentId);
+  // Whether the adjacent (non-focused) segment is a verse-0 superscription.
+  const adjacentSegmentId =
+    focusedSideIsPrev === undefined
+      ? undefined
+      : tokenSegmentMap.get((focusedSideIsPrev ? nextToken : prevToken).ref);
+  const adjacentIsVerseZero =
+    adjacentSegmentId !== undefined && verseZeroSegmentIds.has(adjacentSegmentId);
+  // A cross-segment (adjacent-edge) pull is valid only when neither side of the boundary is a
+  // verse-0 superscription.
+  const adjacentEdgeValid = isAdjacentEdgeOfFocus && !focusedIsVerseZero && !adjacentIsVerseZero;
+
+  // Link icon: active in view mode when focus is set and either both neighbors are in the focused
+  // segment (a within-segment link) or this slot is a valid adjacent edge of the focused segment (a
+  // cross-segment link that pulls the edge token across and moves the boundary — never across a
+  // verse-0 superscription, which is a hard wall).
   const isActive =
-    phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && isSameSegmentAsFocus;
+    phraseMode.kind === 'view' &&
+    focusedSideIsPrev !== undefined &&
+    (isSameSegmentAsFocus || adjacentEdgeValid);
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
-  // Show a tooltip only when inactive because the slot is outside the focused segment (not when
-  // disabled for other reasons like unlink/edit mode where the reason is already visible in the UI).
+  // Show a tooltip only when inactive because the slot is a cross-segment slot that cannot host a
+  // link (not when disabled for other reasons like unlink/edit mode, where the reason is already
+  // visible in the UI).
   const crossSegmentDisabled =
-    phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
+    phraseMode.kind === 'view' &&
+    focusedSideIsPrev !== undefined &&
+    !isSameSegmentAsFocus &&
+    !adjacentEdgeValid;
   const linkTitle = crossSegmentDisabled ? crossSegmentLinkTooltip : undefined;
 
   // Highlight exactly what would be absorbed if the button were clicked — mirrors handleLinkClick.

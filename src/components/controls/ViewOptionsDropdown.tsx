@@ -12,6 +12,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_chapterLabelInVerse%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
+  '%interlinearizer_viewOption_boundaryEditMode%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -75,6 +76,10 @@ type ViewOptionsDropdownProps = Readonly<{
   showFreeTranslation: boolean;
   /** Called when the show-free-translation toggle changes. */
   onShowFreeTranslationChange: (checked: boolean) => void;
+  /** Current value of the edit-segment-boundaries toggle. */
+  boundaryEditMode: boolean;
+  /** Called when the edit-segment-boundaries toggle changes. */
+  onBoundaryEditModeChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -95,6 +100,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @param props.showFreeTranslation - Current show-free-translation value.
  * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
+ * @param props.boundaryEditMode - Current edit-segment-boundaries value.
+ * @param props.onBoundaryEditModeChange - Edit-segment-boundaries change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -110,6 +117,8 @@ export default function ViewOptionsDropdown({
   onShowMorphologyChange,
   showFreeTranslation,
   onShowFreeTranslationChange,
+  boundaryEditMode,
+  onBoundaryEditModeChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -222,6 +231,11 @@ export default function ViewOptionsDropdown({
                 checked={chapterLabelInVerse}
                 label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
                 onCheckedChange={onChapterLabelInVerseChange}
+              />
+              <ViewToggle
+                checked={boundaryEditMode}
+                label={localizedStrings['%interlinearizer_viewOption_boundaryEditMode%']}
+                onCheckedChange={onBoundaryEditModeChange}
               />
             </div>
           </>,

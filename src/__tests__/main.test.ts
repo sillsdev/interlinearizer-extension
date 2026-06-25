@@ -170,9 +170,9 @@ const getGetProjectHandler = () =>
 
 /** Activates the extension and returns the `interlinearizer.saveAnalysis` handler. */
 const getSaveAnalysisHandler = () =>
-  activateAndGetHandler<(id: string, analysisJson: string) => Promise<void>>(
-    'interlinearizer.saveAnalysis',
-  );
+  activateAndGetHandler<
+    (id: string, analysisJson: string, segmentationJson?: string) => Promise<void>
+  >('interlinearizer.saveAnalysis');
 
 /** Activates the extension and returns the `interlinearizer.getDraft` handler. */
 const getGetDraftHandler = () =>
@@ -910,7 +910,13 @@ describe('main', () => {
 
       await handler('proj-id', JSON.stringify(stubAnalysis));
 
-      expect(mockUpdateAnalysis).toHaveBeenCalledWith(expect.anything(), 'proj-id', stubAnalysis);
+      // No segmentationJson passed ⇒ the 4th arg is undefined (leave stored boundaries unchanged).
+      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        stubAnalysis,
+        undefined,
+      );
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {
@@ -954,6 +960,46 @@ describe('main', () => {
       expect(__mockNotificationsSend).toHaveBeenCalledWith(
         expect.objectContaining({ severity: 'error' }),
       );
+      expect(mockUpdateAnalysis).not.toHaveBeenCalled();
+    });
+
+    it('passes a parsed segmentation delta through to updateAnalysis', async () => {
+      mockUpdateAnalysis.mockResolvedValue(undefined);
+      const handler = await getSaveAnalysisHandler();
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+      await handler('proj-id', JSON.stringify(stubAnalysis), JSON.stringify(segmentation));
+
+      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        stubAnalysis,
+        segmentation,
+      );
+    });
+
+    it('passes null through to updateAnalysis to clear boundaries when segmentationJson is "null"', async () => {
+      mockUpdateAnalysis.mockResolvedValue(undefined);
+      const handler = await getSaveAnalysisHandler();
+
+      await handler('proj-id', JSON.stringify(stubAnalysis), 'null');
+
+      // eslint-disable-next-line no-null/no-null -- asserting the clear-boundaries sentinel is forwarded
+      expect(mockUpdateAnalysis).toHaveBeenCalledWith(
+        expect.anything(),
+        'proj-id',
+        stubAnalysis,
+        // eslint-disable-next-line no-null/no-null -- asserting the clear-boundaries sentinel is forwarded
+        null,
+      );
+    });
+
+    it('rethrows when segmentationJson does not conform to SegmentationDelta', async () => {
+      const handler = await getSaveAnalysisHandler();
+
+      await expect(
+        handler('proj-id', JSON.stringify(stubAnalysis), JSON.stringify({ bogus: true })),
+      ).rejects.toThrow(TypeError);
       expect(mockUpdateAnalysis).not.toHaveBeenCalled();
     });
   });

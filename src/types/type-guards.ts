@@ -1,5 +1,11 @@
 /** @file Type guards for narrowing interlinearizer types and validating parsed JSON payloads. */
-import type { AssignmentStatus, DraftProject, TextAnalysis, Token } from 'interlinearizer';
+import type {
+  AssignmentStatus,
+  DraftProject,
+  SegmentationDelta,
+  TextAnalysis,
+  Token,
+} from 'interlinearizer';
 import type { InterlinearProjectSummary } from './interlinear-project-summary';
 
 /**
@@ -236,6 +242,27 @@ export function isTextAnalysis(value: unknown): value is TextAnalysis {
 }
 
 /**
+ * Type guard for {@link SegmentationDelta} parsed from unknown JSON. Both arrays must be present and
+ * contain only strings, so a malformed delta is rejected before it can corrupt re-segmentation.
+ *
+ * @param value - The value to test, typically a parsed JSON object of unknown shape.
+ * @returns `true` if `value` satisfies the {@link SegmentationDelta} shape, narrowing its type
+ *   accordingly.
+ */
+export function isSegmentationDelta(value: unknown): value is SegmentationDelta {
+  return (
+    !!value &&
+    typeof value === 'object' &&
+    'removedVerseStarts' in value &&
+    Array.isArray(value.removedVerseStarts) &&
+    value.removedVerseStarts.every((r) => typeof r === 'string') &&
+    'addedStarts' in value &&
+    Array.isArray(value.addedStarts) &&
+    value.addedStarts.every((r) => typeof r === 'string')
+  );
+}
+
+/**
  * Type guard for {@link DraftProject} parsed from unknown JSON. Validates the envelope fields and
  * delegates the `analysis` to {@link isTextAnalysis}, so malformed drafts are rejected before
  * persisting.
@@ -258,6 +285,7 @@ export function isDraftProject(value: unknown): value is DraftProject {
     (!('targetProjectId' in value) || typeof value.targetProjectId === 'string') &&
     (!('suggestedName' in value) || typeof value.suggestedName === 'string') &&
     (!('suggestedDescription' in value) || typeof value.suggestedDescription === 'string') &&
+    (!('segmentation' in value) || isSegmentationDelta(value.segmentation)) &&
     'analysis' in value &&
     isTextAnalysis(value.analysis)
   );

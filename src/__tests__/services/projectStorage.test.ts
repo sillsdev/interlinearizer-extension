@@ -454,6 +454,45 @@ describe('projectStorage', () => {
 
       await expect(updateAnalysis(token, 'proj-id', newAnalysis)).rejects.toThrow('disk full');
     });
+
+    it('writes a provided segmentation delta onto the project', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+      const segmentation = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis, segmentation);
+
+      expect(result).toMatchObject({ analysis: newAnalysis, segmentation });
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'project:proj-id',
+        JSON.stringify({ ...storedProject, analysis: newAnalysis, segmentation }),
+      );
+    });
+
+    it('clears stored boundaries when segmentation is null', async () => {
+      const projectWithBoundaries = {
+        ...storedProject,
+        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(projectWithBoundaries));
+
+      // eslint-disable-next-line no-null/no-null -- explicit "clear boundaries" sentinel under test
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis, null);
+
+      expect(result && 'segmentation' in result).toBe(false);
+    });
+
+    it('leaves existing boundaries unchanged when segmentation is undefined', async () => {
+      const projectWithBoundaries = {
+        ...storedProject,
+        segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+      };
+      __mockReadUserData.mockResolvedValue(JSON.stringify(projectWithBoundaries));
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result).toMatchObject({ segmentation: projectWithBoundaries.segmentation });
+    });
   });
 
   describe('getProjectsForSource', () => {

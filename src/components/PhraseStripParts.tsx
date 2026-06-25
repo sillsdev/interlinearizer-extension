@@ -1,12 +1,96 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
+import { useLocalizedStrings } from '@papi/frontend/react';
+import { Combine, Scissors } from 'lucide-react';
 import { memo } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
+import { useSegmentation } from './SegmentationStore';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
 import { resolveSlotFocus } from '../utils/token-layout';
+
+/** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
+const BOUNDARY_STRING_KEYS = [
+  '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_split%',
+] as const satisfies `%${string}%`[];
+
+/** Props for {@link BoundaryControl}. */
+type BoundaryControlProps = Readonly<{
+  /** Segment id of the group before the slot, or `undefined` for the leading slot. */
+  prevSegmentId: string | undefined;
+  /** Segment id of the group after the slot, or `undefined` for the trailing slot. */
+  nextSegmentId: string | undefined;
+  /** First word token after the slot, used as the split anchor. */
+  nextTokenRef: string | undefined;
+}>;
+
+/**
+ * Renders the boundary-edit control for one slot. A slot straddling two different segments shows a
+ * merge control (combine the next segment into the previous one); a slot inside one segment shows a
+ * split control (start a new segment at the next token). Leading/trailing slots (one side missing)
+ * render nothing.
+ *
+ * A verse-0 segment (a chapter superscription) is a hard wall: its tokens must stay together and it
+ * must never join a neighbor. So no control renders at a boundary touching one — neither the merge
+ * control at a slot where verse 0 is on either side, nor the split control inside it.
+ *
+ * @param props - Component props.
+ * @param props.prevSegmentId - Segment id before the slot.
+ * @param props.nextSegmentId - Segment id after the slot.
+ * @param props.nextTokenRef - First word token after the slot (split anchor).
+ * @returns A merge or split button, or `undefined` when the slot is at a book edge or borders a
+ *   verse-0 superscription.
+ */
+function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: BoundaryControlProps) {
+  const { dispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
+  const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
+  if (prevSegmentId === undefined || nextSegmentId === undefined || nextTokenRef === undefined) {
+    return undefined;
+  }
+  if (prevSegmentId !== nextSegmentId) {
+    // A merge that would pull a verse-0 superscription into a neighbor, or pull a neighbor into one,
+    // is forbidden: render no merge control at a boundary where either side is verse 0.
+    if (verseZeroSegmentIds.has(prevSegmentId) || verseZeroSegmentIds.has(nextSegmentId)) {
+      return undefined;
+    }
+    const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
+    const secondStart = segmentById.get(nextSegmentId)?.tokens[0]?.ref;
+    return (
+      <button
+        aria-label={mergeLabel}
+        className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:text-foreground"
+        data-testid="boundary-merge-btn"
+        tabIndex={-1}
+        title={mergeLabel}
+        type="button"
+        /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
+        onClick={secondStart === undefined ? undefined : () => dispatch.merge(secondStart)}
+      >
+        <Combine className="tw:h-3 tw:w-3" />
+      </button>
+    );
+  }
+  // An intra-segment slot inside a verse-0 superscription can't be split — its tokens must stay
+  // together — so render no split control there.
+  if (verseZeroSegmentIds.has(prevSegmentId)) return undefined;
+  const splitLabel = localizedStrings['%interlinearizer_boundaryControl_split%'];
+  return (
+    <button
+      aria-label={splitLabel}
+      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:text-foreground"
+      data-testid="boundary-split-btn"
+      tabIndex={-1}
+      title={splitLabel}
+      type="button"
+      onClick={() => dispatch.split(nextTokenRef)}
+    >
+      <Scissors className="tw:h-3 tw:w-3" />
+    </button>
+  );
+}
 
 /**
  * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so `ContinuousView`
@@ -61,6 +145,7 @@ export function PhraseSlot({
   hoveredPhraseId,
 }: PhraseSlotProps) {
   const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
+  const { boundaryEditMode, segmentOrder } = useSegmentation();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -71,7 +156,13 @@ export function PhraseSlot({
     prevPhraseId !== undefined &&
     prevPhraseId === nextPhraseId &&
     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-  const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
+  const slotFocus = resolveSlotFocus(
+    prevSegmentId,
+    nextSegmentId,
+    focus,
+    focusedSideIsPrev,
+    segmentOrder,
+  );
   // The slot is "in the active segment" only when both neighboring phrases belong to it. A link
   // that crosses a verse boundary (one side in the active verse, the other in an adjacent verse) is
   // therefore treated as inactive and hidden too. When hideInactiveLinkButtons is on, link buttons
@@ -89,29 +180,38 @@ export function PhraseSlot({
       data-link-slot="true"
       style={{ overflowAnchor: 'none' }}
     >
-      {hasLinkableNeighbors && (
-        <span
-          aria-hidden={suppressLinkIcon || undefined}
-          className="tw:transition-opacity tw:ease-in-out"
-          style={{
-            display: 'inline-flex',
-            minHeight: '1rem',
-            opacity: suppressLinkIcon ? 0 : 1,
-            overflowAnchor: 'none',
-            pointerEvents: suppressLinkIcon ? 'none' : undefined,
-            transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
-          }}
-        >
-          <MemoizedTokenLinkIcon
-            slotFocus={slotFocus}
-            isPhraseRevealed={phraseRevealed}
-            nextPhraseLink={nextGroup?.phraseLink}
-            nextToken={nextToken}
-            prevPhraseLink={prevGroup?.phraseLink}
-            prevToken={prevToken}
-          />
-        </span>
-      )}
+      {hasLinkableNeighbors &&
+        (boundaryEditMode ? (
+          <span className="tw:inline-flex tw:min-h-4 tw:items-center">
+            <BoundaryControl
+              prevSegmentId={prevSegmentId}
+              nextSegmentId={nextSegmentId}
+              nextTokenRef={nextToken?.ref}
+            />
+          </span>
+        ) : (
+          <span
+            aria-hidden={suppressLinkIcon || undefined}
+            className="tw:transition-opacity tw:ease-in-out"
+            style={{
+              display: 'inline-flex',
+              minHeight: '1rem',
+              opacity: suppressLinkIcon ? 0 : 1,
+              overflowAnchor: 'none',
+              pointerEvents: suppressLinkIcon ? 'none' : undefined,
+              transitionDuration: skipLinkTransition ? '0ms' : `${LINK_SLOT_TRANSITION_MS}ms`,
+            }}
+          >
+            <MemoizedTokenLinkIcon
+              slotFocus={slotFocus}
+              isPhraseRevealed={phraseRevealed}
+              nextPhraseLink={nextGroup?.phraseLink}
+              nextToken={nextToken}
+              prevPhraseLink={prevGroup?.phraseLink}
+              prevToken={prevToken}
+            />
+          </span>
+        ))}
       {punctuation.length > 0 && (
         <span className="tw:inline-flex tw:flex-row tw:items-center">
           {punctuation.map((punctToken) => (

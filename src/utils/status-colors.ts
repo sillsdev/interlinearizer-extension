@@ -6,8 +6,8 @@ import type { AssignmentStatus } from 'interlinearizer';
  * Tailwind `tw:` text-color classes per assignment status, so approved work always reads as plain
  * foreground while machine output reads as a subordinate color. Kept as a complete map (every
  * `AssignmentStatus` member) even though v1 only ever renders `approved` / `suggested` /
- * `candidate` — the `rejected` / `stale` colors are defined for completeness but no reducer produces
- * those statuses in v1.
+ * `candidate` — the `rejected` / `stale` colors are defined for completeness but no reducer
+ * produces those statuses in v1.
  *
  * Approved uses the core `foreground` theme token; the colored statuses use the local
  * `gloss-suggested` / `gloss-candidate` / `gloss-rejected` / `gloss-stale` utilities defined in

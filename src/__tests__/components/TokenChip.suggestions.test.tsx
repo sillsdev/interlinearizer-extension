@@ -84,6 +84,24 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
 }
 
 /**
+ * Builds the homograph 'bank' where the MOST-frequent analysis has no active-language (English)
+ * gloss — only French — and a lower-frequency one carries `en:'finance'`. Exercises falling through
+ * a blank-in-active-language top pick to the next glossed analysis.
+ *
+ * @returns A `TextAnalysis` whose top-ranked 'bank' payload is blank in English.
+ */
+function homographTopBlankPool(): TextAnalysis {
+  const blank: TokenAnalysis = { id: 'ta-blank', surfaceText: 'bank', gloss: { fr: 'rive' } };
+  const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+  const links: TokenAnalysisLink[] = [
+    { analysisId: 'ta-blank', status: 'approved', token: { tokenRef: 'b1', surfaceText: 'bank' } },
+    { analysisId: 'ta-blank', status: 'approved', token: { tokenRef: 'b2', surfaceText: 'bank' } },
+    { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+  ];
+  return { ...emptyAnalysis(), tokenAnalyses: [blank, fin], tokenAnalysisLinks: links };
+}
+
+/**
  * Renders a {@link TokenChip} inside a real provider seeded with the given analysis pool.
  *
  * @param token - The word token to render.
@@ -227,5 +245,24 @@ describe('TokenChip suggestions', () => {
     // The suggested pick still shows, but the gloss-less candidate is not rendered as a button.
     expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('riverbank');
     expect(screen.queryByTestId('suggestion-candidate')).not.toBeInTheDocument();
+  });
+
+  it('falls through a blank-in-active-language top pick to the highest-ranked glossed analysis', async () => {
+    const onSave = jest.fn();
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographTopBlankPool(), onSave });
+
+    // ta-blank (French-only, frequency 2) outranks ta-fin but has no English gloss, so rather than
+    // hiding the whole suggestion the accept button surfaces ta-fin's 'finance', with no leftover
+    // candidate button (ta-blank is the only other analysis and it's gloss-less in English).
+    const accept = screen.getByTestId('suggestion-accept');
+    expect(accept).toHaveTextContent('finance');
+    expect(screen.queryByTestId('suggestion-candidate')).not.toBeInTheDocument();
+
+    await userEvent.click(accept);
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
+    expect(link?.analysisId).toBe('ta-fin');
+    expect(link?.status).toBe('approved');
   });
 });

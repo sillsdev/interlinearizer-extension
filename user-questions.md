@@ -164,10 +164,13 @@ to A/B the "screen fills with green" concern):
    candidate. This is a deliberately minimal interim — the inline-dropdown / hover-list / key-cycling
    options and the truncation count are still open.
 
-3. **Blank-active-language suggestions (question #3).** Interim choice: a suggested analysis (or
-   candidate) with **no gloss in the active language is not shown** as an accept/promote button (it
-   would otherwise be an empty green/blue button). So v1 surfaces only suggestions that carry an
-   active-language gloss. Is hiding them right, or should the match still surface (for its
-   morphemes/POS) with an empty gloss?
+3. **Blank-active-language suggestions (question #3).** Interim choice: an individual analysis with
+   **no gloss in the active language is skipped** (it would otherwise be an empty green/blue button),
+   but the engine **falls through to the highest-ranked matching analysis that _does_ have an
+   active-language gloss** — so a blank top pick no longer hides a usable lower-ranked alternative;
+   the best glossed match becomes the accept and the rest become candidates. v1 thus surfaces only
+   glossed suggestions, but never drops a glossed one behind a blank higher-frequency homograph. Is
+   skipping blank matches right, or should a match still surface (for its morphemes/POS) with an
+   empty gloss?
 
 Remove the demo toggle (and these affordances' tuning) once the treatment is decided.

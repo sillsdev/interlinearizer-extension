@@ -1663,4 +1663,37 @@ describe('approveAnalysisForToken', () => {
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.token.surfaceText).toBe('Bank');
   });
+
+  it('is a no-op when the token already has an approved analysis (single-approved invariant)', () => {
+    // Guards against a stray double-dispatch creating a second approved link for one token.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved, other],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-2' }),
+    );
+
+    // The existing approved link stands; no second approved link was appended.
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-1');
+  });
 });

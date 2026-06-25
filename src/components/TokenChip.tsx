@@ -161,21 +161,24 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // The engine's derived suggestion for an un-approved token. Shown only while the demo toggle is
-  // on, the chip is editable, and the user has not started typing their own gloss — and only when
-  // the suggested analysis carries a gloss in the active language (a blank-gloss suggestion is
-  // skipped rather than rendered as an empty green button; see `user-questions.md` display #3). An
-  // approved token resolves to its decision, never a suggestion, so it never reaches this branch.
+  // The engine's derived suggestion for an un-approved token, reduced to the matching analyses that
+  // carry a gloss in the active language, in rank order (the suggested pick first, then candidates).
+  // The highest-ranked glossed analysis is offered as the green "accept"; the rest as blue "promote"
+  // candidates (capped). Falling through a blank-in-active-language top pick — rather than gating on
+  // it — keeps a usable lower-ranked alternative from being hidden behind it; an analysis with no
+  // active-language gloss is skipped individually rather than rendered as an empty button (see
+  // `user-questions.md` display #3). Shown only while the demo toggle is on, the chip is editable,
+  // and the user has not started typing. An approved token resolves to its decision, never a
+  // suggestion, so it never reaches this branch.
   const suggestion = resolved?.status === 'suggested' ? resolved : undefined;
-  const suggestedGloss = suggestion?.suggested.gloss?.[analysisLanguage] ?? '';
-  const activeSuggestion =
-    showSuggestions && !disabled && draft === '' && suggestedGloss !== '' ? suggestion : undefined;
-  // Candidate homographs that actually carry an active-language gloss, capped for display. Only
-  // populated while a suggestion is shown.
-  const candidateGlosses = (activeSuggestion?.candidates ?? [])
-    .map((candidate) => ({ id: candidate.id, gloss: candidate.gloss?.[analysisLanguage] ?? '' }))
-    .filter((candidate) => candidate.gloss !== '')
-    .slice(0, MAX_VISIBLE_CANDIDATES);
+  const glossedRanked = (suggestion ? [suggestion.suggested, ...suggestion.candidates] : [])
+    .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
+    .filter((entry) => entry.gloss !== '');
+  const showSuggestionUi = showSuggestions && !disabled && draft === '' && glossedRanked.length > 0;
+  const acceptEntry = showSuggestionUi ? glossedRanked[0] : undefined;
+  const candidateEntries = showSuggestionUi
+    ? glossedRanked.slice(1, 1 + MAX_VISIBLE_CANDIDATES)
+    : [];
 
   // The X button is positioned outside the <label>, and the label is bound to the gloss input with
   // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
@@ -296,8 +299,8 @@ export function TokenChip({
           onMouseDown={disabled ? undefined : handleMouseDown}
           type="text"
         />
-        {activeSuggestion && (
-          // The derived suggestion: a green "accept" button showing the suggested gloss, plus a
+        {acceptEntry && (
+          // The derived suggestion: a green "accept" button showing the top glossed analysis, plus a
           // blue "promote" button per competing candidate. Italic + color keep them subordinate to
           // an approved (foreground) gloss. `tabIndex={-1}` matches the chip's other affordances —
           // the gloss input stays the tab stop; typing a gloss overrides the suggestion instead.
@@ -305,18 +308,16 @@ export function TokenChip({
           // frequency); the suggestion then disappears because the token is now approved.
           <span className="tw:flex tw:flex-col tw:items-center tw:gap-px">
             <button
-              aria-label={`Accept suggestion ${suggestedGloss} for ${token.surfaceText}`}
+              aria-label={`Accept suggestion ${acceptEntry.gloss} for ${token.surfaceText}`}
               className={`tw:whitespace-nowrap tw:rounded tw:px-1 tw:text-sm tw:italic tw:cursor-pointer tw:hover:bg-accent ${statusTextColorClass('suggested')}`}
               data-testid="suggestion-accept"
               tabIndex={-1}
               type="button"
-              onClick={() =>
-                approveAnalysis(token.ref, token.surfaceText, activeSuggestion.suggested.id)
-              }
+              onClick={() => approveAnalysis(token.ref, token.surfaceText, acceptEntry.id)}
             >
-              {suggestedGloss}
+              {acceptEntry.gloss}
             </button>
-            {candidateGlosses.map((candidate) => (
+            {candidateEntries.map((candidate) => (
               <button
                 key={candidate.id}
                 aria-label={`Promote ${candidate.gloss} for ${token.surfaceText}`}

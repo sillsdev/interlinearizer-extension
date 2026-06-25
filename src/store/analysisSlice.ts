@@ -569,12 +569,15 @@ const analysisSlice = createSlice({
      * frequency rises by one and the token's derived suggestion disappears now that it carries its
      * own approved decision.
      *
-     * Precondition: the caller only offers accept/promote on a token with no approved analysis (an
-     * approved token shows its decision, never a suggestion), so this never creates a second
-     * approved link for the token and the "at most one approved link per token" invariant is
-     * preserved. The link's snapshot records _this_ token's `surfaceText` (not the shared
-     * payload's), matching {@link appendApprovedAnalysis} so per-token drift detection stays
-     * accurate.
+     * Self-protects the "at most one approved link per token" invariant: if the token already has
+     * an approved analysis this is a no-op, so a stray double-dispatch or a future caller can never
+     * append a second approved link — the UI only offers accept/promote on un-approved tokens, but
+     * the reducer no longer relies on that alone. Resolving through {@link resolveApprovedAnalysis}
+     * also repairs an orphaned approved link first: a token whose approved link the read selectors
+     * ignore (it points at a missing payload) still shows a suggestion, so accepting it must heal
+     * the orphan and proceed rather than be blocked by it. The link's snapshot records _this_
+     * token's `surfaceText` (not the shared payload's), matching {@link appendApprovedAnalysis} so
+     * per-token drift detection stays accurate.
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the accepting `tokenRef`, its `surfaceText`, and the
@@ -586,6 +589,7 @@ const analysisSlice = createSlice({
       action: PayloadAction<{ tokenRef: string; surfaceText: string; analysisId: string }>,
     ) {
       const { tokenRef, surfaceText, analysisId } = action.payload;
+      if (resolveApprovedAnalysis(state, tokenRef)) return;
       state.analysis.tokenAnalysisLinks.push({
         analysisId,
         status: 'approved',

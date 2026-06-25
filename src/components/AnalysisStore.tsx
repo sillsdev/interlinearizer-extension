@@ -66,12 +66,24 @@ type CallbackRefs = {
    */
   reportEditing: (active: boolean) => void;
   /**
-   * Stable entry point {@link useGlossDispatch} returns for writing a gloss. When the provider's
-   * `confirmGlobalEdits` is on and the token's approved payload is shared by more than one token,
-   * the edit is held for {@link GlobalEditConfirmationModal} instead of committing; otherwise it
-   * commits immediately. Living on the provider lets one modal serve every gloss input.
+   * Stable entry point {@link useGlossDispatch} returns for writing a gloss. Routes through
+   * {@link gateEdit}: when the provider's `confirmGlobalEdits` is on and the token's approved
+   * payload is shared by more than one token, the edit is held for
+   * {@link GlobalEditConfirmationModal} instead of committing. Returns whether the edit was held (so
+   * a gloss input can revert its uncommitted draft) rather than committed immediately.
    */
-  requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
+  requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => boolean;
+  /**
+   * Shared global-edit gate for any human edit that fans out across a shared `TokenAnalysis`
+   * payload. Runs `commit` immediately, unless `confirmGlobalEdits` is on and the token's payload
+   * is shared by more than one token — then the choice is held for
+   * {@link GlobalEditConfirmationModal}, where `commit` applies the edit to every sharing token and
+   * `forkAndCommit` forks a per-instance copy first. Returns whether the edit was held (`true`)
+   * rather than committed (`false`). One gate serves every fan-out edit kind — gloss and morpheme —
+   * so they all prompt consistently; the per-token clear/delete paths fork in the reducer and do
+   * not route through it.
+   */
+  gateEdit: (tokenRef: string, commit: () => void, forkAndCommit: () => void) => boolean;
   /**
    * Whether un-approved tokens should render the engine's derived suggestion
    * ({@link useShowSuggestions}). Carried on the provider so the demo toggle reaches every gloss
@@ -80,16 +92,18 @@ type CallbackRefs = {
   showSuggestions: boolean;
 };
 
-/** A gloss edit the provider is holding open while {@link GlobalEditConfirmationModal} is shown. */
+/**
+ * An edit the provider is holding open while {@link GlobalEditConfirmationModal} is shown. The
+ * specific mutation (gloss, morpheme breakdown, or morpheme gloss) is captured in the two closures
+ * so one modal can resolve any held edit without knowing its kind.
+ */
 type PendingGlobalEdit = {
-  /** `Token.ref` of the token whose shared payload is being edited. */
-  tokenRef: string;
-  /** Current surface text of the token, forwarded to the eventual `writeGloss`. */
-  surfaceText: string;
-  /** The new gloss string awaiting confirmation. */
-  value: string;
   /** How many tokens share the payload, shown in the modal copy. Always greater than 1. */
   count: number;
+  /** Applies the edit to every token sharing the payload ("update all"). */
+  commit: () => void;
+  /** Forks a per-instance copy for this token, then applies the edit to the copy alone. */
+  forkAndCommit: () => void;
 };
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
@@ -199,9 +213,29 @@ export function AnalysisStoreProvider({
     if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
   }, []);
 
-  // Holds a gloss edit while the global-edit confirmation modal is open. Set only when
+  // Holds an edit while the global-edit confirmation modal is open. Set only when
   // `confirmGlobalEdits` is on and the edited payload is shared by more than one token.
   const [pendingEdit, setPendingEdit] = useState<PendingGlobalEdit | undefined>(undefined);
+
+  // Shared gate for every fan-out edit (gloss and morpheme). Runs `commit` immediately unless
+  // confirmation is on and the token's payload is shared by more than one token, in which case the
+  // choice is held for the modal. The count is read before the write so a brand-new analysis (no
+  // approved payload yet, count 0) never prompts. Returns whether the edit was held, so a
+  // commit-on-blur input can revert its uncommitted draft.
+  const gateEdit = useCallback(
+    (tokenRef: string, commit: () => void, forkAndCommit: () => void): boolean => {
+      if (confirmGlobalEdits) {
+        const count = selectApprovedLinkCountForPayload(store.getState().analysis, tokenRef);
+        if (count > 1) {
+          setPendingEdit({ count, commit, forkAndCommit });
+          return true;
+        }
+      }
+      commit();
+      return false;
+    },
+    [confirmGlobalEdits, store],
+  );
 
   // Commits a gloss edit to the store: write, persist via `onSave`, then notify the `onGlossChange`
   // spy. Shared by the immediate (unshared) path and the modal's "update all" / "fork" handlers so
@@ -215,27 +249,32 @@ export function AnalysisStoreProvider({
     [store],
   );
 
-  // The gloss-write entry point exposed to inputs. When confirmation is on and the token's approved
-  // payload is shared by more than one token, the edit is held for the confirmation modal rather
-  // than committing; otherwise it commits immediately. The count is read before the write so a
-  // brand-new gloss (no approved payload yet, count 0) never prompts.
+  // The gloss-write entry point exposed to inputs: routes a gloss edit through the shared gate, so a
+  // gloss edit to a payload shared by more than one token prompts before fanning out. "Fork" repoints
+  // this token's approved link to a private clone, then the same write lands on the clone.
   const requestGlossEdit = useCallback(
-    (tokenRef: string, surfaceText: string, value: string) => {
-      if (confirmGlobalEdits) {
-        const count = selectApprovedLinkCountForPayload(store.getState().analysis, tokenRef);
-        if (count > 1) {
-          setPendingEdit({ tokenRef, surfaceText, value, count });
-          return;
-        }
-      }
-      commitGloss(tokenRef, surfaceText, value);
-    },
-    [confirmGlobalEdits, store, commitGloss],
+    (tokenRef: string, surfaceText: string, value: string) =>
+      gateEdit(
+        tokenRef,
+        () => commitGloss(tokenRef, surfaceText, value),
+        () => {
+          store.dispatch(forkAnalysisForToken(tokenRef));
+          commitGloss(tokenRef, surfaceText, value);
+        },
+      ),
+    [gateEdit, commitGloss, store],
   );
 
   const callbackRefs = useMemo(
-    () => ({ onSaveRef, onGlossChangeRef, reportEditing, requestGlossEdit, showSuggestions }),
-    [reportEditing, requestGlossEdit, showSuggestions],
+    () => ({
+      onSaveRef,
+      onGlossChangeRef,
+      reportEditing,
+      requestGlossEdit,
+      gateEdit,
+      showSuggestions,
+    }),
+    [reportEditing, requestGlossEdit, gateEdit, showSuggestions],
   );
 
   return (
@@ -246,15 +285,11 @@ export function AnalysisStoreProvider({
           <GlobalEditConfirmationModal
             count={pendingEdit.count}
             onUpdateAll={() => {
-              commitGloss(pendingEdit.tokenRef, pendingEdit.surfaceText, pendingEdit.value);
+              pendingEdit.commit();
               setPendingEdit(undefined);
             }}
             onForkInstead={() => {
-              // Fork repoints this token's approved link to a private clone, then the same write
-              // lands on the clone — so only this token changes and the others keep the shared
-              // payload.
-              store.dispatch(forkAnalysisForToken(pendingEdit.tokenRef));
-              commitGloss(pendingEdit.tokenRef, pendingEdit.surfaceText, pendingEdit.value);
+              pendingEdit.forkAndCommit();
               setPendingEdit(undefined);
             }}
             onCancel={() => setPendingEdit(undefined)}
@@ -351,21 +386,30 @@ export function useGloss(tokenRef: string): string {
  * stable across unrelated store changes: the token re-renders only when its approved decision or
  * suggestion actually changes, never on every pool rebuild.
  *
+ * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
+ * so a chip that is not currently showing suggestions does no per-token pool lookup or
+ * normalization on each store change. The only consumer ({@link TokenChip}) reads `resolved` solely
+ * to render suggestions, so it passes its `showSuggestions` flag here.
+ *
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text, matched against the pool when the token is
  *   unapproved.
- * @returns The approved or suggested analysis for the token, or `undefined` when it has neither.
+ * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
+ *   Defaults to `true`.
+ * @returns The approved or suggested analysis for the token, or `undefined` when it has neither (or
+ *   when `enabled` is `false`).
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useResolvedTokenAnalysis(
   tokenRef: string,
   surfaceText: string,
+  enabled = true,
 ): ResolvedTokenAnalysis | undefined {
   useRequiredCallbacks('useResolvedTokenAnalysis');
 
   return useSelector(
     (state: AnalysisRootState) =>
-      selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText),
+      enabled ? selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText) : undefined,
     resolvedTokenAnalysisEqual,
   );
 }
@@ -431,10 +475,16 @@ export function useAnalysis(): TextAnalysis {
  * invoking `onSave` and the optional (test-only) `onGlossChange` spy. The gating itself lives on
  * the provider so a single modal serves every gloss input (see {@link AnalysisStoreProvider}).
  *
- * @returns A function `(tokenRef, surfaceText, value) => void`.
+ * @returns A function `(tokenRef, surfaceText, value) => boolean` returning whether the edit was
+ *   held for confirmation (`true`) rather than committed immediately, so a commit-on-blur input can
+ *   revert its uncommitted draft when the edit is parked in the modal.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
-export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
+export function useGlossDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  value: string,
+) => boolean {
   return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
 }
 
@@ -469,7 +519,11 @@ export function useApproveAnalysisDispatch(): (
 
 /**
  * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
- * for a given token. Dispatches the `writeMorphemes` action and triggers `onSave`.
+ * for a given token. Setting a breakdown rewrites shared analysis content, so — like
+ * {@link useGlossDispatch} — it routes through the global-edit gate: when `confirmGlobalEdits` is on
+ * and the payload is shared by more than one token, the write is held for
+ * {@link GlobalEditConfirmationModal} (update all / fork / cancel) rather than silently fanning out;
+ * otherwise it commits immediately and triggers `onSave`.
  *
  * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
  *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
@@ -482,14 +536,20 @@ export function useMorphemeBreakdownDispatch(): (
   forms: string[],
   writingSystem: string,
 ) => void {
-  const { dispatch, save } = useAnalysisSave('useMorphemeBreakdownDispatch');
+  const { dispatch, save, callbacks } = useAnalysisSave('useMorphemeBreakdownDispatch');
 
   return useCallback(
     (tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) => {
-      dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
-      save();
+      const commit = () => {
+        dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
+        save();
+      };
+      callbacks.gateEdit(tokenRef, commit, () => {
+        dispatch(forkAnalysisForToken(tokenRef));
+        commit();
+      });
     },
-    [dispatch, save],
+    [dispatch, save, callbacks],
   );
 }
 
@@ -516,25 +576,36 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 
 /**
  * Returns a stable callback that writes a gloss on a single morpheme within the approved
- * `TokenAnalysis` for a given token. Dispatches the `writeMorphemeGloss` action and triggers
- * `onSave`.
+ * `TokenAnalysis` for a given token. A morpheme gloss is shared analysis content, so — like
+ * {@link useGlossDispatch} — it routes through the global-edit gate: when `confirmGlobalEdits` is on
+ * and the payload is shared by more than one token, the write is held for
+ * {@link GlobalEditConfirmationModal} rather than silently fanning out; otherwise it commits
+ * immediately and triggers `onSave`.
  *
- * @returns A function `(tokenRef, morphemeId, value) => void`.
+ * @returns A function `(tokenRef, morphemeId, value) => boolean` returning whether the edit was
+ *   held for confirmation (`true`) rather than committed, so the morpheme gloss input can revert
+ *   its uncommitted draft when the edit is parked in the modal.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeGlossDispatch(): (
   tokenRef: string,
   morphemeId: string,
   value: string,
-) => void {
-  const { dispatch, save } = useAnalysisSave('useMorphemeGlossDispatch');
+) => boolean {
+  const { dispatch, save, callbacks } = useAnalysisSave('useMorphemeGlossDispatch');
 
   return useCallback(
     (tokenRef: string, morphemeId: string, value: string) => {
-      dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
-      save();
+      const commit = () => {
+        dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
+        save();
+      };
+      return callbacks.gateEdit(tokenRef, commit, () => {
+        dispatch(forkAnalysisForToken(tokenRef));
+        commit();
+      });
     },
-    [dispatch, save],
+    [dispatch, save, callbacks],
   );
 }
 

@@ -288,6 +288,81 @@ function detachTokenAnalysisLink(
 }
 
 /**
+ * Reports whether `analysisId`'s payload is referenced by any approved link other than `link` —
+ * i.e. whether an edit or clear reaching it through `link`'s token would also affect a different
+ * token. The shared/sole distinction is what tells a clear, delete, or fork whether it must work on
+ * a private clone (to spare the co-linked tokens) or may mutate the payload in place.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param link - The editing token's approved `TokenAnalysisLink` (excluded from the check).
+ * @param analysisId - `TokenAnalysis.id` of the payload to test.
+ * @returns `true` when at least one other link points at the same payload.
+ */
+function isPayloadSharedByOtherLinks(
+  state: AnalysisState,
+  link: TokenAnalysisLink,
+  analysisId: string,
+): boolean {
+  return state.analysis.tokenAnalysisLinks.some((l) => l !== link && l.analysisId === analysisId);
+}
+
+/**
+ * Forks a shared `TokenAnalysis` payload onto a private clone under `cloneId` and repoints `link`
+ * (the editing token's approved link) to the clone, so a following in-place edit or clear touches
+ * only this token while every other token keeps the original shared payload. The clone carries the
+ * same content (including morpheme ids) under a new id, with fresh copies of the mutable `gloss`
+ * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
+ * without writing through to the frozen shared payload. Mirrors {@link forkAnalysisForToken}; used
+ * by the clear/delete paths so a token can detach from a shared analysis without emptying it for
+ * the others.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param link - The editing token's approved `TokenAnalysisLink`, repointed to the clone.
+ * @param analysis - The shared payload to clone.
+ * @param cloneId - Pre-generated UUID for the clone (from the action's `prepare`).
+ * @returns The clone's draft, for the caller to edit or clear in place.
+ */
+function forkSharedAnalysis(
+  state: AnalysisState,
+  link: TokenAnalysisLink,
+  analysis: TokenAnalysis,
+  cloneId: string,
+): TokenAnalysis {
+  const source = current(analysis);
+  state.analysis.tokenAnalyses.push({
+    ...source,
+    id: cloneId,
+    ...(source.gloss ? { gloss: { ...source.gloss } } : {}),
+    ...(source.morphemes ? { morphemes: source.morphemes.map((m) => ({ ...m })) } : {}),
+  });
+  link.analysisId = cloneId;
+  return state.analysis.tokenAnalyses[state.analysis.tokenAnalyses.length - 1];
+}
+
+/**
+ * Re-converges a just-edited payload onto an existing content-identical one, so an in-place edit
+ * can never leave two identical payloads the way the create path's find-or-create
+ * ({@link appendApprovedAnalysis}) prevents on first write. When another `TokenAnalysis` is now
+ * {@link analysesAreIdentical} to `analysis`, every link pointing at `analysis` is repointed to that
+ * payload and `analysis` is dropped — collapsing a homograph instance that was edited to match a
+ * sibling back onto one shared payload (frequency re-merged, no duplicate suggestion). A no-op when
+ * the edit left the payload unique.
+ *
+ * @param state - Current slice state (Immer draft).
+ * @param analysis - The payload just edited in place.
+ */
+function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
+  const other = state.analysis.tokenAnalyses.find(
+    (ta) => ta !== analysis && analysesAreIdentical(ta, analysis),
+  );
+  if (!other) return;
+  state.analysis.tokenAnalysisLinks.forEach((l) => {
+    if (l.analysisId === analysis.id) l.analysisId = other.id;
+  });
+  state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+}
+
+/**
  * Determines whether a `TokenAnalysis` carries no analysis content, so a reducer that just emptied
  * one field can decide to drop the whole record instead of letting empty records accumulate in
  * storage. Checks every content field of the type — `gloss`, `morphemes`, `pos`, `features`, and
@@ -338,16 +413,20 @@ const analysisSlice = createSlice({
        * Creates or updates an approved `TokenAnalysis` for the given token. If an approved link
        * already exists for `tokenRef`, its analysis is updated in place and the stored surface text
        * is refreshed on both the analysis and the link's token snapshot, so neither goes stale when
-       * the baseline text changed since the analysis was first written. Otherwise a new
-       * `TokenAnalysis` and `TokenAnalysisLink` are appended (an orphaned approved link is repaired
-       * first; see {@link resolveApprovedAnalysis}). Non-approved analyses for the token are left
-       * untouched.
+       * the baseline text changed since the analysis was first written. An in-place edit that makes
+       * the payload identical to an existing one re-converges onto it
+       * ({@link mergeIntoIdenticalPayload}), so editing can never leave the duplicate the create
+       * path's find-or-create avoids. Otherwise a new `TokenAnalysis` and `TokenAnalysisLink` are
+       * appended (an orphaned approved link is repaired first; see {@link resolveApprovedAnalysis}).
+       * Non-approved analyses for the token are left untouched.
        *
        * A blank `value` (empty or whitespace) is treated as clearing the gloss rather than writing
        * junk: the active language's entry is removed, and when that leaves the analysis with no
-       * content ({@link isEmptyTokenAnalysis}) the record and its link are removed entirely. A blank
-       * write to a token with no approved analysis is a no-op, so a focus/blur cycle on an empty
-       * gloss never creates a record.
+       * content ({@link isEmptyTokenAnalysis}) the record and its link are removed entirely. When
+       * the payload is shared by other tokens, the clear is applied to a private clone of this
+       * token ({@link forkSharedAnalysis}) so the co-linked tokens keep the shared gloss rather than
+       * being stranded on an emptied payload. A blank write to a token with no approved analysis is
+       * a no-op, so a focus/blur cycle on an empty gloss never creates a record.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the `WriteGlossPayload`.
@@ -363,15 +442,25 @@ const analysisSlice = createSlice({
           analysis.surfaceText = surfaceText;
           link.token.surfaceText = surfaceText;
           if (isBlank) {
-            if (analysis.gloss) {
-              delete analysis.gloss[lang];
-              if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
+            // Clearing removes this token's analysis. When the payload is shared, fork this token
+            // onto a private clone first and clear that, so the co-linked tokens keep the shared
+            // gloss instead of being stranded on a payload this clear emptied.
+            const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+              ? forkSharedAnalysis(state, link, analysis, id)
+              : analysis;
+            if (target.gloss) {
+              delete target.gloss[lang];
+              if (Object.keys(target.gloss).length === 0) delete target.gloss;
             }
-            if (isEmptyTokenAnalysis(analysis)) detachTokenAnalysisLink(state, analysis, link);
+            if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
             return;
           }
           if (!analysis.gloss) analysis.gloss = {};
           analysis.gloss[lang] = value;
+          // An in-place edit can make this payload identical to an existing one (e.g. a homograph
+          // instance re-glossed to match its sibling); re-converge so the dedupe the create path
+          // guarantees on first write also holds after edits.
+          mergeIntoIdenticalPayload(state, analysis);
           return;
         }
 
@@ -464,26 +553,47 @@ const analysisSlice = createSlice({
         );
       },
     },
-    /**
-     * Removes the morpheme breakdown from the approved `TokenAnalysis` for the given token. When
-     * the analysis carries no other content (gloss, POS, features, or lexicon sense reference — see
-     * {@link isEmptyTokenAnalysis}), the now-empty analysis record and its link are removed entirely
-     * so empty records do not accumulate in storage. No-ops when the token has no approved analysis
-     * or the analysis has no morphemes (an orphaned approved link is still repaired; see
-     * {@link resolveApprovedAnalysis}).
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the `tokenRef` whose breakdown is removed.
-     */
-    deleteMorphemes(state, action: PayloadAction<{ tokenRef: string }>) {
-      const { tokenRef } = action.payload;
+    deleteMorphemes: {
+      /**
+       * Generates a UUID for a potential fork clone before the action reaches the reducer — used
+       * only when the breakdown is removed from a shared payload — keeping the reducer pure.
+       * Accepts the same `{ tokenRef }` argument the action took before, so call sites are
+       * unchanged.
+       *
+       * @param arg - Object carrying the `tokenRef` whose breakdown is removed.
+       * @param arg.tokenRef - `Token.ref` of the token whose morphemes are removed.
+       * @returns The prepared action payload including a pre-generated clone `id`.
+       */
+      prepare(arg: { tokenRef: string }) {
+        return { payload: { tokenRef: arg.tokenRef, id: crypto.randomUUID() } };
+      },
+      /**
+       * Removes the morpheme breakdown from the approved `TokenAnalysis` for the given token. When
+       * the analysis carries no other content (gloss, POS, features, or lexicon sense reference —
+       * see {@link isEmptyTokenAnalysis}), the now-empty analysis record and its link are removed
+       * entirely so empty records do not accumulate in storage. When the payload is shared with
+       * other tokens, the breakdown is removed from a private clone of this token (see
+       * {@link forkSharedAnalysis}) so the co-linked tokens keep their morphemes. No-ops when the
+       * token has no approved analysis or the analysis has no morphemes (an orphaned approved link
+       * is still repaired; see {@link resolveApprovedAnalysis}).
+       *
+       * @param state - Current slice state (Immer draft).
+       * @param action - Action carrying the `tokenRef` whose breakdown is removed and the clone
+       *   `id`.
+       */
+      reducer(state, action: PayloadAction<{ tokenRef: string; id: string }>) {
+        const { tokenRef, id } = action.payload;
 
-      const resolved = resolveApprovedAnalysis(state, tokenRef);
-      if (!resolved?.analysis.morphemes) return;
-      const { link, analysis } = resolved;
+        const resolved = resolveApprovedAnalysis(state, tokenRef);
+        if (!resolved?.analysis.morphemes) return;
+        const { link, analysis } = resolved;
 
-      delete analysis.morphemes;
-      if (isEmptyTokenAnalysis(analysis)) detachTokenAnalysisLink(state, analysis, link);
+        const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+          ? forkSharedAnalysis(state, link, analysis, id)
+          : analysis;
+        delete target.morphemes;
+        if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
+      },
     },
     /**
      * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
@@ -551,14 +661,8 @@ const analysisSlice = createSlice({
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (!resolved) return;
         const { link, analysis } = resolved;
-
-        const sharedByOthers = state.analysis.tokenAnalysisLinks.some(
-          (l) => l !== link && l.analysisId === analysis.id,
-        );
-        if (!sharedByOthers) return;
-
-        state.analysis.tokenAnalyses.push({ ...current(analysis), id });
-        link.analysisId = id;
+        if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) return;
+        forkSharedAnalysis(state, link, analysis, id);
       },
     },
     /**

@@ -5,15 +5,20 @@ import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 /**
  * Normalizes a token surface form for matching and dedupe so trivial Unicode and case differences
  * never split one analysis into two. Applies Unicode NFC (so a composed `é` matches a decomposed
- * `e` + combining acute) then a locale-independent lowercase (so a sentence-initial `"The"` matches
- * a mid-sentence `"the"`). Locale-independent lowercasing — `String.prototype.toLowerCase`, not
- * `toLocaleLowerCase` — is deliberate so the result does not depend on the host's locale.
+ * `e` + combining acute), then a locale-independent lowercase (so a sentence-initial `"The"`
+ * matches a mid-sentence `"the"`), then NFC a final time so the returned key is guaranteed
+ * canonical even for the rare code point whose lowercase mapping emits a decomposed sequence — the
+ * key never depends on which Unicode form an equivalent input arrived in. Locale-independent
+ * lowercasing — `String.prototype.toLowerCase`, not `toLocaleLowerCase` — is deliberate so the
+ * result does not depend on the host's locale; the trade-off is that locale-specific folds are not
+ * applied (e.g. a Turkish dotted `İ` is not folded to an ASCII `i`), an accepted miss that can only
+ * cost a suggestion, never produce a wrong one.
  *
  * @param text - The raw surface text to normalize.
- * @returns The NFC-normalized, lowercased surface form.
+ * @returns The case-folded surface form in NFC.
  */
 export function normalizeSurfaceForm(text: string): string {
-  return text.normalize('NFC').toLowerCase();
+  return text.normalize('NFC').toLowerCase().normalize('NFC');
 }
 
 /**
@@ -21,6 +26,11 @@ export function normalizeSurfaceForm(text: string): string {
  * and arrays). Used to compare glosses, features, morpheme refs, and projected morpheme lists
  * without depending on key order. Never receives `null` — the analysis types use absence
  * (`undefined`) rather than `null` — so no `null` guard is needed.
+ *
+ * Kept as a small, dedicated helper rather than reusing `platform-bible-utils`' `deepEqual`: that
+ * package is fully mocked in this project's Jest setup and the mock does not surface `deepEqual`,
+ * so depending on it here would mean the dedupe path silently ran against `undefined` under test. A
+ * local, directly-tested helper keeps content-identity matching honest in the suite.
  *
  * @param a - First value.
  * @param b - Second value.
@@ -39,10 +49,10 @@ function deepEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * Projects a morpheme down to the fields that define analysis identity — form, gloss, and the four
- * lexicon refs — dropping `id` (a per-instance UUID) and `writingSystem` (a presentation detail
- * that self-corrects on save), so two analyses that differ only in those are still considered
- * identical.
+ * Projects a morpheme down to the fields that define analysis identity — form, gloss, and its
+ * lexicon refs (entry, sense, allomorph, grammar) — dropping `id` (a per-instance UUID) and
+ * `writingSystem` (a presentation detail that self-corrects on save), so two analyses that differ
+ * only in those are still considered identical.
  *
  * @param morpheme - The morpheme to project.
  * @returns A plain object holding only the identity-defining fields.
@@ -56,10 +66,13 @@ function morphemeIdentity(morpheme: MorphemeAnalysis) {
  * Reports whether two `TokenAnalysis` payloads carry the same meaning and so should share one
  * stored payload instead of being duplicated. Identity is content-based: equal normalized surface
  * forms (see {@link normalizeSurfaceForm}) plus deep-equal `gloss` (all language keys), `pos`,
- * `features`, and `morphemes` (compared on form + gloss + refs only — see {@link morphemeIdentity}).
- * A missing field and an empty one of the same kind compare equal. Provenance fields (`confidence`,
- * `producer`, `sourceUser`) and the record `id` are intentionally excluded — they describe who
- * produced an analysis, not what it means.
+ * `features`, `glossSenseRef` (the lexicon sense the gloss resolves through), and `morphemes`
+ * (compared on form + gloss + refs only — see {@link morphemeIdentity}). A missing field and an
+ * empty one of the same kind compare equal. `glossSenseRef` is part of identity because
+ * `isEmptyTokenAnalysis` counts it as content — were it excluded here, two analyses differing only
+ * in their lexicon sense would be merged on write and one sense reference silently dropped.
+ * Provenance fields (`confidence`, `producer`, `sourceUser`) and the record `id` are intentionally
+ * excluded — they describe who produced an analysis, not what it means.
  *
  * @param a - First analysis.
  * @param b - Second analysis.
@@ -71,6 +84,7 @@ export function analysesAreIdentical(a: TokenAnalysis, b: TokenAnalysis): boolea
     deepEqual(a.gloss, b.gloss) &&
     a.pos === b.pos &&
     deepEqual(a.features, b.features) &&
+    deepEqual(a.glossSenseRef, b.glossSenseRef) &&
     deepEqual((a.morphemes ?? []).map(morphemeIdentity), (b.morphemes ?? []).map(morphemeIdentity))
   );
 }

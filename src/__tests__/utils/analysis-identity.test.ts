@@ -84,6 +84,15 @@ describe('analysesAreIdentical', () => {
     ).toBe(false);
   });
 
+  it('differs when the gloss sense reference differs', () => {
+    expect(
+      analysesAreIdentical(
+        ta({ glossSenseRef: { senseId: 'sense-1' } }),
+        ta({ glossSenseRef: { senseId: 'sense-2' } }),
+      ),
+    ).toBe(false);
+  });
+
   it('differs when the morpheme count differs', () => {
     expect(
       analysesAreIdentical(

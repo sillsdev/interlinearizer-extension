@@ -8,10 +8,14 @@ import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 type GlossMap = Record<string, string>;
 type MockCtxValue = {
   glosses: GlossMap;
-  dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
+  dispatch: (tokenRef: string, surfaceText: string, value: string) => boolean;
   language: string;
 };
-const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {}, language: 'und' });
+const MockCtx = createContext<MockCtxValue>({
+  glosses: {},
+  dispatch: () => false,
+  language: 'und',
+});
 
 /**
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
@@ -50,6 +54,8 @@ export function AnalysisStoreProvider({
     (tokenRef: string, _surfaceText: string, value: string) => {
       setGlosses((prev) => ({ ...prev, [tokenRef]: value }));
       onGlossChange?.(tokenRef, value);
+      // The mock has no global-edit gate, so an edit is never held — always reports "committed".
+      return false;
     },
     [onGlossChange],
   );
@@ -126,7 +132,8 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 }
 
 /**
- * Returns a no-op dispatch for writing morpheme glosses in mock context.
+ * Returns a no-op dispatch for writing morpheme glosses in mock context. Reports "committed" (never
+ * held), matching the real hook's boolean return.
  *
  * @returns A no-op function matching the real signature.
  */
@@ -134,8 +141,8 @@ export function useMorphemeGlossDispatch(): (
   tokenRef: string,
   morphemeId: string,
   value: string,
-) => void {
-  return () => {};
+) => boolean {
+  return () => false;
 }
 
 /**
@@ -153,11 +160,13 @@ export function useReportGlossEditing(_isEditing: boolean): void {}
  *
  * @param _tokenRef - The token reference key (unused in mock).
  * @param _surfaceText - The token's surface text (unused in mock).
+ * @param _enabled - Whether to resolve (unused in mock; it never surfaces suggestions anyway).
  * @returns `undefined` — the mock surfaces no suggestions.
  */
 export function useResolvedTokenAnalysis(
   _tokenRef: string,
   _surfaceText: string,
+  _enabled?: boolean,
 ): ResolvedTokenAnalysis | undefined {
   return undefined;
 }

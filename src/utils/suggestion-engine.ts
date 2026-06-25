@@ -11,6 +11,13 @@
 import type { TokenAnalysis } from 'interlinearizer';
 import { normalizeSurfaceForm } from './analysis-identity';
 
+/**
+ * Shared empty candidate list returned for every non-homograph match (the common case), so
+ * {@link deriveTokenSuggestion} never allocates a throwaway `[]` per call. Read-only and never
+ * mutated by any consumer.
+ */
+const NO_CANDIDATES: readonly TokenAnalysis[] = [];
+
 /** One distinct approved payload in the pool together with how many tokens currently approve it. */
 export interface PoolEntry {
   /** The shared approved `TokenAnalysis` payload. */
@@ -34,9 +41,10 @@ export interface TokenSuggestion {
   suggested: TokenAnalysis;
   /**
    * The remaining matching payloads, in rank order — the `candidate` alternatives a reviewer can
-   * promote instead of the suggestion. Empty unless the surface form is a homograph.
+   * promote instead of the suggestion. Empty unless the surface form is a homograph. Read-only so
+   * the single shared empty array returned for the common non-homograph case is never mutated.
    */
-  candidates: TokenAnalysis[];
+  candidates: readonly TokenAnalysis[];
 }
 
 /**
@@ -132,8 +140,12 @@ export function deriveTokenSuggestion(
   const entries = poolIndex.get(normalizeSurfaceForm(surfaceText));
   if (!entries) return undefined;
   // The bucket is pre-ranked best-first by buildPoolIndex, so the head is the suggested pick and
-  // the tail are the candidates — no per-call re-sort.
-  return { suggested: entries[0].analysis, candidates: entries.slice(1).map((e) => e.analysis) };
+  // the tail are the candidates — no per-call re-sort. A non-homograph bucket (the common case) has
+  // a single entry, so reuse one shared empty array instead of allocating a throwaway `[]` per call.
+  return {
+    suggested: entries[0].analysis,
+    candidates: entries.length > 1 ? entries.slice(1).map((e) => e.analysis) : NO_CANDIDATES,
+  };
 }
 
 /**

@@ -14,11 +14,10 @@ const GLOBAL_EDIT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Confirmation dialog shown when a human edits a `TokenAnalysis` payload that is shared by more
- * than one token, so the user is never surprised that one edit rewrote many occurrences. It offers
- * three choices: apply the edit globally to every token sharing the payload, fork a per-instance
- * copy and edit only this token, or cancel and leave everything untouched. The modal is only ever
- * shown for `count > 1` (the caller gates on the blast radius), so the copy always reads in the
- * plural.
+ * than one token, so the user is never surprised that one edit rewrote many occurrences. It lets
+ * the user apply the edit globally to every token sharing the payload, fork a per-instance copy and
+ * edit only this token, or cancel and leave everything untouched. The modal is only ever shown for
+ * `count > 1` (the caller gates on the blast radius), so the copy always reads in the plural.
  *
  * @param props - Component props
  * @param props.count - How many tokens share the payload being edited; substituted into the copy.
@@ -41,7 +40,8 @@ export function GlobalEditConfirmationModal({
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(GLOBAL_EDIT_STRING_KEYS);
 
-  /* v8 ignore next */ if (stringsLoading) return undefined;
+  /* v8 ignore next -- localized strings resolve synchronously under the test mock, so the still-loading guard never runs there */
+  if (stringsLoading) return undefined;
 
   const countText = String(count);
   const title = localizedStrings['%interlinearizer_globalEdit_title%'].replace(

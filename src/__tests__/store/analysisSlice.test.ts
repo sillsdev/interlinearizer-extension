@@ -263,6 +263,22 @@ describe('find-or-create on write (dedupe)', () => {
     expect(tokenAnalyses).toHaveLength(1);
     expect(tokenAnalysisLinks).toHaveLength(2);
   });
+
+  it('re-converges an in-place edit that makes a homograph identical to its sibling', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'bank', 'riverside'));
+    store.dispatch(writeGloss('tok-2', 'bank', 'finance')); // distinct payload (homograph)
+
+    // Edit tok-2's gloss to exactly match tok-1's existing payload.
+    store.dispatch(writeGloss('tok-2', 'bank', 'riverside'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    // The two payloads re-converge onto one, so frequency re-merges rather than splitting.
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
+  });
 });
 
 describe('forkAnalysisForToken', () => {
@@ -352,12 +368,17 @@ describe('link-based cleanup', () => {
 
     store.dispatch(writeGloss('tok-1', 'the', ''));
 
-    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    const state = store.getState().analysis;
+    const { tokenAnalyses, tokenAnalysisLinks } = state.analysis;
     // The editing token is unlinked; the co-linked token's link still resolves to a live payload.
     expect(tokenAnalysisLinks.some((l) => l.token.tokenRef === 'tok-1')).toBe(false);
     const tok2Link = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
     expect(tok2Link).toBeDefined();
     expect(tokenAnalyses.some((ta) => ta.id === tok2Link?.analysisId)).toBe(true);
+    // ...and that payload still carries the co-linked token's gloss — clearing one instance forks
+    // it off rather than emptying the shared payload out from under the other token.
+    expect(selectApprovedGloss(state, 'tok-2')).toBe('def');
+    expect(selectApprovedGloss(state, 'tok-1')).toBe('');
   });
 
   it('removes the payload once its last link is cleared', () => {
@@ -380,10 +401,15 @@ describe('link-based cleanup', () => {
 
     store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
 
-    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    const state = store.getState().analysis;
+    const { tokenAnalyses, tokenAnalysisLinks } = state.analysis;
     expect(tokenAnalysisLinks.some((l) => l.token.tokenRef === 'tok-1')).toBe(false);
     const tok2Link = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
     expect(tokenAnalyses.some((ta) => ta.id === tok2Link?.analysisId)).toBe(true);
+    // The co-linked token keeps its morphemes — deleting one instance's breakdown forks it off
+    // rather than stripping the shared payload the other token still relies on.
+    expect(selectApprovedMorphemes(state, 'tok-2')).toHaveLength(2);
+    expect(selectApprovedMorphemes(state, 'tok-1')).toHaveLength(0);
   });
 });
 

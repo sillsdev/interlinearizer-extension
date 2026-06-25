@@ -2,7 +2,7 @@ import type { Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { X } from 'lucide-react';
 import { Popover, PopoverAnchor } from 'platform-bible-react';
-import { memo, type MouseEventHandler, useEffect, useId, useRef, useState } from 'react';
+import { memo, type MouseEventHandler, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   useAnalysisLanguage,
   useApproveAnalysisDispatch,
@@ -80,8 +80,9 @@ export function TokenChip({
   const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
-  const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText);
   const showSuggestions = useShowSuggestions();
+  // Only resolve the pool when suggestions are actually shown; off, this does no per-token lookup.
+  const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, showSuggestions);
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   const [popoverOpen, setPopoverOpen] = useState(false);
@@ -171,9 +172,16 @@ export function TokenChip({
   // and the user has not started typing. An approved token resolves to its decision, never a
   // suggestion, so it never reaches this branch.
   const suggestion = resolved?.status === 'suggested' ? resolved : undefined;
-  const glossedRanked = (suggestion ? [suggestion.suggested, ...suggestion.candidates] : [])
-    .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
-    .filter((entry) => entry.gloss !== '');
+  // Memoized on the (reference-stable) suggestion and active language so typing a gloss — which only
+  // changes local draft state — never re-runs this map/filter; it recomputes only when the suggestion
+  // or language actually changes.
+  const glossedRanked = useMemo(
+    () =>
+      (suggestion ? [suggestion.suggested, ...suggestion.candidates] : [])
+        .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
+        .filter((entry) => entry.gloss !== ''),
+    [suggestion, analysisLanguage],
+  );
   const showSuggestionUi = showSuggestions && !disabled && draft === '' && glossedRanked.length > 0;
   const acceptEntry = showSuggestionUi ? glossedRanked[0] : undefined;
   const candidateEntries = showSuggestionUi
@@ -292,8 +300,14 @@ export function TokenChip({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => {
-            if (!disabled && draft !== committedGloss)
-              onGlossChange(token.ref, token.surfaceText, draft);
+            if (!disabled && draft !== committedGloss) {
+              const held = onGlossChange(token.ref, token.surfaceText, draft);
+              // If the edit was parked in the global-edit modal, revert the input to the committed
+              // value so canceling the modal doesn't leave the abandoned draft stuck in the input
+              // (and re-prompting on the next blur). An "update all" / "fork" choice updates
+              // committedGloss, which the sync effect then mirrors back into the draft.
+              if (held) setDraft(committedGloss);
+            }
           }}
           onFocus={disabled ? undefined : onFocus}
           onMouseDown={disabled ? undefined : handleMouseDown}

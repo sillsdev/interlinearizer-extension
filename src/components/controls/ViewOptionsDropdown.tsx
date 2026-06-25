@@ -97,9 +97,8 @@ type ViewOptionsDropdownProps = Readonly<{
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and five view-mode toggles (show
- * morphology, show free translation, hide inactive link buttons, simplify phrases, chapter label in
- * verse). Opens and closes via a gear icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and the view-mode toggles (each a
+ * labeled on/off switch). Opens and closes via a gear icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.

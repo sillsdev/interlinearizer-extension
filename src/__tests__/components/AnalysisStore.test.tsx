@@ -549,6 +549,137 @@ describe('useGlossDispatch — global-edit confirmation', () => {
   });
 });
 
+describe('morpheme edits — global-edit confirmation', () => {
+  // The confirmation modal renders real localized strings; `resetMocks` wipes the default, so
+  // re-establish a key→label map (tests assert via test ids, not copy).
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([
+      {
+        '%interlinearizer_globalEdit_title%': 'Used by {count} tokens',
+        '%interlinearizer_globalEdit_body%': 'Shared by {count} tokens',
+        '%interlinearizer_globalEdit_updateAll%': 'Update all {count}',
+        '%interlinearizer_globalEdit_fork%': 'Make a separate analysis',
+        '%interlinearizer_globalEdit_cancel%': 'Cancel',
+      },
+      false,
+    ]);
+  });
+
+  it('prompts before a shared morpheme-breakdown edit and applies it to all on "update all"', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <MorphemeWriter
+          tokenRef="tok-1"
+          surfaceText="word"
+          forms={['wor', 'd']}
+          writingSystem="en"
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+    expect(onSave).not.toHaveBeenCalled(); // held for confirmation
+
+    await userEvent.click(screen.getByTestId('global-edit-update-all'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // One shared payload, now carrying the breakdown for both tokens.
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    expect(saved.tokenAnalyses[0].morphemes?.map((m) => m.form)).toStrictEqual(['wor', 'd']);
+  });
+
+  it('forks a private copy on "make a separate analysis" for a morpheme-breakdown edit', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <MorphemeWriter
+          tokenRef="tok-1"
+          surfaceText="word"
+          forms={['wor', 'd']}
+          writingSystem="en"
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+    await userEvent.click(screen.getByTestId('global-edit-fork'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // Two payloads: tok-1's forked copy gains the breakdown; tok-2's original keeps just the gloss.
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(tok1Link?.analysisId).not.toBe(tok2Link?.analysisId);
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.morphemes?.map((m) => m.form)).toStrictEqual(['wor', 'd']);
+    expect(tok2Analysis?.morphemes).toBeUndefined();
+  });
+
+  it('forks a private copy on "make a separate analysis" for a morpheme-gloss edit', async () => {
+    const onSave = jest.fn();
+    const sharedMorpheme: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [
+        {
+          id: 'shared-analysis',
+          surfaceText: 'word',
+          morphemes: [{ id: 'm1', form: 'word', writingSystem: 'en' }],
+        },
+      ],
+      tokenAnalysisLinks: [
+        {
+          analysisId: 'shared-analysis',
+          status: 'approved',
+          token: { tokenRef: 'tok-1', surfaceText: 'word' },
+        },
+        {
+          analysisId: 'shared-analysis',
+          status: 'approved',
+          token: { tokenRef: 'tok-2', surfaceText: 'word' },
+        },
+      ],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={sharedMorpheme}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <MorphemeGlossWriter tokenRef="tok-1" morphemeId="m1" value="root" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'gloss' }));
+    await userEvent.click(screen.getByTestId('global-edit-fork'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // Two payloads: tok-1's forked copy gets the morpheme gloss; tok-2's original morpheme stays bare.
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.morphemes?.[0].gloss).toStrictEqual({ und: 'root' });
+    expect(tok2Analysis?.morphemes?.[0].gloss).toBeUndefined();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Phrase hooks
 // ---------------------------------------------------------------------------

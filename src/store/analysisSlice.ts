@@ -1,4 +1,4 @@
-import { createSelector, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { createSelector, createSlice, current, type PayloadAction } from '@reduxjs/toolkit';
 import type {
   MorphemeAnalysis,
   PhraseAnalysis,
@@ -12,6 +12,7 @@ import type {
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
 import { isEmptyMultiString } from '../utils/multi-string';
+import { analysesAreIdentical } from '../utils/analysis-identity';
 
 // #region Types
 
@@ -227,12 +228,17 @@ function resolveApprovedAnalysis(
 }
 
 /**
- * Appends a new `TokenAnalysis` and an approved `TokenAnalysisLink` referencing it in a single
- * step, ensuring both collections stay in sync. The link's token snapshot takes its surface text
- * from the analysis.
+ * Links a token to an approved `TokenAnalysis`, doing find-or-create so identical analyses are
+ * shared rather than duplicated: if an existing payload is content-identical to `analysis`
+ * ({@link analysesAreIdentical}), the new approved link points at that payload and `analysis` is
+ * discarded; otherwise `analysis` is appended as a new payload. Either way exactly one approved
+ * `TokenAnalysisLink` is pushed, keeping the two collections in sync. The link's token snapshot
+ * records _this_ token's surface text (from `analysis.surfaceText`), not the shared payload's, so
+ * per-token drift detection stays accurate even when a sentence-initial form links to a payload
+ * first created from a mid-sentence form.
  *
  * @param state - Current slice state (Immer draft).
- * @param analysis - The new `TokenAnalysis` record to append.
+ * @param analysis - The candidate `TokenAnalysis` record to link or, if novel, append.
  * @param tokenRef - `Token.ref` of the token the link points at.
  */
 function appendApprovedAnalysis(
@@ -240,30 +246,40 @@ function appendApprovedAnalysis(
   analysis: TokenAnalysis,
   tokenRef: string,
 ): void {
-  state.analysis.tokenAnalyses.push(analysis);
+  const existing = state.analysis.tokenAnalyses.find((ta) => analysesAreIdentical(ta, analysis));
+  if (!existing) state.analysis.tokenAnalyses.push(analysis);
   state.analysis.tokenAnalysisLinks.push({
-    analysisId: analysis.id,
+    analysisId: existing?.id ?? analysis.id,
     status: 'approved',
     token: { tokenRef, surfaceText: analysis.surfaceText },
   });
 }
 
 /**
- * Removes a `TokenAnalysis` record and its `TokenAnalysisLink` from the draft in a single step,
- * keeping the two collections in sync. Called when an edit empties an analysis of all content so
- * empty records do not accumulate in storage.
+ * Detaches a token from its analysis once an edit has emptied that analysis of all content: the
+ * editing token's `TokenAnalysisLink` is removed, and the `TokenAnalysis` payload itself is removed
+ * only when no other link still references it. Because payloads are shared across every token
+ * glossed identically (see {@link appendApprovedAnalysis}), removing the link before checking for
+ * remaining references is what stops an edit on one token from orphaning a payload that another
+ * token still links to. A payload kept alive by a surviving link may be momentarily empty; it is
+ * reclaimed when that last link is cleared.
  *
  * @param state - Current slice state (Immer draft).
- * @param analysis - The `TokenAnalysis` record to remove.
- * @param link - The `TokenAnalysisLink` referencing it.
+ * @param analysis - The emptied `TokenAnalysis` payload.
+ * @param link - The `TokenAnalysisLink` from the editing token to remove.
  */
-function removeTokenAnalysis(
+function detachTokenAnalysisLink(
   state: AnalysisState,
   analysis: TokenAnalysis,
   link: TokenAnalysisLink,
 ): void {
-  state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
   state.analysis.tokenAnalysisLinks = state.analysis.tokenAnalysisLinks.filter((l) => l !== link);
+  const stillReferenced = state.analysis.tokenAnalysisLinks.some(
+    (l) => l.analysisId === analysis.id,
+  );
+  if (!stillReferenced) {
+    state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter((ta) => ta !== analysis);
+  }
 }
 
 /**
@@ -346,7 +362,7 @@ const analysisSlice = createSlice({
               delete analysis.gloss[lang];
               if (Object.keys(analysis.gloss).length === 0) delete analysis.gloss;
             }
-            if (isEmptyTokenAnalysis(analysis)) removeTokenAnalysis(state, analysis, link);
+            if (isEmptyTokenAnalysis(analysis)) detachTokenAnalysisLink(state, analysis, link);
             return;
           }
           if (!analysis.gloss) analysis.gloss = {};
@@ -462,7 +478,7 @@ const analysisSlice = createSlice({
       const { link, analysis } = resolved;
 
       delete analysis.morphemes;
-      if (isEmptyTokenAnalysis(analysis)) removeTokenAnalysis(state, analysis, link);
+      if (isEmptyTokenAnalysis(analysis)) detachTokenAnalysisLink(state, analysis, link);
     },
     /**
      * Writes a gloss string onto a single morpheme within the approved `TokenAnalysis` for the
@@ -499,6 +515,46 @@ const analysisSlice = createSlice({
 
       if (!morpheme.gloss) morpheme.gloss = {};
       morpheme.gloss[lang] = value;
+    },
+    forkAnalysisForToken: {
+      /**
+       * Generates a UUID for the forked clone before the action reaches the reducer, keeping the
+       * reducer pure.
+       *
+       * @param tokenRef - `Token.ref` of the token whose approved analysis is being forked.
+       * @returns The prepared action payload including a pre-generated clone `id`.
+       */
+      prepare(tokenRef: string) {
+        return { payload: { tokenRef, id: crypto.randomUUID() } };
+      },
+      /**
+       * Forks this token off a shared `TokenAnalysis` so a later edit affects only it: the shared
+       * payload is deep-cloned into a new payload (new id, same content including morpheme ids),
+       * and this token's approved link is repointed to the clone while every other token stays on
+       * the original. The clone is independent — a subsequent {@link writeGloss} /
+       * {@link writeMorphemes} resolves to and edits only the clone.
+       *
+       * No-ops when the token has no approved analysis, and when the payload is not actually shared
+       * (this token is its only link): forking a sole-occupant payload would just duplicate it,
+       * violating dedupe-on-write ({@link analysesAreIdentical}) and orphaning the original.
+       *
+       * @param state - Current slice state (Immer draft).
+       * @param action - Action carrying the `tokenRef` to fork and the clone `id`.
+       */
+      reducer(state, action: PayloadAction<{ tokenRef: string; id: string }>) {
+        const { tokenRef, id } = action.payload;
+        const resolved = resolveApprovedAnalysis(state, tokenRef);
+        if (!resolved) return;
+        const { link, analysis } = resolved;
+
+        const sharedByOthers = state.analysis.tokenAnalysisLinks.some(
+          (l) => l !== link && l.analysisId === analysis.id,
+        );
+        if (!sharedByOthers) return;
+
+        state.analysis.tokenAnalyses.push({ ...current(analysis), id });
+        link.analysisId = id;
+      },
     },
     createPhrase: {
       /**
@@ -668,6 +724,7 @@ export const {
   writeMorphemes,
   deleteMorphemes,
   writeMorphemeGloss,
+  forkAnalysisForToken,
   createPhrase,
   updatePhrase,
   deletePhrase,
@@ -753,6 +810,43 @@ export function selectApprovedGloss(state: AnalysisState, tokenRef: string): str
   const ta = selectAnalysisById(state).get(approvedId);
   const lang = selectAnalysisLanguage(state);
   return ta?.gloss?.[lang] ?? '';
+}
+
+/**
+ * Memoized selector mapping each approved `TokenAnalysis.id` to the number of distinct tokens whose
+ * approved link points at it — the blast radius of a global edit to that payload. Built from
+ * {@link selectApprovedIdByTokenRef}, which holds at most one approved analysis per token, so
+ * multiple approved links on the same token are never double-counted. Recomputes only when that map
+ * changes reference.
+ */
+const selectApprovedTokenCountByAnalysisId = createSelector(
+  selectApprovedIdByTokenRef,
+  (idByTokenRef) => {
+    const counts = new Map<string, number>();
+    idByTokenRef.forEach((analysisId) => {
+      counts.set(analysisId, (counts.get(analysisId) ?? 0) + 1);
+    });
+    return counts;
+  },
+);
+
+/**
+ * Returns how many tokens share `tokenRef`'s approved analysis — i.e. how many tokens a global edit
+ * to that payload would affect. Returns `0` when the token has no approved analysis, `1` for a
+ * payload occupied by this token alone, and `N` for one shared by `N` tokens. The UI uses this to
+ * decide whether a human edit needs confirmation (count > 1) and to phrase "used by N tokens".
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` whose approved payload to measure.
+ * @returns The number of tokens sharing the payload, or `0` when there is no approved analysis.
+ */
+export function selectApprovedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (!approvedId) return 0;
+  const count = selectApprovedTokenCountByAnalysisId(state).get(approvedId);
+  /* v8 ignore next -- approvedId comes from the same approved map, so its count is always present */
+  if (count === undefined) return 0;
+  return count;
 }
 
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];

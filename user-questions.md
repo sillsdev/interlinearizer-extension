@@ -86,3 +86,66 @@ Decisions made during development that we'd like reviewed:
     (the less destructive option) and disables that option when no book is loaded. Alternative: keep
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
+
+## Suggestion engine: editing a shared analysis, and per-instance analyses
+
+The suggestion engine reuses an existing analysis on other matching surface forms by creating a new
+**link** to the same analysis payload (not a copy). Because the payload is shared, analyses behave
+**globally**: editing the gloss/parse of an analysis updates every token instance linked to it
+(the FieldWorks/LCM model — one wordform analysis shared across occurrences).
+
+Decisions made during development that we'd like reviewed:
+
+1. **Confirming a global edit.** Editing an analysis that is linked from more than one token is
+   proposed to require an explicit confirmation ("This analysis is used by N tokens — updating it
+   changes all of them") so users are never surprised that a single edit rewrote many verses. Is a
+   confirmation the right friction, or is it too much for power users? Should it be suppressible
+   ("don't ask again")?
+
+2. **Making a per-instance analysis without rigmarole.** Users will sometimes want a _separate_
+   analysis for one occurrence of a surface form (a genuine local divergence) rather than editing the
+   shared one. The proposal is to offer this directly inside the global-edit confirmation as a second
+   button ("Make a separate analysis for just this one"), so forking an instance is one click. Is the
+   edit-confirmation modal the right home for this action, or should "fork this instance" be its own
+   distinct, always-available control?
+
+3. **Status colors.** Approved = default foreground, suggested = green, candidate = blue,
+   rejected = orange, stale = red. Does this mapping read correctly to users (e.g. green commonly
+   means "approved/done", which here is the plain foreground state)?
+
+## Suggestion engine: bulk acceptance (post-v1)
+
+v1 accepts suggestions strictly one token at a time, to stay honest to the rule that every analysis
+requires explicit human review. We anticipate users will want to **bulk-accept a verse's suggestions**
+once the feature is in hand.
+
+Questions for users/stakeholders:
+
+1. **Is bulk-accept wanted, and at what scope?** Verse only (small enough to eyeball before
+   approving), or also chapter/book? Book-level bulk-accept is effectively mass approval of unreviewed
+   suggestions — does that still count as "human review"?
+
+2. **What should bulk-accept require?** e.g. only enabled when the whole unit is visible, a confirmation
+   summarizing how many analyses will be approved, or nothing extra.
+
+## Suggestion engine: display prominence and candidate review
+
+Suggestions are shown **always-on**: every token with no approved analysis that matches something in
+the pool renders its `suggested` (green) analysis continuously, derived live as you work.
+
+Questions for users/stakeholders:
+
+1. **Visual prominence of suggestions vs approved work.** A screen can fill with green suggestions the
+   moment a common word is glossed. Suggested (green) must read as clearly subordinate to approved
+   (foreground) so a field of suggestions is never mistaken for finished work. Is color enough, or do
+   suggestions also need a weaker treatment (reduced opacity, italic, an icon/affordance)?
+
+2. **Reviewing candidates (homographs).** When a surface form has competing analyses, one shows as
+   `suggested` (green) and the rest are `candidate` (blue) alternatives. How should a reviewer see and
+   switch to a candidate — an inline dropdown, a hover/expand list, cycling with a key? How many
+   candidates is it reasonable to surface before the list is truncated?
+
+3. **Suggestions with no gloss in the active analysis language.** For multi-language projects, an
+   analysis can match and be suggested for its morphemes/POS while its gloss in the _active_ language
+   is blank (v1 suggests regardless of language). Is a blank-gloss green suggestion acceptable, or
+   should suggestions be hidden unless they carry a gloss in the active language?

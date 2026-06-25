@@ -1,5 +1,4 @@
 import { useLocalizedStrings, useRecentScriptureRefs } from '@papi/frontend/react';
-import { useMemo } from 'react';
 import {
   BOOK_CHAPTER_CONTROL_STRING_KEYS,
   BookChapterControl,
@@ -10,6 +9,13 @@ import {
 
 /** Fixed set of scroll-group IDs offered in the selector; `undefined` means "unlinked". */
 const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
+
+/**
+ * Localized string keys for {@link BookChapterControl}, hoisted to module scope so the array
+ * reference passed to `useLocalizedStrings` is stable across renders (a fresh array each render
+ * would make the hook re-fetch every render). Mirrors the `STRING_KEYS` pattern in the views.
+ */
+const STRING_KEYS = [...BOOK_CHAPTER_CONTROL_STRING_KEYS];
 
 /**
  * Props for {@link ScriptureNavControls}. Combines the scripture-reference fields from
@@ -35,9 +41,7 @@ export default function ScriptureNavControls({
   scrollGroupId,
   onChangeScrollGroupId,
 }: ScriptureNavControlsProps) {
-  const [localizedStrings] = useLocalizedStrings(
-    useMemo(() => [...BOOK_CHAPTER_CONTROL_STRING_KEYS], []),
-  );
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const { recentScriptureRefs: recentRefs, addRecentScriptureRef: onAddRecentRef } =
     useRecentScriptureRefs();
 

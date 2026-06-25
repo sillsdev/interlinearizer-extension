@@ -373,8 +373,9 @@ function InterlinearizerLoaderInner({
   );
 
   /**
-   * Fetches the top-menu data for this WebView from the platform's menu data provider, hiding "View
-   * Project Info" when no interlinear project is currently active.
+   * Fetches the raw top-menu data for this WebView from the platform's menu data provider. This
+   * call performs no filtering; the active-project hiding of the "View Project Info" item is
+   * applied separately in {@link projectMenuData}.
    */
   const [webViewMenuPossiblyError] = useData(papi.menuData.dataProviderName).WebViewMenu(
     'interlinearizer.mainWebView',

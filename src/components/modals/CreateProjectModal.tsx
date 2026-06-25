@@ -1,6 +1,8 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { useState, useCallback } from 'react';
+import { parseLanguageTags } from '../../utils/language-tags';
+import { ModalShell } from './ModalShell';
 
 /** Localized string keys used by {@link CreateProjectModal}. */
 const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -68,10 +70,7 @@ export function CreateProjectModal({
    * {@link onCreateDraft}.
    */
   const handleSubmit = useCallback(() => {
-    const parsedLanguages = analysisLanguages
-      .split(',')
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
+    const parsedLanguages = parseLanguageTags(analysisLanguages);
     const normalizedAnalysisLanguages = parsedLanguages.length > 0 ? parsedLanguages : ['und'];
     onCreateDraft({
       analysisLanguages: normalizedAnalysisLanguages,
@@ -83,56 +82,50 @@ export function CreateProjectModal({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:modal-overlay">
-      <dialog
-        aria-labelledby="create-project-modal-title"
-        aria-modal="true"
-        className="tw:modal-dialog tw:rounded tw:w-96"
-        open
-      >
-        <h2 id="create-project-modal-title" className="tw:modal-title">
-          {localizedStrings['%interlinearizer_modal_create_title%']}
-        </h2>
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-name">
-          {localizedStrings['%interlinearizer_modal_create_name_label%']}
-        </label>
-        <input
-          id="project-name"
-          className="tw:modal-form-input tw:mb-3"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
-        />
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="project-description">
-          {localizedStrings['%interlinearizer_modal_create_description_label%']}
-        </label>
-        <textarea
-          id="project-description"
-          className="tw:modal-form-input tw:mb-3 tw:resize-none"
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
-        />
-        <label className="tw:block tw:text-sm tw:mb-1" htmlFor="analysis-language">
-          {localizedStrings['%interlinearizer_modal_create_language_label%']}
-        </label>
-        <input
-          id="analysis-language"
-          className="tw:modal-form-input tw:mb-4"
-          value={analysisLanguages}
-          onChange={(e) => setAnalysisLanguages(e.target.value)}
-          placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
-        />
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
-            {localizedStrings['%interlinearizer_modal_create_cancel%']}
-          </Button>
-          <Button onClick={handleSubmit} disabled={isSubmitting}>
-            {localizedStrings['%interlinearizer_modal_create_submit%']}
-          </Button>
-        </div>
-      </dialog>
-    </div>
+    <ModalShell
+      titleId="create-project-modal-title"
+      title={localizedStrings['%interlinearizer_modal_create_title%']}
+      width="tw:w-96"
+    >
+      <label className="tw:modal-form-label" htmlFor="project-name">
+        {localizedStrings['%interlinearizer_modal_create_name_label%']}
+      </label>
+      <input
+        id="project-name"
+        className="tw:modal-form-input tw:mb-3"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
+      />
+      <label className="tw:modal-form-label" htmlFor="project-description">
+        {localizedStrings['%interlinearizer_modal_create_description_label%']}
+      </label>
+      <textarea
+        id="project-description"
+        className="tw:modal-form-input tw:mb-3 tw:resize-none"
+        rows={2}
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
+      />
+      <label className="tw:modal-form-label" htmlFor="analysis-language">
+        {localizedStrings['%interlinearizer_modal_create_language_label%']}
+      </label>
+      <input
+        id="analysis-language"
+        className="tw:modal-form-input tw:mb-4"
+        value={analysisLanguages}
+        onChange={(e) => setAnalysisLanguages(e.target.value)}
+        placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}
+      />
+      <div className="tw:modal-actions">
+        <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
+          {localizedStrings['%interlinearizer_modal_create_cancel%']}
+        </Button>
+        <Button onClick={handleSubmit} disabled={isSubmitting}>
+          {localizedStrings['%interlinearizer_modal_create_submit%']}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }

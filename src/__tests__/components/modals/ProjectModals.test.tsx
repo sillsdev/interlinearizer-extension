@@ -277,37 +277,24 @@ function buildProps(overrides: ModalsOverrides = {}) {
 }
 
 /**
- * Builds a `useWebViewState` stub whose reset callback for the `'activeProject'` key is the given
- * spy, so a test can assert the active project was cleared (other keys get a no-op reset). Mirrors
+ * Builds a `useWebViewState` stub with optional spies on the setter and/or reset for the
+ * `'activeProject'` key, so a test can assert how the active project was updated or cleared. Any
+ * unspecified spy — and every key other than `'activeProject'` — gets a no-op. Mirrors
  * {@link makeWebViewState}'s `[value, setter, reset]` shape without type assertions.
  *
- * @param resetActiveProject - Spy invoked when the `'activeProject'` slot is reset.
+ * @param spies - The spies to install for the `'activeProject'` slot.
+ * @param spies.set - Spy invoked when the `'activeProject'` slot's setter is called.
+ * @param spies.reset - Spy invoked when the `'activeProject'` slot is reset.
  * @returns A `useWebViewState`-shaped hook stub.
  */
-function makeWebViewStateWithResetSpy(resetActiveProject: () => void) {
+function makeWebViewStateWithActiveProjectSpies({
+  set = () => {},
+  reset = () => {},
+}: Readonly<{ set?: (v: unknown) => void; reset?: () => void }> = {}) {
   return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
     defaultValue,
-    () => {},
-    key === 'activeProject' ? resetActiveProject : () => {},
-  ];
-}
-
-/**
- * Builds a `useWebViewState` stub with spies on both the setter and the reset for the
- * `'activeProject'` key, so tests can assert which path was taken after a create attempt.
- *
- * @param setActiveProject - Spy invoked when the `'activeProject'` slot is set.
- * @param resetActiveProject - Spy invoked when the `'activeProject'` slot is reset.
- * @returns A `useWebViewState`-shaped hook stub.
- */
-function makeWebViewStateWithActiveProjectSpies(
-  setActiveProject: jest.Mock,
-  resetActiveProject: jest.Mock,
-) {
-  return <T,>(key: string, defaultValue: T): [T, (v: T) => void, () => void] => [
-    defaultValue,
-    key === 'activeProject' ? setActiveProject : () => {},
-    key === 'activeProject' ? resetActiveProject : () => {},
+    key === 'activeProject' ? set : () => {},
+    key === 'activeProject' ? reset : () => {},
   ];
 }
 
@@ -483,10 +470,10 @@ describe('ProjectModals', () => {
             modal: 'create',
             newDraft,
             setModal,
-            useWebViewState: makeWebViewStateWithActiveProjectSpies(
-              setActiveProject,
-              resetActiveProject,
-            ),
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({
+              set: setActiveProject,
+              reset: resetActiveProject,
+            }),
           })}
         />,
       );
@@ -522,7 +509,7 @@ describe('ProjectModals', () => {
             modal: 'create',
             newDraft,
             setModal,
-            useWebViewState: makeWebViewStateWithResetSpy(resetActiveProject),
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
           })}
         />,
       );
@@ -555,7 +542,7 @@ describe('ProjectModals', () => {
           {...buildProps({
             modal: 'create',
             setModal,
-            useWebViewState: makeWebViewStateWithResetSpy(resetActiveProject),
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
           })}
         />,
       );
@@ -667,7 +654,7 @@ describe('ProjectModals', () => {
             modal: 'create',
             dirty: true,
             setModal,
-            useWebViewState: makeWebViewStateWithActiveProjectSpies(setActiveProject, jest.fn()),
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
           })}
         />,
       );
@@ -844,24 +831,32 @@ describe('ProjectModals', () => {
 
     it('updates the active project when the saved project is the active one', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const setActiveProject = jest.fn();
       render(
         <ProjectModals
           {...buildProps({
             modal: 'metadata',
             activeProject: MOCK_PROJECT,
             setModal,
-            useWebViewState,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
           })}
         />,
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
+      // The saved edits ({ name: 'Updated', analysisLanguages: ['fr'] }) are merged onto the active
+      // project, so a regression that drops the update branch is caught here.
+      expect(setActiveProject).toHaveBeenCalledWith({
+        ...MOCK_PROJECT,
+        name: 'Updated',
+        analysisLanguages: ['fr'],
+      });
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
     it('does not update the active project when the saved project is a different one', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const setActiveProject = jest.fn();
+      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ set: setActiveProject });
       const { rerender } = render(
         <ProjectModals
           {...buildProps({
@@ -872,6 +867,7 @@ describe('ProjectModals', () => {
           })}
         />,
       );
+      // View info for proj-2 while proj-1 is the active project, so the saved id differs.
       await userEvent.click(screen.getByTestId('select-view-info-2'));
       rerender(
         <ProjectModals
@@ -885,13 +881,17 @@ describe('ProjectModals', () => {
       );
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
+      // The id guard skips the update because the saved project (proj-2)
+      // is not the active one (proj-1); dropping that guard would call setActiveProject and fail.
+      expect(setActiveProject).not.toHaveBeenCalled();
       // Opened via the select modal's info icon, so closing returns to the select modal.
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
     it('does not update the active project when there is none on save', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const setActiveProject = jest.fn();
+      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ set: setActiveProject });
       const { rerender } = render(
         <ProjectModals {...buildProps({ modal: 'select', setModal, useWebViewState })} />,
       );
@@ -899,29 +899,36 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
+      // With no active project, the `activeProject &&` guard short-circuits;
+      // dropping that guard would dereference/update the active project and call setActiveProject.
+      expect(setActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
     it('resets the active project when the deleted project is the active one', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const resetActiveProject = jest.fn();
       render(
         <ProjectModals
           {...buildProps({
             modal: 'metadata',
             activeProject: MOCK_PROJECT,
             setModal,
-            useWebViewState,
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject }),
           })}
         />,
       );
+      // Delete targets MOCK_PROJECT.id, which is the active project, so reset must fire.
       await userEvent.click(screen.getByTestId('metadata-delete'));
+      // A regression that drops the reset is caught here.
+      expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
     it('does not reset the active project when a different project is deleted', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const resetActiveProject = jest.fn();
+      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject });
       const { rerender } = render(
         <ProjectModals
           {...buildProps({
@@ -944,13 +951,17 @@ describe('ProjectModals', () => {
         />,
       );
       setModal.mockClear();
+      // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
       await userEvent.click(screen.getByTestId('metadata-delete-2'));
+      // The id guard prevents the reset; removing it would reset proj-1.
+      expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
 
     it('does not reset the active project when there is none on delete', async () => {
       const setModal = jest.fn();
-      const useWebViewState = makeWebViewState();
+      const resetActiveProject = jest.fn();
+      const useWebViewState = makeWebViewStateWithActiveProjectSpies({ reset: resetActiveProject });
       const { rerender } = render(
         <ProjectModals {...buildProps({ modal: 'select', setModal, useWebViewState })} />,
       );
@@ -958,6 +969,9 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-delete'));
+      // With no active project, the `activeProject?.id === deletedId` guard
+      // is false, so no reset fires; a regression that always resets would call resetActiveProject.
+      expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
 

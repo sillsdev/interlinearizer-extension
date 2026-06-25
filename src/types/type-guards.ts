@@ -197,6 +197,7 @@ function isPhraseAnalysisLink(v: unknown): boolean {
     typeof v === 'object' &&
     'tokens' in v &&
     Array.isArray(v.tokens) &&
+    v.tokens.length > 0 &&
     v.tokens.every(isTokenSnapshot)
   );
 }

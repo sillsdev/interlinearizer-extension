@@ -67,7 +67,8 @@ function signatureOf(
  * @param hasRealPhrase - Whether any committed phrase is rendered; feeds the controls headroom.
  * @param deps - Extra dependencies that should trigger a re-measure (token data, phrase mode,
  *   etc.).
- * @returns The current arc paths, max nesting level, and the strip's top/left/right padding.
+ * @returns The current arc paths, max nesting level, and the strip's top/row-gap/left/right
+ *   padding.
  */
 export function useArcPaths(
   containerRef: RefObject<HTMLElement | null>,

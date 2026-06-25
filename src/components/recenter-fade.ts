@@ -9,7 +9,7 @@
  * CSS easing for the recenter opacity fade-in/out. A sine-like curve gives a natural feel at both
  * ends of the transition.
  */
-export const RECENTER_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
+const RECENTER_FADE_EASING = 'cubic-bezier(0.65, 0, 0.35, 1)';
 
 /**
  * Duration of the recenter fade, in milliseconds. Both views must use this value for their CSS

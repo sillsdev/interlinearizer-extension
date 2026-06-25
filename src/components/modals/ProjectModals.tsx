@@ -3,6 +3,7 @@ import papi, { logger } from '@papi/frontend';
 import type { DraftProject, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
+import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary, isTextAnalysis } from '../../types/type-guards';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
@@ -113,16 +114,16 @@ export default function ProjectModals({
   const [pendingReplace, setPendingReplace] = useState<PendingReplace | undefined>(undefined);
 
   /**
-   * Whether the project-creation round-trip is in flight. Used to disable the Create / Cancel
-   * buttons in the create modal while the backend persists the new project.
+   * Guards the project-creation round-trip against double-submit; `isSubmitting` disables the
+   * create modal's Create / Cancel buttons while the backend persists the new project.
    */
-  const [isCreating, setIsCreating] = useState(false);
+  const createGuard = useSubmitGuard();
 
   /**
-   * Whether the discard-and-replace confirmation flow is in flight (either opening an existing
-   * project or starting a new draft); disables DiscardDraftConfirm buttons to prevent races.
+   * Guards the discard-and-replace confirmation flow (opening an existing project or starting a new
+   * draft) against double-submit; `isSubmitting` disables the DiscardDraftConfirm buttons.
    */
-  const [isReplacing, setIsReplacing] = useState(false);
+  const replaceGuard = useSubmitGuard();
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
@@ -282,10 +283,31 @@ export default function ProjectModals({
   );
 
   /**
+   * Creates and persists a project from the given config (guarded against double-submit) and, on
+   * success, closes the create modal. Shared by the direct New flow ({@link handleCreateDraft}) and
+   * the deferred, post-discard New flow ({@link handleConfirmReplace}); on failure the modal stays
+   * open so the user can retry without re-entering their inputs.
+   *
+   * @param config - The configuration collected by the New dialog.
+   * @returns A promise that resolves once the creation settles or was ignored as re-entrant.
+   */
+  const createDraftAndClose = useCallback(
+    async (config: CreateDraftConfig) => {
+      let success = false;
+      await createGuard.runGuarded(async () => {
+        success = await createAndPersistProject(config);
+      });
+      if (success) {
+        setCreateSourceIsSelect(false);
+        setModal('none');
+      }
+    },
+    [createAndPersistProject, createGuard, setCreateSourceIsSelect, setModal],
+  );
+
+  /**
    * Called when the New dialog is submitted. Creates and persists the project immediately, or
-   * defers behind the unsaved-changes confirmation when the draft is dirty. Disables the modal
-   * buttons via `isCreating` during the backend round-trip. Closes on success; stays open on
-   * failure so the user can retry without re-entering their inputs.
+   * defers behind the unsaved-changes confirmation when the draft is dirty.
    *
    * @param config - The configuration collected by the New dialog.
    */
@@ -295,18 +317,9 @@ export default function ProjectModals({
         setPendingReplace({ kind: 'new', config });
         return;
       }
-      setIsCreating(true);
-      try {
-        const success = await createAndPersistProject(config);
-        if (success) {
-          setCreateSourceIsSelect(false);
-          setModal('none');
-        }
-      } finally {
-        setIsCreating(false);
-      }
+      await createDraftAndClose(config);
     },
-    [createAndPersistProject, dirty, setCreateSourceIsSelect, setModal],
+    [createDraftAndClose, dirty],
   );
 
   /**
@@ -319,37 +332,18 @@ export default function ProjectModals({
     /* v8 ignore next -- the confirm only renders while a pending action exists */
     if (!pendingReplace) return;
 
-    /* v8 ignore next -- buttons are disabled while replacing; guards against programmatic double-invocation */
-    if (isReplacing) return;
-
-    setIsReplacing(true);
-    try {
-      if (pendingReplace.kind === 'open') {
-        await openProject(pendingReplace.project);
-      } else {
-        setIsCreating(true);
-        try {
-          const success = await createAndPersistProject(pendingReplace.config);
-          if (success) {
-            setCreateSourceIsSelect(false);
-            setModal('none');
-          }
-        } finally {
-          setIsCreating(false);
+    await replaceGuard.runGuarded(async () => {
+      try {
+        if (pendingReplace.kind === 'open') {
+          await openProject(pendingReplace.project);
+        } else {
+          await createDraftAndClose(pendingReplace.config);
         }
+      } finally {
+        setPendingReplace(undefined);
       }
-    } finally {
-      setIsReplacing(false);
-      setPendingReplace(undefined);
-    }
-  }, [
-    createAndPersistProject,
-    isReplacing,
-    openProject,
-    pendingReplace,
-    setCreateSourceIsSelect,
-    setModal,
-  ]);
+    });
+  }, [createDraftAndClose, openProject, pendingReplace, replaceGuard]);
 
   /** Cancels the deferred action, returning to the underlying modal with the draft untouched. */
   const handleCancelReplace = useCallback(() => setPendingReplace(undefined), []);
@@ -503,7 +497,7 @@ export default function ProjectModals({
       {modal === 'create' && (
         <CreateProjectModal
           defaultAnalysisLanguage={defaultAnalysisLanguage}
-          isSubmitting={isCreating}
+          isSubmitting={createGuard.isSubmitting}
           onClose={handleCreateClose}
           onCreateDraft={handleCreateDraft}
         />
@@ -540,7 +534,7 @@ export default function ProjectModals({
           unmount (and re-fetch) the still-open select modal underneath. */}
       {pendingReplace && (
         <DiscardDraftConfirm
-          isSubmitting={isReplacing}
+          isSubmitting={replaceGuard.isSubmitting}
           onCancel={handleCancelReplace}
           onConfirm={handleConfirmReplace}
         />

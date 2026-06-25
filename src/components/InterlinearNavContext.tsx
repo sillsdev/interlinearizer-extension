@@ -325,6 +325,9 @@ export function InterlinearNavProvider({
   /** Handle of the in-flight fade-in→idle timer, or `undefined` when none is pending. */
   const fadeInTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
+  /** Verse key of the live ref, computed once for the cross-book / mid-reveal render guards below. */
+  const liveKey = verseKey(liveScrRef);
+
   // Detect a cross-book navigation *during render* and start the fade-out synchronously, so the
   // curtain drops in the same commit the book ref changes — never a paint later (an effect-driven
   // fade-out would let the mounted views render one frame against the new book's ref before the
@@ -339,8 +342,8 @@ export function InterlinearNavProvider({
     setFadePhase('out');
   } else if (
     fadePhase === 'in' &&
-    verseKey(liveScrRef) !== verseKey(prevLiveScrRef) &&
-    !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(verseKey(liveScrRef)))
+    liveKey !== verseKey(prevLiveScrRef) &&
+    !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(liveKey))
   ) {
     // A follow-up external navigation landing mid-fade-in: the host resolves one picker selection
     // as two navigations (book change, then precise target), so the second routinely arrives while

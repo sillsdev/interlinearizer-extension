@@ -88,12 +88,22 @@ jest.mock('../../components/TokenLinkIcon', () => ({
 
 jest.mock('../../components/ArcOverlay', () => ({
   __esModule: true,
+  // Surface the props ContinuousView derives and forwards (hoveredPhraseId, candidatePhraseIds) as
+  // data attributes so DOM queries can assert on values that otherwise only live inside ArcOverlay.
   default: ({
     onArcSplit,
-  }: Readonly<{ onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void }>) => (
+    hoveredPhraseId,
+    candidatePhraseIds,
+  }: Readonly<{
+    onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
+    hoveredPhraseId: string | undefined;
+    candidatePhraseIds: ReadonlySet<string>;
+  }>) => (
     <button
       type="button"
       data-testid="arc-split-btn"
+      data-hovered-phrase-id={hoveredPhraseId ?? ''}
+      data-candidate-phrase-ids={[...candidatePhraseIds].join(',')}
       onClick={() => onArcSplit('phrase-1', 'tok-0')}
     >
       split
@@ -1267,26 +1277,69 @@ describe('ContinuousView phrase grouping', () => {
     expect(phraseBoxes[1]).toHaveAttribute('data-show-gloss', 'false');
   });
 
-  it('fires mouse-leave on the token strip without throwing', async () => {
+  it('clears the hovered phrase highlight when the pointer leaves the token strip', async () => {
+    // Group tok-0/tok-1 into one hoverable phrase so hovering it sets hoveredPhraseId, which
+    // ContinuousView forwards to ArcOverlay. Leaving the strip runs clearAllHoverState, which must
+    // reset hoveredPhraseId to undefined.
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [
+        { tokenRef: 'tok-0', surfaceText: 'In' },
+        { tokenRef: 'tok-1', surfaceText: 'the' },
+      ],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    phraseLinkMap.set('tok-1', phraseLink);
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
-    const strip = screen.getByTestId('token-strip');
-    await userEvent.unhover(strip);
-    // No throw = pass
+
+    // Hover the phrase group to set hoveredPhraseId='phrase-1'.
+    const phraseGroupSpan = document.querySelector('[data-phrase-box="true"]')?.parentElement;
+    if (!phraseGroupSpan) throw new Error('Expected a phrase group wrapper span');
+    await userEvent.hover(phraseGroupSpan);
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
+      'data-hovered-phrase-id',
+      'phrase-1',
+    );
+
+    // Leaving the strip itself (not the group) must clear the highlight via clearAllHoverState.
+    fireEvent.mouseLeave(screen.getByTestId('token-strip'));
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-hovered-phrase-id', '');
   });
 
   it('applies the internal focus transition when the parent reflects a click-driven ref change', async () => {
     // Simulate: ContinuousView clicks Next, sets internalFocusedTokenRefRef, calls
     // onFocusedTokenRefChange. The parent then passes the new focusedTokenRef back. This exercises
-    // the isInternal=true path (lines 306-308) of the pending-jump effect.
+    // the isInternal=true branch of the focus-change effect, which applies the new ref *immediately*
+    // (setDisplayFocusedTokenRef) without fading the strip out. The external (non-internal) branch
+    // would instead defer the display update behind a fade timeout, so the focused box would still
+    // be 'In' (tok-0) right after the rerender.
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
 
+    // Sanity: tok-0's box ('In') is focused before the click.
+    expect(screen.getByText('In').closest('[data-phrase-box="true"]')).toHaveAttribute(
+      'data-focus-state',
+      'focused',
+    );
+
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    // Now reflect the new ref back as a prop change (as a real parent would do).
+    // Now reflect the new ref back as a prop change (as a real parent would do). Because the click
+    // stamped tok-1 as internally-originated, the echo is recognized as internal and applied at once.
     rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
-    // No throw = the isInternal path ran successfully.
+
+    // The displayed focus moved synchronously to tok-1's box ('the') — the internal path, not the
+    // fade-then-snap external path (which would leave 'In' focused until the fade timeout fires).
+    expect(screen.getByText('the').closest('[data-phrase-box="true"]')).toHaveAttribute(
+      'data-focus-state',
+      'focused',
+    );
+    expect(screen.getByText('In').closest('[data-phrase-box="true"]')).toHaveAttribute(
+      'data-focus-state',
+      'default',
+    );
   });
 
   it('scrolls to the first token of the active phrase when entering edit mode', async () => {
@@ -1400,6 +1453,25 @@ describe('ContinuousView phrase grouping', () => {
     mockCandidateTokenRefs.current = new Set(['tok-0']);
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
-    expect(screen.getByTestId('arc-split-btn')).toBeInTheDocument();
+    // useCandidatePhraseIds resolves the hovered candidate ref (tok-0) to the phrase that contains
+    // it, and ContinuousView forwards the set to ArcOverlay. The mock surfaces it as a data attr.
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
+      'data-candidate-phrase-ids',
+      'phrase-1',
+    );
+  });
+
+  it('computes an empty candidatePhraseIds set when no candidate tokens are hovered', () => {
+    const phraseLink: PhraseAnalysisLink = {
+      analysisId: 'phrase-1',
+      status: 'approved',
+      tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
+    };
+    phraseLinkMap.set('tok-0', phraseLink);
+    // No hovered candidate refs: the phrase exists, but nothing should resolve to it.
+    mockCandidateTokenRefs.current = new Set();
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+    expect(screen.getByTestId('arc-split-btn')).toHaveAttribute('data-candidate-phrase-ids', '');
   });
 });

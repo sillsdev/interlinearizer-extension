@@ -53,7 +53,12 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('auto-focuses and selects the input on mount', () => {
     renderPopover({ initialValue: 'word' });
-    expect(screen.getByRole('textbox')).toHaveFocus();
+    const input = screen.getByRole('textbox');
+    expect(input).toHaveFocus();
+    // The mount effect calls .select(), so the whole value is selected and a fresh keystroke
+    // replaces it. Asserting the selection range catches a regression that drops the .select() call.
+    expect(input).toHaveProperty('selectionStart', 0);
+    expect(input).toHaveProperty('selectionEnd', 'word'.length);
   });
 
   it('calls onSave and onClose when Done button is clicked', async () => {
@@ -150,7 +155,13 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not save on outside interaction when the input is only whitespace', async () => {
     const onSave = jest.fn();
-    renderPopover({ initialValue: '   ', onSave });
+    // Start from a real word and edit it down to whitespace so the draft differs from initialValue
+    // (isUnedited is false). This forces handleInteractOutside past the unedited guard into
+    // handleSave, where the isMeaningless check is what rejects the empty breakdown — the behavior
+    // this test names. If isMeaningless were removed, handleSave would call onSave and this fails.
+    renderPopover({ initialValue: 'word', onSave, surfaceText: 'whole' });
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), '   ');
     await userEvent.click(screen.getByTestId('popover-outside'));
     expect(onSave).not.toHaveBeenCalled();
   });

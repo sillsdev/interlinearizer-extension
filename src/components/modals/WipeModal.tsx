@@ -1,6 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { useState } from 'react';
+import { ModalShell } from './ModalShell';
 
 /** The portion of the draft a wipe removes: the current book only, or the entire draft. */
 export type WipeScope = 'book' | 'all';
@@ -50,64 +51,58 @@ export function WipeModal({
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
-    <div className="tw:modal-overlay">
-      <dialog
-        aria-labelledby="wipe-modal-title"
-        aria-modal="true"
-        className="tw:modal-dialog tw:rounded tw:w-96"
-        open
-      >
-        <h2 id="wipe-modal-title" className="tw:modal-title">
-          {localizedStrings['%interlinearizer_wipe_modal_title%']}
-        </h2>
-        <p className="tw:text-sm tw:mb-4">
-          {localizedStrings['%interlinearizer_wipe_modal_prompt%']}
-        </p>
+    <ModalShell
+      titleId="wipe-modal-title"
+      title={localizedStrings['%interlinearizer_wipe_modal_title%']}
+      width="tw:w-96"
+    >
+      <p className="tw:text-sm tw:mb-4">
+        {localizedStrings['%interlinearizer_wipe_modal_prompt%']}
+      </p>
 
-        <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
-          <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
-            <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
-              <input
-                type="radio"
-                name="wipe-scope"
-                checked={scope === 'book'}
-                disabled={!hasActiveBook}
-                onChange={() => setScope('book')}
-                data-testid="wipe-scope-book"
-              />
-              {localizedStrings['%interlinearizer_wipe_modal_scope_book%']}
-            </span>
-            <span className="tw:ps-6 tw:text-muted-foreground">
-              {localizedStrings['%interlinearizer_wipe_modal_scope_book_description%']}
-            </span>
-          </label>
+      <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
+        <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
+          <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
+            <input
+              type="radio"
+              name="wipe-scope"
+              checked={scope === 'book'}
+              disabled={!hasActiveBook}
+              onChange={() => setScope('book')}
+              data-testid="wipe-scope-book"
+            />
+            {localizedStrings['%interlinearizer_wipe_modal_scope_book%']}
+          </span>
+          <span className="tw:ps-6 tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_wipe_modal_scope_book_description%']}
+          </span>
+        </label>
 
-          <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
-            <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
-              <input
-                type="radio"
-                name="wipe-scope"
-                checked={scope === 'all'}
-                onChange={() => setScope('all')}
-                data-testid="wipe-scope-all"
-              />
-              {localizedStrings['%interlinearizer_wipe_modal_scope_all%']}
-            </span>
-            <span className="tw:ps-6 tw:text-muted-foreground">
-              {localizedStrings['%interlinearizer_wipe_modal_scope_all_description%']}
-            </span>
-          </label>
-        </div>
+        <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
+          <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
+            <input
+              type="radio"
+              name="wipe-scope"
+              checked={scope === 'all'}
+              onChange={() => setScope('all')}
+              data-testid="wipe-scope-all"
+            />
+            {localizedStrings['%interlinearizer_wipe_modal_scope_all%']}
+          </span>
+          <span className="tw:ps-6 tw:text-muted-foreground">
+            {localizedStrings['%interlinearizer_wipe_modal_scope_all_description%']}
+          </span>
+        </label>
+      </div>
 
-        <div className="tw:flex tw:gap-2 tw:justify-end">
-          <Button variant="secondary" onClick={onCancel}>
-            {localizedStrings['%interlinearizer_wipe_modal_cancel%']}
-          </Button>
-          <Button variant="destructive" onClick={() => onConfirm(scope)} data-testid="wipe-confirm">
-            {localizedStrings['%interlinearizer_wipe_modal_confirm%']}
-          </Button>
-        </div>
-      </dialog>
-    </div>
+      <div className="tw:modal-actions">
+        <Button variant="secondary" onClick={onCancel}>
+          {localizedStrings['%interlinearizer_wipe_modal_cancel%']}
+        </Button>
+        <Button variant="destructive" onClick={() => onConfirm(scope)} data-testid="wipe-confirm">
+          {localizedStrings['%interlinearizer_wipe_modal_confirm%']}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }

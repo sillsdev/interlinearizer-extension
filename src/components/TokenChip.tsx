@@ -98,6 +98,13 @@ export function TokenChip({
     if (!showMorphology || disabled) setPopoverOpen(false);
   }, [showMorphology, disabled]);
 
+  /**
+   * Intercepts mouse-down on the gloss input to suppress the browser's built-in focus-and-scroll,
+   * then re-focuses the input with `preventScroll` so only the React-controlled smooth
+   * scrollIntoView fires.
+   *
+   * @param e - The gloss input's mouse-down event.
+   */
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
     // Prevent the browser's built-in focus-and-scroll so only the React-controlled
     // smooth scrollIntoView fires. We re-focus manually with preventScroll instead.

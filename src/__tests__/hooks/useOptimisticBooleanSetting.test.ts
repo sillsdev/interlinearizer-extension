@@ -93,11 +93,13 @@ describe('useOptimisticBooleanSetting', () => {
       useOptimisticBooleanSetting('project-1', SETTING_KEY, true),
     );
 
-    // Make an optimistic change and let the store return a conflicting value.
+    // Make an optimistic change to `false` and let the store report a value during the lock.
     act(() => {
       result.current.onChange(false);
     });
-    mockUseProjectSettings(true);
+    // Store reports `false` during the lock; the effect runs (setting changed
+    // undefined -> false) but is ignored, so the display stays at the optimistic value.
+    mockUseProjectSettings(false);
     rerender();
     expect(result.current.value).toBe(false); // Locked to optimistic value.
 
@@ -106,10 +108,14 @@ describe('useOptimisticBooleanSetting', () => {
       jest.advanceTimersByTime(TIMEOUT_MS);
     });
 
-    // The store value (true) should now be accepted when setting changes.
-    mockUseProjectSettings(false);
+    // The store now reports `true`, which both differs from the prior `setting` (so the
+    // effect re-runs) and from the current display value `false` (so acceptance is
+    // observable). With the lock released, the display must follow the store to `true`.
+    // If the timeout failed to release the lock, the effect early-returns and the
+    // display would remain `false`, failing this assertion.
+    mockUseProjectSettings(true);
     rerender();
-    expect(result.current.value).toBe(false);
+    expect(result.current.value).toBe(true);
   });
 
   it('clears the first timeout when onChange is called a second time', () => {
@@ -149,8 +155,10 @@ describe('useOptimisticBooleanSetting', () => {
     act(() => {
       jest.advanceTimersByTime(1_000);
     });
-    // Arriving setting is ignored while locked.
-    mockUseProjectSettings(false);
+    // Arriving setting is ignored while locked. The store reports `true` here so that the
+    // later post-lock value (`false`) both changes `setting` (re-running the effect) and
+    // differs from the current display value (`true`), making acceptance observable.
+    mockUseProjectSettings(true);
     rerender();
     expect(result.current.value).toBe(true); // locked; update blocked
 
@@ -158,10 +166,13 @@ describe('useOptimisticBooleanSetting', () => {
     act(() => {
       jest.advanceTimersByTime(TIMEOUT_MS - 1_000);
     });
-    // New setting value (different from the false that arrived during the lock) triggers the effect.
-    mockUseProjectSettings(true);
+    // The store now reports `false`, differing from both the prior `setting` (`true`) and
+    // the current display value (`true`). With the lock released the display must follow
+    // the store to `false`; if timer B failed to release the lock, the effect early-returns
+    // and the display would remain `true`, failing this assertion.
+    mockUseProjectSettings(false);
     rerender();
-    expect(result.current.value).toBe(true); // lock released; setting accepted
+    expect(result.current.value).toBe(false); // lock released; setting accepted
   });
 
   it('clears the pending timeout on unmount', () => {

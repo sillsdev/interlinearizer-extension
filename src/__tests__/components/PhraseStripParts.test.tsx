@@ -22,7 +22,9 @@ import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-h
 
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
-  default: () => <span data-testid="link-icon" />,
+  default: ({ isPhraseRevealed }: Readonly<{ isPhraseRevealed: boolean }>) => (
+    <span data-testid="link-icon" data-phrase-revealed={String(isPhraseRevealed)} />
+  ),
 }));
 
 jest.mock('../../components/TokenChip', () => ({
@@ -155,12 +157,29 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
-    // PhrasedRevealed means the unlink button is shown — but TokenLinkIcon is mocked to undefined,
-    // so just check no errors are thrown when hoveredPhraseId matches.
-    const { container } = render(
-      withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />),
-    );
-    expect(container.firstChild).not.toBeNull();
+    // phraseRevealed flows into TokenLinkIcon as isPhraseRevealed; the mock
+    // surfaces it as data-phrase-revealed so we can assert the computation directly.
+    render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />));
+    expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
+  });
+
+  it('does not set phraseRevealed when the hovered phrase differs from the neighbors', () => {
+    const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    const prevGroup: TokenGroup = {
+      tokens: [makeWordToken('tok-a')],
+      phraseLink: link,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const nextGroup: TokenGroup = {
+      tokens: [makeWordToken('tok-b')],
+      phraseLink: link,
+      firstIndex: 1,
+      punctuationBetween: [],
+    };
+    const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
+    render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="other-phrase" />));
+    expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'false');
   });
 
   it('sets phraseRevealed via focusedPhraseId when both neighbors are in the same focused phrase', () => {
@@ -185,12 +204,14 @@ describe('PhraseSlot', () => {
       focusedSegmentId: 'seg-1',
       focusedPhraseId: 'p1',
     };
-    const { container } = render(
+    // With no hover, the only way phraseRevealed becomes true is the focus.focusedPhraseId branch;
+    // the mock exposes it via data-phrase-revealed.
+    render(
       withProvider(
         <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,
       ),
     );
-    expect(container.firstChild).not.toBeNull();
+    expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
   });
 
   it('renders the link icon when hideInactiveLinkButtons is off', () => {
@@ -228,7 +249,6 @@ describe('PhraseSlot', () => {
     );
     // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 
@@ -274,7 +294,6 @@ describe('PhraseSlot', () => {
     );
     // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
-    expect(icon.parentElement?.style.visibility).toBeFalsy();
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
 });

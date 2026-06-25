@@ -1169,7 +1169,13 @@ describe('Interlinearizer', () => {
         throw new Error('Expected GEN 1:7 onSelect to be a function');
       act(() => select({ book: 'GEN', chapter: 1, verse: 7 }, 'GEN 1:7:0'));
 
-      expect(container.querySelector('.tw\\:transition-opacity')).toHaveStyle({ opacity: '1' });
+      // Target the inner list wrapper (tw:gap-2) — the one that fades on external nav via isFaded —
+      // matching the positive-fade test above. The bare .tw:transition-opacity selector would return
+      // the outer mode-toggle wrapper instead, whose opacity is never driven here, masking a regressed
+      // (non-suppressed) recenter fade of the list.
+      expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '1',
+      });
     } finally {
       jest.useRealTimers();
     }

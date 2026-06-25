@@ -72,16 +72,24 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.queryByTestId('view-options-panel')).not.toBeInTheDocument();
   });
 
-  it('renders labels from useLocalizedStrings for all three toggles', async () => {
+  it('renders labels from useLocalizedStrings for all six toggles', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
     await userEvent.click(screen.getByTestId('view-options-button'));
 
-    // The papi-frontend-react mock returns each key as its own label value.
+    // The mock returns each key as its own label value, so every toggle's
+    // localization key must surface as visible text — one assertion per toggle.
     expect(screen.getByText('%interlinearizer_viewOption_continuousScroll%')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_viewOption_showMorphology%')).toBeInTheDocument();
+    expect(
+      screen.getByText('%interlinearizer_viewOption_showFreeTranslation%'),
+    ).toBeInTheDocument();
     expect(
       screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
     ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
+    expect(
+      screen.getByText('%interlinearizer_viewOption_chapterLabelInVerse%'),
+    ).toBeInTheDocument();
   });
 
   describe('panel positioning', () => {

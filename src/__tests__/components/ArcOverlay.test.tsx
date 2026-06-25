@@ -348,7 +348,7 @@ describe('ArcOverlay', () => {
   it('assigns focused-phrase priority to an arc whose phraseId matches focusedPhraseId but not the hovered split point', async () => {
     // Two arcs for p1 (split at tok-a and tok-b). When tok-a's split button is hovered,
     // splitHoveredArc.phraseId === 'p1' but splitHoveredArc.splitAfterTokenRef !== 'tok-b', so
-    // tok-b's arc falls through to the focusedPhraseId branch (line 84) — covering the false branch
+    // tok-b's arc falls through to the focusedPhraseId branch — covering the false branch
     // of the splitAfterTokenRef && condition and the true branch of phraseId === focusedPhraseId.
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
     render(
@@ -367,16 +367,31 @@ describe('ArcOverlay', () => {
       />,
     );
     const btns = screen.getAllByTestId('split-arc-btn');
-    // Hover the first split button — tok-b's arc goes through focusedPhraseId branch (returns 2).
+    // Hover the first split button — tok-b's arc goes through focusedPhraseId branch.
     await userEvent.hover(btns[0]);
-    expect(document.querySelectorAll('path')).toHaveLength(2);
+
+    // The free-split-hovered tok-a arc is promoted to the z-5 (hovered) layer.
+    const hoveredLayer = document.querySelector('svg.tw\\:z-5');
+    const hoveredPaths = hoveredLayer?.querySelectorAll('path') ?? [];
+    expect(hoveredPaths).toHaveLength(1);
+    expect(hoveredPaths[0].getAttribute('d')).toContain('tok-a');
+
+    // tok-b's arc is classified focused via the focusedPhraseId branch, so it sits in the z-3
+    // (focused) layer — not the z-1 unfocused layer it would fall to if that branch regressed.
+    const focusedLayer = document.querySelector('svg.tw\\:z-3');
+    const focusedPaths = focusedLayer?.querySelectorAll('path') ?? [];
+    expect(focusedPaths).toHaveLength(1);
+    expect(focusedPaths[0].getAttribute('d')).toContain('tok-b');
+
+    // Nothing falls through to the unfocused (z-1) layer.
+    expect(document.querySelector('svg.tw\\:z-1')?.querySelectorAll('path')).toHaveLength(0);
   });
 
   it('assigns candidate priority to an arc via candidatePhraseIds when split-hover misses its splitAfterTokenRef and focusedPhraseId does not match', async () => {
     // Two arcs for p1 (split at tok-a and tok-b). No hoveredPhraseId, no focusedPhraseId, but
     // candidatePhraseIds includes 'p1'. When tok-a's split button is hovered, tok-b's arc falls
-    // through: phraseId matches splitHoveredArc.phraseId but not splitAfterTokenRef → line 84
-    // (focusedPhraseId undefined → false) → line 85 candidatePhraseIds.has('p1') → true.
+    // through: phraseId matches splitHoveredArc.phraseId but not splitAfterTokenRef → the
+    // focusedPhraseId check (undefined → false) → the candidatePhraseIds.has('p1') check → true.
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
     render(
       <ArcOverlay
@@ -395,7 +410,21 @@ describe('ArcOverlay', () => {
     );
     const btns = screen.getAllByTestId('split-arc-btn');
     await userEvent.hover(btns[0]);
-    expect(document.querySelectorAll('path')).toHaveLength(2);
+
+    // Both arcs land in the z-5 (hovered) layer: tok-a via the free-split promotion, and tok-b via
+    // the candidatePhraseIds.has('p1') branch. If that candidate clause regressed, tok-b would drop
+    // to the z-1 (unfocused) layer and would no longer appear here.
+    const hoveredLayer = document.querySelector('svg.tw\\:z-5');
+    const hoveredDs = Array.from(hoveredLayer?.querySelectorAll('path') ?? []).map((p) =>
+      p.getAttribute('d'),
+    );
+    expect(hoveredDs).toHaveLength(2);
+    expect(hoveredDs).toEqual(
+      expect.arrayContaining([expect.stringContaining('tok-a'), expect.stringContaining('tok-b')]),
+    );
+
+    // No arc is demoted to the unfocused (z-1) layer.
+    expect(document.querySelector('svg.tw\\:z-1')?.querySelectorAll('path')).toHaveLength(0);
   });
 
   it('highlights the phrase via onHoverPhrase on enter when the split would not free any token', async () => {

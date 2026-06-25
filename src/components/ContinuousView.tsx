@@ -109,8 +109,8 @@ type ContinuousViewProps = Readonly<{
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles. The strip reads `hideInactiveLinkButtons`, `simplifyPhrases`, and
-   * `showMorphology`; `chapterLabelInVerse` does not apply to the continuous strip.
+   * Bundled display toggles. The strip reads all but `chapterLabelInVerse`, which does not apply to
+   * the continuous strip.
    */
   viewOptions: ViewOptions;
 }>;

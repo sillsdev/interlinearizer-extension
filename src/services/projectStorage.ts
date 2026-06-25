@@ -359,12 +359,15 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 
 /**
  * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
- * been written yet (ENOENT). Drafts are never added to the `projectIds` index, so they stay out of
- * {@link listProjects} and {@link getProjectsForSource} and never appear in the project picker.
+ * been written yet (ENOENT) or when the stored draft fails validation. Drafts are never added to
+ * the `projectIds` index, so they stay out of {@link listProjects} and {@link getProjectsForSource}
+ * and never appear in the project picker.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible source project ID whose draft to read.
- * @returns The stored {@link DraftProject}, or a fresh empty draft when none exists.
+ * @returns The stored {@link DraftProject}; or a fresh empty draft when none exists, or when the
+ *   stored draft fails the {@link isDraftProject} guard or its `sourceProjectId` does not match the
+ *   requested one (the invalid draft is logged and silently discarded).
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */

@@ -78,7 +78,8 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles; `chapterLabelInVerse` sets the verse label, the rest pass through to
+   * Bundled display toggles; `chapterLabelInVerse` sets the verse label and `showFreeTranslation`
+   * gates the free-translation input, while the rest pass through to
    * {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
@@ -109,8 +110,9 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label,
- *   the rest pass through to the phrase strip context.
+ * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label
+ *   and `showFreeTranslation` gates the free-translation input, while the rest pass through to the
+ *   phrase strip context.
  * @returns A div containing a verse label and the segment content (baseline text or token chips)
  */
 export function SegmentView({
@@ -177,11 +179,7 @@ export function SegmentView({
   // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
   const verseLabelText = chapterLabelInVerse ? `${chapter}:${verse}` : `${verse}`;
 
-  const segmentHeader = (
-    <span className="tw:mb-2 tw:block tw:text-xs tw:font-medium tw:text-muted-foreground tw:uppercase tw:tracking-wide">
-      {verseLabelText}
-    </span>
-  );
+  const segmentHeader = <span className="tw:section-label tw:mb-2 tw:block">{verseLabelText}</span>;
 
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the

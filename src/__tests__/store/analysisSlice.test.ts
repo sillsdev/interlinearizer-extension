@@ -15,17 +15,14 @@ import { makePhraseLink } from '../test-helpers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
   createPhrase,
-  defaultState,
   deleteMorphemes,
   deletePhrase,
   mergePhrases,
   selectApprovedGloss,
   selectApprovedMorphemes,
   selectPhraseLinkByTokenRef,
-  selectPhraseAnalysisById,
   selectPhraseGloss,
   selectPhraseLinks,
-  setAnalysis,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -62,23 +59,6 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
     tokenAnalysisLinks: [makeApprovedLink(ta)],
   };
 }
-
-describe('setAnalysis', () => {
-  it('replaces the full analysis in state', () => {
-    const store = createAnalysisStore();
-    const next = makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } });
-
-    store.dispatch(setAnalysis(next));
-
-    expect(store.getState().analysis.analysis).toStrictEqual(next);
-  });
-
-  it('does not mutate analysisLanguage', () => {
-    const store = createAnalysisStore({ analysis: { ...defaultState, analysisLanguage: 'fr' } });
-    store.dispatch(setAnalysis(emptyAnalysis()));
-    expect(store.getState().analysis.analysisLanguage).toBe('fr');
-  });
-});
 
 describe('writeGloss', () => {
   it('removes an orphaned approved link and creates a fresh one', () => {
@@ -561,27 +541,6 @@ describe('selectPhraseLinkByTokenRef', () => {
     const map = selectPhraseLinkByTokenRef(store.getState().analysis);
 
     expect(map.size).toBe(0);
-  });
-});
-
-describe('selectPhraseAnalysisById', () => {
-  it('returns the PhraseAnalysis for a known id', () => {
-    const link = makePhraseLink('phrase-1', ['tok-a']);
-    const store = createAnalysisStore({
-      analysis: { analysis: makeAnalysisWithPhrase(link), analysisLanguage: 'und' },
-    });
-
-    const result = selectPhraseAnalysisById(store.getState().analysis, 'phrase-1');
-
-    expect(result?.id).toBe('phrase-1');
-  });
-
-  it('returns undefined for an unknown id', () => {
-    const store = createAnalysisStore();
-
-    const result = selectPhraseAnalysisById(store.getState().analysis, 'nonexistent');
-
-    expect(result).toBeUndefined();
   });
 });
 

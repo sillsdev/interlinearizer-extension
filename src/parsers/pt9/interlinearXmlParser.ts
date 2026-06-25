@@ -211,6 +211,8 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
  *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
  * @throws {SyntaxError} If a Cluster is missing its Range element, Range is missing Index or
  *   Length, or Range Index/Length are not non-negative integers.
+ * @throws {SyntaxError} If any Lexeme element in a Cluster is missing the required Id attribute
+ *   (propagated from {@link extractLexemesFromCluster}).
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
   const clusterElements = verseDataElement.Cluster ?? [];

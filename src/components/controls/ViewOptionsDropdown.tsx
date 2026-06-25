@@ -56,9 +56,12 @@ type ViewOptionsDropdownProps = Readonly<{
   hideInactiveLinkButtons: boolean;
   /** Called when the hide-inactive-link-buttons toggle changes. */
   onHideInactiveLinkButtonsChange: (checked: boolean) => void;
-  /** Current value of the dim-inactive-segments toggle. */
+  /**
+   * Current value of the simplify-phrases toggle. When on, only the focused phrase exposes
+   * interactive controls; every other phrase hides them.
+   */
   simplifyPhrases: boolean;
-  /** Called when the dim-inactive-segments toggle changes. */
+  /** Called when the simplify-phrases toggle changes. */
   onSimplifyPhrasesChange: (checked: boolean) => void;
   /** Current value of the show-chapter-in-verse-label toggle. */
   chapterLabelInVerse: boolean;
@@ -84,8 +87,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onContinuousScrollChange - Continuous-scroll change callback.
  * @param props.hideInactiveLinkButtons - Current hide-inactive-link-buttons value.
  * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
- * @param props.simplifyPhrases - Current dim-inactive-segments value.
- * @param props.onSimplifyPhrasesChange - Dim-inactive-segments change callback.
+ * @param props.simplifyPhrases - Current simplify-phrases value.
+ * @param props.onSimplifyPhrasesChange - Simplify-phrases change callback.
  * @param props.chapterLabelInVerse - Current show-chapter-in-verse-label value.
  * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
  * @param props.showMorphology - Current show-morphology value.

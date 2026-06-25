@@ -157,7 +157,7 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
-    // phraseRevealed (source lines 70-73) flows into TokenLinkIcon as isPhraseRevealed; the mock
+    // phraseRevealed flows into TokenLinkIcon as isPhraseRevealed; the mock
     // surfaces it as data-phrase-revealed so we can assert the computation directly.
     render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />));
     expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
@@ -204,8 +204,8 @@ describe('PhraseSlot', () => {
       focusedSegmentId: 'seg-1',
       focusedPhraseId: 'p1',
     };
-    // With no hover, the only way phraseRevealed becomes true is the focus.focusedPhraseId branch
-    // (source line 73); the mock exposes it via data-phrase-revealed.
+    // With no hover, the only way phraseRevealed becomes true is the focus.focusedPhraseId branch;
+    // the mock exposes it via data-phrase-revealed.
     render(
       withProvider(
         <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,

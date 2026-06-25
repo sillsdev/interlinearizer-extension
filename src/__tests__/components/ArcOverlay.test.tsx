@@ -348,7 +348,7 @@ describe('ArcOverlay', () => {
   it('assigns focused-phrase priority to an arc whose phraseId matches focusedPhraseId but not the hovered split point', async () => {
     // Two arcs for p1 (split at tok-a and tok-b). When tok-a's split button is hovered,
     // splitHoveredArc.phraseId === 'p1' but splitHoveredArc.splitAfterTokenRef !== 'tok-b', so
-    // tok-b's arc falls through to the focusedPhraseId branch (line 84) — covering the false branch
+    // tok-b's arc falls through to the focusedPhraseId branch — covering the false branch
     // of the splitAfterTokenRef && condition and the true branch of phraseId === focusedPhraseId.
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
     render(
@@ -390,8 +390,8 @@ describe('ArcOverlay', () => {
   it('assigns candidate priority to an arc via candidatePhraseIds when split-hover misses its splitAfterTokenRef and focusedPhraseId does not match', async () => {
     // Two arcs for p1 (split at tok-a and tok-b). No hoveredPhraseId, no focusedPhraseId, but
     // candidatePhraseIds includes 'p1'. When tok-a's split button is hovered, tok-b's arc falls
-    // through: phraseId matches splitHoveredArc.phraseId but not splitAfterTokenRef → line 84
-    // (focusedPhraseId undefined → false) → line 85 candidatePhraseIds.has('p1') → true.
+    // through: phraseId matches splitHoveredArc.phraseId but not splitAfterTokenRef → the
+    // focusedPhraseId check (undefined → false) → the candidatePhraseIds.has('p1') check → true.
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c']);
     render(
       <ArcOverlay

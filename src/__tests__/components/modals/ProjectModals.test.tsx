@@ -844,7 +844,7 @@ describe('ProjectModals', () => {
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
       // The saved edits ({ name: 'Updated', analysisLanguages: ['fr'] }) are merged onto the active
-      // project, so a regression that drops the update branch (ProjectModals.tsx:142) is caught here.
+      // project, so a regression that drops the update branch is caught here.
       expect(setActiveProject).toHaveBeenCalledWith({
         ...MOCK_PROJECT,
         name: 'Updated',
@@ -881,7 +881,7 @@ describe('ProjectModals', () => {
       );
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The id guard (ProjectModals.tsx:141) skips the update because the saved project (proj-2)
+      // The id guard skips the update because the saved project (proj-2)
       // is not the active one (proj-1); dropping that guard would call setActiveProject and fail.
       expect(setActiveProject).not.toHaveBeenCalled();
       // Opened via the select modal's info icon, so closing returns to the select modal.
@@ -899,7 +899,7 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // With no active project, the `activeProject &&` guard (ProjectModals.tsx:141) short-circuits;
+      // With no active project, the `activeProject &&` guard short-circuits;
       // dropping that guard would dereference/update the active project and call setActiveProject.
       expect(setActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
@@ -920,7 +920,7 @@ describe('ProjectModals', () => {
       );
       // Delete targets MOCK_PROJECT.id, which is the active project, so reset must fire.
       await userEvent.click(screen.getByTestId('metadata-delete'));
-      // A regression that drops the reset (ProjectModals.tsx:156) is caught here.
+      // A regression that drops the reset is caught here.
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
     });
@@ -953,7 +953,7 @@ describe('ProjectModals', () => {
       setModal.mockClear();
       // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
       await userEvent.click(screen.getByTestId('metadata-delete-2'));
-      // The id guard (ProjectModals.tsx:156) prevents the reset; removing it would reset proj-1.
+      // The id guard prevents the reset; removing it would reset proj-1.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
@@ -969,7 +969,7 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-delete'));
-      // With no active project, the `activeProject?.id === deletedId` guard (ProjectModals.tsx:156)
+      // With no active project, the `activeProject?.id === deletedId` guard
       // is false, so no reset fires; a regression that always resets would call resetActiveProject.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');

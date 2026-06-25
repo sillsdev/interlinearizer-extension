@@ -17,6 +17,7 @@ import {
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
+  approveAnalysisForToken,
   createPhrase,
   deleteMorphemes,
   deletePhrase,
@@ -30,6 +31,7 @@ import {
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
+  selectResolvedTokenAnalysis,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -40,6 +42,7 @@ import {
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
+import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 import { GlobalEditConfirmationModal } from './modals/GlobalEditConfirmationModal';
 
 // #region Internal context
@@ -69,6 +72,12 @@ type CallbackRefs = {
    * commits immediately. Living on the provider lets one modal serve every gloss input.
    */
   requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
+  /**
+   * Whether un-approved tokens should render the engine's derived suggestion
+   * ({@link useShowSuggestions}). Carried on the provider so the demo toggle reaches every gloss
+   * input without threading a prop through the segment/phrase tree.
+   */
+  showSuggestions: boolean;
 };
 
 /** A gloss edit the provider is holding open while {@link GlobalEditConfirmationModal} is shown. */
@@ -124,6 +133,13 @@ type AnalysisStoreProviderProps = Readonly<{
    * removable toggle.
    */
   confirmGlobalEdits?: boolean;
+  /**
+   * When `true`, un-approved tokens that match the analysis pool render the engine's derived
+   * suggestion (green) with accept / promote affordances ({@link useResolvedTokenAnalysis},
+   * {@link useShowSuggestions}). Defaults to `false` so existing consumers and isolated tests show
+   * no suggestions; the app opts in via a removable demo toggle.
+   */
+  showSuggestions?: boolean;
 }>;
 
 /**
@@ -141,6 +157,8 @@ type AnalysisStoreProviderProps = Readonly<{
  *   uncommitted text, so the caller can show the unsaved indicator while the user types
  * @param props.confirmGlobalEdits - When true, editing a payload shared by more than one token is
  *   routed through {@link GlobalEditConfirmationModal} instead of committing immediately
+ * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
+ *   suggestion with accept / promote affordances
  * @returns A context provider wrapping the subtree
  */
 export function AnalysisStoreProvider({
@@ -151,6 +169,7 @@ export function AnalysisStoreProvider({
   onGlossChange,
   onPendingEditsChange,
   confirmGlobalEdits = false,
+  showSuggestions = false,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -215,8 +234,8 @@ export function AnalysisStoreProvider({
   );
 
   const callbackRefs = useMemo(
-    () => ({ onSaveRef, onGlossChangeRef, reportEditing, requestGlossEdit }),
-    [reportEditing, requestGlossEdit],
+    () => ({ onSaveRef, onGlossChangeRef, reportEditing, requestGlossEdit, showSuggestions }),
+    [reportEditing, requestGlossEdit, showSuggestions],
   );
 
   return (
@@ -326,6 +345,43 @@ export function useGloss(tokenRef: string): string {
 }
 
 /**
+ * Returns the merged analysis the renderer shows for a token — its approved decision, else the
+ * engine's derived suggestion, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes
+ * through {@link resolvedTokenAnalysisEqual} so the freshly-allocated result stays referentially
+ * stable across unrelated store changes: the token re-renders only when its approved decision or
+ * suggestion actually changes, never on every pool rebuild.
+ *
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text, matched against the pool when the token is
+ *   unapproved.
+ * @returns The approved or suggested analysis for the token, or `undefined` when it has neither.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useResolvedTokenAnalysis(
+  tokenRef: string,
+  surfaceText: string,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useResolvedTokenAnalysis');
+
+  return useSelector(
+    (state: AnalysisRootState) =>
+      selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText),
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+/**
+ * Returns whether un-approved tokens should render the engine's derived suggestion, as set by the
+ * nearest {@link AnalysisStoreProvider}'s `showSuggestions` prop (a removable demo toggle).
+ *
+ * @returns `true` when suggestions should be shown.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useShowSuggestions(): boolean {
+  return useRequiredCallbacks('useShowSuggestions').showSuggestions;
+}
+
+/**
  * Returns the morpheme breakdown from the approved `TokenAnalysis` for `tokenRef`, re-rendering
  * only when the morpheme array changes. Returns a stable empty array when no approved analysis
  * exists or it has no morphemes.
@@ -380,6 +436,35 @@ export function useAnalysis(): TextAnalysis {
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
   return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
+}
+
+/**
+ * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
+ * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
+ * chosen alternative). Dispatches `approveAnalysisForToken` then calls `onSave`. Unlike
+ * {@link useGlossDispatch} this never routes through the global-edit confirmation: accepting only
+ * adds an approved link to the existing payload (raising its frequency), it does not rewrite the
+ * shared content, so no other token's gloss changes.
+ *
+ * @returns A function `(tokenRef, surfaceText, analysisId) => void`, where `analysisId` is the
+ *   payload to approve and `surfaceText` is this token's surface text, snapshotted on the new
+ *   link.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useApproveAnalysisDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  analysisId: string,
+) => void {
+  const { dispatch, save } = useAnalysisSave('useApproveAnalysisDispatch');
+
+  return useCallback(
+    (tokenRef: string, surfaceText: string, analysisId: string) => {
+      dispatch(approveAnalysisForToken({ tokenRef, surfaceText, analysisId }));
+      save();
+    },
+    [dispatch, save],
+  );
 }
 
 /**

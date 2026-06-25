@@ -1,12 +1,13 @@
 /** @file Unit tests for utils/suggestion-engine.ts. */
 /// <reference types="jest" />
 
-import type { Token, TokenAnalysis } from 'interlinearizer';
+import type { TokenAnalysis } from 'interlinearizer';
+import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 import {
   buildPoolIndex,
-  deriveSuggestions,
   deriveTokenSuggestion,
   rankPoolEntries,
+  resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
 /**
@@ -19,25 +20,6 @@ import {
  */
 function ta(id: string, surfaceText: string, gloss: string): TokenAnalysis {
   return { id, surfaceText, gloss: { en: gloss } };
-}
-
-/**
- * Builds a `Token` for the batch-derivation tests.
- *
- * @param ref - The token ref.
- * @param surfaceText - The token's surface text.
- * @param type - Whether the token is a word (default) or punctuation.
- * @returns A `Token` whose character offsets span its surface text.
- */
-function tok(ref: string, surfaceText: string, type: Token['type'] = 'word'): Token {
-  return {
-    ref,
-    surfaceText,
-    writingSystem: 'grc',
-    type,
-    charStart: 0,
-    charEnd: surfaceText.length,
-  };
 }
 
 describe('buildPoolIndex', () => {
@@ -183,40 +165,81 @@ describe('deriveTokenSuggestion', () => {
   });
 });
 
-describe('deriveSuggestions', () => {
-  it('derives a suggestion for each unapproved word token that matches the pool', () => {
-    const dog = ta('a1', 'dog', 'dog');
-    const pool = buildPoolIndex(new Map([['a1', dog]]), new Map([['a1', 3]]));
+describe('resolvedTokenAnalysisEqual', () => {
+  const dog = ta('a1', 'dog', 'dog');
+  const cat = ta('a2', 'cat', 'cat');
+  const fish = ta('a3', 'fish', 'fish');
 
-    const result = deriveSuggestions(pool, [tok('t1', 'dog'), tok('t2', 'dog')], new Map());
-
-    expect(result.get('t1')).toEqual({ suggested: dog, candidates: [] });
-    expect(result.get('t2')).toEqual({ suggested: dog, candidates: [] });
+  it('treats two undefined results (no decision, no match) as equal', () => {
+    expect(resolvedTokenAnalysisEqual(undefined, undefined)).toBe(true);
   });
 
-  it('skips punctuation tokens even when their surface form matches the pool', () => {
-    const dog = ta('a1', 'dog', 'dog');
-    const pool = buildPoolIndex(new Map([['a1', dog]]), new Map([['a1', 1]]));
-
-    const result = deriveSuggestions(pool, [tok('t1', 'dog', 'punctuation')], new Map());
-
-    expect(result.has('t1')).toBe(false);
+  it('treats a result and undefined as unequal in either order', () => {
+    const approved: ResolvedTokenAnalysis = { status: 'approved', analysis: dog };
+    expect(resolvedTokenAnalysisEqual(approved, undefined)).toBe(false);
+    expect(resolvedTokenAnalysisEqual(undefined, approved)).toBe(false);
   });
 
-  it('skips tokens that already have an approved analysis', () => {
-    const dog = ta('a1', 'dog', 'dog');
-    const pool = buildPoolIndex(new Map([['a1', dog]]), new Map([['a1', 1]]));
-
-    const result = deriveSuggestions(pool, [tok('t1', 'dog')], new Map([['t1', 'a1']]));
-
-    expect(result.has('t1')).toBe(false);
+  it('treats two approvals of the same payload as equal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'approved', analysis: dog },
+        { status: 'approved', analysis: dog },
+      ),
+    ).toBe(true);
   });
 
-  it('omits word tokens with no matching analysis in the pool', () => {
-    const pool = buildPoolIndex(new Map(), new Map());
+  it('treats approvals of different payloads as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'approved', analysis: dog },
+        { status: 'approved', analysis: cat },
+      ),
+    ).toBe(false);
+  });
 
-    const result = deriveSuggestions(pool, [tok('t1', 'unseen')], new Map());
+  it('treats suggestions with the same pick and candidate list as equal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'suggested', suggested: dog, candidates: [cat, fish] },
+        { status: 'suggested', suggested: dog, candidates: [cat, fish] },
+      ),
+    ).toBe(true);
+  });
 
-    expect(result.size).toBe(0);
+  it('treats suggestions with a different top pick as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'suggested', suggested: dog, candidates: [] },
+        { status: 'suggested', suggested: cat, candidates: [] },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats suggestions differing in candidate count as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'suggested', suggested: dog, candidates: [cat] },
+        { status: 'suggested', suggested: dog, candidates: [cat, fish] },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats suggestions differing in a candidate payload as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'suggested', suggested: dog, candidates: [cat] },
+        { status: 'suggested', suggested: dog, candidates: [fish] },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats an approval and a suggestion of the same payload as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'approved', analysis: dog },
+        { status: 'suggested', suggested: dog, candidates: [] },
+      ),
+    ).toBe(false);
   });
 });

@@ -5,21 +5,34 @@ import { Popover, PopoverAnchor } from 'platform-bible-react';
 import { memo, type MouseEventHandler, useEffect, useId, useRef, useState } from 'react';
 import {
   useAnalysisLanguage,
+  useApproveAnalysisDispatch,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
   useMorphemes,
   useReportGlossEditing,
+  useResolvedTokenAnalysis,
+  useShowSuggestions,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 import { resolvedOrEmpty } from '../utils/localized-strings';
+import { statusTextColorClass } from '../utils/status-colors';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_editMorphemes%',
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * How many homograph candidate alternatives a suggested token surfaces as promote buttons before
+ * the rest are dropped. Small and interim — the candidate-review UX is an open question (see
+ * `user-questions.md`, "display prominence and candidate review" #2); homographs with more
+ * competing analyses than this are rare, and the suggested pick plus a few candidates is enough to
+ * demonstrate promotion.
+ */
+const MAX_VISIBLE_CANDIDATES = 3;
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
@@ -67,6 +80,9 @@ export function TokenChip({
   const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
+  const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText);
+  const showSuggestions = useShowSuggestions();
+  const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const glossInputId = useId();
@@ -144,6 +160,22 @@ export function TokenChip({
   };
 
   const hasMorphemes = morphemes.length > 0;
+
+  // The engine's derived suggestion for an un-approved token. Shown only while the demo toggle is
+  // on, the chip is editable, and the user has not started typing their own gloss — and only when
+  // the suggested analysis carries a gloss in the active language (a blank-gloss suggestion is
+  // skipped rather than rendered as an empty green button; see `user-questions.md` display #3). An
+  // approved token resolves to its decision, never a suggestion, so it never reaches this branch.
+  const suggestion = resolved?.status === 'suggested' ? resolved : undefined;
+  const suggestedGloss = suggestion?.suggested.gloss?.[analysisLanguage] ?? '';
+  const activeSuggestion =
+    showSuggestions && !disabled && draft === '' && suggestedGloss !== '' ? suggestion : undefined;
+  // Candidate homographs that actually carry an active-language gloss, capped for display. Only
+  // populated while a suggestion is shown.
+  const candidateGlosses = (activeSuggestion?.candidates ?? [])
+    .map((candidate) => ({ id: candidate.id, gloss: candidate.gloss?.[analysisLanguage] ?? '' }))
+    .filter((candidate) => candidate.gloss !== '')
+    .slice(0, MAX_VISIBLE_CANDIDATES);
 
   // The X button is positioned outside the <label>, and the label is bound to the gloss input with
   // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
@@ -264,6 +296,41 @@ export function TokenChip({
           onMouseDown={disabled ? undefined : handleMouseDown}
           type="text"
         />
+        {activeSuggestion && (
+          // The derived suggestion: a green "accept" button showing the suggested gloss, plus a
+          // blue "promote" button per competing candidate. Italic + color keep them subordinate to
+          // an approved (foreground) gloss. `tabIndex={-1}` matches the chip's other affordances —
+          // the gloss input stays the tab stop; typing a gloss overrides the suggestion instead.
+          // Accepting / promoting links the token to the chosen shared payload (raising its
+          // frequency); the suggestion then disappears because the token is now approved.
+          <span className="tw:flex tw:flex-col tw:items-center tw:gap-px">
+            <button
+              aria-label={`Accept suggestion ${suggestedGloss} for ${token.surfaceText}`}
+              className={`tw:whitespace-nowrap tw:rounded tw:px-1 tw:text-sm tw:italic tw:cursor-pointer tw:hover:bg-accent ${statusTextColorClass('suggested')}`}
+              data-testid="suggestion-accept"
+              tabIndex={-1}
+              type="button"
+              onClick={() =>
+                approveAnalysis(token.ref, token.surfaceText, activeSuggestion.suggested.id)
+              }
+            >
+              {suggestedGloss}
+            </button>
+            {candidateGlosses.map((candidate) => (
+              <button
+                key={candidate.id}
+                aria-label={`Promote ${candidate.gloss} for ${token.surfaceText}`}
+                className={`tw:whitespace-nowrap tw:rounded tw:px-1 tw:text-xs tw:italic tw:cursor-pointer tw:hover:bg-accent ${statusTextColorClass('candidate')}`}
+                data-testid="suggestion-candidate"
+                tabIndex={-1}
+                type="button"
+                onClick={() => approveAnalysis(token.ref, token.surfaceText, candidate.id)}
+              >
+                {candidate.gloss}
+              </button>
+            ))}
+          </span>
+        )}
       </label>
     </span>
   );

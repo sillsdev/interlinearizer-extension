@@ -149,3 +149,25 @@ Questions for users/stakeholders:
    analysis can match and be suggested for its morphemes/POS while its gloss in the _active_ language
    is blank (v1 suggests regardless of language). Is a blank-gloss green suggestion acceptable, or
    should suggestions be hidden unless they carry a gloss in the active language?
+
+Decisions made during development that we'd like reviewed (the interim treatment shipped behind a
+removable **"Show suggestions"** demo toggle in the view-options dropdown, default **on** — flip it off
+to A/B the "screen fills with green" concern):
+
+1. **Prominence treatment (question #1).** Beneath an un-approved token's (empty) gloss input we show
+   the suggested gloss as a small **green italic "accept" button**; clicking it approves the analysis.
+   The italic + color + small size keep it subordinate to an approved gloss (plain foreground in the
+   input). Is green-italic-button enough, or is a further weakening (opacity, an icon) wanted?
+
+2. **Candidate review (question #2).** Homograph candidates render as **blue italic "promote" buttons**
+   stacked under the green suggestion, **capped at 3** (extras are dropped). Clicking one approves that
+   candidate. This is a deliberately minimal interim — the inline-dropdown / hover-list / key-cycling
+   options and the truncation count are still open.
+
+3. **Blank-active-language suggestions (question #3).** Interim choice: a suggested analysis (or
+   candidate) with **no gloss in the active language is not shown** as an accept/promote button (it
+   would otherwise be an empty green/blue button). So v1 surfaces only suggestions that carry an
+   active-language gloss. Is hiding them right, or should the match still surface (for its
+   morphemes/POS) with an empty gloss?
+
+Remove the demo toggle (and these affordances' tuning) once the treatment is decided.

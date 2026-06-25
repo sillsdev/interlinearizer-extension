@@ -561,6 +561,37 @@ const analysisSlice = createSlice({
         link.analysisId = id;
       },
     },
+    /**
+     * Approves an existing shared `TokenAnalysis` payload for a token by appending one approved
+     * `TokenAnalysisLink` from the token to that payload's id — the persisted half of accepting a
+     * suggestion or promoting a candidate (see {@link selectResolvedTokenAnalysis}). No new payload
+     * is created (unlike {@link writeGloss}'s find-or-create); the chosen payload's approval
+     * frequency rises by one and the token's derived suggestion disappears now that it carries its
+     * own approved decision.
+     *
+     * Precondition: the caller only offers accept/promote on a token with no approved analysis (an
+     * approved token shows its decision, never a suggestion), so this never creates a second
+     * approved link for the token and the "at most one approved link per token" invariant is
+     * preserved. The link's snapshot records _this_ token's `surfaceText` (not the shared
+     * payload's), matching {@link appendApprovedAnalysis} so per-token drift detection stays
+     * accurate.
+     *
+     * @param state - Current slice state (Immer draft).
+     * @param action - Action carrying the accepting `tokenRef`, its `surfaceText`, and the
+     *   `analysisId` of the payload to approve (the suggested payload, or a candidate when
+     *   promoting).
+     */
+    approveAnalysisForToken(
+      state,
+      action: PayloadAction<{ tokenRef: string; surfaceText: string; analysisId: string }>,
+    ) {
+      const { tokenRef, surfaceText, analysisId } = action.payload;
+      state.analysis.tokenAnalysisLinks.push({
+        analysisId,
+        status: 'approved',
+        token: { tokenRef, surfaceText },
+      });
+    },
     createPhrase: {
       /**
        * Generates a UUID for the new `PhraseAnalysis` before the action reaches the reducer,
@@ -730,6 +761,7 @@ export const {
   deleteMorphemes,
   writeMorphemeGloss,
   forkAnalysisForToken,
+  approveAnalysisForToken,
   createPhrase,
   updatePhrase,
   deletePhrase,

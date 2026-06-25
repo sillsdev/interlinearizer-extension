@@ -68,6 +68,11 @@ type InterlinearizerProps = Readonly<{
    * straight to {@link AnalysisStoreProvider}. Defaults to `false`.
    */
   confirmGlobalEdits?: boolean;
+  /**
+   * When true, un-approved tokens render the engine's derived suggestion with accept / promote
+   * affordances. Forwarded straight to {@link AnalysisStoreProvider}. Defaults to `false`.
+   */
+  showSuggestions?: boolean;
 }>;
 
 /**
@@ -95,7 +100,11 @@ function InterlinearizerInner({
   viewOptions,
 }: Omit<
   InterlinearizerProps,
-  'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'confirmGlobalEdits'
+  | 'initialAnalysis'
+  | 'analysisLanguage'
+  | 'onSaveAnalysis'
+  | 'confirmGlobalEdits'
+  | 'showSuggestions'
 >) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
@@ -341,6 +350,8 @@ function InterlinearizerInner({
  *   views.
  * @param props.confirmGlobalEdits - When true, editing a payload shared by more than one token is
  *   routed through a confirmation modal; forwarded to {@link AnalysisStoreProvider}.
+ * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
+ *   suggestion with accept / promote affordances; forwarded to {@link AnalysisStoreProvider}.
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({
@@ -349,6 +360,7 @@ export default function Interlinearizer({
   onSaveAnalysis,
   onPendingEditsChange,
   confirmGlobalEdits = false,
+  showSuggestions = false,
   ...innerProps
 }: InterlinearizerProps) {
   return (
@@ -358,6 +370,7 @@ export default function Interlinearizer({
       onSave={onSaveAnalysis}
       onPendingEditsChange={onPendingEditsChange}
       confirmGlobalEdits={confirmGlobalEdits}
+      showSuggestions={showSuggestions}
     >
       <InterlinearizerInner {...innerProps} />
     </AnalysisStoreProvider>

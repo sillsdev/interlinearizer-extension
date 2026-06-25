@@ -216,6 +216,13 @@ function InterlinearizerLoaderInner({
   // power-user path. Remove this state and its dropdown row once the UX is decided.
   const [confirmGlobalEdits, setConfirmGlobalEdits] = useState(true);
 
+  // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
+  // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
+  // green suggestion with accept / promote affordances. Defaults on (suggestions are always-on by
+  // design); flip it off to A/B the "screen fills with green" concern against a clean view. Remove
+  // this state and its dropdown row once the UX is decided.
+  const [showSuggestions, setShowSuggestions] = useState(true);
+
   // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps
   // the reference identical across the loader's frequent re-renders (driven by `useData`,
   // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
@@ -443,6 +450,8 @@ function InterlinearizerLoaderInner({
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
               confirmGlobalEdits={confirmGlobalEdits}
               onConfirmGlobalEditsChange={setConfirmGlobalEdits}
+              showSuggestions={showSuggestions}
+              onShowSuggestionsChange={setShowSuggestions}
             />
           ) : undefined
         }
@@ -503,6 +512,7 @@ function InterlinearizerLoaderInner({
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}
             confirmGlobalEdits={confirmGlobalEdits}
+            showSuggestions={showSuggestions}
           />
         )}
       </div>

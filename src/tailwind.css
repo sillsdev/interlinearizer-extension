@@ -80,6 +80,34 @@
   @apply tw:mt-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:px-1 tw:text-center tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring tw:disabled:opacity-50 tw:disabled:cursor-default;
 }
 
+/*
+ * Suggestion-engine gloss status text colors (consumed via src/utils/status-colors.ts). The
+ * platform theme exposes a green (success-foreground) and a red (destructive) as text colors but no
+ * blue or orange, so green/red reuse the theme token (already light/dark aware) and the missing
+ * blue/orange use Tailwind palette shades with an explicit lighter dark-mode value. Kept as local
+ * utilities here — not shared theme tokens, which need UX sign-off — so every status color lives in
+ * one place. `approved` is just the default tw:text-foreground, so it has no utility.
+ */
+@utility gloss-suggested {
+  /* green — the engine's best pick */
+  @apply tw:text-success-foreground;
+}
+
+@utility gloss-candidate {
+  /* blue — a promotable homograph alternative */
+  @apply tw:text-blue-600 tw:dark:text-blue-400;
+}
+
+@utility gloss-rejected {
+  /* orange — defined for the model; no reducer produces this status in v1 */
+  @apply tw:text-orange-600 tw:dark:text-orange-400;
+}
+
+@utility gloss-stale {
+  /* red — defined for the model; no reducer produces this status in v1 */
+  @apply tw:text-destructive;
+}
+
 @utility icon-button {
   @apply tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
 }

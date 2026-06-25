@@ -14,6 +14,7 @@ import { createAnalysisStore } from '../../store';
 import { makePhraseLink } from '../test-helpers';
 import { emptyAnalysis } from '../../types/empty-factories';
 import {
+  approveAnalysisForToken,
   createPhrase,
   deleteMorphemes,
   deletePhrase,
@@ -1598,5 +1599,68 @@ describe('selectResolvedTokenAnalysis', () => {
     expect(
       selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'unseen'),
     ).toBeUndefined();
+  });
+});
+
+describe('approveAnalysisForToken', () => {
+  it('approves an existing payload for an unapproved token, raising its frequency', () => {
+    // tok-1 approves ta-1 ('logos'); tok-2 (also 'logos') only has it as a suggestion until accepted.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'logos', analysisId: 'ta-1' }),
+    );
+
+    // No new payload — the accepting token links to the existing shared one.
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
+    // The suggestion is gone because the token now has its own approved decision.
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
+      status: 'approved',
+      analysis: ta,
+    });
+  });
+
+  it('promotes a chosen candidate id and snapshots the accepting token surface text', () => {
+    // Homograph 'bank': ta-river is approved twice (the suggested pick), ta-fin once (a candidate).
+    const river: TokenAnalysis = {
+      id: 'ta-river',
+      surfaceText: 'bank',
+      gloss: { en: 'riverside' },
+    };
+    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r1', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r2', surfaceText: 'bank' },
+      },
+      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    // Promote the candidate (ta-fin) for a sentence-initial 'Bank', not the suggested ta-river.
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'b1', surfaceText: 'Bank', analysisId: 'ta-fin' }),
+    );
+
+    const link = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'b1');
+    expect(link?.analysisId).toBe('ta-fin');
+    expect(link?.token.surfaceText).toBe('Bank');
   });
 });

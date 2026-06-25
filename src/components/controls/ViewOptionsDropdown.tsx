@@ -13,6 +13,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_confirmGlobalEdits%',
+  '%interlinearizer_viewOption_showSuggestions%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -85,6 +86,14 @@ type ViewOptionsDropdownProps = Readonly<{
   confirmGlobalEdits: boolean;
   /** Called when the confirm-shared-analysis-edits toggle changes. */
   onConfirmGlobalEditsChange: (checked: boolean) => void;
+  /**
+   * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
+   * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
+   * candidate review"). Drop this prop and its row once the UX is settled.
+   */
+  showSuggestions: boolean;
+  /** Called when the show-suggestions toggle changes. */
+  onShowSuggestionsChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -108,6 +117,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.confirmGlobalEdits - Current confirm-shared-analysis-edits value (removable demo
  *   toggle).
  * @param props.onConfirmGlobalEditsChange - Confirm-shared-analysis-edits change callback.
+ * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
+ * @param props.onShowSuggestionsChange - Show-suggestions change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -125,6 +136,8 @@ export default function ViewOptionsDropdown({
   onShowFreeTranslationChange,
   confirmGlobalEdits,
   onConfirmGlobalEditsChange,
+  showSuggestions,
+  onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -244,6 +257,13 @@ export default function ViewOptionsDropdown({
                 checked={confirmGlobalEdits}
                 label={localizedStrings['%interlinearizer_viewOption_confirmGlobalEdits%']}
                 onCheckedChange={onConfirmGlobalEditsChange}
+              />
+              {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
+                  row (and its prop pair) once the behavior is settled. */}
+              <ViewToggle
+                checked={showSuggestions}
+                label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
+                onCheckedChange={onShowSuggestionsChange}
               />
             </div>
           </>,

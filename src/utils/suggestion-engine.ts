@@ -8,7 +8,7 @@
  *   human decisions are stored. The pool is the set of approved analyses in the current draft.
  */
 
-import type { Token, TokenAnalysis } from 'interlinearizer';
+import type { TokenAnalysis } from 'interlinearizer';
 import { normalizeSurfaceForm } from './analysis-identity';
 
 /** One distinct approved payload in the pool together with how many tokens currently approve it. */
@@ -129,29 +129,35 @@ export function deriveTokenSuggestion(
 }
 
 /**
- * Derives suggestions across a batch of tokens — e.g. the visible window — by matching each one
- * against the pool. A token is skipped (absent from the result) when it is punctuation (analysis is
- * a word-level concern) or already has an approved analysis (its human decision stands and is read
- * directly, never re-suggested). Remaining word tokens that match the pool map to their
- * {@link deriveTokenSuggestion}; word tokens with no match are simply omitted.
+ * Equality predicate for two {@link ResolvedTokenAnalysis} results, for use as a `useSelector`
+ * `equalityFn` so a per-token subscription stays referentially stable across unrelated store
+ * changes. {@link selectResolvedTokenAnalysis} (in `store/analysisSlice`) freshly allocates its
+ * wrapper object — and the suggested branch a fresh `candidates` array — on every call, so the
+ * default `Object.is` comparison would re-render every visible suggested token on any store change.
+ * This compares by the meaningful identity instead: the `analysis` / `suggested` payloads and each
+ * `candidate` are reference-stable store objects (the pool only re-files the same payloads), so
+ * comparing them by reference is both correct and cheap — equal whenever the rendered suggestion is
+ * unchanged, even when an incidental edit elsewhere rebuilt the pool index around the same
+ * payloads.
  *
- * @param poolIndex - The pool indexed by normalized surface form.
- * @param tokens - The tokens to derive over (words and punctuation may be intermixed).
- * @param approvedByTokenRef - Map from `Token.ref` to its approved `TokenAnalysis.id`; its keys are
- *   the tokens whose decision already stands, which are skipped.
- * @returns A map from `Token.ref` to its derived suggestion, holding only the matched, unapproved
- *   word tokens.
+ * @param a - The previous resolved analysis (or `undefined` when the token had neither).
+ * @param b - The next resolved analysis (or `undefined`).
+ * @returns `true` when the two describe the same approved decision or suggestion.
  */
-export function deriveSuggestions(
-  poolIndex: PoolIndex,
-  tokens: readonly Token[],
-  approvedByTokenRef: ReadonlyMap<string, string>,
-): Map<string, TokenSuggestion> {
-  const result = new Map<string, TokenSuggestion>();
-  tokens.forEach((token) => {
-    if (token.type !== 'word' || approvedByTokenRef.has(token.ref)) return;
-    const suggestion = deriveTokenSuggestion(poolIndex, token.surfaceText);
-    if (suggestion) result.set(token.ref, suggestion);
-  });
-  return result;
+export function resolvedTokenAnalysisEqual(
+  a: ResolvedTokenAnalysis | undefined,
+  b: ResolvedTokenAnalysis | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+  if (a.status === 'approved' && b.status === 'approved') return a.analysis === b.analysis;
+  if (a.status === 'suggested' && b.status === 'suggested') {
+    return (
+      a.suggested === b.suggested &&
+      a.candidates.length === b.candidates.length &&
+      a.candidates.every((candidate, i) => candidate === b.candidates[i])
+    );
+  }
+  // One is approved and the other suggested — different renders.
+  return false;
 }

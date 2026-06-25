@@ -33,6 +33,8 @@ const DEFAULT_PROPS = {
   onShowFreeTranslationChange: jest.fn(),
   confirmGlobalEdits: false,
   onConfirmGlobalEditsChange: jest.fn(),
+  showSuggestions: false,
+  onShowSuggestionsChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -92,6 +94,7 @@ describe('ViewOptionsDropdown', () => {
     expect(
       screen.getByText('%interlinearizer_viewOption_chapterLabelInVerse%'),
     ).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
   describe('panel positioning', () => {
@@ -303,6 +306,31 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /confirmGlobalEdits/i }));
 
       expect(onConfirmGlobalEditsChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('show suggestions toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showSuggestions />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /showSuggestions/i })).toBeChecked();
+    });
+
+    it('calls onShowSuggestionsChange when toggled', async () => {
+      const onShowSuggestionsChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showSuggestions={false}
+          onShowSuggestionsChange={onShowSuggestionsChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /showSuggestions/i }));
+
+      expect(onShowSuggestionsChange).toHaveBeenCalledWith(true);
     });
   });
 });

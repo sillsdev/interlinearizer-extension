@@ -4,6 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import {
   AnalysisStoreProvider,
@@ -58,6 +59,29 @@ function makeAnalysisWithGloss(
     segmentAnalysisLinks: [],
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [link],
+    phraseAnalyses: [],
+    phraseAnalysisLinks: [],
+  };
+}
+
+/**
+ * Builds a `TextAnalysis` where two tokens (`tok-1`, `tok-2`) share one approved `TokenAnalysis`
+ * payload, so editing either token is a global edit. Used to exercise the confirmation gate.
+ *
+ * @param gloss - Gloss value shared by both tokens for the `'und'` language key.
+ * @param surfaceText - Surface text of both tokens.
+ * @returns A `TextAnalysis` with one payload referenced by two approved links.
+ */
+function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
+  const ta: TokenAnalysis = { id: 'shared-analysis', surfaceText, gloss: { und: gloss } };
+  return {
+    segmentAnalyses: [],
+    segmentAnalysisLinks: [],
+    tokenAnalyses: [ta],
+    tokenAnalysisLinks: [
+      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-1', surfaceText } },
+      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-2', surfaceText } },
+    ],
     phraseAnalyses: [],
     phraseAnalysisLinks: [],
   };
@@ -378,6 +402,146 @@ describe('useGlossDispatch', () => {
     expect(() => render(<DispatchUser />)).toThrow(
       'useGlossDispatch must be used inside an AnalysisStoreProvider',
     );
+  });
+});
+
+describe('useGlossDispatch — global-edit confirmation', () => {
+  // The confirmation modal renders real localized strings; `resetMocks` wipes the default
+  // implementation, so re-establish a key→label map (tests assert via test ids, not copy).
+  beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([
+      {
+        '%interlinearizer_globalEdit_title%': 'Used by {count} tokens',
+        '%interlinearizer_globalEdit_body%': 'Shared by {count} tokens',
+        '%interlinearizer_globalEdit_updateAll%': 'Update all {count}',
+        '%interlinearizer_globalEdit_fork%': 'Make a separate analysis',
+        '%interlinearizer_globalEdit_cancel%': 'Cancel',
+      },
+      false,
+    ]);
+  });
+
+  it('holds the edit and prompts before a global edit, updating every token on "update all"', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    // The edit is held: the gloss is unchanged and nothing is saved until the user confirms.
+    expect(screen.getByTestId('gloss')).toHaveTextContent('a');
+    expect(onSave).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByTestId('global-edit-update-all'));
+
+    expect(screen.getByTestId('gloss')).toHaveTextContent('b');
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // One shared payload, now glossed 'b' — both tokens still point at it.
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'b' });
+  });
+
+  it('forks a private copy on "make a separate analysis", changing only this token', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    await userEvent.click(screen.getByTestId('global-edit-fork'));
+
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // Two payloads now: the original 'a' kept by tok-2, and a fork 'b' for tok-1 alone.
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.gloss).toStrictEqual({ und: 'b' });
+    expect(tok2Analysis?.gloss).toStrictEqual({ und: 'a' });
+    expect(tok1Link?.analysisId).not.toBe(tok2Link?.analysisId);
+  });
+
+  it('leaves the analysis untouched and closes the modal on cancel', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    expect(screen.getByTestId('global-edit-cancel')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId('global-edit-cancel'));
+
+    expect(screen.queryByTestId('global-edit-cancel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gloss')).toHaveTextContent('a');
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('does not prompt when confirmGlobalEdits is on but the payload is not shared', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'a')}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    expect(screen.queryByTestId('global-edit-update-all')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gloss')).toHaveTextContent('b');
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('commits a shared-payload edit immediately when confirmGlobalEdits is off', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    expect(screen.queryByTestId('global-edit-update-all')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gloss')).toHaveTextContent('b');
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'b' });
   });
 });
 

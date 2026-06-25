@@ -12,6 +12,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_chapterLabelInVerse%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
+  '%interlinearizer_viewOption_confirmGlobalEdits%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -75,6 +76,15 @@ type ViewOptionsDropdownProps = Readonly<{
   showFreeTranslation: boolean;
   /** Called when the show-free-translation toggle changes. */
   onShowFreeTranslationChange: (checked: boolean) => void;
+  /**
+   * Current value of the confirm-shared-analysis-edits toggle. Removable demo switch: while on,
+   * editing a shared analysis prompts before fanning the change out to every token (see
+   * `user-questions.md`, "editing a shared analysis"). Drop this prop and its row once the UX is
+   * settled.
+   */
+  confirmGlobalEdits: boolean;
+  /** Called when the confirm-shared-analysis-edits toggle changes. */
+  onConfirmGlobalEditsChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -95,6 +105,9 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @param props.showFreeTranslation - Current show-free-translation value.
  * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
+ * @param props.confirmGlobalEdits - Current confirm-shared-analysis-edits value (removable demo
+ *   toggle).
+ * @param props.onConfirmGlobalEditsChange - Confirm-shared-analysis-edits change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -110,6 +123,8 @@ export default function ViewOptionsDropdown({
   onShowMorphologyChange,
   showFreeTranslation,
   onShowFreeTranslationChange,
+  confirmGlobalEdits,
+  onConfirmGlobalEditsChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -222,6 +237,13 @@ export default function ViewOptionsDropdown({
                 checked={chapterLabelInVerse}
                 label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
                 onCheckedChange={onChapterLabelInVerseChange}
+              />
+              {/* Removable demo toggle for the open shared-analysis-edit UX question; drop this
+                  row (and its prop pair) once the behavior is settled. */}
+              <ViewToggle
+                checked={confirmGlobalEdits}
+                label={localizedStrings['%interlinearizer_viewOption_confirmGlobalEdits%']}
+                onCheckedChange={onConfirmGlobalEditsChange}
               />
             </div>
           </>,

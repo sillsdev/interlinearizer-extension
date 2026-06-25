@@ -5,17 +5,27 @@ import type {
   TextAnalysis,
   TokenSnapshot,
 } from 'interlinearizer';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
 import {
   createPhrase,
   deleteMorphemes,
   deletePhrase,
+  forkAnalysisForToken,
   mergePhrases,
   selectAnalysis,
   selectAnalysisLanguage,
   selectApprovedGloss,
+  selectApprovedLinkCountForPayload,
   selectApprovedMorphemes,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
@@ -30,6 +40,7 @@ import {
 } from '../store/analysisSlice';
 import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
+import { GlobalEditConfirmationModal } from './modals/GlobalEditConfirmationModal';
 
 // #region Internal context
 
@@ -51,6 +62,25 @@ type CallbackRefs = {
    * prop, driving the tab's unsaved indicator while the user types.
    */
   reportEditing: (active: boolean) => void;
+  /**
+   * Stable entry point {@link useGlossDispatch} returns for writing a gloss. When the provider's
+   * `confirmGlobalEdits` is on and the token's approved payload is shared by more than one token,
+   * the edit is held for {@link GlobalEditConfirmationModal} instead of committing; otherwise it
+   * commits immediately. Living on the provider lets one modal serve every gloss input.
+   */
+  requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
+};
+
+/** A gloss edit the provider is holding open while {@link GlobalEditConfirmationModal} is shown. */
+type PendingGlobalEdit = {
+  /** `Token.ref` of the token whose shared payload is being edited. */
+  tokenRef: string;
+  /** Current surface text of the token, forwarded to the eventual `writeGloss`. */
+  surfaceText: string;
+  /** The new gloss string awaiting confirmation. */
+  value: string;
+  /** How many tokens share the payload, shown in the modal copy. Always greater than 1. */
+  count: number;
 };
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
@@ -86,6 +116,14 @@ type AnalysisStoreProviderProps = Readonly<{
    * caller reflect in-progress typing in the tab's unsaved indicator before the edit commits.
    */
   onPendingEditsChange?: (pending: boolean) => void;
+  /**
+   * When `true`, a gloss edit to a `TokenAnalysis` payload shared by more than one token is held
+   * and routed through {@link GlobalEditConfirmationModal} so the user can update every token, fork
+   * a per-instance copy, or cancel — rather than silently rewriting every occurrence. Defaults to
+   * `false` (edits commit immediately) so existing consumers are unaffected; the app opts in via a
+   * removable toggle.
+   */
+  confirmGlobalEdits?: boolean;
 }>;
 
 /**
@@ -101,6 +139,8 @@ type AnalysisStoreProviderProps = Readonly<{
  * @param props.onGlossChange - Spy called after each gloss write; for test observability only
  * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
  *   uncommitted text, so the caller can show the unsaved indicator while the user types
+ * @param props.confirmGlobalEdits - When true, editing a payload shared by more than one token is
+ *   routed through {@link GlobalEditConfirmationModal} instead of committing immediately
  * @returns A context provider wrapping the subtree
  */
 export function AnalysisStoreProvider({
@@ -110,6 +150,7 @@ export function AnalysisStoreProvider({
   onSave,
   onGlossChange,
   onPendingEditsChange,
+  confirmGlobalEdits = false,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -139,14 +180,68 @@ export function AnalysisStoreProvider({
     if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
   }, []);
 
+  // Holds a gloss edit while the global-edit confirmation modal is open. Set only when
+  // `confirmGlobalEdits` is on and the edited payload is shared by more than one token.
+  const [pendingEdit, setPendingEdit] = useState<PendingGlobalEdit | undefined>(undefined);
+
+  // Commits a gloss edit to the store: write, persist via `onSave`, then notify the `onGlossChange`
+  // spy. Shared by the immediate (unshared) path and the modal's "update all" / "fork" handlers so
+  // every commit route behaves identically.
+  const commitGloss = useCallback(
+    (tokenRef: string, surfaceText: string, value: string) => {
+      store.dispatch(writeGloss(tokenRef, surfaceText, value));
+      onSaveRef.current?.(store.getState().analysis.analysis);
+      onGlossChangeRef.current?.(tokenRef, value);
+    },
+    [store],
+  );
+
+  // The gloss-write entry point exposed to inputs. When confirmation is on and the token's approved
+  // payload is shared by more than one token, the edit is held for the confirmation modal rather
+  // than committing; otherwise it commits immediately. The count is read before the write so a
+  // brand-new gloss (no approved payload yet, count 0) never prompts.
+  const requestGlossEdit = useCallback(
+    (tokenRef: string, surfaceText: string, value: string) => {
+      if (confirmGlobalEdits) {
+        const count = selectApprovedLinkCountForPayload(store.getState().analysis, tokenRef);
+        if (count > 1) {
+          setPendingEdit({ tokenRef, surfaceText, value, count });
+          return;
+        }
+      }
+      commitGloss(tokenRef, surfaceText, value);
+    },
+    [confirmGlobalEdits, store, commitGloss],
+  );
+
   const callbackRefs = useMemo(
-    () => ({ onSaveRef, onGlossChangeRef, reportEditing }),
-    [reportEditing],
+    () => ({ onSaveRef, onGlossChangeRef, reportEditing, requestGlossEdit }),
+    [reportEditing, requestGlossEdit],
   );
 
   return (
     <ReduxProvider store={store}>
-      <AnalysisCallbackCtx.Provider value={callbackRefs}>{children}</AnalysisCallbackCtx.Provider>
+      <AnalysisCallbackCtx.Provider value={callbackRefs}>
+        {children}
+        {pendingEdit && (
+          <GlobalEditConfirmationModal
+            count={pendingEdit.count}
+            onUpdateAll={() => {
+              commitGloss(pendingEdit.tokenRef, pendingEdit.surfaceText, pendingEdit.value);
+              setPendingEdit(undefined);
+            }}
+            onForkInstead={() => {
+              // Fork repoints this token's approved link to a private clone, then the same write
+              // lands on the clone — so only this token changes and the others keep the shared
+              // payload.
+              store.dispatch(forkAnalysisForToken(pendingEdit.tokenRef));
+              commitGloss(pendingEdit.tokenRef, pendingEdit.surfaceText, pendingEdit.value);
+              setPendingEdit(undefined);
+            }}
+            onCancel={() => setPendingEdit(undefined)}
+          />
+        )}
+      </AnalysisCallbackCtx.Provider>
     </ReduxProvider>
   );
 }
@@ -273,24 +368,18 @@ export function useAnalysis(): TextAnalysis {
 }
 
 /**
- * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token, then
- * synchronously invokes `onSave` and the optional `onGlossChange` spy. The `onGlossChange` spy is
- * test-only observability and has no effect on store behavior (see {@link AnalysisStoreProvider}).
+ * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token. When
+ * the provider's `confirmGlobalEdits` is on and the token's approved payload is shared by more than
+ * one token, the write is held and routed through {@link GlobalEditConfirmationModal} so the user
+ * can update every token, fork a per-instance copy, or cancel; otherwise it commits immediately,
+ * invoking `onSave` and the optional (test-only) `onGlossChange` spy. The gating itself lives on
+ * the provider so a single modal serves every gloss input (see {@link AnalysisStoreProvider}).
  *
  * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
-  const { callbacks, dispatch, save } = useAnalysisSave('useGlossDispatch');
-
-  return useCallback(
-    (tokenRef: string, surfaceText: string, value: string) => {
-      dispatch(writeGloss(tokenRef, surfaceText, value));
-      save();
-      callbacks.onGlossChangeRef.current?.(tokenRef, value);
-    },
-    [dispatch, save, callbacks],
-  );
+  return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
 }
 
 /**

@@ -210,6 +210,12 @@ function InterlinearizerLoaderInner({
     value: showFreeTranslation,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showFreeTranslation', false);
 
+  // Removable demo toggle (not persisted) for the open "editing a shared analysis" UX question:
+  // while on, editing a payload shared by >1 token prompts before the change fans out to every
+  // token. Defaults on to demonstrate the proposed friction; flip it off to demo the unprompted
+  // power-user path. Remove this state and its dropdown row once the UX is decided.
+  const [confirmGlobalEdits, setConfirmGlobalEdits] = useState(true);
+
   // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps
   // the reference identical across the loader's frequent re-renders (driven by `useData`,
   // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
@@ -435,6 +441,8 @@ function InterlinearizerLoaderInner({
               onShowMorphologyChange={handleShowMorphologyChange}
               showFreeTranslation={showFreeTranslation}
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
+              confirmGlobalEdits={confirmGlobalEdits}
+              onConfirmGlobalEditsChange={setConfirmGlobalEdits}
             />
           ) : undefined
         }
@@ -494,6 +502,7 @@ function InterlinearizerLoaderInner({
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}
+            confirmGlobalEdits={confirmGlobalEdits}
           />
         )}
       </div>

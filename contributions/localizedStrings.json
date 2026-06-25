@@ -33,6 +33,7 @@
       "%interlinearizer_viewOption_showFreeTranslation%": "Show free translation",
       "%interlinearizer_projectSettings_showFreeTranslation%": "Show Free Translation",
       "%interlinearizer_projectSettings_showFreeTranslationDescription%": "Display a free-translation input beneath each segment's tokens or baseline text",
+      "%interlinearizer_viewOption_confirmGlobalEdits%": "Confirm shared-analysis edits",
       "%interlinearizer_glossInput_placeholder%": "gloss",
       "%interlinearizer_freeTranslationInput_placeholder%": "Free translation",
       "%interlinearizer_morphemeEditor_splitLabel%": "Split into morphemes",
@@ -84,6 +85,12 @@
       "%interlinearizer_confirm_discard_body%": "Your draft has changes that haven't been saved to a project. Continuing will discard them.",
       "%interlinearizer_confirm_discard_ok%": "Discard",
       "%interlinearizer_confirm_discard_cancel%": "Cancel",
+
+      "%interlinearizer_globalEdit_title%": "Update analysis used by {count} tokens?",
+      "%interlinearizer_globalEdit_body%": "This analysis is shared by {count} tokens, so editing it updates all of them. Make a separate analysis to change only this token.",
+      "%interlinearizer_globalEdit_updateAll%": "Update all {count}",
+      "%interlinearizer_globalEdit_fork%": "Make a separate analysis for just this one",
+      "%interlinearizer_globalEdit_cancel%": "Cancel",
 
       "%interlinearizer_modal_saveAs_title%": "Save As",
       "%interlinearizer_modal_saveAs_new_section%": "Save as a new project",

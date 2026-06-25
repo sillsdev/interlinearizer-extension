@@ -13,6 +13,11 @@ import type {
 import { emptyAnalysis } from '../types/empty-factories';
 import { isEmptyMultiString } from '../utils/multi-string';
 import { analysesAreIdentical } from '../utils/analysis-identity';
+import {
+  buildPoolIndex,
+  deriveTokenSuggestion,
+  type ResolvedTokenAnalysis,
+} from '../utils/suggestion-engine';
 
 // #region Types
 
@@ -847,6 +852,48 @@ export function selectApprovedLinkCountForPayload(state: AnalysisState, tokenRef
   /* v8 ignore next -- approvedId comes from the same approved map, so its count is always present */
   if (count === undefined) return 0;
   return count;
+}
+
+/**
+ * Memoized selector that builds the suggestion-engine pool index from the approved analyses: each
+ * distinct approved payload filed under its normalized surface form with its approval frequency
+ * (see {@link buildPoolIndex}). This is the read-only corpus the engine derives suggestions from —
+ * only approved analyses enter, because {@link selectApprovedTokenCountByAnalysisId} counts approved
+ * links alone. Recomputes only when `tokenAnalyses` or `tokenAnalysisLinks` change reference.
+ */
+export const selectPoolIndex = createSelector(
+  selectAnalysisById,
+  selectApprovedTokenCountByAnalysisId,
+  buildPoolIndex,
+);
+
+/**
+ * Returns the merged analysis the renderer shows for a token: its approved decision when one
+ * exists, otherwise the engine's suggestion derived live from {@link selectPoolIndex}, or
+ * `undefined` when the token has neither. This is the single source the gloss renderer reads — it
+ * never combines stored decisions and the derived view itself. An approved decision short-circuits
+ * before the pool is consulted, so a confirmed token never shows a suggestion.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text, matched against the pool when the token is
+ *   unapproved.
+ * @returns The approved or suggested analysis for the token, or `undefined` when it has neither.
+ */
+export function selectResolvedTokenAnalysis(
+  state: AnalysisState,
+  tokenRef: string,
+  surfaceText: string,
+): ResolvedTokenAnalysis | undefined {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId !== undefined) {
+    const analysis = selectAnalysisById(state).get(approvedId);
+    /* v8 ignore next -- approvedId comes from the byId-filtered approved map, so the payload is present */
+    if (!analysis) return undefined;
+    return { status: 'approved', analysis };
+  }
+  const suggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText);
+  return suggestion ? { status: 'suggested', ...suggestion } : undefined;
 }
 
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];

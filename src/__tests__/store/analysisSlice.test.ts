@@ -25,6 +25,8 @@ import {
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
+  selectPoolIndex,
+  selectResolvedTokenAnalysis,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -1503,5 +1505,98 @@ describe('selectApprovedMorphemes', () => {
     const a = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     const b = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     expect(a).toBe(b);
+  });
+});
+
+describe('selectPoolIndex', () => {
+  it('indexes approved analyses by normalized surface form with their approval frequency', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    // Two tokens approved to one shared payload — a sentence-initial "Logos" and a mid-sentence
+    // "logos" — so the pool frequency is the count of distinct approving tokens.
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+      },
+      {
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'tok-2', surfaceText: 'Logos' },
+      },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [ta], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectPoolIndex(store.getState().analysis).get('logos')).toEqual([
+      { analysis: ta, frequency: 2 },
+    ]);
+  });
+
+  it('excludes non-approved links so only confirmed analyses enter the pool', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-1',
+        status: 'suggested',
+        token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+      },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [ta], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectPoolIndex(store.getState().analysis).size).toBe(0);
+  });
+
+  it('returns the same reference for repeated calls on unchanged state (memoized)', () => {
+    const store = createAnalysisStore();
+    const a = selectPoolIndex(store.getState().analysis);
+    const b = selectPoolIndex(store.getState().analysis);
+    expect(a).toBe(b);
+  });
+});
+
+describe('selectResolvedTokenAnalysis', () => {
+  it('returns the approved analysis when the token has one', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'word')).toEqual({
+      status: 'approved',
+      analysis: ta,
+    });
+  });
+
+  it('falls back to a derived suggestion for an unapproved token matching the pool', () => {
+    // makeAnalysis approves tok-1 → ta-1 ('logos'); tok-2 (also 'logos') has no approved analysis,
+    // so it resolves to the pooled payload as a suggestion.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: ta,
+      candidates: [],
+    });
+  });
+
+  it('returns undefined when the token is neither approved nor matches the pool', () => {
+    const store = createAnalysisStore();
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'unseen'),
+    ).toBeUndefined();
   });
 });

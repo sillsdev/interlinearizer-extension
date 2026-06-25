@@ -874,6 +874,13 @@ export const selectPoolIndex = createSelector(
  * never combines stored decisions and the derived view itself. An approved decision short-circuits
  * before the pool is consulted, so a confirmed token never shows a suggestion.
  *
+ * Unlike the reference-stable per-token reads ({@link selectApprovedGloss} returns a primitive,
+ * {@link selectApprovedMorphemes} a stable array), this freshly allocates its result object — and
+ * the suggested branch a fresh `candidates` array — on every call. A `useSelector` consumer must
+ * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
+ * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every store change
+ * will re-render the token and trip react-redux's "selector returned a different result" warning.
+ *
  * @param state - The analysis slice state.
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text, matched against the pool when the token is

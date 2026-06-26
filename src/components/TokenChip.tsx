@@ -1,8 +1,18 @@
 import type { Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { Popover, PopoverAnchor } from 'platform-bible-react';
-import { memo, type MouseEventHandler, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type KeyboardEvent,
+  memo,
+  type MouseEventHandler,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   useAnalysisLanguage,
   useApproveAnalysisDispatch,
@@ -16,8 +26,8 @@ import {
   useShowSuggestions,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
+import SuggestionDropdown from './SuggestionDropdown';
 import { resolvedOrEmpty } from '../utils/localized-strings';
-import { statusTextColorClass } from '../utils/status-colors';
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 
 const STRING_KEYS = [
@@ -25,15 +35,6 @@ const STRING_KEYS = [
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
-
-/**
- * How many homograph candidate alternatives a suggested token surfaces as promote buttons before
- * the rest are dropped. Small and interim — the candidate-review UX is an open question (see
- * `user-questions.md`, "display prominence and candidate review" #2); homographs with more
- * competing analyses than this are rare, and the suggested pick plus a few candidates is enough to
- * demonstrate promotion.
- */
-const MAX_VISIBLE_CANDIDATES = 3;
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
@@ -88,6 +89,16 @@ export function TokenChip({
   const [draft, setDraft] = useState(committedGloss);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const glossInputId = useId();
+  const glossInputRef = useRef<HTMLInputElement | undefined>(undefined);
+  // The suggestion combobox: an `activeIndex` of -1 means no row is highlighted, so a bare Enter
+  // commits the top suggestion. The dropdown auto-opens on focus of an empty input and closes once
+  // the user types (it is keyed off the token's surface form, not the typed text). The chevron can
+  // re-open it over typed text; `inputFocused` / `chipHovered` only gate the chevron's visibility.
+  const listboxId = useId();
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [chipHovered, setChipHovered] = useState(false);
   // Tracks whether the X button itself is hovered, so only that button hover reddens the border.
   const [isRemoveHovered, setIsRemoveHovered] = useState(false);
   // Reset remove-hover state when onRemove is cleared so the red border doesn't linger.
@@ -163,16 +174,23 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // The engine's derived suggestion for an un-approved token, reduced to the matching analyses that
-  // carry a gloss in the active language, in rank order (the suggested pick first, then candidates).
-  // The highest-ranked glossed analysis is offered as the green "accept"; the rest as blue "promote"
-  // candidates (capped). Falling through a blank-in-active-language top pick — rather than gating on
-  // it — keeps a usable lower-ranked alternative from being hidden behind it; an analysis with no
-  // active-language gloss is skipped individually rather than rendered as an empty button (see
-  // `user-questions.md` display #3). Shown only while the demo toggle is on, the chip is editable,
-  // and the user has not started typing. An approved token resolves to its decision, never a
-  // suggestion, so it never reaches this branch.
-  const suggestion = resolved?.status === 'suggested' ? resolved : undefined;
+  // The pool entries to offer via the suggestion dropdown. For a suggested token this is the engine's
+  // derived pick plus candidates. For an approved token this is the pool alternatives only —
+  // the already-approved payload is filtered out so the dropdown only shows genuinely different
+  // choices (re-approving the same analysis via the dropdown would be a no-op). Row 0 is the green
+  // "accept"; the rest are blue "promote" candidates. Blank-in-active-language entries are dropped
+  // individually rather than shown as empty rows (see `user-questions.md` display #3).
+  const suggestion = useMemo(() => {
+    if (!resolved) return undefined;
+    if (resolved.status === 'suggested') return resolved;
+    const pool = resolved.poolSuggestion;
+    if (!pool) return undefined;
+    const approvedId = resolved.analysis.id;
+    // Keep only pool entries that are not the already-approved analysis.
+    const alternatives = [pool.suggested, ...pool.candidates].filter((a) => a.id !== approvedId);
+    if (alternatives.length === 0) return undefined;
+    return { suggested: alternatives[0], candidates: alternatives.slice(1) };
+  }, [resolved]);
   // Memoized on the (reference-stable) suggestion and active language so typing a gloss — which only
   // changes local draft state — never re-runs the engine's flatten/filter; it recomputes only when
   // the suggestion or language actually changes.
@@ -180,11 +198,151 @@ export function TokenChip({
     () => glossedSuggestionEntries(suggestion, analysisLanguage),
     [suggestion, analysisLanguage],
   );
-  const showSuggestionUi = showSuggestions && !disabled && draft === '' && glossedRanked.length > 0;
-  const acceptEntry = showSuggestionUi ? glossedRanked[0] : undefined;
-  // Candidates only render inside `acceptEntry && (...)`, so gate them on `acceptEntry` — the one
-  // condition that governs their rendering — rather than re-deriving `showSuggestionUi`.
-  const candidateEntries = acceptEntry ? glossedRanked.slice(1, 1 + MAX_VISIBLE_CANDIDATES) : [];
+  // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
+  // circuit) and editability. The chevron and dropdown only ever appear when this is true.
+  const hasSuggestions = showSuggestions && !disabled && glossedRanked.length > 0;
+  // The engine's top pick (row 0, the green "suggested"), shown as ghost placeholder text in the
+  // empty input so the row reveals at a glance which tokens already have a suggestion — without
+  // needing focus or hover. Only meaningful while the draft is empty; once the user types, the
+  // typed value replaces it. Undefined when this token has no suggestion to offer.
+  const suggestedGloss = hasSuggestions ? glossedRanked[0].gloss : undefined;
+  const showSuggestedPlaceholder = suggestedGloss !== undefined && draft === '';
+
+  /**
+   * Builds the listbox option element id for a row, kept in sync with the input's
+   * `aria-activedescendant` so assistive tech can follow the keyboard-highlighted row.
+   *
+   * @param index - The row's index in {@link glossedRanked}.
+   * @returns The option element id.
+   */
+  const optionId = (index: number) => `${listboxId}-opt-${index}`;
+
+  /** Closes the suggestion dropdown and clears the keyboard highlight, leaving focus untouched. */
+  const closeSuggestions = useCallback(() => {
+    setSuggestionsOpen(false);
+    setActiveIndex(-1);
+  }, []);
+
+  /**
+   * Commits the current draft gloss the same way blur does: only when it differs from the committed
+   * value, reverting the input if the edit is parked in the global-edit confirmation modal. Only
+   * called from the (disabled-gated) blur and key-down handlers, so it needs no disabled check.
+   */
+  const commitDraft = () => {
+    if (draft !== committedGloss) {
+      const held = onGlossChange(token.ref, token.surfaceText, draft);
+      // If the edit was parked in the global-edit modal, revert the input to the committed value so
+      // canceling the modal doesn't leave the abandoned draft stuck in the input (and re-prompting
+      // on the next blur). An "update all" / "fork" choice updates committedGloss, which the sync
+      // effect then mirrors back into the draft.
+      if (held) setDraft(committedGloss);
+    }
+  };
+
+  /**
+   * Approves the chosen suggestion payload for this token and closes the dropdown. The typed draft
+   * (if any) is discarded: approving updates committedGloss, which the sync effect mirrors back
+   * into the input, so the selection wins over the abandoned draft.
+   *
+   * @param id - The chosen payload's id (the suggested pick or a promoted candidate).
+   */
+  const selectSuggestion = (id: string) => {
+    approveAnalysis(token.ref, token.surfaceText, id);
+    closeSuggestions();
+  };
+
+  /**
+   * Drives the gloss input as a combobox. While the dropdown is open, arrow keys move the highlight
+   * (stopping at the ends, with Up returning to the no-highlight state), Enter commits the
+   * highlight or the top row, and Escape closes without committing. While it is closed, ArrowDown
+   * opens the dropdown (the keyboard equivalent of the chevron) when this token has suggestions —
+   * so an approved token whose dropdown does not auto-open on focus can still summon its pool
+   * alternatives from the keyboard — and Enter commits the typed draft. Other keys fall through to
+   * the input.
+   *
+   * @param e - The gloss input's key-down event.
+   */
+  const handleGlossKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (suggestionsOpen) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(i + 1, glossedRanked.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, -1));
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeSuggestions();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        // activeIndex -1 (nothing highlighted) falls back to the top row; the list is non-empty
+        // whenever the dropdown is open, so a pick always exists.
+        const pick = glossedRanked[activeIndex] ?? glossedRanked[0];
+        selectSuggestion(pick.id);
+      }
+    } else if (e.key === 'ArrowDown' && hasSuggestions) {
+      e.preventDefault();
+      setActiveIndex(-1);
+      setSuggestionsOpen(true);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      commitDraft();
+    }
+  };
+
+  /**
+   * Handles gloss-input focus: runs the parent's focus side effect (scroll-into-view), marks the
+   * input focused so the chevron can show, and auto-opens the dropdown when the input is empty.
+   */
+  const handleFocus = () => {
+    onFocus();
+    setInputFocused(true);
+    if (draft === '' && hasSuggestions) {
+      setActiveIndex(-1);
+      setSuggestionsOpen(true);
+    }
+  };
+
+  /**
+   * Handles gloss-input typing: updates the draft, and re-opens the dropdown when the field is
+   * emptied back out or closes it as soon as the user types a gloss (which overrides the
+   * suggestion).
+   *
+   * @param value - The new input value.
+   */
+  const handleDraftChange = (value: string) => {
+    setDraft(value);
+    if (value === '') {
+      if (hasSuggestions) setSuggestionsOpen(true);
+    } else {
+      closeSuggestions();
+    }
+  };
+
+  /** Toggles the dropdown from the chevron, focusing the input so keyboard navigation works. */
+  const handleChevronClick = () => {
+    const willOpen = !suggestionsOpen;
+    setActiveIndex(-1);
+    setSuggestionsOpen(willOpen);
+    // Focus after setting open so the focus handler's empty-input auto-open agrees with willOpen
+    // (both want open); on close we leave focus where it is.
+    if (willOpen) glossInputRef.current?.focus({ preventScroll: true });
+  };
+
+  /**
+   * Ref callback that stores the gloss input element for focus control (from the chevron) and as
+   * the dropdown's positioning anchor. Normalizes React's `null` on unmount to `undefined` to match
+   * the repo's ref-typing convention.
+   *
+   * @param el - The mounted input, or `null` on unmount.
+   */
+  const setGlossInputRef = (el: HTMLInputElement | null) => {
+    glossInputRef.current = el ?? undefined;
+  };
+
+  // Whether the dropdown is actually mounted: open AND still has rows (a row may have been approved
+  // away). When false the input's combobox attributes collapse to the closed state.
+  const dropdownShown = suggestionsOpen && hasSuggestions;
 
   // The X button is positioned outside the <label>, and the label is bound to the gloss input with
   // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
@@ -212,6 +370,8 @@ export function TokenChip({
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
         onMouseDown={disabled ? undefined : handleLabelMouseDown}
+        onMouseEnter={() => setChipHovered(true)}
+        onMouseLeave={() => setChipHovered(false)}
         htmlFor={glossInputId}
       >
         <span className="tw:whitespace-nowrap tw:font-mono tw:text-sm tw:text-foreground tw:cursor-text">
@@ -286,63 +446,80 @@ export function TokenChip({
             )}
           </Popover>
         )}
-        <input
-          aria-label={`Gloss for ${token.surfaceText}`}
-          className="tw:gloss-input"
-          disabled={disabled}
-          id={glossInputId}
-          placeholder={resolvedOrEmpty(
-            localizedStrings['%interlinearizer_glossInput_placeholder%'],
-          )}
-          style={{ fieldSizing: 'content', minWidth: '5ch' }}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            if (!disabled && draft !== committedGloss) {
-              const held = onGlossChange(token.ref, token.surfaceText, draft);
-              // If the edit was parked in the global-edit modal, revert the input to the committed
-              // value so canceling the modal doesn't leave the abandoned draft stuck in the input
-              // (and re-prompting on the next blur). An "update all" / "fork" choice updates
-              // committedGloss, which the sync effect then mirrors back into the draft.
-              if (held) setDraft(committedGloss);
+        {/* The gloss input acts as the combobox; the chevron (shown only when this chip has
+            suggestions and is focused or hovered) is a mouse affordance to summon the dropdown,
+            including over already-typed text. The chevron stays out of the tab order so tabbing
+            across the interlinear row hits one stop per token — the input. */}
+        <span className="tw:flex tw:flex-row tw:items-center tw:gap-0.5">
+          <input
+            ref={setGlossInputRef}
+            // Combobox semantics apply only when this token actually has a suggestion popup; without
+            // suggestions it stays a plain text input.
+            aria-activedescendant={
+              dropdownShown && activeIndex >= 0 ? optionId(activeIndex) : undefined
             }
-          }}
-          onFocus={disabled ? undefined : onFocus}
-          onMouseDown={disabled ? undefined : handleMouseDown}
-          type="text"
-        />
-        {acceptEntry && (
-          // The derived suggestion: a green "accept" button showing the top glossed analysis, plus a
-          // blue "promote" button per competing candidate. Italic + color keep them subordinate to
-          // an approved (foreground) gloss. `tabIndex={-1}` matches the chip's other affordances —
-          // the gloss input stays the tab stop; typing a gloss overrides the suggestion instead.
-          // Accepting / promoting links the token to the chosen shared payload (raising its
-          // frequency); the suggestion then disappears because the token is now approved.
-          <span className="tw:flex tw:flex-col tw:items-center tw:gap-px">
+            aria-autocomplete={hasSuggestions ? 'none' : undefined}
+            aria-controls={dropdownShown ? listboxId : undefined}
+            aria-expanded={hasSuggestions ? dropdownShown : undefined}
+            aria-label={`Gloss for ${token.surfaceText}`}
+            // When the empty input is showing a suggested gloss as its placeholder, color that ghost
+            // text green (the same success color the dropdown's accept row uses) and italicize it, at
+            // full opacity, so it reads clearly as a suggestion rather than a faint generic hint.
+            className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:text-success-foreground tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
+            disabled={disabled}
+            id={glossInputId}
+            placeholder={
+              showSuggestedPlaceholder
+                ? suggestedGloss
+                : resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])
+            }
+            role={hasSuggestions ? 'combobox' : undefined}
+            style={{ fieldSizing: 'content', minWidth: '5ch' }}
+            value={draft}
+            onBlur={
+              disabled
+                ? undefined
+                : () => {
+                    setInputFocused(false);
+                    closeSuggestions();
+                    commitDraft();
+                  }
+            }
+            onChange={(e) => handleDraftChange(e.target.value)}
+            onFocus={disabled ? undefined : handleFocus}
+            onKeyDown={disabled ? undefined : handleGlossKeyDown}
+            onMouseDown={disabled ? undefined : handleMouseDown}
+            type="text"
+          />
+          {hasSuggestions && (inputFocused || chipHovered) && (
             <button
-              aria-label={`Accept suggestion ${acceptEntry.gloss} for ${token.surfaceText}`}
-              className={`tw:whitespace-nowrap tw:rounded tw:px-1 tw:text-sm tw:italic tw:cursor-pointer tw:hover:bg-accent ${statusTextColorClass('suggested')}`}
-              data-testid="suggestion-accept"
+              aria-controls={dropdownShown ? listboxId : undefined}
+              aria-expanded={dropdownShown}
+              aria-label={`Show suggestions for ${token.surfaceText}`}
+              className="tw:flex tw:h-3.5 tw:w-3.5 tw:shrink-0 tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:cursor-pointer tw:hover:bg-accent"
+              data-testid="suggestion-chevron"
               tabIndex={-1}
               type="button"
-              onClick={() => approveAnalysis(token.ref, token.surfaceText, acceptEntry.id)}
+              onClick={handleChevronClick}
+              // Suppress the mouse-down focus shift so clicking the chevron never blurs the input.
+              onMouseDown={(e) => e.preventDefault()}
             >
-              {acceptEntry.gloss}
+              <ChevronDown className={`tw:h-3 tw:w-3${dropdownShown ? ' tw:rotate-180' : ''}`} />
             </button>
-            {candidateEntries.map((candidate) => (
-              <button
-                key={candidate.id}
-                aria-label={`Promote ${candidate.gloss} for ${token.surfaceText}`}
-                className={`tw:whitespace-nowrap tw:rounded tw:px-1 tw:text-xs tw:italic tw:cursor-pointer tw:hover:bg-accent ${statusTextColorClass('candidate')}`}
-                data-testid="suggestion-candidate"
-                tabIndex={-1}
-                type="button"
-                onClick={() => approveAnalysis(token.ref, token.surfaceText, candidate.id)}
-              >
-                {candidate.gloss}
-              </button>
-            ))}
-          </span>
+          )}
+        </span>
+        {dropdownShown && (
+          <SuggestionDropdown
+            activeIndex={activeIndex}
+            anchorRef={glossInputRef}
+            entries={glossedRanked}
+            listboxId={listboxId}
+            optionId={optionId}
+            surfaceText={token.surfaceText}
+            onActiveIndexChange={setActiveIndex}
+            onRequestClose={closeSuggestions}
+            onSelect={selectSuggestion}
+          />
         )}
       </label>
     </span>

@@ -1050,7 +1050,8 @@ export function selectResolvedTokenAnalysis(
     const analysis = selectAnalysisById(state).get(approvedId);
     /* v8 ignore next -- approvedId comes from the byId-filtered approved map, so the payload is present */
     if (!analysis) return undefined;
-    return { status: 'approved', analysis };
+    const poolSuggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText);
+    return { status: 'approved', analysis, poolSuggestion };
   }
   const suggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText);
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;

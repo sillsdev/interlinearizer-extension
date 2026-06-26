@@ -58,6 +58,12 @@ export type ResolvedTokenAnalysis =
       status: 'approved';
       /** The approved payload. */
       analysis: TokenAnalysis;
+      /**
+       * Pool alternatives for this surface form, when any exist, so the suggestion chevron can
+       * offer re-promotion even after the token is approved. `undefined` when the pool has no match
+       * for this surface form (the token was manually glossed with no pool peers).
+       */
+      poolSuggestion?: TokenSuggestion;
     }
   | ({
       /** The token has no approved analysis; the engine proposes one derived from the pool. */
@@ -201,7 +207,18 @@ export function resolvedTokenAnalysisEqual(
 ): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
-  if (a.status === 'approved' && b.status === 'approved') return a.analysis === b.analysis;
+  if (a.status === 'approved' && b.status === 'approved') {
+    if (a.analysis !== b.analysis) return false;
+    const ap = a.poolSuggestion;
+    const bp = b.poolSuggestion;
+    if (ap === bp) return true;
+    if (!ap || !bp) return false;
+    return (
+      ap.suggested === bp.suggested &&
+      ap.candidates.length === bp.candidates.length &&
+      ap.candidates.every((c, i) => c === bp.candidates[i])
+    );
+  }
   if (a.status === 'suggested' && b.status === 'suggested') {
     return (
       a.suggested === b.suggested &&

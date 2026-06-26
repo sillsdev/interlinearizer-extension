@@ -180,6 +180,49 @@ describe('resolvedTokenAnalysisEqual', () => {
     ).toBe(false);
   });
 
+  it('treats approvals with matching pool suggestions as equal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        {
+          status: 'approved',
+          analysis: dog,
+          poolSuggestion: { suggested: dog, candidates: [cat] },
+        },
+        {
+          status: 'approved',
+          analysis: dog,
+          poolSuggestion: { suggested: dog, candidates: [cat] },
+        },
+      ),
+    ).toBe(true);
+  });
+
+  it('treats approvals differing only in pool-suggestion presence as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        { status: 'approved', analysis: dog, poolSuggestion: { suggested: dog, candidates: [] } },
+        { status: 'approved', analysis: dog },
+      ),
+    ).toBe(false);
+  });
+
+  it('treats approvals differing in a pool-suggestion candidate as unequal', () => {
+    expect(
+      resolvedTokenAnalysisEqual(
+        {
+          status: 'approved',
+          analysis: dog,
+          poolSuggestion: { suggested: dog, candidates: [cat] },
+        },
+        {
+          status: 'approved',
+          analysis: dog,
+          poolSuggestion: { suggested: dog, candidates: [fish] },
+        },
+      ),
+    ).toBe(false);
+  });
+
   it('treats suggestions with the same pick and candidate list as equal', () => {
     expect(
       resolvedTokenAnalysisEqual(

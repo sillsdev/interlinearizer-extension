@@ -1684,9 +1684,12 @@ describe('selectResolvedTokenAnalysis', () => {
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
 
+    // The approved decision is canonical; the pool match for the same surface form rides along as
+    // `poolSuggestion` so the chevron can still offer re-promotion to a pool alternative.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'word')).toEqual({
       status: 'approved',
       analysis: ta,
+      poolSuggestion: { suggested: ta, candidates: [] },
     });
   });
 
@@ -1729,10 +1732,12 @@ describe('approveAnalysisForToken', () => {
     // No new payload — the accepting token links to the existing shared one.
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
     expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
-    // The suggestion is gone because the token now has its own approved decision.
+    // The token now resolves to its own approved decision rather than a `suggested` status; the pool
+    // match still rides along as `poolSuggestion` for the re-promotion chevron.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
       status: 'approved',
       analysis: ta,
+      poolSuggestion: { suggested: ta, candidates: [] },
     });
   });
 

@@ -40,8 +40,11 @@ export function GlobalEditConfirmationModal({
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(GLOBAL_EDIT_STRING_KEYS);
 
-  /* v8 ignore next -- localized strings resolve synchronously under the test mock, so the still-loading guard never runs there */
-  if (stringsLoading) return undefined;
+  // While the strings resolve, still render the blocking overlay (just without labeled content) so
+  // the held edit stays protected: returning nothing here would drop the backdrop and leave the UI
+  // behind the modal interactive during the load window.
+  if (stringsLoading)
+    return <ModalShell titleId="global-edit-modal-title" title="" width="tw:w-96" />;
 
   const countText = String(count);
   const title = localizedStrings['%interlinearizer_globalEdit_title%'].replace(

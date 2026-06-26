@@ -539,6 +539,10 @@ const analysisSlice = createSlice({
             if (old) return { ...old, writingSystem };
             return { id, form, writingSystem };
           });
+          // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
+          // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
+          // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
+          mergeIntoIdenticalPayload(state, analysis);
           return;
         }
 
@@ -592,7 +596,13 @@ const analysisSlice = createSlice({
           ? forkSharedAnalysis(state, link, analysis, id)
           : analysis;
         delete target.morphemes;
-        if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
+        if (isEmptyTokenAnalysis(target)) {
+          detachTokenAnalysisLink(state, target, link);
+          return;
+        }
+        // Removing the breakdown can leave this payload identical to an existing one; re-converge so
+        // dedupe holds after morphology-only edits, the same way writeGloss does after a gloss edit.
+        mergeIntoIdenticalPayload(state, target);
       },
     },
     /**
@@ -679,9 +689,10 @@ const analysisSlice = createSlice({
      * the reducer no longer relies on that alone. Resolving through {@link resolveApprovedAnalysis}
      * also repairs an orphaned approved link first: a token whose approved link the read selectors
      * ignore (it points at a missing payload) still shows a suggestion, so accepting it must heal
-     * the orphan and proceed rather than be blocked by it. The link's snapshot records _this_
-     * token's `surfaceText` (not the shared payload's), matching {@link appendApprovedAnalysis} so
-     * per-token drift detection stays accurate.
+     * the orphan and proceed rather than be blocked by it. Symmetrically, an `analysisId` that
+     * resolves to no stored payload is rejected (no-op) rather than appended as a fresh orphan. The
+     * link's snapshot records _this_ token's `surfaceText` (not the shared payload's), matching
+     * {@link appendApprovedAnalysis} so per-token drift detection stays accurate.
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the accepting `tokenRef`, its `surfaceText`, and the
@@ -694,6 +705,10 @@ const analysisSlice = createSlice({
     ) {
       const { tokenRef, surfaceText, analysisId } = action.payload;
       if (resolveApprovedAnalysis(state, tokenRef)) return;
+      // Approve only a payload that actually exists: an unknown id would push an approved link that
+      // points at nothing, which the read selectors then have to repair as an orphan. Callers pass
+      // an id drawn from the live suggestion pool, but the reducer no longer relies on that alone.
+      if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
       state.analysis.tokenAnalysisLinks.push({
         analysisId,
         status: 'approved',

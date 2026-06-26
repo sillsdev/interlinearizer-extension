@@ -1077,6 +1077,51 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[1].gloss).toStrictEqual({ und: 'second' });
   });
 
+  it('re-converges an in-place breakdown edit that makes a payload identical to a sibling', () => {
+    // Two 'run' tokens with different breakdowns → two distinct payloads. Re-segment tok-2 to match
+    // tok-1's single-morpheme breakdown; the payloads should collapse back onto one.
+    const single: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'run',
+      morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
+    };
+    const split: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'run',
+      morphemes: [
+        { id: 'm-2', form: 'ru', writingSystem: 'und' },
+        { id: 'm-3', form: 'n', writingSystem: 'und' },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [single, split],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'run' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'run' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemes('tok-2', 'run', ['run'], 'und'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
   it('removes an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: TokenAnalysisLink = {
       analysisId: 'old-uuid',
@@ -1265,6 +1310,47 @@ describe('deleteMorphemes', () => {
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalyses).toHaveLength(0);
     expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('re-converges onto an identical sibling after the breakdown is removed', () => {
+    // tok-1: 'run' with gloss + breakdown; tok-2: 'run' with the same gloss but no breakdown.
+    // Removing tok-1's breakdown leaves its payload identical to tok-2's, so the two collapse.
+    const withBreakdown: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'run',
+      gloss: { und: 'jog' },
+      morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
+    };
+    const glossOnly: TokenAnalysis = { id: 'ta-2', surfaceText: 'run', gloss: { und: 'jog' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [withBreakdown, glossOnly],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'run' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'run' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'jog' });
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
   });
 
   it('no-ops when the token has no approved link', () => {
@@ -1688,6 +1774,27 @@ describe('approveAnalysisForToken', () => {
       .analysis.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'b1');
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.token.surfaceText).toBe('Bank');
+  });
+
+  it('is a no-op when the analysis id matches no stored payload (no orphan link)', () => {
+    // Guards against an unknown id being appended as an approved link that points at nothing.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({
+        tokenRef: 'tok-2',
+        surfaceText: 'logos',
+        analysisId: 'ta-missing',
+      }),
+    );
+
+    // No approved link to the nonexistent payload was appended; only the seeded tok-1 link remains.
+    const links = store.getState().analysis.analysis.tokenAnalysisLinks;
+    expect(links).toHaveLength(1);
+    expect(links.some((l) => l.token.tokenRef === 'tok-2')).toBe(false);
   });
 
   it('is a no-op when the token already has an approved analysis (single-approved invariant)', () => {

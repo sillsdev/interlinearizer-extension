@@ -55,6 +55,18 @@ describe('GlobalEditConfirmationModal', () => {
     expect(onForkInstead).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the blocking overlay without action buttons while localized strings load', () => {
+    jest.mocked(useLocalizedStrings).mockReturnValue([{}, true]);
+    render(<GlobalEditConfirmationModal {...defaultProps} />);
+
+    // The dialog (and its backdrop) is present so the held edit stays protected during the load...
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // ...but the labeled actions only appear once the strings resolve.
+    expect(screen.queryByTestId('global-edit-update-all')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('global-edit-fork')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('global-edit-cancel')).not.toBeInTheDocument();
+  });
+
   it('calls onCancel when the cancel button is clicked', async () => {
     const onCancel = jest.fn();
     render(<GlobalEditConfirmationModal {...defaultProps} onCancel={onCancel} />);

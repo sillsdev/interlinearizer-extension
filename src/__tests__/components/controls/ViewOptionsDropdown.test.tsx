@@ -31,8 +31,6 @@ const DEFAULT_PROPS = {
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
-  confirmGlobalEdits: false,
-  onConfirmGlobalEditsChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
 };
@@ -281,31 +279,6 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i }));
 
       expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('confirm global edits toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} confirmGlobalEdits />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /confirmGlobalEdits/i })).toBeChecked();
-    });
-
-    it('calls onConfirmGlobalEditsChange when toggled', async () => {
-      const onConfirmGlobalEditsChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          confirmGlobalEdits={false}
-          onConfirmGlobalEditsChange={onConfirmGlobalEditsChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /confirmGlobalEdits/i }));
-
-      expect(onConfirmGlobalEditsChange).toHaveBeenCalledWith(true);
     });
   });
 

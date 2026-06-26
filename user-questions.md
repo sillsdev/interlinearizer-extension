@@ -113,6 +113,51 @@ Decisions made during development that we'd like reviewed:
    rejected = orange, stale = red. Does this mapping read correctly to users (e.g. green commonly
    means "approved/done", which here is the plain foreground state)?
 
+## Suggestion engine: separating per-token edits from global analysis edits
+
+This revisits the model in "editing a shared analysis, and per-instance analyses" (above). In the
+shipped interim, **both** a per-token act and a global edit go through the same gloss input: typing a
+new gloss into a token whose analysis is shared rewrites every token linked to that analysis. To keep
+that from surprising users, an edit to a shared analysis is intercepted and a confirmation modal asks
+"this is used by N tokens — update all of them?" (with a "fork just this one" escape).
+
+The concern with that model: the gloss input cannot express _which_ of two different intents the user
+has — "set what _this token_ means" (local) versus "edit _this shared analysis_" (global, affecting
+every linked occurrence) — so the confirmation modal exists only to recover that intent after the
+keystroke. It is a guardrail bolted onto an input that conflates the two operations.
+
+**Proposed alternative.** Make the two operations distinct controls instead of one input plus a
+confirmation:
+
+- The **gloss input stays purely per-token** — typing a gloss or clearing it only ever affects _that_
+  token. It never fans out, so no interception or confirmation is needed.
+- **Global edit/delete move onto the suggestion dropdown rows.** Each row already _is_ a distinct
+  shared analysis from the pool (with its approval frequency known), so a **pencil** (edit this shared
+  analysis) and **trash** (delete it from the pool) on a row target an unambiguous payload. The global
+  act becomes a deliberate, directly-chosen control rather than a side effect of typing — and the
+  per-token confirmation modal can be retired.
+
+Questions for users/stakeholders:
+
+1. **Is this split the right model?** Per-token meaning via the gloss input, global edit/delete via
+   dedicated controls on the shared analysis — versus the shipped "one input + confirm-on-fan-out"
+   approach. Does separating the two operations read as clearer, or is editing-in-place (with a
+   confirmation) the more natural flow for the people doing this work?
+
+2. **Delete semantics on a shared analysis.** Trashing an analysis that N tokens approve — should it
+   un-approve all N (they fall back to a suggestion or blank), or should delete be offered only on a
+   zero-approval candidate (an analysis nothing currently relies on)? This is the most consequential
+   question, since one click could un-analyze many verses.
+
+3. **Where inline edit happens.** Pencil → does the row become editable **in place** (keeping the
+   "this is a global analysis" framing), or does it route the analysis back into the token's gloss
+   input pre-filled (which risks reintroducing the very local/global ambiguity this is meant to
+   remove)?
+
+4. **Discoverability.** Global edit/delete would now live inside the dropdown, which a user must open.
+   Is that acceptable, or do approved tokens — which may not surface a populated dropdown today — need
+   their own affordance to reach the shared analysis's controls?
+
 ## Suggestion engine: bulk acceptance (post-v1)
 
 v1 accepts suggestions strictly one token at a time, to stay honest to the rule that every analysis

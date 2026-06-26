@@ -14,7 +14,6 @@ import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, Token, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
-import { MorphemeGlossInput } from '../../components/MorphemeEditor';
 import { emptyAnalysis } from '../../types/empty-factories';
 
 beforeEach(() => {
@@ -682,100 +681,5 @@ describe('TokenChip suggestion dropdown scrolling', () => {
     fireEvent.scroll(screen.getByRole('listbox'));
 
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
-  });
-});
-
-describe('held global-edit reverts the input draft', () => {
-  // The confirmation modal needs its real strings (resetMocks wipes the file-level default).
-  beforeEach(() => {
-    jest.mocked(useLocalizedStrings).mockReturnValue([
-      {
-        '%interlinearizer_glossInput_placeholder%': 'gloss',
-        '%interlinearizer_morphemeGloss_label%': 'Gloss for {form}',
-        '%interlinearizer_globalEdit_title%': 'Used by {count}',
-        '%interlinearizer_globalEdit_body%': 'Shared by {count}',
-        '%interlinearizer_globalEdit_updateAll%': 'Update all {count}',
-        '%interlinearizer_globalEdit_fork%': 'Make a separate analysis',
-        '%interlinearizer_globalEdit_cancel%': 'Cancel',
-      },
-      false,
-    ]);
-  });
-
-  it('reverts the gloss input draft when a shared-payload gloss edit is held for confirmation', async () => {
-    const shared: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'shared', surfaceText: 'logos', gloss: { en: 'word' } }],
-      tokenAnalysisLinks: [
-        {
-          analysisId: 'shared',
-          status: 'approved',
-          token: { tokenRef: 'tok-1', surfaceText: 'logos' },
-        },
-        {
-          analysisId: 'shared',
-          status: 'approved',
-          token: { tokenRef: 'tok-2', surfaceText: 'logos' },
-        },
-      ],
-    };
-    render(
-      <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={shared} confirmGlobalEdits>
-        <TokenChip token={wordToken('tok-1', 'logos')} onFocus={() => {}} />
-      </AnalysisStoreProvider>,
-    );
-
-    const input = screen.getByLabelText('Gloss for logos');
-    expect(input).toHaveValue('word');
-    await userEvent.clear(input);
-    await userEvent.type(input, 'changed');
-    await userEvent.tab(); // blur holds the edit for the modal
-
-    expect(screen.getByTestId('global-edit-update-all')).toBeInTheDocument();
-    // The abandoned draft is reverted to the committed gloss rather than stranded in the input.
-    expect(input).toHaveValue('word');
-  });
-
-  it('reverts a morpheme gloss input draft when a shared-payload edit is held for confirmation', async () => {
-    const shared: TextAnalysis = {
-      ...emptyAnalysis(),
-      tokenAnalyses: [
-        {
-          id: 'shared',
-          surfaceText: 'cats',
-          morphemes: [{ id: 'm1', form: 'cat', writingSystem: 'en' }],
-        },
-      ],
-      tokenAnalysisLinks: [
-        {
-          analysisId: 'shared',
-          status: 'approved',
-          token: { tokenRef: 'tok-1', surfaceText: 'cats' },
-        },
-        {
-          analysisId: 'shared',
-          status: 'approved',
-          token: { tokenRef: 'tok-2', surfaceText: 'cats' },
-        },
-      ],
-    };
-    render(
-      <AnalysisStoreProvider analysisLanguage="en" initialAnalysis={shared} confirmGlobalEdits>
-        <MorphemeGlossInput
-          morpheme={{ id: 'm1', form: 'cat', writingSystem: 'en' }}
-          tokenRef="tok-1"
-          analysisLanguage="en"
-          disabled={false}
-        />
-      </AnalysisStoreProvider>,
-    );
-
-    const input = screen.getByLabelText('Gloss for cat');
-    await userEvent.type(input, 'feline');
-    await userEvent.tab(); // blur holds the edit for the modal
-
-    expect(screen.getByTestId('global-edit-update-all')).toBeInTheDocument();
-    // The abandoned morpheme gloss draft reverts to its (empty) committed value.
-    expect(input).toHaveValue('');
   });
 });

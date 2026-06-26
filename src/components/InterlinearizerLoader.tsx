@@ -210,12 +210,6 @@ function InterlinearizerLoaderInner({
     value: showFreeTranslation,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showFreeTranslation', false);
 
-  // Removable demo toggle (not persisted) for the open "editing a shared analysis" UX question:
-  // while on, editing a payload shared by >1 token prompts before the change fans out to every
-  // token. Defaults on to demonstrate the proposed friction; flip it off to demo the unprompted
-  // power-user path. Remove this state and its dropdown row once the UX is decided.
-  const [confirmGlobalEdits, setConfirmGlobalEdits] = useState(true);
-
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
   // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
   // green suggestion with accept / promote affordances. Defaults on (suggestions are always-on by
@@ -448,8 +442,6 @@ function InterlinearizerLoaderInner({
               onShowMorphologyChange={handleShowMorphologyChange}
               showFreeTranslation={showFreeTranslation}
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
-              confirmGlobalEdits={confirmGlobalEdits}
-              onConfirmGlobalEditsChange={setConfirmGlobalEdits}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
             />
@@ -511,7 +503,6 @@ function InterlinearizerLoaderInner({
             phraseMode={phraseMode}
             setPhraseMode={setPhraseMode}
             viewOptions={viewOptions}
-            confirmGlobalEdits={confirmGlobalEdits}
             showSuggestions={showSuggestions}
           />
         )}

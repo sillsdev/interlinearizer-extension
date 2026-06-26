@@ -18,10 +18,8 @@ import {
   createPhrase,
   deleteMorphemes,
   deletePhrase,
-  forkAnalysisForToken,
   mergePhrases,
   selectApprovedGloss,
-  selectApprovedLinkCountForPayload,
   selectApprovedMorphemes,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -35,6 +33,7 @@ import {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  type AnalysisState,
 } from '../../store/analysisSlice';
 
 /**
@@ -63,6 +62,27 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [makeApprovedLink(ta)],
   };
+}
+
+/**
+ * Counts how many approved `TokenAnalysisLink`s point at the same payload that `tokenRef`'s own
+ * approved link points at — the shared count of the payload a token sits on. A local test helper
+ * standing in for the former production selector, used to assert sharing without reaching into the
+ * link arrays at each call site.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` whose payload's shared count is wanted.
+ * @returns The number of approved links on that token's payload, or 0 when it has no approved link.
+ */
+function approvedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
+  const { tokenAnalysisLinks } = state.analysis;
+  const own = tokenAnalysisLinks.find(
+    (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+  );
+  if (!own) return 0;
+  return tokenAnalysisLinks.filter(
+    (l) => l.status === 'approved' && l.analysisId === own.analysisId,
+  ).length;
 }
 
 describe('writeGloss', () => {
@@ -206,6 +226,22 @@ describe('writeGloss', () => {
     expect(tokenAnalyses).toHaveLength(0);
     expect(tokenAnalysisLinks).toHaveLength(0);
   });
+
+  it('edits one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 gloss 'the' identically, so they converge onto one shared payload. Editing
+    // tok-1 to distinct content must fork it onto a private clone, leaving tok-2's gloss untouched.
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'the', 'def'));
+
+    store.dispatch(writeGloss('tok-1', 'the', 'changed'));
+
+    const state = store.getState().analysis;
+    expect(selectApprovedGloss(state, 'tok-1')).toBe('changed');
+    expect(selectApprovedGloss(state, 'tok-2')).toBe('def');
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
 });
 
 describe('find-or-create on write (dedupe)', () => {
@@ -277,86 +313,7 @@ describe('find-or-create on write (dedupe)', () => {
     expect(tokenAnalyses).toHaveLength(1);
     expect(tokenAnalysisLinks).toHaveLength(2);
     expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
-  });
-});
-
-describe('forkAnalysisForToken', () => {
-  it('clones a shared payload and repoints only the forking token to the clone', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-    store.dispatch(writeGloss('tok-2', 'the', 'def'));
-
-    store.dispatch(forkAnalysisForToken('tok-1'));
-
-    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
-    expect(tokenAnalyses).toHaveLength(2);
-    const tok1 = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
-    const tok2 = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
-    expect(tok1?.analysisId).toBeDefined();
-    expect(tok1?.analysisId).not.toBe(tok2?.analysisId);
-  });
-
-  it('lets a forked token be edited without affecting the original payload', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-    store.dispatch(writeGloss('tok-2', 'the', 'def'));
-
-    store.dispatch(forkAnalysisForToken('tok-1'));
-    store.dispatch(writeGloss('tok-1', 'the', 'changed'));
-
-    expect(selectApprovedGloss(store.getState().analysis, 'tok-1')).toBe('changed');
-    expect(selectApprovedGloss(store.getState().analysis, 'tok-2')).toBe('def');
-  });
-
-  it('no-ops when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-
-    store.dispatch(forkAnalysisForToken('tok-x'));
-
-    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(0);
-  });
-
-  it('no-ops when the payload is not shared (sole link)', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-
-    store.dispatch(forkAnalysisForToken('tok-1'));
-
-    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
-  });
-});
-
-describe('selectApprovedLinkCountForPayload', () => {
-  it('returns 0 when the token has no approved analysis', () => {
-    const store = createAnalysisStore();
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-x')).toBe(0);
-  });
-
-  it('returns 1 for a payload occupied by a single token', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(1);
-  });
-
-  it('returns the shared count for every token on a shared payload', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-    store.dispatch(writeGloss('tok-2', 'the', 'def'));
-
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
-  });
-
-  it('drops back to 1 for each token after one forks off a shared payload', () => {
-    const store = createAnalysisStore();
-    store.dispatch(writeGloss('tok-1', 'the', 'def'));
-    store.dispatch(writeGloss('tok-2', 'the', 'def'));
-
-    store.dispatch(forkAnalysisForToken('tok-1'));
-
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(1);
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(1);
+    expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
   });
 });
 
@@ -1254,6 +1211,22 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[0].gloss).toStrictEqual({ en: 'word' });
     expect(updated?.morphemes?.[0].writingSystem).toBe('grc');
   });
+
+  it('re-segments one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 break 'cats' down identically, so they converge onto one shared payload.
+    // Re-segmenting tok-1 to a distinct breakdown must fork it, leaving tok-2's breakdown intact.
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['ca', 'ts'], 'en'));
+
+    const state = store.getState().analysis;
+    expect(selectApprovedMorphemes(state, 'tok-1').map((m) => m.form)).toStrictEqual(['ca', 'ts']);
+    expect(selectApprovedMorphemes(state, 'tok-2').map((m) => m.form)).toStrictEqual(['cat', '-s']);
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
 });
 
 describe('deleteMorphemes', () => {
@@ -1675,6 +1648,31 @@ describe('writeMorphemeGloss', () => {
     expect(tokenAnalysisLinks).toHaveLength(2);
     expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
   });
+
+  it('glosses one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 break 'cats' down identically, so they converge onto one shared payload.
+    // Glossing tok-1's 'cat' morpheme to distinct content must fork it, leaving tok-2's bare.
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    // Read the shared 'cat' morpheme's id back from state — the prepare assigns fresh UUIDs.
+    const catId = selectApprovedMorphemes(store.getState().analysis, 'tok-1').find(
+      (m) => m.form === 'cat',
+    )?.id;
+    expect(catId).toBeDefined();
+    store.dispatch(
+      writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: catId ?? '', value: 'feline' }),
+    );
+
+    const state = store.getState().analysis;
+    const tok1Cat = selectApprovedMorphemes(state, 'tok-1').find((m) => m.form === 'cat');
+    const tok2Cat = selectApprovedMorphemes(state, 'tok-2').find((m) => m.form === 'cat');
+    expect(tok1Cat?.gloss).toStrictEqual({ und: 'feline' });
+    expect(tok2Cat?.gloss).toBeUndefined();
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
 });
 
 describe('selectApprovedMorphemes', () => {
@@ -1830,7 +1828,7 @@ describe('approveAnalysisForToken', () => {
 
     // No new payload — the accepting token links to the existing shared one.
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
-    expect(selectApprovedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
+    expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
     // The token now resolves to its own approved decision rather than a `suggested` status; the pool
     // match still rides along as `poolSuggestion` for the re-promotion chevron.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({

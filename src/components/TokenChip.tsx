@@ -225,17 +225,12 @@ export function TokenChip({
 
   /**
    * Commits the current draft gloss the same way blur does: only when it differs from the committed
-   * value, reverting the input if the edit is parked in the global-edit confirmation modal. Only
-   * called from the (disabled-gated) blur and key-down handlers, so it needs no disabled check.
+   * value. Only called from the (disabled-gated) blur and key-down handlers, so it needs no
+   * disabled check.
    */
   const commitDraft = () => {
     if (draft !== committedGloss) {
-      const held = onGlossChange(token.ref, token.surfaceText, draft);
-      // If the edit was parked in the global-edit modal, revert the input to the committed value so
-      // canceling the modal doesn't leave the abandoned draft stuck in the input (and re-prompting
-      // on the next blur). An "update all" / "fork" choice updates committedGloss, which the sync
-      // effect then mirrors back into the draft.
-      if (held) setDraft(committedGloss);
+      onGlossChange(token.ref, token.surfaceText, draft);
     }
   };
 

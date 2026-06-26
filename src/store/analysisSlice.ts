@@ -312,9 +312,8 @@ function isPayloadSharedByOtherLinks(
  * only this token while every other token keeps the original shared payload. The clone carries the
  * same content (including morpheme ids) under a new id, with fresh copies of the mutable `gloss`
  * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
- * without writing through to the frozen shared payload. Mirrors {@link forkAnalysisForToken}; used
- * by the clear/delete paths so a token can detach from a shared analysis without emptying it for
- * the others.
+ * without writing through to the frozen shared payload. Used by the per-token edit, clear, and
+ * delete paths so a token can edit or detach from a shared analysis without affecting the others.
  *
  * @param state - Current slice state (Immer draft).
  * @param link - The editing token's approved `TokenAnalysisLink`, repointed to the clone.
@@ -411,22 +410,26 @@ const analysisSlice = createSlice({
       },
       /**
        * Creates or updates an approved `TokenAnalysis` for the given token. If an approved link
-       * already exists for `tokenRef`, its analysis is updated in place and the stored surface text
-       * is refreshed on both the analysis and the link's token snapshot, so neither goes stale when
-       * the baseline text changed since the analysis was first written. An in-place edit that makes
-       * the payload identical to an existing one re-converges onto it
-       * ({@link mergeIntoIdenticalPayload}), so editing can never leave the duplicate the create
-       * path's find-or-create avoids. Otherwise a new `TokenAnalysis` and `TokenAnalysisLink` are
-       * appended (an orphaned approved link is repaired first; see {@link resolveApprovedAnalysis}).
-       * Non-approved analyses for the token are left untouched.
+       * already exists for `tokenRef`, its analysis is updated and the stored surface text is
+       * refreshed on both the analysis and the link's token snapshot, so neither goes stale when
+       * the baseline text changed since the analysis was first written. The edit is **per-token**:
+       * when the payload is shared by other tokens, this token is forked onto a private clone
+       * ({@link forkSharedAnalysis}) and the clone is edited, so the co-linked tokens keep the
+       * shared gloss rather than being rewritten by an edit aimed at this one. (Editing every
+       * occurrence of a shared analysis is deferred; see user-questions.md "separating per-token
+       * edits from global analysis edits".) An edit that makes the payload identical to an existing
+       * one re-converges onto it ({@link mergeIntoIdenticalPayload}), so editing can never leave the
+       * duplicate the create path's find-or-create avoids. Otherwise a new `TokenAnalysis` and
+       * `TokenAnalysisLink` are appended (an orphaned approved link is repaired first; see
+       * {@link resolveApprovedAnalysis}). Non-approved analyses for the token are left untouched.
        *
        * A blank `value` (empty or whitespace) is treated as clearing the gloss rather than writing
        * junk: the active language's entry is removed, and when that leaves the analysis with no
-       * content ({@link isEmptyTokenAnalysis}) the record and its link are removed entirely. When
-       * the payload is shared by other tokens, the clear is applied to a private clone of this
-       * token ({@link forkSharedAnalysis}) so the co-linked tokens keep the shared gloss rather than
-       * being stranded on an emptied payload. A blank write to a token with no approved analysis is
-       * a no-op, so a focus/blur cycle on an empty gloss never creates a record.
+       * content ({@link isEmptyTokenAnalysis}) the record and its link are removed entirely. The
+       * clear forks a shared payload just as an edit does, so the co-linked tokens keep the shared
+       * gloss rather than being stranded on an emptied payload. A blank write to a token with no
+       * approved analysis is a no-op, so a focus/blur cycle on an empty gloss never creates a
+       * record.
        *
        * @param state - Current slice state (Immer draft).
        * @param action - Action carrying the `WriteGlossPayload`.
@@ -455,12 +458,19 @@ const analysisSlice = createSlice({
             if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
             return;
           }
-          if (!analysis.gloss) analysis.gloss = {};
-          analysis.gloss[lang] = value;
+          // A gloss edit is per-token: when the payload is shared, fork this token onto a private
+          // clone first and edit that, so the co-linked tokens keep the shared gloss instead of being
+          // rewritten by an edit aimed at this one. (Global "edit every occurrence" is deferred; see
+          // user-questions.md "separating per-token edits from global analysis edits".)
+          const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+            ? forkSharedAnalysis(state, link, analysis, id)
+            : analysis;
+          if (!target.gloss) target.gloss = {};
+          target.gloss[lang] = value;
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
           // instance re-glossed to match its sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after edits.
-          mergeIntoIdenticalPayload(state, analysis);
+          mergeIntoIdenticalPayload(state, target);
           return;
         }
 
@@ -492,11 +502,15 @@ const analysisSlice = createSlice({
         };
       },
       /**
-       * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. When a
-       * morpheme form is unchanged the existing morpheme record is preserved whole — including its
-       * id, which `MorphemeLink.morphemeId` cross-references, so alignment links to unchanged
-       * morphemes survive edits to the rest of the breakdown. When no approved analysis exists,
-       * creates one (an orphaned approved link is repaired first; see
+       * Sets the morpheme breakdown on the approved `TokenAnalysis` for the given token. The edit
+       * is per-token: when the payload is shared by other tokens, this token is forked onto a
+       * private clone ({@link forkSharedAnalysis}) and the clone is re-segmented, so the co-linked
+       * tokens keep the shared breakdown. (Editing every occurrence of a shared analysis is
+       * deferred; see user-questions.md "separating per-token edits from global analysis edits".)
+       * When a morpheme form is unchanged the existing morpheme record is preserved whole —
+       * including its id, which `MorphemeLink.morphemeId` cross-references, so alignment links to
+       * unchanged morphemes survive edits to the rest of the breakdown. When no approved analysis
+       * exists, creates one (an orphaned approved link is repaired first; see
        * {@link resolveApprovedAnalysis}). Also refreshes the stored surface text on both the
        * analysis and the link's token snapshot, so neither goes stale when the baseline text
        * changed since the analysis was first written. Every morpheme — preserved or new — is
@@ -522,17 +536,25 @@ const analysisSlice = createSlice({
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved) {
           const { link, analysis } = resolved;
-          analysis.surfaceText = surfaceText;
+          // A breakdown edit is per-token: when the payload is shared, fork this token onto a private
+          // clone and re-segment the clone, so the co-linked tokens keep the shared breakdown. The
+          // prepared `analysisId` (otherwise consumed only by the create path below) names the clone.
+          // (Editing every occurrence of a shared analysis is deferred; see user-questions.md
+          // "separating per-token edits from global analysis edits".)
+          const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+            ? forkSharedAnalysis(state, link, analysis, analysisId)
+            : analysis;
+          target.surfaceText = surfaceText;
           link.token.surfaceText = surfaceText;
           // Multimap with consumed entries so duplicate forms (e.g. reduplication "ba ba") each
           // match a distinct old morpheme in order, instead of all inheriting the last one.
           const oldByForm = new Map<string, MorphemeAnalysis[]>();
-          (analysis.morphemes ?? []).forEach((m) => {
+          (target.morphemes ?? []).forEach((m) => {
             const bucket = oldByForm.get(m.form);
             if (bucket) bucket.push(m);
             else oldByForm.set(m.form, [m]);
           });
-          analysis.morphemes = morphemes.map(({ id, form }) => {
+          target.morphemes = morphemes.map(({ id, form }) => {
             const old = oldByForm.get(form)?.shift();
             // Keep the preserved morpheme's id (the prepared id is discarded) so external
             // references to it stay valid; only the writing system is refreshed.
@@ -542,7 +564,7 @@ const analysisSlice = createSlice({
           // An in-place breakdown edit can make this payload identical to an existing one (e.g. a
           // homograph re-segmented to match a sibling); re-converge so the dedupe the create path
           // guarantees on first write also holds after morpheme edits (mirrors writeGloss).
-          mergeIntoIdenticalPayload(state, analysis);
+          mergeIntoIdenticalPayload(state, target);
           return;
         }
 
@@ -616,82 +638,77 @@ const analysisSlice = createSlice({
      * itself is kept (a breakdown is content in its own right), so unlike `writeGloss` this never
      * removes the enclosing analysis.
      *
-     * Both the write and the clear are identity-changing edits, so each re-converges onto an
-     * existing content-identical payload ({@link mergeIntoIdenticalPayload}) — keeping the create
-     * path's dedupe invariant symmetric across both directions, so a clear back to a sibling's
-     * state never leaves a duplicate.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the morpheme gloss payload.
+     * Both the write and the clear are **per-token**: when the payload is shared by other tokens,
+     * this token is forked onto a private clone ({@link forkSharedAnalysis}, which preserves
+     * morpheme ids so `morphemeId` still resolves on the clone) and the clone's morpheme is edited,
+     * so the co-linked tokens keep the shared gloss. (Editing every occurrence of a shared analysis
+     * is deferred; see user-questions.md "separating per-token edits from global analysis edits".)
+     * Both are also identity-changing edits, so each re-converges onto an existing
+     * content-identical payload ({@link mergeIntoIdenticalPayload}) — keeping the create path's
+     * dedupe invariant symmetric across both directions, so a clear back to a sibling's state never
+     * leaves a duplicate.
      */
-    writeMorphemeGloss(
-      state,
-      action: PayloadAction<{ tokenRef: string; morphemeId: string; value: string }>,
-    ) {
-      const { tokenRef, morphemeId, value } = action.payload;
-      const lang = state.analysisLanguage;
-
-      const resolved = resolveApprovedAnalysis(state, tokenRef);
-      if (!resolved) return;
-      const { analysis } = resolved;
-      const morpheme = analysis.morphemes?.find((m) => m.id === morphemeId);
-      if (!morpheme) return;
-
-      if (value.trim() === '') {
-        if (morpheme.gloss) {
-          delete morpheme.gloss[lang];
-          if (Object.keys(morpheme.gloss).length === 0) delete morpheme.gloss;
-        }
-        // Clearing a morpheme gloss is itself an identity-changing edit: dropping the gloss can make
-        // this payload identical to a sibling whose only difference was that gloss, so re-converge
-        // here too — the write branch below does the same. Without this the dedupe is asymmetric
-        // (an edit re-merges, a clear back to the sibling's state leaves a duplicate the suggestion
-        // pool would double-count), and unlike writeGloss this clear keeps the morpheme record, so
-        // the duplicate payload survives rather than being reclaimed.
-        mergeIntoIdenticalPayload(state, analysis);
-        return;
-      }
-
-      if (!morpheme.gloss) morpheme.gloss = {};
-      morpheme.gloss[lang] = value;
-      // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing one
-      // in place can make this payload identical to an existing one (e.g. a homograph whose only
-      // difference was this morpheme's gloss); re-converge so the dedupe the create path guarantees
-      // on first write also holds after morpheme gloss edits (mirrors writeGloss/writeMorphemes).
-      mergeIntoIdenticalPayload(state, analysis);
-    },
-    forkAnalysisForToken: {
+    writeMorphemeGloss: {
       /**
-       * Generates a UUID for the forked clone before the action reaches the reducer, keeping the
-       * reducer pure.
+       * Generates a UUID for the clone a per-token edit forks from a shared payload, before the
+       * action reaches the reducer, keeping the reducer pure. Unused when the payload is not
+       * shared.
        *
-       * @param tokenRef - `Token.ref` of the token whose approved analysis is being forked.
+       * @param arg - Object carrying the token, morpheme, and new gloss value.
+       * @param arg.tokenRef - `Token.ref` of the token whose morpheme gloss is written.
+       * @param arg.morphemeId - Id of the morpheme within the token's approved analysis.
+       * @param arg.value - New gloss string (blank clears the morpheme's active-language gloss).
        * @returns The prepared action payload including a pre-generated clone `id`.
        */
-      prepare(tokenRef: string) {
-        return { payload: { tokenRef, id: crypto.randomUUID() } };
+      prepare(arg: { tokenRef: string; morphemeId: string; value: string }) {
+        return { payload: { ...arg, id: crypto.randomUUID() } };
       },
       /**
-       * Forks this token off a shared `TokenAnalysis` so a later edit affects only it: the shared
-       * payload is deep-cloned into a new payload (new id, same content including morpheme ids),
-       * and this token's approved link is repointed to the clone while every other token stays on
-       * the original. The clone is independent — a subsequent {@link writeGloss} /
-       * {@link writeMorphemes} resolves to and edits only the clone.
-       *
-       * No-ops when the token has no approved analysis, and when the payload is not actually shared
-       * (this token is its only link): forking a sole-occupant payload would just duplicate it,
-       * violating dedupe-on-write ({@link analysesAreIdentical}) and orphaning the original.
-       *
        * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the `tokenRef` to fork and the clone `id`.
+       * @param action - Action carrying the morpheme gloss payload and a pre-generated clone `id`.
        */
-      reducer(state, action: PayloadAction<{ tokenRef: string; id: string }>) {
-        const { tokenRef, id } = action.payload;
+      reducer(
+        state,
+        action: PayloadAction<{
+          tokenRef: string;
+          morphemeId: string;
+          value: string;
+          id: string;
+        }>,
+      ) {
+        const { tokenRef, morphemeId, value, id } = action.payload;
+        const lang = state.analysisLanguage;
+
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (!resolved) return;
         const { link, analysis } = resolved;
-        if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) return;
-        forkSharedAnalysis(state, link, analysis, id);
+        if (!analysis.morphemes?.some((m) => m.id === morphemeId)) return;
+
+        // Fork before editing so the morpheme gloss change touches only this token; on the clone the
+        // morpheme keeps its id, so re-find it there.
+        const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+          ? forkSharedAnalysis(state, link, analysis, id)
+          : analysis;
+        const morpheme = target.morphemes?.find((m) => m.id === morphemeId);
+        /* v8 ignore next -- forkSharedAnalysis preserves morpheme ids, so this always resolves */
+        if (!morpheme) return;
+
+        if (value.trim() === '') {
+          if (morpheme.gloss) {
+            delete morpheme.gloss[lang];
+            if (Object.keys(morpheme.gloss).length === 0) delete morpheme.gloss;
+          }
+        } else {
+          if (!morpheme.gloss) morpheme.gloss = {};
+          morpheme.gloss[lang] = value;
+        }
+        // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing or
+        // clearing one can make this payload identical to an existing one (e.g. a homograph whose
+        // only difference was this morpheme's gloss); re-converge so the dedupe the create path
+        // guarantees on first write also holds after morpheme gloss edits (mirrors writeGloss).
+        // Symmetric across write and clear, so a clear back to a sibling's state never leaves a
+        // duplicate the suggestion pool would double-count.
+        mergeIntoIdenticalPayload(state, target);
       },
     },
     /**
@@ -902,7 +919,6 @@ export const {
   writeMorphemes,
   deleteMorphemes,
   writeMorphemeGloss,
-  forkAnalysisForToken,
   approveAnalysisForToken,
   createPhrase,
   updatePhrase,
@@ -1008,23 +1024,6 @@ const selectApprovedTokenCountByAnalysisId = createSelector(
     return counts;
   },
 );
-
-/**
- * Returns how many tokens share `tokenRef`'s approved analysis — i.e. how many tokens a global edit
- * to that payload would affect. Returns `0` when the token has no approved analysis, `1` for a
- * payload occupied by this token alone, and `N` for one shared by `N` tokens. The UI uses this to
- * decide whether a human edit needs confirmation (count > 1) and to phrase "used by N tokens".
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` whose approved payload to measure.
- * @returns The number of tokens sharing the payload, or `0` when there is no approved analysis.
- */
-export function selectApprovedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
-  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
-  if (!approvedId) return 0;
-  /* v8 ignore next -- approvedId comes from the same approved map this counts, so its count is always present; the `?? 0` only satisfies the optional Map.get return type */
-  return selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
-}
 
 /**
  * Memoized selector that builds the suggestion-engine pool index from the approved analyses: each

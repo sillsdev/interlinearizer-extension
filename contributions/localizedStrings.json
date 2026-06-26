@@ -33,7 +33,6 @@
       "%interlinearizer_viewOption_showFreeTranslation%": "Show free translation",
       "%interlinearizer_projectSettings_showFreeTranslation%": "Show Free Translation",
       "%interlinearizer_projectSettings_showFreeTranslationDescription%": "Display a free-translation input beneath each segment's tokens or baseline text",
-      "%interlinearizer_viewOption_confirmGlobalEdits%": "Confirm shared-analysis edits",
       "%interlinearizer_viewOption_showSuggestions%": "Show suggestions",
       "%interlinearizer_glossInput_placeholder%": "gloss",
       "%interlinearizer_freeTranslationInput_placeholder%": "Free translation",

@@ -282,11 +282,7 @@ export function MorphemeGlossInput({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
         if (!disabled && draft !== committed) {
-          const held = dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
-          // Parked in the global-edit modal: revert to the committed gloss so a canceled modal
-          // doesn't strand the abandoned draft (and re-prompt on the next blur). An applied
-          // "update all" / "fork" choice updates `committed`, which the sync effect mirrors back.
-          if (held) setDraft(committed);
+          dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
         }
       }}
       type="text"

@@ -547,6 +547,65 @@ describe('useGlossDispatch — global-edit confirmation', () => {
     expect(saved.tokenAnalyses).toHaveLength(1);
     expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'b' });
   });
+
+  it('clears a shared gloss without prompting, forking so only this token is cleared', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    // Clearing only affects this token (the reducer forks a shared payload on clear), so it never
+    // fans out — no modal, and the clear commits immediately rather than offering an "update all"
+    // the reducer cannot honor for a clear.
+    expect(screen.queryByTestId('global-edit-update-all')).not.toBeInTheDocument();
+    expect(screen.getByTestId('gloss')).toBeEmptyDOMElement();
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // tok-1's link is gone; tok-2 keeps the shared 'a'.
+    expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1')).toBeUndefined();
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok2Analysis?.gloss).toStrictEqual({ und: 'a' });
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('drops a second global edit instead of overwriting the one already held', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+        confirmGlobalEdits
+      >
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+        <GlossWriter tokenRef="tok-2" surfaceText="word" value="c" />
+      </AnalysisStoreProvider>,
+    );
+
+    const [writeTok1, writeTok2] = screen.getAllByRole('button', { name: 'write' });
+    // The first edit is held in the modal; a second shared-payload edit while it is open is dropped
+    // rather than parked over the first.
+    await userEvent.click(writeTok1);
+    await userEvent.click(writeTok2);
+
+    await userEvent.click(screen.getByTestId('global-edit-update-all'));
+
+    // "Update all" applied the first held edit ('b'), not the dropped second ('c').
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'b' });
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('morpheme edits — global-edit confirmation', () => {

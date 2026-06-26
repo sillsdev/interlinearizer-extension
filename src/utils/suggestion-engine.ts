@@ -148,6 +148,37 @@ export function deriveTokenSuggestion(
   };
 }
 
+/** One renderable suggestion entry: a payload id paired with its gloss in the active language. */
+export interface GlossedSuggestionEntry {
+  /** The matching payload's id — the approve/promote target and the React key. */
+  id: string;
+  /** The payload's gloss in the active analysis language; never blank (blank entries are dropped). */
+  gloss: string;
+}
+
+/**
+ * Flattens a {@link TokenSuggestion} into the entries the gloss UI renders, in rank order (the
+ * suggested pick first, then candidates), keeping only those that carry a non-blank gloss in
+ * `analysisLanguage`. Centralizes the suggestion-presentation policy — which matches are renderable
+ * and how a blank-in-active-language pick falls through to the next-ranked one rather than being
+ * shown as an empty button — so every surface that shows suggestions ranks them identically instead
+ * of re-deriving it from the raw {@link TokenSuggestion}.
+ *
+ * @param suggestion - The derived suggestion, or `undefined` when the token has none.
+ * @param analysisLanguage - BCP 47 tag whose gloss to read from each matching payload.
+ * @returns The glossed entries in rank order; empty when there is no suggestion or none carry a
+ *   gloss in the active language.
+ */
+export function glossedSuggestionEntries(
+  suggestion: TokenSuggestion | undefined,
+  analysisLanguage: string,
+): GlossedSuggestionEntry[] {
+  if (!suggestion) return [];
+  return [suggestion.suggested, ...suggestion.candidates]
+    .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
+    .filter((entry) => entry.gloss !== '');
+}
+
 /**
  * Equality predicate for two {@link ResolvedTokenAnalysis} results, for use as a `useSelector`
  * `equalityFn` so a per-token subscription stays referentially stable across unrelated store

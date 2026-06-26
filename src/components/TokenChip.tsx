@@ -18,6 +18,7 @@ import {
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 import { statusTextColorClass } from '../utils/status-colors';
+import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_editMorphemes%',
@@ -173,20 +174,17 @@ export function TokenChip({
   // suggestion, so it never reaches this branch.
   const suggestion = resolved?.status === 'suggested' ? resolved : undefined;
   // Memoized on the (reference-stable) suggestion and active language so typing a gloss — which only
-  // changes local draft state — never re-runs this map/filter; it recomputes only when the suggestion
-  // or language actually changes.
+  // changes local draft state — never re-runs the engine's flatten/filter; it recomputes only when
+  // the suggestion or language actually changes.
   const glossedRanked = useMemo(
-    () =>
-      (suggestion ? [suggestion.suggested, ...suggestion.candidates] : [])
-        .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
-        .filter((entry) => entry.gloss !== ''),
+    () => glossedSuggestionEntries(suggestion, analysisLanguage),
     [suggestion, analysisLanguage],
   );
   const showSuggestionUi = showSuggestions && !disabled && draft === '' && glossedRanked.length > 0;
   const acceptEntry = showSuggestionUi ? glossedRanked[0] : undefined;
-  const candidateEntries = showSuggestionUi
-    ? glossedRanked.slice(1, 1 + MAX_VISIBLE_CANDIDATES)
-    : [];
+  // Candidates only render inside `acceptEntry && (...)`, so gate them on `acceptEntry` — the one
+  // condition that governs their rendering — rather than re-deriving `showSuggestionUi`.
+  const candidateEntries = acceptEntry ? glossedRanked.slice(1, 1 + MAX_VISIBLE_CANDIDATES) : [];
 
   // The X button is positioned outside the <label>, and the label is bound to the gloss input with
   // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the

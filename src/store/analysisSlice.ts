@@ -1003,10 +1003,8 @@ const selectApprovedTokenCountByAnalysisId = createSelector(
 export function selectApprovedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
   if (!approvedId) return 0;
-  const count = selectApprovedTokenCountByAnalysisId(state).get(approvedId);
-  /* v8 ignore next -- approvedId comes from the same approved map, so its count is always present */
-  if (count === undefined) return 0;
-  return count;
+  /* v8 ignore next -- approvedId comes from the same approved map this counts, so its count is always present; the `?? 0` only satisfies the optional Map.get return type */
+  return selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
 }
 
 /**

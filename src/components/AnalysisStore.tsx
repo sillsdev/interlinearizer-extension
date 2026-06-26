@@ -77,13 +77,15 @@ type CallbackRefs = {
    * Shared global-edit gate for any human edit that fans out across a shared `TokenAnalysis`
    * payload. Runs `commit` immediately, unless `confirmGlobalEdits` is on and the token's payload
    * is shared by more than one token — then the choice is held for
-   * {@link GlobalEditConfirmationModal}, where `commit` applies the edit to every sharing token and
-   * `forkAndCommit` forks a per-instance copy first. Returns whether the edit was held (`true`)
-   * rather than committed (`false`). One gate serves every fan-out edit kind — gloss and morpheme —
-   * so they all prompt consistently; the per-token clear/delete paths fork in the reducer and do
-   * not route through it.
+   * {@link GlobalEditConfirmationModal}, where "update all" runs `commit` against the shared payload
+   * and "fork" forks a per-instance copy ({@link forkAnalysisForToken}) before running the same
+   * `commit`. The gate owns the fork so every caller passes only its `commit`. Returns whether the
+   * edit was held (`true`) rather than committed (`false`). One gate serves every fan-out edit kind
+   * — gloss and morpheme — so they all prompt consistently; the per-token clear/delete paths fork
+   * in the reducer and do not route through it. While an edit is already held, a further gated edit
+   * is dropped (reported as held so its input reverts) rather than overwriting the parked edit.
    */
-  gateEdit: (tokenRef: string, commit: () => void, forkAndCommit: () => void) => boolean;
+  gateEdit: (tokenRef: string, commit: () => void) => boolean;
   /**
    * Whether un-approved tokens should render the engine's derived suggestion
    * ({@link useShowSuggestions}). Carried on the provider so the demo toggle reaches every gloss
@@ -214,20 +216,37 @@ export function AnalysisStoreProvider({
   }, []);
 
   // Holds an edit while the global-edit confirmation modal is open. Set only when
-  // `confirmGlobalEdits` is on and the edited payload is shared by more than one token.
+  // `confirmGlobalEdits` is on and the edited payload is shared by more than one token. Mirrored
+  // into a ref so `gateEdit` can see whether a modal is already open without taking `pendingEdit`
+  // as a dependency (which would rebuild the gate, and every dispatch hook through it, on each
+  // open/close).
   const [pendingEdit, setPendingEdit] = useState<PendingGlobalEdit | undefined>(undefined);
+  const pendingEditRef = useRef(pendingEdit);
+  pendingEditRef.current = pendingEdit;
 
   // Shared gate for every fan-out edit (gloss and morpheme). Runs `commit` immediately unless
   // confirmation is on and the token's payload is shared by more than one token, in which case the
   // choice is held for the modal. The count is read before the write so a brand-new analysis (no
-  // approved payload yet, count 0) never prompts. Returns whether the edit was held, so a
-  // commit-on-blur input can revert its uncommitted draft.
+  // approved payload yet, count 0) never prompts. The gate owns the fork so callers pass only their
+  // `commit`. Returns whether the edit was held, so a commit-on-blur input can revert its
+  // uncommitted draft.
   const gateEdit = useCallback(
-    (tokenRef: string, commit: () => void, forkAndCommit: () => void): boolean => {
+    (tokenRef: string, commit: () => void): boolean => {
       if (confirmGlobalEdits) {
+        // A modal is already holding an edit. Don't overwrite it (that would silently drop the
+        // parked edit) and don't fan this one out behind the open modal — report it as held so its
+        // input reverts, discarding only this second edit.
+        if (pendingEditRef.current) return true;
         const count = selectApprovedLinkCountForPayload(store.getState().analysis, tokenRef);
         if (count > 1) {
-          setPendingEdit({ count, commit, forkAndCommit });
+          setPendingEdit({
+            count,
+            commit,
+            forkAndCommit: () => {
+              store.dispatch(forkAnalysisForToken(tokenRef));
+              commit();
+            },
+          });
           return true;
         }
       }
@@ -250,19 +269,21 @@ export function AnalysisStoreProvider({
   );
 
   // The gloss-write entry point exposed to inputs: routes a gloss edit through the shared gate, so a
-  // gloss edit to a payload shared by more than one token prompts before fanning out. "Fork" repoints
-  // this token's approved link to a private clone, then the same write lands on the clone.
+  // gloss edit to a payload shared by more than one token prompts before fanning out. A blank value
+  // clears this token's gloss; the reducer forks a shared payload on clear so the clear only affects
+  // this token, so a clear never fans out and skips the gate (matching the documented design that
+  // clear paths fork in the reducer rather than prompting) — otherwise the modal would offer an
+  // "update all" that the reducer can't honor for a clear.
   const requestGlossEdit = useCallback(
-    (tokenRef: string, surfaceText: string, value: string) =>
-      gateEdit(
-        tokenRef,
-        () => commitGloss(tokenRef, surfaceText, value),
-        () => {
-          store.dispatch(forkAnalysisForToken(tokenRef));
-          commitGloss(tokenRef, surfaceText, value);
-        },
-      ),
-    [gateEdit, commitGloss, store],
+    (tokenRef: string, surfaceText: string, value: string) => {
+      const commit = () => commitGloss(tokenRef, surfaceText, value);
+      if (value.trim() === '') {
+        commit();
+        return false;
+      }
+      return gateEdit(tokenRef, commit);
+    },
+    [gateEdit, commitGloss],
   );
 
   const callbackRefs = useMemo(
@@ -544,10 +565,7 @@ export function useMorphemeBreakdownDispatch(): (
         dispatch(writeMorphemes(tokenRef, surfaceText, forms, writingSystem));
         save();
       };
-      callbacks.gateEdit(tokenRef, commit, () => {
-        dispatch(forkAnalysisForToken(tokenRef));
-        commit();
-      });
+      callbacks.gateEdit(tokenRef, commit);
     },
     [dispatch, save, callbacks],
   );
@@ -600,10 +618,7 @@ export function useMorphemeGlossDispatch(): (
         dispatch(writeMorphemeGloss({ tokenRef, morphemeId, value }));
         save();
       };
-      return callbacks.gateEdit(tokenRef, commit, () => {
-        dispatch(forkAnalysisForToken(tokenRef));
-        commit();
-      });
+      return callbacks.gateEdit(tokenRef, commit);
     },
     [dispatch, save, callbacks],
   );

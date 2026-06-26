@@ -3,6 +3,15 @@
 import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 
 /**
+ * Memoizes {@link normalizeSurfaceForm} by raw input string. The same surface forms are normalized
+ * over and over — once per visible un-approved token on every store dispatch (the suggestion derive
+ * path) plus the dedupe scans on every write — yet the result is a pure function of the input. The
+ * key space is the project's vocabulary, so the cache stays bounded; entries never go stale because
+ * normalization is deterministic.
+ */
+const normalizedFormCache = new Map<string, string>();
+
+/**
  * Normalizes a token surface form for matching and dedupe so trivial Unicode and case differences
  * never split one analysis into two. Applies Unicode NFC (so a composed `é` matches a decomposed
  * `e` + combining acute), then a locale-independent lowercase (so a sentence-initial `"The"`
@@ -12,13 +21,19 @@ import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
  * lowercasing — `String.prototype.toLowerCase`, not `toLocaleLowerCase` — is deliberate so the
  * result does not depend on the host's locale; the trade-off is that locale-specific folds are not
  * applied (e.g. a Turkish dotted `İ` is not folded to an ASCII `i`), an accepted miss that can only
- * cost a suggestion, never produce a wrong one.
+ * cost a suggestion, never produce a wrong one. The result is memoized per raw input
+ * ({@link normalizedFormCache}) so the per-token derive path does not re-run three Unicode passes
+ * for a constant surface form on every store change.
  *
  * @param text - The raw surface text to normalize.
  * @returns The case-folded surface form in NFC.
  */
 export function normalizeSurfaceForm(text: string): string {
-  return text.normalize('NFC').toLowerCase().normalize('NFC');
+  const cached = normalizedFormCache.get(text);
+  if (cached !== undefined) return cached;
+  const normalized = text.normalize('NFC').toLowerCase().normalize('NFC');
+  normalizedFormCache.set(text, normalized);
+  return normalized;
 }
 
 /**

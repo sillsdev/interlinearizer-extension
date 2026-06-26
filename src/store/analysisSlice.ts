@@ -632,7 +632,9 @@ const analysisSlice = createSlice({
       const lang = state.analysisLanguage;
 
       const resolved = resolveApprovedAnalysis(state, tokenRef);
-      const morpheme = resolved?.analysis.morphemes?.find((m) => m.id === morphemeId);
+      if (!resolved) return;
+      const { analysis } = resolved;
+      const morpheme = analysis.morphemes?.find((m) => m.id === morphemeId);
       if (!morpheme) return;
 
       if (value.trim() === '') {
@@ -646,7 +648,7 @@ const analysisSlice = createSlice({
         // (an edit re-merges, a clear back to the sibling's state leaves a duplicate the suggestion
         // pool would double-count), and unlike writeGloss this clear keeps the morpheme record, so
         // the duplicate payload survives rather than being reclaimed.
-        mergeIntoIdenticalPayload(state, resolved.analysis);
+        mergeIntoIdenticalPayload(state, analysis);
         return;
       }
 
@@ -656,7 +658,7 @@ const analysisSlice = createSlice({
       // in place can make this payload identical to an existing one (e.g. a homograph whose only
       // difference was this morpheme's gloss); re-converge so the dedupe the create path guarantees
       // on first write also holds after morpheme gloss edits (mirrors writeGloss/writeMorphemes).
-      mergeIntoIdenticalPayload(state, resolved.analysis);
+      mergeIntoIdenticalPayload(state, analysis);
     },
     forkAnalysisForToken: {
       /**

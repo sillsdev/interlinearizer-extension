@@ -21,6 +21,8 @@ beforeEach(() => {
   jest
     .mocked(useLocalizedStrings)
     .mockReturnValue([{ '%interlinearizer_glossInput_placeholder%': 'gloss' }, false]);
+  // jsdom does not implement scrollIntoView; the dropdown calls it to keep the active row in view.
+  Element.prototype.scrollIntoView = jest.fn();
 });
 
 /**

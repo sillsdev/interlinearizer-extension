@@ -275,10 +275,17 @@ export function TokenChip({
         closeSuggestions();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        // activeIndex -1 (nothing highlighted) falls back to the top row; the list is non-empty
-        // whenever the dropdown is open, so a pick always exists.
+        // activeIndex -1 (nothing highlighted) falls back to the top row. The list is normally
+        // non-empty while open, but glossedRanked can empty out after open (a row approved away),
+        // leaving suggestionsOpen stale while the dropdown is unmounted — guard so Enter closes
+        // rather than dereferencing an absent pick.
+        // activeIndex -1 (nothing highlighted) falls back to the top row. The list is normally
+        // non-empty while open, but glossedRanked can empty out after open (a row approved away)
+        // while suggestionsOpen is still true, so guard rather than dereference an absent pick.
         const pick = glossedRanked[activeIndex] ?? glossedRanked[0];
-        selectSuggestion(pick.id);
+        if (pick) selectSuggestion(pick.id);
+        /* v8 ignore next -- defensive: the empty-pick race above is not reachable from the call sites */ else
+          closeSuggestions();
       }
     } else if (e.key === 'ArrowDown' && hasSuggestions) {
       e.preventDefault();

@@ -5,7 +5,7 @@
  *   the clipping and stacking of the interlinear view's scroll viewports and token-row stacking
  *   contexts.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 import { statusTextColorClass } from '../utils/status-colors';
@@ -82,7 +82,9 @@ export default function SuggestionDropdown({
   // it moves, then close only once the anchor has scrolled out of the viewport (a far user scroll
   // that abandons this token). A capture listener catches scrolls of ancestor viewports; scrolls of
   // the panel's own overflow are ignored so a long list can be scrolled without moving or closing it.
-  useEffect(() => {
+  // Layout effect so the first measurement runs before paint — otherwise the portaled panel flashes
+  // at the default top-left before snapping under the anchor.
+  useLayoutEffect(() => {
     const anchor = anchorRef.current;
     /* v8 ignore next -- the chip only mounts this while the input (the anchor) is rendered */
     if (!anchor) return undefined;
@@ -108,6 +110,15 @@ export default function SuggestionDropdown({
       window.removeEventListener('scroll', handleScroll, true);
     };
   }, [anchorRef, onRequestClose]);
+
+  // Keep the keyboard-highlighted row inside the panel's scroll window. Arrow navigation moves
+  // activeIndex past the visible edge of the max-h-48 overflow without this; scrollIntoView with
+  // block: 'nearest' only scrolls when the row is actually clipped, so it leaves an in-view row put.
+  useLayoutEffect(() => {
+    if (activeIndex < 0) return;
+    const active = listRef.current?.querySelector(`#${CSS.escape(optionId(activeIndex))}`);
+    active?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex, optionId, entries]);
 
   return createPortal(
     <ul

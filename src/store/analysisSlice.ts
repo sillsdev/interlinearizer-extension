@@ -616,6 +616,11 @@ const analysisSlice = createSlice({
      * itself is kept (a breakdown is content in its own right), so unlike `writeGloss` this never
      * removes the enclosing analysis.
      *
+     * Both the write and the clear are identity-changing edits, so each re-converges onto an
+     * existing content-identical payload ({@link mergeIntoIdenticalPayload}) — keeping the create
+     * path's dedupe invariant symmetric across both directions, so a clear back to a sibling's
+     * state never leaves a duplicate.
+     *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the morpheme gloss payload.
      */
@@ -635,11 +640,23 @@ const analysisSlice = createSlice({
           delete morpheme.gloss[lang];
           if (Object.keys(morpheme.gloss).length === 0) delete morpheme.gloss;
         }
+        // Clearing a morpheme gloss is itself an identity-changing edit: dropping the gloss can make
+        // this payload identical to a sibling whose only difference was that gloss, so re-converge
+        // here too — the write branch below does the same. Without this the dedupe is asymmetric
+        // (an edit re-merges, a clear back to the sibling's state leaves a duplicate the suggestion
+        // pool would double-count), and unlike writeGloss this clear keeps the morpheme record, so
+        // the duplicate payload survives rather than being reclaimed.
+        mergeIntoIdenticalPayload(state, resolved.analysis);
         return;
       }
 
       if (!morpheme.gloss) morpheme.gloss = {};
       morpheme.gloss[lang] = value;
+      // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing one
+      // in place can make this payload identical to an existing one (e.g. a homograph whose only
+      // difference was this morpheme's gloss); re-converge so the dedupe the create path guarantees
+      // on first write also holds after morpheme gloss edits (mirrors writeGloss/writeMorphemes).
+      mergeIntoIdenticalPayload(state, resolved.analysis);
     },
     forkAnalysisForToken: {
       /**

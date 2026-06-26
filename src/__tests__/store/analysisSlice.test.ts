@@ -1576,6 +1576,105 @@ describe('writeMorphemeGloss', () => {
       store.getState().analysis.analysis.tokenAnalyses[0].morphemes?.[0].gloss,
     ).toBeUndefined();
   });
+
+  it('re-converges onto an identical sibling after a morpheme gloss edit', () => {
+    // Two payloads for "cats" differ only in morpheme-0's gloss; glossing tok-1's morpheme to match
+    // tok-2's makes them content-identical, so the two payloads should collapse back onto one.
+    const ta1: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-1', form: 'cat', writingSystem: 'und' },
+        { id: 'm-2', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const ta2: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-3', form: 'cat', writingSystem: 'und', gloss: { und: 'feline' } },
+        { id: 'm-4', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [ta1, ta2],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'cats' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'cats' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: 'feline' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
+  it('re-converges onto an identical sibling after clearing a morpheme gloss', () => {
+    // Two payloads for "cats" differ only in that tok-1's morpheme-0 carries a stray gloss; clearing
+    // it makes the two payloads content-identical, so they should collapse back onto one — the clear
+    // path must re-converge symmetrically with the write path, not leave a duplicate behind.
+    const ta1: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-1', form: 'cat', writingSystem: 'und', gloss: { und: 'feline' } },
+        { id: 'm-2', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const ta2: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-3', form: 'cat', writingSystem: 'und' },
+        { id: 'm-4', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [ta1, ta2],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'cats' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'cats' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: '' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
 });
 
 describe('selectApprovedMorphemes', () => {

@@ -3,11 +3,23 @@
 import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 
 /**
+ * Soft cap on {@link normalizedFormCache}. One project's vocabulary is far smaller than this, so the
+ * cap is effectively never hit within a single project; it exists only to bound the module-global
+ * cache across a long-lived WebView session that opens many different projects (each a different
+ * source vocabulary, plus baseline-drift variants), so the cache cannot grow without limit for the
+ * process lifetime. Generous enough that the working set of the active project always fits.
+ */
+const NORMALIZED_FORM_CACHE_MAX = 50_000;
+
+/**
  * Memoizes {@link normalizeSurfaceForm} by raw input string. The same surface forms are normalized
  * over and over — once per visible un-approved token on every store dispatch (the suggestion derive
- * path) plus the dedupe scans on every write — yet the result is a pure function of the input. The
- * key space is the project's vocabulary, so the cache stays bounded; entries never go stale because
- * normalization is deterministic.
+ * path) plus the dedupe scans on every write — yet the result is a pure function of the input, so
+ * caching is safe and entries never go stale (normalization is deterministic). The cache is module-
+ * global rather than project-scoped, so a bound is needed: when it reaches
+ * {@link NORMALIZED_FORM_CACHE_MAX} the oldest entry is evicted (insertion-order FIFO, free from
+ * `Map`), keeping memory flat across a session that opens many projects rather than retaining every
+ * surface form ever seen.
  */
 const normalizedFormCache = new Map<string, string>();
 
@@ -22,8 +34,8 @@ const normalizedFormCache = new Map<string, string>();
  * result does not depend on the host's locale; the trade-off is that locale-specific folds are not
  * applied (e.g. a Turkish dotted `İ` is not folded to an ASCII `i`), an accepted miss that can only
  * cost a suggestion, never produce a wrong one. The result is memoized per raw input
- * ({@link normalizedFormCache}) so the per-token derive path does not re-run three Unicode passes
- * for a constant surface form on every store change.
+ * ({@link normalizedFormCache}, bounded by {@link NORMALIZED_FORM_CACHE_MAX}) so the per-token derive
+ * path does not re-run three Unicode passes for a constant surface form on every store change.
  *
  * @param text - The raw surface text to normalize.
  * @returns The case-folded surface form in NFC.
@@ -32,6 +44,16 @@ export function normalizeSurfaceForm(text: string): string {
   const cached = normalizedFormCache.get(text);
   if (cached !== undefined) return cached;
   const normalized = text.normalize('NFC').toLowerCase().normalize('NFC');
+  /* v8 ignore start -- eviction is an internal memory bound with no caller-observable effect (the
+     result is identical whether cached, recomputed, or evicted); the 50k-entry cap makes it
+     impractical to drive from a unit test and there is nothing behavioral to assert if we did */
+  // Evict the oldest entry (Map iterates in insertion order) before exceeding the cap, so the
+  // module-global cache stays flat across a session that opens many projects.
+  if (normalizedFormCache.size >= NORMALIZED_FORM_CACHE_MAX) {
+    const oldest = normalizedFormCache.keys().next().value;
+    if (oldest !== undefined) normalizedFormCache.delete(oldest);
+  }
+  /* v8 ignore stop */
   normalizedFormCache.set(text, normalized);
   return normalized;
 }

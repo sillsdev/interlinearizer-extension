@@ -8,7 +8,7 @@
  *   human decisions are stored. The pool is the set of approved analyses in the current draft.
  */
 
-import type { TokenAnalysis } from 'interlinearizer';
+import type { AssignmentStatus, TokenAnalysis } from 'interlinearizer';
 import { normalizeSurfaceForm } from './analysis-identity';
 
 /**
@@ -154,35 +154,72 @@ export function deriveTokenSuggestion(
   };
 }
 
-/** One renderable suggestion entry: a payload id paired with its gloss in the active language. */
+/**
+ * One renderable suggestion entry: a payload id, its gloss in the active language, and the
+ * assignment status the UI colors and labels it by.
+ */
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */
   id: string;
   /** The payload's gloss in the active analysis language; never blank (blank entries are dropped). */
   gloss: string;
+  /**
+   * How the row is offered: `'suggested'` for the engine's pick on an un-approved token (green,
+   * "accept"), or `'candidate'` for every promotable alternative (blue, "promote"). Carried on the
+   * entry — rather than re-derived from row position by the renderer — so dropping a blank-in-
+   * language pick can never leave a candidate masquerading as the accept row.
+   */
+  status: Extract<AssignmentStatus, 'suggested' | 'candidate'>;
 }
 
 /**
- * Flattens a {@link TokenSuggestion} into the entries the gloss UI renders, in rank order (the
- * suggested pick first, then candidates), keeping only those that carry a non-blank gloss in
- * `analysisLanguage`. Centralizes the suggestion-presentation policy — which matches are renderable
- * and how a blank-in-active-language pick falls through to the next-ranked one rather than being
- * shown as an empty button — so every surface that shows suggestions ranks them identically instead
- * of re-deriving it from the raw {@link TokenSuggestion}.
+ * Flattens the merged per-token read into the entries the gloss UI renders, in rank order, keeping
+ * only those that carry a non-blank gloss in `analysisLanguage`. Centralizes the
+ * suggestion-presentation policy in one place: which matches are renderable, how a blank-in-active-
+ * language pick falls through to the next-ranked one rather than showing an empty button, the
+ * already-approved payload's exclusion from its own promote list, and — critically — each row's
+ * assignment status, so every surface ranks, colors, and labels suggestions identically instead of
+ * re-deriving any of it from the raw {@link TokenSuggestion} or from row position.
  *
- * @param suggestion - The derived suggestion, or `undefined` when the token has none.
+ * For an un-approved (`'suggested'`) token the highest-ranked renderable match is offered as
+ * `'suggested'` (the green "accept" row) and the rest as `'candidate'` (blue "promote"). The status
+ * is assigned _after_ dropping blank-in-language picks, so when the engine's top pick has no gloss
+ * in the active language the next-ranked glossed match correctly becomes the accept row rather than
+ * the whole suggestion vanishing. For an already-approved token every pool peer is a `'candidate'`
+ * (promote) — the approved payload itself is excluded, and there is no accept row, so even the top
+ * row reads as a promotion rather than masquerading as an "accept the suggestion" row.
+ *
+ * @param resolved - The token's merged approved/suggested read, or `undefined` when it has neither.
  * @param analysisLanguage - BCP 47 tag whose gloss to read from each matching payload.
- * @returns The glossed entries in rank order; empty when there is no suggestion or none carry a
- *   gloss in the active language.
+ * @returns The glossed entries in rank order; empty when there is nothing renderable.
  */
 export function glossedSuggestionEntries(
-  suggestion: TokenSuggestion | undefined,
+  resolved: ResolvedTokenAnalysis | undefined,
   analysisLanguage: string,
 ): GlossedSuggestionEntry[] {
-  if (!suggestion) return [];
-  return [suggestion.suggested, ...suggestion.candidates]
+  if (!resolved) return [];
+  // The ranked payloads to offer, best-first. For an approved token its own payload is excluded so
+  // only genuine alternatives remain; for an un-approved token the engine's pick leads.
+  let ranked: readonly TokenAnalysis[];
+  if (resolved.status === 'suggested') {
+    ranked = [resolved.suggested, ...resolved.candidates];
+  } else {
+    const pool = resolved.poolSuggestion;
+    if (!pool) return [];
+    ranked = [pool.suggested, ...pool.candidates].filter((a) => a.id !== resolved.analysis.id);
+  }
+  const glossed = ranked
     .map((analysis) => ({ id: analysis.id, gloss: analysis.gloss?.[analysisLanguage] ?? '' }))
     .filter((entry) => entry.gloss !== '');
+  // Assign status by post-filter rank: only an un-approved token has an "accept" row (its top
+  // renderable match); an approved token offers only promotions. Done after the blank filter so a
+  // dropped top pick promotes the next-ranked glossed match to the accept row rather than leaving a
+  // candidate masquerading as it.
+  const hasAccept = resolved.status === 'suggested';
+  return glossed.map((entry, index) => ({
+    ...entry,
+    status: hasAccept && index === 0 ? 'suggested' : 'candidate',
+  }));
 }
 
 /**

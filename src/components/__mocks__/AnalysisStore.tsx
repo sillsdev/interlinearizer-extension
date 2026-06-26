@@ -8,12 +8,12 @@ import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 type GlossMap = Record<string, string>;
 type MockCtxValue = {
   glosses: GlossMap;
-  dispatch: (tokenRef: string, surfaceText: string, value: string) => boolean;
+  dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
   language: string;
 };
 const MockCtx = createContext<MockCtxValue>({
   glosses: {},
-  dispatch: () => false,
+  dispatch: () => {},
   language: 'und',
 });
 
@@ -54,8 +54,6 @@ export function AnalysisStoreProvider({
     (tokenRef: string, _surfaceText: string, value: string) => {
       setGlosses((prev) => ({ ...prev, [tokenRef]: value }));
       onGlossChange?.(tokenRef, value);
-      // The mock has no global-edit gate, so an edit is never held — always reports "committed".
-      return false;
     },
     [onGlossChange],
   );
@@ -132,8 +130,7 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 }
 
 /**
- * Returns a no-op dispatch for writing morpheme glosses in mock context. Reports "committed" (never
- * held), matching the real hook's boolean return.
+ * Returns a no-op dispatch for writing morpheme glosses in mock context.
  *
  * @returns A no-op function matching the real signature.
  */
@@ -141,8 +138,8 @@ export function useMorphemeGlossDispatch(): (
   tokenRef: string,
   morphemeId: string,
   value: string,
-) => boolean {
-  return () => false;
+) => void {
+  return () => {};
 }
 
 /**

@@ -442,29 +442,30 @@ const analysisSlice = createSlice({
         const resolved = resolveApprovedAnalysis(state, tokenRef);
         if (resolved) {
           const { link, analysis } = resolved;
-          analysis.surfaceText = surfaceText;
+          // Both the edit and the clear are per-token: when the payload is shared, fork this token
+          // onto a private clone first and mutate that, so the co-linked tokens keep the shared gloss
+          // instead of being rewritten or stranded by an edit aimed at this one. (Global "edit every
+          // occurrence" is deferred; see user-questions.md "separating per-token edits from global
+          // analysis edits".) Surface text is refreshed on the fork (not the shared original) so a
+          // co-linked sibling's payload is never rewritten — mirroring writeMorphemes.
+          const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
+            ? forkSharedAnalysis(state, link, analysis, id)
+            : analysis;
+          target.surfaceText = surfaceText;
           link.token.surfaceText = surfaceText;
           if (isBlank) {
-            // Clearing removes this token's analysis. When the payload is shared, fork this token
-            // onto a private clone first and clear that, so the co-linked tokens keep the shared
-            // gloss instead of being stranded on a payload this clear emptied.
-            const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-              ? forkSharedAnalysis(state, link, analysis, id)
-              : analysis;
             if (target.gloss) {
               delete target.gloss[lang];
               if (Object.keys(target.gloss).length === 0) delete target.gloss;
             }
+            // When the clear empties the analysis, detach it; otherwise the cleared payload (e.g. one
+            // left holding only morphemes) can be identical to an existing sibling, so re-converge —
+            // mirroring writeMorphemeGloss's clear path so a clear never leaves a duplicate the
+            // suggestion pool would double-count.
             if (isEmptyTokenAnalysis(target)) detachTokenAnalysisLink(state, target, link);
+            else mergeIntoIdenticalPayload(state, target);
             return;
           }
-          // A gloss edit is per-token: when the payload is shared, fork this token onto a private
-          // clone first and edit that, so the co-linked tokens keep the shared gloss instead of being
-          // rewritten by an edit aimed at this one. (Global "edit every occurrence" is deferred; see
-          // user-questions.md "separating per-token edits from global analysis edits".)
-          const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
-            ? forkSharedAnalysis(state, link, analysis, id)
-            : analysis;
           if (!target.gloss) target.gloss = {};
           target.gloss[lang] = value;
           // An in-place edit can make this payload identical to an existing one (e.g. a homograph
@@ -712,23 +713,27 @@ const analysisSlice = createSlice({
       },
     },
     /**
-     * Approves an existing shared `TokenAnalysis` payload for a token by appending one approved
-     * `TokenAnalysisLink` from the token to that payload's id — the persisted half of accepting a
+     * Approves a shared `TokenAnalysis` payload for a token — the persisted half of accepting a
      * suggestion or promoting a candidate (see {@link selectResolvedTokenAnalysis}). No new payload
      * is created (unlike {@link writeGloss}'s find-or-create); the chosen payload's approval
      * frequency rises by one and the token's derived suggestion disappears now that it carries its
      * own approved decision.
      *
-     * Self-protects the "at most one approved link per token" invariant: if the token already has
-     * an approved analysis this is a no-op, so a stray double-dispatch or a future caller can never
-     * append a second approved link — the UI only offers accept/promote on un-approved tokens, but
-     * the reducer no longer relies on that alone. Resolving through {@link resolveApprovedAnalysis}
-     * also repairs an orphaned approved link first: a token whose approved link the read selectors
-     * ignore (it points at a missing payload) still shows a suggestion, so accepting it must heal
-     * the orphan and proceed rather than be blocked by it. Symmetrically, an `analysisId` that
-     * resolves to no stored payload is rejected (no-op) rather than appended as a fresh orphan. The
-     * link's snapshot records _this_ token's `surfaceText` (not the shared payload's), matching
-     * {@link appendApprovedAnalysis} so per-token drift detection stays accurate.
+     * When the token already has an approved analysis the existing link is **repointed** to the
+     * chosen payload rather than a second link being appended, so the "at most one approved link
+     * per token" invariant is preserved while still letting an already-approved homograph be
+     * promoted to a different pool analysis (the affordance {@link selectResolvedTokenAnalysis}
+     * offers on approved tokens). Repointing through {@link resolveApprovedAnalysis} also reuses its
+     * last-wins/orphan-repair handling, so the swap lands on the same link the read selectors
+     * surface and an orphaned approved link is healed first rather than blocking the promotion.
+     * When the existing approval already points at the chosen payload the repoint is a no-op.
+     * Detaching the old payload after the repoint reclaims it when this was its last approved
+     * reference, so a promotion never strands an empty payload.
+     *
+     * An `analysisId` that resolves to no stored payload is rejected (no-op) rather than approved
+     * as a fresh orphan. The link's snapshot records _this_ token's `surfaceText` (not the shared
+     * payload's), matching {@link appendApprovedAnalysis} so per-token drift detection stays
+     * accurate.
      *
      * @param state - Current slice state (Immer draft).
      * @param action - Action carrying the accepting `tokenRef`, its `surfaceText`, and the
@@ -740,11 +745,26 @@ const analysisSlice = createSlice({
       action: PayloadAction<{ tokenRef: string; surfaceText: string; analysisId: string }>,
     ) {
       const { tokenRef, surfaceText, analysisId } = action.payload;
-      if (resolveApprovedAnalysis(state, tokenRef)) return;
-      // Approve only a payload that actually exists: an unknown id would push an approved link that
-      // points at nothing, which the read selectors then have to repair as an orphan. Callers pass
-      // an id drawn from the live suggestion pool, but the reducer no longer relies on that alone.
+      // Approve only a payload that actually exists: an unknown id would point an approved link at
+      // nothing, which the read selectors then have to repair as an orphan. Callers pass an id drawn
+      // from the live suggestion pool, but the reducer no longer relies on that alone.
       if (!state.analysis.tokenAnalyses.some((ta) => ta.id === analysisId)) return;
+      const resolved = resolveApprovedAnalysis(state, tokenRef);
+      if (resolved) {
+        // Promote: repoint the one approved link to the chosen payload (a no-op when it already
+        // points there) instead of appending a second, then reclaim the old payload if this was its
+        // last approved reference.
+        const { link, analysis } = resolved;
+        if (link.analysisId === analysisId) return;
+        link.analysisId = analysisId;
+        link.token.surfaceText = surfaceText;
+        if (!isPayloadSharedByOtherLinks(state, link, analysis.id)) {
+          state.analysis.tokenAnalyses = state.analysis.tokenAnalyses.filter(
+            (ta) => ta !== analysis,
+          );
+        }
+        return;
+      }
       state.analysis.tokenAnalysisLinks.push({
         analysisId,
         status: 'approved',

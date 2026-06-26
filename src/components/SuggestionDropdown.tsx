@@ -39,13 +39,15 @@ type SuggestionDropdownProps = Readonly<{
 }>;
 
 /**
- * Renders the portaled suggestion listbox for a token's gloss combobox. Row 0 is the suggested pick
- * (green); the rest are candidates (blue), matching the inline coloring this replaced. The
- * keyboard-active row gets the same `bg-accent` background hovering applies, and hovering a row
- * sets the active index so only one row is ever highlighted. Each row suppresses its mouse-down
- * default so clicking it never blurs the input — focus stays in the input and the click selects
- * instead. The panel closes itself on outer scrolling (the anchor would drift); scrolling the
- * panel's own overflow is ignored so a long list can be scrolled without dismissing it.
+ * Renders the portaled suggestion listbox for a token's gloss combobox. Each row is colored and
+ * labeled by its own `status` — `'suggested'` (green, "accept") or `'candidate'` (blue, "promote")
+ * — carried on the entry rather than inferred from row position, so a dropped blank-in-language
+ * pick can never leave a candidate masquerading as the accept row. The keyboard-active row gets the
+ * same `bg-accent` background hovering applies, and hovering a row sets the active index so only
+ * one row is ever highlighted. Each row suppresses its mouse-down default so clicking it never
+ * blurs the input — focus stays in the input and the click selects instead. The panel closes itself
+ * on outer scrolling (the anchor would drift); scrolling the panel's own overflow is ignored so a
+ * long list can be scrolled without dismissing it.
  *
  * @param props - Component props (see {@link SuggestionDropdownProps}).
  * @returns A `document.body` portal containing the listbox, positioned under the anchor input.
@@ -132,13 +134,13 @@ export default function SuggestionDropdown({
         <li
           key={entry.id}
           aria-label={
-            index === 0
+            entry.status === 'suggested'
               ? `Accept suggestion ${entry.gloss} for ${surfaceText}`
               : `Promote ${entry.gloss} for ${surfaceText}`
           }
           aria-selected={index === activeIndex}
-          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-2 tw:py-0.5 tw:text-sm tw:italic ${index === 0 ? statusTextColorClass('suggested') : statusTextColorClass('candidate')}${index === activeIndex ? ' tw:bg-accent' : ''}`}
-          data-testid={index === 0 ? 'suggestion-accept' : 'suggestion-candidate'}
+          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-2 tw:py-0.5 tw:text-sm tw:italic ${statusTextColorClass(entry.status)}${index === activeIndex ? ' tw:bg-accent' : ''}`}
+          data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}
           id={optionId(index)}
           role="option"
           // Select on mouse-down, suppressing its default focus shift, so choosing a row never blurs

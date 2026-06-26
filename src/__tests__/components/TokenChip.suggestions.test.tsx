@@ -163,7 +163,7 @@ describe('TokenChip suggested placeholder', () => {
     const input = screen.getByLabelText('Gloss for logos');
     // Visible at a glance — no focus or hover — so the row reveals which tokens have a suggestion.
     expect(input).toHaveAttribute('placeholder', 'word');
-    expect(input.className).toContain('tw:placeholder:text-success-foreground');
+    expect(input.className).toContain('tw:placeholder:gloss-suggested');
   });
 
   it('falls back to the generic placeholder when the token has no suggestion', () => {
@@ -171,7 +171,7 @@ describe('TokenChip suggested placeholder', () => {
 
     const input = screen.getByLabelText('Gloss for unseen');
     expect(input).toHaveAttribute('placeholder', 'gloss');
-    expect(input.className).not.toContain('tw:placeholder:text-success-foreground');
+    expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
 
   it('uses the generic placeholder when suggestions are turned off', () => {
@@ -182,7 +182,7 @@ describe('TokenChip suggested placeholder', () => {
 
     const input = screen.getByLabelText('Gloss for logos');
     expect(input).toHaveAttribute('placeholder', 'gloss');
-    expect(input.className).not.toContain('tw:placeholder:text-success-foreground');
+    expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
 
   it('reverts to the generic placeholder once the user types a gloss', async () => {
@@ -194,7 +194,7 @@ describe('TokenChip suggested placeholder', () => {
 
     // With a non-empty draft the typed value shows, so the suggested ghost text no longer applies.
     expect(input).toHaveAttribute('placeholder', 'gloss');
-    expect(input.className).not.toContain('tw:placeholder:text-success-foreground');
+    expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
 });
 
@@ -250,8 +250,12 @@ describe('TokenChip suggestion dropdown', () => {
     const chevron = screen.getByTestId('suggestion-chevron');
     await userEvent.click(chevron);
 
-    const accept = screen.getByTestId('suggestion-accept');
-    expect(accept).toHaveTextContent('finance');
+    // On an already-approved token every alternative is a blue "promote" row, not the green "accept"
+    // row — there is no suggestion to accept, only candidates to promote to.
+    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    const promote = screen.getByTestId('suggestion-candidate');
+    expect(promote).toHaveTextContent('finance');
+    expect(promote.className).toContain('tw:gloss-candidate');
     // The already-approved 'riverbank' is excluded — only the alternative is offered.
     expect(screen.queryByText('riverbank')).not.toBeInTheDocument();
   });
@@ -531,10 +535,12 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
     await userEvent.keyboard('{ArrowDown}');
 
-    // The dropdown opens with nothing highlighted, offering the alternative payload.
+    // The dropdown opens with nothing highlighted, offering the alternative as a promote candidate
+    // (an approved token has no "accept the suggestion" row, only promotions).
     expect(input).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('finance');
-    expect(screen.getByTestId('suggestion-accept')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
+    expect(screen.getByTestId('suggestion-candidate')).toHaveAttribute('aria-selected', 'false');
     expect(onGlossChange).not.toHaveBeenCalled();
   });
 

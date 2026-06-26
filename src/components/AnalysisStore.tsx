@@ -165,9 +165,18 @@ export function AnalysisStoreProvider({
     if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
   }, []);
 
-  // The gloss-write entry point exposed to inputs. A gloss edit is per-token: the reducer forks a
-  // shared payload before writing (blank clears, non-blank edits), so editing one token never
-  // rewrites the others. Write, persist via `onSave`, then notify the `onGlossChange` spy.
+  /**
+   * The gloss-write entry point exposed to inputs. Dispatches {@link writeGloss} so the reducer
+   * applies a per-token edit — it forks a shared payload before writing (blank clears, non-blank
+   * edits), so editing one token never rewrites its co-linked siblings — then persists the updated
+   * analysis via `onSave` and notifies the `onGlossChange` spy with the edited token and value.
+   *
+   * @param tokenRef - `Token.ref` of the token being glossed.
+   * @param surfaceText - Surface text of the token, recorded so the analysis can detect baseline
+   *   drift.
+   * @param value - New gloss string; blank (empty or whitespace) clears the active language's
+   *   gloss.
+   */
   const requestGlossEdit = useCallback(
     (tokenRef: string, surfaceText: string, value: string) => {
       store.dispatch(writeGloss(tokenRef, surfaceText, value));

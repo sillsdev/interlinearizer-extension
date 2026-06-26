@@ -1899,8 +1899,55 @@ describe('approveAnalysisForToken', () => {
     expect(links.some((l) => l.token.tokenRef === 'tok-2')).toBe(false);
   });
 
-  it('is a no-op when the token already has an approved analysis (single-approved invariant)', () => {
-    // Guards against a stray double-dispatch creating a second approved link for one token.
+  it('repoints the existing approved link when promoting an already-approved token (no second link)', () => {
+    // Promoting an already-approved homograph to a different pool analysis must swap the one approved
+    // link in place rather than appending a second (preserving the single-approved invariant) or
+    // no-opping (which would silently fail the re-promotion the UI offers). A co-linked sibling keeps
+    // ta-1 alive, so the old payload survives.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved, other],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-sibling', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-2' }),
+    );
+
+    // The one approved link for tok-1 is repointed to ta-2 — not duplicated.
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-2');
+    // The sibling still approves ta-1, so the old payload survives.
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual([
+      'ta-1',
+      'ta-2',
+    ]);
+  });
+
+  it('reclaims the old payload when promoting an already-approved token off its last reference', () => {
+    // When the promoted-away payload has no other approved link, repointing leaves it orphaned, so
+    // it is dropped — a promotion never strands an empty payload.
     const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
     const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
     const store = createAnalysisStore({
@@ -1924,11 +1971,44 @@ describe('approveAnalysisForToken', () => {
       approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-2' }),
     );
 
-    // The existing approved link stands; no second approved link was appended.
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-2');
+    // ta-1 had no other approved reference, so it was reclaimed.
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-2']);
+  });
+
+  it('is a no-op when promoting an already-approved token to the analysis it already approves', () => {
+    // Re-approving the same payload changes nothing — the link already points there.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-1' }),
+    );
+
     const links = store
       .getState()
       .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
     expect(links).toHaveLength(1);
     expect(links[0].analysisId).toBe('ta-1');
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
   });
 });

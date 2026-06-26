@@ -174,29 +174,17 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // The pool entries to offer via the suggestion dropdown. For a suggested token this is the engine's
-  // derived pick plus candidates. For an approved token this is the pool alternatives only —
-  // the already-approved payload is filtered out so the dropdown only shows genuinely different
-  // choices (re-approving the same analysis via the dropdown would be a no-op). Row 0 is the green
-  // "accept"; the rest are blue "promote" candidates. Blank-in-active-language entries are dropped
-  // individually rather than shown as empty rows (see `user-questions.md` display #3).
-  const suggestion = useMemo(() => {
-    if (!resolved) return undefined;
-    if (resolved.status === 'suggested') return resolved;
-    const pool = resolved.poolSuggestion;
-    if (!pool) return undefined;
-    const approvedId = resolved.analysis.id;
-    // Keep only pool entries that are not the already-approved analysis.
-    const alternatives = [pool.suggested, ...pool.candidates].filter((a) => a.id !== approvedId);
-    if (alternatives.length === 0) return undefined;
-    return { suggested: alternatives[0], candidates: alternatives.slice(1) };
-  }, [resolved]);
-  // Memoized on the (reference-stable) suggestion and active language so typing a gloss — which only
-  // changes local draft state — never re-runs the engine's flatten/filter; it recomputes only when
-  // the suggestion or language actually changes.
+  // The pool entries to offer via the suggestion dropdown, with their accept/promote status. The
+  // engine flattens the resolved read into ranked, status-tagged rows: for a suggested token its
+  // pick (green "accept") plus candidates (blue "promote"); for an approved token the pool
+  // alternatives only (all blue "promote", the already-approved payload excluded). Blank-in-active-
+  // language entries are dropped individually rather than shown as empty rows (see
+  // `user-questions.md` display #3). Memoized on the (reference-stable) resolved read and active
+  // language so typing a gloss — which only changes local draft state — never re-runs the flatten/
+  // filter; it recomputes only when the resolved read or language actually changes.
   const glossedRanked = useMemo(
-    () => glossedSuggestionEntries(suggestion, analysisLanguage),
-    [suggestion, analysisLanguage],
+    () => glossedSuggestionEntries(resolved, analysisLanguage),
+    [resolved, analysisLanguage],
   );
   // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
   // circuit) and editability. The chevron and dropdown only ever appear when this is true.
@@ -274,9 +262,6 @@ export function TokenChip({
         // non-empty while open, but glossedRanked can empty out after open (a row approved away),
         // leaving suggestionsOpen stale while the dropdown is unmounted — guard so Enter closes
         // rather than dereferencing an absent pick.
-        // activeIndex -1 (nothing highlighted) falls back to the top row. The list is normally
-        // non-empty while open, but glossedRanked can empty out after open (a row approved away)
-        // while suggestionsOpen is still true, so guard rather than dereference an absent pick.
         const pick = glossedRanked[activeIndex] ?? glossedRanked[0];
         if (pick) selectSuggestion(pick.id);
         /* v8 ignore next -- defensive: the empty-pick race above is not reachable from the call sites */ else
@@ -465,9 +450,10 @@ export function TokenChip({
             aria-expanded={hasSuggestions ? dropdownShown : undefined}
             aria-label={`Gloss for ${token.surfaceText}`}
             // When the empty input is showing a suggested gloss as its placeholder, color that ghost
-            // text green (the same success color the dropdown's accept row uses) and italicize it, at
-            // full opacity, so it reads clearly as a suggestion rather than a faint generic hint.
-            className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:text-success-foreground tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
+            // text via the same `gloss-suggested` utility the dropdown's accept row uses (one source
+            // of truth for the suggested green) and italicize it, at full opacity, so it reads
+            // clearly as a suggestion rather than a faint generic hint.
+            className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}
             id={glossInputId}
             placeholder={

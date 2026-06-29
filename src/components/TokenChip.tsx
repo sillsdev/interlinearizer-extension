@@ -33,7 +33,6 @@ import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import SuggestionDropdown from './SuggestionDropdown';
 
 const STRING_KEYS = [
-  '%interlinearizer_tokenChip_editMorphemes%',
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];

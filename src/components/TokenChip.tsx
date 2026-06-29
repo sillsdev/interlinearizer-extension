@@ -17,7 +17,6 @@ import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 
 const STRING_KEYS = [
-  '%interlinearizer_tokenChip_editMorphemes%',
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];

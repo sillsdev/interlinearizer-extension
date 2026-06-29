@@ -29,9 +29,9 @@ const MORPHEME_BOX_STRING_KEYS = [
  *
  * The whole forms row is a single accessible "edit breakdown" control rather than one labeled
  * button per morpheme: every form cell opens the same whole-breakdown editor, so per-cell labels
- * would be redundant for assistive tech. Hovering any form cell tints the whole forms row (the
- * action is breakdown-wide, not per-morpheme), tracked with local hover state. While the editor
- * popover is open the box takes an accent ring so it reads as the one being edited.
+ * would be redundant for assistive tech. Hovering anywhere in the box tints the whole forms row
+ * (the action is breakdown-wide, not per-morpheme), tracked with local hover state. While the
+ * editor popover is open the box takes an accent ring so it reads as the one being edited.
  *
  * Renders the {@link PopoverAnchor} the editor popover is positioned from; the caller owns the
  * `Popover` root and the popover content.
@@ -65,8 +65,10 @@ export function MorphemeBox({
   onEditBreakdown: () => void;
 }>) {
   const [localizedStrings] = useLocalizedStrings(MORPHEME_BOX_STRING_KEYS);
-  // Hovering any form cell tints the whole forms row: clicking any cell opens the same
-  // whole-breakdown editor, so the affordance is breakdown-wide, not per-morpheme.
+  // Hovering anywhere in the box tints the whole forms row: clicking any cell opens the same
+  // whole-breakdown editor, so the affordance is breakdown-wide, not per-morpheme. Tracking hover
+  // on the container (rather than per cell) avoids a one-frame un-tint as the pointer crosses the
+  // gap between adjacent form cells.
   const [isFormsHovered, setIsFormsHovered] = useState(false);
 
   const editLabel = localizedStrings['%interlinearizer_tokenChip_editMorphemes%'].replace(
@@ -79,6 +81,8 @@ export function MorphemeBox({
       <div
         className={`tw:inline-grid tw:w-fit tw:items-center tw:gap-x-0.5 tw:gap-y-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-0.5${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ''}`}
         style={{ gridTemplateColumns: `repeat(${morphemes.length}, minmax(1ch, auto))` }}
+        onMouseEnter={() => setIsFormsHovered(true)}
+        onMouseLeave={() => setIsFormsHovered(false)}
       >
         {/* Forms row. The first cell is the single accessible "edit breakdown" control (a real
             button); the rest are presentational form cells that share its click and hover behavior
@@ -91,8 +95,6 @@ export function MorphemeBox({
           const handleClick = () => {
             if (!disabled) onEditBreakdown();
           };
-          const handleMouseEnter = () => setIsFormsHovered(true);
-          const handleMouseLeave = () => setIsFormsHovered(false);
 
           if (i === 0)
             return (
@@ -106,8 +108,6 @@ export function MorphemeBox({
                   e.preventDefault();
                   handleClick();
                 }}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
               >
                 {m.form}
               </button>
@@ -120,8 +120,6 @@ export function MorphemeBox({
               className={formClassName}
               style={formStyle}
               onClick={handleClick}
-              onMouseEnter={handleMouseEnter}
-              onMouseLeave={handleMouseLeave}
             >
               {m.form}
             </span>

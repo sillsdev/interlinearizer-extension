@@ -203,7 +203,7 @@ export function TokenChip({
    * @param index - The row's index in {@link glossedRanked}.
    * @returns The option element id.
    */
-  const optionId = (index: number) => `${listboxId}-opt-${index}`;
+  const optionId = useCallback((index: number) => `${listboxId}-opt-${index}`, [listboxId]);
 
   /** Closes the suggestion dropdown and clears the keyboard highlight, leaving focus untouched. */
   const closeSuggestions = useCallback(() => {

@@ -303,7 +303,9 @@ function isPayloadSharedByOtherLinks(
   link: TokenAnalysisLink,
   analysisId: string,
 ): boolean {
-  return state.analysis.tokenAnalysisLinks.some((l) => l !== link && l.analysisId === analysisId);
+  return state.analysis.tokenAnalysisLinks.some(
+    (l) => l !== link && l.status === 'approved' && l.analysisId === analysisId,
+  );
 }
 
 /**

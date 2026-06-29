@@ -84,35 +84,17 @@ describe('InterlinearNavContext', () => {
     expect(result.current.rawScrRef).toEqual(ref);
   });
 
-  it('keeps the current verse when the host echoes a verse-0 reference for the chapter already shown', () => {
-    // After a verse navigation the host re-broadcasts the chapter as a separate verse-0 reference.
-    // Normalizing that to verse 1 would read as a fresh move off the verse the user is on, so a
-    // verse-0 echo for the same book+chapter must stay sticky on the current verse.
+  it('passes a same-chapter verse-0 reference through to liveScrRef (host < from verse 1)', () => {
+    // Verse 0 is a real, focusable verse (a chapter superscription), so a verse-0 reference for the
+    // chapter already shown passes through verbatim rather than being held on the current verse. This
+    // is the host's `<` (previous-verse) from verse 1: it must land on the superscription, which the
+    // loader resolves from verse 0 (or back to verse 1 when the chapter has no verse-0 segment).
     const { result, setRef, rerender } = renderNavMutable({
       book: 'GEN',
       chapterNum: 3,
-      verseNum: 7,
+      verseNum: 1,
     });
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
-
-    act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
-    rerender();
-
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
-  });
-
-  it('passes a same-chapter verse-0 echo through when it matches a fresh internal-nav marker', () => {
-    // Selecting a verse-0 superscription navigates the host to verse 0 of the chapter already shown,
-    // so the host's echo is shaped exactly like the spurious post-nav chapter echo. A fresh
-    // internal-nav marker for that verse-0 key marks it as our own deliberate move, so the stickiness
-    // exception lets it through to the superscription rather than holding the prior verse.
-    const { result, setRef, rerender } = renderNavMutable({
-      book: 'GEN',
-      chapterNum: 3,
-      verseNum: 7,
-    });
-
-    act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
+    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 1 });
 
     act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
     rerender();
@@ -542,9 +524,11 @@ describe('InterlinearNavContext', () => {
       expect(result.current.fadePhase).toBe('out');
     });
 
-    it('does not re-engage the curtain for a verse-0 echo during the fade-in', () => {
-      // The host's chapter re-broadcast (verse 0 for the chapter already shown) is sticky — it
-      // names the verse currently displayed, so it must not read as a fresh navigation mid-reveal.
+    it('re-engages the curtain for a verse-0 navigation arriving during the fade-in', () => {
+      // Verse 0 is an ordinary verse (a chapter superscription), so a verse-0 reference naming a
+      // different verse than the one shown is a real mid-reveal navigation — e.g. the host's `<` from
+      // verse 1 landing on the superscription. It re-engages the curtain like any other external move
+      // arriving while the new book is still fading in, rather than fading the fresh content twice.
       const { result, rerender, setRef } = renderNavMutable({
         book: 'GEN',
         chapterNum: 1,
@@ -559,7 +543,7 @@ describe('InterlinearNavContext', () => {
       act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 0 }));
       rerender();
 
-      expect(result.current.fadePhase).toBe('in');
+      expect(result.current.fadePhase).toBe('out');
     });
 
     it('clears the pending fade-in timer on unmount', () => {

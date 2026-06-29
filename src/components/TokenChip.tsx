@@ -12,11 +12,11 @@ import {
   useMorphemes,
   useReportGlossEditing,
 } from './AnalysisStore';
-import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
+import { MorphemeBox } from './MorphemeBox';
+import { MorphemeBreakdownPopover } from './MorphemeEditor';
 import { resolvedOrEmpty } from '../utils/localized-strings';
 
 const STRING_KEYS = [
-  '%interlinearizer_tokenChip_editMorphemes%',
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
@@ -28,10 +28,11 @@ const STRING_KEYS = [
  * only when the draft differs from the committed value, to avoid creating empty analysis entries on
  * focus/blur cycles with no edits.
  *
- * When `showMorphology` is true, a morpheme row is shown below the surface text. For unanalyzed
- * tokens this is a clickable button showing the surface text; for analyzed tokens it shows the
- * morpheme forms. Clicking either opens an inline popover where the user can define, edit, or
- * delete the morpheme breakdown. Per-morpheme gloss inputs appear below the morpheme forms.
+ * When `showMorphology` is true, the morpheme breakdown is shown below the surface text. For
+ * analyzed tokens this is a boxed grid ({@link MorphemeBox}) aligning each morpheme form over its
+ * gloss field; for unanalyzed tokens it is a muted "define breakdown" button showing the surface
+ * text. Clicking either opens an inline popover where the user can define, edit, or delete the
+ * morpheme breakdown.
  *
  * @param props - Component props
  * @param props.token - The word token to render.
@@ -120,8 +121,8 @@ export function TokenChip({
    * The input is looked up by id rather than `querySelector('input')` because the morpheme gloss
    * inputs precede it inside the label when morphology is shown. A mouse-down on any input is left
    * to that input's own handling ({@link handleMouseDown} for the gloss input, which bubbles here
-   * after already handling it); a mouse-down on the morpheme trigger button is left to the button's
-   * own click handler, which opens the popover.
+   * after already handling it); a mouse-down on a morpheme form cell or the unanalyzed "define"
+   * trigger (all `button`s) is left to that button's own click handler, which opens the popover.
    *
    * @param e - The label's mouse-down event.
    */
@@ -189,14 +190,22 @@ export function TokenChip({
           // requests aren't needed. Don't wire onOpenChange without also removing those, or closes
           // would double-fire.
           <Popover modal open={popoverOpen}>
-            <PopoverAnchor asChild>
-              <div className="tw:relative tw:flex tw:flex-col tw:items-center tw:w-full">
+            {hasMorphemes ? (
+              <MorphemeBox
+                analysisLanguage={analysisLanguage}
+                disabled={disabled}
+                morphemes={morphemes}
+                onEditBreakdown={() => setPopoverOpen(true)}
+                popoverOpen={popoverOpen}
+                token={token}
+              />
+            ) : (
+              <PopoverAnchor asChild>
                 <button
-                  aria-label={(hasMorphemes
-                    ? localizedStrings['%interlinearizer_tokenChip_editMorphemes%']
-                    : localizedStrings['%interlinearizer_tokenChip_defineMorphemes%']
-                  ).replace('{token}', token.surfaceText)}
-                  className={`tw:flex tw:flex-row tw:gap-0.5 tw:items-center tw:rounded tw:px-0.5 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'} ${hasMorphemes ? 'tw:text-muted-foreground' : 'tw:text-muted-foreground/50 tw:italic'}`}
+                  aria-label={localizedStrings[
+                    '%interlinearizer_tokenChip_defineMorphemes%'
+                  ].replace('{token}', token.surfaceText)}
+                  className={`tw:flex tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
                   onClick={(e) => {
@@ -204,33 +213,10 @@ export function TokenChip({
                     if (!disabled) setPopoverOpen(true);
                   }}
                 >
-                  {hasMorphemes ? (
-                    morphemes.map((m) => (
-                      <span key={m.id} className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
-                        {m.form}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="tw:whitespace-nowrap tw:font-mono tw:text-xs">
-                      {token.surfaceText}
-                    </span>
-                  )}
+                  <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
                 </button>
-                {hasMorphemes && (
-                  <span className="tw:flex tw:flex-row tw:gap-0.5">
-                    {morphemes.map((m) => (
-                      <MorphemeGlossInput
-                        key={m.id}
-                        analysisLanguage={analysisLanguage}
-                        disabled={disabled}
-                        morpheme={m}
-                        tokenRef={token.ref}
-                      />
-                    ))}
-                  </span>
-                )}
-              </div>
-            </PopoverAnchor>
+              </PopoverAnchor>
+            )}
             {popoverOpen && (
               <MorphemeBreakdownPopover
                 glossInputId={glossInputId}
@@ -247,7 +233,7 @@ export function TokenChip({
         )}
         <input
           aria-label={`Gloss for ${token.surfaceText}`}
-          className="tw:gloss-input"
+          className="tw:mt-0.5 tw:gloss-input"
           disabled={disabled}
           id={glossInputId}
           placeholder={resolvedOrEmpty(

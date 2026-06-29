@@ -1,24 +1,19 @@
 /**
- * @file Inline morpheme editing components rendered inside {@link TokenChip} when the morphology
- *   toggle is active. {@link MorphemeBreakdownPopover} lets the user define or re-split a token's
- *   morpheme forms; {@link MorphemeGlossInput} provides a per-morpheme gloss field.
+ * @file The morpheme breakdown editor rendered inside {@link TokenChip} when the morphology toggle
+ *   is active. {@link MorphemeBreakdownPopover} lets the user define or re-split a token's morpheme
+ *   forms. The inline _display_ of the breakdown (the boxed grid of forms and their gloss fields)
+ *   lives separately in {@link ./MorphemeBox}.
  */
-import type { MorphemeAnalysis } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
-import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
 
 const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_splitLabel%',
   '%interlinearizer_morphemeEditor_delete%',
   '%interlinearizer_morphemeEditor_cancel%',
   '%interlinearizer_morphemeEditor_done%',
-] as const satisfies `%${string}%`[];
-
-const MORPHEME_GLOSS_STRING_KEYS = [
-  '%interlinearizer_morphemeGloss_label%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -228,62 +223,5 @@ export function MorphemeBreakdownPopover({
         </button>
       </div>
     </PopoverContent>
-  );
-}
-
-/**
- * Renders a single morpheme's gloss as an inline editable input. Writes to the store on blur when
- * the draft differs from the committed value. The input carries a `data-morpheme-gloss` attribute
- * so container-level "focus the first gloss input" handlers (e.g. {@link PhraseBox}) can exclude
- * morpheme glosses, which precede the token gloss input in DOM order.
- *
- * @param props - Component props.
- * @param props.morpheme - The morpheme whose gloss is being edited.
- * @param props.tokenRef - The token ref for dispatching gloss writes.
- * @param props.analysisLanguage - BCP 47 tag for reading/writing the gloss.
- * @param props.disabled - When true, the input is read-only.
- * @returns A sized text input for the morpheme gloss.
- */
-export function MorphemeGlossInput({
-  morpheme,
-  tokenRef,
-  analysisLanguage,
-  disabled,
-}: Readonly<{
-  morpheme: MorphemeAnalysis;
-  tokenRef: string;
-  analysisLanguage: string;
-  disabled: boolean;
-}>) {
-  const committed = morpheme.gloss?.[analysisLanguage] ?? '';
-  const dispatchMorphemeGloss = useMorphemeGlossDispatch();
-  const [draft, setDraft] = useState(committed);
-  const [localizedStrings] = useLocalizedStrings(MORPHEME_GLOSS_STRING_KEYS);
-
-  useEffect(() => {
-    setDraft(committed);
-  }, [committed]);
-
-  // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
-  useReportGlossEditing(!disabled && draft !== committed);
-
-  return (
-    <input
-      aria-label={localizedStrings['%interlinearizer_morphemeGloss_label%'].replace(
-        '{form}',
-        () => morpheme.form,
-      )}
-      className="tw:gloss-input tw:text-xs"
-      data-morpheme-gloss="true"
-      disabled={disabled}
-      placeholder="—"
-      style={{ fieldSizing: 'content', minWidth: '2ch' }}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
-      }}
-      type="text"
-    />
   );
 }

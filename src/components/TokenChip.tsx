@@ -13,6 +13,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { resolvedOrEmpty } from '../utils/localized-strings';
+import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
   useAnalysisLanguage,
   useApproveAnalysisDispatch,
@@ -27,8 +29,6 @@ import {
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 import SuggestionDropdown from './SuggestionDropdown';
-import { resolvedOrEmpty } from '../utils/localized-strings';
-import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_editMorphemes%',

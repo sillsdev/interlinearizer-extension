@@ -8,6 +8,7 @@ import type {
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
+import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -30,7 +31,6 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
-import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 

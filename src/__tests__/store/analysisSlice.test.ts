@@ -11,8 +11,6 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
-import { makePhraseLink } from '../test-helpers';
-import { emptyAnalysis } from '../../types/empty-factories';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -35,6 +33,8 @@ import {
   writeSegmentFreeTranslation,
   type AnalysisState,
 } from '../../store/analysisSlice';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { makePhraseLink } from '../test-helpers';
 
 /**
  * Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`.

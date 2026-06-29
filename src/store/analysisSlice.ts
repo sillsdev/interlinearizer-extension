@@ -11,8 +11,8 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { isEmptyMultiString } from '../utils/multi-string';
 import { analysesAreIdentical } from '../utils/analysis-identity';
+import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,

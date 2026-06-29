@@ -7,8 +7,8 @@
  */
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 import { statusTextColorClass } from '../utils/status-colors';
+import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 
 /** Props for {@link SuggestionDropdown}. */
 type SuggestionDropdownProps = Readonly<{

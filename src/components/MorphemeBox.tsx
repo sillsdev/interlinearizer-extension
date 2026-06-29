@@ -77,30 +77,56 @@ export function MorphemeBox({
   return (
     <PopoverAnchor asChild>
       <div
-        className={`tw:inline-grid tw:w-fit tw:items-center tw:gap-x-0.5 tw:gap-y-0.5 tw:rounded tw:border tw:bg-background tw:p-0.5${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ' tw:border-border'}`}
+        className={`tw:inline-grid tw:w-fit tw:items-center tw:gap-x-0.5 tw:gap-y-0.5 tw:rounded tw:border tw:border-border tw:bg-background tw:p-0.5${popoverOpen ? ' tw:ring-1 tw:ring-ring' : ''}`}
         style={{ gridTemplateColumns: `repeat(${morphemes.length}, minmax(1ch, auto))` }}
       >
-        {/* Forms row: one clickable cell per morpheme, exposed to assistive tech as a single
-            "edit breakdown" control. The cells share grid columns with the gloss inputs below so
-            each form sits directly above its gloss. */}
-        {morphemes.map((m, i) => (
-          <button
-            key={m.id}
-            aria-label={i === 0 ? editLabel : undefined}
-            className={`tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${disabled ? '' : ' tw:cursor-pointer'}${isFormsHovered && !disabled ? ' tw:bg-accent' : ''}`}
-            style={{ gridColumn: i + 1, gridRow: 1 }}
-            tabIndex={i === 0 ? 0 : -1}
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              if (!disabled) onEditBreakdown();
-            }}
-            onMouseEnter={() => setIsFormsHovered(true)}
-            onMouseLeave={() => setIsFormsHovered(false)}
-          >
-            {m.form}
-          </button>
-        ))}
+        {/* Forms row. The first cell is the single accessible "edit breakdown" control (a real
+            button); the rest are presentational form cells that share its click and hover behavior
+            but carry no button semantics, so assistive tech sees one control for the whole
+            breakdown. The cells share grid columns with the gloss inputs below so each form sits
+            directly above its gloss. */}
+        {morphemes.map((m, i) => {
+          const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${disabled ? '' : ' tw:cursor-pointer'}${isFormsHovered && !disabled ? ' tw:bg-accent' : ''}`;
+          const formStyle = { gridColumn: i + 1, gridRow: 1 };
+          const handleClick = () => {
+            if (!disabled) onEditBreakdown();
+          };
+          const handleMouseEnter = () => setIsFormsHovered(true);
+          const handleMouseLeave = () => setIsFormsHovered(false);
+
+          if (i === 0)
+            return (
+              <button
+                key={m.id}
+                aria-label={editLabel}
+                className={formClassName}
+                style={formStyle}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleClick();
+                }}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+              >
+                {m.form}
+              </button>
+            );
+
+          return (
+            <span
+              key={m.id}
+              aria-hidden="true"
+              className={formClassName}
+              style={formStyle}
+              onClick={handleClick}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+            >
+              {m.form}
+            </span>
+          );
+        })}
         {/* Gloss row: each input fills its column and sits directly under its morpheme form. */}
         {morphemes.map((m, i) => (
           <MorphemeGlossInput

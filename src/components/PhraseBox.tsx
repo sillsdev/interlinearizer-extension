@@ -56,7 +56,7 @@ function PhraseGlossInput({
   return (
     <input
       aria-label="Phrase gloss"
-      className="tw:gloss-input"
+      className="tw:mt-0.5 tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
       placeholder={resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])}

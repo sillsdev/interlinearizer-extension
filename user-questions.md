@@ -86,3 +86,22 @@ Decisions made during development that we'd like reviewed:
     (the less destructive option) and disables that option when no book is loaded. Alternative: keep
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
+
+## Morpheme breakdown: one "edit breakdown" control vs. per-morpheme controls
+
+The morpheme breakdown is being boxed and laid out as a grid so each morpheme form aligns vertically
+with its gloss field (and a future lexicon link). The form cells are individually clickable columns,
+but clicking any of them opens the same whole-breakdown editor — there is no per-morpheme action.
+
+To keep the accessibility contract simple, the boxed forms row currently exposes a **single**
+accessible control ("Edit morpheme breakdown for {token}") spanning all the columns, rather than one
+labeled button per morpheme. Visually there are N clickable column cells; to assistive tech there is
+one "edit breakdown" action.
+
+Questions:
+
+1. Is a single "edit breakdown" control the right model, or should each morpheme form be its own
+   labeled control (e.g. "Edit morpheme ـه")? The latter matters more once per-morpheme actions
+   (lexicon link, per-morpheme edit) exist.
+2. If individual morphemes should be separately actionable later, what is the per-morpheme action —
+   open the breakdown editor focused on that morpheme, jump to its lexicon entry, or something else?

@@ -51,13 +51,28 @@ jest.mock('../../components/MorphemeEditor', () => ({
       </div>
     );
   },
+}));
+jest.mock('../../components/MorphemeBox', () => ({
   /**
-   * Stub gloss input that renders a placeholder for test assertions.
+   * Stub box that surfaces its `onEditBreakdown` callback as a button so analyzed-path tests can
+   * open the editor, and echoes its `disabled`/`popoverOpen` props for assertions. The box's grid
+   * internals (forms, gloss inputs, RTL order, hover, active look) are tested in MorphemeBox.test.
    *
-   * @returns A test stub element.
+   * @param props - Receives the same props as the real box.
+   * @returns A test stub element with an edit-breakdown trigger.
    */
-  MorphemeGlossInput() {
-    return <input data-testid="morpheme-gloss" />;
+  MorphemeBox({
+    onEditBreakdown,
+    disabled,
+    popoverOpen,
+  }: Readonly<{ onEditBreakdown: () => void; disabled: boolean; popoverOpen: boolean }>) {
+    return (
+      <div data-morpheme-box-open={popoverOpen} data-testid="morpheme-box">
+        <button disabled={disabled} onClick={onEditBreakdown} type="button">
+          mock-edit-breakdown
+        </button>
+      </div>
+    );
   },
 }));
 
@@ -418,7 +433,7 @@ describe('TokenChip', () => {
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
 
-    it('renders morpheme forms when morphemes exist', () => {
+    it('renders the morpheme box instead of the define button when morphemes exist', () => {
       // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
         { id: 'm-1', form: 'hel', writingSystem: 'und' },
@@ -429,28 +444,13 @@ describe('TokenChip', () => {
           <TokenChip {...requiredProps()} showMorphology />
         </AnalysisStoreProvider>,
       );
+      expect(screen.getByTestId('morpheme-box')).toBeInTheDocument();
       expect(
-        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
-      ).toBeInTheDocument();
-      expect(screen.getByText('hel')).toBeInTheDocument();
-      expect(screen.getByText('-lo')).toBeInTheDocument();
+        screen.queryByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      ).not.toBeInTheDocument();
     });
 
-    it('renders morpheme gloss inputs when morphemes exist', () => {
-      // AnalysisStore imported at top level
-      jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
-        { id: 'm-1', form: 'hel', writingSystem: 'und' },
-        { id: 'm-2', form: '-lo', writingSystem: 'und' },
-      ]);
-      render(
-        <AnalysisStoreProvider analysisLanguage="und">
-          <TokenChip {...requiredProps()} showMorphology />
-        </AnalysisStoreProvider>,
-      );
-      expect(screen.getAllByTestId('morpheme-gloss')).toHaveLength(2);
-    });
-
-    it('opens the popover when the edit button is clicked on analyzed token', async () => {
+    it('marks the morpheme box active while the popover is open', async () => {
       // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
@@ -460,9 +460,22 @@ describe('TokenChip', () => {
           <TokenChip {...requiredProps()} showMorphology />
         </AnalysisStoreProvider>,
       );
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
+      expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-morpheme-box-open', 'false');
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+      expect(screen.getByTestId('morpheme-box')).toHaveAttribute('data-morpheme-box-open', 'true');
+    });
+
+    it('opens the popover when the box requests breakdown editing on an analyzed token', async () => {
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
       );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
     });
 
@@ -513,9 +526,7 @@ describe('TokenChip', () => {
           <TokenChip {...requiredProps()} showMorphology />
         </AnalysisStoreProvider>,
       );
-      await userEvent.click(
-        screen.getByRole('button', { name: 'Edit morpheme breakdown for hello' }),
-      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       await userEvent.click(screen.getByRole('button', { name: 'mock-delete' }));
       expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0');
     });
@@ -533,7 +544,7 @@ describe('TokenChip', () => {
       expect(screen.queryByRole('button', { name: 'mock-delete' })).not.toBeInTheDocument();
     });
 
-    it('focuses the main gloss input on a surface-text mouse-down when morpheme inputs precede it', () => {
+    it('focuses the main gloss input on a surface-text mouse-down when the box precedes it', () => {
       // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
@@ -544,8 +555,8 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
 
-      // The morpheme gloss inputs sit before the main gloss input inside the label; the label
-      // handler must still route focus to the main gloss input, not the first input it finds.
+      // The morpheme box (with its gloss inputs) sits before the main gloss input inside the label;
+      // the label handler must route focus to the main gloss input by id, not the first input found.
       fireEvent.mouseDown(screen.getByText('hello'));
 
       expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).toHaveFocus();

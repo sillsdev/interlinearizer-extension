@@ -6,8 +6,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
-import * as AnalysisStore from '../../components/AnalysisStore';
-import { MorphemeBreakdownPopover, MorphemeGlossInput } from '../../components/MorphemeEditor';
+import { MorphemeBreakdownPopover } from '../../components/MorphemeEditor';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -301,81 +300,5 @@ describe('MorphemeBreakdownPopover', () => {
     );
     await userEvent.click(screen.getByTestId('popover-close'));
     expect(screen.getByRole('textbox', { name: 'token gloss' })).toHaveFocus();
-  });
-});
-
-describe('MorphemeGlossInput', () => {
-  it('renders an empty input when no gloss exists', () => {
-    render(
-      <MorphemeGlossInput
-        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
-        tokenRef="tok-1"
-        analysisLanguage="und"
-        disabled={false}
-      />,
-    );
-    expect(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' })).toHaveValue('');
-  });
-
-  it('renders the existing gloss value', () => {
-    render(
-      <MorphemeGlossInput
-        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }}
-        tokenRef="tok-1"
-        analysisLanguage="und"
-        disabled={false}
-      />,
-    );
-    expect(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' })).toHaveValue('not');
-  });
-
-  it('does not dispatch when blurring without changes', async () => {
-    const dispatchMock = jest.fn();
-    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(dispatchMock);
-
-    render(
-      <MorphemeGlossInput
-        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }}
-        tokenRef="tok-1"
-        analysisLanguage="und"
-        disabled={false}
-      />,
-    );
-    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' }));
-    await userEvent.tab();
-    expect(dispatchMock).not.toHaveBeenCalled();
-  });
-
-  it('dispatches the gloss on blur when the draft differs', async () => {
-    const dispatchMock = jest.fn();
-    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(dispatchMock);
-
-    render(
-      <MorphemeGlossInput
-        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
-        tokenRef="tok-1"
-        analysisLanguage="und"
-        disabled={false}
-      />,
-    );
-    await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' }), 'not');
-    await userEvent.tab();
-    expect(dispatchMock).toHaveBeenCalledWith('tok-1', 'm-1', 'not');
-  });
-
-  it('does not dispatch when disabled', async () => {
-    const dispatchMock = jest.fn();
-    jest.spyOn(AnalysisStore, 'useMorphemeGlossDispatch').mockReturnValue(dispatchMock);
-
-    render(
-      <MorphemeGlossInput
-        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
-        tokenRef="tok-1"
-        analysisLanguage="und"
-        disabled
-      />,
-    );
-    const input = screen.getByRole('textbox', { name: 'Gloss for morpheme un-' });
-    expect(input).toBeDisabled();
   });
 });

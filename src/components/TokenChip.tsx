@@ -174,14 +174,11 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // The pool entries to offer via the suggestion dropdown, with their accept/promote status. The
-  // engine flattens the resolved read into ranked, status-tagged rows: for a suggested token its
-  // pick (green "accept") plus candidates (blue "promote"); for an approved token the pool
-  // alternatives only (all blue "promote", the already-approved payload excluded). Blank-in-active-
-  // language entries are dropped individually rather than shown as empty rows (see
-  // `user-questions.md` display #3). Memoized on the (reference-stable) resolved read and active
-  // language so typing a gloss — which only changes local draft state — never re-runs the flatten/
-  // filter; it recomputes only when the resolved read or language actually changes.
+  // Pool entries for the suggestion dropdown: for a suggested token, the top pick (green "accept")
+  // plus candidates (blue "promote"); for an approved token, the pool alternatives only (the
+  // already-approved payload excluded). Blank-in-active-language entries are dropped rather than
+  // shown as empty rows. Memoized on the (reference-stable) resolved read and active language so
+  // typing a gloss — which only changes local draft state — never re-runs the flatten/filter.
   const glossedRanked = useMemo(
     () => glossedSuggestionEntries(resolved, analysisLanguage),
     [resolved, analysisLanguage],
@@ -189,16 +186,15 @@ export function TokenChip({
   // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
   // circuit) and editability. The chevron and dropdown only ever appear when this is true.
   const hasSuggestions = showSuggestions && !disabled && glossedRanked.length > 0;
-  // The engine's top pick (row 0, the green "suggested"), shown as ghost placeholder text in the
-  // empty input so the row reveals at a glance which tokens already have a suggestion — without
-  // needing focus or hover. Only meaningful while the draft is empty; once the user types, the
-  // typed value replaces it. Undefined when this token has no suggestion to offer.
+  // Top pick (row 0, the green "suggested") shown as ghost placeholder text so the row reveals
+  // which tokens have a suggestion at a glance — without focus or hover. Once the user types, the
+  // typed value replaces it.
   const suggestedGloss = hasSuggestions ? glossedRanked[0].gloss : undefined;
   const showSuggestedPlaceholder = suggestedGloss !== undefined && draft === '';
 
   /**
-   * Builds the listbox option element id for a row, kept in sync with the input's
-   * `aria-activedescendant` so assistive tech can follow the keyboard-highlighted row.
+   * Returns the listbox option id for `index`; kept in sync with `aria-activedescendant` so
+   * assistive tech follows the keyboard-highlighted row.
    *
    * @param index - The row's index in {@link glossedRanked}.
    * @returns The option element id.
@@ -211,11 +207,7 @@ export function TokenChip({
     setActiveIndex(-1);
   }, []);
 
-  /**
-   * Commits the current draft gloss the same way blur does: only when it differs from the committed
-   * value. Only called from the (disabled-gated) blur and key-down handlers, so it needs no
-   * disabled check.
-   */
+  /** Commits the draft gloss only when it differs from the committed value. */
   const commitDraft = () => {
     if (draft !== committedGloss) {
       onGlossChange(token.ref, token.surfaceText, draft);
@@ -223,9 +215,9 @@ export function TokenChip({
   };
 
   /**
-   * Approves the chosen suggestion payload for this token and closes the dropdown. The typed draft
-   * (if any) is discarded: approving updates committedGloss, which the sync effect mirrors back
-   * into the input, so the selection wins over the abandoned draft.
+   * Approves the chosen suggestion payload for this token and closes the dropdown. Any typed draft
+   * is discarded: the approval updates `committedGloss`, which the sync effect mirrors back into
+   * the input so the selection wins.
    *
    * @param id - The chosen payload's id (the suggested pick or a promoted candidate).
    */
@@ -236,12 +228,10 @@ export function TokenChip({
 
   /**
    * Drives the gloss input as a combobox. While the dropdown is open, arrow keys move the highlight
-   * (stopping at the ends, with Up returning to the no-highlight state), Enter commits the
-   * highlight or the top row, and Escape closes without committing. While it is closed, ArrowDown
-   * opens the dropdown (the keyboard equivalent of the chevron) when this token has suggestions —
-   * so an approved token whose dropdown does not auto-open on focus can still summon its pool
-   * alternatives from the keyboard — and Enter commits the typed draft. Other keys fall through to
-   * the input.
+   * (stopping at the ends; Up returns to the no-highlight state), Enter commits the highlighted row
+   * or the top row, and Escape closes without committing. While closed, ArrowDown opens the
+   * dropdown (keyboard equivalent of the chevron — lets an approved token summon pool alternatives
+   * without focusing away) and Enter commits the typed draft.
    *
    * @param e - The gloss input's key-down event.
    */

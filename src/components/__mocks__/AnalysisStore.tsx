@@ -151,14 +151,13 @@ export function useMorphemeGlossDispatch(): (
 export function useReportGlossEditing(_isEditing: boolean): void {}
 
 /**
- * Returns the merged token analysis in mock context. The mock pool is empty and tracks only
- * approved glosses, so it never derives a suggestion — always `undefined`. Suggestion behavior is
- * covered separately against the real store.
+ * Returns the merged token analysis in mock context. The mock pool is empty, so it never derives
+ * a suggestion — always `undefined`. Suggestion behavior is covered against the real store.
  *
- * @param _tokenRef - The token reference key (unused in mock).
- * @param _surfaceText - The token's surface text (unused in mock).
- * @param _enabled - Whether to resolve (unused in mock; it never surfaces suggestions anyway).
- * @returns `undefined` — the mock surfaces no suggestions.
+ * @param _tokenRef - Token ref (unused in mock).
+ * @param _surfaceText - Surface text (unused in mock).
+ * @param _enabled - Whether to resolve (unused in mock).
+ * @returns `undefined`.
  */
 export function useResolvedTokenAnalysis(
   _tokenRef: string,
@@ -169,8 +168,7 @@ export function useResolvedTokenAnalysis(
 }
 
 /**
- * Returns whether suggestions should render in mock context. The mock never surfaces suggestions,
- * so this is always `false`.
+ * Returns whether suggestions should render in mock context — always `false`.
  *
  * @returns `false`.
  */

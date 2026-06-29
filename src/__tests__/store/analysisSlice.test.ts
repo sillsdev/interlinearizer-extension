@@ -65,10 +65,8 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
 }
 
 /**
- * Counts how many approved `TokenAnalysisLink`s point at the same payload that `tokenRef`'s own
- * approved link points at — the shared count of the payload a token sits on. A local test helper
- * standing in for the former production selector, used to assert sharing without reaching into the
- * link arrays at each call site.
+ * Counts approved links on the same payload as `tokenRef`'s own approved link, used to assert
+ * sharing without reaching into the link arrays at each call site.
  *
  * @param state - The analysis slice state.
  * @param tokenRef - The `Token.ref` whose payload's shared count is wanted.

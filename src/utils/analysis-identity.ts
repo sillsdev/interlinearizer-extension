@@ -12,10 +12,8 @@ import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 const NORMALIZED_FORM_CACHE_MAX = 50_000;
 
 /**
- * Memoizes {@link normalizeSurfaceForm} by raw input string. The same surface forms are normalized
- * over and over — once per visible un-approved token on every store dispatch (the suggestion derive
- * path) plus the dedupe scans on every write — yet the result is a pure function of the input, so
- * caching is safe and entries never go stale (normalization is deterministic). The cache is module-
+ * Memoizes {@link normalizeSurfaceForm} by raw input string — called once per visible un-approved
+ * token on every store dispatch, so the same forms are normalized repeatedly. The cache is module-
  * global rather than project-scoped, so a bound is needed: when it reaches
  * {@link NORMALIZED_FORM_CACHE_MAX} the oldest entry is evicted (insertion-order FIFO, free from
  * `Map`), keeping memory flat across a session that opens many projects rather than retaining every

@@ -8,6 +8,7 @@ import type {
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
+import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -30,7 +31,6 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
-import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
 import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
@@ -166,14 +166,11 @@ export function AnalysisStoreProvider({
   }, []);
 
   /**
-   * The gloss-write entry point exposed to inputs. Dispatches {@link writeGloss} so the reducer
-   * applies a per-token edit — it forks a shared payload before writing (blank clears, non-blank
-   * edits), so editing one token never rewrites its co-linked siblings — then persists the updated
-   * analysis via `onSave` and notifies the `onGlossChange` spy with the edited token and value.
+   * Dispatches {@link writeGloss} (forking any shared payload before writing), then persists via
+   * `onSave` and notifies the `onGlossChange` spy.
    *
    * @param tokenRef - `Token.ref` of the token being glossed.
-   * @param surfaceText - Surface text of the token, recorded so the analysis can detect baseline
-   *   drift.
+   * @param surfaceText - Surface text, recorded so the analysis can detect baseline drift.
    * @param value - New gloss string; blank (empty or whitespace) clears the active language's
    *   gloss.
    */
@@ -286,14 +283,13 @@ export function useGloss(tokenRef: string): string {
 /**
  * Returns the merged analysis the renderer shows for a token — its approved decision, else the
  * engine's derived suggestion, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes
- * through {@link resolvedTokenAnalysisEqual} so the freshly-allocated result stays referentially
- * stable across unrelated store changes: the token re-renders only when its approved decision or
- * suggestion actually changes, never on every pool rebuild.
+ * through {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across
+ * unrelated store changes, re-rendering only when the decision or suggestion actually changes.
  *
  * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
  * so a chip that is not currently showing suggestions does no per-token pool lookup or
- * normalization on each store change. The only consumer ({@link TokenChip}) reads `resolved` solely
- * to render suggestions, so it passes its `showSuggestions` flag here.
+ * normalization on each store change. The only consumer ({@link TokenChip}) passes its
+ * `showSuggestions` flag here.
  *
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text, matched against the pool when the token is

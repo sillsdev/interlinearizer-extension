@@ -7,8 +7,8 @@
  */
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 import { statusTextColorClass } from '../utils/status-colors';
+import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 
 /** Props for {@link SuggestionDropdown}. */
 type SuggestionDropdownProps = Readonly<{
@@ -41,13 +41,9 @@ type SuggestionDropdownProps = Readonly<{
 /**
  * Renders the portaled suggestion listbox for a token's gloss combobox. Each row is colored and
  * labeled by its own `status` — `'suggested'` (green, "accept") or `'candidate'` (blue, "promote")
- * — carried on the entry rather than inferred from row position, so a dropped blank-in-language
- * pick can never leave a candidate masquerading as the accept row. The keyboard-active row gets the
- * same `bg-accent` background hovering applies, and hovering a row sets the active index so only
- * one row is ever highlighted. Each row suppresses its mouse-down default so clicking it never
- * blurs the input — focus stays in the input and the click selects instead. The panel closes itself
- * on outer scrolling (the anchor would drift); scrolling the panel's own overflow is ignored so a
- * long list can be scrolled without dismissing it.
+ * — carried on the entry rather than inferred from position, so a dropped blank-in-language pick
+ * can never leave a candidate masquerading as the accept row. Each row suppresses its mouse-down
+ * default so clicking it never blurs the input.
  *
  * @param props - Component props (see {@link SuggestionDropdownProps}).
  * @returns A `document.body` portal containing the listbox, positioned under the anchor input.
@@ -77,15 +73,12 @@ export default function SuggestionDropdown({
     listRef.current = el ?? undefined;
   };
 
-  // Position the panel under the anchor on open and keep it glued there across window resizes and
-  // outer scrolling. The continuous view smooth-scrolls the token strip to center a phrase whenever
-  // a token's gloss input is focused — the same focus that opens this dropdown — so closing on outer
-  // scroll would dismiss the panel the instant it appeared. Instead we reposition under the anchor as
-  // it moves, then close only once the anchor has scrolled out of the viewport (a far user scroll
-  // that abandons this token). A capture listener catches scrolls of ancestor viewports; scrolls of
-  // the panel's own overflow are ignored so a long list can be scrolled without moving or closing it.
-  // Layout effect so the first measurement runs before paint — otherwise the portaled panel flashes
-  // at the default top-left before snapping under the anchor.
+  // Position the panel under the anchor and keep it glued there across resizes and outer scrolling.
+  // The continuous view smooth-scrolls the token strip on focus — the same focus that opens this
+  // dropdown — so we reposition as the anchor moves rather than close immediately; we close only
+  // once the anchor leaves the viewport (a far scroll that abandons this token). Layout effect so
+  // the first measurement runs before paint — otherwise the portaled panel flashes at the default
+  // top-left before snapping under the anchor.
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
     /* v8 ignore next -- the chip only mounts this while the input (the anchor) is rendered */

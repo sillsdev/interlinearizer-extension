@@ -95,10 +95,9 @@ function comparePoolEntries(a: PoolEntry, b: PoolEntry): number {
  * are genuine homographs, never accidental near-duplicates.
  *
  * Keying on the normalized surface form alone (not also the writing system) is correct for v1: the
- * pool is a single source project, whose word tokens share one writing system, and NFC keeps
+ * pool is a single source project whose word tokens share one writing system, and NFC keeps
  * different scripts on distinct code points — so equal normalized forms already imply the same
- * writing system. A future cross-project / lexicon-backed pool would need to additionally key by
- * writing system; that cross-project pool is out of scope for v1.
+ * writing system.
  *
  * @param analysisById - Map from `TokenAnalysis.id` to its payload (every approved id resolves
  *   here).
@@ -120,9 +119,8 @@ export function buildPoolIndex(
     if (bucket) bucket.push({ analysis, frequency });
     else index.set(key, [{ analysis, frequency }]);
   });
-  // Pre-rank each bucket best-first once here, at pool-build time. This runs only when the pool is
-  // rebuilt (a memoized selector recomputes it on an approved write), so the per-token
-  // deriveTokenSuggestion reads the head as the suggested pick without re-sorting on every render.
+  // Pre-rank each bucket best-first once here, at pool-build time (a memoized selector recomputes
+  // the pool only on approved writes), so per-token derives read the head without re-sorting.
   index.forEach((bucket) => bucket.sort(comparePoolEntries));
   return index;
 }

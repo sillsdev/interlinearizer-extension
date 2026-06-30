@@ -11,8 +11,6 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
-import { makePhraseLink } from '../test-helpers';
-import { emptyAnalysis } from '../../types/empty-factories';
 import {
   approveAnalysisForToken,
   createPhrase,
@@ -35,6 +33,8 @@ import {
   writeSegmentFreeTranslation,
   type AnalysisState,
 } from '../../store/analysisSlice';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { makePhraseLink } from '../test-helpers';
 
 /**
  * Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`.
@@ -65,10 +65,8 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
 }
 
 /**
- * Counts how many approved `TokenAnalysisLink`s point at the same payload that `tokenRef`'s own
- * approved link points at — the shared count of the payload a token sits on. A local test helper
- * standing in for the former production selector, used to assert sharing without reaching into the
- * link arrays at each call site.
+ * Counts approved links on the same payload as `tokenRef`'s own approved link, used to assert
+ * sharing without reaching into the link arrays at each call site.
  *
  * @param state - The analysis slice state.
  * @param tokenRef - The `Token.ref` whose payload's shared count is wanted.

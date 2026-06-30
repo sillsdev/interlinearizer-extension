@@ -11,8 +11,8 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { emptyAnalysis } from '../types/empty-factories';
-import { isEmptyMultiString } from '../utils/multi-string';
 import { analysesAreIdentical } from '../utils/analysis-identity';
+import { isEmptyMultiString } from '../utils/multi-string';
 import {
   buildPoolIndex,
   deriveTokenSuggestion,
@@ -303,7 +303,9 @@ function isPayloadSharedByOtherLinks(
   link: TokenAnalysisLink,
   analysisId: string,
 ): boolean {
-  return state.analysis.tokenAnalysisLinks.some((l) => l !== link && l.analysisId === analysisId);
+  return state.analysis.tokenAnalysisLinks.some(
+    (l) => l !== link && l.status === 'approved' && l.analysisId === analysisId,
+  );
 }
 
 /**
@@ -446,8 +448,8 @@ const analysisSlice = createSlice({
           // onto a private clone first and mutate that, so the co-linked tokens keep the shared gloss
           // instead of being rewritten or stranded by an edit aimed at this one. (Global "edit every
           // occurrence" is deferred; see user-questions.md "separating per-token edits from global
-          // analysis edits".) Surface text is refreshed on the fork (not the shared original) so a
-          // co-linked sibling's payload is never rewritten — mirroring writeMorphemes.
+          // analysis edits".) Surface text is refreshed on the fork (not the shared original)
+          // so a co-linked sibling's payload is never rewritten.
           const target = isPayloadSharedByOtherLinks(state, link, analysis.id)
             ? forkSharedAnalysis(state, link, analysis, id)
             : analysis;
@@ -705,10 +707,7 @@ const analysisSlice = createSlice({
         }
         // A morpheme gloss is part of analysis identity (see analysesAreIdentical), so editing or
         // clearing one can make this payload identical to an existing one (e.g. a homograph whose
-        // only difference was this morpheme's gloss); re-converge so the dedupe the create path
-        // guarantees on first write also holds after morpheme gloss edits (mirrors writeGloss).
-        // Symmetric across write and clear, so a clear back to a sibling's state never leaves a
-        // duplicate the suggestion pool would double-count.
+        // only difference was this morpheme's gloss); re-converge so dedupe holds after edits too.
         mergeIntoIdenticalPayload(state, target);
       },
     },

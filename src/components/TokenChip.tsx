@@ -458,7 +458,7 @@ export function TokenChip({
             aria-label={`Gloss for ${token.surfaceText}`}
             // When the empty input is showing a suggested gloss as its placeholder, color that ghost
             // text via the same `gloss-suggested` utility the dropdown's accept row uses (one source
-            // of truth for the suggested green) and italicize it, at full opacity, so it reads
+            // of truth for the suggested blue) and italicize it, at full opacity, so it reads
             // clearly as a suggestion rather than a faint generic hint.
             className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}

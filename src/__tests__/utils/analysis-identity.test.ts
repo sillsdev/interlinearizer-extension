@@ -9,11 +9,11 @@ describe('normalizeSurfaceForm', () => {
     expect(normalizeSurfaceForm('The')).toBe(normalizeSurfaceForm('the'));
   });
 
-  it('applies Unicode NFC so decomposed and composed forms match', () => {
+  it('collapses decomposed and composed forms to the same key', () => {
     const composed = 'café'; // "café" with precomposed é (U+00E9)
     const decomposed = 'café'; // "café" as e + combining acute (U+0301)
     expect(decomposed).not.toBe(composed); // distinct raw strings...
-    expect(normalizeSurfaceForm(decomposed)).toBe(normalizeSurfaceForm(composed)); // ...equal once NFC.
+    expect(normalizeSurfaceForm(decomposed)).toBe(normalizeSurfaceForm(composed)); // ...one key once normalized.
   });
 });
 

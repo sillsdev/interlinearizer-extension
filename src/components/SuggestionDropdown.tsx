@@ -7,7 +7,7 @@
  */
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { statusTextColorClass } from '../utils/status-colors';
+import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 
 /** Props for {@link SuggestionDropdown}. */
@@ -40,9 +40,9 @@ type SuggestionDropdownProps = Readonly<{
 
 /**
  * Renders the portaled suggestion listbox for a token's gloss combobox. Each row is colored and
- * labeled by its own `status` — `'suggested'` (green, "accept") or `'candidate'` (blue, "promote")
- * — carried on the entry rather than inferred from position, so a dropped blank-in-language pick
- * can never leave a candidate masquerading as the accept row. Each row suppresses its mouse-down
+ * labeled by its own `status` — `'suggested'` (blue, "accept") or `'candidate'` (grey, "promote") —
+ * carried on the entry rather than inferred from position, so a dropped blank-in-language pick can
+ * never leave a candidate masquerading as the accept row. Each row suppresses its mouse-down
  * default so clicking it never blurs the input.
  *
  * @param props - Component props (see {@link SuggestionDropdownProps}).
@@ -146,7 +146,7 @@ export default function SuggestionDropdown({
               : `Promote ${entry.gloss} for ${surfaceText}`
           }
           aria-selected={index === activeIndex}
-          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-2 tw:py-0.5 tw:text-sm tw:italic ${statusTextColorClass(entry.status)}${index === activeIndex ? ' tw:bg-accent' : ''}`}
+          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-2 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
           data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}
           id={optionId(index)}
           role="option"

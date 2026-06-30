@@ -168,6 +168,23 @@ export function useResolvedTokenAnalysis(
 }
 
 /**
+ * Returns the cleared-token suggestion preview in mock context. The mock pool is empty, so it never
+ * previews a suggestion — always `undefined`. Clearing behavior is covered against the real store.
+ *
+ * @param _tokenRef - Token ref (unused in mock).
+ * @param _surfaceText - Surface text (unused in mock).
+ * @param _enabled - Whether to derive (unused in mock).
+ * @returns `undefined`.
+ */
+export function useSuggestionAfterClearing(
+  _tokenRef: string,
+  _surfaceText: string,
+  _enabled: boolean,
+): ResolvedTokenAnalysis | undefined {
+  return undefined;
+}
+
+/**
  * Returns whether suggestions should render in mock context — always `false`.
  *
  * @returns `false`.

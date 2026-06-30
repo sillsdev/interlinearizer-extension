@@ -26,6 +26,7 @@ import {
   useReportGlossEditing,
   useResolvedTokenAnalysis,
   useShowSuggestions,
+  useSuggestionAfterClearing,
 } from './AnalysisStore';
 import { MorphemeBreakdownPopover, MorphemeGlossInput } from './MorphemeEditor';
 import SuggestionDropdown from './SuggestionDropdown';
@@ -87,6 +88,20 @@ export function TokenChip({
   const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, showSuggestions);
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
+  // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
+  // store still reports the token as approved. Without this, the dropdown would offer only that
+  // approved payload's alternatives (e.g. the minority homograph) until blur, then snap to the
+  // pool's best pick once the empty value commits. Preview that post-commit suggestion now — derived
+  // as if this token's approval were already gone — so the row and ghost placeholder stay consistent
+  // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
+  const clearingApprovedGloss =
+    showSuggestions && !disabled && resolved?.status === 'approved' && draft === '';
+  const clearedSuggestion = useSuggestionAfterClearing(
+    token.ref,
+    token.surfaceText,
+    clearingApprovedGloss,
+  );
+  const suggestionSource = clearingApprovedGloss ? clearedSuggestion : resolved;
   const [popoverOpen, setPopoverOpen] = useState(false);
   const glossInputId = useId();
   const glossInputRef = useRef<HTMLInputElement | undefined>(undefined);
@@ -176,14 +191,16 @@ export function TokenChip({
 
   const hasMorphemes = morphemes.length > 0;
 
-  // Pool entries for the suggestion dropdown: for a suggested token, the top pick (green "accept")
-  // plus candidates (blue "promote"); for an approved token, the pool alternatives only (the
-  // already-approved payload excluded). Blank-in-active-language entries are dropped rather than
-  // shown as empty rows. Memoized on the (reference-stable) resolved read and active language so
-  // typing a gloss — which only changes local draft state — never re-runs the flatten/filter.
+  // Pool entries for the suggestion dropdown: for a suggested token, the top pick (blue "accept")
+  // plus candidates (grey "promote"); for an approved token, the pool alternatives only (the
+  // already-approved payload excluded) — or, while that approved gloss is being cleared, the
+  // post-deletion preview from `suggestionSource`. Blank-in-active-language entries are dropped
+  // rather than shown as empty rows. Memoized on the (reference-stable) source read and active
+  // language so typing a non-empty gloss — which only changes local draft state — never re-runs the
+  // flatten/filter; clearing the field swaps `suggestionSource` and recomputes once.
   const glossedRanked = useMemo(
-    () => glossedSuggestionEntries(resolved, analysisLanguage),
-    [resolved, analysisLanguage],
+    () => glossedSuggestionEntries(suggestionSource, analysisLanguage),
+    [suggestionSource, analysisLanguage],
   );
   // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
   // circuit) and editability. The dropdown only ever appears when this is true.
@@ -192,7 +209,7 @@ export function TokenChip({
   // single suggestion the ghost placeholder already advertises it and focusing the gloss opens the
   // dropdown to accept it, so a button would be redundant.
   const hasMultipleSuggestions = hasSuggestions && glossedRanked.length > 1;
-  // Top pick (row 0, the green "suggested") shown as ghost placeholder text so the row reveals
+  // Top pick (row 0, the blue "suggested") shown as ghost placeholder text so the row reveals
   // which tokens have a suggestion at a glance — without focus or hover. Once the user types, the
   // typed value replaces it.
   const suggestedGloss = hasSuggestions ? glossedRanked[0].gloss : undefined;

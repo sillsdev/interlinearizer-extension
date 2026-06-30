@@ -1094,6 +1094,31 @@ export function selectResolvedTokenAnalysis(
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
 }
 
+/**
+ * Returns the suggestion a token would resolve to if its own approval were removed — the preview
+ * the gloss UI shows the instant an approved gloss is cleared, before the empty value commits on
+ * blur. Re-derives this surface form's bucket with the token's approved payload discounted by one
+ * approval (dropped when this was its last), so the previewed pick matches what the committed
+ * deletion will surface rather than the approved payload's mere alternatives. Returns `undefined`
+ * when the token has no approval (callers only consult this for an approved token) or when nothing
+ * in the pool still matches once that approval is discounted.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` whose approval to discount.
+ * @param surfaceText - The token's current surface text, matched against the pool.
+ * @returns The suggested-status resolved analysis as if the token were unapproved, or `undefined`.
+ */
+export function selectSuggestionAfterClearing(
+  state: AnalysisState,
+  tokenRef: string,
+  surfaceText: string,
+): ResolvedTokenAnalysis | undefined {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId === undefined) return undefined;
+  const suggestion = deriveTokenSuggestion(selectPoolIndex(state), surfaceText, approvedId);
+  return suggestion ? { status: 'suggested', ...suggestion } : undefined;
+}
+
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
 
 /**

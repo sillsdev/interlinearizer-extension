@@ -24,6 +24,7 @@ import {
   selectPhraseLinks,
   selectPoolIndex,
   selectResolvedTokenAnalysis,
+  selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -1808,6 +1809,84 @@ describe('selectResolvedTokenAnalysis', () => {
 
     expect(
       selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'unseen'),
+    ).toBeUndefined();
+  });
+});
+
+describe('selectSuggestionAfterClearing', () => {
+  /**
+   * Builds a homograph 'bank' pool where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
+   * majority) and `finance` once (`f1`), so an approved majority token's deletion can be previewed
+   * against a still-majority pick rather than a tie.
+   *
+   * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
+   */
+  function bankPool(): TextAnalysis {
+    const river: TokenAnalysis = {
+      id: 'ta-river',
+      surfaceText: 'bank',
+      gloss: { en: 'riverbank' },
+    };
+    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r1', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r2', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r3', surfaceText: 'bank' },
+      },
+      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    ];
+    return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks };
+  }
+
+  it('returns undefined for a token with no approved analysis', () => {
+    // The caller only consults this for an approved token; an unapproved one has nothing to discount.
+    const store = createAnalysisStore({
+      analysis: { analysis: bankPool(), analysisLanguage: 'en' },
+    });
+
+    expect(
+      selectSuggestionAfterClearing(store.getState().analysis, 'tok-x', 'bank'),
+    ).toBeUndefined();
+  });
+
+  it('previews the majority pick once an approved token discounts its own approval', () => {
+    // r1 is approved to the majority `riverbank`. Clearing it discounts that approval (3 → 2) but it
+    // still outranks `finance`, so the preview leads with the majority pick — not the lone
+    // alternative the approved-token dropdown would otherwise show.
+    const store = createAnalysisStore({
+      analysis: { analysis: bankPool(), analysisLanguage: 'en' },
+    });
+
+    const river = store.getState().analysis.analysis.tokenAnalyses[0];
+    const fin = store.getState().analysis.analysis.tokenAnalyses[1];
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: river,
+      candidates: [fin],
+    });
+  });
+
+  it('returns undefined when discounting the approval empties the pool match', () => {
+    // tok-1's payload is the only approval of 'word'; clearing it removes the pool entry entirely, so
+    // there is nothing left to suggest — matching the empty pool the committed deletion produces.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    expect(
+      selectSuggestionAfterClearing(store.getState().analysis, 'tok-1', 'word'),
     ).toBeUndefined();
   });
 });

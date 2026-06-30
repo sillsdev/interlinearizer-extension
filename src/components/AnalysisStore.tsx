@@ -23,6 +23,7 @@ import {
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectResolvedTokenAnalysis,
+  selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -104,7 +105,7 @@ type AnalysisStoreProviderProps = Readonly<{
   onPendingEditsChange?: (pending: boolean) => void;
   /**
    * When `true`, un-approved tokens that match the analysis pool render the engine's derived
-   * suggestion (green) with accept / promote affordances ({@link useResolvedTokenAnalysis},
+   * suggestion (blue) with accept / promote affordances ({@link useResolvedTokenAnalysis},
    * {@link useShowSuggestions}). Defaults to `false` so existing consumers and isolated tests show
    * no suggestions; the app opts in via a removable demo toggle.
    */
@@ -310,6 +311,34 @@ export function useResolvedTokenAnalysis(
   return useSelector(
     (state: AnalysisRootState) =>
       enabled ? selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+/**
+ * Returns the suggestion a token would resolve to if its approval were cleared — consulted while
+ * the user has emptied an approved gloss (before the deletion commits on blur) so the previewed
+ * suggestion matches the one that surfaces after commit ({@link selectSuggestionAfterClearing}).
+ * Like {@link useResolvedTokenAnalysis} it subscribes through {@link resolvedTokenAnalysisEqual} for
+ * referential stability and short-circuits to `undefined` (no pool work) when `enabled` is `false`,
+ * so only the single token actively being cleared does any per-token derivation.
+ *
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text.
+ * @param enabled - Whether to derive at all; `false` returns `undefined` without pool work.
+ * @returns The suggested analysis as if the token were unapproved, or `undefined`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSuggestionAfterClearing(
+  tokenRef: string,
+  surfaceText: string,
+  enabled: boolean,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useSuggestionAfterClearing');
+
+  return useSelector(
+    (state: AnalysisRootState) =>
+      enabled ? selectSuggestionAfterClearing(state.analysis, tokenRef, surfaceText) : undefined,
     resolvedTokenAnalysisEqual,
   );
 }

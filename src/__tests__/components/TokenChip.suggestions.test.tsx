@@ -200,7 +200,7 @@ describe('TokenChip suggested placeholder', () => {
 });
 
 describe('TokenChip suggestion dropdown', () => {
-  it('opens on focus of an empty input and shows the suggested gloss in green', async () => {
+  it('opens on focus of an empty input and shows the suggested gloss in blue', async () => {
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
     // Closed until focused: no row is in the document yet.
@@ -263,7 +263,7 @@ describe('TokenChip suggestion dropdown', () => {
 
     await focusGloss('bank');
 
-    // On an already-approved token every alternative is a blue "promote" row, not the green "accept"
+    // On an already-approved token every alternative is a grey "promote" row, not the blue "accept"
     // row — there is no suggestion to accept, only candidates to promote to.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
@@ -362,7 +362,7 @@ describe('TokenChip suggestion dropdown', () => {
     expect(link?.status).toBe('approved');
   });
 
-  it('surfaces homograph candidates and promotes the chosen one in blue', async () => {
+  it('surfaces homograph candidates and promotes the chosen one in grey', async () => {
     const onSave = jest.fn();
     renderChip(wordToken('tok-new', 'bank'), {
       initialAnalysis: homographBankPool('finance'),
@@ -371,7 +371,7 @@ describe('TokenChip suggestion dropdown', () => {
 
     await focusGloss('bank');
 
-    // The most-approved payload is suggested; the competing one is a blue candidate.
+    // The most-approved payload is suggested; the competing one is a grey candidate.
     expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('riverbank');
     const candidate = screen.getByTestId('suggestion-candidate');
     expect(candidate).toHaveTextContent('finance');
@@ -414,6 +414,63 @@ describe('TokenChip suggestion dropdown', () => {
     const link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new');
     expect(link?.analysisId).toBe('ta-fin');
     expect(link?.status).toBe('approved');
+  });
+});
+
+/**
+ * Builds the homograph 'bank' where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
+ * majority) and `finance` once (`f1`, the minority) — so clearing an approved majority token can be
+ * tested for previewing the still-majority pick rather than the lone alternative.
+ *
+ * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
+ */
+function homographMajorityPool(): TextAnalysis {
+  const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };
+  const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+  const links: TokenAnalysisLink[] = [
+    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r1', surfaceText: 'bank' } },
+    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r2', surfaceText: 'bank' } },
+    { analysisId: 'ta-river', status: 'approved', token: { tokenRef: 'r3', surfaceText: 'bank' } },
+    { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+  ];
+  return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks: links };
+}
+
+describe('TokenChip suggestion after clearing an approved gloss', () => {
+  it('previews the pool majority, not the lone alternative, when an approved gloss is cleared', async () => {
+    // r1 is approved to the majority 'riverbank'; focused, its dropdown offers only the minority
+    // 'finance' alternative (the approved payload is excluded). Clearing the gloss must not leave
+    // 'finance' standing in as the suggestion: discounting r1's own approval (3 → 2) keeps
+    // 'riverbank' on top, so the accept row and ghost placeholder both surface 'riverbank' — matching
+    // what re-derives once the empty value commits on blur, rather than flipping on blur.
+    renderChip(wordToken('r1', 'bank'), { initialAnalysis: homographMajorityPool() });
+
+    const input = await focusGloss('bank');
+    // Before clearing: the approved token shows only the alternative as a promote row.
+    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
+    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+
+    await userEvent.clear(input);
+
+    const accept = screen.getByTestId('suggestion-accept');
+    expect(accept).toHaveTextContent('riverbank');
+    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
+    expect(input).toHaveAttribute('placeholder', 'riverbank');
+  });
+
+  it('shows no suggestion when the cleared gloss was the surface form only approval', async () => {
+    // 'logos' is approved exactly once; clearing it empties the pool match, so nothing is suggested —
+    // consistent with the empty pool the committed deletion produces (no flip back to a suggestion).
+    renderChip(wordToken('tok-approved', 'logos'), {
+      initialAnalysis: poolWithOneApproved('word'),
+    });
+
+    const input = await focusGloss('logos');
+    await userEvent.clear(input);
+
+    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-candidate')).not.toBeInTheDocument();
+    expect(input).toHaveAttribute('placeholder', 'gloss');
   });
 });
 

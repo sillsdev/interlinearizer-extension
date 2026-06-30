@@ -133,22 +133,47 @@ export function buildPoolIndex(
  * for only asking about tokens that have no approved analysis (an approved token reads its
  * decision, not a suggestion).
  *
+ * Pass `excludeAnalysisId` to preview the suggestion a token would resolve to if its own approval
+ * were removed (used the instant an approved gloss is cleared, before the empty value commits):
+ * that payload's frequency is decremented — dropping it from the bucket entirely when this was its
+ * last approval — and the remainder re-ranked, so the preview matches the pool the committed
+ * deletion will produce rather than the approved payload's mere alternatives.
+ *
  * @param poolIndex - The pool indexed by normalized surface form.
  * @param surfaceText - The token's raw surface text.
- * @returns The token's suggestion, or `undefined` when no pooled analysis matches.
+ * @param excludeAnalysisId - When given, the id of an approved payload to discount by one approval
+ *   before ranking, previewing the pool as if this token were unapproved.
+ * @returns The token's suggestion, or `undefined` when no pooled analysis matches (or none remains
+ *   once the excluded payload is discounted).
  */
 export function deriveTokenSuggestion(
   poolIndex: PoolIndex,
   surfaceText: string,
+  excludeAnalysisId?: string,
 ): TokenSuggestion | undefined {
   const entries = poolIndex.get(normalizeSurfaceForm(surfaceText));
   if (!entries) return undefined;
-  // The bucket is pre-ranked best-first by buildPoolIndex, so the head is the suggested pick and
-  // the tail are the candidates — no per-call re-sort. A non-homograph bucket (the common case) has
-  // a single entry, so reuse one shared empty array instead of allocating a throwaway `[]` per call.
+  // Common path: the bucket is already ranked best-first by buildPoolIndex, so read it as-is. When
+  // discounting this token's own approval, drop that payload's one approval (removing it when this
+  // was its last) and re-rank the remainder before reading the head.
+  const ranked =
+    excludeAnalysisId === undefined
+      ? entries
+      : entries
+          .map((entry) =>
+            entry.analysis.id === excludeAnalysisId
+              ? { analysis: entry.analysis, frequency: entry.frequency - 1 }
+              : entry,
+          )
+          .filter((entry) => entry.frequency > 0)
+          .sort(comparePoolEntries);
+  if (ranked.length === 0) return undefined;
+  // The head is the suggested pick and the tail are the candidates — no per-call re-sort on the
+  // common path. A non-homograph bucket (the common case) has a single entry, so reuse one shared
+  // empty array instead of allocating a throwaway `[]` per call.
   return {
-    suggested: entries[0].analysis,
-    candidates: entries.length > 1 ? entries.slice(1).map((e) => e.analysis) : NO_CANDIDATES,
+    suggested: ranked[0].analysis,
+    candidates: ranked.length > 1 ? ranked.slice(1).map((e) => e.analysis) : NO_CANDIDATES,
   };
 }
 
@@ -162,8 +187,8 @@ export interface GlossedSuggestionEntry {
   /** The payload's gloss in the active analysis language; never blank (blank entries are dropped). */
   gloss: string;
   /**
-   * How the row is offered: `'suggested'` for the engine's pick on an un-approved token (green,
-   * "accept"), or `'candidate'` for every promotable alternative (blue, "promote"). Carried on the
+   * How the row is offered: `'suggested'` for the engine's pick on an un-approved token (blue,
+   * "accept"), or `'candidate'` for every promotable alternative (grey, "promote"). Carried on the
    * entry — rather than re-derived from row position by the renderer — so dropping a blank-in-
    * language pick can never leave a candidate masquerading as the accept row.
    */
@@ -180,7 +205,7 @@ export interface GlossedSuggestionEntry {
  * re-deriving any of it from the raw {@link TokenSuggestion} or from row position.
  *
  * For an un-approved (`'suggested'`) token the highest-ranked renderable match is offered as
- * `'suggested'` (the green "accept" row) and the rest as `'candidate'` (blue "promote"). The status
+ * `'suggested'` (the blue "accept" row) and the rest as `'candidate'` (grey "promote"). The status
  * is assigned _after_ dropping blank-in-language picks, so when the engine's top pick has no gloss
  * in the active language the next-ranked glossed match correctly becomes the accept row rather than
  * the whole suggestion vanishing. For an already-approved token every pool peer is a `'candidate'`

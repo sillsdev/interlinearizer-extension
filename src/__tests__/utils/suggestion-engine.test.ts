@@ -145,6 +145,80 @@ describe('deriveTokenSuggestion', () => {
 
     expect(deriveTokenSuggestion(pool, 'The')).toEqual({ suggested: the, candidates: [] });
   });
+
+  it('discounts the excluded payload but keeps it leading when it still outranks the rest', () => {
+    // The reported case: a word approved as the majority homograph, then cleared. Discounting this
+    // token's own approval (river 3 → 2) still leaves it above the minority (fin 1), so the cleared
+    // preview surfaces the majority pick rather than the lone alternative.
+    const riverbank = ta('b1', 'bank', 'riverbank');
+    const moneyBank = ta('b2', 'bank', 'money bank');
+    const pool = buildPoolIndex(
+      new Map([
+        ['b1', riverbank],
+        ['b2', moneyBank],
+      ]),
+      new Map([
+        ['b1', 3],
+        ['b2', 1],
+      ]),
+    );
+
+    expect(deriveTokenSuggestion(pool, 'bank', 'b1')).toEqual({
+      suggested: riverbank,
+      candidates: [moneyBank],
+    });
+  });
+
+  it('re-ranks when discounting the excluded payload drops it below a rival', () => {
+    // Two homographs tied at frequency 2 (b1 leads on the id tiebreak). Discounting b1's own
+    // approval drops it to 1, so b2 now leads and b1 becomes the candidate.
+    const first = ta('b1', 'bank', 'one');
+    const second = ta('b2', 'bank', 'two');
+    const pool = buildPoolIndex(
+      new Map([
+        ['b1', first],
+        ['b2', second],
+      ]),
+      new Map([
+        ['b1', 2],
+        ['b2', 2],
+      ]),
+    );
+
+    expect(deriveTokenSuggestion(pool, 'bank', 'b1')).toEqual({
+      suggested: second,
+      candidates: [first],
+    });
+  });
+
+  it('drops the excluded payload entirely when this was its last approval, leaving the rivals', () => {
+    const onceApproved = ta('b1', 'bank', 'rare');
+    const common = ta('b2', 'bank', 'common');
+    const pool = buildPoolIndex(
+      new Map([
+        ['b1', onceApproved],
+        ['b2', common],
+      ]),
+      new Map([
+        ['b1', 1],
+        ['b2', 2],
+      ]),
+    );
+
+    expect(deriveTokenSuggestion(pool, 'bank', 'b1')).toEqual({
+      suggested: common,
+      candidates: [],
+    });
+  });
+
+  it('returns no suggestion when discounting the excluded payload empties the bucket', () => {
+    // A word glossed exactly once: clearing it removes its only pool entry, so there is nothing left
+    // to suggest — matching the empty pool the committed deletion will produce.
+    const dog = ta('a1', 'dog', 'dog');
+    const pool = buildPoolIndex(new Map([['a1', dog]]), new Map([['a1', 1]]));
+
+    expect(deriveTokenSuggestion(pool, 'dog', 'a1')).toBeUndefined();
+  });
 });
 
 describe('resolvedTokenAnalysisEqual', () => {

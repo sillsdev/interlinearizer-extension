@@ -24,6 +24,7 @@ import {
   usePhraseGlossDispatch,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
+  useSuggestionAfterClearing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
   useShowSuggestions,
@@ -1699,6 +1700,59 @@ describe('useResolvedTokenAnalysis', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<ResolvedReader tokenRef="tok-1" surfaceText="logos" />)).toThrow(
       'useResolvedTokenAnalysis must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useSuggestionAfterClearing', () => {
+  /**
+   * Renders the status of the cleared-token preview for a token, used to assert on
+   * `useSuggestionAfterClearing`.
+   *
+   * @param props.tokenRef - Token ref to resolve.
+   * @param props.surfaceText - Surface text to match against the pool.
+   * @param props.enabled - Whether the hook should derive (mirrors the chip's gating).
+   * @returns JSX element suitable for passing to `render`.
+   */
+  function ClearingReader({
+    tokenRef,
+    surfaceText,
+    enabled = true,
+  }: Readonly<{ tokenRef: string; surfaceText: string; enabled?: boolean }>) {
+    const resolved = useSuggestionAfterClearing(tokenRef, surfaceText, enabled);
+    return <span data-testid="cleared">{resolved?.status ?? 'none'}</span>;
+  }
+
+  it('previews the pool suggestion as if an approved token were cleared', () => {
+    // tok-1 and tok-2 both approve the shared 'word' payload; discounting tok-1's approval still
+    // leaves tok-2's, so clearing tok-1 previews the surviving payload as a suggestion.
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis('a', 'word')}
+        analysisLanguage="und"
+      >
+        <ClearingReader tokenRef="tok-1" surfaceText="word" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('cleared')).toHaveTextContent('suggested');
+  });
+
+  it('returns undefined without pool work when disabled', () => {
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis('a', 'word')}
+        analysisLanguage="und"
+      >
+        <ClearingReader tokenRef="tok-1" surfaceText="word" enabled={false} />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('cleared')).toHaveTextContent('none');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<ClearingReader tokenRef="tok-1" surfaceText="word" />)).toThrow(
+      'useSuggestionAfterClearing must be used inside an AnalysisStoreProvider',
     );
   });
 });

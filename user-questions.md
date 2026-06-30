@@ -109,9 +109,10 @@ Decisions made during development that we'd like reviewed:
    edit-confirmation modal the right home for this action, or should "fork this instance" be its own
    distinct, always-available control?
 
-3. **Status colors.** Approved = default foreground, suggested = green, candidate = blue,
-   rejected = orange, stale = red. Does this mapping read correctly to users (e.g. green commonly
-   means "approved/done", which here is the plain foreground state)?
+3. **Status colors.** Approved = default foreground, suggested = blue, candidate = grey,
+   rejected = orange, stale = red (the suggested/candidate colors track Paratext 9). Does this
+   mapping read correctly to users, with approved work in the plain foreground and the engine's pick
+   subordinate to it in blue?
 
 ## Suggestion engine: separating per-token edits from global analysis edits
 
@@ -176,46 +177,62 @@ Questions for users/stakeholders:
 ## Suggestion engine: display prominence and candidate review
 
 Suggestions are shown **always-on**: every token with no approved analysis that matches something in
-the pool renders its `suggested` (green) analysis continuously, derived live as you work.
+the pool renders its `suggested` (blue) analysis continuously, derived live as you work.
 
 Questions for users/stakeholders:
 
-1. **Visual prominence of suggestions vs approved work.** A screen can fill with green suggestions the
-   moment a common word is glossed. Suggested (green) must read as clearly subordinate to approved
+1. **Visual prominence of suggestions vs approved work.** A screen can fill with blue suggestions the
+   moment a common word is glossed. Suggested (blue) must read as clearly subordinate to approved
    (foreground) so a field of suggestions is never mistaken for finished work. Is color enough, or do
    suggestions also need a weaker treatment (reduced opacity, italic, an icon/affordance)?
 
 2. **Reviewing candidates (homographs).** When a surface form has competing analyses, one shows as
-   `suggested` (green) and the rest are `candidate` (blue) alternatives. How should a reviewer see and
+   `suggested` (blue) and the rest are `candidate` (grey) alternatives. How should a reviewer see and
    switch to a candidate — an inline dropdown, a hover/expand list, cycling with a key? How many
    candidates is it reasonable to surface before the list is truncated?
 
 3. **Suggestions with no gloss in the active analysis language.** For multi-language projects, an
    analysis can match and be suggested for its morphemes/POS while its gloss in the _active_ language
-   is blank (v1 suggests regardless of language). Is a blank-gloss green suggestion acceptable, or
+   is blank (v1 suggests regardless of language). Is a blank-gloss blue suggestion acceptable, or
    should suggestions be hidden unless they carry a gloss in the active language?
 
 Decisions made during development that we'd like reviewed (the interim treatment shipped behind a
 removable **"Show suggestions"** demo toggle in the view-options dropdown, default **on** — flip it off
-to A/B the "screen fills with green" concern):
+to A/B the "screen fills with suggestions" concern):
 
-1. **Prominence treatment (question #1).** Beneath an un-approved token's (empty) gloss input we show
-   the suggested gloss as a small **green italic "accept" button**; clicking it approves the analysis.
-   The italic + color + small size keep it subordinate to an approved gloss (plain foreground in the
-   input). Is green-italic-button enough, or is a further weakening (opacity, an icon) wanted?
+1. **Prominence treatment (question #1).** An un-approved token's empty gloss input shows the
+   suggested gloss as **blue italic ghost placeholder text**, so which tokens have a suggestion reads
+   at a glance without focus or hover. Focusing the input (clicking it) opens a small **dropdown**
+   whose top row is the suggested gloss (blue italic, an "accept" row); clicking it — or pressing
+   Enter — approves the analysis. Keeping the suggestion in the placeholder/dropdown rather than the
+   committed input, plus the italic + color, keep it subordinate to approved work (plain foreground).
+   Is this enough, or is a further weakening (opacity, an icon) wanted?
 
-2. **Candidate review (question #2).** Homograph candidates render as **blue italic "promote" buttons**
-   stacked under the green suggestion, **capped at 3** (extras are dropped). Clicking one approves that
-   candidate. This is a deliberately minimal interim — the inline-dropdown / hover-list / key-cycling
-   options and the truncation count are still open.
+2. **Candidate review (question #2).** Homograph candidates render as **grey italic "promote" rows**
+   in the same focus-triggered dropdown, below the blue suggested row; clicking one (or arrow-keys +
+   Enter) approves that candidate. A small **"+" button** inside the input — shown only when a token
+   has more than one suggestion — fades in on focus/hover and re-summons the dropdown over
+   already-typed text. (This replaced an earlier inline column of stacked accept/promote buttons.)
+   The dropdown currently lists **every** glossed candidate (scrollable, no truncation); how many to
+   surface before truncating is still open, as are the hover-list / key-cycling alternatives.
 
 3. **Blank-active-language suggestions (question #3).** Interim choice: an individual analysis with
-   **no gloss in the active language is skipped** (it would otherwise be an empty green/blue button),
-   but the engine **falls through to the highest-ranked matching analysis that _does_ have an
+   **no gloss in the active language is skipped** (it would otherwise be an empty dropdown row), but
+   the engine **falls through to the highest-ranked matching analysis that _does_ have an
    active-language gloss** — so a blank top pick no longer hides a usable lower-ranked alternative;
    the best glossed match becomes the accept and the rest become candidates. v1 thus surfaces only
    glossed suggestions, but never drops a glossed one behind a blank higher-frequency homograph. Is
    skipping blank matches right, or should a match still surface (for its morphemes/POS) with an
    empty gloss?
+
+4. **Suggestion after clearing an approved gloss.** Deleting an approved gloss commits only on blur,
+   so for that brief window the token is still stored as approved. While the field is empty we now
+   preview the suggestion the deletion will produce — the pool's best pick derived **as if this
+   token's approval were already removed** — in both the ghost placeholder and the dropdown, so what
+   shows while clearing matches what re-derives after blur. (Previously the just-cleared field briefly
+   offered only the approved payload's _other_ pool alternatives, then snapped to the top pick on
+   blur.) The alternative considered was to leave the suggestion blank until the deletion commits. Is
+   previewing the post-deletion suggestion right, or should a just-cleared gloss show nothing until
+   blur?
 
 Remove the demo toggle (and these affordances' tuning) once the treatment is decided.

@@ -1780,7 +1780,7 @@ describe('selectResolvedTokenAnalysis', () => {
     });
 
     // The approved decision is canonical; the pool match for the same surface form rides along as
-    // `poolSuggestion` so the chevron can still offer re-promotion to a pool alternative.
+    // `poolSuggestion` so the dropdown can still offer re-promotion to a pool alternative.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'word')).toEqual({
       status: 'approved',
       analysis: ta,
@@ -1828,7 +1828,7 @@ describe('approveAnalysisForToken', () => {
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
     expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
     // The token now resolves to its own approved decision rather than a `suggested` status; the pool
-    // match still rides along as `poolSuggestion` for the re-promotion chevron.
+    // match still rides along as `poolSuggestion` for re-promotion from the dropdown.
     expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
       status: 'approved',
       analysis: ta,

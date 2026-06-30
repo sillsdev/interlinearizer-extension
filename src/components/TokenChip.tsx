@@ -1,6 +1,6 @@
 import type { Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { ChevronDown, X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { Popover, PopoverAnchor } from 'platform-bible-react';
 import {
   type KeyboardEvent,
@@ -91,9 +91,11 @@ export function TokenChip({
   const glossInputId = useId();
   const glossInputRef = useRef<HTMLInputElement | undefined>(undefined);
   // The suggestion combobox: an `activeIndex` of -1 means no row is highlighted, so a bare Enter
-  // commits the top suggestion. The dropdown auto-opens on focus of an empty input and closes once
-  // the user types (it is keyed off the token's surface form, not the typed text). The chevron can
-  // re-open it over typed text; `inputFocused` / `chipHovered` only gate the chevron's visibility.
+  // commits the top suggestion. Focusing (clicking) the gloss opens the dropdown whenever the token
+  // has suggestions — clicking the gloss is the primary way in — and typing closes it again (it
+  // reopens when the field is emptied or via ArrowDown). The "+" button is shown only for a token
+  // with more than one suggestion, both as a marker that alternatives exist and as a re-summon
+  // affordance over typed text; `inputFocused` / `chipHovered` gate its visibility.
   const listboxId = useId();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -184,8 +186,12 @@ export function TokenChip({
     [resolved, analysisLanguage],
   );
   // Whether this token has anything to suggest: gated on the demo toggle (via the resolve short-
-  // circuit) and editability. The chevron and dropdown only ever appear when this is true.
+  // circuit) and editability. The dropdown only ever appears when this is true.
   const hasSuggestions = showSuggestions && !disabled && glossedRanked.length > 0;
+  // The "+" button is offered only when there is a real choice — more than one suggestion. With a
+  // single suggestion the ghost placeholder already advertises it and focusing the gloss opens the
+  // dropdown to accept it, so a button would be redundant.
+  const hasMultipleSuggestions = hasSuggestions && glossedRanked.length > 1;
   // Top pick (row 0, the green "suggested") shown as ghost placeholder text so the row reveals
   // which tokens have a suggestion at a glance — without focus or hover. Once the user types, the
   // typed value replaces it.
@@ -230,8 +236,8 @@ export function TokenChip({
    * Drives the gloss input as a combobox. While the dropdown is open, arrow keys move the highlight
    * (stopping at the ends; Up returns to the no-highlight state), Enter commits the highlighted row
    * or the top row, and Escape closes without committing. While closed, ArrowDown opens the
-   * dropdown (keyboard equivalent of the chevron — lets an approved token summon pool alternatives
-   * without focusing away) and Enter commits the typed draft.
+   * dropdown (the keyboard way to reopen it after typing has closed it, without clearing the field)
+   * and Enter commits the typed draft.
    *
    * @param e - The gloss input's key-down event.
    */
@@ -269,12 +275,14 @@ export function TokenChip({
 
   /**
    * Handles gloss-input focus: runs the parent's focus side effect (scroll-into-view), marks the
-   * input focused so the chevron can show, and auto-opens the dropdown when the input is empty.
+   * input focused so the "+" button can show, and opens the suggestion dropdown whenever the token
+   * has suggestions — so clicking the gloss (which focuses it) summons the list on both empty and
+   * already-glossed tokens.
    */
   const handleFocus = () => {
     onFocus();
     setInputFocused(true);
-    if (draft === '' && hasSuggestions) {
+    if (hasSuggestions) {
       setActiveIndex(-1);
       setSuggestionsOpen(true);
     }
@@ -296,18 +304,18 @@ export function TokenChip({
     }
   };
 
-  /** Toggles the dropdown from the chevron, focusing the input so keyboard navigation works. */
-  const handleChevronClick = () => {
+  /** Toggles the dropdown from the "+" button, focusing the input so keyboard navigation works. */
+  const handleAddClick = () => {
     const willOpen = !suggestionsOpen;
     setActiveIndex(-1);
     setSuggestionsOpen(willOpen);
-    // Focus after setting open so the focus handler's empty-input auto-open agrees with willOpen
-    // (both want open); on close we leave focus where it is.
+    // Focus after setting open so the focus handler's auto-open agrees with willOpen (both want
+    // open); on close we leave focus where it is.
     if (willOpen) glossInputRef.current?.focus({ preventScroll: true });
   };
 
   /**
-   * Ref callback that stores the gloss input element for focus control (from the chevron) and as
+   * Ref callback that stores the gloss input element for focus control (from the "+" button) and as
    * the dropdown's positioning anchor. Normalizes React's `null` on unmount to `undefined` to match
    * the repo's ref-typing convention.
    *
@@ -320,6 +328,11 @@ export function TokenChip({
   // Whether the dropdown is actually mounted: open AND still has rows (a row may have been approved
   // away). When false the input's combobox attributes collapse to the closed state.
   const dropdownShown = suggestionsOpen && hasSuggestions;
+
+  // Whether the "+" button is faded in. Its layout slot (the input's reserved end-padding) is
+  // always present, so this governs only opacity/interactivity — the chip never reflows as it
+  // appears.
+  const addVisible = inputFocused || chipHovered;
 
   // The X button is positioned outside the <label>, and the label is bound to the gloss input with
   // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
@@ -345,7 +358,7 @@ export function TokenChip({
         </button>
       )}
       <label
-        className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-1.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
+        className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-0.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
         onMouseDown={disabled ? undefined : handleLabelMouseDown}
         onMouseEnter={() => setChipHovered(true)}
         onMouseLeave={() => setChipHovered(false)}
@@ -423,11 +436,15 @@ export function TokenChip({
             )}
           </Popover>
         )}
-        {/* The gloss input acts as the combobox; the chevron (shown only when this chip has
-            suggestions and is focused or hovered) is a mouse affordance to summon the dropdown,
-            including over already-typed text. The chevron stays out of the tab order so tabbing
-            across the interlinear row hits one stop per token — the input. */}
-        <span className="tw:flex tw:flex-row tw:items-center tw:gap-0.5">
+        {/* The gloss input acts as the combobox; the "+" button is a mouse affordance to summon the
+            dropdown over already-typed text, shown only for a token with more than one suggestion
+            and rendered as a trailing in-field decoration that only fades into view on focus/hover.
+            The input reserves symmetric end-padding (sized to clear the button) on EVERY chip —
+            whether or not this token has a suggestion, and whether or not the feature is on — so the
+            gloss text stays centered, the chip never reflows as the button appears, and widths never
+            differ between tokens that do and don't have suggestions. The button stays out of the tab
+            order so tabbing across the interlinear row hits one stop per token — the input. */}
+        <span className="tw:relative tw:mt-0.5 tw:inline-flex tw:items-center">
           <input
             ref={setGlossInputRef}
             // Combobox semantics apply only when this token actually has a suggestion popup; without
@@ -452,7 +469,19 @@ export function TokenChip({
                 : resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])
             }
             role={hasSuggestions ? 'combobox' : undefined}
-            style={{ fieldSizing: 'content', minWidth: '5ch' }}
+            // Inline padding overrides the `gloss-input` utility's default px to reserve room for the
+            // trailing "+" button symmetrically (keeping the gloss text centered) without a separate
+            // spacer element. The utility's top margin moves to the wrapping span (which now carries
+            // the gap above the input) and is zeroed here so the span's box matches the input
+            // exactly — letting the absolutely-positioned button center on the input rather than on a
+            // box inflated at the top by the margin.
+            style={{
+              fieldSizing: 'content',
+              marginTop: 0,
+              minWidth: '5ch',
+              paddingLeft: '0.75rem',
+              paddingRight: '0.75rem',
+            }}
             value={draft}
             onBlur={
               disabled
@@ -469,20 +498,24 @@ export function TokenChip({
             onMouseDown={disabled ? undefined : handleMouseDown}
             type="text"
           />
-          {hasSuggestions && (inputFocused || chipHovered) && (
+          {hasMultipleSuggestions && (
             <button
               aria-controls={dropdownShown ? listboxId : undefined}
               aria-expanded={dropdownShown}
+              aria-hidden={!addVisible}
               aria-label={`Show suggestions for ${token.surfaceText}`}
-              className="tw:flex tw:h-3.5 tw:w-3.5 tw:shrink-0 tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:cursor-pointer tw:hover:bg-accent"
-              data-testid="suggestion-chevron"
+              // Absolutely positioned inside the input's reserved end-padding so it never affects
+              // layout; we toggle only opacity, fading the button in on focus/hover. When hidden it
+              // is also made non-interactive so an invisible button can't swallow clicks.
+              className={`tw:absolute tw:right-0.5 tw:top-1/2 tw:flex tw:h-2.5 tw:w-2.5 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
+              data-testid="suggestion-add"
               tabIndex={-1}
               type="button"
-              onClick={handleChevronClick}
-              // Suppress the mouse-down focus shift so clicking the chevron never blurs the input.
+              onClick={handleAddClick}
+              // Suppress the mouse-down focus shift so clicking the button never blurs the input.
               onMouseDown={(e) => e.preventDefault()}
             >
-              <ChevronDown className={`tw:h-3 tw:w-3${dropdownShown ? ' tw:rotate-180' : ''}`} />
+              <Plus className="tw:h-2.5 tw:w-2.5" />
             </button>
           )}
         </span>

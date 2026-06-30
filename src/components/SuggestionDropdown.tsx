@@ -60,7 +60,14 @@ export default function SuggestionDropdown({
   onRequestClose,
 }: SuggestionDropdownProps) {
   const listRef = useRef<HTMLUListElement | undefined>(undefined);
-  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  // `left` is the anchor input's horizontal center (the panel is translated -50% so it stays
+  // centered on the input regardless of its own width); `width` is the input's width, applied as the
+  // panel's min-width so it never renders narrower than the input it belongs to.
+  const [position, setPosition] = useState<{ top: number; left: number; width: number }>({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
 
   /**
    * Ref callback that stores the list element, used to tell apart scrolling the panel's own
@@ -85,7 +92,7 @@ export default function SuggestionDropdown({
     if (!anchor) return undefined;
     const updatePosition = () => {
       const rect = anchor.getBoundingClientRect();
-      setPosition({ top: rect.bottom + 2, left: rect.left });
+      setPosition({ top: rect.bottom + 2, left: rect.left + rect.width / 2, width: rect.width });
     };
     updatePosition();
     const handleScroll = (e: Event) => {
@@ -96,7 +103,7 @@ export default function SuggestionDropdown({
         onRequestClose();
         return;
       }
-      setPosition({ top: rect.bottom + 2, left: rect.left });
+      setPosition({ top: rect.bottom + 2, left: rect.left + rect.width / 2, width: rect.width });
     };
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', handleScroll, true);
@@ -121,7 +128,14 @@ export default function SuggestionDropdown({
       className="tw:fixed tw:z-30 tw:max-h-48 tw:overflow-y-auto tw:rounded-md tw:border tw:border-border tw:bg-popover tw:py-1 tw:shadow-md"
       id={listboxId}
       role="listbox"
-      style={{ top: position.top, left: position.left }}
+      // `left` is the input's center; translateX(-50%) keeps the panel centered on the input, and
+      // minWidth pins it to at least the input's width.
+      style={{
+        top: position.top,
+        left: position.left,
+        minWidth: position.width,
+        transform: 'translateX(-50%)',
+      }}
     >
       {entries.map((entry, index) => (
         <li

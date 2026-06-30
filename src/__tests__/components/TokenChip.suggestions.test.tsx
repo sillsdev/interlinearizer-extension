@@ -2,8 +2,9 @@
  * @file Integration tests for {@link TokenChip}'s suggestion combobox (the focus-triggered pop-down
  *   that replaced the inline accept/promote column). Unlike `TokenChip.test.tsx`, this file uses
  *   the real {@link AnalysisStoreProvider} so suggestions are derived from a real analysis pool end
- *   to end. The dropdown opens on focus of an empty input (or via the chevron), and a row is
- *   approved by clicking it or by keyboard (arrows + Enter).
+ *   to end. The dropdown opens on focus of the gloss (clicking it), and a row is approved by
+ *   clicking it or by keyboard (arrows + Enter). The "+" button — rendered only for a token with
+ *   more than one suggestion — re-summons the dropdown over typed text.
  */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
@@ -144,8 +145,8 @@ function renderChip(
 }
 
 /**
- * Focuses a chip's gloss input (which opens the dropdown when the input is empty and the token has
- * suggestions), returning the input element.
+ * Focuses a chip's gloss input (which opens the dropdown whenever the token has suggestions),
+ * returning the input element.
  *
  * @param surfaceText - The token's surface form, used to find the labeled input.
  * @returns The focused gloss input element.
@@ -212,7 +213,7 @@ describe('TokenChip suggestion dropdown', () => {
     expect(accept.className).toContain('tw:gloss-suggested');
   });
 
-  it('does not open and shows no chevron when showSuggestions is off', async () => {
+  it('does not open and shows no + button when showSuggestions is off', async () => {
     renderChip(wordToken('tok-2', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
       showSuggestions: false,
@@ -221,12 +222,27 @@ describe('TokenChip suggestion dropdown', () => {
     await focusGloss('logos');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
-  it('shows no chevron on an approved token whose only pool entry is its own decision', async () => {
+  it('shows no + button when the token has only one suggestion', async () => {
+    // A single suggestion needs no chooser: the ghost placeholder advertises it and focusing the
+    // gloss opens the dropdown to accept it, so the "+" button is reserved for tokens with a choice.
+    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+
+    const input = await focusGloss('logos');
+
+    // The dropdown is open (its single accept row is present) but no chooser button is rendered,
+    // even on hover.
+    expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
+    await userEvent.hover(input);
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
+  });
+
+  it('shows no suggestion affordances on an approved token whose only pool entry is its own decision', async () => {
     // The lone pool entry IS this token's approved analysis, so there is no alternative to promote:
-    // re-approving the same payload would be a no-op, so the chevron and dropdown stay hidden.
+    // re-approving the same payload would be a no-op, so the dropdown and + button stay hidden.
     renderChip(wordToken('tok-approved', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
@@ -234,25 +250,23 @@ describe('TokenChip suggestion dropdown', () => {
     await focusGloss('logos');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Gloss for logos')).toHaveValue('word');
   });
 
-  it('shows the chevron on an approved token that has a different pool alternative', async () => {
+  it('auto-opens the dropdown on an approved token that has a different pool alternative', async () => {
     // r1 is approved to ta-river; the pool also holds ta-fin ('finance') for the homograph 'bank'.
-    // The approved payload is filtered out of the dropdown, leaving the genuine alternative, so the
-    // re-promotion chevron is offered even though the token already has a decision.
+    // The approved payload is filtered out of the dropdown, leaving the genuine alternative. Focusing
+    // the gloss opens the dropdown over the committed gloss even though the token already has a
+    // decision; with only one alternative there is no "+" button.
     renderChip(wordToken('r1', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    // Focusing an approved token does not auto-open the dropdown (its gloss is non-empty), but the
-    // chevron appears; clicking it force-opens the dropdown over the committed gloss.
     await focusGloss('bank');
-    const chevron = screen.getByTestId('suggestion-chevron');
-    await userEvent.click(chevron);
 
     // On an already-approved token every alternative is a blue "promote" row, not the green "accept"
     // row — there is no suggestion to accept, only candidates to promote to.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
     const promote = screen.getByTestId('suggestion-candidate');
     expect(promote).toHaveTextContent('finance');
     expect(promote.className).toContain('tw:gloss-candidate');
@@ -260,9 +274,9 @@ describe('TokenChip suggestion dropdown', () => {
     expect(screen.queryByText('riverbank')).not.toBeInTheDocument();
   });
 
-  it('shows no chevron on an approved token whose surface form has drifted out of the pool', async () => {
+  it('shows no suggestion affordances on an approved token whose surface form has drifted out of the pool', async () => {
     // tok-approved keeps its approved decision (keyed by token ref), but its surface text has
-    // drifted to a form with no pool entry, so there is no pool alternative and no chevron.
+    // drifted to a form with no pool entry, so there is no pool alternative and nothing to summon.
     renderChip(wordToken('tok-approved', 'drifted'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
@@ -270,7 +284,7 @@ describe('TokenChip suggestion dropdown', () => {
     await focusGloss('drifted');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('does not open for a surface form that is not in the pool', async () => {
@@ -279,7 +293,7 @@ describe('TokenChip suggestion dropdown', () => {
     await focusGloss('unseen');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('shows no suggestion affordances on a disabled chip', () => {
@@ -294,7 +308,7 @@ describe('TokenChip suggestion dropdown', () => {
     );
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('closes once the user starts typing their own gloss', async () => {
@@ -325,7 +339,7 @@ describe('TokenChip suggestion dropdown', () => {
     await focusGloss('logos');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
   });
 
   it('approves the suggestion when its row is clicked: it disappears and the gloss commits', async () => {
@@ -520,30 +534,6 @@ describe('TokenChip suggestion keyboard navigation', () => {
     expect(input).toHaveValue('mine');
   });
 
-  it('arrow-down opens the dropdown on an approved token whose input does not auto-open', async () => {
-    // r1 is approved (non-empty gloss), so focus does not auto-open the dropdown — but the pool
-    // holds a different alternative for the homograph 'bank'. Arrow-down summons it from the
-    // keyboard, the chevron's equivalent, without committing anything.
-    const onGlossChange = jest.fn();
-    renderChip(wordToken('r1', 'bank'), {
-      initialAnalysis: homographBankPool('finance'),
-      onGlossChange,
-    });
-
-    const input = await focusGloss('bank');
-    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-
-    await userEvent.keyboard('{ArrowDown}');
-
-    // The dropdown opens with nothing highlighted, offering the alternative as a promote candidate
-    // (an approved token has no "accept the suggestion" row, only promotions).
-    expect(input).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
-    expect(screen.getByTestId('suggestion-candidate')).toHaveAttribute('aria-selected', 'false');
-    expect(onGlossChange).not.toHaveBeenCalled();
-  });
-
   it('arrow-down re-opens the dropdown after typing closed it', async () => {
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
@@ -569,51 +559,58 @@ describe('TokenChip suggestion keyboard navigation', () => {
   });
 });
 
-describe('TokenChip suggestion chevron', () => {
-  it('appears on hover even when the input is not focused, and hides again on unhover', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+describe('TokenChip suggestion + button', () => {
+  it('fades in on hover even when the input is not focused, and fades out again on unhover', async () => {
+    // The homograph 'bank' has two suggestions, so the "+" button is rendered; at rest it is present
+    // but invisible and non-interactive (its slot is reserved so the chip never reflows).
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    const addButton = screen.getByTestId('suggestion-add');
+    expect(addButton).toHaveClass('tw:opacity-0');
+    expect(addButton).toHaveClass('tw:pointer-events-none');
+    expect(addButton).toHaveAttribute('aria-hidden', 'true');
 
-    await userEvent.hover(screen.getByText('logos'));
-    expect(screen.getByTestId('suggestion-chevron')).toBeInTheDocument();
+    await userEvent.hover(screen.getByText('bank'));
+    expect(addButton).not.toHaveClass('tw:opacity-0');
+    expect(addButton).toHaveAttribute('aria-hidden', 'false');
 
-    await userEvent.unhover(screen.getByText('logos'));
-    // Pointer gone and the input never focused, so the chevron retreats.
-    expect(screen.queryByTestId('suggestion-chevron')).not.toBeInTheDocument();
+    await userEvent.unhover(screen.getByText('bank'));
+    // Pointer gone and the input never focused, so the button fades back out.
+    expect(addButton).toHaveClass('tw:opacity-0');
+    expect(addButton).toHaveAttribute('aria-hidden', 'true');
   });
 
   it('force-opens the dropdown over already-typed text and selecting replaces the draft', async () => {
     const onSave = jest.fn();
-    renderChip(wordToken('tok-2', 'logos'), {
-      initialAnalysis: poolWithOneApproved('word'),
+    renderChip(wordToken('tok-new', 'bank'), {
+      initialAnalysis: homographBankPool('finance'),
       onSave,
     });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss('bank');
     await userEvent.type(input, 'mine'); // closes the auto-opened dropdown
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId('suggestion-chevron'));
-    expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('word');
+    await userEvent.click(screen.getByTestId('suggestion-add'));
+    expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('riverbank');
 
     await userEvent.click(screen.getByTestId('suggestion-accept'));
 
     // The selection wins over the abandoned 'mine' draft: the committed gloss flows back in.
-    expect(input).toHaveValue('word');
+    expect(input).toHaveValue('riverbank');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
-    expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2')?.analysisId).toBe(
-      'ta-1',
+    expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-new')?.analysisId).toBe(
+      'ta-river',
     );
   });
 
   it('toggles the dropdown closed when clicked while open', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    await focusGloss('logos');
+    await focusGloss('bank');
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByTestId('suggestion-chevron'));
+    await userEvent.click(screen.getByTestId('suggestion-add'));
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
   });
@@ -653,7 +650,14 @@ describe('TokenChip suggestion dropdown scrolling', () => {
 
     const listbox = screen.getByRole('listbox');
     expect(listbox).toBeInTheDocument();
-    expect(listbox).toHaveStyle({ top: '112px' });
+    // `left` is the input's center (left 0 + width 50 / 2) and the panel is translated -50% so it
+    // stays centered on the input; `min-width` pins it to at least the input's width.
+    expect(listbox).toHaveStyle({
+      top: '112px',
+      left: '25px',
+      minWidth: '50px',
+      transform: 'translateX(-50%)',
+    });
   });
 
   it('closes when the surrounding view scrolls the anchor out of the viewport', async () => {

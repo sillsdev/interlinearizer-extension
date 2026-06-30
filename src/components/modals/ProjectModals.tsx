@@ -21,8 +21,7 @@ export type ModalState = 'none' | 'select' | 'create' | 'metadata' | 'saveAs';
  * the draft.
  */
 type PendingReplace =
-  | { kind: 'new'; config: CreateDraftConfig }
-  | { kind: 'open'; project: InterlinearProjectSummary };
+  { kind: 'new'; config: CreateDraftConfig } | { kind: 'open'; project: InterlinearProjectSummary };
 
 /**
  * Single mount point for all project-related dialogs. Renders the active one of

@@ -76,11 +76,11 @@ export function Settings(props: Readonly<{ size?: number; className?: string }>)
 }
 
 /**
- * Stub for the ChevronDown icon used by the token chip's suggestion-dropdown toggle.
+ * Stub for the Plus icon used by the token chip's suggestion-dropdown toggle.
  *
  * @param props - SVG props forwarded from the component.
- * @returns A ReactElement SVG element used as a chevron-down icon stub in tests.
+ * @returns A ReactElement SVG element used as a plus icon stub in tests.
  */
-export function ChevronDown(props: Readonly<{ size?: number; className?: string }>): ReactElement {
-  return <svg data-testid="chevron-down-icon" {...props} />;
+export function Plus(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="plus-icon" {...props} />;
 }

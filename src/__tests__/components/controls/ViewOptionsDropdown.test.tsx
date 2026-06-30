@@ -74,7 +74,7 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.queryByTestId('view-options-panel')).not.toBeInTheDocument();
   });
 
-  it('renders labels from useLocalizedStrings for all six toggles', async () => {
+  it('renders labels from useLocalizedStrings for every toggle', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
     await userEvent.click(screen.getByTestId('view-options-button'));
 

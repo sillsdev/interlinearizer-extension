@@ -59,7 +59,7 @@ export type ResolvedTokenAnalysis =
       /** The approved payload. */
       analysis: TokenAnalysis;
       /**
-       * Pool alternatives for this surface form, when any exist, so the suggestion chevron can
+       * Pool alternatives for this surface form, when any exist, so the suggestion dropdown can
        * offer re-promotion even after the token is approved. `undefined` when the pool has no match
        * for this surface form (the token was manually glossed with no pool peers).
        */

@@ -102,12 +102,16 @@ function morphemeIdentity(morpheme: MorphemeAnalysis) {
  * stored payload instead of being duplicated. Identity is content-based: equal normalized surface
  * forms (see {@link normalizeSurfaceForm}) plus deep-equal `gloss` (all language keys), `pos`,
  * `features`, `glossSenseRef` (the lexicon sense the gloss resolves through), and `morphemes`
- * (compared on form + gloss + refs only — see {@link morphemeIdentity}). A missing field and an
- * empty one of the same kind compare equal. `glossSenseRef` is part of identity because
- * `isEmptyTokenAnalysis` counts it as content — were it excluded here, two analyses differing only
- * in their lexicon sense would be merged on write and one sense reference silently dropped.
- * Provenance fields (`confidence`, `producer`, `sourceUser`) and the record `id` are intentionally
- * excluded — they describe who produced an analysis, not what it means.
+ * (compared on form + gloss + refs only — see {@link morphemeIdentity}). Only `morphemes` treats a
+ * missing list and an empty one as equal (the absent list is normalized to `[]` before comparison);
+ * every other field is compared by exact structural equality, so a missing `gloss`/`features`/
+ * `glossSenseRef` does not compare equal to an empty `{}`. That direction is deliberately
+ * conservative: the only risk this dedupe carries is merging two analyses that actually differ (see
+ * `glossSenseRef` below), never failing to merge two that don't. `glossSenseRef` is part of
+ * identity because `isEmptyTokenAnalysis` counts it as content — were it excluded here, two
+ * analyses differing only in their lexicon sense would be merged on write and one sense reference
+ * silently dropped. Provenance fields (`confidence`, `producer`, `sourceUser`) and the record `id`
+ * are intentionally excluded — they describe who produced an analysis, not what it means.
  *
  * @param a - First analysis.
  * @param b - Second analysis.

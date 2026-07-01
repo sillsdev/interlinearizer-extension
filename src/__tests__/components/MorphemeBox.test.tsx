@@ -3,7 +3,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
@@ -116,6 +116,36 @@ describe('MorphemeBox', () => {
     renderBox({ onEditBreakdown });
     await userEvent.click(screen.getByText('hel'));
     expect(onEditBreakdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onEditBreakdown when a non-first form cell is clicked', async () => {
+    // Non-first cells are spans, not buttons, so they need their own coverage.
+    const onEditBreakdown = jest.fn();
+    renderBox({ onEditBreakdown });
+    await userEvent.click(screen.getByText('-lo'));
+    expect(onEditBreakdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops a non-first form cell mousedown from bubbling to an ancestor handler', () => {
+    // Regression test: an ancestor onMouseDown (e.g. TokenChip's label) would otherwise focus the
+    // gloss input, since a span (unlike a button) doesn't match its input/button guard.
+    const onAncestorMouseDown = jest.fn();
+    render(
+      // Stand-in for an ancestor React handler, not real UI.
+      // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+      <div onMouseDown={onAncestorMouseDown}>
+        <MorphemeBox
+          analysisLanguage="en"
+          disabled={false}
+          morphemes={MORPHEMES}
+          onEditBreakdown={jest.fn()}
+          popoverOpen={false}
+          token={WORD_TOKEN}
+        />
+      </div>,
+    );
+    fireEvent.mouseDown(screen.getByText('-lo'));
+    expect(onAncestorMouseDown).not.toHaveBeenCalled();
   });
 
   it('does not call onEditBreakdown when disabled', async () => {

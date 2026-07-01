@@ -535,8 +535,8 @@ describe('Interlinearizer', () => {
 
   it('writes a verse-0 reference to the host when a verse-0 token is selected', () => {
     // Selecting a superscription token navigates the host to verse 0 like any other verse; the
-    // internal-nav marker keeps the host's chapter echo from bouncing the view (the stickiness
-    // exception in InterlinearNavContext). Default scrRef is GEN 1:1, so this is a real verse change.
+    // 'internal' origin records a nav marker so the segment window skips the recenter fade for our
+    // own move. Default scrRef is GEN 1:1, so this is a real verse change.
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_SUPERSCRIPTION_BOOK, navigate: mockNavigate });
 

@@ -113,20 +113,14 @@ export interface InterlinearNav {
    */
   rawScrRef: SerializedVerseRef;
   /**
-   * The active reference, equal to `rawScrRef` except that a verse-0 reference naming the chapter
-   * already shown is held sticky on the current verse — unless it matches a fresh internal-nav
-   * marker (the extension's own move to that chapter's superscription), which passes through. A
-   * verse-0 reference is otherwise passed through verbatim: when it names a chapter with a verse-0
-   * superscription segment, that segment becomes the active verse. Whether a given chapter actually
-   * has verse-0 content is unknown here (the book is not loaded at this layer), so the loader
-   * resolves a verse-0 reference with no matching segment back to the chapter's first numbered
-   * verse before rendering.
-   *
-   * The sticky exception exists because, after a verse navigation, the host re-broadcasts the
-   * chapter as a separate `verseNum: 0` reference (an echo of the current location, not a real
-   * move); treating that as a jump to verse 0 would yank the view off the verse the user is on. The
-   * marker carve-out distinguishes that spurious echo from a deliberate verse-0 navigation the
-   * extension itself just made (which is shaped identically).
+   * The active reference. Equal to `rawScrRef`, with object identity reused across the host's
+   * value-equal duplicate deliveries so a re-send reads as no change. Verse 0 is treated as an
+   * ordinary verse: a `verseNum: 0` reference passes through verbatim, so the host's `<`
+   * (previous-verse) from verse 1 lands on the chapter's superscription. When it names a chapter
+   * with a verse-0 superscription segment, that segment becomes the active verse. Whether a given
+   * chapter actually has verse-0 content is unknown here (the book is not loaded at this layer), so
+   * the loader resolves a verse-0 reference with no matching segment back to the chapter's first
+   * numbered verse before rendering.
    */
   liveScrRef: SerializedVerseRef;
   /**
@@ -226,8 +220,10 @@ export function InterlinearNavProvider({
   stableRawScrRefRef.current = rawScrRef;
 
   /**
-   * The last committed {@link liveScrRef}, mirrored so the verse-0 stickiness below can compare the
-   * incoming `rawScrRef` against the verse currently shown.
+   * The last committed {@link liveScrRef}, mirrored so the duplicate-delivery guard below can reuse
+   * the previously committed object identity when the host re-sends a value-equal reference, and so
+   * the render-phase mid-reveal guard can compare the incoming reference against the verse last
+   * shown.
    */
   const liveScrRefRef = useRef<SerializedVerseRef>(rawScrRef);
 
@@ -236,40 +232,21 @@ export function InterlinearNavProvider({
    * `Date.now()` stamp. `navigate(ref, 'internal')` records `verseKey(ref)`; `consumeInternalNav`
    * removes it on match. Keyed (not a single value) so that rapid successive clicks both stay
    * pending and neither host delivery is misread as external. The stamp gives each marker a TTL
-   * ({@link INTERNAL_NAV_TTL_MS} — see its doc for why stranded markers must expire), honored by ALL
-   * readers: `consumeInternalNav` (which also evicts expired markers), the verse-0 stickiness
-   * exception below, and the render-phase mid-reveal guard (both pure reads — no eviction during
-   * render).
+   * ({@link INTERNAL_NAV_TTL_MS} — see its doc for why stranded markers must expire), honored by
+   * both readers: `consumeInternalNav` (which also evicts expired markers) and the render-phase
+   * mid-reveal guard (a pure read — no eviction during render).
    */
   const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
-  // After a verse navigation the host re-broadcasts the *chapter* to the scroll group as a separate
-  // `verseNum: 0` reference (an echo of the current location, not a real move). Treating that as a
-  // jump to verse 0 would yank the views off the verse the user is actually on, so a verse-0
-  // reference that names the book+chapter already shown is held sticky: keep the current `liveScrRef`
-  // (its real verse).
-  //
-  // The exception is a verse-0 reference the extension itself just navigated to — selecting a
-  // chapter's verse-0 superscription segment writes `verseNum: 0` for the chapter already shown,
-  // which is shaped exactly like the spurious echo. A fresh internal-nav marker for that verse-0 key
-  // distinguishes the two: when one exists, this is our own deliberate move to the superscription, so
-  // it passes through (and `consumeInternalNav` clears the marker downstream). A pure read here — no
-  // eviction during render, matching the render-phase mid-reveal guard.
-  //
-  // Every other reference — including a verse-0 reference for a *different* chapter (a genuine chapter
-  // jump, which the loader resolves to the verse-0 superscription when one exists, else to verse 1) —
-  // passes through verbatim. The duplicate-delivery guard reuses the previously committed object when
-  // a re-send is value-equal, so a duplicate never reads as a fresh navigation.
+  // Verse 0 is a real, focusable verse (a chapter's pre-verse-1 superscription content; see
+  // `usjBookExtractor`), so a `verseNum: 0` reference is passed through verbatim like any other verse
+  // — including the host's `<` (previous-verse) from verse 1, which lands on the chapter's
+  // superscription. When the chapter has no verse-0 segment, the loader resolves verse 0 to the
+  // chapter's first numbered verse before rendering. The duplicate-delivery guard reuses the
+  // previously committed object when a re-send is value-equal, so a duplicate never reads as a fresh
+  // navigation.
   const liveScrRef = useMemo(() => {
     const prev = liveScrRefRef.current;
-    if (
-      rawScrRef.verseNum === 0 &&
-      rawScrRef.book === prev.book &&
-      rawScrRef.chapterNum === prev.chapterNum &&
-      !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(verseKey(rawScrRef)))
-    ) {
-      return prev;
-    }
     return areScrRefsEqual(rawScrRef, prev) ? prev : rawScrRef;
   }, [rawScrRef]);
   /**

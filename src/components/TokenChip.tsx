@@ -167,8 +167,10 @@ export function TokenChip({
    * The input is looked up by id rather than `querySelector('input')` because the morpheme gloss
    * inputs precede it inside the label when morphology is shown. A mouse-down on any input is left
    * to that input's own handling ({@link handleMouseDown} for the gloss input, which bubbles here
-   * after already handling it); a mouse-down on a morpheme form cell or the unanalyzed "define"
-   * trigger (all `button`s) is left to that button's own click handler, which opens the popover.
+   * after already handling it); a mouse-down on the first morpheme form cell or the unanalyzed
+   * "define" trigger (both real `button`s) is left to that button's own click handler. The
+   * remaining morpheme form cells are `span`s that stop their own mousedown from bubbling here
+   * instead (see {@link MorphemeBox}).
    *
    * @param e - The label's mouse-down event.
    */

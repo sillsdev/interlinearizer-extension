@@ -31,6 +31,8 @@ const DEFAULT_PROPS = {
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
+  showSuggestions: false,
+  onShowSuggestionsChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {
@@ -72,7 +74,7 @@ describe('ViewOptionsDropdown', () => {
     expect(screen.queryByTestId('view-options-panel')).not.toBeInTheDocument();
   });
 
-  it('renders labels from useLocalizedStrings for all six toggles', async () => {
+  it('renders labels from useLocalizedStrings for every toggle', async () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
     await userEvent.click(screen.getByTestId('view-options-button'));
 
@@ -90,6 +92,7 @@ describe('ViewOptionsDropdown', () => {
     expect(
       screen.getByText('%interlinearizer_viewOption_chapterLabelInVerse%'),
     ).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
   describe('panel positioning', () => {
@@ -276,6 +279,31 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i }));
 
       expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('show suggestions toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showSuggestions />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /showSuggestions/i })).toBeChecked();
+    });
+
+    it('calls onShowSuggestionsChange when toggled', async () => {
+      const onShowSuggestionsChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showSuggestions={false}
+          onShowSuggestionsChange={onShowSuggestionsChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /showSuggestions/i }));
+
+      expect(onShowSuggestionsChange).toHaveBeenCalledWith(true);
     });
   });
 });

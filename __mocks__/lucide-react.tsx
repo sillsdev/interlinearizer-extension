@@ -74,3 +74,13 @@ export function Link2Off(props: Readonly<{ size?: number; className?: string }>)
 export function Settings(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="settings-icon" {...props} />;
 }
+
+/**
+ * Stub for the Plus icon used by the token chip's suggestion-dropdown toggle.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a plus icon stub in tests.
+ */
+export function Plus(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="plus-icon" {...props} />;
+}

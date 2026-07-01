@@ -62,6 +62,11 @@ type InterlinearizerProps = Readonly<{
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
+  /**
+   * When true, un-approved tokens render the engine's derived suggestion with accept / promote
+   * affordances. Forwarded straight to {@link AnalysisStoreProvider}. Defaults to `false`.
+   */
+  showSuggestions?: boolean;
 }>;
 
 /**
@@ -87,7 +92,10 @@ function InterlinearizerInner({
   phraseMode,
   setPhraseMode,
   viewOptions,
-}: Omit<InterlinearizerProps, 'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis'>) {
+}: Omit<
+  InterlinearizerProps,
+  'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'showSuggestions'
+>) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, and `reportSettled` lifts the cross-book curtain once the new book is laid out.
@@ -330,6 +338,8 @@ function InterlinearizerInner({
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
  *   views.
+ * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
+ *   suggestion with accept / promote affordances; forwarded to {@link AnalysisStoreProvider}.
  * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({
@@ -337,6 +347,7 @@ export default function Interlinearizer({
   analysisLanguage,
   onSaveAnalysis,
   onPendingEditsChange,
+  showSuggestions = false,
   ...innerProps
 }: InterlinearizerProps) {
   return (
@@ -345,6 +356,7 @@ export default function Interlinearizer({
       analysisLanguage={analysisLanguage}
       onSave={onSaveAnalysis}
       onPendingEditsChange={onPendingEditsChange}
+      showSuggestions={showSuggestions}
     >
       <InterlinearizerInner {...innerProps} />
     </AnalysisStoreProvider>

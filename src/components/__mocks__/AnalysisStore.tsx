@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AssignmentStatus, MorphemeAnalysis } from 'interlinearizer';
+import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
 type GlossMap = Record<string, string>;
 type MockCtxValue = {
@@ -10,7 +11,11 @@ type MockCtxValue = {
   dispatch: (tokenRef: string, surfaceText: string, value: string) => void;
   language: string;
 };
-const MockCtx = createContext<MockCtxValue>({ glosses: {}, dispatch: () => {}, language: 'und' });
+const MockCtx = createContext<MockCtxValue>({
+  glosses: {},
+  dispatch: () => {},
+  language: 'und',
+});
 
 /**
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
@@ -144,3 +149,59 @@ export function useMorphemeGlossDispatch(): (
  * @param _isEditing - Whether the input currently holds uncommitted text (unused in mock).
  */
 export function useReportGlossEditing(_isEditing: boolean): void {}
+
+/**
+ * Returns the merged token analysis in mock context. The mock pool is empty, so it never derives
+ * a suggestion — always `undefined`. Suggestion behavior is covered against the real store.
+ *
+ * @param _tokenRef - Token ref (unused in mock).
+ * @param _surfaceText - Surface text (unused in mock).
+ * @param _enabled - Whether to resolve (unused in mock).
+ * @returns `undefined`.
+ */
+export function useResolvedTokenAnalysis(
+  _tokenRef: string,
+  _surfaceText: string,
+  _enabled?: boolean,
+): ResolvedTokenAnalysis | undefined {
+  return undefined;
+}
+
+/**
+ * Returns the cleared-token suggestion preview in mock context. The mock pool is empty, so it never
+ * previews a suggestion — always `undefined`. Clearing behavior is covered against the real store.
+ *
+ * @param _tokenRef - Token ref (unused in mock).
+ * @param _surfaceText - Surface text (unused in mock).
+ * @param _enabled - Whether to derive (unused in mock).
+ * @returns `undefined`.
+ */
+export function useSuggestionAfterClearing(
+  _tokenRef: string,
+  _surfaceText: string,
+  _enabled: boolean,
+): ResolvedTokenAnalysis | undefined {
+  return undefined;
+}
+
+/**
+ * Returns whether suggestions should render in mock context — always `false`.
+ *
+ * @returns `false`.
+ */
+export function useShowSuggestions(): boolean {
+  return false;
+}
+
+/**
+ * Returns a no-op dispatch for approving an analysis (accept / promote) in mock context.
+ *
+ * @returns A no-op function matching the real signature.
+ */
+export function useApproveAnalysisDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  analysisId: string,
+) => void {
+  return () => {};
+}

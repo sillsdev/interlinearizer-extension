@@ -8,7 +8,9 @@ import type {
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { Provider as ReduxProvider, useDispatch, useSelector, useStore } from 'react-redux';
+import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import {
+  approveAnalysisForToken,
   createPhrase,
   deleteMorphemes,
   deletePhrase,
@@ -20,6 +22,8 @@ import {
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
+  selectResolvedTokenAnalysis,
+  selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -28,8 +32,8 @@ import {
   writePhraseGloss,
   writeSegmentFreeTranslation,
 } from '../store/analysisSlice';
-import { createAnalysisStore, type AnalysisDispatch, type AnalysisRootState } from '../store';
 import { emptyAnalysis } from '../types/empty-factories';
+import { resolvedTokenAnalysisEqual, type ResolvedTokenAnalysis } from '../utils/suggestion-engine';
 
 // #region Internal context
 
@@ -51,6 +55,19 @@ type CallbackRefs = {
    * prop, driving the tab's unsaved indicator while the user types.
    */
   reportEditing: (active: boolean) => void;
+  /**
+   * Stable entry point {@link useGlossDispatch} returns for writing a gloss. Every gloss edit is
+   * per-token: a shared payload is forked in the reducer before the edit lands, so editing one
+   * token never rewrites the others. (Editing every occurrence of a shared analysis is deferred;
+   * see user-questions.md "separating per-token edits from global analysis edits".)
+   */
+  requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
+  /**
+   * Whether un-approved tokens should render the engine's derived suggestion
+   * ({@link useShowSuggestions}). Carried on the provider so the demo toggle reaches every gloss
+   * input without threading a prop through the segment/phrase tree.
+   */
+  showSuggestions: boolean;
 };
 
 /** Internal context that carries callback refs alongside the Redux {@link ReduxProvider}. */
@@ -86,6 +103,13 @@ type AnalysisStoreProviderProps = Readonly<{
    * caller reflect in-progress typing in the tab's unsaved indicator before the edit commits.
    */
   onPendingEditsChange?: (pending: boolean) => void;
+  /**
+   * When `true`, un-approved tokens that match the analysis pool render the engine's derived
+   * suggestion (blue) with accept / promote affordances ({@link useResolvedTokenAnalysis},
+   * {@link useShowSuggestions}). Defaults to `false` so existing consumers and isolated tests show
+   * no suggestions; the app opts in via a removable demo toggle.
+   */
+  showSuggestions?: boolean;
 }>;
 
 /**
@@ -101,6 +125,8 @@ type AnalysisStoreProviderProps = Readonly<{
  * @param props.onGlossChange - Spy called after each gloss write; for test observability only
  * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
  *   uncommitted text, so the caller can show the unsaved indicator while the user types
+ * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
+ *   suggestion with accept / promote affordances
  * @returns A context provider wrapping the subtree
  */
 export function AnalysisStoreProvider({
@@ -110,6 +136,7 @@ export function AnalysisStoreProvider({
   onSave,
   onGlossChange,
   onPendingEditsChange,
+  showSuggestions = false,
 }: AnalysisStoreProviderProps) {
   // Lazy initialization: useRef(createStore()) would create and discard a store on every render
   const storeRef = useRef<ReturnType<typeof createAnalysisStore> | undefined>(undefined);
@@ -139,9 +166,33 @@ export function AnalysisStoreProvider({
     if (wasPending !== isPending) onPendingEditsChangeRef.current?.(isPending);
   }, []);
 
+  /**
+   * Dispatches {@link writeGloss} (forking any shared payload before writing), then persists via
+   * `onSave` and notifies the `onGlossChange` spy.
+   *
+   * @param tokenRef - `Token.ref` of the token being glossed.
+   * @param surfaceText - Surface text, recorded so the analysis can detect baseline drift.
+   * @param value - New gloss string; blank (empty or whitespace) clears the active language's
+   *   gloss.
+   */
+  const requestGlossEdit = useCallback(
+    (tokenRef: string, surfaceText: string, value: string) => {
+      store.dispatch(writeGloss(tokenRef, surfaceText, value));
+      onSaveRef.current?.(store.getState().analysis.analysis);
+      onGlossChangeRef.current?.(tokenRef, value);
+    },
+    [store],
+  );
+
   const callbackRefs = useMemo(
-    () => ({ onSaveRef, onGlossChangeRef, reportEditing }),
-    [reportEditing],
+    () => ({
+      onSaveRef,
+      onGlossChangeRef,
+      reportEditing,
+      requestGlossEdit,
+      showSuggestions,
+    }),
+    [reportEditing, requestGlossEdit, showSuggestions],
   );
 
   return (
@@ -231,6 +282,79 @@ export function useGloss(tokenRef: string): string {
 }
 
 /**
+ * Returns the merged analysis the renderer shows for a token — its approved decision, else the
+ * engine's derived suggestion, else `undefined` ({@link selectResolvedTokenAnalysis}). Subscribes
+ * through {@link resolvedTokenAnalysisEqual} so the result stays referentially stable across
+ * unrelated store changes, re-rendering only when the decision or suggestion actually changes.
+ *
+ * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
+ * so a chip that is not currently showing suggestions does no per-token pool lookup or
+ * normalization on each store change. The only consumer ({@link TokenChip}) passes its
+ * `showSuggestions` flag here.
+ *
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text, matched against the pool when the token is
+ *   unapproved.
+ * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
+ *   Defaults to `true`.
+ * @returns The approved or suggested analysis for the token, or `undefined` when it has neither (or
+ *   when `enabled` is `false`).
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useResolvedTokenAnalysis(
+  tokenRef: string,
+  surfaceText: string,
+  enabled = true,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useResolvedTokenAnalysis');
+
+  return useSelector(
+    (state: AnalysisRootState) =>
+      enabled ? selectResolvedTokenAnalysis(state.analysis, tokenRef, surfaceText) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+/**
+ * Returns the suggestion a token would resolve to if its approval were cleared — consulted while
+ * the user has emptied an approved gloss (before the deletion commits on blur) so the previewed
+ * suggestion matches the one that surfaces after commit ({@link selectSuggestionAfterClearing}).
+ * Like {@link useResolvedTokenAnalysis} it subscribes through {@link resolvedTokenAnalysisEqual} for
+ * referential stability and short-circuits to `undefined` (no pool work) when `enabled` is `false`,
+ * so only the single token actively being cleared does any per-token derivation.
+ *
+ * @param tokenRef - The `Token.ref` to resolve.
+ * @param surfaceText - The token's current surface text.
+ * @param enabled - Whether to derive at all; `false` returns `undefined` without pool work.
+ * @returns The suggested analysis as if the token were unapproved, or `undefined`.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useSuggestionAfterClearing(
+  tokenRef: string,
+  surfaceText: string,
+  enabled: boolean,
+): ResolvedTokenAnalysis | undefined {
+  useRequiredCallbacks('useSuggestionAfterClearing');
+
+  return useSelector(
+    (state: AnalysisRootState) =>
+      enabled ? selectSuggestionAfterClearing(state.analysis, tokenRef, surfaceText) : undefined,
+    resolvedTokenAnalysisEqual,
+  );
+}
+
+/**
+ * Returns whether un-approved tokens should render the engine's derived suggestion, as set by the
+ * nearest {@link AnalysisStoreProvider}'s `showSuggestions` prop (a removable demo toggle).
+ *
+ * @returns `true` when suggestions should be shown.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useShowSuggestions(): boolean {
+  return useRequiredCallbacks('useShowSuggestions').showSuggestions;
+}
+
+/**
  * Returns the morpheme breakdown from the approved `TokenAnalysis` for `tokenRef`, re-rendering
  * only when the morpheme array changes. Returns a stable empty array when no approved analysis
  * exists or it has no morphemes.
@@ -273,29 +397,53 @@ export function useAnalysis(): TextAnalysis {
 }
 
 /**
- * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token, then
- * synchronously invokes `onSave` and the optional `onGlossChange` spy. The `onGlossChange` spy is
- * test-only observability and has no effect on store behavior (see {@link AnalysisStoreProvider}).
+ * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token. The
+ * edit is per-token: the reducer forks a shared payload before writing, so editing one token never
+ * rewrites the others (editing every occurrence of a shared analysis is deferred; see
+ * user-questions.md "separating per-token edits from global analysis edits"). Commits immediately,
+ * invoking `onSave` and the optional (test-only) `onGlossChange` spy.
  *
  * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
-  const { callbacks, dispatch, save } = useAnalysisSave('useGlossDispatch');
+  return useRequiredCallbacks('useGlossDispatch').requestGlossEdit;
+}
+
+/**
+ * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
+ * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
+ * chosen alternative). Dispatches `approveAnalysisForToken` then calls `onSave`. Accepting only
+ * adds an approved link to the existing payload (raising its frequency), it does not rewrite the
+ * shared content, so no other token's gloss changes.
+ *
+ * @returns A function `(tokenRef, surfaceText, analysisId) => void`, where `analysisId` is the
+ *   payload to approve and `surfaceText` is this token's surface text, snapshotted on the new
+ *   link.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useApproveAnalysisDispatch(): (
+  tokenRef: string,
+  surfaceText: string,
+  analysisId: string,
+) => void {
+  const { dispatch, save } = useAnalysisSave('useApproveAnalysisDispatch');
 
   return useCallback(
-    (tokenRef: string, surfaceText: string, value: string) => {
-      dispatch(writeGloss(tokenRef, surfaceText, value));
+    (tokenRef: string, surfaceText: string, analysisId: string) => {
+      dispatch(approveAnalysisForToken({ tokenRef, surfaceText, analysisId }));
       save();
-      callbacks.onGlossChangeRef.current?.(tokenRef, value);
     },
-    [dispatch, save, callbacks],
+    [dispatch, save],
   );
 }
 
 /**
  * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
- * for a given token. Dispatches the `writeMorphemes` action and triggers `onSave`.
+ * for a given token. The edit is per-token: the reducer forks a shared payload before
+ * re-segmenting, so editing one token's breakdown never rewrites the others (editing every
+ * occurrence of a shared analysis is deferred; see user-questions.md "separating per-token edits
+ * from global analysis edits"). Commits immediately and triggers `onSave`.
  *
  * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
  *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
@@ -342,8 +490,10 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 
 /**
  * Returns a stable callback that writes a gloss on a single morpheme within the approved
- * `TokenAnalysis` for a given token. Dispatches the `writeMorphemeGloss` action and triggers
- * `onSave`.
+ * `TokenAnalysis` for a given token. The edit is per-token: the reducer forks a shared payload
+ * before writing, so editing one token's morpheme gloss never rewrites the others (editing every
+ * occurrence of a shared analysis is deferred; see user-questions.md "separating per-token edits
+ * from global analysis edits"). Commits immediately and triggers `onSave`.
  *
  * @returns A function `(tokenRef, morphemeId, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.

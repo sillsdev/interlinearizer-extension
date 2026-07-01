@@ -86,3 +86,153 @@ Decisions made during development that we'd like reviewed:
     (the less destructive option) and disables that option when no book is loaded. Alternative: keep
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
+
+## Suggestion engine: editing a shared analysis, and per-instance analyses
+
+The suggestion engine reuses an existing analysis on other matching surface forms by creating a new
+**link** to the same analysis payload (not a copy). Because the payload is shared, analyses behave
+**globally**: editing the gloss/parse of an analysis updates every token instance linked to it
+(the FieldWorks/LCM model — one wordform analysis shared across occurrences).
+
+Decisions made during development that we'd like reviewed:
+
+1. **Confirming a global edit.** Editing an analysis that is linked from more than one token is
+   proposed to require an explicit confirmation ("This analysis is used by N tokens — updating it
+   changes all of them") so users are never surprised that a single edit rewrote many verses. Is a
+   confirmation the right friction, or is it too much for power users? Should it be suppressible
+   ("don't ask again")?
+
+2. **Making a per-instance analysis without rigmarole.** Users will sometimes want a _separate_
+   analysis for one occurrence of a surface form (a genuine local divergence) rather than editing the
+   shared one. The proposal is to offer this directly inside the global-edit confirmation as a second
+   button ("Make a separate analysis for just this one"), so forking an instance is one click. Is the
+   edit-confirmation modal the right home for this action, or should "fork this instance" be its own
+   distinct, always-available control?
+
+3. **Status colors.** Approved = default foreground, suggested = blue, candidate = grey,
+   rejected = orange, stale = red (the suggested/candidate colors track Paratext 9). Does this
+   mapping read correctly to users, with approved work in the plain foreground and the engine's pick
+   subordinate to it in blue?
+
+## Suggestion engine: separating per-token edits from global analysis edits
+
+This revisits the model in "editing a shared analysis, and per-instance analyses" (above). In the
+shipped interim, **both** a per-token act and a global edit go through the same gloss input: typing a
+new gloss into a token whose analysis is shared rewrites every token linked to that analysis. To keep
+that from surprising users, an edit to a shared analysis is intercepted and a confirmation modal asks
+"this is used by N tokens — update all of them?" (with a "fork just this one" escape).
+
+The concern with that model: the gloss input cannot express _which_ of two different intents the user
+has — "set what _this token_ means" (local) versus "edit _this shared analysis_" (global, affecting
+every linked occurrence) — so the confirmation modal exists only to recover that intent after the
+keystroke. It is a guardrail bolted onto an input that conflates the two operations.
+
+**Proposed alternative.** Make the two operations distinct controls instead of one input plus a
+confirmation:
+
+- The **gloss input stays purely per-token** — typing a gloss or clearing it only ever affects _that_
+  token. It never fans out, so no interception or confirmation is needed.
+- **Global edit/delete move onto the suggestion dropdown rows.** Each row already _is_ a distinct
+  shared analysis from the pool (with its approval frequency known), so a **pencil** (edit this shared
+  analysis) and **trash** (delete it from the pool) on a row target an unambiguous payload. The global
+  act becomes a deliberate, directly-chosen control rather than a side effect of typing — and the
+  per-token confirmation modal can be retired.
+
+Questions for users/stakeholders:
+
+1. **Is this split the right model?** Per-token meaning via the gloss input, global edit/delete via
+   dedicated controls on the shared analysis — versus the shipped "one input + confirm-on-fan-out"
+   approach. Does separating the two operations read as clearer, or is editing-in-place (with a
+   confirmation) the more natural flow for the people doing this work?
+
+2. **Delete semantics on a shared analysis.** Trashing an analysis that N tokens approve — should it
+   un-approve all N (they fall back to a suggestion or blank), or should delete be offered only on a
+   zero-approval candidate (an analysis nothing currently relies on)? This is the most consequential
+   question, since one click could un-analyze many verses.
+
+3. **Where inline edit happens.** Pencil → does the row become editable **in place** (keeping the
+   "this is a global analysis" framing), or does it route the analysis back into the token's gloss
+   input pre-filled (which risks reintroducing the very local/global ambiguity this is meant to
+   remove)?
+
+4. **Discoverability.** Global edit/delete would now live inside the dropdown, which a user must open.
+   Is that acceptable, or do approved tokens — which may not surface a populated dropdown today — need
+   their own affordance to reach the shared analysis's controls?
+
+## Suggestion engine: bulk acceptance (post-v1)
+
+v1 accepts suggestions strictly one token at a time, to stay honest to the rule that every analysis
+requires explicit human review. We anticipate users will want to **bulk-accept a verse's suggestions**
+once the feature is in hand.
+
+Questions for users/stakeholders:
+
+1. **Is bulk-accept wanted, and at what scope?** Verse only (small enough to eyeball before
+   approving), or also chapter/book? Book-level bulk-accept is effectively mass approval of unreviewed
+   suggestions — does that still count as "human review"?
+
+2. **What should bulk-accept require?** e.g. only enabled when the whole unit is visible, a confirmation
+   summarizing how many analyses will be approved, or nothing extra.
+
+## Suggestion engine: display prominence and candidate review
+
+Suggestions are shown **always-on**: every token with no approved analysis that matches something in
+the pool renders its `suggested` (blue) analysis continuously, derived live as you work.
+
+Questions for users/stakeholders:
+
+1. **Visual prominence of suggestions vs approved work.** A screen can fill with blue suggestions the
+   moment a common word is glossed. Suggested (blue) must read as clearly subordinate to approved
+   (foreground) so a field of suggestions is never mistaken for finished work. Is color enough, or do
+   suggestions also need a weaker treatment (reduced opacity, italic, an icon/affordance)?
+
+2. **Reviewing candidates (homographs).** When a surface form has competing analyses, one shows as
+   `suggested` (blue) and the rest are `candidate` (grey) alternatives. How should a reviewer see and
+   switch to a candidate — an inline dropdown, a hover/expand list, cycling with a key? How many
+   candidates is it reasonable to surface before the list is truncated?
+
+3. **Suggestions with no gloss in the active analysis language.** For multi-language projects, an
+   analysis can match and be suggested for its morphemes/POS while its gloss in the _active_ language
+   is blank (v1 suggests regardless of language). Is a blank-gloss blue suggestion acceptable, or
+   should suggestions be hidden unless they carry a gloss in the active language?
+
+Decisions made during development that we'd like reviewed (the interim treatment shipped behind a
+removable **"Show suggestions"** demo toggle in the view-options dropdown, default **on** — flip it off
+to A/B the "screen fills with suggestions" concern):
+
+1. **Prominence treatment (question #1).** An un-approved token's empty gloss input shows the
+   suggested gloss as **blue italic ghost placeholder text**, so which tokens have a suggestion reads
+   at a glance without focus or hover. Focusing the input (clicking it) opens a small **dropdown**
+   whose top row is the suggested gloss (blue italic, an "accept" row); clicking it — or pressing
+   Enter — approves the analysis. Keeping the suggestion in the placeholder/dropdown rather than the
+   committed input, plus the italic + color, keep it subordinate to approved work (plain foreground).
+   Is this enough, or is a further weakening (opacity, an icon) wanted?
+
+2. **Candidate review (question #2).** Homograph candidates render as **grey italic "promote" rows**
+   in the same focus-triggered dropdown, below the blue suggested row; clicking one (or arrow-keys +
+   Enter) approves that candidate. A small **"+" button** inside the input — shown only when a token
+   has more than one suggestion — fades in on focus/hover and re-summons the dropdown over
+   already-typed text. (This replaced an earlier inline column of stacked accept/promote buttons.)
+   The dropdown currently lists **every** glossed candidate (scrollable, no truncation); how many to
+   surface before truncating is still open, as are the hover-list / key-cycling alternatives.
+
+3. **Blank-active-language suggestions (question #3).** Interim choice: an individual analysis with
+   **no gloss in the active language is skipped** (it would otherwise be an empty dropdown row), but
+   the engine **falls through to the highest-ranked matching analysis that _does_ have an
+   active-language gloss** — so a blank top pick no longer hides a usable lower-ranked alternative;
+   the best glossed match becomes the accept and the rest become candidates. v1 thus surfaces only
+   glossed suggestions, but never drops a glossed one behind a blank higher-frequency homograph. Is
+   skipping blank matches right, or should a match still surface (for its morphemes/POS) with an
+   empty gloss?
+
+4. **Suggestion after clearing an approved gloss.** Deleting an approved gloss commits only on blur,
+   so for that brief window the token is still stored as approved. While the field is empty we now
+   preview the suggestion the deletion will produce — the pool's best pick derived **as if this
+   token's approval were already removed** — in both the ghost placeholder and the dropdown, so what
+   shows while clearing matches what re-derives after blur. (Previously the just-cleared field briefly
+   offered only the approved payload's _other_ pool alternatives, then snapped to the top pick on
+   blur.) The alternative considered was to leave the suggestion blank until the deletion commits. Is
+   previewing the post-deletion suggestion right, or should a just-cleared gloss show nothing until
+   blur?
+
+Remove the demo toggle (and these affordances' tuning) once the treatment is decided.

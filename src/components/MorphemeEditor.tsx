@@ -281,7 +281,9 @@ export function MorphemeGlossInput({
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => {
-        if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+        if (!disabled && draft !== committed) {
+          dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
+        }
       }}
       type="text"
     />

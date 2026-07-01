@@ -11,9 +11,8 @@ import type {
   TokenSnapshot,
 } from 'interlinearizer';
 import { createAnalysisStore } from '../../store';
-import { makePhraseLink } from '../test-helpers';
-import { emptyAnalysis } from '../../types/empty-factories';
 import {
+  approveAnalysisForToken,
   createPhrase,
   deleteMorphemes,
   deletePhrase,
@@ -23,6 +22,9 @@ import {
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
+  selectPoolIndex,
+  selectResolvedTokenAnalysis,
+  selectSuggestionAfterClearing,
   selectSegmentFreeTranslation,
   updatePhrase,
   writeGloss,
@@ -30,7 +32,10 @@ import {
   writeMorphemes,
   writePhraseGloss,
   writeSegmentFreeTranslation,
+  type AnalysisState,
 } from '../../store/analysisSlice';
+import { emptyAnalysis } from '../../types/empty-factories';
+import { makePhraseLink } from '../test-helpers';
 
 /**
  * Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`.
@@ -58,6 +63,25 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [makeApprovedLink(ta)],
   };
+}
+
+/**
+ * Counts approved links on the same payload as `tokenRef`'s own approved link, used to assert
+ * sharing without reaching into the link arrays at each call site.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` whose payload's shared count is wanted.
+ * @returns The number of approved links on that token's payload, or 0 when it has no approved link.
+ */
+function approvedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
+  const { tokenAnalysisLinks } = state.analysis;
+  const own = tokenAnalysisLinks.find(
+    (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+  );
+  if (!own) return 0;
+  return tokenAnalysisLinks.filter(
+    (l) => l.status === 'approved' && l.analysisId === own.analysisId,
+  ).length;
 }
 
 describe('writeGloss', () => {
@@ -200,6 +224,148 @@ describe('writeGloss', () => {
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalyses).toHaveLength(0);
     expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('edits one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 gloss 'the' identically, so they converge onto one shared payload. Editing
+    // tok-1 to distinct content must fork it onto a private clone, leaving tok-2's gloss untouched.
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'the', 'def'));
+
+    store.dispatch(writeGloss('tok-1', 'the', 'changed'));
+
+    const state = store.getState().analysis;
+    expect(selectApprovedGloss(state, 'tok-1')).toBe('changed');
+    expect(selectApprovedGloss(state, 'tok-2')).toBe('def');
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
+});
+
+describe('find-or-create on write (dedupe)', () => {
+  it('converges two identical glosses onto one shared payload with two approved links', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'the', 'def'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
+  it('keeps competing glosses for one surface form as distinct payloads (homograph)', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'bank', 'riverside'));
+    store.dispatch(writeGloss('tok-2', 'bank', 'finance'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(2);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+  });
+
+  it('converges across surface case so a sentence-initial form reuses the payload', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'The', 'def'));
+
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+  });
+
+  it('records the linking token surface on the shared snapshot, not the payload surface', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'The', 'def'));
+
+    const link = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(link?.token.surfaceText).toBe('The');
+  });
+
+  it('converges identical morpheme breakdowns onto one shared payload', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+  });
+
+  it('re-converges an in-place edit that makes a homograph identical to its sibling', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'bank', 'riverside'));
+    store.dispatch(writeGloss('tok-2', 'bank', 'finance')); // distinct payload (homograph)
+
+    // Edit tok-2's gloss to exactly match tok-1's existing payload.
+    store.dispatch(writeGloss('tok-2', 'bank', 'riverside'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    // The two payloads re-converge onto one, so frequency re-merges rather than splitting.
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+    expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-1')).toBe(2);
+  });
+});
+
+describe('link-based cleanup', () => {
+  it('clearing a gloss on a shared payload drops only the editing link, never orphaning others', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'the', 'def'));
+
+    store.dispatch(writeGloss('tok-1', 'the', ''));
+
+    const state = store.getState().analysis;
+    const { tokenAnalyses, tokenAnalysisLinks } = state.analysis;
+    // The editing token is unlinked; the co-linked token's link still resolves to a live payload.
+    expect(tokenAnalysisLinks.some((l) => l.token.tokenRef === 'tok-1')).toBe(false);
+    const tok2Link = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(tok2Link).toBeDefined();
+    expect(tokenAnalyses.some((ta) => ta.id === tok2Link?.analysisId)).toBe(true);
+    // ...and that payload still carries the co-linked token's gloss — clearing one instance forks
+    // it off rather than emptying the shared payload out from under the other token.
+    expect(selectApprovedGloss(state, 'tok-2')).toBe('def');
+    expect(selectApprovedGloss(state, 'tok-1')).toBe('');
+  });
+
+  it('removes the payload once its last link is cleared', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'the', 'def'));
+    store.dispatch(writeGloss('tok-2', 'the', 'def'));
+
+    store.dispatch(writeGloss('tok-1', 'the', ''));
+    store.dispatch(writeGloss('tok-2', 'the', ''));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(0);
+    expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('deleting morphemes on a shared morpheme payload keeps it for co-linked tokens', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const state = store.getState().analysis;
+    const { tokenAnalyses, tokenAnalysisLinks } = state.analysis;
+    expect(tokenAnalysisLinks.some((l) => l.token.tokenRef === 'tok-1')).toBe(false);
+    const tok2Link = tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(tokenAnalyses.some((ta) => ta.id === tok2Link?.analysisId)).toBe(true);
+    // The co-linked token keeps its morphemes — deleting one instance's breakdown forks it off
+    // rather than stripping the shared payload the other token still relies on.
+    expect(selectApprovedMorphemes(state, 'tok-2')).toHaveLength(2);
+    expect(selectApprovedMorphemes(state, 'tok-1')).toHaveLength(0);
   });
 });
 
@@ -867,6 +1033,51 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[1].gloss).toStrictEqual({ und: 'second' });
   });
 
+  it('re-converges an in-place breakdown edit that makes a payload identical to a sibling', () => {
+    // Two 'run' tokens with different breakdowns → two distinct payloads. Re-segment tok-2 to match
+    // tok-1's single-morpheme breakdown; the payloads should collapse back onto one.
+    const single: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'run',
+      morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
+    };
+    const split: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'run',
+      morphemes: [
+        { id: 'm-2', form: 'ru', writingSystem: 'und' },
+        { id: 'm-3', form: 'n', writingSystem: 'und' },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [single, split],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'run' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'run' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemes('tok-2', 'run', ['run'], 'und'));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
   it('removes an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: TokenAnalysisLink = {
       analysisId: 'old-uuid',
@@ -999,6 +1210,22 @@ describe('writeMorphemes', () => {
     expect(updated?.morphemes?.[0].gloss).toStrictEqual({ en: 'word' });
     expect(updated?.morphemes?.[0].writingSystem).toBe('grc');
   });
+
+  it('re-segments one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 break 'cats' down identically, so they converge onto one shared payload.
+    // Re-segmenting tok-1 to a distinct breakdown must fork it, leaving tok-2's breakdown intact.
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['ca', 'ts'], 'en'));
+
+    const state = store.getState().analysis;
+    expect(selectApprovedMorphemes(state, 'tok-1').map((m) => m.form)).toStrictEqual(['ca', 'ts']);
+    expect(selectApprovedMorphemes(state, 'tok-2').map((m) => m.form)).toStrictEqual(['cat', '-s']);
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
 });
 
 describe('deleteMorphemes', () => {
@@ -1055,6 +1282,47 @@ describe('deleteMorphemes', () => {
     const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
     expect(tokenAnalyses).toHaveLength(0);
     expect(tokenAnalysisLinks).toHaveLength(0);
+  });
+
+  it('re-converges onto an identical sibling after the breakdown is removed', () => {
+    // tok-1: 'run' with gloss + breakdown; tok-2: 'run' with the same gloss but no breakdown.
+    // Removing tok-1's breakdown leaves its payload identical to tok-2's, so the two collapse.
+    const withBreakdown: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'run',
+      gloss: { und: 'jog' },
+      morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
+    };
+    const glossOnly: TokenAnalysis = { id: 'ta-2', surfaceText: 'run', gloss: { und: 'jog' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [withBreakdown, glossOnly],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'run' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'run' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(deleteMorphemes({ tokenRef: 'tok-1' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalyses[0].gloss).toStrictEqual({ und: 'jog' });
+    expect(tokenAnalyses[0].morphemes).toBeUndefined();
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
   });
 
   it('no-ops when the token has no approved link', () => {
@@ -1280,6 +1548,130 @@ describe('writeMorphemeGloss', () => {
       store.getState().analysis.analysis.tokenAnalyses[0].morphemes?.[0].gloss,
     ).toBeUndefined();
   });
+
+  it('re-converges onto an identical sibling after a morpheme gloss edit', () => {
+    // Two payloads for "cats" differ only in morpheme-0's gloss; glossing tok-1's morpheme to match
+    // tok-2's makes them content-identical, so the two payloads should collapse back onto one.
+    const ta1: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-1', form: 'cat', writingSystem: 'und' },
+        { id: 'm-2', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const ta2: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-3', form: 'cat', writingSystem: 'und', gloss: { und: 'feline' } },
+        { id: 'm-4', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [ta1, ta2],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'cats' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'cats' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: 'feline' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
+  it('re-converges onto an identical sibling after clearing a morpheme gloss', () => {
+    // Two payloads for "cats" differ only in that tok-1's morpheme-0 carries a stray gloss; clearing
+    // it makes the two payloads content-identical, so they should collapse back onto one — the clear
+    // path must re-converge symmetrically with the write path, not leave a duplicate behind.
+    const ta1: TokenAnalysis = {
+      id: 'ta-1',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-1', form: 'cat', writingSystem: 'und', gloss: { und: 'feline' } },
+        { id: 'm-2', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const ta2: TokenAnalysis = {
+      id: 'ta-2',
+      surfaceText: 'cats',
+      morphemes: [
+        { id: 'm-3', form: 'cat', writingSystem: 'und' },
+        { id: 'm-4', form: '-s', writingSystem: 'und', gloss: { und: 'PL' } },
+      ],
+    };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [ta1, ta2],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'cats' },
+            },
+            {
+              analysisId: 'ta-2',
+              status: 'approved',
+              token: { tokenRef: 'tok-2', surfaceText: 'cats' },
+            },
+          ],
+        },
+        analysisLanguage: 'und',
+      },
+    });
+
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: 'm-1', value: '' }));
+
+    const { tokenAnalyses, tokenAnalysisLinks } = store.getState().analysis.analysis;
+    expect(tokenAnalyses).toHaveLength(1);
+    expect(tokenAnalysisLinks).toHaveLength(2);
+    expect(tokenAnalysisLinks.every((l) => l.analysisId === tokenAnalyses[0].id)).toBe(true);
+  });
+
+  it('glosses one token of a shared payload without rewriting its co-linked sibling', () => {
+    // tok-1 and tok-2 break 'cats' down identically, so they converge onto one shared payload.
+    // Glossing tok-1's 'cat' morpheme to distinct content must fork it, leaving tok-2's bare.
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', '-s'], 'en'));
+    store.dispatch(writeMorphemes('tok-2', 'cats', ['cat', '-s'], 'en'));
+
+    // Read the shared 'cat' morpheme's id back from state — the prepare assigns fresh UUIDs.
+    const catId = selectApprovedMorphemes(store.getState().analysis, 'tok-1').find(
+      (m) => m.form === 'cat',
+    )?.id;
+    expect(catId).toBeDefined();
+    store.dispatch(
+      writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: catId ?? '', value: 'feline' }),
+    );
+
+    const state = store.getState().analysis;
+    const tok1Cat = selectApprovedMorphemes(state, 'tok-1').find((m) => m.form === 'cat');
+    const tok2Cat = selectApprovedMorphemes(state, 'tok-2').find((m) => m.form === 'cat');
+    expect(tok1Cat?.gloss).toStrictEqual({ und: 'feline' });
+    expect(tok2Cat?.gloss).toBeUndefined();
+    // The shared payload forked, so there are now two distinct payloads.
+    expect(state.analysis.tokenAnalyses).toHaveLength(2);
+  });
 });
 
 describe('selectApprovedMorphemes', () => {
@@ -1322,5 +1714,378 @@ describe('selectApprovedMorphemes', () => {
     const a = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     const b = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
     expect(a).toBe(b);
+  });
+});
+
+describe('selectPoolIndex', () => {
+  it('indexes approved analyses by normalized surface form with their approval frequency', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    // Two tokens approved to one shared payload — a sentence-initial "Logos" and a mid-sentence
+    // "logos" — so the pool frequency is the count of distinct approving tokens.
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+      },
+      {
+        analysisId: 'ta-1',
+        status: 'approved',
+        token: { tokenRef: 'tok-2', surfaceText: 'Logos' },
+      },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [ta], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectPoolIndex(store.getState().analysis).get('logos')).toEqual([
+      { analysis: ta, frequency: 2 },
+    ]);
+  });
+
+  it('excludes non-approved links so only confirmed analyses enter the pool', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-1',
+        status: 'suggested',
+        token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+      },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [ta], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    expect(selectPoolIndex(store.getState().analysis).size).toBe(0);
+  });
+
+  it('returns the same reference for repeated calls on unchanged state (memoized)', () => {
+    const store = createAnalysisStore();
+    const a = selectPoolIndex(store.getState().analysis);
+    const b = selectPoolIndex(store.getState().analysis);
+    expect(a).toBe(b);
+  });
+});
+
+describe('selectResolvedTokenAnalysis', () => {
+  it('returns the approved analysis when the token has one', () => {
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    // The approved decision is canonical; the pool match for the same surface form rides along as
+    // `poolSuggestion` so the dropdown can still offer re-promotion to a pool alternative.
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'word')).toEqual({
+      status: 'approved',
+      analysis: ta,
+      poolSuggestion: { suggested: ta, candidates: [] },
+    });
+  });
+
+  it('falls back to a derived suggestion for an unapproved token matching the pool', () => {
+    // makeAnalysis approves tok-1 → ta-1 ('logos'); tok-2 (also 'logos') has no approved analysis,
+    // so it resolves to the pooled payload as a suggestion.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
+      status: 'suggested',
+      suggested: ta,
+      candidates: [],
+    });
+  });
+
+  it('returns undefined when the token is neither approved nor matches the pool', () => {
+    const store = createAnalysisStore();
+
+    expect(
+      selectResolvedTokenAnalysis(store.getState().analysis, 'tok-1', 'unseen'),
+    ).toBeUndefined();
+  });
+});
+
+describe('selectSuggestionAfterClearing', () => {
+  /**
+   * Builds a homograph 'bank' pool where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
+   * majority) and `finance` once (`f1`), so an approved majority token's deletion can be previewed
+   * against a still-majority pick rather than a tie.
+   *
+   * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
+   */
+  function bankPool(): TextAnalysis {
+    const river: TokenAnalysis = {
+      id: 'ta-river',
+      surfaceText: 'bank',
+      gloss: { en: 'riverbank' },
+    };
+    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r1', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r2', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r3', surfaceText: 'bank' },
+      },
+      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    ];
+    return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks };
+  }
+
+  it('returns undefined for a token with no approved analysis', () => {
+    // The caller only consults this for an approved token; an unapproved one has nothing to discount.
+    const store = createAnalysisStore({
+      analysis: { analysis: bankPool(), analysisLanguage: 'en' },
+    });
+
+    expect(
+      selectSuggestionAfterClearing(store.getState().analysis, 'tok-x', 'bank'),
+    ).toBeUndefined();
+  });
+
+  it('previews the majority pick once an approved token discounts its own approval', () => {
+    // r1 is approved to the majority `riverbank`. Clearing it discounts that approval (3 → 2) but it
+    // still outranks `finance`, so the preview leads with the majority pick — not the lone
+    // alternative the approved-token dropdown would otherwise show.
+    const store = createAnalysisStore({
+      analysis: { analysis: bankPool(), analysisLanguage: 'en' },
+    });
+
+    const river = store.getState().analysis.analysis.tokenAnalyses[0];
+    const fin = store.getState().analysis.analysis.tokenAnalyses[1];
+    expect(selectSuggestionAfterClearing(store.getState().analysis, 'r1', 'bank')).toEqual({
+      status: 'suggested',
+      suggested: river,
+      candidates: [fin],
+    });
+  });
+
+  it('returns undefined when discounting the approval empties the pool match', () => {
+    // tok-1's payload is the only approval of 'word'; clearing it removes the pool entry entirely, so
+    // there is nothing left to suggest — matching the empty pool the committed deletion produces.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    expect(
+      selectSuggestionAfterClearing(store.getState().analysis, 'tok-1', 'word'),
+    ).toBeUndefined();
+  });
+});
+
+describe('approveAnalysisForToken', () => {
+  it('approves an existing payload for an unapproved token, raising its frequency', () => {
+    // tok-1 approves ta-1 ('logos'); tok-2 (also 'logos') only has it as a suggestion until accepted.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'logos', analysisId: 'ta-1' }),
+    );
+
+    // No new payload — the accepting token links to the existing shared one.
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    expect(approvedLinkCountForPayload(store.getState().analysis, 'tok-2')).toBe(2);
+    // The token now resolves to its own approved decision rather than a `suggested` status; the pool
+    // match still rides along as `poolSuggestion` for re-promotion from the dropdown.
+    expect(selectResolvedTokenAnalysis(store.getState().analysis, 'tok-2', 'logos')).toEqual({
+      status: 'approved',
+      analysis: ta,
+      poolSuggestion: { suggested: ta, candidates: [] },
+    });
+  });
+
+  it('promotes a chosen candidate id and snapshots the accepting token surface text', () => {
+    // Homograph 'bank': ta-river is approved twice (the suggested pick), ta-fin once (a candidate).
+    const river: TokenAnalysis = {
+      id: 'ta-river',
+      surfaceText: 'bank',
+      gloss: { en: 'riverside' },
+    };
+    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const tokenAnalysisLinks: TokenAnalysisLink[] = [
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r1', surfaceText: 'bank' },
+      },
+      {
+        analysisId: 'ta-river',
+        status: 'approved',
+        token: { tokenRef: 'r2', surfaceText: 'bank' },
+      },
+      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+    ];
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks },
+        analysisLanguage: 'en',
+      },
+    });
+
+    // Promote the candidate (ta-fin) for a sentence-initial 'Bank', not the suggested ta-river.
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'b1', surfaceText: 'Bank', analysisId: 'ta-fin' }),
+    );
+
+    const link = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'b1');
+    expect(link?.analysisId).toBe('ta-fin');
+    expect(link?.token.surfaceText).toBe('Bank');
+  });
+
+  it('is a no-op when the analysis id matches no stored payload (no orphan link)', () => {
+    // Guards against an unknown id being appended as an approved link that points at nothing.
+    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({
+        tokenRef: 'tok-2',
+        surfaceText: 'logos',
+        analysisId: 'ta-missing',
+      }),
+    );
+
+    // No approved link to the nonexistent payload was appended; only the seeded tok-1 link remains.
+    const links = store.getState().analysis.analysis.tokenAnalysisLinks;
+    expect(links).toHaveLength(1);
+    expect(links.some((l) => l.token.tokenRef === 'tok-2')).toBe(false);
+  });
+
+  it('repoints the existing approved link when promoting an already-approved token (no second link)', () => {
+    // Promoting an already-approved homograph to a different pool analysis must swap the one approved
+    // link in place rather than appending a second (preserving the single-approved invariant) or
+    // no-opping (which would silently fail the re-promotion the UI offers). A co-linked sibling keeps
+    // ta-1 alive, so the old payload survives.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved, other],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-sibling', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-2' }),
+    );
+
+    // The one approved link for tok-1 is repointed to ta-2 — not duplicated.
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-2');
+    // The sibling still approves ta-1, so the old payload survives.
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual([
+      'ta-1',
+      'ta-2',
+    ]);
+  });
+
+  it('reclaims the old payload when promoting an already-approved token off its last reference', () => {
+    // When the promoted-away payload has no other approved link, repointing leaves it orphaned, so
+    // it is dropped — a promotion never strands an empty payload.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved, other],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-2' }),
+    );
+
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-2');
+    // ta-1 had no other approved reference, so it was reclaimed.
+    expect(store.getState().analysis.analysis.tokenAnalyses.map((ta) => ta.id)).toEqual(['ta-2']);
+  });
+
+  it('is a no-op when promoting an already-approved token to the analysis it already approves', () => {
+    // Re-approving the same payload changes nothing — the link already points there.
+    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const store = createAnalysisStore({
+      analysis: {
+        analysis: {
+          ...emptyAnalysis(),
+          tokenAnalyses: [approved],
+          tokenAnalysisLinks: [
+            {
+              analysisId: 'ta-1',
+              status: 'approved',
+              token: { tokenRef: 'tok-1', surfaceText: 'logos' },
+            },
+          ],
+        },
+        analysisLanguage: 'en',
+      },
+    });
+
+    store.dispatch(
+      approveAnalysisForToken({ tokenRef: 'tok-1', surfaceText: 'logos', analysisId: 'ta-1' }),
+    );
+
+    const links = store
+      .getState()
+      .analysis.analysis.tokenAnalysisLinks.filter((l) => l.token.tokenRef === 'tok-1');
+    expect(links).toHaveLength(1);
+    expect(links[0].analysisId).toBe('ta-1');
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
   });
 });

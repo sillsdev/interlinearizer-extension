@@ -12,6 +12,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_chapterLabelInVerse%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
+  '%interlinearizer_viewOption_showSuggestions%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -75,12 +76,19 @@ type ViewOptionsDropdownProps = Readonly<{
   showFreeTranslation: boolean;
   /** Called when the show-free-translation toggle changes. */
   onShowFreeTranslationChange: (checked: boolean) => void;
+  /**
+   * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
+   * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
+   * candidate review"). Drop this prop and its row once the UX is settled.
+   */
+  showSuggestions: boolean;
+  /** Called when the show-suggestions toggle changes. */
+  onShowSuggestionsChange: (checked: boolean) => void;
 }>;
 
 /**
- * Toolbar dropdown that groups the continuous-scroll toggle and five view-mode toggles (show
- * morphology, show free translation, hide inactive link buttons, simplify phrases, chapter label in
- * verse). Opens and closes via a gear icon button.
+ * Toolbar dropdown that groups the continuous-scroll toggle and the view-mode toggles (each a
+ * labeled on/off switch). Opens and closes via a gear icon button.
  *
  * @param props - Component props
  * @param props.continuousScroll - Current continuous-scroll value.
@@ -95,6 +103,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @param props.showFreeTranslation - Current show-free-translation value.
  * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
+ * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
+ * @param props.onShowSuggestionsChange - Show-suggestions change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -110,6 +120,8 @@ export default function ViewOptionsDropdown({
   onShowMorphologyChange,
   showFreeTranslation,
   onShowFreeTranslationChange,
+  showSuggestions,
+  onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -222,6 +234,13 @@ export default function ViewOptionsDropdown({
                 checked={chapterLabelInVerse}
                 label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
                 onCheckedChange={onChapterLabelInVerseChange}
+              />
+              {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
+                  row (and its prop pair) once the behavior is settled. */}
+              <ViewToggle
+                checked={showSuggestions}
+                label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
+                onCheckedChange={onShowSuggestionsChange}
               />
             </div>
           </>,

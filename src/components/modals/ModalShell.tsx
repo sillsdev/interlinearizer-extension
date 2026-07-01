@@ -13,7 +13,9 @@ import type { ReactNode } from 'react';
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
  * @param props.rounded - Tailwind rounding utility; defaults to `'tw:rounded'`. Pass
  *   `'tw:rounded-lg'` for the wider modals.
- * @param props.children - Modal body content rendered below the title.
+ * @param props.children - Modal body content rendered below the title. Omitted while a modal is
+ *   still resolving its localized content, so the blocking overlay can show before the body
+ *   exists.
  * @returns The overlay + dialog wrapper around the title and children.
  */
 export function ModalShell({
@@ -27,7 +29,7 @@ export function ModalShell({
   title: string;
   width: string;
   rounded?: string;
-  children: ReactNode;
+  children?: ReactNode;
 }>) {
   return (
     <div className="tw:modal-overlay">

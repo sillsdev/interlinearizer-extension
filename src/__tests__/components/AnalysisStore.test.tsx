@@ -9,6 +9,7 @@ import {
   AnalysisStoreProvider,
   useAnalysis,
   useAnalysisLanguage,
+  useApproveAnalysisDispatch,
   useGloss,
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
@@ -22,9 +23,13 @@ import {
   usePhraseGloss,
   usePhraseGlossDispatch,
   useReportGlossEditing,
+  useResolvedTokenAnalysis,
+  useSuggestionAfterClearing,
   useSegmentFreeTranslation,
   useSegmentFreeTranslationDispatch,
+  useShowSuggestions,
 } from '../../components/AnalysisStore';
+import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,6 +63,29 @@ function makeAnalysisWithGloss(
     segmentAnalysisLinks: [],
     tokenAnalyses: [ta],
     tokenAnalysisLinks: [link],
+    phraseAnalyses: [],
+    phraseAnalysisLinks: [],
+  };
+}
+
+/**
+ * Builds a `TextAnalysis` where two tokens (`tok-1`, `tok-2`) share one approved `TokenAnalysis`
+ * payload, so editing either token must fork the payload to avoid affecting its sibling.
+ *
+ * @param gloss - Gloss value shared by both tokens for the `'und'` language key.
+ * @param surfaceText - Surface text of both tokens.
+ * @returns A `TextAnalysis` with one payload referenced by two approved links.
+ */
+function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
+  const ta: TokenAnalysis = { id: 'shared-analysis', surfaceText, gloss: { und: gloss } };
+  return {
+    segmentAnalyses: [],
+    segmentAnalysisLinks: [],
+    tokenAnalyses: [ta],
+    tokenAnalysisLinks: [
+      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-1', surfaceText } },
+      { analysisId: ta.id, status: 'approved', token: { tokenRef: 'tok-2', surfaceText } },
+    ],
     phraseAnalyses: [],
     phraseAnalysisLinks: [],
   };
@@ -371,6 +399,61 @@ describe('useGlossDispatch', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'hi' });
+  });
+
+  it('edits only this token when the payload is shared, forking the sibling off', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('gloss')).toHaveTextContent('a');
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    // tok-1 reads the new 'b'; tok-2 keeps the original 'a' because the reducer forked the
+    // shared payload before editing.
+    expect(screen.getByTestId('gloss')).toHaveTextContent('b');
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.gloss).toStrictEqual({ und: 'b' });
+    expect(tok2Analysis?.gloss).toStrictEqual({ und: 'a' });
+    expect(tok1Link?.analysisId).not.toBe(tok2Link?.analysisId);
+  });
+
+  it('clears a shared gloss for only this token, leaving the sibling untouched', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <GlossReader tokenRef="tok-1" />
+        <GlossWriter tokenRef="tok-1" surfaceText="word" value="" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    // Clearing forks the shared payload so only tok-1's link goes away; tok-2 keeps the shared 'a'.
+    expect(screen.getByTestId('gloss')).toBeEmptyDOMElement();
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1')).toBeUndefined();
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok2Analysis?.gloss).toStrictEqual({ und: 'a' });
+    expect(onSave).toHaveBeenCalledTimes(1);
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {
@@ -1186,6 +1269,37 @@ describe('useMorphemeBreakdownDispatch', () => {
     expect(saved.tokenAnalyses[0].morphemes?.[0].writingSystem).toBe('en');
   });
 
+  it('forks a shared payload so a breakdown edit touches only this token', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis()}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <MorphemeWriter
+          tokenRef="tok-1"
+          surfaceText="word"
+          forms={['wor', 'd']}
+          writingSystem="en"
+        />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+
+    // tok-1's forked copy gains the breakdown; tok-2's original keeps just the gloss.
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(tok1Link?.analysisId).not.toBe(tok2Link?.analysisId);
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.morphemes?.map((m) => m.form)).toStrictEqual(['wor', 'd']);
+    expect(tok2Analysis?.morphemes).toBeUndefined();
+  });
+
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<MorphemeBreakdownDispatchUser />)).toThrow(
@@ -1278,6 +1392,56 @@ describe('useMorphemeGlossDispatch', () => {
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ und: 'prefix' });
+  });
+
+  it('forks a shared payload so a morpheme-gloss edit touches only this token', async () => {
+    const onSave = jest.fn();
+    const sharedMorpheme: TextAnalysis = {
+      segmentAnalyses: [],
+      segmentAnalysisLinks: [],
+      tokenAnalyses: [
+        {
+          id: 'shared-analysis',
+          surfaceText: 'word',
+          morphemes: [{ id: 'm1', form: 'word', writingSystem: 'en' }],
+        },
+      ],
+      tokenAnalysisLinks: [
+        {
+          analysisId: 'shared-analysis',
+          status: 'approved',
+          token: { tokenRef: 'tok-1', surfaceText: 'word' },
+        },
+        {
+          analysisId: 'shared-analysis',
+          status: 'approved',
+          token: { tokenRef: 'tok-2', surfaceText: 'word' },
+        },
+      ],
+      phraseAnalyses: [],
+      phraseAnalysisLinks: [],
+    };
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={sharedMorpheme}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <MorphemeGlossWriter tokenRef="tok-1" morphemeId="m1" value="root" />
+      </AnalysisStoreProvider>,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'gloss' }));
+
+    // tok-1's forked copy gets the morpheme gloss; tok-2's original morpheme stays bare.
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    expect(saved.tokenAnalyses).toHaveLength(2);
+    const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    const tok1Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok1Link?.analysisId);
+    const tok2Analysis = saved.tokenAnalyses.find((ta) => ta.id === tok2Link?.analysisId);
+    expect(tok1Analysis?.morphemes?.[0].gloss).toStrictEqual({ und: 'root' });
+    expect(tok2Analysis?.morphemes?.[0].gloss).toBeUndefined();
   });
 
   it('throws when called outside an AnalysisStoreProvider', () => {
@@ -1392,6 +1556,237 @@ describe('useReportGlossEditing', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<EditingReporter isEditing={false} />)).toThrow(
       'useReportGlossEditing must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+/**
+ * Renders the merged analysis status for a token, used to assert on `useResolvedTokenAnalysis`.
+ * Records every render's resolved value so a test can assert referential stability.
+ *
+ * @param props.tokenRef - Token ref to resolve.
+ * @param props.surfaceText - The token's surface text.
+ * @param props.sink - Array each render appends its resolved value to (for render-count
+ *   assertions).
+ * @returns JSX element suitable for passing to `render`.
+ */
+function ResolvedReader({
+  tokenRef,
+  surfaceText,
+  sink,
+}: Readonly<{
+  tokenRef: string;
+  surfaceText: string;
+  sink?: (ResolvedTokenAnalysis | undefined)[];
+}>) {
+  const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText);
+  sink?.push(resolved);
+  return <span data-testid="resolved">{resolved?.status ?? 'none'}</span>;
+}
+
+/**
+ * Renders a button that approves a chosen analysis for a token, used to test
+ * `useApproveAnalysisDispatch`.
+ *
+ * @param props.tokenRef - Token ref to approve for.
+ * @param props.surfaceText - Surface text snapshotted on the new link.
+ * @param props.analysisId - Payload id to approve.
+ * @returns JSX element suitable for passing to `render`.
+ */
+function Approver({
+  tokenRef,
+  surfaceText,
+  analysisId,
+}: Readonly<{ tokenRef: string; surfaceText: string; analysisId: string }>) {
+  const approve = useApproveAnalysisDispatch();
+  return (
+    <button onClick={() => approve(tokenRef, surfaceText, analysisId)} type="button">
+      approve
+    </button>
+  );
+}
+
+describe('useShowSuggestions', () => {
+  /**
+   * Renders the active show-suggestions flag, used to assert on `useShowSuggestions`.
+   *
+   * @returns JSX element suitable for passing to `render`.
+   */
+  function ShowSuggestionsReader() {
+    return <span data-testid="show">{String(useShowSuggestions())}</span>;
+  }
+
+  it('defaults to false when the provider does not opt in', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <ShowSuggestionsReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('show')).toHaveTextContent('false');
+  });
+
+  it('reflects the provider showSuggestions prop when set', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und" showSuggestions>
+        <ShowSuggestionsReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('show')).toHaveTextContent('true');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<ShowSuggestionsReader />)).toThrow(
+      'useShowSuggestions must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useResolvedTokenAnalysis', () => {
+  it('returns the approved decision for an approved token', () => {
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+      >
+        <ResolvedReader tokenRef="tok-1" surfaceText="logos" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('approved');
+  });
+
+  it('derives a suggestion for an unapproved token matching the pool', () => {
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+      >
+        <ResolvedReader tokenRef="tok-2" surfaceText="logos" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('suggested');
+  });
+
+  it('returns undefined when the token is neither approved nor matches the pool', () => {
+    render(
+      <AnalysisStoreProvider analysisLanguage="und">
+        <ResolvedReader tokenRef="tok-2" surfaceText="unseen" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('none');
+  });
+
+  it('does not re-render a suggested token when an unrelated token is glossed', async () => {
+    const sink: (ResolvedTokenAnalysis | undefined)[] = [];
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+      >
+        <ResolvedReader tokenRef="tok-2" surfaceText="logos" sink={sink} />
+        <GlossWriter tokenRef="tok-9" surfaceText="cat" value="feline" />
+      </AnalysisStoreProvider>,
+    );
+    const before = sink.length;
+
+    // Glossing 'cat' rebuilds the pool but leaves the 'logos' suggestion untouched; the custom
+    // equalityFn keeps the selected value referentially stable so the reader never re-renders.
+    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+
+    expect(sink.length).toBe(before);
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<ResolvedReader tokenRef="tok-1" surfaceText="logos" />)).toThrow(
+      'useResolvedTokenAnalysis must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useSuggestionAfterClearing', () => {
+  /**
+   * Renders the status of the cleared-token preview for a token, used to assert on
+   * `useSuggestionAfterClearing`.
+   *
+   * @param props.tokenRef - Token ref to resolve.
+   * @param props.surfaceText - Surface text to match against the pool.
+   * @param props.enabled - Whether the hook should derive (mirrors the chip's gating).
+   * @returns JSX element suitable for passing to `render`.
+   */
+  function ClearingReader({
+    tokenRef,
+    surfaceText,
+    enabled = true,
+  }: Readonly<{ tokenRef: string; surfaceText: string; enabled?: boolean }>) {
+    const resolved = useSuggestionAfterClearing(tokenRef, surfaceText, enabled);
+    return <span data-testid="cleared">{resolved?.status ?? 'none'}</span>;
+  }
+
+  it('previews the pool suggestion as if an approved token were cleared', () => {
+    // tok-1 and tok-2 both approve the shared 'word' payload; discounting tok-1's approval still
+    // leaves tok-2's, so clearing tok-1 previews the surviving payload as a suggestion.
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis('a', 'word')}
+        analysisLanguage="und"
+      >
+        <ClearingReader tokenRef="tok-1" surfaceText="word" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('cleared')).toHaveTextContent('suggested');
+  });
+
+  it('returns undefined without pool work when disabled', () => {
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeSharedAnalysis('a', 'word')}
+        analysisLanguage="und"
+      >
+        <ClearingReader tokenRef="tok-1" surfaceText="word" enabled={false} />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('cleared')).toHaveTextContent('none');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<ClearingReader tokenRef="tok-1" surfaceText="word" />)).toThrow(
+      'useSuggestionAfterClearing must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+describe('useApproveAnalysisDispatch', () => {
+  it('approves the chosen payload for the token, flipping it from suggested to approved', async () => {
+    const onSave = jest.fn();
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+        onSave={onSave}
+      >
+        <ResolvedReader tokenRef="tok-2" surfaceText="logos" />
+        <Approver tokenRef="tok-2" surfaceText="logos" analysisId="tok-1-analysis" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('suggested');
+
+    await userEvent.click(screen.getByRole('button', { name: 'approve' }));
+
+    expect(screen.getByTestId('resolved')).toHaveTextContent('approved');
+    const saved: TextAnalysis = onSave.mock.calls[0][0];
+    // No new payload — tok-2 links to the existing shared analysis (frequency now 2).
+    expect(saved.tokenAnalyses).toHaveLength(1);
+    const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
+    expect(tok2Link?.analysisId).toBe('tok-1-analysis');
+    expect(tok2Link?.status).toBe('approved');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<Approver tokenRef="tok-1" surfaceText="logos" analysisId="a" />)).toThrow(
+      'useApproveAnalysisDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });

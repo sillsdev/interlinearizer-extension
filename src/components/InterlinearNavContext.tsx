@@ -117,10 +117,11 @@ export interface InterlinearNav {
    * value-equal duplicate deliveries so a re-send reads as no change. Verse 0 is treated as an
    * ordinary verse: a `verseNum: 0` reference passes through verbatim, so the host's `<`
    * (previous-verse) from verse 1 lands on the chapter's superscription. When it names a chapter
-   * with a verse-0 superscription segment, that segment becomes the active verse. Whether a given
-   * chapter actually has verse-0 content is unknown here (the book is not loaded at this layer), so
-   * the loader resolves a verse-0 reference with no matching segment back to the chapter's first
-   * numbered verse before rendering.
+   * with a verse-0 superscription segment, that segment becomes the active verse. Which verses
+   * actually have segments is unknown here (the book is not loaded at this layer), so the loader
+   * resolves a reference with no matching segment before rendering: verse 0 falls back to the
+   * chapter's first numbered verse, any other unmatched verse to the nearest preceding segment
+   * start in its chapter.
    */
   liveScrRef: SerializedVerseRef;
   /**
@@ -239,8 +240,8 @@ export function InterlinearNavProvider({
   // `liveScrRef` is the active reference the views recenter on. With verse-0 stickiness removed it no
   // longer transforms `rawScrRef` — every reference (verse 0 included) passes through verbatim, so
   // the host's `<` (previous-verse) from verse 1 lands on the chapter's superscription, and the
-  // loader resolves a verse-0 reference with no matching segment to the chapter's first numbered
-  // verse before rendering. The alias keeps the intent-revealing name and marks the seam where any
+  // loader resolves a reference with no matching segment (verse 0, or an unclamped host verse bump
+  // past the chapter's end) before rendering. The alias keeps the intent-revealing name and marks the seam where any
   // future raw→active mapping would live; `rawScrRef` already reuses the previously committed object
   // on a value-equal re-send, so a duplicate delivery never reads as a fresh navigation.
   const liveScrRef = rawScrRef;

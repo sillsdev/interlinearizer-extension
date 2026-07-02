@@ -223,6 +223,7 @@ function requiredProps(): {
   onHoverPhrase: jest.Mock;
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   segment: Segment;
+  label: { ordinal: number; verseRange: string };
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
@@ -239,6 +240,7 @@ function requiredProps(): {
     onHoverPhrase: jest.fn(),
     onSelect: jest.fn(),
     segment: WORD_SEGMENT,
+    label: { ordinal: 1, verseRange: '1' },
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap: new Map(),
@@ -293,20 +295,29 @@ describe('SegmentView', () => {
     expect(screen.queryByText('the')).not.toBeInTheDocument();
   });
 
-  it('shows the verse number label', () => {
+  it('shows the segment number with its contained verse range', () => {
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
-    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(screen.getByText('1 (1)')).toBeInTheDocument();
   });
 
-  it('shows a bare verse number by default', () => {
+  it('shows a multi-verse range beside the segment number for a merged segment', () => {
+    render(
+      <SegmentView {...requiredProps()} label={{ ordinal: 2, verseRange: '2–3' }} />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByText('2 (2–3)')).toBeInTheDocument();
+  });
+
+  it('shows a bare segment number by default', () => {
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.queryByText('1:1')).not.toBeInTheDocument();
+    expect(screen.getByText('1 (1)')).toBeInTheDocument();
+    expect(screen.queryByText('1:1 (1)')).not.toBeInTheDocument();
   });
 
-  it('folds the chapter into the verse label when chapterLabelInVerse is set', () => {
+  it('folds the chapter into the segment label when chapterLabelInVerse is set', () => {
     render(
       <SegmentView
         {...requiredProps()}
@@ -315,7 +326,7 @@ describe('SegmentView', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByText('1:1')).toBeInTheDocument();
+    expect(screen.getByText('1:1 (1)')).toBeInTheDocument();
   });
 
   it('never renders the inline chapter header (the list owns it)', () => {

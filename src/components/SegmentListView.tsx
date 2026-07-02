@@ -7,6 +7,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
+import { buildSegmentLabels } from '../utils/segment-labels';
 import { isSameVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -134,6 +135,13 @@ export default function SegmentListView({
     return ids;
   }, [book.segments]);
 
+  /**
+   * Display label of every segment (per-chapter segment number + contained verse range), keyed by
+   * segment id. Computed over the whole `book.segments` list (not just the mounted window) so the
+   * numbering is stable regardless of which slice happens to be mounted.
+   */
+  const segmentLabels = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
+
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
@@ -226,35 +234,41 @@ export default function SegmentListView({
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
             <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
-            {windowSegments.map((seg) => (
-              <Fragment key={seg.id}>
-                {!chapterLabelInVerse && chapterStartIds.has(seg.id) && (
-                  <span className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground">
-                    {`Chapter ${seg.startRef.chapter}`}
-                  </span>
-                )}
-                <MemoizedSegmentView
-                  displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
-                  editPhraseSegmentId={editPhraseSegmentId}
-                  focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
-                  hoveredPhraseId={hoveredPhraseId}
-                  isActive={
-                    activeSegmentId !== undefined
-                      ? seg.id === activeSegmentId
-                      : isSameVerse(seg.startRef, displayScrRef)
-                  }
-                  onHoverPhrase={setHoveredPhraseId}
-                  onSelect={onSelect}
-                  phraseMode={phraseMode}
-                  setPhraseMode={setPhraseMode}
-                  segment={seg}
-                  tokenSegmentMap={tokenSegmentMap}
-                  tokenDocOrder={tokenDocOrder}
-                  wordTokenByRef={wordTokenByRef}
-                  viewOptions={viewOptions}
-                />
-              </Fragment>
-            ))}
+            {windowSegments.map((seg) => {
+              /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
+                 windowed segment comes from book.segments, so the lookup always resolves */
+              const label = segmentLabels.get(seg.id) ?? { ordinal: 0, verseRange: '' };
+              return (
+                <Fragment key={seg.id}>
+                  {!chapterLabelInVerse && chapterStartIds.has(seg.id) && (
+                    <span className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground">
+                      {`Chapter ${seg.startRef.chapter}`}
+                    </span>
+                  )}
+                  <MemoizedSegmentView
+                    displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
+                    editPhraseSegmentId={editPhraseSegmentId}
+                    focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    hoveredPhraseId={hoveredPhraseId}
+                    isActive={
+                      activeSegmentId !== undefined
+                        ? seg.id === activeSegmentId
+                        : isSameVerse(seg.startRef, displayScrRef)
+                    }
+                    onHoverPhrase={setHoveredPhraseId}
+                    onSelect={onSelect}
+                    phraseMode={phraseMode}
+                    setPhraseMode={setPhraseMode}
+                    segment={seg}
+                    label={label}
+                    tokenSegmentMap={tokenSegmentMap}
+                    tokenDocOrder={tokenDocOrder}
+                    wordTokenByRef={wordTokenByRef}
+                    viewOptions={viewOptions}
+                  />
+                </Fragment>
+              );
+            })}
             <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
           </div>
           <div data-snap-spacer aria-hidden="true" />

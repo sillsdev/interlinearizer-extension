@@ -414,7 +414,7 @@ export function TokenChip({
                 <button
                   aria-label={localizedStrings[
                     '%interlinearizer_tokenChip_defineMorphemes%'
-                  ].replace('{token}', token.surfaceText)}
+                  ].replace('{token}', () => token.surfaceText)}
                   className={`tw:flex tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"

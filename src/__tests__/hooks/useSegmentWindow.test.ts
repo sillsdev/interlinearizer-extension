@@ -23,17 +23,18 @@ declare global {
  *
  * @param chapter - Chapter number for the segment's refs.
  * @param verse - Verse number for the segment's refs.
+ * @param book - Book code for the segment's refs; defaults to `GEN`.
  * @returns A minimal {@link Segment}.
  */
-function makeSegment(chapter: number, verse: number): Segment {
+function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
   return {
-    id: `GEN ${chapter}:${verse}`,
-    startRef: { book: 'GEN', chapter, verse },
-    endRef: { book: 'GEN', chapter, verse },
+    id: `${book} ${chapter}:${verse}`,
+    startRef: { book, chapter, verse },
+    endRef: { book, chapter, verse },
     baselineText: 'word',
     tokens: [
       {
-        ref: `GEN ${chapter}:${verse}:0`,
+        ref: `${book} ${chapter}:${verse}:0`,
         surfaceText: 'word',
         writingSystem: 'en',
         type: 'word',
@@ -50,13 +51,14 @@ function makeSegment(chapter: number, verse: number): Segment {
  *
  * @param chapter1Count - Number of verses in chapter 1.
  * @param chapter2Count - Number of verses in chapter 2.
+ * @param book - Book code for the book and its segments; defaults to `GEN`.
  * @returns A {@link Book} with the combined flat segment list.
  */
-function makeBook(chapter1Count: number, chapter2Count: number): Book {
+function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): Book {
   const segments: Segment[] = [];
-  for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v));
-  for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v));
-  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+  for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v, book));
+  for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v, book));
+  return { id: book, bookRef: book, textVersion: 'v1', segments };
 }
 
 /**
@@ -578,10 +580,10 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:50');
   });
 
-  it('fades and recenters when the segments identity changes at the same anchor index', () => {
-    // A book swap (or a re-tokenized book) hands the hook a new `segments` array whose anchor can
-    // resolve to the same index as before; the identity check must still detect the change and
-    // recenter rather than leaving the window on stale segment objects.
+  it('fades and recenters when a book swap changes the segments identity at the same anchor index', () => {
+    // A book swap hands the hook a new `segments` array whose anchor can resolve to the same index
+    // as before; the identity check must still detect the change and recenter rather than leaving
+    // the window on stale segment objects.
     const book = makeBook(10, 0);
     const { result, rerender } = renderSegmentWindow(book, {
       book: 'GEN',
@@ -590,9 +592,30 @@ describe('useSegmentWindow', () => {
     });
     expect(result.current.isFaded).toBe(false);
 
-    act(() => rerender({ b: makeBook(10, 0), ref: { book: 'GEN', chapterNum: 1, verseNum: 1 } }));
+    act(() =>
+      rerender({ b: makeBook(10, 0, 'EXO'), ref: { book: 'EXO', chapterNum: 1, verseNum: 1 } }),
+    );
 
     expect(result.current.isFaded).toBe(true);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+  });
+
+  it('redraws in place without fading when the segments change but the anchor verse does not', () => {
+    // A boundary edit (merge/split) re-segments the loaded book: new `segments` identity, same
+    // anchor verse. The new slice already rendered in the same commit, so a fade afterwards would
+    // flash content the user is looking at and snap it away from the point they clicked — the
+    // window must leave the redraw alone.
+    const book = makeBook(10, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    const editedBook = makeBook(9, 0);
+
+    act(() => rerender({ b: editedBook, ref: scrRef }));
+
+    expect(result.current.isFaded).toBe(false);
+    // The window slices the edited book's segments immediately — no midpoint swap to wait for.
+    expect(result.current.windowSegments[0]).toBe(editedBook.segments[0]);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
   });

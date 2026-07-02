@@ -2,6 +2,7 @@ import type { Book, Segment } from 'interlinearizer';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { verseKey } from '../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import { isSameVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
@@ -534,18 +535,29 @@ export default function useSegmentWindow({
   // strip so the two views fade as one. The fade fires for every external nav, even one already
   // inside the window, so the two views can never disagree about whether a fade is happening.
   //
-  // `prevAnchorRef` tracks both the anchor index AND the segments identity so that a book change
-  // (which can produce the same anchor index as the previous book) still triggers a recenter.
-  const prevAnchorRef = useRef<{ index: number; segments: readonly Segment[] }>({
+  // A segments-identity change at an unchanged anchor verse is NOT a navigation: it is a boundary
+  // edit (merge/split from the mounted controls) or a re-tokenization of the loaded book. The
+  // window slice already re-renders the new segments in the same commit, so fading afterwards
+  // would flash content the user is already looking at and snap it away from the point they just
+  // clicked — skip the recenter entirely and let the redraw stand.
+  //
+  // `prevAnchorRef` tracks the anchor index, the segments identity, AND the anchor verse key so
+  // that a book change (which can produce the same anchor index as the previous book) still
+  // triggers a recenter while a same-verse segmentation change does not.
+  const prevAnchorRef = useRef<{ index: number; segments: readonly Segment[]; verseKey: string }>({
     index: anchorIndex,
     segments,
+    verseKey: verseKey(scrRef),
   });
   useEffect(() => {
-    const sameAnchor =
-      anchorIndex === prevAnchorRef.current.index && segments === prevAnchorRef.current.segments;
+    const prev = prevAnchorRef.current;
+    const sameAnchor = anchorIndex === prev.index && segments === prev.segments;
     if (sameAnchor) return;
-    prevAnchorRef.current = { index: anchorIndex, segments };
     const currentScrRef = scrRefRef.current;
+    const currentVerseKey = verseKey(currentScrRef);
+    const sameVerse = currentVerseKey === prev.verseKey;
+    prevAnchorRef.current = { index: anchorIndex, segments, verseKey: currentVerseKey };
+    if (sameVerse) return;
     if (consumeInternalNavRef.current(currentScrRef)) {
       setDisplayScrRef(currentScrRef);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);

@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
 import ContinuousView from '../../components/ContinuousView';
 import { isWordToken } from '../../types/type-guards';
@@ -863,6 +864,54 @@ describe('ContinuousView scroll behavior', () => {
     expect(scrollIntoViewMock).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'auto' }));
   });
 
+  it('holds the group centered on animation frames after an external jump within the active segment', () => {
+    // An external jump landing in the already-active segment never flips committedActiveSegmentId,
+    // so the layout-effect re-center loop does not run for it; the scroll effect's own hold loop
+    // must keep the group pinned while late layout (arc padding settling on the slid window)
+    // shifts the strip after the instant snap.
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+    const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    act(() => {
+      jest.useFakeTimers();
+    });
+    try {
+      // tok-1 shares GEN 1:1 with tok-0, so the active segment is unchanged by this jump.
+      rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+      // Complete the fade-out (RECENTER_FADE_MS) so the displayed focus updates and the instant
+      // snap fires.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(510);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Frames within the hold window keep re-centering after the snap.
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(50);
+      });
+      expect(scrollIntoViewMock).toHaveBeenCalledWith(
+        expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+      );
+
+      // Past the deadline the loop stops scheduling further frames.
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      scrollIntoViewMock.mockClear();
+      act(() => {
+        jest.advanceTimersByTime(500);
+      });
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('snaps the link slots (no transition) during an external jump so they do not slide after the fade-in', () => {
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
@@ -1154,6 +1203,49 @@ describe('ContinuousView scroll behavior', () => {
       expect.objectContaining({ behavior: 'auto', inline: 'center' }),
     );
     expect(scrollIntoViewMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Segmentation edits
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView segmentation edits', () => {
+  /**
+   * Reads the inline opacity of the link-slot wrapper between `prevRef` and `nextRef`, the style
+   * `PhraseSlot` uses to suppress link buttons outside the active segment.
+   *
+   * @param container - The render container to query.
+   * @param prevRef - Token ref on the start side of the slot.
+   * @param nextRef - Token ref on the end side of the slot.
+   * @returns The wrapper's inline `opacity` value.
+   */
+  function slotOpacity(container: HTMLElement, prevRef: string, nextRef: string): string {
+    const icon = container.querySelector(
+      `[data-prev-ref="${prevRef}"][data-next-ref="${nextRef}"]`,
+    );
+    const wrapper = icon?.parentElement;
+    if (!(wrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    return wrapper.style.opacity;
+  }
+
+  it('keeps the focused segment link buttons active when a merge changes the focused token segment id', () => {
+    const book = makeBook();
+    const props = requiredProps(book, { focusedTokenRef: 'tok-2' });
+    props.viewOptions = { ...allFalseViewOptions, hideInactiveLinkButtons: true };
+    const { container, rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+    // Focus sits in GEN 1:2, so the slot between its two tokens is active and visible.
+    expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
+
+    // Merge GEN 1:2 into GEN 1:1 — the exact transform the loader applies on a boundary edit.
+    // Token refs survive, so focus does not move, but the focused token's segment id changes.
+    const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
+    rerender(<ContinuousView {...{ ...props, book: merged, ...buildLookups(merged) }} />);
+
+    // The committed active segment must follow the merge; a stale id names a segment that no
+    // longer exists, which would suppress every link button until the next navigation.
+    expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
   });
 });
 

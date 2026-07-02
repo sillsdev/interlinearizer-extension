@@ -259,10 +259,11 @@ export function InterlinearNavProvider({
 
   const navigate = useCallback(
     (newScrRef: SerializedVerseRef, origin: NavOrigin = 'external') => {
-      // Invariant: a marker write is ALWAYS paired with the `setScrRef` below. The `liveScrRef` memo
-      // reads this marker but lists only `[rawScrRef]` as a dependency, relying on every marker write
-      // also pushing a new ref through the host (which re-runs the memo). Never set a marker here
-      // without the accompanying `setScrRef`, or the memo could read a stale marker.
+      // Invariant: a marker write is ALWAYS paired with the `setScrRef` below. The marker readers
+      // that run during render — the render-phase mid-reveal guard, which lists only `[rawScrRef]`
+      // in the reactive path that reaches it — rely on every marker write also pushing a new ref
+      // through the host, so the render that reads the marker is the one that sees it fresh. Never
+      // set a marker here without the accompanying `setScrRef`, or a reader could see a stale marker.
       if (origin === 'internal') pendingInternalNavRef.current.set(verseKey(newScrRef), Date.now());
       setScrRef(newScrRef);
     },

@@ -81,11 +81,6 @@
     "worktrees",
     "ZWNJ"
   ],
-  "ignoreWords": [
-    "Ελληνικά",
-    "homme",
-    "ʼelohim",
-    "ʻokina"
-  ],
+  "ignoreWords": ["Ελληνικά", "homme", "ʼelohim", "ʻokina"],
   "import": []
 }

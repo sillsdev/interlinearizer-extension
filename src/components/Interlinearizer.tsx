@@ -2,7 +2,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { AnalysisStoreProvider, usePhraseDispatch } from './AnalysisStore';
+import { AnalysisStoreProvider, usePhraseDispatch, usePhraseLinkByIdGetter } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -16,6 +16,7 @@ import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { isWordToken } from '../types/type-guards';
+import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
 import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
@@ -33,6 +34,9 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
 }
+
+/** Stable empty set used as the `formerBoundaryRefs` default so memoization isn't broken. */
+const EMPTY_FORMER_BOUNDARY_REFS: ReadonlySet<string> = new Set();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -81,6 +85,12 @@ type InterlinearizerProps = Readonly<{
    * isolated tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
    */
   segmentationDispatch?: SegmentationDispatch;
+  /**
+   * First-token refs of the default verse boundaries the user has merged away, provided to the
+   * views via {@link SegmentationProvider} so slots on those refs render the former-boundary tick.
+   * Optional so isolated tests can omit it; defaults to an empty set.
+   */
+  formerBoundaryRefs?: ReadonlySet<string>;
 }>;
 
 /**
@@ -107,6 +117,7 @@ function InterlinearizerInner({
   setPhraseMode,
   viewOptions,
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
+  formerBoundaryRefs = EMPTY_FORMER_BOUNDARY_REFS,
 }: Omit<
   InterlinearizerProps,
   'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'showSuggestions'
@@ -139,6 +150,9 @@ function InterlinearizerInner({
     firstWordTokenRefOf(findActiveSegment()),
   );
 
+  // Book-wide lookup indexes the views share, built in one pass over the segment list.
+  const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
+
   // Reseed when the book changes — the previous focusedTokenRef refers to a token from another
   // book and would never resolve in the new book's maps.
   useEffect(() => {
@@ -147,9 +161,6 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
-  // Book-wide lookup indexes the views share, built in one pass over the segment list.
-  const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
-
   /** Segment id → its index in document order; used to test segment adjacency for boundary edits. */
   const segmentOrder = useMemo(() => {
     const order = new Map<string, number>();
@@ -157,31 +168,77 @@ function InterlinearizerInner({
     return order;
   }, [book.segments]);
 
-  /** Ids of verse-0 segments (superscriptions), whose boundaries are frozen against edits. */
-  const verseZeroSegmentIds = useMemo(() => {
-    const ids = new Set<string>();
-    book.segments.forEach((seg) => {
-      if (seg.startRef.verse === 0) ids.add(seg.id);
-    });
-    return ids;
+  /**
+   * Document order over every token (words and punctuation). The force-break below must order a
+   * boundary ref that may name a punctuation token (e.g. the move target of a cross-segment pull);
+   * `tokenDocOrder` from {@link useBookIndexes} covers word tokens only, so it can't resolve those.
+   * Phrase tokens are always words, so comparing their word-only orders against this map's values
+   * is consistent — both are ascending document positions.
+   */
+  const fullTokenOrder = useMemo(() => {
+    const order = new Map<string, number>();
+    let i = 0;
+    book.segments.forEach((seg) =>
+      seg.tokens.forEach((token) => {
+        order.set(token.ref, i);
+        i += 1;
+      }),
+    );
+    return order;
   }, [book.segments]);
+
+  const phraseDispatch = usePhraseDispatch();
+  const getPhraseLinkById = usePhraseLinkByIdGetter();
+
+  /**
+   * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
+   * ever spans two segments. Reads the phrase links at call time (not via subscription) and applies
+   * {@link splitPhraseAtBoundary} at each straddled phrase's boundary-side split point.
+   *
+   * @param boundaryRef - Token ref the new segment will begin at.
+   */
+  const forceBreakStraddledPhrases = useCallback(
+    (boundaryRef: string) => {
+      phrasesStraddlingBoundary(boundaryRef, getPhraseLinkById().values(), fullTokenOrder).forEach(
+        ({ link, splitAfterTokenRef }) =>
+          splitPhraseAtBoundary(link, splitAfterTokenRef, phraseDispatch, tokenDocOrder),
+      );
+    },
+    [getPhraseLinkById, fullTokenOrder, phraseDispatch, tokenDocOrder],
+  );
+
+  /**
+   * The dispatch the views receive: wraps the raw boundary writer so any operation that adds a
+   * boundary (split, and the add-half of move) first force-breaks the phrases the new boundary
+   * would cut. Merge only removes a boundary, which can never leave a phrase straddling segments,
+   * so it passes through. The token-chip views suppress their controls at straddling boundaries via
+   * the same predicate, so the force-break normally fires only for callers that cannot see
+   * phrases.
+   */
+  const dispatch = useMemo<SegmentationDispatch>(
+    () => ({
+      merge: segmentationDispatch.merge,
+      split: (tokenRef) => {
+        forceBreakStraddledPhrases(tokenRef);
+        segmentationDispatch.split(tokenRef);
+      },
+      move: (fromRef, toRef) => {
+        forceBreakStraddledPhrases(toRef);
+        segmentationDispatch.move(fromRef, toRef);
+      },
+    }),
+    [segmentationDispatch, forceBreakStraddledPhrases],
+  );
 
   /** Segmentation context shared by the views — the dispatch plus the lookups its call sites need. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
-      dispatch: segmentationDispatch,
-      boundaryEditMode: viewOptions.boundaryEditMode,
+      dispatch,
       segmentById,
       segmentOrder,
-      verseZeroSegmentIds,
+      formerBoundaryRefs,
     }),
-    [
-      segmentationDispatch,
-      viewOptions.boundaryEditMode,
-      segmentById,
-      segmentOrder,
-      verseZeroSegmentIds,
-    ],
+    [dispatch, segmentById, segmentOrder, formerBoundaryRefs],
   );
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */

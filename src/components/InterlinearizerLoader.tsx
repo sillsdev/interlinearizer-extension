@@ -143,6 +143,7 @@ function InterlinearizerLoaderInner({
     isDraftLoading,
     draft,
     draftVersion,
+    segmentationVersion,
     dirty,
     autosaveAnalysis,
     autosaveSegmentation,
@@ -257,18 +258,22 @@ function InterlinearizerLoaderInner({
     scrRef,
   });
 
-  /** The user's custom segment boundaries from the draft, or `undefined` for verse segmentation. */
-  const segmentation = draft?.segmentation;
-
   /**
    * The book the views render: the verse-tokenized book re-grouped into the user's custom segments.
    * Identical (by reference) to `verseBook` when no custom boundaries are set, so the common case
    * incurs no extra work. `verseBook` is retained separately because the segmentation operations
    * need the default verse boundaries it carries.
+   *
+   * `draft` is a ref value, so `draft?.segmentation` can be a stale snapshot after a boundary edit
+   * that mutated the ref without a render; `segmentationVersion` is bumped on every boundary edit
+   * and listed as a dep so this recomputes with the fresh boundaries. (The boundaries are read
+   * fresh from `draft` at recompute time, so the version bump is the only re-render trigger
+   * needed.)
    */
   const book = useMemo(
-    () => (verseBook ? resegmentBook(verseBook, segmentation) : undefined),
-    [verseBook, segmentation],
+    () => (verseBook ? resegmentBook(verseBook, draft?.segmentation) : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- segmentationVersion tracks draft?.segmentation, a ref value
+    [verseBook, segmentationVersion, draft],
   );
 
   /**

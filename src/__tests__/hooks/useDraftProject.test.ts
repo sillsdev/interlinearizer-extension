@@ -213,6 +213,33 @@ describe('useDraftProject', () => {
       expect(lastSavedDraft().segmentation).toEqual(delta);
     });
 
+    it('bumps segmentationVersion on every edit, including when the draft was already dirty', async () => {
+      // The resegmented book is derived from the draft's segmentation, which lives in a ref, and
+      // `setDirty(true)` bails out of the re-render once the draft is already dirty — so without the
+      // version bump a second boundary edit would silently fail to update the view (the reported
+      // "clicking merge/split doesn't re-render"). Assert the counter advances on each call.
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      const versionBefore = result.current.segmentationVersion;
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      expect(result.current.dirty).toBe(true);
+      expect(result.current.segmentationVersion).toBe(versionBefore + 1);
+
+      // A second edit while already dirty must still bump the version so the view recomputes.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+      });
+      expect(result.current.segmentationVersion).toBe(versionBefore + 2);
+
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+    });
+
     it('replaces a pending debounced write when called again before it flushes', async () => {
       const { result } = await renderLoaded();
 

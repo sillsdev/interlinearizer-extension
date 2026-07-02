@@ -73,7 +73,7 @@ export function MorphemeBox({
 
   const editLabel = localizedStrings['%interlinearizer_tokenChip_editMorphemes%'].replace(
     '{token}',
-    token.surfaceText,
+    () => token.surfaceText,
   );
 
   return (
@@ -103,6 +103,7 @@ export function MorphemeBox({
                 aria-label={editLabel}
                 className={formClassName}
                 style={formStyle}
+                tabIndex={-1}
                 type="button"
                 onClick={(e) => {
                   e.preventDefault();

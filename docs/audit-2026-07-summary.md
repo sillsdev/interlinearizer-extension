@@ -32,43 +32,43 @@ all 26 open issues.
 
 ## Key risks
 
-| # | Risk | Where | Severity | Tracked |
-| --- | --- | --- | --- | --- |
-| 1 | Text-derived identity: token/segment refs re-key on any offset shift, orphaning analysis links; drift detected but never healed | model + `analysisSlice.ts` | high | #136 |
-| 2 | Whole-blob `TextAnalysis` persisted per save; cost grows with project size, not edit size | `useDraftProject.ts`, `projectStorage.ts` | med | #87 |
-| 3 | No schema version on persisted records → format change = silent skip/reset of user data | `projectStorage.ts` | med-high | #137 |
-| 4 | Invariants ("one approved link per token") prose-only; WebView silently repairs violations | model + `analysisSlice.ts` | med | #140 |
-| 5 | Segment-level analyses (free translations) have no staleness detection | model | low-med | #139 |
-| 6 | No `updatedAt` timestamps | model | low | #138 |
-| 7 | Orphaned project records if index rollback also fails | `projectStorage.ts` | low | #141 |
-| 8 | No end-to-end (USJ → render) or drift tests | `src/__tests__/` | low | #142 |
+| #   | Risk                                                                                                                            | Where                                     | Severity | Tracked |
+| --- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | -------- | ------- |
+| 1   | Text-derived identity: token/segment refs re-key on any offset shift, orphaning analysis links; drift detected but never healed | model + `analysisSlice.ts`                | high     | #136    |
+| 2   | Whole-blob `TextAnalysis` persisted per save; cost grows with project size, not edit size                                       | `useDraftProject.ts`, `projectStorage.ts` | med      | #87     |
+| 3   | No schema version on persisted records → format change = silent skip/reset of user data                                         | `projectStorage.ts`                       | med-high | #137    |
+| 4   | Invariants ("one approved link per token") prose-only; WebView silently repairs violations                                      | model + `analysisSlice.ts`                | med      | #140    |
+| 5   | Segment-level analyses (free translations) have no staleness detection                                                          | model                                     | low-med  | #139    |
+| 6   | No `updatedAt` timestamps                                                                                                       | model                                     | low      | #138    |
+| 7   | Orphaned project records if index rollback also fails                                                                           | `projectStorage.ts`                       | low      | #141    |
+| 8   | No end-to-end (USJ → render) or drift tests                                                                                     | `src/__tests__/`                          | low      | #142    |
 
 Not yet tracked: JSON-string payloads over the command bus (revisit with #128),
 flat `features` map is lossy vs. LCM's nested feature structures.
 
 ## Roadmap fit (26 open issues)
 
-| Theme | Issues | Model impact |
-| --- | --- | --- |
-| Token/segment re-shaping | #43, #49 | **Hardest** — blocked on identity decision #136 |
-| PT9 mode parity & alignment spec | #94, #129 | Additive fields (`modelProjectId`, `interlinearMode`); #129 best done while `AlignmentLink` is still unused |
-| Lexicon/Concordance integration & public API | #26, #44, #46, #48, #50, #128 | Mostly none; #128 freezes the contract → do #137/#140 first |
-| Analysis choice & confidence UI | #51, #53, #54, #130 | None except `morphType` (#130) — machinery already modeled |
-| Rendering & language support | #97, #117, #118, #125, #61 | Minimal; #97 decided: direction per writing-system, not global |
-| Persistence & performance | #87, #119 | Per-book partitioning preferred on #87 (also enables #117) |
-| Infra/chores | #5, #10, #13, #79 | None |
+| Theme                                        | Issues                        | Model impact                                                                                                |
+| -------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Token/segment re-shaping                     | #43, #49                      | **Hardest** — blocked on identity decision #136                                                             |
+| PT9 mode parity & alignment spec             | #94, #129                     | Additive fields (`modelProjectId`, `interlinearMode`); #129 best done while `AlignmentLink` is still unused |
+| Lexicon/Concordance integration & public API | #26, #44, #46, #48, #50, #128 | Mostly none; #128 freezes the contract → do #137/#140 first                                                 |
+| Analysis choice & confidence UI              | #51, #53, #54, #130           | None except `morphType` (#130) — machinery already modeled                                                  |
+| Rendering & language support                 | #97, #117, #118, #125, #61    | Minimal; #97 decided: direction per writing-system, not global                                              |
+| Persistence & performance                    | #87, #119                     | Per-book partitioning preferred on #87 (also enables #117)                                                  |
+| Infra/chores                                 | #5, #10, #13, #79             | None                                                                                                        |
 
 ## Filed issues & sequencing
 
-| Issue | Title (short) | Size | Priority |
-| --- | --- | --- | --- |
-| #136 | Token/segment identity re-anchoring decision | M | **P1** — blocks #43, #49 |
-| #137 | Schema version on persisted records | XS–S | **P1** — before #128 |
-| #138 | `updatedAt` timestamps | XS | P2 |
-| #140 | Validate & report invariant violations | S | P2 |
-| #142 | Integration + drift tests | S–M | P2 |
-| #139 | Segment-level staleness | S | P3 |
-| #141 | Orphaned-record cleanup | XS–S | P3 |
+| Issue | Title (short)                                | Size | Priority                 |
+| ----- | -------------------------------------------- | ---- | ------------------------ |
+| #136  | Token/segment identity re-anchoring decision | M    | **P1** — blocks #43, #49 |
+| #137  | Schema version on persisted records          | XS–S | **P1** — before #128     |
+| #138  | `updatedAt` timestamps                       | XS   | P2                       |
+| #140  | Validate & report invariant violations       | S    | P2                       |
+| #142  | Integration + drift tests                    | S–M  | P2                       |
+| #139  | Segment-level staleness                      | S    | P3                       |
+| #141  | Orphaned-record cleanup                      | XS–S | P3                       |
 
 ```
 #137 modelVersion ─────────────┬──▶ #128 public query API

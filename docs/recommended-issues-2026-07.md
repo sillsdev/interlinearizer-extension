@@ -25,15 +25,13 @@ to N4 (segment-level staleness); the decision constrains N7's drift tests.
 
 **Recommended draft body:**
 
-> **Size:** M (design doc + spike) **Priority:** P1 — blocks #43 and #49
->
 > `Token.ref` embeds the verse SID and character offset (`"GEN 1:1:0"`), and
 > `Segment.id` is the verse SID. Every analysis link, phrase link, and alignment
 > endpoint joins on these strings. Any change that shifts offsets — an upstream
 > text edit, a tokenizer improvement, or the user actions proposed in #43/#49 —
 > re-keys every subsequent token in the segment and orphans its links. Drift is
-> currently *detected* (surface-text snapshots flip links to `stale`) but never
-> *healed*, and the WebView silently filters dangling links
+> currently _detected_ (surface-text snapshots flip links to `stale`) but never
+> _healed_, and the WebView silently filters dangling links
 > (`analysisSlice.ts` `resolveApprovedAnalysis`).
 >
 > Decide between (at least):
@@ -52,6 +50,10 @@ to N4 (segment-level staleness); the decision constrains N7's drift tests.
 > Deliverable: a short design doc in `docs/`, agreed by the team, plus a spike
 > validating the chosen approach on a real text edit. #43 and #49 should not
 > start until this lands.
+>
+> **Size:** M (design doc + spike)
+>
+> **Priority:** P1 — blocks #43 and #49
 
 ### N2. Add a schema version to persisted project and draft records
 
@@ -65,20 +67,22 @@ sibling of N3 (both are cheap additive model fields).
 
 **Recommended draft body:**
 
-> **Size:** XS–S **Priority:** P1 — cheap now, expensive after #128
->
 > Persisted records (`project:{id}`, `draft:{sourceProjectId}`) have no version
 > field. Today a format change makes old records fail type-guard validation and
 > get skipped (projects) or reset to empty (drafts) — a silent data-loss path.
 >
 > - Add `modelVersion: number` to `InterlinearProject` and `DraftProject` in
 >   `src/types/interlinearizer.d.ts`; document that consumers must treat
->   unknown *higher* versions as read-only/unsupported.
+>   unknown _higher_ versions as read-only/unsupported.
 > - Stamp the current version (start at `1`) in `projectStorage.ts` on every
 >   write; treat a missing field as version `0` on read.
 > - No migration framework yet — just the field and a single
 >   `CURRENT_MODEL_VERSION` constant. Migration logic can be added the first
 >   time the shape actually changes.
+>
+> **Size:** XS–S
+>
+> **Priority:** P1 — cheap now, expensive after #128
 
 ### N3. Add modification timestamps to projects
 
@@ -91,14 +95,16 @@ sibling of N2.
 
 **Recommended draft body:**
 
-> **Size:** XS **Priority:** P2
->
 > `InterlinearProject` has `createdAt` only. Add `updatedAt: string` (ISO 8601),
 > set by `projectStorage.ts` in `updateAnalysis` / `updateProjectMetadata` /
 > create. Expose it in the select-project dialog (sort by recency; show as the
 > visual distinguisher #61 asks for) and in the per-book status view (#117).
 > Consider a follow-up for per-book last-modified once #87's partitioning
 > direction is settled.
+>
+> **Size:** XS
+>
+> **Priority:** P2
 
 ### N4. Staleness detection for segment-level analyses
 
@@ -111,8 +117,6 @@ to N1 (re-anchoring) and #49 (segment boundaries); test coverage belongs to N7.
 
 **Recommended draft body:**
 
-> **Size:** S **Priority:** P3 (do before free-translation features expand)
->
 > `TokenAnalysisLink`, `PhraseAnalysisLink`, and `AlignmentEndpoint` all carry
 > `surfaceText` snapshots for drift detection, but `SegmentAnalysisLink` has
 > only `segmentId` — a changed verse silently keeps its free translation looking
@@ -124,8 +128,12 @@ to N1 (re-anchoring) and #49 (segment boundaries); test coverage belongs to N7.
 > - Record the owning `Book.textVersion` on the link and compare at book level
 >   (coarser, but nearly free).
 >
-> Prefer the per-segment hash: book-level `textVersion` marks *every* segment
+> Prefer the per-segment hash: book-level `textVersion` marks _every_ segment
 > stale on any edit anywhere in the book.
+>
+> **Size:** S
+>
+> **Priority:** P3 (do before free-translation features expand)
 
 ### N5. Report analysis-invariant violations instead of silently repairing them
 
@@ -139,8 +147,6 @@ is in `analysisSlice.ts` (`resolveApprovedAnalysis`, orphan filtering).
 
 **Recommended draft body:**
 
-> **Size:** S **Priority:** P2
->
 > The model documents invariants ("at most one `approved` link per token") as
 > the caller's responsibility with no runtime enforcement. The WebView silently
 > repairs violations (e.g. `findLast` over multi-approved links, filtering
@@ -154,6 +160,10 @@ is in `analysisSlice.ts` (`resolveApprovedAnalysis`, orphan filtering).
 >   (no user-facing noise), keeping the existing tolerant rendering behavior.
 > - Route all approved-status mutations through the existing slice reducers
 >   (already effectively the case) and document that as the enforcement point.
+>
+> **Size:** S
+>
+> **Priority:** P2
 
 ### N6. Clean up orphaned project records when index rollback fails
 
@@ -166,14 +176,16 @@ of other issues.
 
 **Recommended draft body:**
 
-> **Size:** XS–S **Priority:** P3
->
 > `projectStorage.ts` writes `project:{id}` before updating the `projectIds`
 > index; if the index write fails it rolls the record back, but if the rollback
-> *also* fails the orphan persists — never listed, never deleted, pure storage
+> _also_ fails the orphan persists — never listed, never deleted, pure storage
 > bloat. Add a lazy sweep: when `listProjects()` runs, optionally reconcile keys
 > against the index (or record failed rollbacks under a `pendingCleanup` key and
 > retry on next activation). Keep it simple; this is a rare double-failure path.
+>
+> **Size:** XS–S
+>
+> **Priority:** P3
 
 ### N7. Add integration and drift-detection tests
 
@@ -186,8 +198,6 @@ notes the suite enforces 100% coverage, so RTL work will add its own tests.
 
 **Recommended draft body:**
 
-> **Size:** S–M **Priority:** P2 (before N1/#43/#49 land)
->
 > Current tests cover parsers, components, hooks, and utils well (~45 files),
 > but there is no test that goes USJ input → `extractBookFromUsj` →
 > `tokenizeBook` → rendered segments with analyses joined, and no test of what
@@ -200,6 +210,10 @@ notes the suite enforces 100% coverage, so RTL work will add its own tests.
 >   detection and (once N1 lands) re-anchoring behavior.
 > - A cross-segment phrase edge-case test (model permits it; UI disables it —
 >   pin the current behavior).
+>
+> **Size:** S–M
+>
+> **Priority:** P2 (before N1/#43/#49 land)
 
 ---
 
@@ -220,7 +234,7 @@ ride on N2's versioning; the create-project modal work relates to #61.
 > Two model gaps have been identified for PT9 mode parity — both additive:
 >
 > - `modelProjectId?: string` on `InterlinearProject` — PT9 Options 1 & 3
->   reference a *model text* (a major-language translation used **only for
+>   reference a _model text_ (a major-language translation used **only for
 >   generating suggestions**). This is a separate concept from
 >   `targetProjectId`, which is the output/alignment target.
 > - `interlinearMode?: 'back-translation' | 'adaptation'` — Options 3 & 4 both
@@ -231,6 +245,7 @@ ride on N2's versioning; the create-project modal work relates to #61.
 > signature and `CreateProjectModal` need a mode/model picker.
 >
 > **Size:** M (evaluation write-up + model fields; UI is a follow-up)
+>
 > **Priority:** P1 — decides project-creation UX for PT9 users
 
 ### #130 — Handle morph-type indicators
@@ -260,7 +275,9 @@ breakdown UX); values should mirror FieldWorks/Lexicon morph types (see the
 > store the markers in `form`); parse/strip indicators on input in the
 > morpheme-breakdown editor.
 >
-> **Size:** S (model field + indicator rendering) **Priority:** P2
+> **Size:** S (model field + indicator rendering)
+>
+> **Priority:** P2
 
 ### #87 — Interlinear project save performance
 
@@ -276,7 +293,7 @@ and interacts with #119 (autosave option); client already debounces 300 ms
 
 > **Update (2026-07 audit):** the WebView now debounces autosaves (300 ms), so
 > the remaining cost is architectural: every save serializes and writes the
-> *entire* `TextAnalysis`, so save cost grows with total project size, not edit
+> _entire_ `TextAnalysis`, so save cost grows with total project size, not edit
 > size. Options, in rough order of preference:
 >
 > 1. **Partition the persisted analysis per book** (`project:{id}:analysis:{book}`).
@@ -288,12 +305,14 @@ and interacts with #119 (autosave option); client already debounces 300 ms
 >
 > Requires N2 (schema version) to migrate existing single-blob records.
 >
-> **Size:** M–L (option 1) **Priority:** P2 — before Bible-scale dogfooding
+> **Size:** M–L (option 1)
+>
+> **Priority:** P2 — before Bible-scale dogfooding
 
 ### #129 — Investigate using alignment specification for our linking
 
 **Summary:** Add the audit's timing argument: investigate Burrito alignment
-*now*, while `AlignmentLink` is still unexercised by any feature.
+_now_, while `AlignmentLink` is still unexercised by any feature.
 
 **Relations:** Reshapes §5 of the model (`AlignmentLink`/`AlignmentEndpoint`);
 upstream of any future alignment-editing UI; relates to #26/#128 (cross-
@@ -304,7 +323,7 @@ extension reference schemes).
 > **Timing note (2026-07 audit):** `AlignmentLink` is currently dead weight in
 > the best sense — no feature writes it, drafts don't carry `links`, and no UI
 > renders alignments. The cost of adopting or mapping to the Burrito alignment
-> flavor is therefore near zero *today* and grows with every feature that
+> flavor is therefore near zero _today_ and grows with every feature that
 > touches alignment. Recommend doing this investigation before any
 > alignment-editing UI is scheduled. Scope: (a) can our
 > `AlignmentLink`/`AlignmentEndpoint` round-trip to the Burrito flavor, (b) do
@@ -312,7 +331,9 @@ extension reference schemes).
 > (`EntryRef`/`SenseRef`), (c) what changes, if any, to §5 of
 > `interlinearizer.d.ts`.
 >
-> **Size:** S (investigation + written recommendation) **Priority:** P2
+> **Size:** S (investigation + written recommendation)
+>
+> **Priority:** P2
 
 ### #128 — Add service/API for querying the analyses
 
@@ -338,7 +359,9 @@ requirement (internal suggestion engine consumes it) is already in the body.
 >       book, by status.
 > - [ ] Read-only first; mutation API is a separate decision.
 >
-> **Size:** M **Priority:** P2 — sequencing matters more than speed
+> **Size:** M
+>
+> **Priority:** P2 — sequencing matters more than speed
 
 ### #117 — View status of and wipe interlinearized books
 
@@ -360,7 +383,9 @@ chooses per-book partitioning; wipe UX already exists draft-wide (`WipeModal`).
 > Counting is a pure function over `TextAnalysis` filtered by book
 > (`analysis-book.ts` already has the ref-prefix filtering).
 >
-> **Size:** M **Priority:** P3
+> **Size:** M
+>
+> **Priority:** P3
 
 ### #43 — Split/join tokens that were wrongly tokenized
 
@@ -380,8 +405,9 @@ hard part.
 > likely shape here is a persisted per-project list of token operations
 > (split/join at snapshot positions) replayed after tokenization.
 >
-> **Size:** L (after N1) **Priority:** P2 (labeled "up next", but sequence
-> after N1)
+> **Size:** L (after N1)
+>
+> **Priority:** P2 (labeled "up next", but sequence after N1)
 
 ### #49 — Adjust segment boundaries
 
@@ -403,30 +429,9 @@ verse") but the tokenizer only emits verse-granularity segments today.
 > (blocked on N1). Segment changes also re-parent tokens, affecting
 > `SegmentAnalysisLink`s and free translations.
 >
-> **Size:** L (after N1) **Priority:** P3 (labeled "up next", but sequence
-> after N1 and #43)
-
-### #97 — Implement RTL support
-
-**Summary:** Add the audit's recommendation resolving the issue's own headline
-question: thread direction per writing system, not globally.
-
-**Relations:** The existing body's "Recommended first step" asks for exactly
-this decision; model already carries `Token.writingSystem` and
-`MorphemeAnalysis.writingSystem`, so no model change is needed.
-
-**Recommended body addition (append):**
-
-> **Recommendation (2026-07 audit) on the global-vs-per-side question:** go
-> **per writing-system**. The model already threads a BCP 47 `writingSystem`
-> onto every token and morpheme, and analysis languages are per-gloss
-> (`MultiString` keys) — a single global flag would discard information the
-> model already has, and the mixed-direction case (RTL Hebrew source, LTR
-> English glosses) is the *normal* case for this tool's users, not an edge
-> case. Practically: derive `dir` per strip/token/input from the relevant tag
-> via `isRtlLanguageTag`, and never set a global `documentElement.dir`.
+> **Size:** L (after N1)
 >
-> **Size:** L (per the scope assessment above) **Priority:** P2
+> **Priority:** P3 (labeled "up next", but sequence after N1 and #43)
 
 ### #61 — Decide what to do with unnamed projects to make them visually distinct
 
@@ -443,7 +448,9 @@ last-modified" option the issue already lists.
 > `analysisLanguages` + created/modified dates in the picker, and autogenerate
 > display-only names ("English interlinear 2") without persisting them.
 >
-> **Size:** S **Priority:** P3
+> **Size:** S
+>
+> **Priority:** P3
 
 ---
 

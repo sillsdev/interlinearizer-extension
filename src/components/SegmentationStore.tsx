@@ -39,21 +39,16 @@ export type SegmentationDispatch = Readonly<{
 export type SegmentationContextValue = Readonly<{
   /** Boundary-editing operations. */
   dispatch: SegmentationDispatch;
-  /**
-   * When `true`, the link slots render merge/split boundary controls instead of phrase link icons.
-   * Toggled from the view-options menu.
-   */
-  boundaryEditMode: boolean;
   /** Segment id → segment, used to resolve a segment's first-token start ref. */
   segmentById: ReadonlyMap<string, Segment>;
   /** Segment id → its index in document order, used to test segment adjacency. */
   segmentOrder: ReadonlyMap<string, number>;
   /**
-   * Ids of the verse-0 segments (chapter superscriptions). Their boundaries are frozen: the merge/
-   * split controls and the cross-segment link pull are suppressed at any boundary touching one, so
-   * no token is ever moved into or out of a superscription.
+   * First-token refs of the default verse boundaries the user has merged away. The slots sitting on
+   * these refs render a faint former-boundary tick so the original segmentation stays visible and a
+   * split can restore it.
    */
-  verseZeroSegmentIds: ReadonlySet<string>;
+  formerBoundaryRefs: ReadonlySet<string>;
 }>;
 
 /** No-op dispatch used as the default outside a provider (e.g. in isolated component tests). */
@@ -64,16 +59,15 @@ export const NO_OP_SEGMENTATION_DISPATCH: SegmentationDispatch = {
 };
 
 /**
- * Default context for components rendered without a {@link SegmentationProvider}: boundary editing
- * is off and the dispatch is inert. Lets `SegmentView` / `ContinuousView` / `TokenLinkIcon` be
- * unit- tested in isolation without wiring a provider, while the real app always supplies one.
+ * Default context for components rendered without a {@link SegmentationProvider}: the dispatch is
+ * inert and the lookups are empty. Lets `SegmentView` / `ContinuousView` / `TokenLinkIcon` be
+ * unit-tested in isolation without wiring a provider, while the real app always supplies one.
  */
 const DEFAULT_VALUE: SegmentationContextValue = {
   dispatch: NO_OP_SEGMENTATION_DISPATCH,
-  boundaryEditMode: false,
   segmentById: new Map(),
   segmentOrder: new Map(),
-  verseZeroSegmentIds: new Set(),
+  formerBoundaryRefs: new Set(),
 };
 
 const SegmentationContext = createContext<SegmentationContextValue | undefined>(undefined);

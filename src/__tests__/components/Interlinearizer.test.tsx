@@ -2,16 +2,23 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import { act, render, screen } from '@testing-library/react';
-import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import type { Book, PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { resegmentBook } from 'parsers/papi/resegmentBook';
 import Interlinearizer from '../../components/Interlinearizer';
 import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
+import {
+  useSegmentation,
+  type SegmentationContextValue,
+  type SegmentationDispatch,
+} from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
+import { defaultScrRef, GEN_1_1_BOOK, makePhraseLink } from '../test-helpers';
 import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
@@ -22,6 +29,12 @@ jest.mock('lucide-react', () => ({
    * @returns An SVG element with `data-testid="locate-fixed-icon"`.
    */
   LocateFixed: () => <svg data-testid="locate-fixed-icon" />,
+  /**
+   * Stub for the FoldVertical icon used by the between-rows merge control.
+   *
+   * @returns An SVG element with `data-testid="fold-vertical-icon"`.
+   */
+  FoldVertical: () => <svg data-testid="fold-vertical-icon" />,
 }));
 
 /**
@@ -42,10 +55,18 @@ type CapturedContinuousViewProps = {
 };
 let capturedContinuousViewProps: CapturedContinuousViewProps | undefined;
 
+/**
+ * The segmentation context value seen by the (stubbed) ContinuousView — carries the force-break
+ * wrapped dispatch built by InterlinearizerInner, so tests can invoke its methods directly.
+ */
+let capturedSegmentation: SegmentationContextValue | undefined;
+
 /** Props captured from SegmentView renders so tests can assert on what Interlinearizer passes down. */
 type CapturedSegmentViewProps = {
   /** The segment the component is asked to render. */
   segment: Segment;
+  /** The segment's display label parts (per-chapter number + contained verse range). */
+  label?: { ordinal: number; verseRange: string };
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
   /** The `Token.ref` string of the currently focused token, if any. */
@@ -63,6 +84,16 @@ let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
 /** Stable spy for `updatePhrase` — reset between tests via resetMocks. */
 const mockUpdatePhrase = jest.fn();
+
+/** Stable spies for `createPhrase` / `deletePhrase`, asserted on by the force-break tests. */
+const mockCreatePhrase = jest.fn();
+const mockDeletePhrase = jest.fn();
+
+/**
+ * Phrase-link-by-id map served by the mocked `usePhraseLinkByIdGetter`. Force-break tests seed it
+ * with phrases that straddle a boundary; cleared in the top-level `beforeEach`.
+ */
+const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
@@ -96,17 +127,32 @@ jest.mock('../../components/AnalysisStore', () => ({
    */
   usePhraseLinkMap: () => new Map(),
   usePhraseLinkByIdMap: () => new Map(),
+  /**
+   * Returns a getter over the test-owned phrase-link map so force-break tests can seed straddling
+   * phrases.
+   *
+   * @returns A function returning the current map.
+   */
+  usePhraseLinkByIdGetter: () => () => mockPhraseLinkById,
   usePhraseDispatch: () => ({
-    createPhrase: () => {},
+    createPhrase: (...args: Parameters<typeof mockCreatePhrase>) => mockCreatePhrase(...args),
     updatePhrase: (...args: Parameters<typeof mockUpdatePhrase>) => mockUpdatePhrase(...args),
-    deletePhrase: () => {},
+    deletePhrase: (...args: Parameters<typeof mockDeletePhrase>) => mockDeletePhrase(...args),
   }),
 }));
 
 jest.mock('../../components/ContinuousView', () => ({
   __esModule: true,
-  default: (props: CapturedContinuousViewProps) => {
+  /**
+   * ContinuousView stub; captures its props and the segmentation context (the wrapped,
+   * force-breaking dispatch) so tests can invoke the dispatch directly.
+   *
+   * @param props - The props passed by Interlinearizer.
+   * @returns A minimal div carrying the focused token ref.
+   */
+  default: function ContinuousViewStub(props: CapturedContinuousViewProps) {
     capturedContinuousViewProps = props;
+    capturedSegmentation = useSegmentation();
     return (
       <div data-focused-token-ref={props.focusedTokenRef ?? ''} data-testid="continuous-view" />
     );
@@ -397,6 +443,8 @@ function renderInterlinearizer({
   chapterLabelInVerse = false,
   showMorphology = false,
   showFreeTranslation = false,
+  segmentationDispatch,
+  formerBoundaryRefs,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -407,12 +455,16 @@ function renderInterlinearizer({
   chapterLabelInVerse?: boolean;
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
+  segmentationDispatch?: SegmentationDispatch;
+  formerBoundaryRefs?: ReadonlySet<string>;
 } = {}) {
   return render(
     withNav(
       <Interlinearizer
         book={book}
         continuousScroll={continuousScroll}
+        segmentationDispatch={segmentationDispatch}
+        formerBoundaryRefs={formerBoundaryRefs}
         scrRef={scrRef}
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
@@ -423,7 +475,6 @@ function renderInterlinearizer({
           chapterLabelInVerse,
           showMorphology,
           showFreeTranslation,
-          boundaryEditMode: false,
         }}
       />,
       navigate,
@@ -434,6 +485,17 @@ function renderInterlinearizer({
 beforeEach(() => {
   // jsdom does not implement scrollIntoView; stub it globally so components that call it don't throw.
   Element.prototype.scrollIntoView = jest.fn();
+  // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
+  mockPhraseLinkById.clear();
+  capturedSegmentation = undefined;
+  // resetMocks clears the shared useLocalizedStrings implementation the between-rows merge
+  // control's label relies on; re-establish the key-to-itself mapping.
+  jest
+    .mocked(useLocalizedStrings)
+    .mockImplementation((keys: readonly string[]) => [
+      keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}),
+      false,
+    ]);
 });
 
 describe('Interlinearizer', () => {
@@ -452,6 +514,24 @@ describe('Interlinearizer', () => {
     renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
     expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
+  });
+
+  it('passes per-chapter segment labels with contained verse ranges to the segment views', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+
+    expect(capturedSegmentViewPropsList[0].label).toEqual({ ordinal: 1, verseRange: '1' });
+    expect(capturedSegmentViewPropsList[1].label).toEqual({ ordinal: 2, verseRange: '2' });
+  });
+
+  it('labels a merged segment with one segment number and its merged verse range', () => {
+    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [],
+    });
+    renderInterlinearizer({ book: merged });
+
+    expect(screen.getAllByTestId('segment-view')).toHaveLength(1);
+    expect(capturedSegmentViewPropsList[0].label).toEqual({ ordinal: 1, verseRange: '1–2' });
   });
 
   it('renders a SegmentView for every segment in the current chapter', () => {
@@ -1220,5 +1300,168 @@ describe('Interlinearizer', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Segmentation dispatch force-break wrapper + between-rows merge control
+// ---------------------------------------------------------------------------
+
+describe('segmentation dispatch force-break', () => {
+  /**
+   * Builds a raw segmentation-dispatch spy; the wrapped dispatch the views receive must delegate
+   * every call to it.
+   *
+   * @returns A dispatch whose methods are jest spies.
+   */
+  function makeRawDispatch(): SegmentationDispatch {
+    return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+  }
+
+  /**
+   * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
+   * context) and returns the wrapped dispatch.
+   *
+   * @param raw - The raw dispatch handed to the component.
+   * @param book - The book fixture to render.
+   * @returns The wrapped dispatch captured from the segmentation context.
+   */
+  function renderAndCaptureDispatch(raw: SegmentationDispatch, book: Book): SegmentationDispatch {
+    renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw });
+    const dispatch = capturedSegmentation?.dispatch;
+    if (!dispatch) throw new Error('expected a captured segmentation dispatch');
+    return dispatch;
+  }
+
+  it('passes merge straight through without touching phrases', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
+    dispatch.merge('GEN 1:2:0');
+    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
+    expect(mockUpdatePhrase).not.toHaveBeenCalled();
+    expect(mockCreatePhrase).not.toHaveBeenCalled();
+    expect(mockDeletePhrase).not.toHaveBeenCalled();
+  });
+
+  it('force-breaks a two-token phrase straddling a split boundary (deletes it), then splits', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
+    dispatch.split('GEN 1:2:0');
+    // Both halves of the straddled two-token phrase are single tokens, so the phrase is deleted.
+    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
+    expect(raw.split).toHaveBeenCalledWith('GEN 1:2:0');
+    // The break lands before the boundary write so no consumer observes a straddling phrase.
+    expect(mockDeletePhrase.mock.invocationCallOrder[0]).toBeLessThan(
+      jest.mocked(raw.split).mock.invocationCallOrder[0],
+    );
+  });
+
+  it('force-breaks a longer straddling phrase into its two sides at the boundary', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set(
+      'p1',
+      makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0', 'GEN 1:4:0']),
+    );
+    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
+    dispatch.split('GEN 1:3:0');
+    expect(mockUpdatePhrase).toHaveBeenCalledWith('p1', [
+      { tokenRef: 'GEN 1:1:0', surfaceText: 'GEN 1:1:0' },
+      { tokenRef: 'GEN 1:2:0', surfaceText: 'GEN 1:2:0' },
+    ]);
+    expect(mockCreatePhrase).toHaveBeenCalledWith([
+      { tokenRef: 'GEN 1:3:0', surfaceText: 'GEN 1:3:0' },
+      { tokenRef: 'GEN 1:4:0', surfaceText: 'GEN 1:4:0' },
+    ]);
+    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
+  });
+
+  it('leaves phrases alone when the split boundary cuts none of them', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:3:0', 'GEN 1:4:0']));
+    const dispatch = renderAndCaptureDispatch(raw, makeLargeBook(4));
+    dispatch.split('GEN 1:3:0');
+    expect(mockUpdatePhrase).not.toHaveBeenCalled();
+    expect(mockCreatePhrase).not.toHaveBeenCalled();
+    expect(mockDeletePhrase).not.toHaveBeenCalled();
+    expect(raw.split).toHaveBeenCalledWith('GEN 1:3:0');
+  });
+
+  it('force-breaks at the destination boundary of a move', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
+    dispatch.move('GEN 1:1:0', 'GEN 1:2:0');
+    expect(mockDeletePhrase).toHaveBeenCalledWith('p1');
+    expect(raw.move).toHaveBeenCalledWith('GEN 1:1:0', 'GEN 1:2:0');
+  });
+
+  it('skips the force-break when the boundary ref is unknown to the book', () => {
+    const raw = makeRawDispatch();
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0']));
+    const dispatch = renderAndCaptureDispatch(raw, GEN_1_MULTI_BOOK);
+    dispatch.split('EXO 9:9:9');
+    expect(mockDeletePhrase).not.toHaveBeenCalled();
+    expect(raw.split).toHaveBeenCalledWith('EXO 9:9:9');
+  });
+});
+
+describe('between-rows merge control', () => {
+  it('renders a merge button between adjacent segment rows and merges on click', () => {
+    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
+    const buttons = screen.getAllByTestId('segment-merge-btn');
+    // Two rows -> exactly one gap between them.
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    // Merging removes the boundary at the lower segment's first token.
+    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
+  });
+
+  it('renders no merge button when only one segment row is mounted', () => {
+    renderInterlinearizer({ book: GEN_1_1_BOOK });
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('outlines and tints the two adjacent rows while the merge button is hovered', () => {
+    const { container } = renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    const button = screen.getByTestId('segment-merge-btn');
+    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
+    fireEvent.mouseEnter(button);
+    // Both rows around the hovered gap carry the preview outline and tint.
+    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(2);
+    fireEvent.mouseLeave(button);
+    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
+  });
+
+  it('clears the merge preview synchronously when the merge button is clicked', () => {
+    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+    const { container } = renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      segmentationDispatch: raw,
+    });
+    const button = screen.getByTestId('segment-merge-btn');
+    fireEvent.mouseEnter(button);
+    fireEvent.click(button);
+    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
+    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
+  });
+});
+
+describe('former boundary refs', () => {
+  it('provides the supplied formerBoundaryRefs to the views through the segmentation context', () => {
+    const formerBoundaryRefs: ReadonlySet<string> = new Set(['GEN 1:2:0']);
+    renderInterlinearizer({
+      book: GEN_1_MULTI_BOOK,
+      continuousScroll: true,
+      formerBoundaryRefs,
+    });
+    expect(capturedSegmentation?.formerBoundaryRefs).toBe(formerBoundaryRefs);
+  });
+
+  it('defaults formerBoundaryRefs to an empty set when the loader supplies none', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true });
+    expect(capturedSegmentation?.formerBoundaryRefs?.size).toBe(0);
   });
 });

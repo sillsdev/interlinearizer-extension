@@ -105,6 +105,13 @@ type PhraseBoxProps = Readonly<{
    */
   isHighlighted?: boolean;
   /**
+   * When `true`, this box's tokens are part of a hovered operation preview — a link icon or a
+   * boundary merge/split control whose candidate tokens would join into one phrase/segment or break
+   * off into a new segment. Renders the strong `phrase-candidate` outline, visually distinct from
+   * (and taking precedence over) the ordinary hover and focus styles.
+   */
+  isCandidate?: boolean;
+  /**
    * Token refs that would become free (solo) if the currently hovered split/unlink button were
    * clicked. Each matching chip renders with a destructive border as a preview; when every token in
    * the box is free (e.g. a single-token fragment), the whole box border turns destructive too.
@@ -152,6 +159,8 @@ type PhraseBoxProps = Readonly<{
  *   sets for hovered fragment only)
  * @param props.isHighlighted - When true, all fragments of the hovered/focused phrase receive the
  *   highlighted border style simultaneously
+ * @param props.isCandidate - When true, this box's tokens are part of a hovered operation preview
+ *   (link or boundary merge/split) and render the strong candidate outline
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
  *   matching chip renders with a destructive border as a preview
  * @param props.punctuationBetween - Punctuation tokens between adjacent word tokens, in document
@@ -161,6 +170,7 @@ type PhraseBoxProps = Readonly<{
 export function PhraseBox({
   isFocused = false,
   isHighlighted = false,
+  isCandidate = false,
   splitFreeTokenRefs,
   punctuationBetween,
   groupKey,
@@ -333,6 +343,9 @@ export function PhraseBox({
   if (phraseMode.kind === 'view') {
     const viewBorderClass = (() => {
       if (isBoxSplitFree) return 'tw:phrase-destructive';
+      // Candidate previews outrank focus/hover: while a preview is hovered, showing what the
+      // operation affects matters more than showing what is focused.
+      if (isCandidate) return 'tw:phrase-candidate';
       if (isFocused) return 'tw:phrase-focused';
       if (isHighlighted) return 'tw:phrase-hovered';
       return 'tw:phrase-dimmed';

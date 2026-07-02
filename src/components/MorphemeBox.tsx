@@ -118,8 +118,11 @@ export function MorphemeBox({
               key={m.id}
               aria-hidden="true"
               className={formClassName}
-              style={formStyle}
               onClick={handleClick}
+              // Not a button, so stop mousedown from bubbling to TokenChip's label handler (which
+              // would otherwise focus the gloss input).
+              onMouseDown={(e) => e.stopPropagation()}
+              style={formStyle}
             >
               {m.form}
             </span>

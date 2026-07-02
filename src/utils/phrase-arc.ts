@@ -165,6 +165,66 @@ export function splitPhraseAtBoundary(
   dispatch.updatePhrase(phraseLink.analysisId, before.length >= 2 ? before : after);
 }
 
+/**
+ * A phrase cut by a proposed segment boundary, paired with the in-phrase split point that puts each
+ * resulting fragment wholly on its own side of the boundary.
+ */
+export type StraddledPhrase = {
+  /** The phrase that would span the boundary. */
+  link: PhraseAnalysisLink;
+  /**
+   * The phrase's last token before the boundary; splitting just after it (via
+   * {@link splitPhraseAtBoundary}) severs the phrase cleanly at the boundary.
+   */
+  splitAfterTokenRef: string;
+};
+
+/**
+ * Finds every phrase that a segment boundary placed before `boundaryRef` would cut — phrases with
+ * tokens on both sides of the boundary in document order. A discontiguous phrase counts even when
+ * `boundaryRef` itself is not one of its tokens (the boundary can fall in the gap between two
+ * fragments). Used by the segmentation dispatch to force-break straddling phrases, and by the split
+ * control to suppress itself at boundaries that would force-break — one predicate, so the two can't
+ * drift apart.
+ *
+ * @param boundaryRef - Token ref the new segment would begin at.
+ * @param phraseLinks - The phrase links to test (one entry per phrase).
+ * @param tokenDocOrder - Map from token ref to flat document index. Must contain `boundaryRef` and
+ *   the phrase tokens; a boundary ref absent from the map yields no matches.
+ * @returns The straddled phrases with their split points; empty when the boundary cuts nothing.
+ */
+export function phrasesStraddlingBoundary(
+  boundaryRef: string,
+  phraseLinks: Iterable<PhraseAnalysisLink>,
+  tokenDocOrder: ReadonlyMap<string, number>,
+): StraddledPhrase[] {
+  const boundaryOrder = tokenDocOrder.get(boundaryRef);
+  if (boundaryOrder === undefined) return [];
+  const straddled: StraddledPhrase[] = [];
+  Array.from(phraseLinks).forEach((link) => {
+    let lastBefore: TokenSnapshot | undefined;
+    let lastBeforeOrder = Number.NEGATIVE_INFINITY;
+    let hasAfter = false;
+    link.tokens.forEach((t) => {
+      const order = tokenDocOrder.get(t.tokenRef);
+      /* v8 ignore next -- phrase tokens are word tokens, which the doc-order map always contains */
+      if (order === undefined) return;
+      if (order < boundaryOrder) {
+        if (order > lastBeforeOrder) {
+          lastBefore = t;
+          lastBeforeOrder = order;
+        }
+      } else {
+        hasAfter = true;
+      }
+    });
+    if (lastBefore && hasAfter) {
+      straddled.push({ link, splitAfterTokenRef: lastBefore.tokenRef });
+    }
+  });
+  return straddled;
+}
+
 // #endregion
 
 // #region Arc geometry and strip sizing

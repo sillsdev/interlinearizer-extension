@@ -338,6 +338,28 @@ export default function ContinuousView({
     setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
   }, [targetActiveSegmentIdRef]);
 
+  /**
+   * `focusedTokenRef` last seen by the segmentation-reconcile effect below, so it can distinguish
+   * "the focused token's segment id changed because the segmentation changed" (commit immediately)
+   * from "focus moved" (the focus-change machinery owns the commit timing).
+   */
+  const prevFocusForSegmentationRef = useRef(focusedTokenRef);
+
+  // Reconcile the committed active segment when a segmentation edit (merge/split) changes the
+  // focused token's segment id without moving focus. Token refs survive re-segmentation, so no
+  // focus-change effect fires for such an edit; without this the committed id would keep naming a
+  // segment that no longer exists, deactivating every link button until the next navigation. Only
+  // fires while focus is unchanged — a focus move commits through its own paths (deferred to the
+  // scroll settle for internal nav, behind the fade for external jumps), which this must not
+  // preempt. A real commit also flips the active-segment recenter effect below, re-pinning the
+  // focused group against the edit's relayout.
+  useEffect(() => {
+    const focusUnchanged = prevFocusForSegmentationRef.current === focusedTokenRef;
+    prevFocusForSegmentationRef.current = focusedTokenRef;
+    if (!focusUnchanged) return;
+    setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
+  }, [tokenSegmentMap, focusedTokenRef, targetActiveSegmentIdRef]);
+
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
   const onFocusedTokenRefChangeRef = useLatestRef(onFocusedTokenRefChange);
 
@@ -537,8 +559,21 @@ export default function ContinuousView({
       // The snapped-slot paint has happened; re-enable the transition for later in-view toggles.
       setSkipSlotTransitionForJump(false);
     });
+    // Hold the group centered through the reveal. The window slide mounts/unmounts groups whose
+    // arcs and morpheme rows finish laying out asynchronously over the next frames, shifting the
+    // strip after the instant snap above. The committed-active-segment layout effect re-centers
+    // against that drift, but only when the segment id actually flips — a jump landing in the
+    // already-active segment (a token click in the active verse) gets no correction there and was
+    // revealed off-center. Re-center each frame on the same clock as that guard so every instant
+    // jump stays pinned regardless of whether the active segment changed.
+    const holdDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+    let holdRafId = requestAnimationFrame(function holdFrame() {
+      centerGroup(focusPhraseIndex, 'auto');
+      if (performance.now() < holdDeadline) holdRafId = requestAnimationFrame(holdFrame);
+    });
     return () => {
       cancelAnimationFrame(rafId);
+      cancelAnimationFrame(holdRafId);
       setIsVisible(true);
     };
   }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup]);

@@ -1450,6 +1450,108 @@ describe('between-rows merge control', () => {
   });
 });
 
+describe('focus preservation across segmentation edits', () => {
+  /** GEN book whose verse 1 has two word tokens and verse 2 one — lets focus sit off a verse start. */
+  const GEN_TWO_TOKEN_V1_BOOK: Book = {
+    id: 'GEN',
+    bookRef: 'GEN',
+    textVersion: 'v1',
+    segments: [
+      {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: 'In beginning.',
+        tokens: [
+          {
+            ref: 'GEN 1:1:0',
+            surfaceText: 'In',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 0,
+            charEnd: 2,
+          },
+          {
+            ref: 'GEN 1:1:3',
+            surfaceText: 'beginning',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 3,
+            charEnd: 12,
+          },
+        ],
+      },
+      {
+        id: 'GEN 1:2',
+        startRef: { book: 'GEN', chapter: 1, verse: 2 },
+        endRef: { book: 'GEN', chapter: 1, verse: 2 },
+        baselineText: 'And the earth.',
+        tokens: [
+          {
+            ref: 'GEN 1:2:0',
+            surfaceText: 'And',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 0,
+            charEnd: 3,
+          },
+        ],
+      },
+    ],
+  };
+
+  /**
+   * Builds the wrapped `<Interlinearizer>` element used by these tests, so the initial render and
+   * the post-edit rerender share identical props apart from the book.
+   *
+   * @param book - The (re)segmented book to render.
+   * @param scrRef - The active scripture reference.
+   * @returns The element wrapped in a nav provider.
+   */
+  function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
+    return withNav(
+      <Interlinearizer
+        book={book}
+        continuousScroll
+        scrRef={scrRef}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        viewOptions={allFalseViewOptions}
+      />,
+    );
+  }
+
+  it('keeps the focused token when a merge removes the active verse segment start', () => {
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 2 };
+    const { rerender } = render(interlinearizerEl(GEN_1_MULTI_BOOK, scrRef));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:2:0');
+    // Merge verse 2 into verse 1 — the exact transform the loader applies on a boundary edit. No
+    // segment starts at the active verse afterwards, but the focused token still exists.
+    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [],
+    });
+    rerender(interlinearizerEl(merged, scrRef));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:2:0');
+  });
+
+  it('keeps a deliberately-focused token across a merge into the active verse', () => {
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const { rerender } = render(interlinearizerEl(GEN_TWO_TOKEN_V1_BOOK, scrRef));
+    act(() => capturedContinuousViewProps?.onFocusedTokenRefChange('GEN 1:1:3'));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:1:3');
+    // Merge verse 2 into verse 1; the active verse's segment survives (same start), so the
+    // deliberately-focused token must not be clobbered back to the verse's first word.
+    const merged = resegmentBook(GEN_TWO_TOKEN_V1_BOOK, {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [],
+    });
+    rerender(interlinearizerEl(merged, scrRef));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('GEN 1:1:3');
+  });
+});
+
 describe('former boundary refs', () => {
   it('provides the supplied formerBoundaryRefs to the views through the segmentation context', () => {
     const formerBoundaryRefs: ReadonlySet<string> = new Set(['GEN 1:2:0']);

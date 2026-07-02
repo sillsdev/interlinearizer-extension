@@ -13,10 +13,10 @@ import {
 
 /** A test consumer that renders the resolved context as text so tests can assert on it. */
 function Probe() {
-  const { boundaryEditMode, segmentById, segmentOrder } = useSegmentation();
+  const { segmentById, segmentOrder } = useSegmentation();
   return (
     <span data-testid="probe">
-      {String(boundaryEditMode)}:{segmentById.size}:{segmentOrder.size}
+      {segmentById.size}:{segmentOrder.size}
     </span>
   );
 }
@@ -24,7 +24,7 @@ function Probe() {
 describe('SegmentationStore', () => {
   it('returns an inert default when no provider is present', () => {
     render(<Probe />);
-    expect(screen.getByTestId('probe')).toHaveTextContent('false:0:0');
+    expect(screen.getByTestId('probe')).toHaveTextContent('0:0');
   });
 
   it('provides the supplied value to consumers within a provider', () => {
@@ -37,17 +37,16 @@ describe('SegmentationStore', () => {
     };
     const value: SegmentationContextValue = {
       dispatch: NO_OP_SEGMENTATION_DISPATCH,
-      boundaryEditMode: true,
       segmentById: new Map([['GEN 1:1', segment]]),
       segmentOrder: new Map([['GEN 1:1', 0]]),
-      verseZeroSegmentIds: new Set(),
+      formerBoundaryRefs: new Set(),
     };
     render(
       <SegmentationProvider value={value}>
         <Probe />
       </SegmentationProvider>,
     );
-    expect(screen.getByTestId('probe')).toHaveTextContent('true:1:1');
+    expect(screen.getByTestId('probe')).toHaveTextContent('1:1');
   });
 
   it('exposes an inert no-op dispatch that does nothing when invoked', () => {

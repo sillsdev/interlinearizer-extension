@@ -40,7 +40,10 @@ export type PhraseStripContextValue = Readonly<{
    * function for them.
    */
   onHoverPhrase: (phraseId: string | undefined) => void;
-  /** Called with the candidate token refs (or `undefined`) when a link icon is hovered. */
+  /**
+   * Called with the candidate token refs (or `undefined`) when a link icon or a boundary
+   * merge/split control is hovered; the affected groups render the strong candidate preview style.
+   */
   onHoverCandidateTokens: (refs: readonly string[] | undefined) => void;
   /** Called with the would-be-free token refs (or `undefined`) when a split/unlink icon is hovered. */
   onHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;

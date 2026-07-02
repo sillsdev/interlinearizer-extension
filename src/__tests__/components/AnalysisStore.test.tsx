@@ -16,6 +16,7 @@ import {
   useMorphemeDeleteDispatch,
   useMorphemeGlossDispatch,
   useMorphemes,
+  usePhraseLinkByIdGetter,
   usePhraseLinkByIdMap,
   usePhraseLinkForToken,
   usePhraseLinkMap,
@@ -680,6 +681,45 @@ describe('usePhraseLinkByIdMap', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     expect(() => render(<PhraseLinkByIdMapUser />)).toThrow(
       'usePhraseLinkByIdMap must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
+/**
+ * Renders a component that reads the phrase-link map through `usePhraseLinkByIdGetter` at render
+ * time and displays its size, used to assert the getter resolves current store state.
+ *
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseLinkByIdGetterReader() {
+  const getPhraseLinkById = usePhraseLinkByIdGetter();
+  return <span data-testid="getter-map-size">{getPhraseLinkById().size}</span>;
+}
+
+/**
+ * Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseLinkByIdGetterUser() {
+  usePhraseLinkByIdGetter();
+  return undefined;
+}
+
+describe('usePhraseLinkByIdGetter', () => {
+  it('returns a getter resolving the current phrase-link-by-id map', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
+        <PhraseLinkByIdGetterReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('getter-map-size')).toHaveTextContent('1');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseLinkByIdGetterUser />)).toThrow(
+      'usePhraseLinkByIdGetter must be used inside an AnalysisStoreProvider',
     );
   });
 });

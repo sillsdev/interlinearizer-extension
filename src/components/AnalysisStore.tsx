@@ -545,6 +545,22 @@ export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
 }
 
 /**
+ * Returns a stable getter for the current phrase-link-by-id map, for event-time reads that must not
+ * subscribe the caller to store updates — e.g. the segmentation dispatch's force-break, which reads
+ * the phrases only when a boundary edit fires and would otherwise re-render the whole view tree on
+ * every phrase change.
+ *
+ * @returns A stable function returning the phrase-link-by-id map at call time.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink> {
+  useRequiredCallbacks('usePhraseLinkByIdGetter');
+  const store = useStore<AnalysisRootState>();
+
+  return useCallback(() => selectPhraseLinkByAnalysisId(store.getState().analysis), [store]);
+}
+
+/**
  * Returns the approved `PhraseAnalysisLink` whose token list contains `tokenRef`, or `undefined`
  * when the token is not part of any phrase. Re-renders only when the phrase membership of this
  * token changes.

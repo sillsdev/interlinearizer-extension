@@ -1,7 +1,8 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Combine, Scissors } from 'lucide-react';
+import { FoldHorizontal, Scissors } from 'lucide-react';
 import { memo } from 'react';
+import { usePhraseLinkByIdMap } from './AnalysisStore';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -9,12 +10,15 @@ import { useSegmentation } from './SegmentationStore';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
+import { isWordToken } from '../types/type-guards';
+import { phrasesStraddlingBoundary } from '../utils/phrase-arc';
 import { resolveSlotFocus } from '../utils/token-layout';
 
 /** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
 const BOUNDARY_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_split%',
+  '%interlinearizer_boundaryControl_formerBoundary%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link BoundaryControl}. */
@@ -23,72 +27,171 @@ type BoundaryControlProps = Readonly<{
   prevSegmentId: string | undefined;
   /** Segment id of the group after the slot, or `undefined` for the trailing slot. */
   nextSegmentId: string | undefined;
+  /**
+   * Last word token before the slot, or `undefined` for a leading slot. A slot with no word token
+   * before it sits on an existing segment start, where a split would be a no-op, so no control
+   * renders there.
+   */
+  prevTokenRef: string | undefined;
   /** First word token after the slot, used as the split anchor. */
   nextTokenRef: string | undefined;
 }>;
 
 /**
- * Renders the boundary-edit control for one slot. A slot straddling two different segments shows a
- * merge control (combine the next segment into the previous one); a slot inside one segment shows a
- * split control (start a new segment at the next token). Leading/trailing slots (one side missing)
- * render nothing.
+ * Renders the boundary-edit control for one slot, always visible (not hover-gated). A slot
+ * straddling two different segments shows a merge control (combine the next segment into the
+ * previous one); a slot inside one segment shows a split control (start a new segment at the next
+ * token). Leading/trailing slots (a word token missing on either side) render nothing — a leading
+ * slot sits on an existing segment start, where a split would be a no-op.
  *
- * A verse-0 segment (a chapter superscription) is a hard wall: its tokens must stay together and it
- * must never join a neighbor. So no control renders at a boundary touching one — neither the merge
- * control at a slot where verse 0 is on either side, nor the split control inside it.
+ * Hovering either control previews its effect through the shared candidate-token highlight (the
+ * same channel the link icon uses): merge highlights every word token of both segments (they become
+ * one segment); split highlights the word tokens from the split anchor to the segment end (the run
+ * that breaks off into the new segment). The preview is cleared on leave and synchronously on click
+ * so it can't linger over the re-segmented content.
+ *
+ * An intra-segment slot sitting on a merged-away default verse start additionally renders a faint
+ * dashed tick — the former verse boundary — so the user can see where a split would restore the
+ * original segmentation. The tick shows even when the split control itself is suppressed by the
+ * not-mid-phrase guard, since it is informational rather than interactive.
+ *
+ * The not-mid-phrase rule is a UI guard applied here: no split control renders at a boundary that
+ * would cut a phrase — including the gap between two fragments of a discontiguous phrase. (The
+ * segmentation dispatch itself accepts such boundaries and force-breaks the straddled phrases; only
+ * callers that cannot see token chunks take that path.) Merge needs no such guard: removing a
+ * boundary can never leave a phrase straddling one.
  *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
  * @param props.nextSegmentId - Segment id after the slot.
+ * @param props.prevTokenRef - Last word token before the slot.
  * @param props.nextTokenRef - First word token after the slot (split anchor).
- * @returns A merge or split button, or `undefined` when the slot is at a book edge or borders a
- *   verse-0 superscription.
+ * @returns A merge or split button (with an optional former-boundary tick), or `undefined` when the
+ *   slot is at a segment or book edge or nothing applies at this boundary.
  */
-function BoundaryControl({ prevSegmentId, nextSegmentId, nextTokenRef }: BoundaryControlProps) {
-  const { dispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
+function BoundaryControl({
+  prevSegmentId,
+  nextSegmentId,
+  prevTokenRef,
+  nextTokenRef,
+}: BoundaryControlProps) {
+  const { dispatch, segmentById, formerBoundaryRefs } = useSegmentation();
+  const { tokenDocOrder, onHoverCandidateTokens } = usePhraseStripContext();
+  const phraseLinkById = usePhraseLinkByIdMap();
   const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
-  if (prevSegmentId === undefined || nextSegmentId === undefined || nextTokenRef === undefined) {
+  if (
+    prevSegmentId === undefined ||
+    nextSegmentId === undefined ||
+    prevTokenRef === undefined ||
+    nextTokenRef === undefined
+  ) {
     return undefined;
   }
-  if (prevSegmentId !== nextSegmentId) {
-    // A merge that would pull a verse-0 superscription into a neighbor, or pull a neighbor into one,
-    // is forbidden: render no merge control at a boundary where either side is verse 0.
-    if (verseZeroSegmentIds.has(prevSegmentId) || verseZeroSegmentIds.has(nextSegmentId)) {
+
+  /**
+   * Wires the hover preview and click cleanup for one boundary button: enter highlights `refs`,
+   * leave clears, and click clears synchronously before running the edit so the highlight can't
+   * outlive the content it previews.
+   *
+   * @param refs - The word-token refs the operation would affect.
+   * @param action - The boundary edit to run on click.
+   * @returns The event handlers to spread onto the button.
+   */
+  const previewHandlers = (refs: readonly string[], action: () => void) => ({
+    onMouseEnter: () => onHoverCandidateTokens(refs),
+    onMouseLeave: () => onHoverCandidateTokens(undefined),
+    onClick: () => {
+      onHoverCandidateTokens(undefined);
+      action();
+    },
+  });
+
+  const control = (() => {
+    if (prevSegmentId !== nextSegmentId) {
+      const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
+      const nextSegment = segmentById.get(nextSegmentId);
+      const secondStart = nextSegment?.tokens[0]?.ref;
+      /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
+      if (nextSegment === undefined || secondStart === undefined) return undefined;
+      // Merging joins every token of both segments into one; preview exactly that.
+      const mergedWordRefs = [
+        /* v8 ignore next -- a rendered cross-segment slot's previous segment is always mapped */
+        ...(segmentById.get(prevSegmentId)?.tokens ?? []),
+        ...nextSegment.tokens,
+      ]
+        .filter(isWordToken)
+        .map((t) => t.ref);
+      const mergeHandlers = previewHandlers(mergedWordRefs, () => dispatch.merge(secondStart));
+      return (
+        <button
+          aria-label={mergeLabel}
+          className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+          data-testid="boundary-merge-btn"
+          tabIndex={-1}
+          title={mergeLabel}
+          type="button"
+          onClick={mergeHandlers.onClick}
+          onMouseEnter={mergeHandlers.onMouseEnter}
+          onMouseLeave={mergeHandlers.onMouseLeave}
+        >
+          <FoldHorizontal className="tw:h-3 tw:w-3" />
+        </button>
+      );
+    }
+    // The not-mid-phrase UI guard: no split control at a boundary that would cut a phrase.
+    if (
+      phrasesStraddlingBoundary(nextTokenRef, phraseLinkById.values(), tokenDocOrder).length > 0
+    ) {
       return undefined;
     }
-    const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
-    const secondStart = segmentById.get(nextSegmentId)?.tokens[0]?.ref;
+    const splitLabel = localizedStrings['%interlinearizer_boundaryControl_split%'];
+    // Splitting breaks the run from the anchor to the segment end off into a new segment; preview
+    // exactly that run.
+    const segmentTokens = segmentById.get(nextSegmentId)?.tokens ?? [];
+    const anchorIndex = segmentTokens.findIndex((t) => t.ref === nextTokenRef);
+    const newSegmentWordRefs =
+      /* v8 ignore next -- an intra-segment slot's anchor is always a token of its segment */
+      anchorIndex === -1
+        ? []
+        : segmentTokens
+            .slice(anchorIndex)
+            .filter(isWordToken)
+            .map((t) => t.ref);
+    const splitHandlers = previewHandlers(newSegmentWordRefs, () => dispatch.split(nextTokenRef));
     return (
       <button
-        aria-label={mergeLabel}
-        className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:text-foreground"
-        data-testid="boundary-merge-btn"
+        aria-label={splitLabel}
+        className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+        data-testid="boundary-split-btn"
         tabIndex={-1}
-        title={mergeLabel}
+        title={splitLabel}
         type="button"
-        /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
-        onClick={secondStart === undefined ? undefined : () => dispatch.merge(secondStart)}
+        onClick={splitHandlers.onClick}
+        onMouseEnter={splitHandlers.onMouseEnter}
+        onMouseLeave={splitHandlers.onMouseLeave}
       >
-        <Combine className="tw:h-3 tw:w-3" />
+        <Scissors className="tw:h-3 tw:w-3" />
       </button>
     );
-  }
-  // An intra-segment slot inside a verse-0 superscription can't be split — its tokens must stay
-  // together — so render no split control there.
-  if (verseZeroSegmentIds.has(prevSegmentId)) return undefined;
-  const splitLabel = localizedStrings['%interlinearizer_boundaryControl_split%'];
+  })();
+
+  // The former-boundary tick: an intra-segment slot sitting on a merged-away default verse start.
+  const formerBoundaryMarker =
+    prevSegmentId === nextSegmentId && formerBoundaryRefs.has(nextTokenRef) ? (
+      <span
+        aria-hidden="true"
+        className="tw:mx-0.5 tw:h-3.5 tw:border-l tw:border-dashed tw:border-muted-foreground/50"
+        data-testid="former-boundary-marker"
+        title={localizedStrings['%interlinearizer_boundaryControl_formerBoundary%']}
+      />
+    ) : undefined;
+
+  if (control === undefined && formerBoundaryMarker === undefined) return undefined;
   return (
-    <button
-      aria-label={splitLabel}
-      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:text-foreground"
-      data-testid="boundary-split-btn"
-      tabIndex={-1}
-      title={splitLabel}
-      type="button"
-      onClick={() => dispatch.split(nextTokenRef)}
-    >
-      <Scissors className="tw:h-3 tw:w-3" />
-    </button>
+    <span className="tw:inline-flex tw:min-h-4 tw:items-center">
+      {formerBoundaryMarker}
+      {control}
+    </span>
   );
 }
 
@@ -121,10 +224,10 @@ type PhraseSlotProps = Readonly<{
 }>;
 
 /**
- * Renders one between-group slot: the link/unlink icon plus any punctuation tokens that sit in the
- * gap. Pure — both views feed it identical inputs so the slot renders the same in either layout.
- * The link icon's phrase mode, document-order lookup, and hover callbacks come from
- * {@link PhraseStripContext}.
+ * Renders one between-group slot: the link/unlink icon, the boundary merge/split control, plus any
+ * punctuation tokens that sit in the gap. Pure — both views feed it identical inputs so the slot
+ * renders the same in either layout. The link icon's phrase mode, document-order lookup, and hover
+ * callbacks come from {@link PhraseStripContext}.
  *
  * @param props - Component props
  * @param props.slot - The slot's neighboring groups and gap punctuation
@@ -145,7 +248,7 @@ export function PhraseSlot({
   hoveredPhraseId,
 }: PhraseSlotProps) {
   const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
-  const { boundaryEditMode, segmentOrder } = useSegmentation();
+  const { segmentOrder } = useSegmentation();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -180,16 +283,8 @@ export function PhraseSlot({
       data-link-slot="true"
       style={{ overflowAnchor: 'none' }}
     >
-      {hasLinkableNeighbors &&
-        (boundaryEditMode ? (
-          <span className="tw:inline-flex tw:min-h-4 tw:items-center">
-            <BoundaryControl
-              prevSegmentId={prevSegmentId}
-              nextSegmentId={nextSegmentId}
-              nextTokenRef={nextToken?.ref}
-            />
-          </span>
-        ) : (
+      {hasLinkableNeighbors && (
+        <>
           <span
             aria-hidden={suppressLinkIcon || undefined}
             className="tw:transition-opacity tw:ease-in-out"
@@ -211,7 +306,14 @@ export function PhraseSlot({
               prevToken={prevToken}
             />
           </span>
-        ))}
+          <BoundaryControl
+            prevSegmentId={prevSegmentId}
+            nextSegmentId={nextSegmentId}
+            prevTokenRef={prevToken?.ref}
+            nextTokenRef={nextToken?.ref}
+          />
+        </>
+      )}
       {punctuation.length > 0 && (
         <span className="tw:inline-flex tw:flex-row tw:items-center">
           {punctuation.map((punctToken) => (
@@ -235,6 +337,8 @@ type PhraseGroupProps = Readonly<{
   isFocused: boolean;
   /** Whether this group should render highlighted (computed by the parent). */
   isHighlighted: boolean;
+  /** Whether this group's tokens are part of a hovered operation preview (computed by the parent). */
+  isCandidate: boolean;
   /** Token refs that would become free after a hovered split/unlink (computed by the parent). */
   splitFreeTokenRefs: ReadonlySet<string>;
   /** Whether the edit/unlink controls pill should show above this group. */
@@ -278,6 +382,7 @@ type PhraseGroupProps = Readonly<{
  * @param props.group - The phrase group to render
  * @param props.isFocused - Whether this group is the navigation focus
  * @param props.isHighlighted - Whether this group renders highlighted
+ * @param props.isCandidate - Whether this group's tokens are part of a hovered operation preview
  * @param props.splitFreeTokenRefs - Token refs in this group that preview as becoming free
  * @param props.showControls - Whether to show the controls pill
  * @param props.showGlossInput - Whether to show the gloss input
@@ -294,6 +399,7 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
   group,
   isFocused,
   isHighlighted,
+  isCandidate,
   splitFreeTokenRefs,
   showControls,
   showGlossInput,
@@ -331,6 +437,7 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
       <MemoizedPhraseBox
         isFocused={isFocused}
         isHighlighted={isHighlighted}
+        isCandidate={isCandidate}
         splitFreeTokenRefs={splitFreeTokenRefs}
         punctuationBetween={group.punctuationBetween}
         groupKey={groupKey}
@@ -395,7 +502,7 @@ type PhraseStripProps = Readonly<{
   hoveredPhraseId: string | undefined;
   /** Group key (first token ref) of the currently hovered phrase box, or `undefined`. */
   hoveredGroupKey: string | undefined;
-  /** Token refs a hovered link icon would join into a new phrase. */
+  /** Token refs a hovered link icon or boundary merge/split control would affect. */
   candidateTokenRefs: ReadonlySet<string>;
   /** Token refs that would become free after a hovered split/unlink. */
   splitFreeTokenRefs: ReadonlySet<string>;
@@ -421,7 +528,7 @@ type PhraseStripProps = Readonly<{
  * @param props.focus - Resolved focus context
  * @param props.hoveredPhraseId - PhraseId hovered anywhere in the view
  * @param props.hoveredGroupKey - Group key of the hovered phrase box
- * @param props.candidateTokenRefs - Token refs a hovered link would join
+ * @param props.candidateTokenRefs - Token refs a hovered link or boundary control would affect
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split
  * @param props.onHoverPhrase - Phrase-box enter/leave callback
  * @param props.setHoveredGroupKey - Hovered-group-key setter
@@ -465,11 +572,15 @@ export function PhraseStrip({
     // controls follow the usual hover rules on any phrase.
     const phraseControlsAllowed =
       !simplifyPhrases || (phraseId !== undefined && phraseId === focus.focusedPhraseId);
+    // Candidate tokens are a hovered operation preview (link icon or boundary merge/split); their
+    // groups render the strong candidate tier — distinct from the hover/focus highlight — and the
+    // preview never reveals a phrase's edit controls the way a hover does.
+    const isCandidate =
+      phraseMode.kind === 'view' && group.tokens.some((t) => candidateTokenRefs.has(t.ref));
     const isHighlighted = (() => {
       if (phraseMode.kind === 'view') {
         if (phraseId !== undefined && phraseId === hoveredPhraseId) return true;
         if (phraseId !== undefined && phraseId === focus.focusedPhraseId) return true;
-        if (group.tokens.some((t) => candidateTokenRefs.has(t.ref))) return true;
         return false;
       }
       return phraseId !== undefined && phraseId === phraseMode.phraseId;
@@ -480,6 +591,7 @@ export function PhraseStrip({
         group={group}
         isFocused={item.isFocused}
         isHighlighted={isHighlighted}
+        isCandidate={isCandidate}
         splitFreeTokenRefs={
           phraseControlsAllowed && phraseMode.kind === 'view'
             ? splitFreeTokenRefs

@@ -578,13 +578,12 @@ describe('TokenLinkIcon', () => {
     ) {
       const segmentation: SegmentationContextValue = {
         dispatch,
-        boundaryEditMode: false,
         segmentById: new Map([['seg-B', segB(opts.segmentTokens)]]),
         segmentOrder: new Map([
           ['seg-A', 0],
           ['seg-B', 1],
         ]),
-        verseZeroSegmentIds: new Set(),
+        formerBoundaryRefs: new Set(),
       };
       const tokenSegmentMap =
         opts.mapToken === false ? new Map<string, string>() : new Map([['tok-b', 'seg-B']]);
@@ -666,33 +665,36 @@ describe('TokenLinkIcon', () => {
     });
 
     // -------------------------------------------------------------------------
-    // Verse-0 superscriptions are a hard wall: no cross-segment link may touch one.
+    // The not-mid-phrase UI guard: a pull moves the boundary by one token, so a pulled edge token
+    // that belongs to a phrase would leave that phrase straddling the boundary — the icon disables.
     // -------------------------------------------------------------------------
 
-    describe('verse-0 superscription hard wall', () => {
+    describe('pulled edge token in a phrase', () => {
       /**
-       * Renders a cross-segment edge slot bordering a verse-0 superscription. seg-A (a real verse)
-       * and seg-B (the superscription) sit adjacent; `focusedSideIsPrev` picks which side holds
-       * focus. The slot's `nextToken` is seg-B's `tok-b` and `prevToken` is seg-A's `tok-a`.
+       * Renders a cross-segment edge slot whose pulled edge token belongs to a phrase in the
+       * adjacent segment. `focusedSideIsPrev` picks which side holds focus; the pulled token is on
+       * the opposite side (`tok-b` when focus is prev-ward, `tok-a` when focus is next-ward).
        *
-       * @param opts - Which side holds focus and which segment id is the verse-0 superscription.
+       * @param opts - Which side holds focus.
        * @returns The render result.
        */
-      function renderWall(opts: { focusedSideIsPrev: boolean; verseZeroSegId: 'seg-A' | 'seg-B' }) {
+      function renderPhrasePull(opts: { focusedSideIsPrev: boolean }) {
         const segmentation: SegmentationContextValue = {
           dispatch: makeDispatch(),
-          boundaryEditMode: false,
           segmentById: new Map([['seg-B', segB(['tok-b', 'tok-c'])]]),
           segmentOrder: new Map([
             ['seg-A', 0],
             ['seg-B', 1],
           ]),
-          verseZeroSegmentIds: new Set([opts.verseZeroSegId]),
+          formerBoundaryRefs: new Set(),
         };
         const tokenSegmentMap = new Map([
           ['tok-a', 'seg-A'],
           ['tok-b', 'seg-B'],
         ]);
+        const pulledLink = opts.focusedSideIsPrev
+          ? { nextPhraseLink: makePhraseLink('pB', ['tok-b', 'tok-c']) }
+          : { prevPhraseLink: makePhraseLink('pA', ['tok-z', 'tok-a']) };
         return render(
           <SegmentationProvider value={segmentation}>
             <PhraseStripProvider
@@ -700,6 +702,7 @@ describe('TokenLinkIcon', () => {
             >
               <TokenLinkIcon
                 {...requiredProps()}
+                {...pulledLink}
                 slotFocus={slotFocus({
                   focusedSideIsPrev: opts.focusedSideIsPrev,
                   isSameSegmentAsFocus: false,
@@ -712,15 +715,15 @@ describe('TokenLinkIcon', () => {
         );
       }
 
-      it('disables the link when the adjacent segment is a verse-0 superscription', () => {
-        renderWall({ focusedSideIsPrev: true, verseZeroSegId: 'seg-B' });
+      it('disables the link when the pulled next-side token belongs to a phrase', () => {
+        renderPhrasePull({ focusedSideIsPrev: true });
         const button = screen.getByTestId('token-link-btn');
         expect(button).toBeDisabled();
         expect(button).toHaveAttribute('title', 'nope');
       });
 
-      it('disables the link when the focused segment is itself a verse-0 superscription', () => {
-        renderWall({ focusedSideIsPrev: false, verseZeroSegId: 'seg-B' });
+      it('disables the link when the pulled prev-side token belongs to a phrase', () => {
+        renderPhrasePull({ focusedSideIsPrev: false });
         const button = screen.getByTestId('token-link-btn');
         expect(button).toBeDisabled();
         expect(button).toHaveAttribute('title', 'nope');

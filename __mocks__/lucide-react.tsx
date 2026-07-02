@@ -85,13 +85,24 @@ export function Plus(props: Readonly<{ size?: number; className?: string }>): Re
   return <svg data-testid="plus-icon" {...props} />;
 }
 /**
- * Stub for the Combine icon used by the merge boundary control.
+ * Stub for the FoldVertical icon used by the row-gap merge control (join two stacked rows).
  *
  * @param props - SVG props forwarded from the component.
- * @returns A ReactElement SVG element used as a merge icon stub in tests.
+ * @returns A ReactElement SVG element used as a vertical-merge icon stub in tests.
  */
-export function Combine(props: Readonly<{ size?: number; className?: string }>): ReactElement {
-  return <svg data-testid="combine-icon" {...props} />;
+export function FoldVertical(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="fold-vertical-icon" {...props} />;
+}
+
+/**
+ * Stub for the FoldHorizontal icon used by the continuous-strip merge control (join two adjacent
+ * segments).
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a horizontal-merge icon stub in tests.
+ */
+export function FoldHorizontal(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="fold-horizontal-icon" {...props} />;
 }
 
 /**

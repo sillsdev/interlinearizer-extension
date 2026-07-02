@@ -57,57 +57,6 @@ function allTokenRefs(verseBook: Book): Set<string> {
 }
 
 /**
- * The interior token refs of every verse-0 segment — each verse-0 segment's tokens except its
- * first. A verse-0 segment is a chapter superscription (e.g. a Psalm title); its tokens must always
- * stay together in one segment, so no boundary may ever fall strictly inside it.
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns The set of token refs interior to a verse-0 segment.
- */
-function verseZeroInteriorRefs(verseBook: Book): Set<string> {
-  const interior = new Set<string>();
-  verseBook.segments.forEach((seg) => {
-    if (seg.startRef.verse !== 0) return;
-    seg.tokens.slice(1).forEach((t) => interior.add(t.ref));
-  });
-  return interior;
-}
-
-/**
- * The segment-start refs that bound a verse-0 segment on either side — the two boundaries that turn
- * a chapter superscription into a hard wall. A verse-0 segment is a chapter superscription (e.g. a
- * Psalm title); it must stay its own isolated segment, so neither of its boundaries may ever be
- * removed: doing so would either pull the superscription into the previous chapter's last verse
- * (its document-order predecessor) or sweep it forward into the verse that follows. For each
- * verse-0 segment this contributes:
- *
- * - Its own first-token ref (the boundary _before_ verse 0), and
- * - The first-token ref of the segment immediately after it in document order (the boundary _after_
- *   verse 0), when such a segment exists.
- *
- * Splitting verse 0 is handled separately by {@link verseZeroInteriorRefs}; this set is only about
- * the boundaries that border it.
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns The set of segment-start refs that may not be removed because they border a verse-0
- *   segment.
- */
-function verseZeroBoundaryRefs(verseBook: Book): Set<string> {
-  const boundaries = new Set<string>();
-  verseBook.segments.forEach((seg, index) => {
-    if (seg.startRef.verse !== 0) return;
-    const ownStart = seg.tokens[0]?.ref;
-    /* v8 ignore next -- a verse-0 segment is only emitted when it has text, so it always has tokens */
-    if (ownStart !== undefined) boundaries.add(ownStart);
-    // The segment after verse 0 (when one exists): the boundary after the superscription. Absent
-    // only when verse 0 ends the book, in which case there is no after-boundary to lock.
-    const nextStart = verseBook.segments[index + 1]?.tokens[0]?.ref;
-    if (nextStart !== undefined) boundaries.add(nextStart);
-  });
-  return boundaries;
-}
-
-/**
  * Document-order index for every token ref, used to keep delta arrays canonically sorted.
  *
  * @param verseBook - The original verse-tokenized book.
@@ -192,9 +141,7 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
  *   `removedVerseStarts`).
  * - Otherwise `ref` is recorded as an added start.
  *
- * No-op (returns an equivalent normalized delta) when `ref` already begins a segment, or when `ref`
- * is an interior token of a verse-0 segment (splitting it would push tokens out of the
- * superscription).
+ * No-op (returns an equivalent normalized delta) when `ref` already begins a segment.
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.
@@ -207,7 +154,6 @@ export function addBoundaryBefore(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  if (verseZeroInteriorRefs(verseBook).has(ref)) return normalize(verseBook, current);
   const defaults = defaultVerseStarts(verseBook);
   if (defaults.has(ref)) {
     return normalize(verseBook, {
@@ -227,11 +173,7 @@ export function addBoundaryBefore(
  * - When `ref` is a default verse start, it is recorded in `removedVerseStarts`.
  * - Otherwise (it was an added split) it is dropped from `addedStarts`.
  *
- * No-op when `ref` is the book's first token (the first segment cannot be merged leftward), or when
- * `ref` borders a verse-0 superscription (see {@link verseZeroBoundaryRefs}): a superscription is an
- * isolated segment, so removing the boundary before it (which would pull it into the previous
- * chapter's last verse) or the boundary after it (which would sweep it into the following verse) is
- * forbidden. Splitting verse 0 is likewise forbidden — see {@link addBoundaryBefore}.
+ * No-op when `ref` is the book's first token (the first segment cannot be merged leftward).
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.
@@ -245,7 +187,6 @@ export function removeBoundaryAt(
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
   if (ref === bookFirstTokenRef(verseBook)) return normalize(verseBook, current);
-  if (verseZeroBoundaryRefs(verseBook).has(ref)) return normalize(verseBook, current);
   const defaults = defaultVerseStarts(verseBook);
   if (defaults.has(ref)) {
     return normalize(verseBook, {
@@ -262,10 +203,6 @@ export function removeBoundaryAt(
 /**
  * Moves a boundary from `fromRef` to `toRef` in one step — the primitive behind pulling a single
  * edge token across a segment boundary. Removes the start at `fromRef` and adds one at `toRef`.
- * Each half is independently subject to its own verse-0 guard: the removal is a no-op when
- * `fromRef` borders a superscription (see {@link removeBoundaryAt}), and the addition is a no-op
- * when `toRef` is interior to one (see {@link addBoundaryBefore}). A move that touches a
- * superscription on either end therefore cannot pull a token into or out of it.
  *
  * @param verseBook - The original verse-tokenized book.
  * @param delta - The current delta, or `undefined` for the default segmentation.

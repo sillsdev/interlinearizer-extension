@@ -153,11 +153,21 @@ function InterlinearizerInner({
   // Book-wide lookup indexes the views share, built in one pass over the segment list.
   const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
 
-  // Reseed when the book changes — the previous focusedTokenRef refers to a token from another
-  // book and would never resolve in the new book's maps.
+  // Reseed when the new book no longer resolves the focused token — a real book change (the
+  // previous focusedTokenRef names a token from another book) or a re-tokenization that dropped the
+  // token. A boundary edit (merge/split) also produces a fresh `book` object, but token refs
+  // survive re-segmentation, so a still-resolving focus must be kept: reseeding would snap the
+  // continuous strip to the active verse's first word — or park it on the book's very first phrase
+  // when a merge removed the active verse's segment start (no segment startRef names that verse
+  // anymore, so findActiveSegment returns undefined).
   useEffect(() => {
-    setFocusedTokenRef(firstWordTokenRefOf(findActiveSegment()));
-    // findActiveSegment changes with scrRef too; only re-seed on book change.
+    setFocusedTokenRef((current) =>
+      current !== undefined && wordTokenByRef.has(current)
+        ? current
+        : firstWordTokenRefOf(findActiveSegment()),
+    );
+    // findActiveSegment changes with scrRef too, and wordTokenByRef derives from book; only re-seed
+    // on book change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 

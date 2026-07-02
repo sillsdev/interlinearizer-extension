@@ -220,10 +220,8 @@ export function InterlinearNavProvider({
   stableRawScrRefRef.current = rawScrRef;
 
   /**
-   * The last committed {@link liveScrRef}, mirrored so the duplicate-delivery guard below can reuse
-   * the previously committed object identity when the host re-sends a value-equal reference, and so
-   * the render-phase mid-reveal guard can compare the incoming reference against the verse last
-   * shown.
+   * The last committed {@link liveScrRef}, mirrored so the render-phase mid-reveal guard can compare
+   * the incoming reference against the verse last shown.
    */
   const liveScrRefRef = useRef<SerializedVerseRef>(rawScrRef);
 
@@ -238,17 +236,14 @@ export function InterlinearNavProvider({
    */
   const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
-  // Verse 0 is a real, focusable verse (a chapter's pre-verse-1 superscription content; see
-  // `usjBookExtractor`), so a `verseNum: 0` reference is passed through verbatim like any other verse
-  // — including the host's `<` (previous-verse) from verse 1, which lands on the chapter's
-  // superscription. When the chapter has no verse-0 segment, the loader resolves verse 0 to the
-  // chapter's first numbered verse before rendering. The duplicate-delivery guard reuses the
-  // previously committed object when a re-send is value-equal, so a duplicate never reads as a fresh
-  // navigation.
-  const liveScrRef = useMemo(() => {
-    const prev = liveScrRefRef.current;
-    return areScrRefsEqual(rawScrRef, prev) ? prev : rawScrRef;
-  }, [rawScrRef]);
+  // `liveScrRef` is the active reference the views recenter on. With verse-0 stickiness removed it no
+  // longer transforms `rawScrRef` — every reference (verse 0 included) passes through verbatim, so
+  // the host's `<` (previous-verse) from verse 1 lands on the chapter's superscription, and the
+  // loader resolves a verse-0 reference with no matching segment to the chapter's first numbered
+  // verse before rendering. The alias keeps the intent-revealing name and marks the seam where any
+  // future raw→active mapping would live; `rawScrRef` already reuses the previously committed object
+  // on a value-equal re-send, so a duplicate delivery never reads as a fresh navigation.
+  const liveScrRef = rawScrRef;
   /**
    * The {@link liveScrRef} committed on the previous render, captured before the mirror update below
    * overwrites it, so the mid-reveal navigation guard further down can compare the incoming

@@ -251,12 +251,20 @@ Remove the demo toggle (and these affordances' tuning) once the treatment is dec
 ## User-defined segment boundaries
 
 Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
-their own segment boundaries: an **Edit segment boundaries** view toggle exposes per-slot **merge**
-(combine a segment into the one before it) and **split** (start a new segment at a token) controls,
-and linking a phrase across a verse boundary pulls the adjacent segment's **edge** token into the
-focused segment (only the immediate adjacent-edge link buttons are active for this). Boundaries are
-stored as a delta from the default verse segmentation on the draft and carried to the project on
-Save; discontiguous segments are not supported.
+their own segment boundaries, with no dedicated edit mode:
+
+- Hovering the gap between two token groups reveals a **split** control (start a new segment at
+  the next token), or a **merge** control when the gap is a segment boundary (combine the segment
+  into the one before it — this appears in the continuous strip, where adjacent segments share a
+  row).
+- In the segment list, an always-visible **merge** button sits between adjacent segment rows.
+- Linking a phrase across a verse boundary pulls the adjacent segment's free **edge** token into
+  the focused segment (only the immediate adjacent-edge link buttons are active for this).
+
+Boundaries are stored as a delta from the default verse segmentation on the draft and carried to
+the project on Save. The only structural rule is contiguity: a segment is a contiguous run of the
+book's tokens, so discontiguous segments are unrepresentable and only whole contiguous chunks can
+move between adjacent segments.
 
 Decisions made during development that we'd like reviewed:
 
@@ -287,26 +295,35 @@ Decisions made during development that we'd like reviewed:
    draft dirty (lighting the tab `●`), exactly like a gloss edit. Confirm this is desired, or whether
    boundary edits should be treated differently from analysis edits.
 
-5. **Boundary editing is a transient mode.** The **Edit segment boundaries** toggle is local UI
-   state (off on reload), not a persisted project setting, since it changes what the link slots do
-   rather than a display preference. Confirm this is the right treatment.
+5. **Boundary controls are always available (no edit mode).** There is no separate
+   boundary-editing mode: the merge/split controls share the gaps with the phrase link icons,
+   revealed on hover (and the segment list's between-row merge buttons are always visible). This
+   keeps the UI simple but places a scissors one small icon away from a link button. Both actions
+   are cheaply reversible (merge undoes split and vice versa, and boundary edits never harm
+   phrases — see item 7). Two questions:
+   - Is hover-reveal discoverable enough for the in-gap controls, or should they be always visible
+     there too? (An always-visible variant is a small change; we can ship both behind a view toggle
+     for field comparison if useful.)
+   - Is the misclick risk (scissors next to link icon) acceptable in practice?
 
-6. **Chapter superscriptions are a hard wall (interim).** A chapter heading (a `d` descriptive
-   title, e.g. a Psalm superscription) is extracted as a synthetic **verse 0** segment that sits in
-   document order between the previous chapter's last verse and the new chapter's verse 1. As an
-   interim fix, verse 0 is treated as a **hard wall**: no merge, split, move, or cross-segment link
-   may touch either of its boundaries, so its tokens always stay together and no neighboring token
-   is ever pulled into or across it. The cost is a lost capability — you **cannot currently draw a
-   segment boundary that spans a superscription** (e.g. group the end of one chapter with the start
-   of the next when a heading sits between them). The stated goal is for verse 0 to be _invisible_ to
-   boundary redrawing (a redraw acts on the real verses on either side as if the superscription
-   weren't there, while the heading stays its own intact segment), but that conflicts with the
-   contiguous-run segment model and needs a design decision before implementation. Options and the
-   recommendation are worked out in
-   [design-verse-0-agnostic-segmentation.md](design-verse-0-agnostic-segmentation.md). Two questions
-   for stakeholders:
-   - Is the hard wall acceptable as the shipped behavior for now, or is spanning-a-superscription a
-     blocker that must be resolved before release?
-   - When a segment _does_ eventually absorb tokens across a superscription, **where should the
-     heading render and how should its free translation be handled?** (This parallels item 3 above —
-     "Free translation when merging.")
+6. **Chapter superscriptions are ordinary segments.** A chapter heading (a `d` descriptive title,
+   e.g. a Psalm superscription) is extracted as a synthetic **verse 0** segment that sits in
+   document order between the previous chapter's last verse and the new chapter's verse 1. Verse 0
+   participates in boundary editing like any other segment: it can be merged into the previous
+   chapter's last verse, absorb the verse after it, or be split. This means a user can deliberately
+   (or accidentally) fold a Psalm title into verse text; the edit is always reversible by splitting
+   the heading back out. Two questions:
+   - Is "heading merges like any verse" acceptable, or should merging a superscription warn or be
+     prevented? (An earlier build treated verse 0 as a hard wall that no edit could touch; that
+     protection was removed in favor of uniform, predictable behavior.)
+   - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
+     behavior of item 3 — confirm that parallels hold for headings too.
+
+7. **Boundaries that would cut a phrase.** The stored model accepts any contiguous re-segmentation,
+   including one that lands a boundary in the middle of an existing phrase; when that happens the
+   straddled phrase is **force-broken** — split at the boundary (a one-token side becomes a free
+   token again). The token-chip views never offer such an edit (the split control hides and the
+   cross-segment pull disables at boundaries that would cut a phrase), so today force-breaking can
+   only be triggered by future surfaces that re-segment without showing phrases. Confirm that
+   silent force-breaking (no confirmation prompt) is acceptable for those surfaces, given the
+   alternative is a phrase spanning two segments, which the editing model forbids.

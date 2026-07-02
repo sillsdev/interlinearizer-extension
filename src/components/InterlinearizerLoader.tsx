@@ -225,10 +225,6 @@ function InterlinearizerLoaderInner({
   // the reference identical across the loader's frequent re-renders (driven by `useData`,
   // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
   // of re-rendering every windowed segment when no toggle actually changed.
-  // Editing segment boundaries is a transient mode rather than a saved preference, so it lives in
-  // local state (not a persisted project setting) and resets to off whenever the WebView reloads.
-  const [boundaryEditMode, setBoundaryEditMode] = useState(false);
-
   const viewOptions = useMemo(
     () => ({
       hideInactiveLinkButtons,
@@ -236,7 +232,6 @@ function InterlinearizerLoaderInner({
       chapterLabelInVerse,
       showMorphology,
       showFreeTranslation,
-      boundaryEditMode,
     }),
     [
       hideInactiveLinkButtons,
@@ -244,7 +239,6 @@ function InterlinearizerLoaderInner({
       chapterLabelInVerse,
       showMorphology,
       showFreeTranslation,
-      boundaryEditMode,
     ],
   );
 
@@ -274,6 +268,19 @@ function InterlinearizerLoaderInner({
     () => (verseBook ? resegmentBook(verseBook, draft?.segmentation) : undefined),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- segmentationVersion tracks draft?.segmentation, a ref value
     [verseBook, segmentationVersion, draft],
+  );
+
+  /**
+   * First-token refs of the default verse boundaries the user has merged away — the delta's
+   * `removedVerseStarts`, which normalization guarantees are exactly the default starts not
+   * currently beginning a segment. The views render a former-boundary tick at these refs. Keyed on
+   * `segmentationVersion` for the same reason as `book` above: `draft` is a ref value, so the
+   * version bump is the re-render trigger for a boundary edit.
+   */
+  const formerBoundaryRefs = useMemo<ReadonlySet<string>>(
+    () => new Set(draft?.segmentation?.removedVerseStarts ?? []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- segmentationVersion tracks draft?.segmentation, a ref value
+    [segmentationVersion, draft],
   );
 
   /**
@@ -517,8 +524,6 @@ function InterlinearizerLoaderInner({
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
-              boundaryEditMode={boundaryEditMode}
-              onBoundaryEditModeChange={setBoundaryEditMode}
             />
           ) : undefined
         }
@@ -580,6 +585,7 @@ function InterlinearizerLoaderInner({
             viewOptions={viewOptions}
             showSuggestions={showSuggestions}
             segmentationDispatch={segmentationDispatch}
+            formerBoundaryRefs={formerBoundaryRefs}
           />
         )}
       </div>

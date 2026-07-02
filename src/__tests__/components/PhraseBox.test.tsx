@@ -365,6 +365,23 @@ describe('PhraseBox', () => {
     expect(phraseBox).toHaveClass('tw:phrase-dimmed');
   });
 
+  it('applies the candidate outline when isCandidate is true', () => {
+    renderBox(<PhraseBox {...requiredProps()} isCandidate />);
+
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:phrase-candidate');
+  });
+
+  it('gives the candidate outline precedence over the focused style', () => {
+    renderBox(<PhraseBox {...requiredProps()} isCandidate isFocused />);
+
+    // While an operation preview is hovered, showing what it affects matters more than showing
+    // what is focused.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:phrase-candidate');
+    expect(phraseBox).not.toHaveClass('tw:phrase-focused');
+  });
+
   it('reddens only the chips whose refs are in splitFreeTokenRefs, leaving the box border neutral', () => {
     renderBox(
       <PhraseBox

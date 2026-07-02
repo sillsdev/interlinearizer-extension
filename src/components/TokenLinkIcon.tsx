@@ -83,7 +83,7 @@ export function TokenLinkIcon({
     crossSegmentLinkTooltip,
   } = usePhraseStripContext();
   const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
-  const { dispatch: segmentationDispatch, segmentById, verseZeroSegmentIds } = useSegmentation();
+  const { dispatch: segmentationDispatch, segmentById } = useSegmentation();
 
   const inSamePhrase =
     prevPhraseLink !== undefined &&
@@ -305,28 +305,19 @@ export function TokenLinkIcon({
     );
   }
 
-  // A verse-0 superscription is a hard wall: it is never pulled into a neighbor and never absorbs a
-  // foreign token, so no cross-segment link may touch one. That holds whether focus is itself inside
-  // the superscription or the superscription is the segment adjacent across this slot.
-  const focusedRef = focusedFreeToken?.ref ?? focusedPhraseLink?.tokens[0]?.tokenRef;
-  const focusedSegmentId = focusedRef === undefined ? undefined : tokenSegmentMap.get(focusedRef);
-  const focusedIsVerseZero =
-    focusedSegmentId !== undefined && verseZeroSegmentIds.has(focusedSegmentId);
-  // Whether the adjacent (non-focused) segment is a verse-0 superscription.
-  const adjacentSegmentId =
+  // A cross-segment (adjacent-edge) pull moves the boundary by exactly one token, so it is valid
+  // only when the pulled edge token is free: pulling a token that belongs to a phrase would leave
+  // that phrase straddling the moved boundary. (The not-mid-phrase rule is a UI guard — the
+  // segmentation dispatch itself accepts such boundaries and force-breaks the straddled phrases.)
+  const pulledTokenInPhrase =
     focusedSideIsPrev === undefined
-      ? undefined
-      : tokenSegmentMap.get((focusedSideIsPrev ? nextToken : prevToken).ref);
-  const adjacentIsVerseZero =
-    adjacentSegmentId !== undefined && verseZeroSegmentIds.has(adjacentSegmentId);
-  // A cross-segment (adjacent-edge) pull is valid only when neither side of the boundary is a
-  // verse-0 superscription.
-  const adjacentEdgeValid = isAdjacentEdgeOfFocus && !focusedIsVerseZero && !adjacentIsVerseZero;
+      ? false
+      : (focusedSideIsPrev ? nextPhraseLink : prevPhraseLink) !== undefined;
+  const adjacentEdgeValid = isAdjacentEdgeOfFocus && !pulledTokenInPhrase;
 
   // Link icon: active in view mode when focus is set and either both neighbors are in the focused
   // segment (a within-segment link) or this slot is a valid adjacent edge of the focused segment (a
-  // cross-segment link that pulls the edge token across and moves the boundary — never across a
-  // verse-0 superscription, which is a hard wall).
+  // cross-segment link that pulls the free edge token across and moves the boundary).
   const isActive =
     phraseMode.kind === 'view' &&
     focusedSideIsPrev !== undefined &&

@@ -40,8 +40,8 @@ const V1_BETA = 'GEN 1:1:6';
 
 /**
  * A fixture with a mid-book verse-0 superscription: GEN 1:1, then GEN 2:0 (the superscription),
- * then GEN 2:1. Verse 0 is deliberately not the book's first segment so its start-lock is distinct
- * from the always-present book-first lock.
+ * then GEN 2:1. Pins the decision that verse 0 is an ordinary segment for boundary editing — no
+ * guard makes its boundaries special (only the always-present book-first lock applies).
  */
 const MID_VERSE_ZERO = makeBook([
   { sid: 'GEN 1:1', text: 'Alpha beta.' },
@@ -49,21 +49,10 @@ const MID_VERSE_ZERO = makeBook([
   { sid: 'GEN 2:1', text: 'Gamma.' },
 ]);
 // Verse-0 start, an interior verse-0 word ("tee" at charStart 4), and the start of the verse right
-// after verse 0 — the three refs frozen by the verse-0 locks.
+// after verse 0.
 const VZ0_START = 'GEN 2:0:0';
 const VZ0_INTERIOR = 'GEN 2:0:4';
 const VZ_NEXT_START = 'GEN 2:1:0';
-
-/**
- * A fixture whose final segment is a verse-0 superscription, so the superscription has no segment
- * after it. Exercises the after-boundary branch of the verse-0 lock when verse 0 ends the book.
- */
-const TRAILING_VERSE_ZERO = makeBook([
-  { sid: 'GEN 1:1', text: 'Alpha beta.' },
-  { sid: 'GEN 2:0', text: 'Sup tee.' },
-]);
-// Start of the trailing verse-0 superscription.
-const TVZ0_START = 'GEN 2:0:0';
 
 describe('defaultVerseStarts', () => {
   it('returns the first-token ref of every verse', () => {
@@ -158,10 +147,10 @@ describe('addBoundaryBefore', () => {
     expect(addBoundaryBefore(THREE_VERSES, once, V1_BETA)).toEqual(once);
   });
 
-  it('is a no-op when splitting inside a verse-0 superscription (its tokens stay together)', () => {
+  it('splits inside a verse-0 superscription like any other verse', () => {
     expect(addBoundaryBefore(MID_VERSE_ZERO, undefined, VZ0_INTERIOR)).toEqual({
       removedVerseStarts: [],
-      addedStarts: [],
+      addedStarts: [VZ0_INTERIOR],
     });
   });
 });
@@ -189,23 +178,16 @@ describe('removeBoundaryAt', () => {
     });
   });
 
-  it('is a no-op when removing the boundary before a verse-0 superscription (would join the previous chapter)', () => {
+  it('merges a verse-0 superscription into the previous segment like any verse start', () => {
     expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ0_START)).toEqual({
-      removedVerseStarts: [],
+      removedVerseStarts: [VZ0_START],
       addedStarts: [],
     });
   });
 
-  it('is a no-op when removing the boundary after a verse-0 superscription (would sweep verse 0 forward)', () => {
+  it('merges the verse after a verse-0 superscription into it like any verse start', () => {
     expect(removeBoundaryAt(MID_VERSE_ZERO, undefined, VZ_NEXT_START)).toEqual({
-      removedVerseStarts: [],
-      addedStarts: [],
-    });
-  });
-
-  it('is a no-op when removing the boundary before a verse-0 superscription that ends the book', () => {
-    expect(removeBoundaryAt(TRAILING_VERSE_ZERO, undefined, TVZ0_START)).toEqual({
-      removedVerseStarts: [],
+      removedVerseStarts: [VZ_NEXT_START],
       addedStarts: [],
     });
   });
@@ -219,12 +201,10 @@ describe('moveBoundary', () => {
     });
   });
 
-  it('is a no-op when both halves touch a verse-0 superscription', () => {
-    // The after-superscription boundary can't be removed (it borders verse 0), and an interior
-    // verse-0 token can't become a new start, so neither half of the move applies.
+  it('moves a boundary across a verse-0 superscription like any other segment', () => {
     expect(moveBoundary(MID_VERSE_ZERO, undefined, VZ_NEXT_START, VZ0_INTERIOR)).toEqual({
-      removedVerseStarts: [],
-      addedStarts: [],
+      removedVerseStarts: [VZ_NEXT_START],
+      addedStarts: [VZ0_INTERIOR],
     });
   });
 });

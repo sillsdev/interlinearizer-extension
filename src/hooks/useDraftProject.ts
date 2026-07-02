@@ -45,6 +45,15 @@ export type UseDraftProjectResult = {
    */
   draftVersion: number;
   /**
+   * Monotonic counter bumped on every change to the draft's segment-boundary delta (per-edit
+   * auto-saves included). Unlike {@link UseDraftProjectResult.draftVersion} it is deliberately kept
+   * out of the editor's remount key: the resegmented book is derived from `draft.segmentation`,
+   * which lives in a ref, so a boundary edit needs a re-render to recompute the book — but must not
+   * remount the editor (that would drop analysis-edit, scroll, and focus state). Consumers thread
+   * this into the memo that resegments the book so the new boundaries take effect in place.
+   */
+  segmentationVersion: number;
+  /**
    * Whether the draft has diverged from its active project since the last Save / Save As / Open /
    * New. Drives the discard confirmation and the tab's unsaved-changes indicator.
    */
@@ -131,6 +140,7 @@ export default function useDraftProject(
   const draftRef = useRef<DraftProject | undefined>(undefined);
   const [isDraftLoading, setIsDraftLoading] = useState(true);
   const [draftVersion, setDraftVersion] = useState(0);
+  const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
 
   // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
@@ -269,6 +279,10 @@ export default function useDraftProject(
         persist(next);
       }, AUTOSAVE_DEBOUNCE_MS);
       setDirty(true);
+      // The resegmented book is derived from `draftRef.current.segmentation`, which lives in a ref;
+      // `setDirty(true)` bails out of the re-render when the draft was already dirty, so bump a
+      // dedicated version to force the loader to re-read the boundaries and recompute the book.
+      setSegmentationVersion((v) => v + 1);
     },
     [persist],
   );
@@ -363,6 +377,7 @@ export default function useDraftProject(
     isDraftLoading,
     draft: draftRef.current,
     draftVersion,
+    segmentationVersion,
     dirty,
     getDraftSnapshot,
     autosaveAnalysis,

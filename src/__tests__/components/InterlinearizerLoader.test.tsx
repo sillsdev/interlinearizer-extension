@@ -1230,6 +1230,29 @@ describe('InterlinearizerLoader', () => {
       expect(lastPersistedSegmentation()).toBeDefined();
     });
 
+    it('re-renders the interlinearizer with the new segments in place after a boundary edit', async () => {
+      // The reported bug: clicking merge/split did not update the view. The resegmented book is
+      // derived from the draft's ref-held segmentation, and the auto-save's `setDirty(true)` bails
+      // out of the re-render once the draft is dirty — so the new `book` prop only reaches the
+      // interlinearizer because `autosaveSegmentation` bumps a dedicated version. Assert the split
+      // actually reaches the rendered `book` (verse 1 becomes two segments) without a remount.
+      mockBookData({ book: TWO_VERSE_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(2);
+      const mountsBefore = interlinearizerMountCount;
+
+      act(() => dispatch.split('GEN 1:1:6'));
+
+      // Verse 1 is now two segments (before/after "beta"), so the book has three segments total, and
+      // the interlinearizer was updated in place rather than remounted.
+      expect(capturedInterlinearizerProps?.book.segments).toHaveLength(3);
+      expect(interlinearizerMountCount).toBe(mountsBefore);
+    });
+
     it('clears the segmentation field when an edit restores the default segmentation', async () => {
       mockBookData({ book: TWO_VERSE_BOOK });
       await act(async () => {

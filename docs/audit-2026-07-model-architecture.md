@@ -30,23 +30,6 @@
 - [x] Synthesize findings: strengths, risks, model gaps vs. roadmap, recommendations.
 - [x] Final commit.
 
-## Progress log
-
-- 2026-07-01: Branch and audit file created. Repo state: `main` @ `73cf42b`
-  ("Add engine to generate token gloss suggestions from previous glosses (#131)").
-  26 open issues fetched.
-- 2026-07-01: Model analysis (§1) written from direct read of
-  `src/types/interlinearizer.d.ts`.
-- 2026-07-01: Four subagent reports received (lifecycle/PAPI, state mgmt,
-  parsers+UI, issues) and distilled into §2–§5. File:line citations in §2–§4 are
-  subagent-reported and spot-checked, not individually re-verified.
-- 2026-07-01: Synthesis and recommendations written (§6). **Audit complete.**
-- 2026-07-02: Recommendations filed as issues #136–#142 (drafts in
-  [recommended-issues-2026-07.md](recommended-issues-2026-07.md)); the
-  maintainer folded the recommended updates into existing issues #43, #49, #61,
-  #87, #94, #97, #128, #129, #130 (body edits and comments). Findings below now
-  reference the tracking issues.
-
 ## Findings
 
 ### 1. Data model (`src/types/interlinearizer.d.ts`)
@@ -75,7 +58,7 @@
 - Exceptional documentation density: every type carries source-system mappings for
   the three import origins (LCM/FieldWorks, Paratext 9, BT Extension). The model
   doubles as an import specification.
-- Separation of *identity* (link records) from *content* (payload records) is the
+- Separation of _identity_ (link records) from _content_ (payload records) is the
   right call for competing machine/human analyses and matches the FieldWorks
   `IWfiAnalysis`/`IWfiGloss` mental model.
 - Lexicon data is referenced, never duplicated (`EntryRef`/`SenseRef`/
@@ -92,8 +75,8 @@
 
 - **Identity is text-derived, not stable.** `Segment.id` is the verse SID
   (`"GEN 1:1"`) and `Token.ref` embeds the character offset (`"GEN 1:1:0"`). Any
-  upstream text edit that shifts offsets re-keys *every subsequent token in the
-  segment*, orphaning `TokenAnalysisLink`s wholesale. The snapshot/stale mechanism
+  upstream text edit that shifts offsets re-keys _every subsequent token in the
+  segment_, orphaning `TokenAnalysisLink`s wholesale. The snapshot/stale mechanism
   detects drift but the model has no re-anchoring story (#49 "Adjust segment
   boundaries" and text-edit resilience generally will collide with this). The
   re-anchoring decision is now tracked as #136, which blocks #43 and #49.
@@ -108,12 +91,12 @@
   `TokenAnalysisLink`, `PhraseAnalysisLink`, and `AlignmentEndpoint`, but
   `SegmentAnalysisLink` has only `segmentId` — a changed verse text silently keeps
   its free translation fresh-looking. `Book.textVersion` exists but nothing in the
-  model records *which* version an analysis was made against. Tracked as #139.
+  model records _which_ version an analysis was made against. Tracked as #139.
 - **`updatedAt`/`modifiedAt` absent.** `createdAt` only; no per-record or
   per-project modification timestamps, which the roadmap (save performance #87,
   status views #117) will likely want. Tracked as #138.
 - **JSON-string command bus.** Every command in `CommandHandlers` passes
-  `InterlinearProject`/`TextAnalysis` as JSON *strings* (serialize → PAPI →
+  `InterlinearProject`/`TextAnalysis` as JSON _strings_ (serialize → PAPI →
   parse), doubling serialization work and losing type-safety at the boundary.
   Presumably a PAPI serialization constraint, but worth revisiting; at minimum the
   whole-analysis-per-save pattern couples payload size to save latency (#87).
@@ -158,13 +141,13 @@ global settings, 100+ localized strings, no themes.
 
 **Risks observed** (agent-verified, spot-checked):
 
-| Risk | Where | Severity |
-| --- | --- | --- |
-| No schema version on persisted records; format evolution ⇒ guard failure ⇒ records skipped/reset (silent data loss path) — tracked as #137 | projectStorage.ts | med-high |
-| JSON-string payloads over the command bus; type safety rests entirely on runtime guards | main.ts:154, 254, 308, 328 | med |
-| Orphaned `project:{uuid}` records possible if index rollback also fails (storage bloat, invisible to picker) — tracked as #141 | projectStorage.ts:177–189 | med |
-| Full-draft JSON written per edit; queues serialize but nothing batches/debounces at this layer | main.ts:326–343 | low-med (feeds #87) |
-| Guards validate array shapes deeply for morphemes but not enum values (`Confidence`, `AssignmentStatus`) or `MultiString` keys — folded into #140 | type-guards.ts:213–236 | low |
+| Risk                                                                                                                                              | Where                      | Severity            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | ------------------- |
+| No schema version on persisted records; format evolution ⇒ guard failure ⇒ records skipped/reset (silent data loss path) — tracked as #137        | projectStorage.ts          | med-high            |
+| JSON-string payloads over the command bus; type safety rests entirely on runtime guards                                                           | main.ts:154, 254, 308, 328 | med                 |
+| Orphaned `project:{uuid}` records possible if index rollback also fails (storage bloat, invisible to picker) — tracked as #141                    | projectStorage.ts:177–189  | med                 |
+| Full-draft JSON written per edit; queues serialize but nothing batches/debounces at this layer                                                    | main.ts:326–343            | low-med (feeds #87) |
+| Guards validate array shapes deeply for morphemes but not enum values (`Confidence`, `AssignmentStatus`) or `MultiString` keys — folded into #140 | type-guards.ts:213–236     | low                 |
 
 ### 3. WebView state management & data flow
 
@@ -199,14 +182,14 @@ derive; a bounded (50k, LRU) module-global normalization cache.
 
 **Risks observed** (agent-reported, plausibility-checked):
 
-| Risk | Where | Severity |
-| --- | --- | --- |
-| Token-ref string identity is the join key everywhere; tokenization changes orphan analyses (mirrors §1 model risk) — decision tracked as #136 | analysisSlice.ts:223 | high |
-| `isPayloadSharedByOtherLinks` scans all links **per edit** (O(links)); fine now, scales poorly to Bible-sized analyses | analysisSlice.ts:301–308 | med |
-| Full-draft `JSON.stringify` per (debounced) autosave; no incremental serialization — the client half of issue #87 | useDraftProject.ts:150 | med |
-| Orphan-link repair is silent (`resolveApprovedAnalysis` filters dangling `analysisId`s), masking corruption in production — tracked as #140 | analysisSlice.ts:219–233 | low-med |
-| Failed autosave writes are only surfaced via notification; no retry | useDraftProject.ts:141–143 | low |
-| `bookOfRef` parses refs by string-splitting `"GEN 1:1"`; format drift ⇒ silent mismatch | analysis-book.ts:12–15 | low |
+| Risk                                                                                                                                          | Where                      | Severity |
+| --------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- | -------- |
+| Token-ref string identity is the join key everywhere; tokenization changes orphan analyses (mirrors §1 model risk) — decision tracked as #136 | analysisSlice.ts:223       | high     |
+| `isPayloadSharedByOtherLinks` scans all links **per edit** (O(links)); fine now, scales poorly to Bible-sized analyses                        | analysisSlice.ts:301–308   | med      |
+| Full-draft `JSON.stringify` per (debounced) autosave; no incremental serialization — the client half of issue #87                             | useDraftProject.ts:150     | med      |
+| Orphan-link repair is silent (`resolveApprovedAnalysis` filters dangling `analysisId`s), masking corruption in production — tracked as #140   | analysisSlice.ts:219–233   | low-med  |
+| Failed autosave writes are only surfaced via notification; no retry                                                                           | useDraftProject.ts:141–143 | low      |
+| `bookOfRef` parses refs by string-splitting `"GEN 1:1"`; format drift ⇒ silent mismatch                                                       | analysis-book.ts:12–15     | low      |
 
 ### 4. Parsers & UI component architecture
 
@@ -252,15 +235,15 @@ unclear. The integration/drift gaps are filed as #142.
 handful; most of the backlog is UI/workflow/infra that the current model already
 supports.
 
-| Theme | Issues | Model impact |
-| --- | --- | --- |
-| PT9 mode parity & alignment spec | #94, #129 | **Yes** — #94 needs `modelProjectId?` (model text driving suggestions — distinct from `targetProjectId`) and an `interlinearMode?: 'back-translation' \| 'adaptation'` discriminator on `InterlinearProject`; #129 may reshape `AlignmentLink`/`AlignmentEndpoint` toward the Scripture Burrito alignment flavor |
-| Lexicon/Concordance integration & public API | #26, #44, #46, #48, #50, #128 | Mostly no — the ref types (`EntryRef`/`SenseRef`/`glossSenseRef`) already carry this; #128 (query API for analyses) makes the d.ts a real cross-extension contract and raises the cost of the missing schema version |
-| Analysis choice, confidence, morph display | #51, #53, #54, #130 | Partial — #51/#53/#54 exercise the existing `Confidence`/`AssignmentStatus` machinery (built but unsurfaced); **#130 needs a `morphType` field on `MorphemeAnalysis`** (currently inferable only via lexicon entryRef) |
-| Token/segment re-shaping | #43 (split/join tokens), #49 (segment boundaries) | **Yes, hardest** — both collide with text-derived token/segment identity (§1): a split/join changes every subsequent `Token.ref` in the segment; persistence across retokenization is an unsolved model question |
-| Rendering & language support | #97 (RTL), #118, #117, #125, #61 | Minimal — #97's key decision (global vs. per-writing-system direction) is display-layer; `Token.writingSystem` already exists to thread it |
-| Persistence & performance | #87, #119 | Minimal model change; #87 (full-analysis serialization per save) is the architectural cost of the whole-blob persistence design; #119 adds a project setting (blocked on #79 / paranext-core#2238 for booleans) |
-| Infra/chores | #5, #10, #13, #79 | None |
+| Theme                                        | Issues                                            | Model impact                                                                                                                                                                                                                                                                                                     |
+| -------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| PT9 mode parity & alignment spec             | #94, #129                                         | **Yes** — #94 needs `modelProjectId?` (model text driving suggestions — distinct from `targetProjectId`) and an `interlinearMode?: 'back-translation' \| 'adaptation'` discriminator on `InterlinearProject`; #129 may reshape `AlignmentLink`/`AlignmentEndpoint` toward the Scripture Burrito alignment flavor |
+| Lexicon/Concordance integration & public API | #26, #44, #46, #48, #50, #128                     | Mostly no — the ref types (`EntryRef`/`SenseRef`/`glossSenseRef`) already carry this; #128 (query API for analyses) makes the d.ts a real cross-extension contract and raises the cost of the missing schema version                                                                                             |
+| Analysis choice, confidence, morph display   | #51, #53, #54, #130                               | Partial — #51/#53/#54 exercise the existing `Confidence`/`AssignmentStatus` machinery (built but unsurfaced); **#130 needs a `morphType` field on `MorphemeAnalysis`** (currently inferable only via lexicon entryRef)                                                                                           |
+| Token/segment re-shaping                     | #43 (split/join tokens), #49 (segment boundaries) | **Yes, hardest** — both collide with text-derived token/segment identity (§1): a split/join changes every subsequent `Token.ref` in the segment; persistence across retokenization is an unsolved model question                                                                                                 |
+| Rendering & language support                 | #97 (RTL), #118, #117, #125, #61                  | Minimal — #97's key decision (global vs. per-writing-system direction) is display-layer; `Token.writingSystem` already exists to thread it                                                                                                                                                                       |
+| Persistence & performance                    | #87, #119                                         | Minimal model change; #87 (full-analysis serialization per save) is the architectural cost of the whole-blob persistence design; #119 adds a project setting (blocked on #79 / paranext-core#2238 for booleans)                                                                                                  |
+| Infra/chores                                 | #5, #10, #13, #79                                 | None                                                                                                                                                                                                                                                                                                             |
 
 Notable direction statements from issue bodies: #97 — "The single biggest
 decision … is whether text direction is one **global** flag or threaded
@@ -330,13 +313,13 @@ This is the highest-leverage design decision in the backlog. Filed as #136 (P1);
 - **Enforce invariants in one place:** the "at most one approved link per
   token/segment/phrase" rule is prose. Provide shared mutation helpers (the
   Redux slice already effectively owns this) and consider a validation pass in
-  `type-guards.ts` so corrupted state is *reported*, not silently repaired.
+  `type-guards.ts` so corrupted state is _reported_, not silently repaired.
   Filed as #140.
 - **#128 (public query API)** should be the forcing function to tighten the
   contract: schema version, enum validation in guards, and a documented stance on
   JSON-string vs. typed payloads over the command bus. This checklist is now on
   #128 (depends on #137 and #140).
-- **#129 (Burrito alignment spec)** is worth investigating *before* alignment
+- **#129 (Burrito alignment spec)** is worth investigating _before_ alignment
   editing UI exists — `AlignmentLink` is currently unexercised by any feature
   (drafts don't even carry `links`), so the cost of reshaping it is near zero
   right now. This timing note is now on #129.

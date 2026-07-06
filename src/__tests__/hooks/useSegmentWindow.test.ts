@@ -302,6 +302,25 @@ describe('useSegmentWindow', () => {
     expect(ids).toContain('GEN 2:1');
   });
 
+  it('anchors on the segment whose verse range contains the reference', () => {
+    // Verse 10 is split and its second half merged with verses 11–12; navigating to verse 11
+    // must center the window on that containing segment, not fall back to the chapter start.
+    const segments = [
+      ...Array.from({ length: 9 }, (_, i) => makeSegment(1, i + 1)),
+      { ...makeSegment(1, 10), id: 'GEN 1:10a' },
+      { ...makeSegment(1, 10), id: 'GEN 1:10b-12', endRef: { book: 'GEN', chapter: 1, verse: 12 } },
+      ...Array.from({ length: 8 }, (_, i) => makeSegment(1, i + 13)),
+    ];
+    const book: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+    const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
+
+    // The merged segment sits at flat index 10, so the centered window runs [2, 19) — anchoring
+    // at the chapter start instead would have produced [0, 9).
+    const ids = result.current.windowSegments.map((s) => s.id);
+    expect(ids).toContain('GEN 1:10b-12');
+    expect(ids[0]).toBe('GEN 1:3');
+  });
+
   it('falls back to the first segment of the chapter when no exact verse matches', () => {
     const book = makeBook(10, 10);
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 2, verseNum: 999 });

@@ -44,11 +44,19 @@ export type SegmentationContextValue = Readonly<{
   /** Segment id → its index in document order, used to test segment adjacency. */
   segmentOrder: ReadonlyMap<string, number>;
   /**
-   * First-token refs of the default verse boundaries the user has merged away. The slots sitting on
-   * these refs render a faint former-boundary tick so the original segmentation stays visible and a
-   * split can restore it.
+   * Maps each merged-away default verse boundary's word-token split anchor (the verse's first word
+   * token) to the removed default start ref. The slots sitting on these anchors render a faint
+   * former-boundary tick so the original segmentation stays visible, and a split there dispatches
+   * the mapped ref so the restore cancels the removal exactly — even when the verse begins with
+   * punctuation, whose ref no word-anchored slot could otherwise name.
    */
-  formerBoundaryRefs: ReadonlySet<string>;
+  formerBoundaries: ReadonlyMap<string, string>;
+  /**
+   * Word-token refs where placing a segment boundary would cut a phrase. The split control
+   * suppresses itself at these refs (the not-mid-phrase UI guard); the segmentation dispatch itself
+   * accepts such boundaries and force-breaks the straddled phrases.
+   */
+  straddledBoundaryRefs: ReadonlySet<string>;
 }>;
 
 /** No-op dispatch used as the default outside a provider (e.g. in isolated component tests). */
@@ -67,7 +75,8 @@ const DEFAULT_VALUE: SegmentationContextValue = {
   dispatch: NO_OP_SEGMENTATION_DISPATCH,
   segmentById: new Map(),
   segmentOrder: new Map(),
-  formerBoundaryRefs: new Set(),
+  formerBoundaries: new Map(),
+  straddledBoundaryRefs: new Set(),
 };
 
 const SegmentationContext = createContext<SegmentationContextValue | undefined>(undefined);

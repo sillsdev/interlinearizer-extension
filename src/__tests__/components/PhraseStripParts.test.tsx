@@ -18,6 +18,7 @@ import {
   type SegmentationContextValue,
 } from '../../components/SegmentationStore';
 import { emptyFocusContext } from '../../types/empty-factories';
+import type { PhraseMode } from '../../types/phrase-mode';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
@@ -30,15 +31,6 @@ jest.mock('../../components/TokenLinkIcon', () => ({
   default: ({ isPhraseRevealed }: Readonly<{ isPhraseRevealed: boolean }>) => (
     <span data-testid="link-icon" data-phrase-revealed={String(isPhraseRevealed)} />
   ),
-}));
-
-// BoundaryControl reads the phrase links for its not-mid-phrase split guard. Stub the store hook
-// with a test-owned map so tests can seed phrases without mounting a real AnalysisStoreProvider.
-// (The arrow closes over the map lazily, so the hoisted factory never hits the TDZ.)
-const mockPhraseLinkById = new Map<string, PhraseAnalysisLink>();
-jest.mock('../../components/AnalysisStore', () => ({
-  __esModule: true,
-  usePhraseLinkByIdMap: () => mockPhraseLinkById,
 }));
 
 jest.mock('../../components/TokenChip', () => ({
@@ -106,7 +98,6 @@ const NO_FOCUS: FocusContext = emptyFocusContext();
 // Every PhraseSlot render mounts BoundaryControl, whose labels come from useLocalizedStrings;
 // resetMocks clears the shared implementation, so re-establish the key-to-itself mapping globally.
 beforeEach(() => {
-  mockPhraseLinkById.clear();
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [
@@ -364,25 +355,20 @@ describe('PhraseSlot boundary controls', () => {
     tokens: [makeWordToken('seg2-start')],
   };
 
-  /** Document order for the fixture tokens, used by the not-mid-phrase split guard. */
-  const DOC_ORDER: ReadonlyMap<string, number> = new Map([
-    ['a', 0],
-    ['b', 1],
-    ['c', 2],
-  ]);
-
   /**
    * Renders a PhraseSlot inside both providers.
    *
    * @param props - Overrides for the slot props (e.g. prev/next segment ids).
-   * @param options - Optional fixture overrides: merged-away boundary refs and the candidate-token
-   *   hover spy.
+   * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
+   *   the phrase mode, and the candidate-token hover spy.
    * @returns The dispatch, for asserting on its calls.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
     options: {
-      formerBoundaryRefs?: ReadonlySet<string>;
+      formerBoundaries?: ReadonlyMap<string, string>;
+      straddledBoundaryRefs?: ReadonlySet<string>;
+      phraseMode?: PhraseMode;
       onHoverCandidateTokens?: (refs: readonly string[] | undefined) => void;
     } = {},
   ) {
@@ -401,13 +387,14 @@ describe('PhraseSlot boundary controls', () => {
         ['seg-1', 0],
         ['seg-2', 1],
       ]),
-      formerBoundaryRefs: options.formerBoundaryRefs ?? new Set(),
+      formerBoundaries: options.formerBoundaries ?? new Map(),
+      straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
     };
     render(
       <SegmentationProvider value={value}>
         <PhraseStripProvider
           value={makePhraseStripContext({
-            tokenDocOrder: DOC_ORDER,
+            ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
             ...(options.onHoverCandidateTokens
               ? { onHoverCandidateTokens: options.onHoverCandidateTokens }
               : {}),
@@ -453,29 +440,27 @@ describe('PhraseSlot boundary controls', () => {
     expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('hides the split control when a phrase spans the boundary (not-mid-phrase UI guard)', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['a', 'b']));
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+  it('hides the split control at a straddled boundary ref (not-mid-phrase UI guard)', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      { straddledBoundaryRefs: new Set(['b']) },
+    );
     expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
   });
 
-  it('hides the split control in the gap between two fragments of a discontiguous phrase', () => {
-    // Phrase [a, c] with free token b between: a boundary before b would leave the phrase
-    // straddling it even though b itself is not a phrase member.
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['a', 'c']));
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
-    expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
-  });
-
-  it('keeps the split control when phrases sit entirely on one side of the boundary', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['b', 'c']));
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+  it('keeps the split control when the anchor is not among the straddled boundary refs', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      { straddledBoundaryRefs: new Set(['other-ref']) },
+    );
     expect(screen.getByTestId('boundary-split-btn')).toBeInTheDocument();
   });
 
-  it('keeps the merge control when a phrase spans the boundary (merge never cuts a phrase)', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['a', 'b']));
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+  it('keeps the merge control at a straddled boundary ref (merge never cuts a phrase)', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      { straddledBoundaryRefs: new Set(['b']) },
+    );
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
   });
 
@@ -508,6 +493,13 @@ describe('PhraseSlot boundary controls', () => {
     expect(onHoverCandidateTokens).toHaveBeenLastCalledWith(undefined);
   });
 
+  it('previews nothing when the split slot segment id is not in the segment lookup', () => {
+    const onHoverCandidateTokens = jest.fn();
+    renderBoundary({ prevSegmentId: 'seg-x', nextSegmentId: 'seg-x' }, { onHoverCandidateTokens });
+    fireEvent.mouseEnter(screen.getByTestId('boundary-split-btn'));
+    expect(onHoverCandidateTokens).toHaveBeenCalledWith([]);
+  });
+
   it('clears the hover preview synchronously when the control is clicked', () => {
     const onHoverCandidateTokens = jest.fn();
     const dispatch = renderBoundary(
@@ -521,10 +513,37 @@ describe('PhraseSlot boundary controls', () => {
     expect(dispatch.split).toHaveBeenCalledWith('b');
   });
 
+  it('dispatches the original removed ref when splitting at a former boundary', () => {
+    // The merged-away verse began with punctuation: the word anchor 'b' maps to the removed
+    // punctuation start ref, and the restore must dispatch that original ref.
+    const dispatch = renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      { formerBoundaries: new Map([['b', 'punct-start']]) },
+    );
+    fireEvent.click(screen.getByTestId('boundary-split-btn'));
+    expect(dispatch.split).toHaveBeenCalledWith('punct-start');
+  });
+
+  it('disables the merge control while a phrase edit is active', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      { phraseMode: { kind: 'edit', phraseId: 'p1', originalTokens: [] } },
+    );
+    expect(screen.getByTestId('boundary-merge-btn')).toBeDisabled();
+  });
+
+  it('disables the split control while a confirm-unlink prompt is active', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+      { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
+    );
+    expect(screen.getByTestId('boundary-split-btn')).toBeDisabled();
+  });
+
   it('renders a former-boundary tick on an intra-segment slot at a merged-away verse start', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaryRefs: new Set(['b']) },
+      { formerBoundaries: new Map([['b', 'b']]) },
     );
     expect(screen.getByTestId('former-boundary-marker')).toBeInTheDocument();
     expect(screen.getByTestId('boundary-split-btn')).toBeInTheDocument();
@@ -536,10 +555,9 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('keeps the former-boundary tick when the split control is suppressed by the mid-phrase guard', () => {
-    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['a', 'b']));
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaryRefs: new Set(['b']) },
+      { formerBoundaries: new Map([['b', 'b']]), straddledBoundaryRefs: new Set(['b']) },
     );
     expect(screen.queryByTestId('boundary-split-btn')).not.toBeInTheDocument();
     expect(screen.getByTestId('former-boundary-marker')).toBeInTheDocument();
@@ -549,7 +567,7 @@ describe('PhraseSlot boundary controls', () => {
     // A cross-segment slot sits on a live boundary; the tick marks only merged-away ones.
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-      { formerBoundaryRefs: new Set(['b']) },
+      { formerBoundaries: new Map([['b', 'b']]) },
     );
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
     expect(screen.queryByTestId('former-boundary-marker')).not.toBeInTheDocument();

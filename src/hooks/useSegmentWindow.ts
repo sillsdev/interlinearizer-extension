@@ -2,7 +2,6 @@ import type { Book, Segment } from 'interlinearizer';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { verseKey } from '../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
 import { isSameVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
@@ -55,6 +54,16 @@ export interface UseSegmentWindowArgs {
   book: Book;
   /** Current scripture reference; the active verse it names is the recenter anchor. */
   scrRef: SerializedVerseRef;
+  /**
+   * Monotonic counter the loader bumps on every boundary edit (merge/split/move). The hook uses it
+   * to classify a segments-identity change: a change carrying a version bump is a boundary edit —
+   * the window redraws in place with no fade — while a change without one is a re-tokenization of
+   * the loaded book (or a book swap) and recenters with the fade. The cause is stated by this
+   * explicit signal rather than reverse-engineered from anchor coordinates, which misclassify in
+   * both directions (a merge absorbing the active verse's segment start changes the anchor verse; a
+   * re-tokenization can keep it).
+   */
+  segmentationVersion: number;
   /**
    * Token ref of the currently focused word token, or `undefined` when nothing is focused. Gated
    * alongside {@link UseSegmentWindowResult.displayScrRef} so the per-token focus highlight and the
@@ -197,6 +206,8 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * @param args - Hook arguments.
  * @param args.book - The tokenized book whose `segments` are windowed.
  * @param args.scrRef - Current scripture reference; its verse is the recenter anchor.
+ * @param args.segmentationVersion - Monotonic boundary-edit counter; classifies segments-identity
+ *   changes as boundary edits (no fade) vs. re-tokenizations (recenter with fade).
  * @param args.scrollContainerRef - Ref to the scrollable list container.
  * @param args.consumeInternalNav - Returns whether the navigation to a given verse was internal
  *   (and clears the marker); used to suppress the fade for navigation that came from within the
@@ -206,6 +217,7 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
 export default function useSegmentWindow({
   book,
   scrRef,
+  segmentationVersion,
   focusedTokenRef,
   continuousScroll,
   scrollContainerRef,
@@ -535,41 +547,41 @@ export default function useSegmentWindow({
   // strip so the two views fade as one. The fade fires for every external nav, even one already
   // inside the window, so the two views can never disagree about whether a fade is happening.
   //
-  // A segments-identity change at an unchanged anchor verse is NOT a navigation: it is a boundary
-  // edit (merge/split from the mounted controls) or a re-tokenization of the loaded book. The
-  // window slice already re-renders the new segments in the same commit, so fading afterwards
-  // would flash content the user is already looking at and snap it away from the point they just
-  // clicked — skip the recenter entirely and let the redraw stand.
-  //
-  // `prevAnchorRef` tracks the anchor index, the segments identity, AND the anchor verse key so
-  // that a book change (which can produce the same anchor index as the previous book) still
-  // triggers a recenter while a same-verse segmentation change does not.
-  const prevAnchorRef = useRef<{ index: number; segments: readonly Segment[]; verseKey: string }>({
-    index: anchorIndex,
-    segments,
-    verseKey: verseKey(scrRef),
-  });
+  // A segments-identity change carrying a `segmentationVersion` bump is NOT a navigation: it is a
+  // boundary edit (merge/split from the mounted controls). The window slice already re-renders the
+  // new segments in the same commit, so fading afterwards would flash content the user is already
+  // looking at and snap it away from the point they just clicked — sync the display refs (a merge
+  // that absorbs the active verse's segment start re-resolves the anchor verse in the same commit)
+  // and let the redraw stand. A segments change withOUT a version bump is a re-tokenization of the
+  // loaded book or a book swap at the same anchor index: the mounted index range no longer matches
+  // the content, so it recenters like any external change.
+  const prevAnchorRef = useRef<{
+    index: number;
+    segments: readonly Segment[];
+    segmentationVersion: number;
+  }>({ index: anchorIndex, segments, segmentationVersion });
   useEffect(() => {
     const prev = prevAnchorRef.current;
+    // Refresh the whole snapshot up front so no early return can leave a field stale for a later
+    // comparison.
+    prevAnchorRef.current = { index: anchorIndex, segments, segmentationVersion };
     const sameAnchor = anchorIndex === prev.index && segments === prev.segments;
     if (sameAnchor) return;
     const currentScrRef = scrRefRef.current;
-    const currentVerseKey = verseKey(currentScrRef);
-    const sameVerse = currentVerseKey === prev.verseKey;
-    prevAnchorRef.current = { index: anchorIndex, segments, verseKey: currentVerseKey };
-    if (sameVerse) return;
-    if (consumeInternalNavRef.current(currentScrRef)) {
+    const isBoundaryEdit =
+      segments !== prev.segments && segmentationVersion !== prev.segmentationVersion;
+    if (isBoundaryEdit || consumeInternalNavRef.current(currentScrRef)) {
       setDisplayScrRef(currentScrRef);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);
       return;
     }
     triggerRecenter();
-    // scrRef is read (via ref) only to key the internal-nav check; anchorIndex and segments already
-    // capture every verse/book change we recenter on, and triggerRecenter has a stable identity. The
-    // timeout is owned by triggerRecenter (recenterTimeoutRef), not torn down here, so an incidental
-    // re-render that re-runs this effect can never cancel an in-flight fade.
+    // scrRef is read (via ref) only to key the internal-nav check; anchorIndex, segments, and
+    // segmentationVersion already capture every change we classify on, and triggerRecenter has a
+    // stable identity. The timeout is owned by triggerRecenter (recenterTimeoutRef), not torn down
+    // here, so an incidental re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anchorIndex, segments, triggerRecenter]);
+  }, [anchorIndex, segments, segmentationVersion, triggerRecenter]);
 
   // Track within-verse focus moves (arrow/click that stays in the active verse) immediately. These
   // change `focusedTokenRef` without changing `anchorIndex`, so the recenter effect above never

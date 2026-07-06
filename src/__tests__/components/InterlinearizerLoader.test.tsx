@@ -159,6 +159,8 @@ type CapturedInterlinearizerProps = {
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   viewOptions: ViewOptions;
   segmentationDispatch: SegmentationDispatch;
+  formerBoundaries: ReadonlyMap<string, string>;
+  segmentationVersion: number;
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
@@ -1252,6 +1254,37 @@ describe('InterlinearizerLoader', () => {
       expect(interlinearizerMountCount).toBe(mountsBefore);
     });
 
+    it('sends the boundary delta on Save and clears the unsaved marker', async () => {
+      mockBookData({ book: TWO_VERSE_BOOK });
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader({
+          useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
+        });
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+
+      // A boundary edit dirties the draft, so the tab marker lights up.
+      act(() => dispatch.merge('GEN 1:2:0'));
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
+
+      result?.updateWebViewDefinition.mockClear();
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      // Save sends the draft's boundary delta (not the "null" clear sentinel) alongside the
+      // analysis, so the project's boundaries match the analysis just written.
+      expect(mockSendCommand).toHaveBeenCalledWith(
+        'interlinearizer.saveAnalysis',
+        'proj-1',
+        JSON.stringify(emptyAnalysis()),
+        JSON.stringify({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] }),
+      );
+      // markSynced received the draft's exact analysis and segmentation references, so its
+      // identity guard matched and the unsaved marker cleared.
+      expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+    });
+
     it('clears the segmentation field when an edit restores the default segmentation', async () => {
       mockBookData({ book: TWO_VERSE_BOOK });
       await act(async () => {
@@ -1267,6 +1300,202 @@ describe('InterlinearizerLoader', () => {
       act(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
       expect(lastPersistedSegmentation()).toBeUndefined();
+    });
+  });
+
+  describe('former boundaries', () => {
+    /**
+     * A four-verse book covering every former-boundary shape: a word-initial verse (1:3), a verse
+     * that begins with punctuation so its first word token differs from its first token (1:2), a
+     * verse with no word token at all (1:4), and a token-less verse (1:5).
+     */
+    const BOUNDARY_SHAPES_BOOK: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 1:1',
+          startRef: { book: 'GEN', chapter: 1, verse: 1 },
+          endRef: { book: 'GEN', chapter: 1, verse: 1 },
+          baselineText: 'Alpha.',
+          tokens: [
+            {
+              ref: 'GEN 1:1:0',
+              surfaceText: 'Alpha',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+          ],
+        },
+        {
+          id: 'GEN 1:2',
+          startRef: { book: 'GEN', chapter: 1, verse: 2 },
+          endRef: { book: 'GEN', chapter: 1, verse: 2 },
+          baselineText: '“Gamma.',
+          tokens: [
+            {
+              ref: 'GEN 1:2:0',
+              surfaceText: '“',
+              writingSystem: 'en',
+              type: 'punctuation',
+              charStart: 0,
+              charEnd: 1,
+            },
+            {
+              ref: 'GEN 1:2:1',
+              surfaceText: 'Gamma',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 1,
+              charEnd: 6,
+            },
+          ],
+        },
+        {
+          id: 'GEN 1:3',
+          startRef: { book: 'GEN', chapter: 1, verse: 3 },
+          endRef: { book: 'GEN', chapter: 1, verse: 3 },
+          baselineText: 'Delta.',
+          tokens: [
+            {
+              ref: 'GEN 1:3:0',
+              surfaceText: 'Delta',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 5,
+            },
+          ],
+        },
+        {
+          id: 'GEN 1:4',
+          startRef: { book: 'GEN', chapter: 1, verse: 4 },
+          endRef: { book: 'GEN', chapter: 1, verse: 4 },
+          baselineText: '—',
+          tokens: [
+            {
+              ref: 'GEN 1:4:0',
+              surfaceText: '—',
+              writingSystem: 'en',
+              type: 'punctuation',
+              charStart: 0,
+              charEnd: 1,
+            },
+          ],
+        },
+        {
+          id: 'GEN 1:5',
+          startRef: { book: 'GEN', chapter: 1, verse: 5 },
+          endRef: { book: 'GEN', chapter: 1, verse: 5 },
+          baselineText: '',
+          tokens: [],
+        },
+      ],
+    };
+
+    /**
+     * Renders the loader on {@link BOUNDARY_SHAPES_BOOK} and returns the captured segmentation
+     * dispatch so a test can drive boundary edits.
+     *
+     * @returns The captured `segmentationDispatch`.
+     * @throws If the interlinearizer did not render and capture a dispatch.
+     */
+    async function renderBoundaryBook(): Promise<SegmentationDispatch> {
+      mockBookData({ book: BOUNDARY_SHAPES_BOOK });
+      await act(async () => {
+        renderLoader();
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      return dispatch;
+    }
+
+    it('passes an empty formerBoundaries map and segmentationVersion 0 before any boundary edit', async () => {
+      await renderBoundaryBook();
+
+      expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
+      expect(capturedInterlinearizerProps?.segmentationVersion).toBe(0);
+    });
+
+    it('maps a merged word-initial verse start to itself and bumps segmentationVersion', async () => {
+      const dispatch = await renderBoundaryBook();
+
+      // Merge verse 3 into verse 2: the verse begins with a word token, so the split anchor (its
+      // first word token) and the removed default start are the same ref.
+      act(() => dispatch.merge('GEN 1:3:0'));
+
+      expect(capturedInterlinearizerProps?.formerBoundaries.get('GEN 1:3:0')).toBe('GEN 1:3:0');
+      expect(capturedInterlinearizerProps?.segmentationVersion).toBe(1);
+    });
+
+    it('keys a punct-initial merged verse by its first word token, mapped to the removed start', async () => {
+      const dispatch = await renderBoundaryBook();
+
+      // Merge verse 2 into verse 1: the verse opens with a quote mark, so the boundary slot's word
+      // anchor (the first word token) differs from the removed default start (the punct token).
+      act(() => dispatch.merge('GEN 1:2:0'));
+
+      expect(capturedInterlinearizerProps?.formerBoundaries.get('GEN 1:2:1')).toBe('GEN 1:2:0');
+      expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:2:0')).toBe(false);
+    });
+
+    it('skips a merged-away verse that has no word token', async () => {
+      const dispatch = await renderBoundaryBook();
+
+      // Merge verse 4 (punctuation only) into verse 3: with no word token there is no split anchor
+      // to key the former boundary by, so the verse contributes no map entry.
+      act(() => dispatch.merge('GEN 1:4:0'));
+
+      expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(0);
+    });
+
+    it('does not map verses whose default start was not merged away', async () => {
+      const dispatch = await renderBoundaryBook();
+
+      // Only verse 3 is merged; the other verses keep their default boundaries and must stay out
+      // of the map so their slots do not render former-boundary ticks.
+      act(() => dispatch.merge('GEN 1:3:0'));
+
+      expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
+      expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:1:0')).toBe(false);
+      expect(capturedInterlinearizerProps?.formerBoundaries.has('GEN 1:2:1')).toBe(false);
+    });
+
+    it('shows the loading state when the book unloads while the draft holds removals', async () => {
+      // Render with a rebuildable element so the same loader instance can be re-invoked after the
+      // book-data mock changes (the mock mutates hook output, not React state).
+      mockBookData({ book: BOUNDARY_SHAPES_BOOK });
+      const updateWebViewDefinition = jest.fn(() => true);
+      const scrollGroupHook = makeScrollGroupHook();
+      const webViewState = makeWebViewState();
+      const buildUi = () => (
+        <InterlinearizerLoader
+          projectId={testProjectId}
+          useWebViewScrollGroupScrRef={scrollGroupHook}
+          useWebViewState={webViewState}
+          updateWebViewDefinition={updateWebViewDefinition}
+        />
+      );
+      let view: ReturnType<typeof render> | undefined;
+      await act(async () => {
+        view = render(buildUi());
+      });
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      // Merge so the draft's delta has a removed verse start.
+      act(() => dispatch.merge('GEN 1:3:0'));
+      expect(capturedInterlinearizerProps?.formerBoundaries.size).toBe(1);
+
+      // The book unloads (e.g. a cross-book swap): with no verse book to resolve refs against, the
+      // former boundaries cannot be derived and the loader falls back to the loading curtain.
+      mockBookData({ book: undefined, isLoading: true });
+      view?.rerender(buildUi());
+
+      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
     });
   });
 

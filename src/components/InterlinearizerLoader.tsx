@@ -20,6 +20,7 @@ import {
   moveBoundary,
   splitSegmentBefore,
 } from '../utils/segmentation';
+import { isWordToken } from '../types/type-guards';
 import type { SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
@@ -258,30 +259,46 @@ function InterlinearizerLoaderInner({
    * incurs no extra work. `verseBook` is retained separately because the segmentation operations
    * need the default verse boundaries it carries.
    *
-   * `draft` is a ref value, so `draft?.segmentation` can be a stale snapshot after a boundary edit
-   * that mutated the ref without a render; `segmentationVersion` is bumped on every boundary edit
-   * and listed as a dep so this recomputes with the fresh boundaries. (The boundaries are read
-   * fresh from `draft` at recompute time, so the version bump is the only re-render trigger
-   * needed.)
+   * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
+   * two version counters that cover every path that can change it — `segmentationVersion` for
+   * boundary edits and `draftVersion` for wholesale replacements (New / Open / Wipe). The draft
+   * object itself is deliberately NOT a dep: gloss auto-saves replace the draft identity on every
+   * write without touching the boundaries, and keying on it would re-run the full-book
+   * re-segmentation (and cascade a fresh `book` identity through every downstream index and memo)
+   * after every gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter:
+   * the initial draft load, which must invalidate a book computed while the stored boundaries were
+   * still in flight.
    */
   const book = useMemo(
     () => (verseBook ? resegmentBook(verseBook, draft?.segmentation) : undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- segmentationVersion tracks draft?.segmentation, a ref value
-    [verseBook, segmentationVersion, draft],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+    [verseBook, segmentationVersion, draftVersion, isDraftLoading],
   );
 
   /**
-   * First-token refs of the default verse boundaries the user has merged away — the delta's
-   * `removedVerseStarts`, which normalization guarantees are exactly the default starts not
-   * currently beginning a segment. The views render a former-boundary tick at these refs. Keyed on
-   * `segmentationVersion` for the same reason as `book` above: `draft` is a ref value, so the
-   * version bump is the re-render trigger for a boundary edit.
+   * Maps each merged-away default verse boundary's word-token split anchor — the verse's first word
+   * token, the ref the boundary slots are keyed by — to the removed default start ref (the verse's
+   * first token of any type, per the delta's `removedVerseStarts`). The two differ when a verse
+   * begins with punctuation (e.g. an opening quote); mapping through the word anchor lets the slot
+   * render the former-boundary tick and dispatch a split that cancels the removal exactly. Deps
+   * mirror the `book` memo above: the version counters cover every path that changes the
+   * segmentation, `isDraftLoading` covers the initial draft load, and the draft identity is
+   * deliberately not a dep.
    */
-  const formerBoundaryRefs = useMemo<ReadonlySet<string>>(
-    () => new Set(draft?.segmentation?.removedVerseStarts ?? []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- segmentationVersion tracks draft?.segmentation, a ref value
-    [segmentationVersion, draft],
-  );
+  const formerBoundaries = useMemo<ReadonlyMap<string, string>>(() => {
+    const map = new Map<string, string>();
+    const removed = draft?.segmentation?.removedVerseStarts ?? [];
+    if (removed.length === 0 || !verseBook) return map;
+    const removedSet = new Set(removed);
+    verseBook.segments.forEach((verse) => {
+      const startRef = verse.tokens[0]?.ref;
+      if (startRef === undefined || !removedSet.has(startRef)) return;
+      const wordAnchorRef = verse.tokens.find(isWordToken)?.ref;
+      if (wordAnchorRef !== undefined) map.set(wordAnchorRef, startRef);
+    });
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the version counters track draft?.segmentation, a ref value
+  }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
 
   /**
    * Boundary-editing operations passed down to the views. Each reads the draft's latest boundary
@@ -317,7 +334,10 @@ function InterlinearizerLoaderInner({
   // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
   // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
   // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
-  // rather than leaving nothing highlighted. Non-verse-0 references pass through unchanged.
+  // rather than leaving nothing highlighted. Any other reference no segment starts at — the host's
+  // next-verse over-shooting a merged-away start, or a verse absorbed mid-segment — resolves to the
+  // nearest preceding segment start in the same chapter (falling through unchanged when the chapter
+  // has none), so post-merge navigation lands on the segment that contains the verse.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => isSameVerse(segment.startRef, scrRef))) return scrRef;
@@ -401,7 +421,7 @@ function InterlinearizerLoaderInner({
         // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
         JSON.stringify(snapshot.segmentation ?? null),
       );
-      markSynced(snapshot.analysis);
+      markSynced(snapshot.analysis, snapshot.segmentation);
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
     } finally {
@@ -585,7 +605,8 @@ function InterlinearizerLoaderInner({
             viewOptions={viewOptions}
             showSuggestions={showSuggestions}
             segmentationDispatch={segmentationDispatch}
-            formerBoundaryRefs={formerBoundaryRefs}
+            formerBoundaries={formerBoundaries}
+            segmentationVersion={segmentationVersion}
           />
         )}
       </div>

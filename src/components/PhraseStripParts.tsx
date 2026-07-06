@@ -2,7 +2,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { FoldHorizontal, Scissors } from 'lucide-react';
 import { memo } from 'react';
-import { usePhraseLinkByIdMap } from './AnalysisStore';
+import type { ReactNode } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
 import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -11,7 +11,6 @@ import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
 import { isWordToken } from '../types/type-guards';
-import { phrasesStraddlingBoundary } from '../utils/phrase-arc';
 import { resolveSlotFocus } from '../utils/token-layout';
 
 /** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
@@ -20,6 +19,72 @@ const BOUNDARY_STRING_KEYS = [
   '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_boundaryControl_formerBoundary%',
 ] as const satisfies `%${string}%`[];
+
+/** Props for {@link BoundaryButton}. */
+type BoundaryButtonProps = Readonly<{
+  /** Accessible label, doubling as the tooltip. */
+  label: string;
+  /** `data-testid` for the button element. */
+  testId: string;
+  /** The icon rendered inside the button. */
+  icon: ReactNode;
+  /** When `true` the control renders inert; used while a phrase mode (edit / unlink) is active. */
+  disabled: boolean;
+  /**
+   * Lazily computes the word-token refs the operation would affect. Called on hover (not render),
+   * so mounting hundreds of slots does no per-render array building.
+   *
+   * @returns The refs to highlight as the operation's preview.
+   */
+  getPreviewRefs: () => readonly string[];
+  /** The boundary edit to run on click. */
+  action: () => void;
+}>;
+
+/**
+ * One boundary-edit button (merge or split): shared markup, hover-preview wiring, and click
+ * cleanup. Entering highlights the refs from `getPreviewRefs` through the shared candidate-token
+ * channel (the same one the link icon uses), leaving clears, and click clears synchronously before
+ * running the edit so the highlight can't linger over the re-segmented content.
+ *
+ * @param props - Component props.
+ * @param props.label - Accessible label and tooltip.
+ * @param props.testId - `data-testid` for the button element.
+ * @param props.icon - The icon rendered inside the button.
+ * @param props.disabled - Renders the control inert while a phrase mode is active.
+ * @param props.getPreviewRefs - Lazily computes the refs the operation would affect.
+ * @param props.action - The boundary edit to run on click.
+ * @returns The styled boundary button.
+ */
+function BoundaryButton({
+  label,
+  testId,
+  icon,
+  disabled,
+  getPreviewRefs,
+  action,
+}: BoundaryButtonProps) {
+  const { onHoverCandidateTokens } = usePhraseStripContext();
+  return (
+    <button
+      aria-label={label}
+      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-30"
+      data-testid={testId}
+      disabled={disabled}
+      tabIndex={-1}
+      title={label}
+      type="button"
+      onClick={() => {
+        onHoverCandidateTokens(undefined);
+        action();
+      }}
+      onMouseEnter={() => onHoverCandidateTokens(getPreviewRefs())}
+      onMouseLeave={() => onHoverCandidateTokens(undefined)}
+    >
+      {icon}
+    </button>
+  );
+}
 
 /** Props for {@link BoundaryControl}. */
 type BoundaryControlProps = Readonly<{
@@ -61,6 +126,10 @@ type BoundaryControlProps = Readonly<{
  * callers that cannot see token chunks take that path.) Merge needs no such guard: removing a
  * boundary can never leave a phrase straddling one.
  *
+ * Both controls render disabled while a phrase mode (edit / confirm-unlink) is active, matching the
+ * link icons: a boundary edit mid-mode could re-segment the phrase the mode UI is operating on
+ * (e.g. canceling an edit would then restore a phrase spanning the new boundary).
+ *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
  * @param props.nextSegmentId - Segment id after the slot.
@@ -75,9 +144,8 @@ function BoundaryControl({
   prevTokenRef,
   nextTokenRef,
 }: BoundaryControlProps) {
-  const { dispatch, segmentById, formerBoundaryRefs } = useSegmentation();
-  const { tokenDocOrder, onHoverCandidateTokens } = usePhraseStripContext();
-  const phraseLinkById = usePhraseLinkByIdMap();
+  const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
+  const { phraseMode } = usePhraseStripContext();
   const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
   if (
     prevSegmentId === undefined ||
@@ -88,96 +156,66 @@ function BoundaryControl({
     return undefined;
   }
 
-  /**
-   * Wires the hover preview and click cleanup for one boundary button: enter highlights `refs`,
-   * leave clears, and click clears synchronously before running the edit so the highlight can't
-   * outlive the content it previews.
-   *
-   * @param refs - The word-token refs the operation would affect.
-   * @param action - The boundary edit to run on click.
-   * @returns The event handlers to spread onto the button.
-   */
-  const previewHandlers = (refs: readonly string[], action: () => void) => ({
-    onMouseEnter: () => onHoverCandidateTokens(refs),
-    onMouseLeave: () => onHoverCandidateTokens(undefined),
-    onClick: () => {
-      onHoverCandidateTokens(undefined);
-      action();
-    },
-  });
+  const boundaryEditsDisabled = phraseMode.kind !== 'view';
 
   const control = (() => {
     if (prevSegmentId !== nextSegmentId) {
-      const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
       const nextSegment = segmentById.get(nextSegmentId);
       const secondStart = nextSegment?.tokens[0]?.ref;
       /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
       if (nextSegment === undefined || secondStart === undefined) return undefined;
-      // Merging joins every token of both segments into one; preview exactly that.
-      const mergedWordRefs = [
-        /* v8 ignore next -- a rendered cross-segment slot's previous segment is always mapped */
-        ...(segmentById.get(prevSegmentId)?.tokens ?? []),
-        ...nextSegment.tokens,
-      ]
-        .filter(isWordToken)
-        .map((t) => t.ref);
-      const mergeHandlers = previewHandlers(mergedWordRefs, () => dispatch.merge(secondStart));
       return (
-        <button
-          aria-label={mergeLabel}
-          className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
-          data-testid="boundary-merge-btn"
-          tabIndex={-1}
-          title={mergeLabel}
-          type="button"
-          onClick={mergeHandlers.onClick}
-          onMouseEnter={mergeHandlers.onMouseEnter}
-          onMouseLeave={mergeHandlers.onMouseLeave}
-        >
-          <FoldHorizontal className="tw:h-3 tw:w-3" />
-        </button>
+        <BoundaryButton
+          label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
+          testId="boundary-merge-btn"
+          icon={<FoldHorizontal className="tw:h-3 tw:w-3" />}
+          disabled={boundaryEditsDisabled}
+          // Merging joins every token of both segments into one; preview exactly that.
+          getPreviewRefs={() =>
+            [
+              /* v8 ignore next -- a rendered cross-segment slot's previous segment is always mapped */
+              ...(segmentById.get(prevSegmentId)?.tokens ?? []),
+              ...nextSegment.tokens,
+            ]
+              .filter(isWordToken)
+              .map((t) => t.ref)
+          }
+          action={() => dispatch.merge(secondStart)}
+        />
       );
     }
     // The not-mid-phrase UI guard: no split control at a boundary that would cut a phrase.
-    if (
-      phrasesStraddlingBoundary(nextTokenRef, phraseLinkById.values(), tokenDocOrder).length > 0
-    ) {
-      return undefined;
-    }
-    const splitLabel = localizedStrings['%interlinearizer_boundaryControl_split%'];
-    // Splitting breaks the run from the anchor to the segment end off into a new segment; preview
-    // exactly that run.
-    const segmentTokens = segmentById.get(nextSegmentId)?.tokens ?? [];
-    const anchorIndex = segmentTokens.findIndex((t) => t.ref === nextTokenRef);
-    const newSegmentWordRefs =
-      /* v8 ignore next -- an intra-segment slot's anchor is always a token of its segment */
-      anchorIndex === -1
-        ? []
-        : segmentTokens
+    if (straddledBoundaryRefs.has(nextTokenRef)) return undefined;
+    // A split on a former boundary dispatches the original removed default start — which may be a
+    // leading punctuation token no word-anchored slot could name — so the restore cancels the
+    // removal exactly and the delta can normalize back to the default segmentation.
+    const splitRef = formerBoundaries.get(nextTokenRef) ?? nextTokenRef;
+    return (
+      <BoundaryButton
+        label={localizedStrings['%interlinearizer_boundaryControl_split%']}
+        testId="boundary-split-btn"
+        icon={<Scissors className="tw:h-3 tw:w-3" />}
+        disabled={boundaryEditsDisabled}
+        // Splitting breaks the run from the anchor to the segment end off into a new segment;
+        // preview exactly that run.
+        getPreviewRefs={() => {
+          const segmentTokens = segmentById.get(nextSegmentId)?.tokens ?? [];
+          const anchorIndex = segmentTokens.findIndex((t) => t.ref === nextTokenRef);
+          /* v8 ignore next -- an intra-segment slot's anchor is always a token of its segment */
+          if (anchorIndex === -1) return [];
+          return segmentTokens
             .slice(anchorIndex)
             .filter(isWordToken)
             .map((t) => t.ref);
-    const splitHandlers = previewHandlers(newSegmentWordRefs, () => dispatch.split(nextTokenRef));
-    return (
-      <button
-        aria-label={splitLabel}
-        className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
-        data-testid="boundary-split-btn"
-        tabIndex={-1}
-        title={splitLabel}
-        type="button"
-        onClick={splitHandlers.onClick}
-        onMouseEnter={splitHandlers.onMouseEnter}
-        onMouseLeave={splitHandlers.onMouseLeave}
-      >
-        <Scissors className="tw:h-3 tw:w-3" />
-      </button>
+        }}
+        action={() => dispatch.split(splitRef)}
+      />
     );
   })();
 
   // The former-boundary tick: an intra-segment slot sitting on a merged-away default verse start.
   const formerBoundaryMarker =
-    prevSegmentId === nextSegmentId && formerBoundaryRefs.has(nextTokenRef) ? (
+    prevSegmentId === nextSegmentId && formerBoundaries.has(nextTokenRef) ? (
       <span
         aria-hidden="true"
         className="tw:mx-0.5 tw:h-3.5 tw:border-l tw:border-dashed tw:border-muted-foreground/50"

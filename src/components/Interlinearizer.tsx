@@ -2,7 +2,12 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { AnalysisStoreProvider, usePhraseDispatch, usePhraseLinkByIdGetter } from './AnalysisStore';
+import {
+  AnalysisStoreProvider,
+  usePhraseDispatch,
+  usePhraseLinkByIdGetter,
+  usePhraseLinkByIdMap,
+} from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -35,8 +40,8 @@ function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
 }
 
-/** Stable empty set used as the `formerBoundaryRefs` default so memoization isn't broken. */
-const EMPTY_FORMER_BOUNDARY_REFS: ReadonlySet<string> = new Set();
+/** Stable empty map used as the `formerBoundaries` default so memoization isn't broken. */
+const EMPTY_FORMER_BOUNDARIES: ReadonlyMap<string, string> = new Map();
 
 /** Props for {@link Interlinearizer}. */
 type InterlinearizerProps = Readonly<{
@@ -86,11 +91,19 @@ type InterlinearizerProps = Readonly<{
    */
   segmentationDispatch?: SegmentationDispatch;
   /**
-   * First-token refs of the default verse boundaries the user has merged away, provided to the
-   * views via {@link SegmentationProvider} so slots on those refs render the former-boundary tick.
-   * Optional so isolated tests can omit it; defaults to an empty set.
+   * Maps each merged-away default verse boundary's word-token split anchor (the verse's first word
+   * token) to the removed default start ref, provided to the views via {@link SegmentationProvider}
+   * so slots on those anchors render the former-boundary tick and a split there restores the
+   * original boundary exactly. Optional so isolated tests can omit it; defaults to an empty map.
    */
-  formerBoundaryRefs?: ReadonlySet<string>;
+  formerBoundaries?: ReadonlyMap<string, string>;
+  /**
+   * Monotonic counter the loader bumps on every boundary edit. Threaded to the segment window so it
+   * can tell a boundary edit (redraw in place) apart from a re-tokenization of the loaded book
+   * (recenter with a fade) when the segments identity changes. Optional so isolated tests can omit
+   * it; defaults to `0`.
+   */
+  segmentationVersion?: number;
 }>;
 
 /**
@@ -117,7 +130,8 @@ function InterlinearizerInner({
   setPhraseMode,
   viewOptions,
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
-  formerBoundaryRefs = EMPTY_FORMER_BOUNDARY_REFS,
+  formerBoundaries = EMPTY_FORMER_BOUNDARIES,
+  segmentationVersion = 0,
 }: Omit<
   InterlinearizerProps,
   'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'showSuggestions'
@@ -151,7 +165,15 @@ function InterlinearizerInner({
   );
 
   // Book-wide lookup indexes the views share, built in one pass over the segment list.
-  const { segmentById, tokenDocOrder, tokenSegmentMap, wordTokenByRef } = useBookIndexes(book);
+  const {
+    segmentById,
+    segmentOrder,
+    tokenDocOrder,
+    fullTokenOrder,
+    tokenSegmentMap,
+    wordTokenByRef,
+    wordRefByOrder,
+  } = useBookIndexes(book);
 
   // Reseed when the new book no longer resolves the focused token — a real book change (the
   // previous focusedTokenRef names a token from another book) or a re-tokenization that dropped the
@@ -171,34 +193,35 @@ function InterlinearizerInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book]);
 
-  /** Segment id → its index in document order; used to test segment adjacency for boundary edits. */
-  const segmentOrder = useMemo(() => {
-    const order = new Map<string, number>();
-    book.segments.forEach((seg, i) => order.set(seg.id, i));
-    return order;
-  }, [book.segments]);
-
-  /**
-   * Document order over every token (words and punctuation). The force-break below must order a
-   * boundary ref that may name a punctuation token (e.g. the move target of a cross-segment pull);
-   * `tokenDocOrder` from {@link useBookIndexes} covers word tokens only, so it can't resolve those.
-   * Phrase tokens are always words, so comparing their word-only orders against this map's values
-   * is consistent — both are ascending document positions.
-   */
-  const fullTokenOrder = useMemo(() => {
-    const order = new Map<string, number>();
-    let i = 0;
-    book.segments.forEach((seg) =>
-      seg.tokens.forEach((token) => {
-        order.set(token.ref, i);
-        i += 1;
-      }),
-    );
-    return order;
-  }, [book.segments]);
-
   const phraseDispatch = usePhraseDispatch();
   const getPhraseLinkById = usePhraseLinkByIdGetter();
+  const phraseLinkById = usePhraseLinkByIdMap();
+
+  /**
+   * Word-token refs where placing a segment boundary would cut a phrase — the not-mid-phrase UI
+   * guard, precomputed once per phrase-link change. A boundary before ref `W` cuts a phrase when
+   * the phrase has tokens both strictly before and at-or-after `W`, i.e. every word ref strictly
+   * inside the phrase's document-order span `(min, max]` — including refs in the gaps of a
+   * discontiguous phrase. Computed here (one store subscription, one pass over the links) instead
+   * of per boundary slot, so hover-driven strip re-renders do O(1) set lookups rather than each
+   * slot rescanning every phrase link.
+   */
+  const straddledBoundaryRefs = useMemo<ReadonlySet<string>>(() => {
+    const blocked = new Set<string>();
+    phraseLinkById.forEach((link) => {
+      let min = Number.POSITIVE_INFINITY;
+      let max = Number.NEGATIVE_INFINITY;
+      link.tokens.forEach((t) => {
+        const order = tokenDocOrder.get(t.tokenRef);
+        /* v8 ignore next -- phrase tokens are word tokens, which the doc-order map always contains */
+        if (order === undefined) return;
+        if (order < min) min = order;
+        if (order > max) max = order;
+      });
+      for (let i = min + 1; i <= max; i += 1) blocked.add(wordRefByOrder[i]);
+    });
+    return blocked;
+  }, [phraseLinkById, tokenDocOrder, wordRefByOrder]);
 
   /**
    * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
@@ -246,9 +269,10 @@ function InterlinearizerInner({
       dispatch,
       segmentById,
       segmentOrder,
-      formerBoundaryRefs,
+      formerBoundaries,
+      straddledBoundaryRefs,
     }),
-    [dispatch, segmentById, segmentOrder, formerBoundaryRefs],
+    [dispatch, segmentById, segmentOrder, formerBoundaries, straddledBoundaryRefs],
   );
 
   /** PhraseId currently hovered anywhere in the interlinearizer; shared across all SegmentViews. */
@@ -414,6 +438,7 @@ function InterlinearizerInner({
           <SegmentListView
             book={book}
             scrRef={scrRef}
+            segmentationVersion={segmentationVersion}
             focusedTokenRef={focusedTokenRef}
             continuousScroll={continuousScroll}
             displayContinuousScroll={displayContinuousScroll}

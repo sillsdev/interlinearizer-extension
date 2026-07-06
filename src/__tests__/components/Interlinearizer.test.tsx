@@ -126,7 +126,13 @@ jest.mock('../../components/AnalysisStore', () => ({
    * @returns An empty `Map`.
    */
   usePhraseLinkMap: () => new Map(),
-  usePhraseLinkByIdMap: () => new Map(),
+  /**
+   * Returns the test-owned phrase-link map so straddled-boundary tests can seed phrases the
+   * component's `straddledBoundaryRefs` memo sees.
+   *
+   * @returns The current phrase-link-by-id map.
+   */
+  usePhraseLinkByIdMap: () => mockPhraseLinkById,
   /**
    * Returns a getter over the test-owned phrase-link map so force-break tests can seed straddling
    * phrases.
@@ -444,7 +450,7 @@ function renderInterlinearizer({
   showMorphology = false,
   showFreeTranslation = false,
   segmentationDispatch,
-  formerBoundaryRefs,
+  formerBoundaries,
 }: {
   book?: Book;
   continuousScroll?: boolean;
@@ -456,7 +462,7 @@ function renderInterlinearizer({
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
   segmentationDispatch?: SegmentationDispatch;
-  formerBoundaryRefs?: ReadonlySet<string>;
+  formerBoundaries?: ReadonlyMap<string, string>;
 } = {}) {
   return render(
     withNav(
@@ -464,7 +470,7 @@ function renderInterlinearizer({
         book={book}
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
-        formerBoundaryRefs={formerBoundaryRefs}
+        formerBoundaries={formerBoundaries}
         scrRef={scrRef}
         analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
@@ -1551,19 +1557,134 @@ describe('focus preservation across segmentation edits', () => {
   });
 });
 
-describe('former boundary refs', () => {
-  it('provides the supplied formerBoundaryRefs to the views through the segmentation context', () => {
-    const formerBoundaryRefs: ReadonlySet<string> = new Set(['GEN 1:2:0']);
+describe('former boundaries', () => {
+  it('provides the supplied formerBoundaries map to the views through the segmentation context', () => {
+    // Anchor word ref → removed default start ref (distinct when the verse opens with punctuation).
+    const formerBoundaries: ReadonlyMap<string, string> = new Map([['GEN 1:2:1', 'GEN 1:2:0']]);
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
       continuousScroll: true,
-      formerBoundaryRefs,
+      formerBoundaries,
     });
-    expect(capturedSegmentation?.formerBoundaryRefs).toBe(formerBoundaryRefs);
+    expect(capturedSegmentation?.formerBoundaries).toBe(formerBoundaries);
   });
 
-  it('defaults formerBoundaryRefs to an empty set when the loader supplies none', () => {
+  it('defaults formerBoundaries to an empty map when the loader supplies none', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, continuousScroll: true });
-    expect(capturedSegmentation?.formerBoundaryRefs?.size).toBe(0);
+    expect(capturedSegmentation?.formerBoundaries?.size).toBe(0);
+  });
+});
+
+describe('straddled boundary refs', () => {
+  /**
+   * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
+   * context) and returns the straddled-boundary set the component computed. Phrase links must be
+   * seeded into `mockPhraseLinkById` before calling.
+   *
+   * @param book - The book fixture to render.
+   * @returns The `straddledBoundaryRefs` set captured from the segmentation context.
+   */
+  function renderAndCaptureStraddled(book: Book): ReadonlySet<string> {
+    renderInterlinearizer({ book, continuousScroll: true });
+    const straddled = capturedSegmentation?.straddledBoundaryRefs;
+    if (!straddled) throw new Error('expected a captured straddled-boundary set');
+    return straddled;
+  }
+
+  it('blocks the word refs strictly inside a contiguous three-word phrase', () => {
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0']));
+    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
+    // A boundary before the 2nd or 3rd word would cut the phrase.
+    expect(straddled.has('GEN 1:2:0')).toBe(true);
+    expect(straddled.has('GEN 1:3:0')).toBe(true);
+  });
+
+  it('does not block the phrase-leading word ref or the word after the phrase', () => {
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:2:0', 'GEN 1:3:0']));
+    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
+    // A boundary before the phrase's first word or after its last word leaves it intact.
+    expect(straddled.has('GEN 1:1:0')).toBe(false);
+    expect(straddled.has('GEN 1:4:0')).toBe(false);
+  });
+
+  it('blocks the gap word ref inside a discontiguous phrase', () => {
+    // The phrase spans words 1 and 3; word 2 sits in the gap, but a boundary before it would still
+    // put the phrase's halves in different segments.
+    mockPhraseLinkById.set('p1', makePhraseLink('p1', ['GEN 1:1:0', 'GEN 1:3:0']));
+    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
+    expect(straddled.has('GEN 1:2:0')).toBe(true);
+  });
+
+  it('exposes an empty set when no phrase links exist', () => {
+    const straddled = renderAndCaptureStraddled(makeLargeBook(4));
+    expect(straddled.size).toBe(0);
+  });
+});
+
+describe('segmentationVersion pass-through', () => {
+  /**
+   * Builds the wrapped `<Interlinearizer>` element for the pass-through tests, varying only the
+   * book and segmentation version between renders.
+   *
+   * @param book - The (re)segmented book to render.
+   * @param segmentationVersion - The boundary-edit counter forwarded to the segment window.
+   * @returns The element wrapped in a nav provider.
+   */
+  function versionedEl(book: Book, segmentationVersion: number): ReactNode {
+    return withNav(
+      <Interlinearizer
+        book={book}
+        continuousScroll={false}
+        scrRef={defaultScrRef}
+        segmentationVersion={segmentationVersion}
+        analysisLanguage="und"
+        phraseMode={{ kind: 'view' }}
+        setPhraseMode={() => {}}
+        viewOptions={{ ...allFalseViewOptions }}
+      />,
+    );
+  }
+
+  it('redraws in place without a recenter fade when a boundary edit bumps segmentationVersion', () => {
+    const { container, rerender } = render(versionedEl(GEN_1_MULTI_BOOK, 0));
+    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [],
+    });
+    act(() => {
+      rerender(versionedEl(merged, 1));
+    });
+    // Were the prop dropped on the way to the segment window, the segments-identity change would be
+    // classified as a re-tokenization and fade the list out.
+    expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+      opacity: '1',
+    });
+  });
+
+  it('fades the list for a segments change without a segmentationVersion bump', () => {
+    jest.useFakeTimers();
+    try {
+      const { container, rerender } = render(versionedEl(GEN_1_MULTI_BOOK, 0));
+      const merged = resegmentBook(GEN_1_MULTI_BOOK, {
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: [],
+      });
+      act(() => {
+        rerender(versionedEl(merged, 0));
+      });
+      // Same segments change, same version: a re-tokenization, so the recenter fade runs. This
+      // guards the positive case above against passing vacuously in a setup where fades never fire.
+      expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '0',
+      });
+      act(() => {
+        jest.advanceTimersByTime(RECENTER_FADE_MS);
+      });
+      expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
+        opacity: '1',
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

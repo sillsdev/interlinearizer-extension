@@ -109,14 +109,19 @@ export type UseDraftProjectResult = {
   wipeAll: () => void;
   /**
    * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
-   * draft has not changed since the snapshot that was persisted. Pass the exact analysis that was
-   * written; if a later auto-save replaced it (an edit made during the save round-trip), the draft
-   * is left dirty so the unsaved-changes indicator and the next Save reflect that un-persisted edit
-   * rather than being cleared against a now-stale snapshot.
+   * draft has not changed since the snapshot that was persisted. Pass the exact analysis and
+   * boundary delta that were written; if a later auto-save replaced either (an edit made during the
+   * save round-trip), the draft is left dirty so the unsaved-changes indicator and the next Save
+   * reflect that un-persisted edit rather than being cleared against a now-stale snapshot.
    *
    * @param savedAnalysis - The `TextAnalysis` reference that was actually persisted to the project.
+   * @param savedSegmentation - The `SegmentationDelta` reference that was persisted alongside it
+   *   (`undefined` when the draft had the default segmentation).
    */
-  markSynced: (savedAnalysis: TextAnalysis) => void;
+  markSynced: (
+    savedAnalysis: TextAnalysis,
+    savedSegmentation: SegmentationDelta | undefined,
+  ) => void;
 };
 
 /**
@@ -241,13 +246,22 @@ export default function useDraftProject(
     [persist],
   );
 
-  const autosaveAnalysis = useCallback(
-    (analysis: TextAnalysis) => {
+  /**
+   * Shared per-edit auto-save pipeline: derives the next draft from the current one via `mutate`,
+   * swaps it into the ref, debounces the persistence write, and marks the draft dirty. No version
+   * bump (no remount) and `setDirty(true)` is a no-op when already dirty, so editing does not
+   * re-render.
+   *
+   * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet.
+   */
+  const autosaveDraft = useCallback(
+    (mutate: (current: DraftProject) => DraftProject): boolean => {
       const { current } = draftRef;
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
-      if (!current) return;
+      if (!current) return false;
 
-      const next: DraftProject = { ...current, analysis, dirty: true };
+      const next = mutate(current);
       draftRef.current = next;
       // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
       if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
@@ -255,36 +269,37 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
         persist(next);
       }, AUTOSAVE_DEBOUNCE_MS);
-      // No version bump (no remount) and a no-op when already dirty, so editing does not re-render.
       setDirty(true);
+      return true;
     },
     [persist],
   );
 
+  const autosaveAnalysis = useCallback(
+    (analysis: TextAnalysis) => {
+      autosaveDraft((current) => ({ ...current, analysis, dirty: true }));
+    },
+    [autosaveDraft],
+  );
+
   const autosaveSegmentation = useCallback(
     (segmentation: SegmentationDelta | undefined) => {
-      const { current } = draftRef;
+      const applied = autosaveDraft((current) => {
+        const next: DraftProject = { ...current, dirty: true };
+        // Store custom boundaries when present; clear the field for the default segmentation so the
+        // persisted draft stays minimal.
+        if (segmentation === undefined) delete next.segmentation;
+        else next.segmentation = segmentation;
+        return next;
+      });
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
-      if (!current) return;
-
-      const next: DraftProject = { ...current, dirty: true };
-      // Store custom boundaries when present; clear the field for the default segmentation so the
-      // persisted draft stays minimal.
-      if (segmentation === undefined) delete next.segmentation;
-      else next.segmentation = segmentation;
-      draftRef.current = next;
-      if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
-      autosaveTimeoutRef.current = setTimeout(() => {
-        autosaveTimeoutRef.current = undefined;
-        persist(next);
-      }, AUTOSAVE_DEBOUNCE_MS);
-      setDirty(true);
+      if (!applied) return;
       // The resegmented book is derived from `draftRef.current.segmentation`, which lives in a ref;
       // `setDirty(true)` bails out of the re-render when the draft was already dirty, so bump a
       // dedicated version to force the loader to re-read the boundaries and recompute the book.
       setSegmentationVersion((v) => v + 1);
     },
-    [persist],
+    [autosaveDraft],
   );
 
   const loadFromProject = useCallback(
@@ -348,16 +363,18 @@ export default function useDraftProject(
   }, [applyReplacement]);
 
   const markSynced = useCallback(
-    (savedAnalysis: TextAnalysis) => {
+    (savedAnalysis: TextAnalysis, savedSegmentation: SegmentationDelta | undefined) => {
       const { current } = draftRef;
       /* v8 ignore next -- save is only reachable from the mounted editor */
       if (!current) return;
 
-      // If an edit landed during the save round-trip, autosaveAnalysis has already swapped a newer
-      // analysis (a fresh object) into the ref and marked the draft dirty. Leave it dirty so the
-      // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
-      // against the now-stale snapshot we just wrote.
-      if (current.analysis !== savedAnalysis) return;
+      // If an edit landed during the save round-trip, the auto-save has already swapped a newer
+      // analysis or boundary delta (a fresh object) into the ref and marked the draft dirty. Leave
+      // it dirty so the unsaved indicator and the next Save reflect that un-persisted edit, rather
+      // than clearing it against the now-stale snapshot we just wrote. Both fields are compared:
+      // a boundary edit carries `analysis` over by reference, so checking the analysis alone would
+      // wrongly clear the dirty flag over an unsaved segmentation change.
+      if (current.analysis !== savedAnalysis || current.segmentation !== savedSegmentation) return;
 
       // Cancel any pending debounced autosave before persisting the clean state so a stale
       // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.

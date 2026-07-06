@@ -39,7 +39,8 @@ describe('SegmentationStore', () => {
       dispatch: NO_OP_SEGMENTATION_DISPATCH,
       segmentById: new Map([['GEN 1:1', segment]]),
       segmentOrder: new Map([['GEN 1:1', 0]]),
-      formerBoundaryRefs: new Set(),
+      formerBoundaries: new Map(),
+      straddledBoundaryRefs: new Set(),
     };
     render(
       <SegmentationProvider value={value}>

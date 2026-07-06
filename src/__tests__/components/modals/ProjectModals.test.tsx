@@ -39,6 +39,16 @@ const MOCK_FULL_PROJECT_WITH_TARGET = {
   analysis: emptyAnalysis(),
 };
 
+/** A custom boundary delta used to exercise the segmentation branches of open and Save As. */
+const MOCK_SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+/** The same project carrying stored segment boundaries, for the openProject segmentation branch. */
+const MOCK_FULL_PROJECT_WITH_SEGMENTATION = {
+  ...MOCK_PROJECT,
+  analysis: emptyAnalysis(),
+  segmentation: MOCK_SEGMENTATION,
+};
+
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
   sourceProjectId: 'source-proj',
@@ -47,6 +57,12 @@ const MOCK_DRAFT: DraftProject = {
   dirty: true,
   suggestedName: 'Suggested Name',
   suggestedDescription: 'Suggested Desc',
+};
+
+/** The same draft carrying a custom boundary delta, for the Save As segmentation branches. */
+const MOCK_DRAFT_WITH_SEGMENTATION: DraftProject = {
+  ...MOCK_DRAFT,
+  segmentation: MOCK_SEGMENTATION,
 };
 
 jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
@@ -387,6 +403,39 @@ describe('ProjectModals', () => {
       );
     });
 
+    it('passes a stored segmentation delta into the draft when the project has one', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT_WITH_SEGMENTATION));
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() =>
+        expect(loadFromProject).toHaveBeenCalledWith({
+          analysisLanguages: ['en'],
+          segmentation: MOCK_SEGMENTATION,
+          analysis: emptyAnalysis(),
+        }),
+      );
+    });
+
+    it('notifies and does not load when the stored segmentation is malformed', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(
+          JSON.stringify({ ...MOCK_PROJECT, analysis: emptyAnalysis(), segmentation: { bad: 1 } }),
+        );
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
+      expect(loadFromProject).not.toHaveBeenCalled();
+    });
+
     it('notifies and does not load when getProject returns a non-project shape', async () => {
       jest
         .mocked(papi.commands.sendCommand)
@@ -706,13 +755,46 @@ describe('ProjectModals', () => {
           'NewDesc',
         ),
       );
+      // The draft has no custom boundaries, so the boundary argument is the "null" clear sentinel.
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',
         JSON.stringify(emptyAnalysis()),
+        'null',
       );
       expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('sends the draft segmentation delta when saving as a new project', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const markSynced = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            markSynced,
+            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveAnalysis',
+          'proj-1',
+          JSON.stringify(emptyAnalysis()),
+          JSON.stringify(MOCK_SEGMENTATION),
+        ),
+      );
+      // markSynced receives the exact persisted references so its identity guard can match.
+      expect(markSynced).toHaveBeenCalledWith(
+        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
+        MOCK_SEGMENTATION,
+      );
     });
 
     it('notifies and does not mark synced when create returns a non-project shape', async () => {
@@ -744,15 +826,47 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
+      // The draft has no custom boundaries, so "null" clears any the target had stored.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveAnalysis',
           'proj-1',
           JSON.stringify(emptyAnalysis()),
+          'null',
         ),
       );
       expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('sends the draft segmentation delta when overwriting an existing project', async () => {
+      const markSynced = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            markSynced,
+            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveAnalysis',
+          'proj-1',
+          JSON.stringify(emptyAnalysis()),
+          JSON.stringify(MOCK_SEGMENTATION),
+        ),
+      );
+      // markSynced receives the exact persisted references so its identity guard can match.
+      expect(markSynced).toHaveBeenCalledWith(
+        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
+        MOCK_SEGMENTATION,
+      );
     });
 
     it('reconciles the overwritten project metadata with the draft config', async () => {

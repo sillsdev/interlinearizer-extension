@@ -572,6 +572,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             summary: 'JSON-stringified TextAnalysis to persist',
             schema: { type: 'string' },
           },
+          {
+            name: 'segmentationJson',
+            required: false,
+            summary:
+              'JSON-stringified SegmentationDelta to persist, or "null" to clear stored boundaries; omit to leave them unchanged',
+            schema: { type: 'string' },
+          },
         ],
         result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
       },

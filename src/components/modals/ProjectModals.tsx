@@ -1,11 +1,15 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, TextAnalysis } from 'interlinearizer';
+import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary, isTextAnalysis } from '../../types/type-guards';
+import {
+  isInterlinearProjectSummary,
+  isSegmentationDelta,
+  isTextAnalysis,
+} from '../../types/type-guards';
 import { CreateProjectModal, type CreateDraftConfig } from './CreateProjectModal';
 import { DiscardDraftConfirm } from './DiscardDraftConfirm';
 import { ProjectMetadataModal } from './ProjectMetadataModal';
@@ -50,7 +54,8 @@ type PendingReplace =
  *   called by {@link createAndPersistProject} before the backend round-trip so the editor is ready
  *   regardless of whether persistence succeeds.
  * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As,
- *   given the analysis that was persisted; a no-op if an edit landed during the save.
+ *   given the analysis and boundary delta that were persisted; a no-op if an edit landed during the
+ *   save.
  * @param props.modal - Which modal is currently open.
  * @param props.projectId - PAPI source project ID passed from the host.
  * @param props.setModal - Setter for which modal is open.
@@ -77,7 +82,10 @@ export default function ProjectModals({
   getDraftSnapshot: () => DraftProject | undefined;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
-  markSynced: (savedAnalysis: TextAnalysis) => void;
+  markSynced: (
+    savedAnalysis: TextAnalysis,
+    savedSegmentation: SegmentationDelta | undefined,
+  ) => void;
   modal: ModalState;
   projectId: string;
   setModal: (modal: ModalState) => void;
@@ -172,8 +180,9 @@ export default function ProjectModals({
 
   /**
    * Loads the given project into the draft as a working copy and makes it the Save target. Fetches
-   * the full project (with analysis) via `interlinearizer.getProject`, validates it, then seeds the
-   * draft and dismisses the modal. Logs and notifies on failure, leaving the draft untouched.
+   * the full project (with analysis and any stored segment boundaries) via
+   * `interlinearizer.getProject`, validates it, then seeds the draft and dismisses the modal. Logs
+   * and notifies on failure, leaving the draft untouched.
    *
    * @param project - The project summary the user chose to open.
    * @returns A promise that resolves once the draft is loaded or the failure has been handled.
@@ -187,7 +196,15 @@ export default function ProjectModals({
           parsed && typeof parsed === 'object' && 'analysis' in parsed
             ? parsed.analysis
             : undefined;
-        if (!isInterlinearProjectSummary(parsed) || !isTextAnalysis(analysis)) {
+        const segmentation =
+          parsed && typeof parsed === 'object' && 'segmentation' in parsed
+            ? parsed.segmentation
+            : undefined;
+        if (
+          !isInterlinearProjectSummary(parsed) ||
+          !isTextAnalysis(analysis) ||
+          (segmentation !== undefined && !isSegmentationDelta(segmentation))
+        ) {
           await papi.notifications
             .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
             .catch(() => {});
@@ -197,6 +214,7 @@ export default function ProjectModals({
         loadFromProject({
           analysisLanguages: parsed.analysisLanguages,
           ...(parsed.targetProjectId !== undefined && { targetProjectId: parsed.targetProjectId }),
+          ...(segmentation !== undefined && { segmentation }),
           analysis,
         });
         setActiveProject(project);
@@ -351,8 +369,9 @@ export default function ProjectModals({
 
   /**
    * Saves the current draft as a brand-new project: creates the project with the draft's languages
-   * / target, writes the draft's analysis into it, then makes it the active Save target and clears
-   * the dirty flag. Backend commands surface their own error notifications; here we only log.
+   * / target, writes the draft's analysis and segment boundaries into it, then makes it the active
+   * Save target and clears the dirty flag. Backend commands surface their own error notifications;
+   * here we only log.
    *
    * @param name - Trimmed project name, or `undefined`.
    * @param description - Trimmed project description, or `undefined`.
@@ -385,9 +404,13 @@ export default function ProjectModals({
           'interlinearizer.saveAnalysis',
           created.id,
           JSON.stringify(snapshot.analysis),
+          // Carry the draft's boundary state into the new project; `null` (the clear sentinel) is
+          // harmless on a freshly created project, which stores no boundaries yet.
+          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
+          JSON.stringify(snapshot.segmentation ?? null),
         );
         setActiveProject(created);
-        markSynced(snapshot.analysis);
+        markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to save draft as new project', e);
@@ -397,11 +420,11 @@ export default function ProjectModals({
   );
 
   /**
-   * Overwrites an existing project with the current draft: writes the draft's analysis into the
-   * chosen project, reconciles the project's declared config (analysis languages / alignment
-   * target) with the draft so the metadata matches the glosses now stored in it, makes it the
-   * active Save target, and clears the dirty flag. The backend surfaces its own error notification;
-   * here we only log.
+   * Overwrites an existing project with the current draft: writes the draft's analysis and segment
+   * boundaries into the chosen project, reconciles the project's declared config (analysis
+   * languages / alignment target) with the draft so the metadata matches the glosses now stored in
+   * it, makes it the active Save target, and clears the dirty flag. The backend surfaces its own
+   * error notification; here we only log.
    *
    * @param project - The existing project to overwrite.
    * @returns A promise that resolves once the overwrite completes or the failure has been handled.
@@ -417,6 +440,10 @@ export default function ProjectModals({
           'interlinearizer.saveAnalysis',
           project.id,
           JSON.stringify(snapshot.analysis),
+          // Send the draft's boundary state so the overwritten project's boundaries match the
+          // analysis just written; `null` clears any boundaries the target had stored before.
+          // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
+          JSON.stringify(snapshot.segmentation ?? null),
         );
         // Push the draft's analysis languages / alignment target onto the project so its declared
         // metadata stays consistent with the glosses just written (mirroring how Save As → New
@@ -437,7 +464,7 @@ export default function ProjectModals({
           // overwritten project is cleared when the draft has none, matching what was persisted.
           targetProjectId: snapshot.targetProjectId,
         });
-        markSynced(snapshot.analysis);
+        markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {
         logger.error('Interlinearizer: failed to overwrite project with draft', e);

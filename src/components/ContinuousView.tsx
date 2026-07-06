@@ -298,6 +298,28 @@ export default function ContinuousView({
     });
   }, []);
 
+  /**
+   * Holds the group at `groupIndex` centered by re-centering it each animation frame for
+   * {@link LINK_SLOT_TRANSITION_MS} — the shared clock of the link-slot fade, whose async layout
+   * settling (arcs, morpheme rows) is what the hold outlasts. Used after an instant jump's reveal
+   * and after the committed-active-segment flip, so both holds run one loop implementation on one
+   * clock.
+   *
+   * @param groupIndex - Index of the group to keep centered.
+   * @returns A cancel function that stops the loop; call it from the owning effect's cleanup.
+   */
+  const holdCentered = useCallback(
+    (groupIndex: number) => {
+      const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+      let rafId = requestAnimationFrame(function holdFrame() {
+        centerGroup(groupIndex, 'auto');
+        if (performance.now() < deadline) rafId = requestAnimationFrame(holdFrame);
+      });
+      return () => cancelAnimationFrame(rafId);
+    },
+    [centerGroup],
+  );
+
   /** Ref to the token-strip row; the content row and mouse-leave target. */
   // eslint-disable-next-line no-null/no-null
   const stripRowRef = useRef<HTMLDivElement | null>(null);
@@ -357,8 +379,8 @@ export default function ContinuousView({
     const focusUnchanged = prevFocusForSegmentationRef.current === focusedTokenRef;
     prevFocusForSegmentationRef.current = focusedTokenRef;
     if (!focusUnchanged) return;
-    setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
-  }, [tokenSegmentMap, focusedTokenRef, targetActiveSegmentIdRef]);
+    commitPendingActiveSegment();
+  }, [tokenSegmentMap, focusedTokenRef, commitPendingActiveSegment]);
 
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
   const onFocusedTokenRefChangeRef = useLatestRef(onFocusedTokenRefChange);
@@ -564,44 +586,34 @@ export default function ContinuousView({
     // strip after the instant snap above. The committed-active-segment layout effect re-centers
     // against that drift, but only when the segment id actually flips — a jump landing in the
     // already-active segment (a token click in the active verse) gets no correction there and was
-    // revealed off-center. Re-center each frame on the same clock as that guard so every instant
-    // jump stays pinned regardless of whether the active segment changed.
-    const holdDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
-    let holdRafId = requestAnimationFrame(function holdFrame() {
-      centerGroup(focusPhraseIndex, 'auto');
-      if (performance.now() < holdDeadline) holdRafId = requestAnimationFrame(holdFrame);
-    });
+    // revealed off-center. Hold on the shared clock so every instant jump stays pinned regardless
+    // of whether the active segment changed.
+    const cancelHold = holdCentered(focusPhraseIndex);
     return () => {
       cancelAnimationFrame(rafId);
-      cancelAnimationFrame(holdRafId);
+      cancelHold();
       setIsVisible(true);
     };
-  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup]);
+  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup, holdCentered]);
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
   // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `opacity: 0` their
   // layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from the
-  // preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds the
-  // group centered for the full fade duration as a conservative guard against any future layout
-  // changes that could re-introduce drift. The first run is skipped because the initial center is
-  // established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very
-  // first re-center lands before paint (no initial flash), then `rAF` carries it through the fade.
+  // preceding smooth scroll is corrected by re-centering once before paint. The shared hold loop
+  // keeps the group centered for the full fade duration as a conservative guard against any future
+  // layout changes that could re-introduce drift. The first run is skipped because the initial
+  // center is established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop
+  // with a synchronous re-center so the very first correction lands before paint (no initial
+  // flash), then the hold's `rAF` carries it through the fade.
   const skipActiveSegmentRecenterRef = useRef(true);
   useLayoutEffect(() => {
     if (skipActiveSegmentRecenterRef.current) {
       skipActiveSegmentRecenterRef.current = false;
       return undefined;
     }
-    /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
-    const recenter = () => centerGroup(focusPhraseIndex, 'auto');
-    recenter();
-    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
-    let rafId = requestAnimationFrame(function recenterFrame() {
-      recenter();
-      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
-    });
-    return () => cancelAnimationFrame(rafId);
+    centerGroup(focusPhraseIndex, 'auto');
+    return holdCentered(focusPhraseIndex);
     // Only the active-segment flip should trigger this re-anchor; focusPhraseIndex has its own scroll
     // effect. Reading it here is a snapshot, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps

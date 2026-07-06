@@ -253,10 +253,10 @@ Remove the demo toggle (and these affordances' tuning) once the treatment is dec
 Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
 their own segment boundaries, with no dedicated edit mode:
 
-- Hovering the gap between two token groups reveals a **split** control (start a new segment at
-  the next token), or a **merge** control when the gap is a segment boundary (combine the segment
-  into the one before it — this appears in the continuous strip, where adjacent segments share a
-  row).
+- The gap between two token groups shows an always-visible **split** control (start a new segment
+  at the next token), or a **merge** control when the gap is a segment boundary (combine the
+  segment into the one before it — this appears in the continuous strip, where adjacent segments
+  share a row).
 - In the segment list, an always-visible **merge** button sits between adjacent segment rows.
 - Linking a phrase across a verse boundary pulls the adjacent segment's free **edge** token into
   the focused segment (only the immediate adjacent-edge link buttons are active for this).
@@ -296,14 +296,16 @@ Decisions made during development that we'd like reviewed:
    boundary edits should be treated differently from analysis edits.
 
 5. **Boundary controls are always available (no edit mode).** There is no separate
-   boundary-editing mode: the merge/split controls share the gaps with the phrase link icons,
-   revealed on hover (and the segment list's between-row merge buttons are always visible). This
-   keeps the UI simple but places a scissors one small icon away from a link button. Both actions
-   are cheaply reversible (merge undoes split and vice versa, and boundary edits never harm
+   boundary-editing mode: the merge/split controls share the gaps with the phrase link icons and
+   are always visible, as are the segment list's between-row merge buttons. (They disable, like the
+   link icons, while a phrase is being edited or an unlink is awaiting confirmation, so a boundary
+   edit can't re-segment the phrase that UI is operating on.) Always-visible keeps the controls
+   discoverable but places a scissors one small icon away from a link button at all times. Both
+   actions are cheaply reversible (merge undoes split and vice versa, and boundary edits never harm
    phrases — see item 7). Two questions:
-   - Is hover-reveal discoverable enough for the in-gap controls, or should they be always visible
-     there too? (An always-visible variant is a small change; we can ship both behind a view toggle
-     for field comparison if useful.)
+   - Is the added visual density of always-visible in-gap controls acceptable, or should they be
+     revealed on hover instead? (A hover-reveal variant is a small change; we can ship both behind
+     a view toggle for field comparison if useful.)
    - Is the misclick risk (scissors next to link icon) acceptable in practice?
 
 6. **Chapter superscriptions are ordinary segments.** A chapter heading (a `d` descriptive title,

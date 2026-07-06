@@ -4,7 +4,7 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Segment } from 'interlinearizer';
+import type { Segment, Token } from 'interlinearizer';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
@@ -550,18 +550,36 @@ describe('TokenLinkIcon', () => {
     }
 
     /**
-     * Builds an adjacent segment ("seg-B") containing the given token refs in order.
+     * Builds a punctuation token fixture for adjacent-segment layouts that interleave punctuation
+     * with the word tokens.
      *
-     * @param refs - Word token refs composing the segment, in document order.
+     * @param ref - Token ref.
+     * @returns A punctuation token.
+     */
+    function mkPunct(ref: string): Token {
+      return {
+        ref,
+        surfaceText: ',',
+        writingSystem: 'en',
+        type: 'punctuation',
+        charStart: 0,
+        charEnd: 1,
+      };
+    }
+
+    /**
+     * Builds an adjacent segment ("seg-B") containing the given tokens in order.
+     *
+     * @param tokens - The segment's tokens, in document order.
      * @returns A segment with id `seg-B`.
      */
-    function segB(refs: string[]): Segment {
+    function segB(tokens: readonly Token[]): Segment {
       return {
         id: 'seg-B',
         startRef: { book: 'GEN', chapter: 1, verse: 2 },
         endRef: { book: 'GEN', chapter: 1, verse: 2 },
-        baselineText: refs.join(' '),
-        tokens: refs.map((r) => makeWordToken(r)),
+        baselineText: tokens.map((t) => t.surfaceText).join(' '),
+        tokens: [...tokens],
       };
     }
 
@@ -574,7 +592,7 @@ describe('TokenLinkIcon', () => {
      */
     function renderEdge(
       dispatch: SegmentationDispatch,
-      opts: { focusedSideIsPrev: boolean; segmentTokens: string[]; mapToken?: boolean },
+      opts: { focusedSideIsPrev: boolean; segmentTokens: readonly Token[]; mapToken?: boolean },
     ) {
       const segmentation: SegmentationContextValue = {
         dispatch,
@@ -583,7 +601,8 @@ describe('TokenLinkIcon', () => {
           ['seg-A', 0],
           ['seg-B', 1],
         ]),
-        formerBoundaryRefs: new Set(),
+        formerBoundaries: new Map(),
+        straddledBoundaryRefs: new Set(),
       };
       const tokenSegmentMap =
         opts.mapToken === false ? new Map<string, string>() : new Map([['tok-b', 'seg-B']]);
@@ -605,29 +624,63 @@ describe('TokenLinkIcon', () => {
     }
 
     it('activates the link button at an adjacent edge even across a segment boundary', () => {
-      renderEdge(makeDispatch(), { focusedSideIsPrev: true, segmentTokens: ['tok-b', 'tok-c'] });
+      renderEdge(makeDispatch(), {
+        focusedSideIsPrev: true,
+        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
+      });
       expect(screen.getByTestId('token-link-btn')).toBeEnabled();
     });
 
     it('pulls one token forward (move) when focus is the previous segment', async () => {
       const dispatch = makeDispatch();
-      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: ['tok-b', 'tok-c'] });
+      renderEdge(dispatch, {
+        focusedSideIsPrev: true,
+        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
+      });
       await userEvent.click(screen.getByTestId('token-link-btn'));
       // The adjacent segment B starts at tok-b; pulling tok-b leaves tok-c as B's new start.
       expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-c');
       expect(mockCreatePhrase).toHaveBeenCalled();
     });
 
+    it('moves the boundary to the next word token, skipping punctuation after the pulled word', async () => {
+      // Segment B is [tok-b, punct, tok-c]: the boundary must land on a word token, so the comma
+      // after the pulled tok-b travels with it and tok-c becomes B's new start.
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, {
+        focusedSideIsPrev: true,
+        segmentTokens: [makeWordToken('tok-b'), mkPunct('punct-1'), makeWordToken('tok-c')],
+      });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-c');
+    });
+
     it('merges the whole adjacent segment when it has only the pulled token', async () => {
       const dispatch = makeDispatch();
-      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: ['tok-b'] });
+      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: [makeWordToken('tok-b')] });
       await userEvent.click(screen.getByTestId('token-link-btn'));
       expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
     });
 
+    it('merges the whole adjacent segment when only punctuation follows the pulled token', async () => {
+      // Segment B is [tok-b, punct]: no word token remains past tok-b, so a move would strand a
+      // word-less remainder — the segment merges wholly into the focused one instead.
+      const dispatch = makeDispatch();
+      renderEdge(dispatch, {
+        focusedSideIsPrev: true,
+        segmentTokens: [makeWordToken('tok-b'), mkPunct('punct-1')],
+      });
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
+      expect(dispatch.move).not.toHaveBeenCalled();
+    });
+
     it('moves the boundary back to the pulled token when focus is the next segment', async () => {
       const dispatch = makeDispatch();
-      renderEdge(dispatch, { focusedSideIsPrev: false, segmentTokens: ['tok-b', 'tok-c'] });
+      renderEdge(dispatch, {
+        focusedSideIsPrev: false,
+        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
+      });
       await userEvent.click(screen.getByTestId('token-link-btn'));
       // Focus is segment B (starting at tok-b); pulling the previous segment's tok-a moves B's start to tok-a.
       expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-a');
@@ -637,7 +690,7 @@ describe('TokenLinkIcon', () => {
       const dispatch = makeDispatch();
       renderEdge(dispatch, {
         focusedSideIsPrev: true,
-        segmentTokens: ['tok-b', 'tok-c'],
+        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
         mapToken: false,
       });
       await userEvent.click(screen.getByTestId('token-link-btn'));
@@ -681,12 +734,13 @@ describe('TokenLinkIcon', () => {
       function renderPhrasePull(opts: { focusedSideIsPrev: boolean }) {
         const segmentation: SegmentationContextValue = {
           dispatch: makeDispatch(),
-          segmentById: new Map([['seg-B', segB(['tok-b', 'tok-c'])]]),
+          segmentById: new Map([['seg-B', segB([makeWordToken('tok-b'), makeWordToken('tok-c')])]]),
           segmentOrder: new Map([
             ['seg-A', 0],
             ['seg-B', 1],
           ]),
-          formerBoundaryRefs: new Set(),
+          formerBoundaries: new Map(),
+          straddledBoundaryRefs: new Set(),
         };
         const tokenSegmentMap = new Map([
           ['tok-a', 'seg-A'],

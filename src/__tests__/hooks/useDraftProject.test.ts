@@ -487,7 +487,7 @@ describe('useDraftProject', () => {
       const versionBefore = result.current.draftVersion;
 
       act(() => {
-        result.current.markSynced(synced);
+        result.current.markSynced(synced, undefined);
       });
 
       expect(result.current.dirty).toBe(false);
@@ -510,10 +510,54 @@ describe('useDraftProject', () => {
 
       // Syncing against the now-stale snapshot must not clear the unsaved-changes flag.
       act(() => {
-        result.current.markSynced(savedSnapshot);
+        result.current.markSynced(savedSnapshot, undefined);
       });
 
       expect(result.current.dirty).toBe(true);
+    });
+
+    it('leaves the draft dirty when a segmentation edit landed since the saved snapshot', async () => {
+      const { result } = await renderLoaded();
+      // Dirty the draft with the analysis a Save would capture and persist.
+      const savedAnalysis = analysisWithToken('tok-saved');
+      act(() => {
+        result.current.autosaveAnalysis(savedAnalysis);
+      });
+      // A boundary edit lands during the save round-trip. It carries the analysis over by
+      // reference, so only the segmentation identity distinguishes the ref from the snapshot.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      expect(result.current.dirty).toBe(true);
+
+      // The snapshot was taken before the boundary edit (default segmentation), so syncing against
+      // it must not clear the unsaved-changes flag over the un-persisted boundary change.
+      act(() => {
+        result.current.markSynced(savedAnalysis, undefined);
+      });
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('clears dirty when synced with the matching segmentation reference', async () => {
+      const { result } = await renderLoaded();
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      act(() => {
+        result.current.autosaveSegmentation(delta);
+      });
+      expect(result.current.dirty).toBe(true);
+      const snapshot = result.current.getDraftSnapshot();
+      if (!snapshot) throw new Error('expected the draft to be loaded');
+
+      // Save persisted exactly what the ref holds, so the sync clears the unsaved-changes flag.
+      act(() => {
+        result.current.markSynced(snapshot.analysis, snapshot.segmentation);
+      });
+
+      expect(result.current.dirty).toBe(false);
+      const saved = lastSavedDraft();
+      expect(saved.dirty).toBe(false);
+      expect(saved.segmentation).toEqual(delta);
     });
   });
 

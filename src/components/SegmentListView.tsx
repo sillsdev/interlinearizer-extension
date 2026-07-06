@@ -23,6 +23,12 @@ type MergeRowButtonProps = Readonly<{
   /** The segment below the gap this button sits in — the one a click merges into its predecessor. */
   segment: Segment;
   /**
+   * When `true` the control renders inert. Set while a phrase mode (edit / confirm-unlink) is
+   * active, matching the in-gap boundary controls: a merge mid-mode could re-segment the phrase the
+   * mode UI is operating on.
+   */
+  disabled: boolean;
+  /**
    * Reports hover over this button: the segment's id on enter, `undefined` on leave. The list uses
    * it to tint the two rows the merge would join.
    */
@@ -43,10 +49,11 @@ type MergeRowButtonProps = Readonly<{
  *
  * @param props - Component props.
  * @param props.segment - The segment below the gap.
+ * @param props.disabled - Renders the control inert while a phrase mode is active.
  * @param props.onHoverChange - Reports hover so the list can tint the two affected rows.
  * @returns A full-width merge-boundary button, or `undefined` when the segment has no tokens.
  */
-function MergeRowButton({ segment, onHoverChange }: MergeRowButtonProps) {
+function MergeRowButton({ segment, disabled, onHoverChange }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
   const [localizedStrings] = useLocalizedStrings(MERGE_STRING_KEYS);
   const secondSegmentStartRef = segment.tokens[0]?.ref;
@@ -56,8 +63,9 @@ function MergeRowButton({ segment, onHoverChange }: MergeRowButtonProps) {
   return (
     <button
       aria-label={mergeLabel}
-      className="tw:flex tw:w-full tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+      className="tw:flex tw:w-full tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-30"
       data-testid="segment-merge-btn"
+      disabled={disabled}
       tabIndex={-1}
       title={mergeLabel}
       type="button"
@@ -81,6 +89,12 @@ type SegmentListViewProps = Readonly<{
   book: Book;
   /** Current scripture reference; its verse is the recenter anchor and active-verse highlight. */
   scrRef: SerializedVerseRef;
+  /**
+   * Monotonic counter bumped on every boundary edit. Forwarded to {@link useSegmentWindow} so it can
+   * tell a boundary edit (redraw in place) apart from a re-tokenization of the loaded book
+   * (recenter with a fade) when the segments identity changes.
+   */
+  segmentationVersion: number;
   /** Token ref of the currently focused word token, or `undefined` when nothing is focused. */
   focusedTokenRef: string | undefined;
   /** When true, the horizontal token strip is shown above this list (changes display mode). */
@@ -137,6 +151,7 @@ type SegmentListViewProps = Readonly<{
  * @param props - Component props
  * @param props.book - Tokenized book whose segments are windowed and rendered.
  * @param props.scrRef - Current scripture reference; its verse is the recenter anchor.
+ * @param props.segmentationVersion - Monotonic boundary-edit counter forwarded to the window.
  * @param props.focusedTokenRef - Token ref of the currently focused word token, or `undefined`.
  * @param props.continuousScroll - When true, the horizontal token strip is shown above this list.
  * @param props.displayContinuousScroll - Continuous-scroll mode the segments actually render; owned
@@ -161,6 +176,7 @@ type SegmentListViewProps = Readonly<{
 export default function SegmentListView({
   book,
   scrRef,
+  segmentationVersion,
   focusedTokenRef,
   continuousScroll,
   displayContinuousScroll,
@@ -232,6 +248,7 @@ export default function SegmentListView({
   } = useSegmentWindow({
     book,
     scrRef,
+    segmentationVersion,
     focusedTokenRef,
     continuousScroll,
     scrollContainerRef,
@@ -312,7 +329,11 @@ export default function SegmentListView({
               return (
                 <Fragment key={seg.id}>
                   {segIndex > 0 && (
-                    <MergeRowButton segment={seg} onHoverChange={setMergeHoverSegmentId} />
+                    <MergeRowButton
+                      segment={seg}
+                      disabled={phraseMode.kind !== 'view'}
+                      onHoverChange={setMergeHoverSegmentId}
+                    />
                   )}
                   {!chapterLabelInVerse && chapterStartIds.has(seg.id) && (
                     <span className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground">

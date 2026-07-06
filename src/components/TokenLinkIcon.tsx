@@ -6,6 +6,7 @@ import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { useSegmentation } from './SegmentationStore';
 import type { SlotFocusInfo } from '../types/token-layout';
+import { isWordToken } from '../types/type-guards';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /** Props for {@link TokenLinkIcon}. */
@@ -136,8 +137,12 @@ export function TokenLinkIcon({
     if (currentStart === undefined) return;
     if (focusedSideIsPrev) {
       const index = adjacentSegment.tokens.findIndex((t) => t.ref === nextToken.ref);
-      const newStart = adjacentSegment.tokens[index + 1]?.ref;
-      // The adjacent segment had only the pulled token, so it merges wholly into the focused one.
+      // The new boundary must land on a word token: a boundary ref names where the next segment
+      // starts, and the delta's added starts are word refs by contract. Skipping punctuation also
+      // keeps punctuation trailing the pulled word (e.g. a comma) traveling with it.
+      const newStart = adjacentSegment.tokens.slice(index + 1).find(isWordToken)?.ref;
+      // No word token remains past the pulled one (at most trailing punctuation), so the adjacent
+      // segment merges wholly into the focused one rather than leaving a word-less remainder.
       if (newStart === undefined) segmentationDispatch.merge(currentStart);
       else segmentationDispatch.move(currentStart, newStart);
     } else {

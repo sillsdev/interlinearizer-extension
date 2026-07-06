@@ -94,13 +94,20 @@ function renderSegmentWindow(
   const onDisplayContinuousScrollChange = (v: boolean) => displayContinuousScrollReports.push(v);
   const hook = renderHook<
     ReturnType<typeof useSegmentWindow>,
-    { b: Book; ref: SerializedVerseRef; focus?: string | undefined; cont?: boolean }
+    {
+      b: Book;
+      ref: SerializedVerseRef;
+      focus?: string | undefined;
+      cont?: boolean;
+      segVersion?: number;
+    }
   >(
-    ({ b, ref, focus, cont }) => {
+    ({ b, ref, focus, cont, segVersion }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
       return useSegmentWindow({
         book: b,
         scrRef: ref,
+        segmentationVersion: segVersion ?? 0,
         focusedTokenRef: focus,
         continuousScroll: cont ?? false,
         scrollContainerRef,
@@ -601,23 +608,85 @@ describe('useSegmentWindow', () => {
     expect(result.current.isFaded).toBe(false);
   });
 
-  it('redraws in place without fading when the segments change but the anchor verse does not', () => {
-    // A boundary edit (merge/split) re-segments the loaded book: new `segments` identity, same
-    // anchor verse. The new slice already rendered in the same commit, so a fade afterwards would
-    // flash content the user is looking at and snap it away from the point they clicked — the
-    // window must leave the redraw alone.
+  it('redraws in place without fading on a boundary edit (segments change with a version bump)', () => {
+    // A boundary edit (merge/split) re-segments the loaded book: new `segments` identity carrying a
+    // `segmentationVersion` bump. The new slice already rendered in the same commit, so a fade
+    // afterwards would flash content the user is looking at and snap it away from the point they
+    // clicked — the window must leave the redraw alone.
     const book = makeBook(10, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
     const editedBook = makeBook(9, 0);
 
-    act(() => rerender({ b: editedBook, ref: scrRef }));
+    act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
     // The window slices the edited book's segments immediately — no midpoint swap to wait for.
     expect(result.current.windowSegments[0]).toBe(editedBook.segments[0]);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
+  });
+
+  it('does not fade on a boundary edit even when the anchor verse changes', () => {
+    // A merge that absorbs the active verse's segment start (GEN 1:2 merged into GEN 1:1) makes the
+    // loader re-resolve the scrRef to the surviving segment's verse in the same commit. The verse
+    // changed, but the version bump identifies this as a boundary edit, not a navigation — no fade.
+    const book = makeBook(10, 0);
+    const { result, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 2,
+    });
+    const editedBook = makeBook(9, 0);
+
+    act(() =>
+      rerender({ b: editedBook, ref: { book: 'GEN', chapterNum: 1, verseNum: 1 }, segVersion: 1 }),
+    );
+
+    expect(result.current.isFaded).toBe(false);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+  });
+
+  it('syncs the display refs immediately on a boundary edit that changes the anchor verse', () => {
+    // The redraw stands without a recenter midpoint, so the display refs would otherwise be
+    // stranded on the pre-edit verse/token; the boundary-edit branch must sync them in place.
+    const book = makeBook(10, 0);
+    const { result, rerender } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      'tok-old',
+    );
+    const editedBook = makeBook(9, 0);
+
+    act(() =>
+      rerender({
+        b: editedBook,
+        ref: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        focus: 'tok-new',
+        segVersion: 1,
+      }),
+    );
+
+    expect(result.current.displayScrRef.verseNum).toBe(1);
+    expect(result.current.displayFocusedTokenRef).toBe('tok-new');
+  });
+
+  it('fades and recenters when the segments change without a version bump at the same anchor verse', () => {
+    // A re-tokenization of the loaded book hands the hook a new `segments` identity with the same
+    // `segmentationVersion` and can keep the anchor verse. The mounted index range no longer
+    // matches the content, so this must recenter with the fade like any external change.
+    const book = makeBook(10, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    const retokenizedBook = makeBook(10, 0);
+
+    act(() => rerender({ b: retokenizedBook, ref: scrRef }));
+
+    expect(result.current.isFaded).toBe(true);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+    expect(result.current.windowSegments[0]).toBe(retokenizedBook.segments[0]);
   });
 
   it('lags displayScrRef through the fade so the highlight moves only with the window swap', () => {

@@ -108,15 +108,8 @@ function InterlinearizerLoaderInner({
   useWebViewState: UseWebViewStateHook;
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
-  const {
-    rawScrRef,
-    liveScrRef: scrRef,
-    navigate,
-    scrollGroupId,
-    setScrollGroupId,
-    fadePhase,
-    cancelFade,
-  } = useInterlinearNav();
+  const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
+    useInterlinearNav();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -437,7 +430,7 @@ function InterlinearizerLoaderInner({
         startAreaChildren={
           interfaceMode === 'power' ? (
             <ScriptureNavControls
-              scrRef={rawScrRef}
+              scrRef={scrRef}
               handleSubmit={navigate}
               scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}

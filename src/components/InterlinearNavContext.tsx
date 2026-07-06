@@ -62,7 +62,7 @@ function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean 
 
 /**
  * Builds a stable string key identifying the verse a reference names. Used to match an internal
- * navigation against the `liveScrRef` the host later delivers, so the segment window can tell an
+ * navigation against the reference the host later delivers, so the segment window can tell an
  * internally-originated change apart from an external one. Verse 0 is keyed verbatim (as its own
  * verse) so a deliberate navigation to a chapter's verse-0 superscription is distinct from verse
  * 1.
@@ -105,25 +105,19 @@ function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
  */
 export interface InterlinearNav {
   /**
-   * The reference from the host scroll-group hook, value-verbatim. Drives the editable book/chapter
-   * nav controls so a chapter selection (verse 0) is reflected exactly as the user entered it.
-   * Identity-stable across the host's duplicate deliveries: when the host re-sends a value-equal
-   * reference (the scripture picker fires each navigation twice), the previously adopted object is
-   * handed back so consumers see no change.
+   * The reference from the host scroll-group hook, value-verbatim, driving both the editable
+   * book/chapter nav controls and the views' recentering. Identity-stable across the host's
+   * duplicate deliveries: when the host re-sends a value-equal reference (the scripture picker
+   * fires each navigation twice), the previously adopted object is handed back so consumers see no
+   * change. Verse 0 is treated as an ordinary verse: a `verseNum: 0` reference passes through
+   * verbatim, so the host's `<` (previous-verse) from verse 1 lands on the chapter's
+   * superscription. When it names a chapter with a verse-0 superscription segment, that segment
+   * becomes the active verse. Which verses actually have segments is unknown here (the book is not
+   * loaded at this layer), so the loader resolves a reference with no matching segment before
+   * rendering: verse 0 falls back to the chapter's first numbered verse, any other unmatched verse
+   * to the nearest preceding segment start in its chapter.
    */
-  rawScrRef: SerializedVerseRef;
-  /**
-   * The active reference. Equal to `rawScrRef`, with object identity reused across the host's
-   * value-equal duplicate deliveries so a re-send reads as no change. Verse 0 is treated as an
-   * ordinary verse: a `verseNum: 0` reference passes through verbatim, so the host's `<`
-   * (previous-verse) from verse 1 lands on the chapter's superscription. When it names a chapter
-   * with a verse-0 superscription segment, that segment becomes the active verse. Which verses
-   * actually have segments is unknown here (the book is not loaded at this layer), so the loader
-   * resolves a reference with no matching segment before rendering: verse 0 falls back to the
-   * chapter's first numbered verse, any other unmatched verse to the nearest preceding segment
-   * start in its chapter.
-   */
-  liveScrRef: SerializedVerseRef;
+  scrRef: SerializedVerseRef;
   /**
    * Sets the scripture reference, writing through to the host scroll-group ref, and records the
    * navigation's {@link NavOrigin}. An `internal` origin marks the target verse so the segment
@@ -203,28 +197,32 @@ export function InterlinearNavProvider({
   const [hostScrRef, setScrRef, scrollGroupId, setScrollGroupId] = useWebViewScrollGroupScrRef();
 
   /**
-   * The last host delivery adopted as `rawScrRef`, kept so the duplicate-delivery guard below can
-   * hand back the same object when the host re-sends an identical reference.
+   * The last host delivery adopted as `scrRef`, serving two readers each render: the
+   * duplicate-delivery guard below hands back the same object when the host re-sends an identical
+   * reference, and the render-phase mid-reveal guard compares the incoming reference against the
+   * verse last shown.
    */
-  const stableRawScrRefRef = useRef<SerializedVerseRef>(hostScrRef);
+  const prevScrRefRef = useRef<SerializedVerseRef>(hostScrRef);
+
+  /**
+   * The {@link scrRef} adopted on the previous render, captured before the write below overwrites
+   * it, so the mid-reveal navigation guard further down can compare the incoming reference against
+   * the verse last shown.
+   */
+  const prevScrRef = prevScrRefRef.current;
 
   // The host delivers each scripture-picker navigation twice in quick succession: two back-to-back
   // signals carrying the same reference as distinct objects. Passing the second through verbatim
-  // would change `rawScrRef`'s identity — and with it the context value — for a navigation that
+  // would change `scrRef`'s identity — and with it the context value — for a navigation that
   // already happened, re-rendering every nav consumer mid-recenter for nothing (the same
   // double-fire whose duplicate USJ payload `useInterlinearizerBookData` already stabilizes). Reuse
   // the previously adopted object when the delivery is value-equal, so a duplicate is invisible
-  // downstream.
-  const rawScrRef = areScrRefsEqual(hostScrRef, stableRawScrRefRef.current)
-    ? stableRawScrRefRef.current
-    : hostScrRef;
-  stableRawScrRefRef.current = rawScrRef;
-
-  /**
-   * The last committed {@link liveScrRef}, mirrored so the render-phase mid-reveal guard can compare
-   * the incoming reference against the verse last shown.
-   */
-  const liveScrRefRef = useRef<SerializedVerseRef>(rawScrRef);
+  // downstream. Verse 0 is not special-cased: every reference passes through verbatim, so the
+  // host's `<` (previous-verse) from verse 1 lands on the chapter's superscription, and the loader
+  // resolves a reference with no matching segment (verse 0, or an unclamped host verse bump past
+  // the chapter's end) before rendering.
+  const scrRef = areScrRefsEqual(hostScrRef, prevScrRef) ? prevScrRef : hostScrRef;
+  prevScrRefRef.current = scrRef;
 
   /**
    * Verse keys of internal navigations still awaiting their host round-trip, each mapped to its
@@ -237,26 +235,10 @@ export function InterlinearNavProvider({
    */
   const pendingInternalNavRef = useRef<Map<string, number>>(new Map());
 
-  // `liveScrRef` is the active reference the views recenter on. With verse-0 stickiness removed it no
-  // longer transforms `rawScrRef` — every reference (verse 0 included) passes through verbatim, so
-  // the host's `<` (previous-verse) from verse 1 lands on the chapter's superscription, and the
-  // loader resolves a reference with no matching segment (verse 0, or an unclamped host verse bump
-  // past the chapter's end) before rendering. The alias keeps the intent-revealing name and marks the seam where any
-  // future raw→active mapping would live; `rawScrRef` already reuses the previously committed object
-  // on a value-equal re-send, so a duplicate delivery never reads as a fresh navigation.
-  const liveScrRef = rawScrRef;
-  /**
-   * The {@link liveScrRef} committed on the previous render, captured before the mirror update below
-   * overwrites it, so the mid-reveal navigation guard further down can compare the incoming
-   * reference against the verse last shown.
-   */
-  const prevLiveScrRef = liveScrRefRef.current;
-  liveScrRefRef.current = liveScrRef;
-
   const navigate = useCallback(
     (newScrRef: SerializedVerseRef, origin: NavOrigin = 'external') => {
       // Invariant: a marker write is ALWAYS paired with the `setScrRef` below. The marker readers
-      // that run during render — the render-phase mid-reveal guard, which lists only `[rawScrRef]`
+      // that run during render — the render-phase mid-reveal guard, which lists only `[scrRef]`
       // in the reactive path that reaches it — rely on every marker write also pushing a new ref
       // through the host, so the render that reads the marker is the one that sees it fresh. Never
       // set a marker here without the accompanying `setScrRef`, or a reader could see a stale marker.
@@ -285,10 +267,10 @@ export function InterlinearNavProvider({
 
   /**
    * Book code the curtain currently shows fully faded-in. A book change is detected by comparing
-   * `liveScrRef.book` against this; `reportSettled` advances it to the new book once the view has
-   * laid out. Seeded to the book at mount so the initial load shows no fade.
+   * `scrRef.book` against this; `reportSettled` advances it to the new book once the view has laid
+   * out. Seeded to the book at mount so the initial load shows no fade.
    */
-  const displayedBookRef = useRef<string>(liveScrRef.book);
+  const displayedBookRef = useRef<string>(scrRef.book);
 
   /**
    * `true` between detecting a book change and the view reporting settled. Gates `reportSettled` so
@@ -299,15 +281,18 @@ export function InterlinearNavProvider({
   /** Handle of the in-flight fade-in→idle timer, or `undefined` when none is pending. */
   const fadeInTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  /** Verse key of the live ref, computed once for the cross-book / mid-reveal render guards below. */
-  const liveKey = verseKey(liveScrRef);
+  /**
+   * Verse key of the adopted ref, computed once for the cross-book / mid-reveal render guards
+   * below.
+   */
+  const scrRefKey = verseKey(scrRef);
 
   // Detect a cross-book navigation *during render* and start the fade-out synchronously, so the
   // curtain drops in the same commit the book ref changes — never a paint later (an effect-driven
   // fade-out would let the mounted views render one frame against the new book's ref before the
   // curtain covers them). Setting state during render is the guarded React pattern: `awaitingSettle`
   // flips true so this fires once per book change, and `setFadePhase` is batched into this commit.
-  if (liveScrRef.book !== displayedBookRef.current && !awaitingSettleRef.current) {
+  if (scrRef.book !== displayedBookRef.current && !awaitingSettleRef.current) {
     if (fadeInTimeoutRef.current !== undefined) {
       clearTimeout(fadeInTimeoutRef.current);
       fadeInTimeoutRef.current = undefined;
@@ -316,8 +301,8 @@ export function InterlinearNavProvider({
     setFadePhase('out');
   } else if (
     fadePhase === 'in' &&
-    liveKey !== verseKey(prevLiveScrRef) &&
-    !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(liveKey))
+    scrRefKey !== verseKey(prevScrRef) &&
+    !isInternalNavMarkerFresh(pendingInternalNavRef.current.get(scrRefKey))
   ) {
     // A follow-up external navigation landing mid-fade-in: the host resolves one picker selection
     // as two navigations (book change, then precise target), so the second routinely arrives while
@@ -337,7 +322,7 @@ export function InterlinearNavProvider({
   const reportSettled = useCallback(() => {
     if (!awaitingSettleRef.current) return;
     awaitingSettleRef.current = false;
-    displayedBookRef.current = liveScrRef.book;
+    displayedBookRef.current = scrRef.book;
     setFadePhase('in');
     /* v8 ignore next -- defensive: render-time book-change guard always clears any stale timer first */
     if (fadeInTimeoutRef.current !== undefined) clearTimeout(fadeInTimeoutRef.current);
@@ -345,7 +330,7 @@ export function InterlinearNavProvider({
       fadeInTimeoutRef.current = undefined;
       setFadePhase('idle');
     }, RECENTER_FADE_MS);
-  }, [liveScrRef.book]);
+  }, [scrRef.book]);
 
   const cancelFade = useCallback(() => {
     if (fadeInTimeoutRef.current !== undefined) {
@@ -353,9 +338,9 @@ export function InterlinearNavProvider({
       fadeInTimeoutRef.current = undefined;
     }
     awaitingSettleRef.current = false;
-    displayedBookRef.current = liveScrRef.book;
+    displayedBookRef.current = scrRef.book;
     setFadePhase('idle');
-  }, [liveScrRef.book]);
+  }, [scrRef.book]);
 
   // Clear any pending fade-in timer on unmount so a deferred state update doesn't run on a torn-down
   // tree.
@@ -368,8 +353,7 @@ export function InterlinearNavProvider({
 
   const value = useMemo<InterlinearNav>(
     () => ({
-      rawScrRef,
-      liveScrRef,
+      scrRef,
       navigate,
       consumeInternalNav,
       scrollGroupId,
@@ -379,8 +363,7 @@ export function InterlinearNavProvider({
       cancelFade,
     }),
     [
-      rawScrRef,
-      liveScrRef,
+      scrRef,
       navigate,
       consumeInternalNav,
       scrollGroupId,

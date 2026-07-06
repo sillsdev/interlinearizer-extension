@@ -1406,7 +1406,7 @@ describe('InterlinearizerLoader', () => {
 
     /**
      * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
-     * identity is required each change so the provider's `liveScrRef` memo recomputes.
+     * identity is required each change so the provider adopts it as a new `scrRef`.
      *
      * @param initial - The reference reported on the first render.
      * @returns A `[hook, setRef]` pair.

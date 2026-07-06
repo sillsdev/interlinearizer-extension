@@ -592,10 +592,54 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
-  it('resolves a mid-segment verse to the owning segment start', async () => {
-    // A merged segment can span several verses; navigating to a verse inside the span has no
-    // segment starting at that verse, so the loader resolves to the nearest preceding segment
-    // start — the segment that contains the verse, never a later segment in the chapter.
+  it('resolves a verse missing from the text to the nearest preceding segment start, never a later one', async () => {
+    // A verse absent from the book's content (e.g. bridged away in the source) is contained in no
+    // segment, so the loader resolves it to the nearest preceding segment start in the chapter —
+    // skipping the later segment that also sits in the chapter.
+    const gappedBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 3:1',
+          startRef: { book: 'GEN', chapter: 3, verse: 1 },
+          endRef: { book: 'GEN', chapter: 3, verse: 1 },
+          baselineText: 'First verse.',
+          tokens: [],
+        },
+        {
+          id: 'GEN 3:3',
+          startRef: { book: 'GEN', chapter: 3, verse: 3 },
+          endRef: { book: 'GEN', chapter: 3, verse: 3 },
+          baselineText: 'Verse after the gap.',
+          tokens: [],
+        },
+      ],
+    };
+    mockBookData({ book: gappedBook });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 2,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 1,
+    });
+  });
+
+  it('passes a mid-segment verse through unchanged', async () => {
+    // A merged segment can span several verses; a verse inside the span is contained in that
+    // segment even though no segment starts at it, so the loader passes the reference through
+    // unchanged and the views resolve it to the containing segment.
     const mergedSegmentBook: Book = {
       id: 'GEN',
       bookRef: 'GEN',
@@ -632,7 +676,7 @@ describe('InterlinearizerLoader', () => {
     expect(capturedInterlinearizerProps?.scrRef).toEqual({
       book: 'GEN',
       chapterNum: 3,
-      verseNum: 1,
+      verseNum: 2,
     });
   });
 

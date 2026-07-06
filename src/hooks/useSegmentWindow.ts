@@ -3,7 +3,7 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { RefObject } from 'react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { RECENTER_FADE_MS } from '../components/recenter-fade';
-import { isSameVerse } from '../utils/verse-ref';
+import { segmentContainsVerse } from '../utils/verse-ref';
 import useLatestRef from './useLatestRef';
 import useRecenterSnap from './useRecenterSnap';
 
@@ -156,18 +156,19 @@ export interface UseSegmentWindowResult {
 }
 
 /**
- * Finds the index in `segments` of the segment that owns the verse named by `scrRef`. Matches on
- * book, chapter, and verse so a window that spans chapters resolves the anchor unambiguously. Falls
- * back to the first segment of the same book+chapter, then to `0`, so there is always a valid
- * anchor.
+ * Finds the index in `segments` of the segment that owns the verse named by `scrRef`. Matches by
+ * verse-range containment (first segment in document order whose range includes the verse), so a
+ * verse absorbed into a multi-verse segment — or the later portions of a split verse — resolves to
+ * the segment that actually contains it rather than only to exact segment starts. Falls back to the
+ * first segment of the same book+chapter, then to `0`, so there is always a valid anchor.
  *
  * @param segments - The book's flat segment list.
  * @param scrRef - The scripture reference whose owning segment to locate.
  * @returns The index of the anchor segment, clamped to a valid position (or `0` when empty).
  */
 function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
-  const exact = segments.findIndex((seg) => isSameVerse(seg.startRef, scrRef));
-  if (exact !== -1) return exact;
+  const containing = segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
+  if (containing !== -1) return containing;
   const chapter = segments.findIndex(
     (seg) => seg.startRef.book === scrRef.book && seg.startRef.chapter === scrRef.chapterNum,
   );

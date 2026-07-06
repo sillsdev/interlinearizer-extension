@@ -22,7 +22,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import { isWordToken } from '../types/type-guards';
 import { phrasesStraddlingBoundary, splitPhraseAtBoundary } from '../utils/phrase-arc';
-import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
+import { isSameVerse, segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
 import SegmentListView from './SegmentListView';
 import UnlinkPhraseConfirm from './modals/UnlinkPhraseConfirm';
 import { useInterlinearNav } from './InterlinearNavContext';
@@ -50,14 +50,15 @@ type InterlinearizerProps = Readonly<{
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
-   * Current scripture reference used to highlight the active verse. Always names a verse some
-   * segment in `book` starts at, provided the referenced chapter has segments: the loader keeps
+   * Current scripture reference used to highlight the active verse. Always names a verse contained
+   * in some segment of `book`, provided the referenced chapter has segments: the loader keeps
    * `verseNum: 0` when the active chapter has a verse-0 superscription segment (so the
    * superscription becomes the active verse), resolves a whole-chapter (verse 0) selection to the
-   * chapter's first numbered verse, and resolves any other unmatched verse — the host's next-verse
-   * button past the chapter's end, or a verse inside a multi-verse segment — to the nearest
-   * preceding segment start in the chapter. So this is normally verse >= 1, and is verse 0 only
-   * when a matching verse-0 segment exists.
+   * chapter's first numbered verse, and resolves a verse no segment contains — the host's
+   * next-verse button past the chapter's end — to the nearest preceding segment start in the
+   * chapter. A verse absorbed mid-segment by a merge passes through unchanged and resolves here by
+   * containment. So this is normally verse >= 1, and is verse 0 only when a matching verse-0
+   * segment exists.
    */
   scrRef: SerializedVerseRef;
   /**
@@ -142,18 +143,21 @@ function InterlinearizerInner({
   const { navigate, consumeInternalNav, reportSettled } = useInterlinearNav();
 
   /**
-   * Finds the book segment that owns the active verse named by `scrRef`, matching on book, chapter,
-   * and verse. Book must be matched too: during an external navigation the new `scrRef.book` is set
-   * before its book data finishes loading, so the still-mounted `book` belongs to the previous
-   * reference. A chapter+verse-only match would then resolve to the wrong book's verse (e.g.
-   * Genesis 15 while navigating to Matthew 15), seed `focusedTokenRef` from it, and the echo-back
-   * effect would fire that wrong-book verse back as `scrRef`, corrupting the global reference.
-   * Returning `undefined` until the matching book is mounted keeps focus unset rather than wrong.
+   * Finds the book segment that owns the active verse named by `scrRef`: the first segment in
+   * document order whose verse range contains it. Containment (rather than an exact start-verse
+   * match) matters after boundary edits — a verse absorbed into a multi-verse segment, or named by
+   * a later portion of a split verse, still resolves to the segment that holds its text. Book must
+   * be matched too: during an external navigation the new `scrRef.book` is set before its book data
+   * finishes loading, so the still-mounted `book` belongs to the previous reference. A
+   * chapter+verse-only match would then resolve to the wrong book's verse (e.g. Genesis 15 while
+   * navigating to Matthew 15), seed `focusedTokenRef` from it, and the echo-back effect would fire
+   * that wrong-book verse back as `scrRef`, corrupting the global reference. Returning `undefined`
+   * until the matching book is mounted keeps focus unset rather than wrong.
    *
    * @returns The active verse's segment, or `undefined` when no segment matches.
    */
   const findActiveSegment = useCallback(
-    () => book.segments.find((seg) => isSameVerse(seg.startRef, scrRef)),
+    () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef)),
     [book.segments, scrRef],
   );
 
@@ -375,7 +379,10 @@ function InterlinearizerInner({
       if (!seg) return;
       const { current } = scrRefRef;
       if (seg.startRef.book !== current.book) return;
-      if (isSameVerse(seg.startRef, current)) return;
+      // Already-contained check (not exact start-verse match): when the active verse sits inside a
+      // multi-verse segment, focusing another of that segment's tokens must not renavigate to the
+      // segment's start verse — the reference is already within the focused segment.
+      if (segmentContainsVerse(seg, current)) return;
       navigate(toSerializedVerseRef(seg.startRef), 'internal');
     },
     [segmentById, tokenSegmentMap, navigate, scrRefRef],

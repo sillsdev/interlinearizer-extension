@@ -35,11 +35,14 @@ type InterlinearizerProps = Readonly<{
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
-   * Current scripture reference used to highlight the active verse. Always names a verse that has a
-   * segment in `book`: the loader keeps `verseNum: 0` when the active chapter has a verse-0
-   * superscription segment (so the superscription becomes the active verse) and otherwise resolves
-   * a whole-chapter (verse 0) selection to the chapter's first numbered verse. So this is normally
-   * verse >= 1, and is verse 0 only when a matching verse-0 segment exists.
+   * Current scripture reference used to highlight the active verse. Always names a verse some
+   * segment in `book` starts at, provided the referenced chapter has segments: the loader keeps
+   * `verseNum: 0` when the active chapter has a verse-0 superscription segment (so the
+   * superscription becomes the active verse), resolves a whole-chapter (verse 0) selection to the
+   * chapter's first numbered verse, and resolves any other unmatched verse — the host's next-verse
+   * button past the chapter's end, or a verse inside a multi-verse segment — to the nearest
+   * preceding segment start in the chapter. So this is normally verse >= 1, and is verse 0 only
+   * when a matching verse-0 segment exists.
    */
   scrRef: SerializedVerseRef;
   /**

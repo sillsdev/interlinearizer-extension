@@ -527,6 +527,102 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  it('resolves an out-of-range verse to the last segment of the same chapter', async () => {
+    // The host's next-verse button emits verseNum + 1 without clamping, so bumping forward from
+    // the last verse of a chapter delivers a verse past the chapter's end. The loader resolves it
+    // to the chapter's last segment rather than letting the views fall back to the start of the
+    // book. Chapter 4 exists so the test proves resolution stays within the requested chapter.
+    const multiSegmentBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 3:1',
+          startRef: { book: 'GEN', chapter: 3, verse: 1 },
+          endRef: { book: 'GEN', chapter: 3, verse: 1 },
+          baselineText: 'First verse.',
+          tokens: [],
+        },
+        {
+          id: 'GEN 3:2',
+          startRef: { book: 'GEN', chapter: 3, verse: 2 },
+          endRef: { book: 'GEN', chapter: 3, verse: 2 },
+          baselineText: 'Last verse of the chapter.',
+          tokens: [],
+        },
+        {
+          id: 'GEN 4:1',
+          startRef: { book: 'GEN', chapter: 4, verse: 1 },
+          endRef: { book: 'GEN', chapter: 4, verse: 1 },
+          baselineText: 'Next chapter.',
+          tokens: [],
+        },
+      ],
+    };
+    mockBookData({ book: multiSegmentBook });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 3,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 2,
+    });
+  });
+
+  it('resolves a mid-segment verse to the owning segment start', async () => {
+    // A merged segment can span several verses; navigating to a verse inside the span has no
+    // segment starting at that verse, so the loader resolves to the nearest preceding segment
+    // start — the segment that contains the verse, never a later segment in the chapter.
+    const mergedSegmentBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 3:1',
+          startRef: { book: 'GEN', chapter: 3, verse: 1 },
+          endRef: { book: 'GEN', chapter: 3, verse: 2 },
+          baselineText: 'Two verses merged into one segment.',
+          tokens: [],
+        },
+        {
+          id: 'GEN 3:3',
+          startRef: { book: 'GEN', chapter: 3, verse: 3 },
+          endRef: { book: 'GEN', chapter: 3, verse: 3 },
+          baselineText: 'Verse after the merged segment.',
+          tokens: [],
+        },
+      ],
+    };
+    mockBookData({ book: mergedSegmentBook });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 3,
+          verseNum: 2,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 3,
+      verseNum: 1,
+    });
+  });
+
   it('leaves a verse-0 reference untouched while the book is still loading', async () => {
     // With no book loaded yet, the verse-0 resolution has nothing to consult, so the loader shows
     // the loading placeholder and does not render the interlinearizer.
@@ -1310,7 +1406,7 @@ describe('InterlinearizerLoader', () => {
 
     /**
      * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
-     * identity is required each change so the provider's `liveScrRef` memo recomputes.
+     * identity is required each change so the provider adopts it as a new `scrRef`.
      *
      * @param initial - The reference reported on the first render.
      * @returns A `[hook, setRef]` pair.

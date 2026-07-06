@@ -7,6 +7,7 @@ import papi, { logger } from '@papi/frontend';
 import { useData, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
+import type { ScriptureRef } from 'interlinearizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useDraftProject from '../hooks/useDraftProject';
@@ -21,7 +22,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { isSameVerse } from '../utils/verse-ref';
+import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -107,15 +108,8 @@ function InterlinearizerLoaderInner({
   useWebViewState: UseWebViewStateHook;
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
-  const {
-    rawScrRef,
-    liveScrRef: scrRef,
-    navigate,
-    scrollGroupId,
-    setScrollGroupId,
-    fadePhase,
-    cancelFade,
-  } = useInterlinearNav();
+  const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
+    useInterlinearNav();
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -243,16 +237,32 @@ function InterlinearizerLoaderInner({
     scrRef,
   });
 
-  // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
-  // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
-  // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
-  // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
-  // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
-  // rather than leaving nothing highlighted. Non-verse-0 references pass through unchanged.
+  // The active reference handed to the interlinearizer, resolved so it always names a verse some
+  // segment starts at (when the requested chapter has segments at all). A reference whose verse is
+  // a segment start passes through unchanged. Otherwise:
+  //
+  // - Verse 0 with no verse-0 segment is a plain whole-chapter selection (the host emits
+  //   `verseNum: 0` for those as well as for superscriptions), so it falls back to the chapter's
+  //   first numbered verse rather than leaving nothing highlighted.
+  // - Any other unmatched verse resolves to the nearest preceding segment start in the same
+  //   chapter. This covers the host's next-verse button, which emits `verseNum + 1` without
+  //   clamping — bumping forward from a chapter's last verse delivers a verse past the chapter's
+  //   end, which must land on the chapter's last segment, not fall through to the views' anchor
+  //   fallback (the start of the book). It also covers verses inside a multi-verse segment, which
+  //   resolve to the segment that contains them.
+  // - A reference to a chapter with no segments (including any book mismatch during a cross-book
+  //   swap) passes through unchanged; the views' own fallbacks handle that transient.
   const activeScrRef = useMemo(() => {
-    if (scrRef.verseNum !== 0 || !book) return scrRef;
-    const hasVerseZero = book.segments.some((segment) => isSameVerse(segment.startRef, scrRef));
-    return hasVerseZero ? scrRef : { ...scrRef, verseNum: 1 };
+    if (!book) return scrRef;
+    if (book.segments.some((segment) => isSameVerse(segment.startRef, scrRef))) return scrRef;
+    if (scrRef.verseNum === 0) return { ...scrRef, verseNum: 1 };
+    let preceding: ScriptureRef | undefined;
+    book.segments.forEach(({ startRef }) => {
+      if (startRef.book !== scrRef.book || startRef.chapter !== scrRef.chapterNum) return;
+      if (startRef.verse > scrRef.verseNum) return;
+      if (!preceding || startRef.verse > preceding.verse) preceding = startRef;
+    });
+    return preceding ? toSerializedVerseRef(preceding) : scrRef;
   }, [scrRef, book]);
 
   const hasError = !!bookError || !!tokenizeError;
@@ -420,7 +430,7 @@ function InterlinearizerLoaderInner({
         startAreaChildren={
           interfaceMode === 'power' ? (
             <ScriptureNavControls
-              scrRef={rawScrRef}
+              scrRef={scrRef}
               handleSubmit={navigate}
               scrollGroupId={scrollGroupId}
               onChangeScrollGroupId={setScrollGroupId}

@@ -35,11 +35,14 @@ type InterlinearizerProps = Readonly<{
   /** When true, the horizontal token strip is shown above the segment list. */
   continuousScroll: boolean;
   /**
-   * Current scripture reference used to highlight the active verse. Always names a verse that has a
-   * segment in `book`: the loader keeps `verseNum: 0` when the active chapter has a verse-0
-   * superscription segment (so the superscription becomes the active verse) and otherwise resolves
-   * a whole-chapter (verse 0) selection to the chapter's first numbered verse. So this is normally
-   * verse >= 1, and is verse 0 only when a matching verse-0 segment exists.
+   * Current scripture reference used to highlight the active verse. Always names a verse some
+   * segment in `book` starts at, provided the referenced chapter has segments: the loader keeps
+   * `verseNum: 0` when the active chapter has a verse-0 superscription segment (so the
+   * superscription becomes the active verse), resolves a whole-chapter (verse 0) selection to the
+   * chapter's first numbered verse, and resolves any other unmatched verse — the host's next-verse
+   * button past the chapter's end, or a verse inside a multi-verse segment — to the nearest
+   * preceding segment start in the chapter. So this is normally verse >= 1, and is verse 0 only
+   * when a matching verse-0 segment exists.
    */
   scrRef: SerializedVerseRef;
   /**
@@ -220,9 +223,9 @@ function InterlinearizerInner({
    * reference. (The loader's `viewScrRef` freeze normally keeps the two in sync, so this guards a
    * transient.)
    *
-   * A verse-0 segment (a chapter superscription) navigates like any other: the write records an
-   * internal-nav marker so the host's chapter echo is recognized as our own move rather than
-   * bouncing the view back. (See the verse-0 stickiness exception in `InterlinearNavContext`.)
+   * A verse-0 segment (a chapter superscription) navigates like any other verse: the `'internal'`
+   * origin records a nav marker so the segment window recognizes the host's echo as our own move
+   * and skips the recenter fade (the target is already on screen).
    *
    * @param tokenRef - The word-token ref to focus.
    */
@@ -245,8 +248,8 @@ function InterlinearizerInner({
    * Updates the active scripture reference (when the verse actually changed) and, when a specific
    * token was clicked, focuses that token. Skips the write to PAPI when the clicked verse matches
    * the current one, avoiding a gratuitous echo round-trip. A verse-0 segment (a chapter
-   * superscription) writes like any other verse — the internal-nav marker keeps the host's chapter
-   * echo from bouncing the view (see the verse-0 stickiness exception in `InterlinearNavContext`).
+   * superscription) writes like any other verse — the `'internal'` origin records a nav marker so
+   * the segment window skips the recenter fade for our own move.
    *
    * @param ref - The verse coordinate that was selected.
    * @param tokenRef - The token that was clicked; omitted when the whole segment was selected.

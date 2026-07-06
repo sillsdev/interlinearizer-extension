@@ -29,7 +29,7 @@ function renderNav(hook: () => ScrollGroupTuple) {
 /**
  * Renders the nav hook with a scroll-group stub whose reference can be restaged between rerenders,
  * so a cross-book navigation can be simulated. A fresh object identity is required on each change
- * so the provider's `liveScrRef` memo recomputes.
+ * so the provider adopts it as a new `scrRef`.
  *
  * @param initial - The reference reported on the first render.
  * @returns The render-hook result plus a `setRef` to stage the next reference (call inside `act`,
@@ -51,13 +51,13 @@ function renderNavMutable(initial: SerializedVerseRef) {
 }
 
 describe('InterlinearNavContext', () => {
-  it('exposes the raw reference and scroll-group plumbing verbatim', () => {
+  it('exposes the host reference and scroll-group plumbing verbatim', () => {
     const setScrRef = jest.fn();
     const setScrollGroupId = jest.fn();
     const ref: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 4 };
     const { result } = renderNav(makeScrollGroupHook(ref, setScrRef, 2, setScrollGroupId));
 
-    expect(result.current.rawScrRef).toEqual(ref);
+    expect(result.current.scrRef).toEqual(ref);
     expect(result.current.scrollGroupId).toBe(2);
 
     act(() => result.current.navigate({ book: 'MAT', chapterNum: 1, verseNum: 1 }));
@@ -67,57 +67,38 @@ describe('InterlinearNavContext', () => {
     expect(setScrollGroupId).toHaveBeenCalledWith(3);
   });
 
-  it('passes a verse-level reference through to liveScrRef unchanged', () => {
+  it('passes a verse-level reference through to scrRef unchanged', () => {
     const ref: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 4 };
     const { result } = renderNav(makeScrollGroupHook(ref));
 
-    expect(result.current.liveScrRef).toEqual(ref);
+    expect(result.current.scrRef).toEqual(ref);
   });
 
-  it('passes a chapter-level (verse 0) reference through to liveScrRef unchanged', () => {
+  it('passes a chapter-level (verse 0) reference through to scrRef unchanged', () => {
     // Verse 0 is a real verse (a Psalm superscription), so it is no longer mapped to verse 1 here.
     // The loader resolves it to verse 1 only when the loaded book has no verse-0 segment.
     const ref: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 0 };
     const { result } = renderNav(makeScrollGroupHook(ref));
 
-    expect(result.current.liveScrRef).toEqual(ref);
-    expect(result.current.rawScrRef).toEqual(ref);
+    expect(result.current.scrRef).toEqual(ref);
   });
 
-  it('keeps the current verse when the host echoes a verse-0 reference for the chapter already shown', () => {
-    // After a verse navigation the host re-broadcasts the chapter as a separate verse-0 reference.
-    // Normalizing that to verse 1 would read as a fresh move off the verse the user is on, so a
-    // verse-0 echo for the same book+chapter must stay sticky on the current verse.
+  it('passes a same-chapter verse-0 reference through to scrRef (host < from verse 1)', () => {
+    // Verse 0 is a real, focusable verse (a chapter superscription), so a verse-0 reference for the
+    // chapter already shown passes through verbatim rather than being held on the current verse. This
+    // is the host's `<` (previous-verse) from verse 1: it must land on the superscription, which the
+    // loader resolves from verse 0 (or back to verse 1 when the chapter has no verse-0 segment).
     const { result, setRef, rerender } = renderNavMutable({
       book: 'GEN',
       chapterNum: 3,
-      verseNum: 7,
+      verseNum: 1,
     });
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
+    expect(result.current.scrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 1 });
 
     act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
     rerender();
 
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 7 });
-  });
-
-  it('passes a same-chapter verse-0 echo through when it matches a fresh internal-nav marker', () => {
-    // Selecting a verse-0 superscription navigates the host to verse 0 of the chapter already shown,
-    // so the host's echo is shaped exactly like the spurious post-nav chapter echo. A fresh
-    // internal-nav marker for that verse-0 key marks it as our own deliberate move, so the stickiness
-    // exception lets it through to the superscription rather than holding the prior verse.
-    const { result, setRef, rerender } = renderNavMutable({
-      book: 'GEN',
-      chapterNum: 3,
-      verseNum: 7,
-    });
-
-    act(() => result.current.navigate({ book: 'GEN', chapterNum: 3, verseNum: 0 }, 'internal'));
-
-    act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 0 }));
-    rerender();
-
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 0 });
+    expect(result.current.scrRef).toEqual({ book: 'GEN', chapterNum: 3, verseNum: 0 });
   });
 
   it('passes a verse-0 reference for a different chapter through as a real chapter jump', () => {
@@ -133,28 +114,26 @@ describe('InterlinearNavContext', () => {
     act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
     rerender();
 
-    expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
+    expect(result.current.scrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
   });
 
   describe('duplicate host deliveries', () => {
-    it('keeps rawScrRef and liveScrRef identity when the host re-sends a value-equal reference', () => {
+    it('keeps scrRef identity when the host re-sends a value-equal reference', () => {
       // The scripture picker fires each external navigation twice in quick succession, the second
       // delivery being a fresh object with identical content. The provider must hand back the
-      // previously adopted objects so the duplicate is invisible to consumers (no context-value
+      // previously adopted object so the duplicate is invisible to consumers (no context-value
       // change, no re-render churn mid-recenter).
       const { result, setRef, rerender } = renderNavMutable({
         book: 'GEN',
         chapterNum: 3,
         verseNum: 7,
       });
-      const rawBefore = result.current.rawScrRef;
-      const liveBefore = result.current.liveScrRef;
+      const before = result.current.scrRef;
 
       act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 7 }));
       rerender();
 
-      expect(result.current.rawScrRef).toBe(rawBefore);
-      expect(result.current.liveScrRef).toBe(liveBefore);
+      expect(result.current.scrRef).toBe(before);
     });
 
     it('treats a verse-0 chapter jump and its verse-1 form as two distinct deliveries', () => {
@@ -169,13 +148,12 @@ describe('InterlinearNavContext', () => {
 
       act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 0 }));
       rerender();
-      const liveAfterJump = result.current.liveScrRef;
-      expect(liveAfterJump).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
+      expect(result.current.scrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 0 });
 
       act(() => setRef({ book: 'GEN', chapterNum: 4, verseNum: 1 }));
       rerender();
 
-      expect(result.current.liveScrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
+      expect(result.current.scrRef).toEqual({ book: 'GEN', chapterNum: 4, verseNum: 1 });
     });
 
     it('reuses the previous reference when a duplicate differs only in the verse segment string', () => {
@@ -188,7 +166,7 @@ describe('InterlinearNavContext', () => {
       act(() => setRef({ book: 'GEN', chapterNum: 3, verseNum: 7, verse: '7a' }));
       rerender();
 
-      expect(result.current.rawScrRef).toBe(initial);
+      expect(result.current.scrRef).toBe(initial);
     });
 
     it('reuses the previous reference when a duplicate differs only in versification', () => {
@@ -207,7 +185,7 @@ describe('InterlinearNavContext', () => {
       );
       rerender();
 
-      expect(result.current.rawScrRef).toBe(initial);
+      expect(result.current.scrRef).toBe(initial);
     });
   });
 
@@ -542,9 +520,11 @@ describe('InterlinearNavContext', () => {
       expect(result.current.fadePhase).toBe('out');
     });
 
-    it('does not re-engage the curtain for a verse-0 echo during the fade-in', () => {
-      // The host's chapter re-broadcast (verse 0 for the chapter already shown) is sticky — it
-      // names the verse currently displayed, so it must not read as a fresh navigation mid-reveal.
+    it('re-engages the curtain for a verse-0 navigation arriving during the fade-in', () => {
+      // Verse 0 is an ordinary verse (a chapter superscription), so a verse-0 reference naming a
+      // different verse than the one shown is a real mid-reveal navigation — e.g. the host's `<` from
+      // verse 1 landing on the superscription. It re-engages the curtain like any other external move
+      // arriving while the new book is still fading in, rather than fading the fresh content twice.
       const { result, rerender, setRef } = renderNavMutable({
         book: 'GEN',
         chapterNum: 1,
@@ -559,7 +539,7 @@ describe('InterlinearNavContext', () => {
       act(() => setRef({ book: 'ZEP', chapterNum: 3, verseNum: 0 }));
       rerender();
 
-      expect(result.current.fadePhase).toBe('in');
+      expect(result.current.fadePhase).toBe('out');
     });
 
     it('clears the pending fade-in timer on unmount', () => {

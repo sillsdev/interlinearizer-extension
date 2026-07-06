@@ -522,14 +522,14 @@ describe('Interlinearizer', () => {
     expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
   });
 
-  it('passes per-chapter segment labels with contained verse ranges to the segment views', () => {
+  it('passes verse-based segment labels to the segment views', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
-    expect(capturedSegmentViewPropsList[0].label).toEqual({ ordinal: 1, verseRange: '1' });
-    expect(capturedSegmentViewPropsList[1].label).toEqual({ ordinal: 2, verseRange: '2' });
+    expect(capturedSegmentViewPropsList[0].label).toBe('1');
+    expect(capturedSegmentViewPropsList[1].label).toBe('2');
   });
 
-  it('labels a merged segment with one segment number and its merged verse range', () => {
+  it('labels a merged segment with its merged verse range', () => {
     const merged = resegmentBook(GEN_1_MULTI_BOOK, {
       removedVerseStarts: ['GEN 1:2:0'],
       addedStarts: [],
@@ -537,7 +537,7 @@ describe('Interlinearizer', () => {
     renderInterlinearizer({ book: merged });
 
     expect(screen.getAllByTestId('segment-view')).toHaveLength(1);
-    expect(capturedSegmentViewPropsList[0].label).toEqual({ ordinal: 1, verseRange: '1–2' });
+    expect(capturedSegmentViewPropsList[0].label).toBe('1–2');
   });
 
   it('renders a SegmentView for every segment in the current chapter', () => {

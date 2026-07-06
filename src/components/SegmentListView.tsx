@@ -10,7 +10,7 @@ import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import { buildSegmentLabels } from '../utils/segment-labels';
-import { isSameVerse } from '../utils/verse-ref';
+import { segmentContainsVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** Localized label for the between-rows merge control; hoisted so the array reference is stable. */
@@ -216,9 +216,9 @@ export default function SegmentListView({
   }, [book.segments]);
 
   /**
-   * Display label of every segment (per-chapter segment number + contained verse range), keyed by
-   * segment id. Computed over the whole `book.segments` list (not just the mounted window) so the
-   * numbering is stable regardless of which slice happens to be mounted.
+   * Verse-based display label of every segment (bare verse, lettered split portion, or verse
+   * range), keyed by segment id. Computed over the whole `book.segments` list (not just the mounted
+   * window) so the lettering is stable regardless of which slice happens to be mounted.
    */
   const segmentLabels = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
 
@@ -325,7 +325,7 @@ export default function SegmentListView({
             {windowSegments.map((seg, segIndex) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
-              const label = segmentLabels.get(seg.id) ?? { ordinal: 0, verseRange: '' };
+              const label = segmentLabels.get(seg.id) ?? '';
               return (
                 <Fragment key={seg.id}>
                   {segIndex > 0 && (
@@ -360,7 +360,7 @@ export default function SegmentListView({
                       isActive={
                         activeSegmentId !== undefined
                           ? seg.id === activeSegmentId
-                          : isSameVerse(seg.startRef, displayScrRef)
+                          : segmentContainsVerse(seg, displayScrRef)
                       }
                       onHoverPhrase={setHoveredPhraseId}
                       onSelect={onSelect}

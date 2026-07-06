@@ -62,9 +62,9 @@ type SegmentViewProps = Readonly<{
   /** The segment to render. */
   segment: Segment;
   /**
-   * The segment's display label parts — the per-chapter segment number and the contained verse
-   * range — computed by the list over the whole book (this component only sees its own segment, so
-   * it cannot derive the number itself).
+   * The segment's verse-based display label (e.g. `"5"`, `"5a"`, `"5b–7"`), computed by the list
+   * over the whole book (letters depend on how neighboring segments divide a verse, which this
+   * component cannot see from its own segment alone).
    */
   label: SegmentLabel;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
@@ -107,8 +107,8 @@ type SegmentViewProps = Readonly<{
  *   the segment's first word token; in `token-chip` mode only word tokens trigger this callback
  *   with the clicked token. `tokenRef` is omitted only when the segment has no word token.
  * @param props.segment - The segment to render
- * @param props.label - The segment's display label parts (per-chapter number + contained verse
- *   range), computed by the list over the whole book.
+ * @param props.label - The segment's verse-based display label, computed by the list over the whole
+ *   book.
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
@@ -185,16 +185,18 @@ export function SegmentView({
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
     : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
-  // The main label is the per-chapter segment number — not the verse number, since after a
-  // merge/split the two diverge — with the contained verse range in parentheses beside it. When
-  // chapter info is folded into the label the number reads `chapter:number`; otherwise it stays
-  // bare (the chapter is carried by SegmentListView's inline header).
-  const segmentNumberText = chapterLabelInVerse
-    ? `${chapter}:${label.ordinal}`
-    : `${label.ordinal}`;
-  const verseLabelText = `${segmentNumberText} (${label.verseRange})`;
+  // The label is verse-based: bare verse number for a whole verse, lettered portions for a split
+  // verse, and a range for a multi-verse segment. When chapter info is folded into the label it
+  // reads `chapter:label`; otherwise it stays bare (the chapter is carried by SegmentListView's
+  // inline header).
+  const verseLabelText = chapterLabelInVerse ? `${chapter}:${label}` : label;
 
-  const segmentHeader = <span className="tw:section-label tw:mb-2 tw:block">{verseLabelText}</span>;
+  // normal-case overrides section-label's uppercase so split-portion letters render as the
+  // lowercase 1a/1b the label scheme specifies (the label is digits and letters only, so nothing
+  // else relied on the uppercasing).
+  const segmentHeader = (
+    <span className="tw:section-label tw:normal-case tw:mb-2 tw:block">{verseLabelText}</span>
+  );
 
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the

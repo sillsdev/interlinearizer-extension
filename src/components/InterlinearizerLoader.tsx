@@ -31,7 +31,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { isSameVerse, toSerializedVerseRef } from '../utils/verse-ref';
+import { segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -334,13 +334,14 @@ function InterlinearizerLoaderInner({
   // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
   // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
   // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
-  // rather than leaving nothing highlighted. Any other reference no segment starts at — the host's
-  // next-verse over-shooting a merged-away start, or a verse absorbed mid-segment — resolves to the
-  // nearest preceding segment start in the same chapter (falling through unchanged when the chapter
-  // has none), so post-merge navigation lands on the segment that contains the verse.
+  // rather than leaving nothing highlighted. A reference contained in any segment's verse range —
+  // including a verse absorbed mid-segment by a merge — passes through unchanged; the views resolve
+  // it to its containing segment. Only a reference no segment contains at all (the host's
+  // next-verse over-shooting the chapter's end) resolves to the nearest preceding segment start in
+  // the same chapter (falling through unchanged when the chapter has none).
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
-    if (book.segments.some((segment) => isSameVerse(segment.startRef, scrRef))) return scrRef;
+    if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;
     if (scrRef.verseNum === 0) return { ...scrRef, verseNum: 1 };
     let preceding: ScriptureRef | undefined;
     book.segments.forEach(({ startRef }) => {

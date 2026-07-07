@@ -526,7 +526,11 @@ export function getInterlinearizerFrame(page: Page): FrameLocator {
  *   timeouts.
  */
 export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> {
-  const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();
+  // Match the Interlinearizer WebView tab but NOT the project-picker dialog's own dock tab ("Open
+  // Interlinearizer"), whose title also contains "Interlinearizer".
+  const interlinearizerTab = page
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
+    .first();
   if (await interlinearizerTab.isVisible()) {
     await interlinearizerTab.click();
   } else {
@@ -597,8 +601,10 @@ const UNSAVED_TAB_MARKER = '●';
  * @returns `true` when the tab title carries the unsaved-changes glyph.
  */
 async function isDraftDirty(page: Page): Promise<boolean> {
+  // Read from the Interlinearizer WebView tab, excluding the project-picker dialog's own dock tab
+  // ("Open Interlinearizer"), whose title also contains "Interlinearizer".
   const tabText = await page
-    .locator('.dock-tab', { hasText: 'Interlinearizer' })
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
     .first()
     .textContent();
   return (tabText ?? '').includes(UNSAVED_TAB_MARKER);
@@ -650,10 +656,12 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
   await expect(saveAsTitle).not.toBeVisible({ timeout: 10_000 });
 
   // The save clears the unsaved marker; wait for it so later dirty checks read the new state.
-  await expect(page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first()).not.toContainText(
-    UNSAVED_TAB_MARKER,
-    { timeout: 10_000 },
-  );
+  // Target the WebView tab, not the project-picker dialog's own "Open Interlinearizer" dock tab.
+  await expect(
+    page
+      .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
+      .first(),
+  ).not.toContainText(UNSAVED_TAB_MARKER, { timeout: 10_000 });
 }
 
 /**
@@ -687,10 +695,17 @@ export async function ensureE2eProjectActive(
   let frame = await openSelectProjectModal(page);
   let dialog = frame.locator('dialog');
 
+  // Anchor the pattern to the start and require the name to be followed by whitespace or
+  // end-of-name, so it targets the E2E project exactly and never a different project whose label
+  // merely contains that text (entry labels carry the analysis languages and an "Active" badge
+  // after the name).
+  const escapedE2eName = E2E_PROJECT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const e2eNamePattern = new RegExp(`^${escapedE2eName}(\\s|$)`);
+
   const activeEntry = dialog.locator('button[aria-current="true"]');
   const activeIsE2e =
     (await activeEntry.count()) > 0 &&
-    ((await activeEntry.first().textContent()) ?? '').includes(E2E_PROJECT_NAME);
+    e2eNamePattern.test((await activeEntry.first().textContent()) ?? '');
 
   if (dirty && !activeIsE2e && rescueDirtyDraft) {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -703,13 +718,9 @@ export async function ensureE2eProjectActive(
 
   const selectTitle = frame.locator('#select-project-modal-title');
   // The entry button's accessible name is the project name followed by the analysis languages (and
-  // an "Active" badge when applicable), so an exact-string match won't work. Anchor the pattern to
-  // the start and require the name to be followed by whitespace or end-of-name, so it targets the
-  // E2E project exactly and never a different project whose label merely contains that text.
-  const escapedE2eName = E2E_PROJECT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const e2eEntry = dialog
-    .getByRole('button', { name: new RegExp(`^${escapedE2eName}(\\s|$)`) })
-    .first();
+  // an "Active" badge when applicable), so an exact-string match won't work; reuse the anchored
+  // e2eNamePattern so it targets the E2E project exactly.
+  const e2eEntry = dialog.getByRole('button', { name: e2eNamePattern }).first();
   if ((await e2eEntry.count()) > 0) {
     await e2eEntry.click();
     if (dirty) {
@@ -760,7 +771,11 @@ export async function wipeDraft(page: Page): Promise<void> {
  *   timeout.
  */
 export async function closeInterlinearizerTab(page: Page): Promise<void> {
-  const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();
+  // Target the Interlinearizer WebView tab, excluding the project-picker dialog's own dock tab
+  // ("Open Interlinearizer"), whose title also contains "Interlinearizer".
+  const interlinearizerTab = page
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
+    .first();
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   await interlinearizerTab.hover();
   await interlinearizerTab.locator('.dock-tab-close-btn').click();

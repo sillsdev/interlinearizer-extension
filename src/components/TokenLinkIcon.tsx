@@ -124,23 +124,29 @@ export function TokenLinkIcon({
    * segment's first word, so the boundary moves forward to the token after it. `false`: focus is
    * the next (right) segment; `prevToken` is the previous segment's last word, so the boundary
    * moves back to start at it.
+   *
+   * The segment whose start ref is being moved is always resolved via `nextToken.ref`: in the
+   * `true` case that is the adjacent (right) segment whose boundary moves forward; in the `false`
+   * case `nextToken` sits in the *focused* segment, whose start moves back to include `prevToken`.
+   * Hence the neutral name `boundarySegment` rather than "adjacent" — it names whichever segment
+   * owns the boundary being moved, which is not always the non-focused neighbor.
    */
   const performBoundaryPull = useCallback(() => {
     /* v8 ignore next -- only invoked from handleLinkClick after the same defined-token guards */
     if (!prevToken || !nextToken) return;
-    const adjacentSegmentId = tokenSegmentMap.get(nextToken.ref);
-    const adjacentSegment =
-      adjacentSegmentId === undefined ? undefined : segmentById.get(adjacentSegmentId);
-    if (!adjacentSegment) return;
-    const currentStart = adjacentSegment.tokens[0]?.ref;
+    const boundarySegmentId = tokenSegmentMap.get(nextToken.ref);
+    const boundarySegment =
+      boundarySegmentId === undefined ? undefined : segmentById.get(boundarySegmentId);
+    if (!boundarySegment) return;
+    const currentStart = boundarySegment.tokens[0]?.ref;
     /* v8 ignore next -- a rendered segment always has at least one token */
     if (currentStart === undefined) return;
     if (focusedSideIsPrev) {
-      const index = adjacentSegment.tokens.findIndex((t) => t.ref === nextToken.ref);
+      const index = boundarySegment.tokens.findIndex((t) => t.ref === nextToken.ref);
       // The new boundary must land on a word token: a boundary ref names where the next segment
       // starts, and the delta's added starts are word refs by contract. Skipping punctuation also
       // keeps punctuation trailing the pulled word (e.g. a comma) traveling with it.
-      const newStart = adjacentSegment.tokens.slice(index + 1).find(isWordToken)?.ref;
+      const newStart = boundarySegment.tokens.slice(index + 1).find(isWordToken)?.ref;
       // No word token remains past the pulled one (at most trailing punctuation), so the adjacent
       // segment merges wholly into the focused one rather than leaving a word-less remainder.
       if (newStart === undefined) segmentationDispatch.merge(currentStart);

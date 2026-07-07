@@ -408,20 +408,33 @@ export async function waitForInterlinearizerReady(timeoutMs = 90_000): Promise<v
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu. Prerequisite stage
  * shared by all e2e tests that require the Interlinearizer to be open.
  *
+ * The startup dock layout varies, so the editor is located resiliently rather than assumed:
+ *
+ * - A truly-fresh core profile opens the default multi-tab layout, which already includes a
+ *   "Scripture Editor" tab (no project loaded).
+ * - A profile whose layout collapsed to a single tab opens only the "Home" tab (no editor).
+ * - A warm CDP instance already has the editor open on a project (tab titled e.g. "WEB (Editable)").
+ *
  * Steps:
  *
- * 1. Click the Scripture Editor dock tab to bring it to the front. The tab is titled "Scripture
- *    Editor" while no project is loaded (fresh app) and by the project short name (e.g. "WEB") once
- *    one is (warm CDP instance) — both are accepted.
- * 2. Enter the Scripture Editor iframe and click the ≡ ("Project") menu button.
- * 3. Click "Open Interlinearizer for this Project".
- * 4. If the "Open Interlinearizer" project-picker dialog appears (it only does when the editor has no
- *    project loaded, e.g. at a fresh start), click the named project. When the editor already has a
- *    project, the command opens the Interlinearizer for it directly with no dialog.
- * 5. Wait for the "Interlinearizer" dock tab and click it to focus it.
+ * 1. Wait for the layout to settle to a known state: either a Scripture Editor tab or the Home tab is
+ *    present. (A bare `count()` races the async dock render — a fresh profile reports zero tabs for
+ *    a beat before the layout mounts.)
+ * 2. If no editor tab is present, open `projectName` from Home (Home tab → project row → "Open"),
+ *    mirroring paranext-core's own `openFromEditorHamburger` helper.
+ * 3. Focus the Scripture Editor tab. Its title (and its iframe's title) is the project short name with
+ *    an editability suffix once a project is loaded (e.g. "WEB (Editable)"), and "Scripture Editor"
+ *    only when no project is loaded — both are accepted.
+ * 4. Enter the Scripture Editor iframe and click the ≡ ("Project") menu button.
+ * 5. Click "Open Interlinearizer for this Project".
+ * 6. If the "Open Interlinearizer" project-picker dialog appears (it only does when the editor has no
+ *    project loaded), click the named project. When the editor already has a project, the command
+ *    opens the Interlinearizer for it directly with no dialog.
+ * 7. Wait for the "Interlinearizer" dock tab and click it to focus it.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param projectName Name of the project to select in the project-picker (default: `"WEB"`).
+ * @param projectName Name of the project to open and select in the project-picker (default:
+ *   `"WEB"`).
  * @returns Resolves when the Interlinearizer tab is focused and visible.
  * @throws If any step does not complete within its timeout.
  */
@@ -429,11 +442,25 @@ export async function openInterlinearizerFromScriptureEditor(
   page: Page,
   projectName = 'WEB',
 ): Promise<void> {
-  // Focus the Scripture Editor tab. Its title (and its iframe's title) is "Scripture Editor" on a
-  // fresh app with no project loaded, and the project short name once one is loaded.
+  // A Scripture Editor tab is titled by the project short name once a project is loaded (e.g.
+  // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded.
   const editorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${projectName})\\b`) })
     .first();
+  const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
+
+  // Wait for the dock layout to actually mount before deciding which path to take — a fresh profile
+  // briefly reports zero tabs, and a non-waiting `count()` would misread that as "no editor".
+  await expect(editorTab.or(homeTab)).toBeVisible({ timeout: 30_000 });
+
+  // If the layout came up without a Scripture Editor (single-tab Home layout), open the project
+  // from Home so the editor (and its ≡ menu) exists before we try to focus it.
+  if ((await editorTab.count()) === 0) {
+    await homeTab.click();
+    const homeFrame = page.frameLocator('iframe[title="Home"]');
+    await homeFrame.locator(`tr:has-text("${projectName}") button:has-text("Open")`).click();
+  }
+
   await expect(editorTab).toBeVisible({ timeout: 15_000 });
   await editorTab.click();
 
@@ -453,7 +480,11 @@ export async function openInterlinearizerFromScriptureEditor(
   // opens a floating "Open Interlinearizer" dock tab with the project list. When the editor
   // already has a project (a warm instance), the Interlinearizer tab opens directly instead.
   const selectProjectDialog = page.locator('.select-project-dialog');
-  const interlinearizerTab = page.locator('.dock-tab', { hasText: 'Interlinearizer' }).first();
+  // Match the Interlinearizer WebView tab ("Interlinearizer") but NOT the project-picker dialog's
+  // own dock tab ("Open Interlinearizer"), whose title also contains "Interlinearizer".
+  const interlinearizerTab = page
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
+    .first();
   await expect(selectProjectDialog.or(interlinearizerTab)).toBeVisible({ timeout: 15_000 });
   if (await selectProjectDialog.isVisible()) {
     const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

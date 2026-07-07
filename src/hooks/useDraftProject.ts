@@ -284,12 +284,17 @@ export default function useDraftProject(
 
   const autosaveSegmentation = useCallback(
     (segmentation: SegmentationDelta | undefined) => {
+      // Treat an empty delta (no removed or added starts) the same as `undefined`: it represents the
+      // default segmentation, so clear the field rather than persisting a redundant custom object.
+      const hasCustomBoundaries =
+        segmentation !== undefined &&
+        (segmentation.removedVerseStarts.length > 0 || segmentation.addedStarts.length > 0);
       const applied = autosaveDraft((current) => {
         const next: DraftProject = { ...current, dirty: true };
         // Store custom boundaries when present; clear the field for the default segmentation so the
         // persisted draft stays minimal.
-        if (segmentation === undefined) delete next.segmentation;
-        else next.segmentation = segmentation;
+        if (hasCustomBoundaries) next.segmentation = segmentation;
+        else delete next.segmentation;
         return next;
       });
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */

@@ -1247,13 +1247,25 @@ describe('InterlinearizerLoader', () => {
       return typeof json === 'string' ? JSON.parse(json).segmentation : undefined;
     }
 
+    /**
+     * Returns the segmentation dispatch captured from the rendered interlinearizer, failing the
+     * test if none was captured.
+     *
+     * @returns The captured `segmentationDispatch`.
+     * @throws If the interlinearizer did not render and capture a dispatch.
+     */
+    function getSegmentationDispatch(): SegmentationDispatch {
+      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
+      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      return dispatch;
+    }
+
     it('persists split, merge, and move boundary edits made through the dispatch', async () => {
       mockBookData({ book: TWO_VERSE_BOOK });
       await act(async () => {
         renderLoader();
       });
-      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
-      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      const dispatch = getSegmentationDispatch();
 
       jest.useFakeTimers();
       // Split verse 1 before "beta" — a non-default delta is persisted.
@@ -1269,11 +1281,17 @@ describe('InterlinearizerLoader', () => {
       act(() => jest.advanceTimersByTime(300));
       expect(lastPersistedSegmentation()?.removedVerseStarts).toContain('GEN 1:2:0');
 
-      // Move the verse-2 boundary back onto "beta".
+      // Move the verse-2 boundary back onto "beta". "beta" (GEN 1:1:6) already begins a segment from
+      // the split above, so the move removes the (already-removed) verse-2 default start and re-adds
+      // the existing "beta" start: the normalized delta is unchanged — verse 1's split boundary and
+      // verse 2's merged boundary both persist.
       act(() => dispatch.move('GEN 1:2:0', 'GEN 1:1:6'));
       act(() => jest.advanceTimersByTime(300));
       jest.useRealTimers();
-      expect(lastPersistedSegmentation()).toBeDefined();
+      expect(lastPersistedSegmentation()).toEqual({
+        removedVerseStarts: ['GEN 1:2:0'],
+        addedStarts: ['GEN 1:1:6'],
+      });
     });
 
     it('re-renders the interlinearizer with the new segments in place after a boundary edit', async () => {
@@ -1286,8 +1304,7 @@ describe('InterlinearizerLoader', () => {
       await act(async () => {
         renderLoader();
       });
-      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
-      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      const dispatch = getSegmentationDispatch();
       expect(capturedInterlinearizerProps?.book.segments).toHaveLength(2);
       const mountsBefore = interlinearizerMountCount;
 
@@ -1307,8 +1324,7 @@ describe('InterlinearizerLoader', () => {
           useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }),
         });
       });
-      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
-      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      const dispatch = getSegmentationDispatch();
 
       // A boundary edit dirties the draft, so the tab marker lights up.
       act(() => dispatch.merge('GEN 1:2:0'));
@@ -1335,8 +1351,7 @@ describe('InterlinearizerLoader', () => {
       await act(async () => {
         renderLoader();
       });
-      const dispatch = capturedInterlinearizerProps?.segmentationDispatch;
-      if (!dispatch) throw new Error('expected a captured segmentationDispatch');
+      const dispatch = getSegmentationDispatch();
 
       jest.useFakeTimers();
       // Merging the book's first token is a no-op, so the result is the default segmentation and the

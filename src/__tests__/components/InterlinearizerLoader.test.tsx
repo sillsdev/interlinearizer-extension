@@ -202,14 +202,18 @@ jest.mock('../../components/modals/ProjectModals', () => ({
   /**
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
    * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
-   * without mounting the full modal tree. Accepts (and ignores) the draft-related props the loader
-   * now passes (`dirty`, `getDraftSnapshot`, `loadFromProject`, `markSynced`).
+   * without mounting the full modal tree. Accepts (and mostly ignores) the draft-related props the
+   * loader now passes (`hasUnsavedWork`, `getDraftSnapshot`, `loadFromProject`, `markSynced`);
+   * `hasUnsavedWork` is surfaced as a `data-*` attribute so tests can assert the loader feeds it
+   * the combined committed-and-pending unsaved state.
    *
    * @param modal - Current modal identifier controlling which stub panel is rendered.
    * @param setModal - Callback to transition to a different modal state.
    * @param activeProject - The currently active interlinear project, or undefined when none is
    *   selected.
    * @param defaultAnalysisLanguage - BCP 47 tag forwarded as the create modal's default language.
+   * @param hasUnsavedWork - Whether the draft has committed-but-unsaved changes or uncommitted
+   *   in-progress typing; gates the discard confirmation in the real component.
    * @param useWebViewState - Injected hook used to read and write persisted WebView state; must
    *   support the `'activeProject'` key.
    * @returns A JSX element containing the stub modal panels keyed by `modal`.
@@ -219,13 +223,14 @@ jest.mock('../../components/modals/ProjectModals', () => ({
     setModal,
     activeProject,
     defaultAnalysisLanguage,
+    hasUnsavedWork,
     useWebViewState,
   }: {
     modal: string;
     setModal: (m: string) => void;
     activeProject: MockProject | undefined;
     defaultAnalysisLanguage?: string;
-    dirty: boolean;
+    hasUnsavedWork: boolean;
     getDraftSnapshot: () => DraftProject | undefined;
     loadFromProject: (project: unknown) => void;
     markSynced: () => void;
@@ -241,6 +246,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-testid="project-modals"
         data-modal={modal}
         data-default-lang={defaultAnalysisLanguage}
+        data-has-unsaved-work={hasUnsavedWork}
         data-active-project-name={activeProject?.name}
       >
         {modal === 'select' && (
@@ -1194,6 +1200,46 @@ describe('InterlinearizerLoader', () => {
         capturedInterlinearizerProps?.onPendingEditsChange?.(false);
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
+    });
+
+    it('reports in-progress typing to ProjectModals as unsaved work so a swap is guarded', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      // The persisted draft is clean, so the modal starts with no unsaved work to guard.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-has-unsaved-work',
+        'false',
+      );
+
+      // A gloss input begins holding uncommitted text. Even though nothing has committed (the draft
+      // stays clean), ProjectModals must now treat the draft as having unsaved work so opening or
+      // creating a project prompts before discarding the in-progress gloss.
+      act(() => {
+        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+      });
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
+    });
+
+    it('drops the unsaved-work guard once in-progress typing is abandoned', async () => {
+      await act(async () => {
+        renderLoader();
+      });
+
+      act(() => {
+        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+      });
+      expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
+
+      // The edit is reverted or the input unmounts with nothing committed: the guard clears.
+      act(() => {
+        capturedInterlinearizerProps?.onPendingEditsChange?.(false);
+      });
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-has-unsaved-work',
+        'false',
+      );
     });
 
     it('logs an error when the saveAnalysis command rejects during Save', async () => {

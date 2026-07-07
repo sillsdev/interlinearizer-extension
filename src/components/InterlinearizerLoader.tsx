@@ -521,7 +521,7 @@ function InterlinearizerLoaderInner({
       <ProjectModals
         activeProject={activeProject}
         defaultAnalysisLanguage={platformLanguage}
-        dirty={dirty}
+        hasUnsavedWork={hasUnsavedChanges}
         getDraftSnapshot={getDraftSnapshot}
         loadFromProject={loadFromProject}
         newDraft={newDraft}

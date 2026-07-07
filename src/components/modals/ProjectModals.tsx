@@ -38,8 +38,10 @@ type PendingReplace =
  *   from WebView state by the parent.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
  *   initial value of the analysis language field; should be the platform UI language.
- * @param props.dirty - Whether the draft has unsaved changes; when true, New / Open are gated
- *   behind the discard confirmation.
+ * @param props.hasUnsavedWork - Whether the draft has unsaved work — either committed-but-unsaved
+ *   changes or uncommitted text still sitting in a gloss input (matching the tab's unsaved marker).
+ *   When true, New / Open are gated behind the discard confirmation so neither kind of unsaved work
+ *   is silently lost by the draft-replacing swap.
  * @param props.getDraftSnapshot - Returns the latest draft envelope (analysis + config) to persist
  *   on Save As.
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
@@ -59,7 +61,7 @@ type PendingReplace =
 export default function ProjectModals({
   activeProject,
   defaultAnalysisLanguage,
-  dirty,
+  hasUnsavedWork,
   getDraftSnapshot,
   loadFromProject,
   newDraft,
@@ -71,7 +73,7 @@ export default function ProjectModals({
 }: Readonly<{
   activeProject: InterlinearProjectSummary | undefined;
   defaultAnalysisLanguage?: string;
-  dirty: boolean;
+  hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   loadFromProject: (project: OpenableProject) => void;
   newDraft: (config: NewDraftConfig) => void;
@@ -215,10 +217,10 @@ export default function ProjectModals({
    * persisted immediately so it shows up in "Select Interlinear Project" right away.
    *
    * `newDraft` is called synchronously before the backend round-trip so the editor is ready
-   * immediately regardless of whether persistence succeeds. This is safe: when dirty is `false` (no
-   * discard confirmation shown), any data in the draft is either already committed to the active
-   * project or the draft was empty — nothing is lost. When dirty is `true` the
-   * {@link DiscardDraftConfirm} dialog has already obtained explicit user consent to discard.
+   * immediately regardless of whether persistence succeeds. This is safe: when `hasUnsavedWork` is
+   * `false` (no discard confirmation shown), any data in the draft is either already committed to
+   * the active project or the draft was empty — nothing is lost. When `hasUnsavedWork` is `true`
+   * the {@link DiscardDraftConfirm} dialog has already obtained explicit user consent to discard.
    *
    * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
    * so the catch block only needs to log — callers do not need to send a second notification. This
@@ -269,16 +271,16 @@ export default function ProjectModals({
 
   /**
    * Called when the user selects a project in the select modal. Opens it immediately, or defers
-   * behind the unsaved-changes confirmation when the draft is dirty.
+   * behind the unsaved-changes confirmation when the draft has unsaved work.
    *
    * @param project - The project the user selected.
    */
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
-      if (dirty) setPendingReplace({ kind: 'open', project });
+      if (hasUnsavedWork) setPendingReplace({ kind: 'open', project });
       else openProject(project);
     },
-    [dirty, openProject],
+    [hasUnsavedWork, openProject],
   );
 
   /**
@@ -306,19 +308,19 @@ export default function ProjectModals({
 
   /**
    * Called when the New dialog is submitted. Creates and persists the project immediately, or
-   * defers behind the unsaved-changes confirmation when the draft is dirty.
+   * defers behind the unsaved-changes confirmation when the draft has unsaved work.
    *
    * @param config - The configuration collected by the New dialog.
    */
   const handleCreateDraft = useCallback(
     async (config: CreateDraftConfig) => {
-      if (dirty) {
+      if (hasUnsavedWork) {
         setPendingReplace({ kind: 'new', config });
         return;
       }
       await createDraftAndClose(config);
     },
-    [createDraftAndClose, dirty],
+    [createDraftAndClose, hasUnsavedWork],
   );
 
   /**

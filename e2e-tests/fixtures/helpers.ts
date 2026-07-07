@@ -443,9 +443,11 @@ export async function openInterlinearizerFromScriptureEditor(
   projectName = 'WEB',
 ): Promise<void> {
   // A Scripture Editor tab is titled by the project short name once a project is loaded (e.g.
-  // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded.
+  // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded. Escape projectName so
+  // a short name with regex metacharacters can't corrupt the pattern.
+  const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const editorTab = page
-    .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${projectName})\\b`) })
+    .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
   const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
 
@@ -487,7 +489,6 @@ export async function openInterlinearizerFromScriptureEditor(
     .first();
   await expect(selectProjectDialog.or(interlinearizerTab)).toBeVisible({ timeout: 15_000 });
   if (await selectProjectDialog.isVisible()) {
-    const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
     await selectProjectDialog.getByRole('button', { name: projectNameRegex }).click();
   }
@@ -505,7 +506,11 @@ export async function openInterlinearizerFromScriptureEditor(
  * @returns A `FrameLocator` scoped to the Interlinearizer WebView iframe.
  */
 export function getInterlinearizerFrame(page: Page): FrameLocator {
-  return page.frameLocator('iframe[title*="Interlinearizer" i]');
+  // Anchor on titles that START with "Interlinearizer" so this never matches the project-picker
+  // dialog ("Open Interlinearizer"), whose title also contains the word. The real WebView title is
+  // "Interlinearizer" (optionally suffixed with the unsaved-changes marker), so a prefix match keeps
+  // the dirty-state title while excluding the "Open …" picker.
+  return page.frameLocator('iframe[title^="Interlinearizer" i]');
 }
 
 /**
@@ -697,7 +702,14 @@ export async function ensureE2eProjectActive(
   }
 
   const selectTitle = frame.locator('#select-project-modal-title');
-  const e2eEntry = dialog.getByRole('button', { name: new RegExp(E2E_PROJECT_NAME) }).first();
+  // The entry button's accessible name is the project name followed by the analysis languages (and
+  // an "Active" badge when applicable), so an exact-string match won't work. Anchor the pattern to
+  // the start and require the name to be followed by whitespace or end-of-name, so it targets the
+  // E2E project exactly and never a different project whose label merely contains that text.
+  const escapedE2eName = E2E_PROJECT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const e2eEntry = dialog
+    .getByRole('button', { name: new RegExp(`^${escapedE2eName}(\\s|$)`) })
+    .first();
   if ((await e2eEntry.count()) > 0) {
     await e2eEntry.click();
     if (dirty) {

@@ -4,6 +4,7 @@ import {
   ElectronApplication,
   expect,
   FrameLocator,
+  Locator,
   Page,
 } from '@playwright/test';
 import fs from 'fs';
@@ -445,7 +446,7 @@ export async function openInterlinearizerFromScriptureEditor(
   // A Scripture Editor tab is titled by the project short name once a project is loaded (e.g.
   // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded. Escape projectName so
   // a short name with regex metacharacters can't corrupt the pattern.
-  const escapedProjectName = projectName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapedProjectName = escapeRegExp(projectName);
   const editorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
@@ -482,11 +483,7 @@ export async function openInterlinearizerFromScriptureEditor(
   // opens a floating "Open Interlinearizer" dock tab with the project list. When the editor
   // already has a project (a warm instance), the Interlinearizer tab opens directly instead.
   const selectProjectDialog = page.locator('.select-project-dialog');
-  // Match the Interlinearizer WebView tab ("Interlinearizer") but NOT the project-picker dialog's
-  // own dock tab ("Open Interlinearizer"), whose title also contains "Interlinearizer".
-  const interlinearizerTab = page
-    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
-    .first();
+  const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(selectProjectDialog.or(interlinearizerTab)).toBeVisible({ timeout: 15_000 });
   if (await selectProjectDialog.isVisible()) {
     const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
@@ -514,6 +511,32 @@ export function getInterlinearizerFrame(page: Page): FrameLocator {
 }
 
 /**
+ * Locator for the Interlinearizer WebView's dock tab. Matches the tab whose title contains
+ * "Interlinearizer" while excluding the project-picker dialog's own dock tab ("Open
+ * Interlinearizer"), whose title also contains the word. Centralizes the exclusion so callers can't
+ * forget it (the `getInterlinearizerFrame` iframe uses a prefix match for the same purpose).
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @returns A `Locator` for the Interlinearizer WebView dock tab.
+ */
+function interlinearizerTabLocator(page: Page): Locator {
+  return page
+    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
+    .first();
+}
+
+/**
+ * Escape a literal string so it can be embedded in a `RegExp` without its metacharacters being
+ * interpreted (e.g. a project short name containing `.` or `(`).
+ *
+ * @param literal The raw string to escape.
+ * @returns The string with all regex metacharacters backslash-escaped.
+ */
+function escapeRegExp(literal: string): string {
+  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
  * Ensure the Interlinearizer is open and focused, reusing an existing tab when one is present.
  * Standard precondition for feature tests running against the shared CDP instance: an existing
  * Interlinearizer tab is trusted to be on the WEB project (the shared instance is only ever used
@@ -526,11 +549,16 @@ export function getInterlinearizerFrame(page: Page): FrameLocator {
  *   timeouts.
  */
 export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> {
-  // Match the Interlinearizer WebView tab but NOT the project-picker dialog's own dock tab ("Open
-  // Interlinearizer"), whose title also contains "Interlinearizer".
-  const interlinearizerTab = page
-    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
-    .first();
+  const interlinearizerTab = interlinearizerTabLocator(page);
+
+  // Settle the dock layout before the non-retrying isVisible() branch below. The readiness helpers
+  // only poll rpc.discover, not the DOM, so without this a not-yet-painted Interlinearizer tab (or
+  // one just closed by a prior test) would read as "absent" and send us needlessly down the full
+  // open-from-editor flow. Wait until either the Interlinearizer tab or some editor/Home anchor tab
+  // is mounted, so isVisible() reflects a settled layout.
+  const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|Home|WEB/ }).first();
+  await expect(interlinearizerTab.or(anchorTab)).toBeVisible({ timeout: 30_000 });
+
   if (await interlinearizerTab.isVisible()) {
     await interlinearizerTab.click();
   } else {
@@ -588,8 +616,10 @@ export const E2E_PROJECT_NAME = 'E2E Test Project';
 const RESCUE_PROJECT_PREFIX = 'e2e-rescued-work';
 
 /**
- * Glyph the Interlinearizer appends to its dock tab title while the draft has unsaved changes. Keep
- * in sync with UNSAVED_TAB_MARKER in src/components/InterlinearizerLoader.tsx.
+ * Glyph the Interlinearizer appends to its dock tab title while the draft has unsaved changes. Only
+ * the glyph must match production's UNSAVED_TAB_MARKER in src/components/InterlinearizerLoader.tsx
+ * (which prefixes it with a space); this constant is used exclusively in substring checks, so the
+ * surrounding whitespace is deliberately not replicated.
  */
 const UNSAVED_TAB_MARKER = '●';
 
@@ -601,12 +631,7 @@ const UNSAVED_TAB_MARKER = '●';
  * @returns `true` when the tab title carries the unsaved-changes glyph.
  */
 async function isDraftDirty(page: Page): Promise<boolean> {
-  // Read from the Interlinearizer WebView tab, excluding the project-picker dialog's own dock tab
-  // ("Open Interlinearizer"), whose title also contains "Interlinearizer".
-  const tabText = await page
-    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
-    .first()
-    .textContent();
+  const tabText = await interlinearizerTabLocator(page).textContent();
   return (tabText ?? '').includes(UNSAVED_TAB_MARKER);
 }
 
@@ -656,12 +681,9 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
   await expect(saveAsTitle).not.toBeVisible({ timeout: 10_000 });
 
   // The save clears the unsaved marker; wait for it so later dirty checks read the new state.
-  // Target the WebView tab, not the project-picker dialog's own "Open Interlinearizer" dock tab.
-  await expect(
-    page
-      .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
-      .first(),
-  ).not.toContainText(UNSAVED_TAB_MARKER, { timeout: 10_000 });
+  await expect(interlinearizerTabLocator(page)).not.toContainText(UNSAVED_TAB_MARKER, {
+    timeout: 10_000,
+  });
 }
 
 /**
@@ -695,17 +717,17 @@ export async function ensureE2eProjectActive(
   let frame = await openSelectProjectModal(page);
   let dialog = frame.locator('dialog');
 
-  // Anchor the pattern to the start and require the name to be followed by whitespace or
-  // end-of-name, so it targets the E2E project exactly and never a different project whose label
-  // merely contains that text (entry labels carry the analysis languages and an "Active" badge
-  // after the name).
-  const escapedE2eName = E2E_PROJECT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const e2eNamePattern = new RegExp(`^${escapedE2eName}(\\s|$)`);
-
+  // Locate the E2E entry by its project-name element with an EXACT text match, then walk up to the
+  // enclosing entry button. Matching the whole button's accessible name doesn't work: the modal
+  // renders the name, an optional "Active" badge, and the analysis languages as adjacent inline
+  // <span>s with no separating whitespace, so the accessible name reads "E2E Test Projecten" —
+  // there is no space after the name to anchor on. An exact-text match on the name element also
+  // avoids matching a different project whose name merely starts with E2E_PROJECT_NAME (e.g. "E2E
+  // Test Project 2"). Keep in sync with SelectInterlinearProjectModal's entry markup.
   const activeEntry = dialog.locator('button[aria-current="true"]');
   const activeIsE2e =
     (await activeEntry.count()) > 0 &&
-    e2eNamePattern.test((await activeEntry.first().textContent()) ?? '');
+    (await activeEntry.first().getByText(E2E_PROJECT_NAME, { exact: true }).count()) > 0;
 
   if (dirty && !activeIsE2e && rescueDirtyDraft) {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -717,10 +739,10 @@ export async function ensureE2eProjectActive(
   }
 
   const selectTitle = frame.locator('#select-project-modal-title');
-  // The entry button's accessible name is the project name followed by the analysis languages (and
-  // an "Active" badge when applicable), so an exact-string match won't work; reuse the anchored
-  // e2eNamePattern so it targets the E2E project exactly.
-  const e2eEntry = dialog.getByRole('button', { name: e2eNamePattern }).first();
+  // Rebuilt against the (possibly re-opened) dialog so it targets the current modal instance.
+  const e2eEntry = dialog
+    .locator('button', { has: frame.getByText(E2E_PROJECT_NAME, { exact: true }) })
+    .first();
   if ((await e2eEntry.count()) > 0) {
     await e2eEntry.click();
     if (dirty) {
@@ -735,6 +757,13 @@ export async function ensureE2eProjectActive(
     await expect(createTitle).toBeVisible({ timeout: 5_000 });
     await frame.locator('#project-name').fill(E2E_PROJECT_NAME);
     await frame.locator('dialog').getByRole('button', { name: 'Create' }).click();
+    // Creating a draft over a dirty one defers behind the discard confirmation instead of closing
+    // the create modal (handleCreateDraft in ProjectModals.tsx), so dismiss it when dirty.
+    if (dirty) {
+      const discardConfirm = frame.getByTestId('discard-draft-confirm');
+      await expect(discardConfirm).toBeVisible({ timeout: 5_000 });
+      await discardConfirm.click();
+    }
     await expect(createTitle).not.toBeVisible({ timeout: 10_000 });
   }
   await expect(selectTitle).not.toBeVisible({ timeout: 10_000 });
@@ -767,17 +796,15 @@ export async function wipeDraft(page: Page): Promise<void> {
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves when the Interlinearizer tab is gone.
- * @throws If the tab or its close button is not visible, or the tab does not close within the
- *   timeout.
+ * @throws If the tab is not visible, or the tab does not close within the timeout.
  */
 export async function closeInterlinearizerTab(page: Page): Promise<void> {
-  // Target the Interlinearizer WebView tab, excluding the project-picker dialog's own dock tab
-  // ("Open Interlinearizer"), whose title also contains "Interlinearizer".
-  const interlinearizerTab = page
-    .locator('.dock-tab', { hasText: 'Interlinearizer', hasNotText: 'Open Interlinearizer' })
-    .first();
+  const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
-  await interlinearizerTab.hover();
-  await interlinearizerTab.locator('.dock-tab-close-btn').click();
+  // Dispatch the click rather than hover()+click(): the close button is only laid out on hover, and
+  // on small CI viewports the tab can overflow the tab strip and sit outside the viewport, where a
+  // real click (even with force) fails. dispatchEvent doesn't require the element to be in-viewport.
+  // Mirrors paranext-core's own dock-tab close helpers.
+  await interlinearizerTab.locator('.dock-tab-close-btn').dispatchEvent('click');
   await expect(interlinearizerTab).not.toBeVisible({ timeout: 10_000 });
 }

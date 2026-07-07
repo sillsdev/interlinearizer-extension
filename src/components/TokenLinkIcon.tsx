@@ -127,7 +127,7 @@ export function TokenLinkIcon({
    *
    * The segment whose start ref is being moved is always resolved via `nextToken.ref`: in the
    * `true` case that is the adjacent (right) segment whose boundary moves forward; in the `false`
-   * case `nextToken` sits in the *focused* segment, whose start moves back to include `prevToken`.
+   * case `nextToken` sits in the _focused_ segment, whose start moves back to include `prevToken`.
    * Hence the neutral name `boundarySegment` rather than "adjacent" — it names whichever segment
    * owns the boundary being moved, which is not always the non-focused neighbor.
    */

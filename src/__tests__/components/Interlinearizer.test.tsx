@@ -17,6 +17,7 @@ import {
   type SegmentationDispatch,
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
+import type { SegmentLabel } from '../../utils/segment-labels';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { defaultScrRef, GEN_1_1_BOOK, makePhraseLink } from '../test-helpers';
 import { allFalseViewOptions } from './test-helpers';
@@ -65,8 +66,8 @@ let capturedSegmentation: SegmentationContextValue | undefined;
 type CapturedSegmentViewProps = {
   /** The segment the component is asked to render. */
   segment: Segment;
-  /** The segment's display label parts (per-chapter number + contained verse range). */
-  label?: { ordinal: number; verseRange: string };
+  /** The segment's display label — a verse number, lettered portion, or en-dash range. */
+  label?: SegmentLabel;
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
   /** The `Token.ref` string of the currently focused token, if any. */

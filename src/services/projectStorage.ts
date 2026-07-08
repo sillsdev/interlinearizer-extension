@@ -48,8 +48,31 @@ const projectQueues = new Map<string, Promise<unknown>>();
 const draftQueues = new Map<string, Promise<unknown>>();
 
 /**
- * Enqueues `fn` on the index serialization queue and returns a promise that resolves or rejects
- * with `fn`'s result. The queue always advances regardless of whether `fn` throws.
+ * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
+ * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws, so a
+ * failed operation does not block later ones. Shared by {@link enqueueIndexOp} and
+ * {@link enqueuePendingCleanupOp}, which differ only in which module-level queue they advance.
+ *
+ * @param get - Returns the current tail of the queue to chain `fn` after.
+ * @param set - Stores the new tail of the queue (a promise that settles once `fn` settles).
+ * @param fn - The async function to serialize.
+ * @returns A promise that resolves or rejects with the return value of `fn`.
+ * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
+ *   blocked.
+ */
+function enqueueOnQueue<T>(
+  get: () => Promise<unknown>,
+  set: (queue: Promise<unknown>) => void,
+  fn: () => Promise<T>,
+): Promise<T> {
+  const result = get().then(fn);
+  set(result.catch(() => {}));
+  return result;
+}
+
+/**
+ * Enqueues `fn` on the index serialization queue. Thin wrapper over {@link enqueueOnQueue} bound to
+ * {@link indexQueue}.
  *
  * @param fn - The async function to serialize.
  * @returns A promise that resolves or rejects with the return value of `fn`.
@@ -57,14 +80,18 @@ const draftQueues = new Map<string, Promise<unknown>>();
  *   blocked.
  */
 function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
-  const result = indexQueue.then(fn);
-  indexQueue = result.catch(() => {});
-  return result;
+  return enqueueOnQueue(
+    () => indexQueue,
+    (q) => {
+      indexQueue = q;
+    },
+    fn,
+  );
 }
 
 /**
- * Enqueues `fn` on the pending-cleanup serialization queue and returns a promise that resolves or
- * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws.
+ * Enqueues `fn` on the pending-cleanup serialization queue. Thin wrapper over {@link enqueueOnQueue}
+ * bound to {@link pendingCleanupQueue}.
  *
  * @param fn - The async function to serialize.
  * @returns A promise that resolves or rejects with the return value of `fn`.
@@ -72,9 +99,13 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
  *   blocked.
  */
 function enqueuePendingCleanupOp<T>(fn: () => Promise<T>): Promise<T> {
-  const result = pendingCleanupQueue.then(fn);
-  pendingCleanupQueue = result.catch(() => {});
-  return result;
+  return enqueueOnQueue(
+    () => pendingCleanupQueue,
+    (q) => {
+      pendingCleanupQueue = q;
+    },
+    fn,
+  );
 }
 
 /**
@@ -151,6 +182,27 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
+ * Reads and JSON-parses the string-array stored at `key`, treating a never-written key as an empty
+ * array. Shared by {@link readIds} and {@link readPendingCleanup}. Does not validate the parsed
+ * shape; callers that must tolerate corruption layer their own validation on top.
+ *
+ * @param token - The execution token for storage access.
+ * @param key - The storage key to read.
+ * @returns The parsed value, or an empty array if `key` has never been written (ENOENT).
+ * @throws {SyntaxError} If the stored value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
+ *   I/O error).
+ */
+async function readJsonArray(token: ExecutionToken, key: string): Promise<string[]> {
+  try {
+    return JSON.parse(await papi.storage.readUserData(token, key));
+  } catch (e) {
+    if (isNotFound(e)) return [];
+    throw e;
+  }
+}
+
+/**
  * Reads the stored list of project IDs.
  *
  * @param token - The execution token for storage access.
@@ -160,31 +212,41 @@ function isNotFound(e: unknown): boolean {
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
  *   I/O error).
  */
-async function readIds(token: ExecutionToken): Promise<string[]> {
-  try {
-    return JSON.parse(await papi.storage.readUserData(token, PROJECT_IDS_KEY));
-  } catch (e) {
-    if (isNotFound(e)) return [];
-    throw e;
-  }
+function readIds(token: ExecutionToken): Promise<string[]> {
+  return readJsonArray(token, PROJECT_IDS_KEY);
 }
 
 /**
- * Reads the stored set of orphaned project IDs awaiting cleanup.
+ * Reads the stored set of orphaned project IDs awaiting cleanup, tolerating corruption so a bad
+ * value can never wedge {@link sweepPendingCleanup} (which runs fire-and-forget at activation, where
+ * a thrown error would be invisible and would recur on every launch). A value that is missing
+ * (ENOENT), unparseable, or not an array of strings is treated as an empty set: the sweep then has
+ * nothing to do and its terminal rewrite replaces the bad value with a valid one, self-healing the
+ * key.
  *
  * @param token - The execution token for storage access.
- * @returns The stored pending-cleanup ID array, or an empty array if `pendingCleanup` has never
- *   been written (ENOENT).
- * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
+ * @returns The stored pending-cleanup ID array, or an empty array when the value is missing or
+ *   corrupt.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
+  let parsed: unknown;
   try {
-    return JSON.parse(await papi.storage.readUserData(token, PENDING_CLEANUP_KEY));
+    parsed = await readJsonArray(token, PENDING_CLEANUP_KEY);
   } catch (e) {
-    if (isNotFound(e)) return [];
+    if (e instanceof SyntaxError) {
+      logger.warn('Interlinearizer: pending-cleanup set contains invalid JSON; resetting to empty');
+      return [];
+    }
     throw e;
   }
+  if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === 'string')) {
+    logger.warn(
+      'Interlinearizer: pending-cleanup set is not an array of strings; resetting to empty',
+    );
+    return [];
+  }
+  return parsed;
 }
 
 /**
@@ -195,9 +257,9 @@ async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
  * @param token - The execution token for storage access.
  * @param id - The orphaned project UUID to record for later cleanup.
  * @returns A promise that resolves once the id has been persisted (or was already present).
- * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason.
+ *   reason. A corrupt `pendingCleanup` value is not thrown; {@link readPendingCleanup} resets it to
+ *   an empty set.
  */
 function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> {
   return enqueuePendingCleanupOp(async () => {
@@ -209,10 +271,18 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
 
 /**
  * Retries deleting the orphaned project records recorded in the `pendingCleanup` set (see
- * {@link createProject}). For each recorded id, attempts to delete its `project:{id}` record,
- * treating ENOENT as success (the record is already gone). Ids whose deletion succeeds are removed
- * from the set; ids that fail again are left in place for the next attempt. Intended to run
- * opportunistically at activation.
+ * {@link createProject}). For each recorded id:
+ *
+ * - If the id is still present in the `projectIds` index, it belongs to a live project — its record
+ *   must not be deleted. The id is dropped from the set without touching its record; it should
+ *   never have been recorded (or has since become live) and is not an orphan to clean.
+ * - Otherwise the record is an orphan: its `project:{id}` deletion is attempted, treating ENOENT as
+ *   success (already gone). On success the id is dropped from the set; on failure it is retained
+ *   for the next attempt and logged.
+ *
+ * Consulting the index guards against destroying a live project's record if an id ever lands in the
+ * set while still indexed (e.g. an index write that persists but then reports failure). Intended to
+ * run opportunistically at activation.
  *
  * The whole read-delete-rewrite cycle is serialized through {@link pendingCleanupQueue} so it cannot
  * interleave with a concurrent {@link recordPendingCleanup} and drop a newly recorded orphan. The
@@ -220,8 +290,8 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  * distinct key.
  *
  * @param token - The execution token for storage access.
- * @returns A promise resolving to the number of orphaned records successfully cleaned up this pass.
- * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
+ * @returns A promise resolving to the number of orphaned records successfully deleted this pass
+ *   (live ids dropped from the set without deleting their record are not counted).
  * @throws If reading the set or rewriting it (`papi.storage.writeUserData`) rejects for a
  *   non-ENOENT reason. A per-record delete failure is not thrown; the id is retained instead.
  */
@@ -229,23 +299,30 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
   return enqueuePendingCleanupOp(async () => {
     const ids = await readPendingCleanup(token);
     if (ids.length === 0) return 0;
-    const deletions = await Promise.all(
+    const indexed = new Set(await readIds(token));
+    // For each id, decide whether to keep it in the set and whether its record was cleaned.
+    const outcomes = await Promise.all(
       ids.map(async (id) => {
+        if (indexed.has(id)) {
+          // Live project: never delete its record. Drop it from the set as a non-orphan.
+          logger.warn(`Interlinearizer: pending-cleanup id ${id} is a live project; not deleting`);
+          return { keep: false, cleaned: false };
+        }
         try {
           await papi.storage.deleteUserData(token, projectKey(id));
-          return true;
+          return { keep: false, cleaned: true };
         } catch (e) {
-          if (isNotFound(e)) return true;
+          if (isNotFound(e)) return { keep: false, cleaned: true };
           logger.error(`Interlinearizer: cleanup of orphaned project ${id} failed again:`, e);
-          return false;
+          return { keep: true, cleaned: false };
         }
       }),
     );
-    const remaining = ids.filter((_id, i) => !deletions[i]);
+    const remaining = ids.filter((_id, i) => outcomes[i].keep);
     if (remaining.length !== ids.length) {
       await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify(remaining));
     }
-    return ids.length - remaining.length;
+    return outcomes.filter((o) => o.cleaned).length;
   });
 }
 

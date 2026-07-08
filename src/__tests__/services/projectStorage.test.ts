@@ -601,6 +601,64 @@ describe('projectStorage', () => {
       expect(cleaned).toBe(0);
       expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
+
+    it('never deletes the record of an id still present in the index', async () => {
+      // 'live' is both recorded for cleanup and still in the index (e.g. an index write that
+      // persisted but reported failure). Its backing record must not be deleted.
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+        if (key === 'pendingCleanup') return Promise.resolve(JSON.stringify(['live', 'orphan']));
+        if (key === 'projectIds') return Promise.resolve(JSON.stringify(['live']));
+        return Promise.reject(enoentError());
+      });
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(__mockDeleteUserData).not.toHaveBeenCalledWith(token, 'project:live');
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'project:orphan');
+      // 'live' is only a real orphan record when deleted; it was skipped, so it is not counted.
+      expect(cleaned).toBe(1);
+    });
+
+    it('drops a live id from the set without counting or deleting it', async () => {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) => {
+        if (key === 'pendingCleanup') return Promise.resolve(JSON.stringify(['live']));
+        if (key === 'projectIds') return Promise.resolve(JSON.stringify(['live']));
+        return Promise.reject(enoentError());
+      });
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(0);
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      // The set is rewritten to drop the non-orphan id even though nothing was deleted.
+      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
+    });
+
+    it('resets a pending-cleanup value containing invalid JSON to empty instead of wedging', async () => {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'pendingCleanup' ? Promise.resolve('{ not json') : Promise.reject(enoentError()),
+      );
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(0);
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('invalid JSON'));
+    });
+
+    it('resets a pending-cleanup value that is not an array of strings to empty', async () => {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'pendingCleanup'
+          ? Promise.resolve(JSON.stringify([1, 2, 3]))
+          : Promise.reject(enoentError()),
+      );
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(0);
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('not an array'));
+    });
   });
 
   describe('updateAnalysis', () => {

@@ -410,6 +410,13 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 
   executionToken = context.executionToken;
 
+  // Opportunistically retry deleting any project records orphaned by a failed rollback on a prior
+  // run (see projectStorage.createProject). Fire-and-forget: a cleanup failure must never block or
+  // fail activation, and the sweep will run again on the next activation.
+  projectStorage.sweepPendingCleanup(executionToken).catch((e) => {
+    logger.error('Interlinearizer: pending-cleanup sweep failed during activation:', e);
+  });
+
   const mainWebViewProviderRegistration = await papi.webViewProviders.registerWebViewProvider(
     mainWebViewType,
     mainWebViewProvider,

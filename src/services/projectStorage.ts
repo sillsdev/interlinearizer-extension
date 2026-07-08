@@ -12,11 +12,26 @@ import { isDraftProject } from '../types/type-guards';
 const PROJECT_IDS_KEY = 'projectIds';
 
 /**
+ * Storage key holding the set of project IDs whose records were orphaned by a failed rollback (see
+ * {@link createProject}). Each entry is a `project:{id}` record that was written but never added to
+ * the index and could not be deleted at the time; {@link sweepPendingCleanup} retries their
+ * deletion.
+ */
+const PENDING_CLEANUP_KEY = 'pendingCleanup';
+
+/**
  * Serializes all read-modify-write operations on the shared `projectIds` index. Every operation
  * that reads then writes the index must be enqueued here so concurrent calls (e.g. from two open
  * WebView tabs) cannot interleave at await boundaries and silently overwrite each other's updates.
  */
 let indexQueue: Promise<unknown> = Promise.resolve();
+
+/**
+ * Serializes all read-modify-write operations on the shared `pendingCleanup` set. Recording a new
+ * orphan (from a failed rollback) and the sweep that retries deletions must not interleave at await
+ * boundaries, or one could overwrite the other's changes to the set.
+ */
+let pendingCleanupQueue: Promise<unknown> = Promise.resolve();
 
 /**
  * Per-project serialization queues. Keyed by project ID; each entry serializes all
@@ -44,6 +59,21 @@ const draftQueues = new Map<string, Promise<unknown>>();
 function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
   const result = indexQueue.then(fn);
   indexQueue = result.catch(() => {});
+  return result;
+}
+
+/**
+ * Enqueues `fn` on the pending-cleanup serialization queue and returns a promise that resolves or
+ * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws.
+ *
+ * @param fn - The async function to serialize.
+ * @returns A promise that resolves or rejects with the return value of `fn`.
+ * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
+ *   blocked.
+ */
+function enqueuePendingCleanupOp<T>(fn: () => Promise<T>): Promise<T> {
+  const result = pendingCleanupQueue.then(fn);
+  pendingCleanupQueue = result.catch(() => {});
   return result;
 }
 
@@ -140,6 +170,86 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
 }
 
 /**
+ * Reads the stored set of orphaned project IDs awaiting cleanup.
+ *
+ * @param token - The execution token for storage access.
+ * @returns The stored pending-cleanup ID array, or an empty array if `pendingCleanup` has never
+ *   been written (ENOENT).
+ * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
+ */
+async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
+  try {
+    return JSON.parse(await papi.storage.readUserData(token, PENDING_CLEANUP_KEY));
+  } catch (e) {
+    if (isNotFound(e)) return [];
+    throw e;
+  }
+}
+
+/**
+ * Records `id` in the persistent `pendingCleanup` set so a later {@link sweepPendingCleanup} can
+ * retry deleting its orphaned `project:{id}` record. Serialized through {@link pendingCleanupQueue}
+ * and idempotent: an id already in the set is not added twice.
+ *
+ * @param token - The execution token for storage access.
+ * @param id - The orphaned project UUID to record for later cleanup.
+ * @returns A promise that resolves once the id has been persisted (or was already present).
+ * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
+ * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
+ *   reason.
+ */
+function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> {
+  return enqueuePendingCleanupOp(async () => {
+    const ids = await readPendingCleanup(token);
+    if (ids.includes(id)) return;
+    await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([...ids, id]));
+  });
+}
+
+/**
+ * Retries deleting the orphaned project records recorded in the `pendingCleanup` set (see
+ * {@link createProject}). For each recorded id, attempts to delete its `project:{id}` record,
+ * treating ENOENT as success (the record is already gone). Ids whose deletion succeeds are removed
+ * from the set; ids that fail again are left in place for the next attempt. Intended to run
+ * opportunistically at activation.
+ *
+ * The whole read-delete-rewrite cycle is serialized through {@link pendingCleanupQueue} so it cannot
+ * interleave with a concurrent {@link recordPendingCleanup} and drop a newly recorded orphan. The
+ * per-record deletions run concurrently within the cycle; the set is small and each targets a
+ * distinct key.
+ *
+ * @param token - The execution token for storage access.
+ * @returns A promise resolving to the number of orphaned records successfully cleaned up this pass.
+ * @throws {SyntaxError} If the `pendingCleanup` storage value contains invalid JSON.
+ * @throws If reading the set or rewriting it (`papi.storage.writeUserData`) rejects for a
+ *   non-ENOENT reason. A per-record delete failure is not thrown; the id is retained instead.
+ */
+export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
+  return enqueuePendingCleanupOp(async () => {
+    const ids = await readPendingCleanup(token);
+    if (ids.length === 0) return 0;
+    const deletions = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          await papi.storage.deleteUserData(token, projectKey(id));
+          return true;
+        } catch (e) {
+          if (isNotFound(e)) return true;
+          logger.error(`Interlinearizer: cleanup of orphaned project ${id} failed again:`, e);
+          return false;
+        }
+      }),
+    );
+    const remaining = ids.filter((_id, i) => !deletions[i]);
+    if (remaining.length !== ids.length) {
+      await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify(remaining));
+    }
+    return ids.length - remaining.length;
+  });
+}
+
+/**
  * Creates a new interlinearizer project with empty analysis data and writes it to extension
  * storage. Appends the project ID to the stored index. `createdAt` and `updatedAt` are set to the
  * same creation timestamp.
@@ -155,8 +265,10 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
  * @param description - Optional user-facing description for the project.
  * @returns The newly created project record.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
- * @throws If `papi.storage.writeUserData` (project or index) or rollback via
- *   `papi.storage.deleteUserData` rejects for a non-ENOENT reason.
+ * @throws If the project or index `papi.storage.writeUserData` rejects. On an index-write failure
+ *   the original error is rethrown after best-effort rollback; a failed rollback does not throw —
+ *   the orphaned record is instead recorded for a later {@link sweepPendingCleanup} (and a failure
+ *   to even record it is logged and swallowed).
  */
 export async function createProject(
   token: ExecutionToken,
@@ -192,6 +304,12 @@ export async function createProject(
       await papi.storage.deleteUserData(token, projectKey(id));
     } catch (rollbackError) {
       logger.error(`Failed to roll back project ${id} after index write failure:`, rollbackError);
+      // The orphaned record was written but never indexed and could not be deleted. Record it so a
+      // later sweep retries the deletion; a failure to even record it is logged and swallowed so it
+      // never masks the original index error the caller needs to see.
+      await recordPendingCleanup(token, id).catch((recordError) => {
+        logger.error(`Failed to record orphaned project ${id} for cleanup:`, recordError);
+      });
     }
     throw indexError;
   }
@@ -439,6 +557,7 @@ export async function saveDraft(
  */
 export function resetQueuesForTesting(): void {
   indexQueue = Promise.resolve();
+  pendingCleanupQueue = Promise.resolve();
   projectQueues.clear();
   draftQueues.clear();
 }

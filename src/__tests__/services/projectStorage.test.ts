@@ -11,6 +11,7 @@ import {
   listProjects,
   resetQueuesForTesting,
   saveDraft,
+  sweepPendingCleanup,
   updateAnalysis,
   updateProjectMetadata,
 } from '../../services/projectStorage';
@@ -191,6 +192,78 @@ describe('projectStorage', () => {
       await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
 
       expect(__mockLogger.error).toHaveBeenCalled();
+    });
+
+    it('records the orphaned project for cleanup when rollback fails', async () => {
+      // Index read (ENOENT → []) and the later pendingCleanup read (ENOENT → []) both miss.
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+      __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
+
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'pendingCleanup',
+        JSON.stringify(['00000000-0000-0000-0000-000000000001']),
+      );
+    });
+
+    it('logs and swallows a failure to record the orphan so the index error still surfaces', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+      // project write ok; index write fails; pendingCleanup write also fails.
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(new Error('disk full'))
+        .mockRejectedValueOnce(new Error('cleanup write failed'));
+      __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
+
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('record orphaned project'),
+        expect.any(Error),
+      );
+    });
+
+    it('does not re-record an orphan already in the pending-cleanup set', async () => {
+      const orphanId = '00000000-0000-0000-0000-000000000001';
+      // Index read → ENOENT ([]); pendingCleanup read → already contains this orphan.
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'pendingCleanup'
+          ? Promise.resolve(JSON.stringify([orphanId]))
+          : Promise.reject(enoentError()),
+      );
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+      __mockDeleteUserData.mockRejectedValue(new Error('rollback failed'));
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
+
+      expect(__mockWriteUserData).not.toHaveBeenCalledWith(
+        token,
+        'pendingCleanup',
+        expect.anything(),
+      );
+    });
+
+    it('does not record the orphan when the rollback delete succeeds', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+      __mockWriteUserData
+        .mockResolvedValueOnce(undefined) // project write succeeds
+        .mockRejectedValueOnce(new Error('disk full')); // index write fails
+      // deleteUserData resolves (default mock) → rollback succeeds, nothing to record.
+
+      await expect(createProject(token, 'src-proj', ['en'])).rejects.toThrow('disk full');
+
+      expect(__mockWriteUserData).not.toHaveBeenCalledWith(
+        token,
+        'pendingCleanup',
+        expect.anything(),
+      );
     });
   });
 
@@ -442,6 +515,91 @@ describe('projectStorage', () => {
       await deleteProject(token, 'nonexistent-id');
 
       expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'projectIds', JSON.stringify([]));
+    });
+  });
+
+  describe('sweepPendingCleanup', () => {
+    /**
+     * Makes `readUserData` return `pendingCleanup` as the given id list and ENOENT for every other
+     * key, so a sweep sees exactly `ids` as its work set.
+     *
+     * @param ids - The project IDs the pending-cleanup set should contain.
+     */
+    function stubPendingCleanup(ids: string[]): void {
+      __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'pendingCleanup'
+          ? Promise.resolve(JSON.stringify(ids))
+          : Promise.reject(enoentError()),
+      );
+    }
+
+    it('returns 0 and writes nothing when the set is empty', async () => {
+      stubPendingCleanup([]);
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(0);
+      expect(__mockDeleteUserData).not.toHaveBeenCalled();
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
+    });
+
+    it('deletes each recorded record and clears the set on full success', async () => {
+      stubPendingCleanup(['orphan-a', 'orphan-b']);
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(2);
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'project:orphan-a');
+      expect(__mockDeleteUserData).toHaveBeenCalledWith(token, 'project:orphan-b');
+      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
+    });
+
+    it('treats an already-missing record (ENOENT) as successfully cleaned', async () => {
+      stubPendingCleanup(['gone']);
+      __mockDeleteUserData.mockRejectedValue(enoentError());
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(1);
+      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
+    });
+
+    it('retains an id whose deletion fails again and logs it', async () => {
+      stubPendingCleanup(['stubborn', 'ok']);
+      __mockDeleteUserData.mockImplementation((_t: unknown, key: unknown) =>
+        key === 'project:stubborn'
+          ? Promise.reject(new Error('still locked'))
+          : Promise.resolve(undefined),
+      );
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(1);
+      expect(__mockWriteUserData).toHaveBeenCalledWith(
+        token,
+        'pendingCleanup',
+        JSON.stringify(['stubborn']),
+      );
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('stubborn'),
+        expect.any(Error),
+      );
+    });
+
+    it('propagates a non-ENOENT error from reading the pending-cleanup set', async () => {
+      __mockReadUserData.mockRejectedValue(new Error('disk full'));
+
+      await expect(sweepPendingCleanup(token)).rejects.toThrow('disk full');
+    });
+
+    it('does not rewrite the set when no ids could be cleaned', async () => {
+      stubPendingCleanup(['stubborn']);
+      __mockDeleteUserData.mockRejectedValue(new Error('still locked'));
+
+      const cleaned = await sweepPendingCleanup(token);
+
+      expect(cleaned).toBe(0);
+      expect(__mockWriteUserData).not.toHaveBeenCalled();
     });
   });
 

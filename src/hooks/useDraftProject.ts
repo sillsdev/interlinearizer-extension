@@ -9,6 +9,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { removeBookFromAnalysis } from '../utils/analysis-book';
+import { isDefaultSegmentation } from '../utils/segmentation';
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -284,16 +285,15 @@ export default function useDraftProject(
 
   const autosaveSegmentation = useCallback(
     (segmentation: SegmentationDelta | undefined) => {
-      // Treat an empty delta (no removed or added starts) the same as `undefined`: it represents the
-      // default segmentation, so clear the field rather than persisting a redundant custom object.
-      const hasCustomBoundaries =
-        segmentation !== undefined &&
-        (segmentation.removedVerseStarts.length > 0 || segmentation.addedStarts.length > 0);
+      // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
+      // `undefined`: clear the field rather than persisting a redundant custom object. Shares
+      // `isDefaultSegmentation` with the loader's dispatch so the empty-delta rule lives in one place.
+      const hasCustomBoundaries = !isDefaultSegmentation(segmentation);
       const applied = autosaveDraft((current) => {
         const next: DraftProject = { ...current, dirty: true };
         // Store custom boundaries when present; clear the field for the default segmentation so the
         // persisted draft stays minimal.
-        if (hasCustomBoundaries) next.segmentation = segmentation;
+        if (hasCustomBoundaries && segmentation !== undefined) next.segmentation = segmentation;
         else delete next.segmentation;
         return next;
       });

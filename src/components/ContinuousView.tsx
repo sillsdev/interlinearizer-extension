@@ -367,6 +367,15 @@ export default function ContinuousView({
    */
   const prevFocusForSegmentationRef = useRef(focusedTokenRef);
 
+  /**
+   * `true` while an internal-nav smooth scroll is animating and its deferred active-segment commit
+   * is still pending on `scrollend` (or the fallback timeout). The segmentation-reconcile effect
+   * reads this to avoid committing early mid-glide — the pending `onSettled` commits against the
+   * live `targetActiveSegmentIdRef`, which already reflects the re-segmentation, so the correct
+   * segment lands once the scroll finishes instead of snapping the glide short.
+   */
+  const scrollSettlePendingRef = useRef(false);
+
   // Reconcile the committed active segment when a segmentation edit (merge/split) changes the
   // focused token's segment id without moving focus. Token refs survive re-segmentation, so no
   // focus-change effect fires for such an edit; without this the committed id would keep naming a
@@ -379,6 +388,11 @@ export default function ContinuousView({
     const focusUnchanged = prevFocusForSegmentationRef.current === focusedTokenRef;
     prevFocusForSegmentationRef.current = focusedTokenRef;
     if (!focusUnchanged) return;
+    // Defer to the in-flight scroll's `onSettled` when an internal-nav glide is still animating:
+    // committing here would flip `committedActiveSegmentId` and fire the instant recenter below,
+    // truncating the smooth scroll into a jump. `onSettled` commits the same (already-updated)
+    // target once the glide finishes, so the reconcile still happens — just without the snap.
+    if (scrollSettlePendingRef.current) return;
     commitPendingActiveSegment();
   }, [tokenSegmentMap, focusedTokenRef, commitPendingActiveSegment]);
 
@@ -558,10 +572,14 @@ export default function ContinuousView({
       // the relayout runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
+      // Mark the settle pending so the segmentation-reconcile effect defers its commit to `onSettled`
+      // instead of snapping the glide short if a boundary edit lands mid-scroll.
+      scrollSettlePendingRef.current = true;
       /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
       const onSettled = () => {
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        scrollSettlePendingRef.current = false;
         commitPendingActiveSegment();
       };
       fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
@@ -570,6 +588,7 @@ export default function ContinuousView({
         cancelAnimationFrame(navRafId);
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        scrollSettlePendingRef.current = false;
       };
     }
 

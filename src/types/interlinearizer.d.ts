@@ -1126,15 +1126,18 @@ declare module 'interlinearizer' {
    */
   export interface SegmentationDelta {
     /**
-     * Word-token refs that are a verse's first token in the default segmentation but should **not**
-     * start a segment — i.e. the verse is merged into the preceding segment. A ref whose token no
-     * longer exists is ignored on load.
+     * Refs of a verse's first token in the default segmentation that should **not** start a segment
+     * — i.e. the verse is merged into the preceding segment. This is the verse's leading token of
+     * **any** type (a verse beginning with punctuation contributes that punctuation ref), matching
+     * how the default starts are derived (each verse's first token). A ref whose token no longer
+     * exists is ignored on load.
      */
     removedVerseStarts: string[];
 
     /**
      * Mid-verse word-token refs that should start a new segment — i.e. the verse is split before
-     * this token. A ref whose token no longer exists is ignored on load.
+     * this token. Split anchors are always word tokens (leading punctuation stays with the run it
+     * follows). A ref whose token no longer exists is ignored on load.
      */
     addedStarts: string[];
   }

@@ -152,7 +152,24 @@ export function TokenLinkIcon({
       if (newStart === undefined) segmentationDispatch.merge(currentStart);
       else segmentationDispatch.move(currentStart, newStart);
     } else {
-      segmentationDispatch.move(currentStart, prevToken.ref);
+      // Mirror of the true branch: `prevToken` is the previous segment's last word. Moving the
+      // boundary onto it strands whatever precedes it in that segment; when those preceding tokens
+      // are all punctuation (no word remains before the pulled one), that remainder would be a
+      // word-less segment. Resolve the previous segment and, in that case, merge it wholly into the
+      // focused one instead. When nothing precedes the pulled token (it is the segment's first
+      // token) the move strands nothing, so proceed with the move as before.
+      const prevSegmentId = tokenSegmentMap.get(prevToken.ref);
+      const prevSegment =
+        /* v8 ignore next -- a rendered prevToken always maps to a segment; undefined is defensive */
+        prevSegmentId === undefined ? undefined : segmentById.get(prevSegmentId);
+      /* v8 ignore next -- prevToken always resolves to a rendered segment in practice */
+      if (!prevSegment) return;
+      const pullIndex = prevSegment.tokens.findIndex((t) => t.ref === prevToken.ref);
+      const precedingTokens = prevSegment.tokens.slice(0, pullIndex);
+      const wouldStrandWordlessRemainder =
+        precedingTokens.length > 0 && !precedingTokens.some(isWordToken);
+      if (wouldStrandWordlessRemainder) segmentationDispatch.merge(currentStart);
+      else segmentationDispatch.move(currentStart, prevToken.ref);
     }
   }, [prevToken, nextToken, focusedSideIsPrev, tokenSegmentMap, segmentById, segmentationDispatch]);
 

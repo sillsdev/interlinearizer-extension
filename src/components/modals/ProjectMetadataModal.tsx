@@ -18,6 +18,7 @@ const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_analysis_language_label%',
   '%interlinearizer_modal_metadata_language_placeholder%',
   '%interlinearizer_modal_metadata_created_label%',
+  '%interlinearizer_modal_metadata_modified_label%',
   '%interlinearizer_modal_metadata_source_label%',
   '%interlinearizer_modal_metadata_save%',
   '%interlinearizer_modal_metadata_close%',
@@ -44,6 +45,8 @@ type ProjectMetadataModalProps = Readonly<{
   analysisLanguages: string[];
   /** ISO 8601 creation timestamp. */
   createdAt: string;
+  /** ISO 8601 timestamp of the most recent modification. */
+  updatedAt: string;
   /** Callback invoked when the modal should be dismissed without saving. */
   onClose: () => void;
   /** Optional callback invoked with updated metadata after a successful save. */
@@ -72,6 +75,7 @@ export function ProjectMetadataModal({
   targetProjectId,
   analysisLanguages,
   createdAt,
+  updatedAt,
   onClose,
   onProjectSaved,
   onProjectDeleted,
@@ -88,6 +92,7 @@ export function ProjectMetadataModal({
   const { isSubmitting, runGuarded } = useSubmitGuard();
 
   const formattedDate = useMemo(() => new Date(createdAt).toLocaleString(), [createdAt]);
+  const formattedModifiedDate = useMemo(() => new Date(updatedAt).toLocaleString(), [updatedAt]);
 
   /**
    * Parsed analysis-language tags from the comma-separated field. Computed once and reused by both
@@ -228,6 +233,10 @@ export function ProjectMetadataModal({
         <MetadataRow
           label={localizedStrings['%interlinearizer_modal_metadata_created_label%']}
           value={formattedDate}
+        />
+        <MetadataRow
+          label={localizedStrings['%interlinearizer_modal_metadata_modified_label%']}
+          value={formattedModifiedDate}
         />
         <MetadataRow
           label={localizedStrings['%interlinearizer_modal_metadata_source_label%']}

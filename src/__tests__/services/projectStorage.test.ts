@@ -86,6 +86,14 @@ describe('projectStorage', () => {
       expect(project.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     });
 
+    it('sets updatedAt equal to createdAt at creation', async () => {
+      __mockReadUserData.mockRejectedValue(enoentError());
+
+      const project = await createProject(token, 'src-proj', ['en']);
+
+      expect(project.updatedAt).toBe(project.createdAt);
+    });
+
     it('omits links and targetProjectId for analysis-only projects', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
 
@@ -243,6 +251,17 @@ describe('projectStorage', () => {
 
   describe('updateProjectMetadata', () => {
     const storedProject = makeStubProject('proj-id');
+    // `updateProjectMetadata` stamps `updatedAt` with `new Date()`; freeze the clock so the exact
+    // stored payload is deterministic and distinct from the fixture's `createdAt`/`updatedAt`.
+    const UPDATE_TIME = '2026-03-01T12:00:00.000Z';
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(UPDATE_TIME));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
 
     it('returns the updated project with the new name and description', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
@@ -260,8 +279,21 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'project:proj-id',
-        JSON.stringify({ ...storedProject, name: 'My Name', description: 'My Desc' }),
+        JSON.stringify({
+          ...storedProject,
+          updatedAt: UPDATE_TIME,
+          name: 'My Name',
+          description: 'My Desc',
+        }),
       );
+    });
+
+    it('refreshes updatedAt to the current time', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await updateProjectMetadata(token, 'proj-id', 'My Name', 'My Desc', ['en']);
+
+      expect(result?.updatedAt).toBe(UPDATE_TIME);
     });
 
     it('removes name and description when called with undefined', async () => {
@@ -419,6 +451,17 @@ describe('projectStorage', () => {
       ...emptyAnalysis(),
       tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
     };
+    // `updateAnalysis` stamps `updatedAt` with `new Date()`; freeze the clock so the exact stored
+    // payload is deterministic and distinct from the fixture's `createdAt`/`updatedAt`.
+    const UPDATE_TIME = '2026-03-01T12:00:00.000Z';
+
+    beforeEach(() => {
+      jest.useFakeTimers().setSystemTime(new Date(UPDATE_TIME));
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
 
     it('returns the updated project with the new analysis', async () => {
       __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
@@ -436,8 +479,16 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'project:proj-id',
-        JSON.stringify({ ...storedProject, analysis: newAnalysis }),
+        JSON.stringify({ ...storedProject, analysis: newAnalysis, updatedAt: UPDATE_TIME }),
       );
+    });
+
+    it('refreshes updatedAt to the current time', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify(storedProject));
+
+      const result = await updateAnalysis(token, 'proj-id', newAnalysis);
+
+      expect(result?.updatedAt).toBe(UPDATE_TIME);
     });
 
     it('returns undefined when the project does not exist', async () => {
@@ -465,7 +516,12 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(
         token,
         'project:proj-id',
-        JSON.stringify({ ...storedProject, analysis: newAnalysis, segmentation }),
+        JSON.stringify({
+          ...storedProject,
+          analysis: newAnalysis,
+          updatedAt: UPDATE_TIME,
+          segmentation,
+        }),
       );
     });
 

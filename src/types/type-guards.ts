@@ -33,6 +33,8 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
     typeof p.id === 'string' &&
     'createdAt' in p &&
     typeof p.createdAt === 'string' &&
+    'updatedAt' in p &&
+    typeof p.updatedAt === 'string' &&
     'sourceProjectId' in p &&
     typeof p.sourceProjectId === 'string' &&
     'analysisLanguages' in p &&

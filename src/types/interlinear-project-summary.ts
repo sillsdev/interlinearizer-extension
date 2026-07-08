@@ -5,6 +5,7 @@ export type InterlinearProjectSummary = Pick<
   InterlinearProject,
   | 'id'
   | 'createdAt'
+  | 'updatedAt'
   | 'sourceProjectId'
   | 'targetProjectId'
   | 'analysisLanguages'

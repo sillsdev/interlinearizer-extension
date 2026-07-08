@@ -16,6 +16,7 @@ import { emptyAnalysis } from '../../../types/empty-factories';
 const MOCK_PROJECT: InterlinearProjectSummary = {
   id: 'proj-1',
   createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
   sourceProjectId: 'source-proj',
   analysisLanguages: ['en'],
   name: 'My Project',
@@ -24,6 +25,7 @@ const MOCK_PROJECT: InterlinearProjectSummary = {
 const MOCK_PROJECT_2: InterlinearProjectSummary = {
   id: 'proj-2',
   createdAt: '2026-02-01T00:00:00Z',
+  updatedAt: '2026-02-01T00:00:00Z',
   sourceProjectId: 'source-proj',
   analysisLanguages: ['fr'],
   name: 'French Project',

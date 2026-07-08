@@ -1167,6 +1167,13 @@ declare module 'interlinearizer' {
     /** ISO 8601 creation timestamp. */
     createdAt: string;
 
+    /**
+     * ISO 8601 timestamp of the most recent modification. Set to `createdAt` at creation and
+     * refreshed on every metadata or analysis/segmentation write. Used to sort the project picker
+     * by recency and to distinguish otherwise-identical unnamed projects.
+     */
+    updatedAt: string;
+
     /** Optional user-facing name for the project. */
     name?: string;
 

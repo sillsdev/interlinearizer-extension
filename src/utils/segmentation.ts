@@ -18,14 +18,63 @@ import type { Book, SegmentationDelta } from 'interlinearizer';
 const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: [] };
 
 /**
- * The ref of the book's very first token — the start of the first segment, which can never be
- * merged leftward.
+ * The whole-book lookups every transform in this module needs, derived in a single pass over the
+ * token stream. Bundled so one boundary op walks the book once instead of each helper re-walking
+ * it.
+ */
+type BookLookups = Readonly<{
+  /**
+   * The default segment-start refs — each verse's first token (any type, so leading punctuation
+   * stays with its verse).
+   */
+  defaults: ReadonlySet<string>;
+  /** Every token ref in the book, used to drop delta anchors whose token no longer exists. */
+  all: ReadonlySet<string>;
+  /** Document-order index for every token ref, used to keep delta arrays canonically sorted. */
+  order: ReadonlyMap<string, number>;
+  /** The book's very first token ref — the start of the first segment, never merged leftward. */
+  first: string | undefined;
+}>;
+
+/**
+ * Per-book cache of {@link BookLookups}. `verseBook` identity is stable for a given tokenization (it
+ * changes only on re-tokenization), so caching by book reference lets every op — including the
+ * two-op `moveBoundary` — reuse a single traversal rather than rebuilding four structures each
+ * call.
+ */
+const bookLookupsCache = new WeakMap<Book, BookLookups>();
+
+/**
+ * Returns the {@link BookLookups} for `verseBook`, computing them in one pass on first use and
+ * caching by book reference thereafter.
  *
  * @param verseBook - The original verse-tokenized book.
- * @returns The first token's ref, or `undefined` when the book has no tokens.
+ * @returns The cached (or freshly built) lookups.
  */
-function bookFirstTokenRef(verseBook: Book): string | undefined {
-  return verseBook.segments[0]?.tokens[0]?.ref;
+function bookLookups(verseBook: Book): BookLookups {
+  const cached = bookLookupsCache.get(verseBook);
+  if (cached) return cached;
+  const defaults = new Set<string>();
+  const all = new Set<string>();
+  const order = new Map<string, number>();
+  let i = 0;
+  verseBook.segments.forEach((seg) => {
+    const firstToken = seg.tokens[0];
+    if (firstToken) defaults.add(firstToken.ref);
+    seg.tokens.forEach((t) => {
+      all.add(t.ref);
+      order.set(t.ref, i);
+      i += 1;
+    });
+  });
+  const lookups: BookLookups = {
+    defaults,
+    all,
+    order,
+    first: verseBook.segments[0]?.tokens[0]?.ref,
+  };
+  bookLookupsCache.set(verseBook, lookups);
+  return lookups;
 }
 
 /**
@@ -35,43 +84,8 @@ function bookFirstTokenRef(verseBook: Book): string | undefined {
  * @param verseBook - The original verse-tokenized book.
  * @returns The set of first-token refs, one per verse segment that has tokens.
  */
-export function defaultVerseStarts(verseBook: Book): Set<string> {
-  const starts = new Set<string>();
-  verseBook.segments.forEach((seg) => {
-    const first = seg.tokens[0];
-    if (first) starts.add(first.ref);
-  });
-  return starts;
-}
-
-/**
- * Every token ref in the book, used to drop delta anchors whose token no longer exists.
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns The set of all token refs.
- */
-function allTokenRefs(verseBook: Book): Set<string> {
-  const refs = new Set<string>();
-  verseBook.segments.forEach((seg) => seg.tokens.forEach((t) => refs.add(t.ref)));
-  return refs;
-}
-
-/**
- * Document-order index for every token ref, used to keep delta arrays canonically sorted.
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns Map from token ref to its flat document index.
- */
-function docOrder(verseBook: Book): Map<string, number> {
-  const order = new Map<string, number>();
-  let i = 0;
-  verseBook.segments.forEach((seg) =>
-    seg.tokens.forEach((t) => {
-      order.set(t.ref, i);
-      i += 1;
-    }),
-  );
-  return order;
+export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
+  return bookLookups(verseBook).defaults;
 }
 
 /**
@@ -88,19 +102,17 @@ export function effectiveStarts(
   verseBook: Book,
   delta: SegmentationDelta | undefined,
 ): Set<string> {
-  const defaults = defaultVerseStarts(verseBook);
+  const { defaults, all, first } = bookLookups(verseBook);
   const removed = new Set(delta?.removedVerseStarts ?? []);
   const starts = new Set<string>();
   defaults.forEach((ref) => {
     if (!removed.has(ref)) starts.add(ref);
   });
   if (delta) {
-    const all = allTokenRefs(verseBook);
     delta.addedStarts.forEach((ref) => {
       if (all.has(ref)) starts.add(ref);
     });
   }
-  const first = bookFirstTokenRef(verseBook);
   // The first segment can never be merged away, so its start is always present.
   if (first !== undefined) starts.add(first);
   return starts;
@@ -116,10 +128,7 @@ export function effectiveStarts(
  * @returns A normalized {@link SegmentationDelta}.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
-  const defaults = defaultVerseStarts(verseBook);
-  const all = allTokenRefs(verseBook);
-  const order = docOrder(verseBook);
-  const first = bookFirstTokenRef(verseBook);
+  const { defaults, all, order, first } = bookLookups(verseBook);
   const byOrder = (a: string, b: string) =>
     /* v8 ignore next -- ?? 0 fallback for refs absent from order; filtered arrays only hold real refs */
     (order.get(a) ?? 0) - (order.get(b) ?? 0);
@@ -154,7 +163,7 @@ export function addBoundaryBefore(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  const defaults = defaultVerseStarts(verseBook);
+  const { defaults } = bookLookups(verseBook);
   if (defaults.has(ref)) {
     return normalize(verseBook, {
       removedVerseStarts: current.removedVerseStarts.filter((r) => r !== ref),
@@ -186,8 +195,8 @@ export function removeBoundaryAt(
   ref: string,
 ): SegmentationDelta {
   const current = delta ?? EMPTY_DELTA;
-  if (ref === bookFirstTokenRef(verseBook)) return normalize(verseBook, current);
-  const defaults = defaultVerseStarts(verseBook);
+  const { defaults, first } = bookLookups(verseBook);
+  if (ref === first) return normalize(verseBook, current);
   if (defaults.has(ref)) {
     return normalize(verseBook, {
       removedVerseStarts: [...current.removedVerseStarts, ref],

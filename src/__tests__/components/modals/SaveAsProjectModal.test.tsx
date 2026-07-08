@@ -32,6 +32,7 @@ const LOCALIZED: Record<string, string> = {
 const STUB_PROJECT: InterlinearProjectSummary = {
   id: 'proj-uuid',
   createdAt: '2026-01-15T10:30:00.000Z',
+  updatedAt: '2026-01-15T10:30:00.000Z',
   sourceProjectId: 'src-proj',
   analysisLanguages: ['en'],
 };
@@ -39,6 +40,7 @@ const STUB_PROJECT: InterlinearProjectSummary = {
 const STUB_PROJECT_2: InterlinearProjectSummary = {
   id: 'proj-uuid-2',
   createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-01T08:00:00.000Z',
   sourceProjectId: 'src-proj',
   analysisLanguages: ['fr'],
   name: 'French glosses',

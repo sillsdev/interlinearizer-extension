@@ -550,6 +550,7 @@ export default function ProjectModals({
           targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
+          updatedAt={resolvedMetadataProject.updatedAt}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
           onProjectDeleted={handleMetadataProjectDeleted}

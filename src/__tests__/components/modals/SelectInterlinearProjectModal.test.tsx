@@ -19,11 +19,13 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
   '%interlinearizer_modal_select_info_button_label%': 'Project info',
   '%interlinearizer_modal_select_active_badge%': 'Active',
+  '%interlinearizer_modal_select_modified_prefix%': 'Modified',
 };
 
 const STUB_PROJECT: InterlinearProjectSummary = {
   id: 'proj-uuid',
   createdAt: '2026-01-15T10:30:00.000Z',
+  updatedAt: '2026-01-15T10:30:00.000Z',
   sourceProjectId: 'src-proj',
   analysisLanguages: ['en'],
 };
@@ -31,6 +33,7 @@ const STUB_PROJECT: InterlinearProjectSummary = {
 const STUB_PROJECT_2: InterlinearProjectSummary = {
   id: 'proj-uuid-2',
   createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-01T08:00:00.000Z',
   sourceProjectId: 'src-proj',
   analysisLanguages: ['fr'],
   name: 'French glosses',
@@ -99,6 +102,26 @@ describe('SelectInterlinearProjectModal', () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('en')).toBeInTheDocument());
+  });
+
+  it('orders projects most-recently-modified first', async () => {
+    // STUB_PROJECT is older (Jan 15) than STUB_PROJECT_2 (Feb 1); returned oldest-first so the
+    // component must reorder to put the newer project on top.
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    const rows = screen.getAllByRole('button', { name: /french glosses|unnamed/i });
+    expect(rows[0]).toHaveAccessibleName(/french glosses/i);
+    expect(rows[1]).toHaveAccessibleName(/unnamed/i);
+  });
+
+  it('shows the modified date in each row', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    const expectedDate = new Date(STUB_PROJECT.updatedAt).toLocaleString();
+    await waitFor(() => expect(screen.getByText(`Modified ${expectedDate}`)).toBeInTheDocument());
   });
 
   it('calls onSelect with the project when a project row is clicked', async () => {

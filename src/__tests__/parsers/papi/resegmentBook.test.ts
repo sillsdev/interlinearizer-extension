@@ -6,13 +6,23 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 
 /**
- * Builds a verse-tokenized GEN book from the given verses.
+ * Builds a verse-tokenized GEN book from the given verses. Each verse's rendered `number` defaults
+ * to the verse portion of its sid when not given.
  *
- * @param verses - Verse SID + text pairs.
+ * @param verses - Verse SID + text pairs (optional number).
  * @returns The tokenized book.
  */
-function makeBook(verses: { sid: string; text: string }[]): Book {
-  return tokenizeBook({ bookCode: 'GEN', writingSystem: 'en', contentHash: 'h', verses });
+function makeBook(verses: { sid: string; text: string; number?: string }[]): Book {
+  return tokenizeBook({
+    bookCode: 'GEN',
+    writingSystem: 'en',
+    contentHash: 'h',
+    verses: verses.map(({ sid, text, number }) => ({
+      sid,
+      text,
+      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
+    })),
+  });
 }
 
 const BOOK = makeBook([
@@ -62,6 +72,15 @@ describe('resegmentBook', () => {
     expectInvariant(result);
   });
 
+  it('records one verse start per absorbed verse, at its offset in the merged baseline', () => {
+    const result = resegmentBook(BOOK, { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+    // 'Alpha beta.' is 11 chars; the merge separator adds 1, so verse 2 begins at offset 12.
+    expect(result.segments[0].verseStarts).toEqual([
+      { charStart: 0, number: '1' },
+      { charStart: 12, number: '2' },
+    ]);
+  });
+
   it('keeps the leading verse SID as the merged segment id', () => {
     const result = resegmentBook(BOOK, { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
     expect(result.segments[0].id).toBe('GEN 1:1');
@@ -84,6 +103,13 @@ describe('resegmentBook', () => {
     expect(secondHalf.id).toBe('GEN 1:1:6');
     expect(secondHalf.tokens.map((t) => t.ref)).toEqual(['GEN 1:1:6', 'GEN 1:1:10']);
     expectInvariant(result);
+  });
+
+  it('gives each split piece a single verse start at offset 0 for its verse', () => {
+    const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+    const [firstHalf, secondHalf] = result.segments;
+    expect(firstHalf.verseStarts).toEqual([{ charStart: 0, number: '1' }]);
+    expect(secondHalf.verseStarts).toEqual([{ charStart: 0, number: '1' }]);
   });
 
   it('carries a sub-verse charIndex on a split piece that begins mid-verse', () => {

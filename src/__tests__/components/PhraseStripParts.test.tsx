@@ -344,6 +344,7 @@ describe('PhraseSlot boundary controls', () => {
     endRef: { book: 'GEN', chapter: 1, verse: 1 },
     baselineText: 'a b',
     tokens: [makeWordToken('a'), makeWordToken('b')],
+    verseStarts: [{ charStart: 0, number: String(1) }],
   };
 
   /** A segment whose first token ref identifies the boundary the merge control removes. */
@@ -353,6 +354,7 @@ describe('PhraseSlot boundary controls', () => {
     endRef: { book: 'GEN', chapter: 1, verse: 2 },
     baselineText: 'b',
     tokens: [makeWordToken('seg2-start')],
+    verseStarts: [{ charStart: 0, number: String(2) }],
   };
 
   /**

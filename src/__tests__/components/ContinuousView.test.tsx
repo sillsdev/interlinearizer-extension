@@ -180,6 +180,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 6,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
       {
         id: 'GEN 1:2',
@@ -204,6 +205,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 13,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '2' }],
       },
     ],
     ...overrides,
@@ -232,6 +234,7 @@ function makeTwoChapterBook(): Book {
             charEnd: 5,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
       {
         id: 'GEN 2:1',
@@ -248,6 +251,7 @@ function makeTwoChapterBook(): Book {
             charEnd: 4,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
     ],
   };
@@ -275,6 +279,7 @@ function makeSingleTokenBook(): Book {
             charEnd: 4,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
     ],
   };
@@ -302,6 +307,7 @@ function makeMixedBook(): Book {
             charEnd: 2,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
       {
         id: 'GEN 1:2',
@@ -318,6 +324,7 @@ function makeMixedBook(): Book {
             charEnd: 1,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '2' }],
       },
     ],
   };
@@ -345,6 +352,7 @@ function makeWordFreeBook(): Book {
             charEnd: 1,
           },
         ],
+        verseStarts: [{ charStart: 0, number: '1' }],
       },
     ],
   };
@@ -371,6 +379,7 @@ function makeLargeBook(count: number): Book {
           charEnd: String(`word${i}`).length,
         },
       ],
+      verseStarts: [{ charStart: 0, number: String(i + 1) }],
     })),
   };
 }
@@ -576,6 +585,7 @@ describe('ContinuousView initial render', () => {
               charEnd: 5,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'MAT 1:2',
@@ -592,6 +602,7 @@ describe('ContinuousView initial render', () => {
               charEnd: 4,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '2' }],
         },
       ],
     };

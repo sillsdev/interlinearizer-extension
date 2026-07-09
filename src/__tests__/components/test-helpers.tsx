@@ -21,7 +21,6 @@ export const withAnalysisStore = {
 export const allFalseViewOptions: ViewOptions = {
   hideInactiveLinkButtons: false,
   simplifyPhrases: false,
-  chapterLabelInVerse: false,
   showMorphology: false,
   showFreeTranslation: false,
 };

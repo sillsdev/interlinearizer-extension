@@ -465,11 +465,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     isBoolean,
   );
 
-  const chapterLabelInVerseValidatorRegistration = await papi.projectSettings.registerValidator(
-    'interlinearizer.chapterLabelInVerse',
-    isBoolean,
-  );
-
   const showMorphologyValidatorRegistration = await papi.projectSettings.registerValidator(
     'interlinearizer.showMorphology',
     isBoolean,
@@ -823,7 +818,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     continuousScrollValidatorRegistration,
     hideInactiveLinkButtonsValidatorRegistration,
     simplifyPhrasesValidatorRegistration,
-    chapterLabelInVerseValidatorRegistration,
     showMorphologyValidatorRegistration,
     showFreeTranslationValidatorRegistration,
     createProjectCommandRegistration,

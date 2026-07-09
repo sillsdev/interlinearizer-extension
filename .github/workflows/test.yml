@@ -114,21 +114,19 @@ jobs:
         working-directory: paranext-core
         run: npm run build:dll
 
-      # Linux runs the FULL suite: smoke plus the CDP feature tests. `test:e2e:cdp` self-launches
-      # its own Platform.Bible instance (globalSetup, --remote-debugging-port=9223), so the whole
-      # thing runs under one xvfb display with no separate app-start step.
+      # Both OSes run the FULL suite: smoke plus the CDP feature tests. `test:e2e:cdp` self-launches
+      # its own Platform.Bible instance (globalSetup, --remote-debugging-port=9223) and tears it down
+      # cross-platform (POSIX process-group SIGKILL on Linux, `taskkill /T /F` on Windows), so there
+      # is no separate app-start step on either OS. Linux additionally needs an xvfb display.
       - name: Run e2e tests (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: extension-repo
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
 
-      # Windows runs smoke only. The CDP self-launch spawns a detached Electron and kills it by
-      # POSIX process group (process.kill(-pid, ...)), which has no Windows equivalent, so the CDP
-      # tier is Linux-only until that teardown path is made Windows-safe.
-      - name: Run e2e smoke tests (Windows)
+      - name: Run e2e tests (Windows)
         if: matrix.os == 'windows-latest'
         working-directory: extension-repo
-        run: npm run test:e2e:smoke
+        run: npm run test:e2e
 
       - name: Upload Playwright test results
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -139,4 +137,5 @@ jobs:
           path: |
             extension-repo/e2e-tests/playwright-report/
             extension-repo/e2e-tests/test-results/
+            extension-repo/e2e-tests/.cdp-app-startup.log
           if-no-files-found: warn

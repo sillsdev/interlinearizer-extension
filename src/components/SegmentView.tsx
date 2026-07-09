@@ -428,10 +428,11 @@ export function SegmentView({
   }, [renderUnits, focusedTokenRef]);
 
   /**
-   * Verse-start token ref → resolved superscript label. The verse-start token is the segment token
-   * whose `charStart` matches a verse start; keying by ref lets the strip builder insert the
-   * superscript immediately before whichever render unit first renders that token (a phrase group,
-   * or a leading-punctuation slot).
+   * Verse-start token ref → resolved verse label. The verse-start token is the segment token whose
+   * `charStart` matches a verse start; keying by ref lets the strip builder mark the slot that
+   * begins each verse — the slot before the verse's first group, or (for a verse opening on leading
+   * punctuation) the slot that carries that punctuation — so {@link PhraseSlot} can render the verse
+   * number below the link icon.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
@@ -443,45 +444,43 @@ export function SegmentView({
   }, [segment.verseStarts, segment.tokens, resolvedVerseStartLabels]);
 
   /**
-   * Normalized strip items handed to the shared {@link PhraseStrip} body, with an inline
-   * verse-superscript item inserted immediately before the render unit that first renders each
-   * verse's start token. Both slot neighbors are in this segment by construction (one segment per
-   * render), so both slot segment ids are `segment.id`.
+   * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
+   * verse label when a verse begins at it (its following group's first token, or one of its own gap
+   * punctuation tokens, is a verse start); the shared {@link PhraseSlot} renders that number below
+   * the link icon so both strips mark verse boundaries identically. Both slot neighbors are in this
+   * segment by construction (one segment per render), so both slot segment ids are `segment.id`.
    */
   const stripItems = useMemo<StripItem[]>(
     () =>
-      renderUnits.flatMap((unit) => {
-        // The unit's first rendered token: a group's first token, or (for a leading-punctuation
-        // slot) the slot's first punctuation token. A verse start anchored to that token gets its
-        // superscript emitted just before the unit.
-        const firstTokenRef =
-          unit.kind === 'group' ? unit.group.tokens[0].ref : unit.slot.punctuation[0]?.ref;
-        const superscriptLabel =
-          firstTokenRef !== undefined ? verseStartLabelByTokenRef.get(firstTokenRef) : undefined;
-        const items: StripItem[] = [];
-        if (superscriptLabel !== undefined) {
-          items.push({ kind: 'superscript', key: `sup-${firstTokenRef}`, label: superscriptLabel });
-        }
-        if (unit.kind === 'slot') {
-          const { prevGroup, nextGroup } = unit.slot;
-          const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
-          items.push({
-            kind: 'slot',
-            key,
-            slot: unit.slot,
-            prevSegmentId: segment.id,
-            nextSegmentId: segment.id,
-            focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
-          });
-        } else {
-          items.push({
+      renderUnits.map((unit) => {
+        if (unit.kind === 'group') {
+          return {
             kind: 'group',
             key: unit.group.tokens[0].ref,
             group: unit.group,
             isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
-          });
+          };
         }
-        return items;
+        const { prevGroup, nextGroup, punctuation } = unit.slot;
+        const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
+        // The slot begins a verse when the verse's first token renders next through it: the following
+        // group's first token, or (for a verse opening on leading punctuation) a token in this slot's
+        // gap punctuation.
+        const verseStartRef =
+          [nextGroup?.tokens[0]?.ref, ...punctuation.map((p) => p.ref)].find(
+            (tokenRef) => tokenRef !== undefined && verseStartLabelByTokenRef.has(tokenRef),
+          ) ?? undefined;
+        const verseLabel =
+          verseStartRef !== undefined ? verseStartLabelByTokenRef.get(verseStartRef) : undefined;
+        return {
+          kind: 'slot',
+          key,
+          slot: unit.slot,
+          prevSegmentId: segment.id,
+          nextSegmentId: segment.id,
+          focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
+          verseLabel,
+        };
       }),
     [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef, verseStartLabelByTokenRef],
   );
@@ -627,8 +626,15 @@ export function SegmentView({
               return <VerseSuperscript key={piece.key} label={piece.label} />;
             }
             // A splittable gap becomes an Alt-clickable marker only while Alt is held; otherwise it
-            // renders as its plain text so the baseline reads byte-for-byte identically. The span
-            // always carries the verbatim gap text either way.
+            // renders as its plain text so the baseline reads byte-for-byte identically. Unlike the
+            // token-chip / continuous strip (which have room for a `Split` glyph in their between-box
+            // slots), an icon dropped into a monospace inter-word space just collides with the
+            // letters. So on Alt-hold every eligible gap gets a tint plus a slim vertical insertion
+            // caret shown dimly at rest — a discoverable map of where a split can land — and the
+            // hovered gap brightens both to full strength so the pointed-at split point stands out.
+            // The verbatim gap text stays as the span's content (same width — no reflow when Alt is
+            // pressed); the caret is absolutely positioned so it adds no width and never pushes the
+            // surrounding text around.
             if (piece.kind === 'gap' && altHeld) {
               const { splitRef } = piece;
               return (
@@ -637,12 +643,17 @@ export function SegmentView({
                 // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                 <span
                   key={piece.key}
-                  className="tw:cursor-pointer tw:rounded tw:bg-accent/40 tw:hover:bg-accent"
+                  className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
                   data-testid="baseline-split-gap"
                   title={localizedStrings['%interlinearizer_boundaryControl_split%']}
                   onClick={(event) => handleBaselineGapClick(event, splitRef)}
                 >
                   {piece.text}
+                  <span
+                    aria-hidden="true"
+                    className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+                    data-testid="baseline-split-caret"
+                  />
                 </span>
               );
             }

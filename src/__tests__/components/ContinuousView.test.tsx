@@ -9,7 +9,12 @@ import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { useState, type ReactNode } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
+import { AltHeldProvider } from '../../components/AltHeldContext';
 import ContinuousView from '../../components/ContinuousView';
+import {
+  SegmentationProvider,
+  type SegmentationContextValue,
+} from '../../components/SegmentationStore';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
 import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
@@ -1324,6 +1329,59 @@ describe('ContinuousView segmentation edits', () => {
     // The committed active segment must follow the merge; a stale id names a segment that no
     // longer exists, which would suppress every link button until the next navigation.
     expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Alt-gated split marker (shared PhraseStripParts, confirmed here in the strip)
+// ---------------------------------------------------------------------------
+
+describe('ContinuousView split marker', () => {
+  /**
+   * Renders ContinuousView wrapped in the segmentation and Alt-held providers so the shared
+   * split-gap marker can be exercised in the horizontal strip.
+   *
+   * @param altHeld - Whether Alt is held (defaults to held, so the marker appears).
+   * @returns The dispatch spy for assertions.
+   */
+  function renderStrip(altHeld = true) {
+    const book = makeBook();
+    const dispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+    const segmentById = new Map(book.segments.map((seg) => [seg.id, seg]));
+    const segmentOrder = new Map(book.segments.map((seg, i) => [seg.id, i]));
+    const value: SegmentationContextValue = {
+      dispatch,
+      segmentById,
+      segmentOrder,
+      formerBoundaries: new Map(),
+      straddledBoundaryRefs: new Set(),
+    };
+    render(
+      <SegmentationProvider value={value}>
+        <AltHeldProvider value={altHeld}>
+          <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-0' })} />
+        </AltHeldProvider>
+      </SegmentationProvider>,
+      withAnalysisStore,
+    );
+    return dispatch;
+  }
+
+  it('reveals a split marker on an intra-segment gap while Alt is held', () => {
+    renderStrip(true);
+    expect(screen.getAllByTestId('boundary-split-marker').length).toBeGreaterThan(0);
+  });
+
+  it('reveals no split marker while Alt is not held', () => {
+    renderStrip(false);
+    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+  });
+
+  it('dispatches a split on an Alt+click of the strip marker', () => {
+    const dispatch = renderStrip(true);
+    // The gap between "In" (tok-0) and "the" (tok-1) inside GEN 1:1 splits before the second word.
+    fireEvent.click(screen.getAllByTestId('boundary-split-marker')[0], { altKey: true });
+    expect(dispatch.split).toHaveBeenCalledWith('tok-1');
   });
 });
 

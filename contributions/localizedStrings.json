@@ -42,6 +42,7 @@
       "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Only a free edge token of an adjacent segment can be linked across a boundary.",
       "%interlinearizer_boundaryControl_merge%": "Merge segments",
+      "%interlinearizer_boundaryControl_mergeHint%": "Merge segments. Hold Alt and click between words to split.",
       "%interlinearizer_boundaryControl_split%": "Split segment here",
       "%interlinearizer_boundaryControl_formerBoundary%": "Former verse boundary",
 

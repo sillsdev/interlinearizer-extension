@@ -1,70 +1,59 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { FoldHorizontal, Scissors } from 'lucide-react';
+import type { Token } from 'interlinearizer';
+import { FoldHorizontal, UnfoldHorizontal } from 'lucide-react';
 import { memo } from 'react';
-import type { ReactNode } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
+import { useAltHeldValue } from './AltHeldContext';
 import type { PhraseMode } from '../types/phrase-mode';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { useSegmentation } from './SegmentationStore';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
-import { isWordToken } from '../types/type-guards';
 import { resolveSlotFocus } from '../utils/token-layout';
+import { resolveSplitAnchor } from '../utils/split-anchor';
 
 /** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
 const BOUNDARY_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeHint%',
   '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_boundaryControl_formerBoundary%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link BoundaryButton}. */
 type BoundaryButtonProps = Readonly<{
-  /** Accessible label, doubling as the tooltip. */
+  /** Accessible label for screen readers. */
   label: string;
+  /** Tooltip text; may differ from `label` (e.g. the merge button's split-discoverability hint). */
+  title: string;
   /** `data-testid` for the button element. */
   testId: string;
   /** The icon rendered inside the button. */
   icon: ReactNode;
   /** When `true` the control renders inert; used while a phrase mode (edit / unlink) is active. */
   disabled: boolean;
-  /**
-   * Lazily computes the word-token refs the operation would affect. Called on hover (not render),
-   * so mounting hundreds of slots does no per-render array building.
-   *
-   * @returns The refs to highlight as the operation's preview.
-   */
-  getPreviewRefs: () => readonly string[];
   /** The boundary edit to run on click. */
   action: () => void;
 }>;
 
 /**
- * One boundary-edit button (merge or split): shared markup, hover-preview wiring, and click
- * cleanup. Entering highlights the refs from `getPreviewRefs` through the shared candidate-token
- * channel (the same one the link icon uses), leaving clears, and click clears synchronously before
- * running the edit so the highlight can't linger over the re-segmented content.
+ * One boundary-edit button (only merge, now — split is the Alt-gated marker below). Its own CSS
+ * `hover:bg-accent` is the only hover affordance; it no longer feeds the shared candidate-token
+ * highlight channel (that channel stays for the link icon).
  *
  * @param props - Component props.
- * @param props.label - Accessible label and tooltip.
+ * @param props.label - Accessible label for screen readers.
+ * @param props.title - Tooltip text (may differ from the label).
  * @param props.testId - `data-testid` for the button element.
  * @param props.icon - The icon rendered inside the button.
  * @param props.disabled - Renders the control inert while a phrase mode is active.
- * @param props.getPreviewRefs - Lazily computes the refs the operation would affect.
  * @param props.action - The boundary edit to run on click.
  * @returns The styled boundary button.
  */
-function BoundaryButton({
-  label,
-  testId,
-  icon,
-  disabled,
-  getPreviewRefs,
-  action,
-}: BoundaryButtonProps) {
-  const { onHoverCandidateTokens } = usePhraseStripContext();
+function BoundaryButton({ label, title, testId, icon, disabled, action }: BoundaryButtonProps) {
   return (
     <button
       aria-label={label}
@@ -72,14 +61,9 @@ function BoundaryButton({
       data-testid={testId}
       disabled={disabled}
       tabIndex={-1}
-      title={label}
+      title={title}
       type="button"
-      onClick={() => {
-        onHoverCandidateTokens(undefined);
-        action();
-      }}
-      onMouseEnter={() => onHoverCandidateTokens(getPreviewRefs())}
-      onMouseLeave={() => onHoverCandidateTokens(undefined)}
+      onClick={action}
     >
       {icon}
     </button>
@@ -97,125 +81,134 @@ type BoundaryControlProps = Readonly<{
    * before it sits on an existing segment start, where a split would be a no-op, so no control
    * renders there.
    */
-  prevTokenRef: string | undefined;
-  /** First word token after the slot, used as the split anchor. */
-  nextTokenRef: string | undefined;
+  prevToken: Token | undefined;
+  /**
+   * First word token after the slot — the word boundary the split's eligibility is checked on, and
+   * the default split anchor when no punctuation travels ahead of it.
+   */
+  nextToken: Token | undefined;
+  /**
+   * Punctuation tokens sitting in the gap between the two words, in document order. Fed to
+   * {@link resolveSplitAnchor} so leading-quote punctuation lands on the following segment.
+   */
+  punctuation: readonly Token[];
 }>;
 
 /**
- * Renders the boundary-edit control for one slot, always visible (not hover-gated). A slot
- * straddling two different segments shows a merge control (combine the next segment into the
- * previous one); a slot inside one segment shows a split control (start a new segment at the next
- * token). Leading/trailing slots (a word token missing on either side) render nothing — a leading
- * slot sits on an existing segment start, where a split would be a no-op.
+ * Renders the boundary-edit control for one slot. A slot straddling two different segments shows an
+ * always-visible merge control (combine the next segment into the previous one). A slot inside one
+ * segment shows the split affordance — an `UnfoldHorizontal` marker that appears **only while Alt
+ * is held** (a map of every splittable word-word gap); Alt+clicking it starts a new segment at the
+ * resolved punctuation-travel anchor. Leading/trailing slots (a word token missing on either side)
+ * render nothing — a leading slot sits on an existing segment start, where a split would be a
+ * no-op.
  *
- * Hovering either control previews its effect through the shared candidate-token highlight (the
- * same channel the link icon uses): merge highlights every word token of both segments (they become
- * one segment); split highlights the word tokens from the split anchor to the segment end (the run
- * that breaks off into the new segment). The preview is cleared on leave and synchronously on click
- * so it can't linger over the re-segmented content.
+ * Boundary controls no longer feed the shared candidate-token highlight: merge keeps only its own
+ * `hover:bg-accent`, and split communicates entirely through the marker's presence. The marker is
+ * `UnfoldHorizontal` — the deliberate visual inverse of the merge `Fold*` glyph — to signal
+ * split/merge are one system.
  *
- * An intra-segment slot sitting on a merged-away default verse start additionally renders a faint
- * dashed tick — the former verse boundary — so the user can see where a split would restore the
- * original segmentation. The tick shows even when the split control itself is suppressed by the
- * not-mid-phrase guard, since it is informational rather than interactive.
+ * An intra-segment slot sitting on a merged-away default verse start renders a faint dashed tick —
+ * the former verse boundary — so the user can see where a split would restore the original
+ * segmentation. While Alt is held and that gap is also splittable, the tick **swaps** to the split
+ * marker (one glyph per gap at all times): not-Alt ⇒ the dashed tick, Alt ⇒ the actionable marker.
+ * The tick still shows (not the marker) when the split is suppressed by the not-mid-phrase guard,
+ * since it is informational rather than interactive.
  *
- * The not-mid-phrase rule is a UI guard applied here: no split control renders at a boundary that
- * would cut a phrase — including the gap between two fragments of a discontiguous phrase. (The
- * segmentation dispatch itself accepts such boundaries and force-breaks the straddled phrases; only
- * callers that cannot see token chunks take that path.) Merge needs no such guard: removing a
- * boundary can never leave a phrase straddling one.
+ * The not-mid-phrase rule is a UI guard applied here: no split marker renders at a boundary that
+ * would cut a phrase — including the gap between two fragments of a discontiguous phrase — and an
+ * Alt+click there is a silent no-op (the absent marker is the explanation). (The segmentation
+ * dispatch itself accepts such boundaries and force-breaks the straddled phrases; only callers that
+ * cannot see token chunks take that path.) Merge needs no such guard: removing a boundary can never
+ * leave a phrase straddling one.
  *
- * Both controls render disabled while a phrase mode (edit / confirm-unlink) is active, matching the
- * link icons: a boundary edit mid-mode could re-segment the phrase the mode UI is operating on
- * (e.g. canceling an edit would then restore a phrase spanning the new boundary).
+ * The merge control renders disabled, and the split marker is hidden and inert, while a phrase mode
+ * (edit / confirm-unlink) is active: a boundary edit mid-mode could re-segment the phrase the mode
+ * UI is operating on (e.g. canceling an edit would then restore a phrase spanning the new
+ * boundary).
  *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
  * @param props.nextSegmentId - Segment id after the slot.
- * @param props.prevTokenRef - Last word token before the slot.
- * @param props.nextTokenRef - First word token after the slot (split anchor).
- * @returns A merge or split button (with an optional former-boundary tick), or `undefined` when the
- *   slot is at a segment or book edge or nothing applies at this boundary.
+ * @param props.prevToken - Last word token before the slot.
+ * @param props.nextToken - First word token after the slot (the word boundary).
+ * @param props.punctuation - Gap punctuation between the two words, in document order.
+ * @returns A merge button or an Alt-gated split marker (with an optional former-boundary tick), or
+ *   `undefined` when the slot is at a segment or book edge or nothing applies at this boundary.
  */
 function BoundaryControl({
   prevSegmentId,
   nextSegmentId,
-  prevTokenRef,
-  nextTokenRef,
+  prevToken,
+  nextToken,
+  punctuation,
 }: BoundaryControlProps) {
   const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
   const { phraseMode } = usePhraseStripContext();
+  const altHeld = useAltHeldValue();
   const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
   if (
     prevSegmentId === undefined ||
     nextSegmentId === undefined ||
-    prevTokenRef === undefined ||
-    nextTokenRef === undefined
+    prevToken === undefined ||
+    nextToken === undefined
   ) {
     return undefined;
   }
 
+  const nextTokenRef = nextToken.ref;
   const boundaryEditsDisabled = phraseMode.kind !== 'view';
 
-  const control = (() => {
-    if (prevSegmentId !== nextSegmentId) {
-      const nextSegment = segmentById.get(nextSegmentId);
-      const secondStart = nextSegment?.tokens[0]?.ref;
-      /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
-      if (nextSegment === undefined || secondStart === undefined) return undefined;
-      return (
+  // A cross-segment slot sits on a live boundary → merge; an intra-segment slot can be split.
+  if (prevSegmentId !== nextSegmentId) {
+    const nextSegment = segmentById.get(nextSegmentId);
+    const secondStart = nextSegment?.tokens[0]?.ref;
+    /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
+    if (nextSegment === undefined || secondStart === undefined) return undefined;
+    return (
+      <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
           label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
+          title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
           testId="boundary-merge-btn"
           icon={<FoldHorizontal className="tw:h-3 tw:w-3" />}
           disabled={boundaryEditsDisabled}
-          // Merging joins every token of both segments into one; preview exactly that.
-          getPreviewRefs={() =>
-            [
-              /* v8 ignore next -- a rendered cross-segment slot's previous segment is always mapped */
-              ...(segmentById.get(prevSegmentId)?.tokens ?? []),
-              ...nextSegment.tokens,
-            ]
-              .filter(isWordToken)
-              .map((t) => t.ref)
-          }
           action={() => dispatch.merge(secondStart)}
         />
-      );
-    }
-    // The not-mid-phrase UI guard: no split control at a boundary that would cut a phrase.
-    if (straddledBoundaryRefs.has(nextTokenRef)) return undefined;
-    // A split on a former boundary dispatches the original removed default start — which may be a
-    // leading punctuation token no word-anchored slot could name — so the restore cancels the
-    // removal exactly and the delta can normalize back to the default segmentation.
-    const splitRef = formerBoundaries.get(nextTokenRef) ?? nextTokenRef;
-    return (
-      <BoundaryButton
-        label={localizedStrings['%interlinearizer_boundaryControl_split%']}
-        testId="boundary-split-btn"
-        icon={<Scissors className="tw:h-3 tw:w-3" />}
-        disabled={boundaryEditsDisabled}
-        // Splitting breaks the run from the anchor to the segment end off into a new segment;
-        // preview exactly that run.
-        getPreviewRefs={() => {
-          const segmentTokens = segmentById.get(nextSegmentId)?.tokens ?? [];
-          const anchorIndex = segmentTokens.findIndex((t) => t.ref === nextTokenRef);
-          /* v8 ignore next -- an intra-segment slot's anchor is always a token of its segment */
-          if (anchorIndex === -1) return [];
-          return segmentTokens
-            .slice(anchorIndex)
-            .filter(isWordToken)
-            .map((t) => t.ref);
-        }}
-        action={() => dispatch.split(splitRef)}
-      />
+      </span>
     );
-  })();
+  }
 
-  // The former-boundary tick: an intra-segment slot sitting on a merged-away default verse start.
-  const formerBoundaryMarker =
-    prevSegmentId === nextSegmentId && formerBoundaries.has(nextTokenRef) ? (
+  // The not-mid-phrase UI guard: no split marker at a boundary that would cut a phrase.
+  const splittable = !boundaryEditsDisabled && !straddledBoundaryRefs.has(nextTokenRef);
+  const isFormerBoundary = formerBoundaries.has(nextTokenRef);
+
+  // The split marker is shown only while Alt is held and the gap is splittable. It replaces the
+  // former-boundary tick (one glyph per gap) whenever both would otherwise appear.
+  const showSplitMarker = altHeld && splittable;
+
+  const splitMarker = showSplitMarker ? (
+    <SplitMarker
+      label={localizedStrings['%interlinearizer_boundaryControl_split%']}
+      // A split on a former boundary dispatches the original removed default start — which may be a
+      // leading punctuation token no word-anchored slot could name — so the restore cancels the
+      // removal exactly and the delta can normalize back to the default segmentation. Otherwise the
+      // anchor comes from the punctuation-travel rule so leading-quote punctuation lands on the
+      // following segment.
+      onSplit={() => {
+        /* v8 ignore next -- an intra-segment split slot always resolves its segment's baseline */
+        const baselineText = segmentById.get(nextSegmentId)?.baselineText ?? '';
+        const splitRef =
+          formerBoundaries.get(nextTokenRef) ??
+          resolveSplitAnchor(prevToken, nextToken, punctuation, baselineText);
+        dispatch.split(splitRef);
+      }}
+    />
+  ) : undefined;
+
+  // The former-boundary tick, shown when Alt is not swapping it out for the marker.
+  const formerBoundaryTick =
+    isFormerBoundary && !showSplitMarker ? (
       <span
         aria-hidden="true"
         className="tw:mx-0.5 tw:h-3.5 tw:border-l tw:border-dashed tw:border-muted-foreground/50"
@@ -224,11 +217,48 @@ function BoundaryControl({
       />
     ) : undefined;
 
-  if (control === undefined && formerBoundaryMarker === undefined) return undefined;
+  if (splitMarker === undefined && formerBoundaryTick === undefined) return undefined;
   return (
     <span className="tw:inline-flex tw:min-h-4 tw:items-center">
-      {formerBoundaryMarker}
-      {control}
+      {formerBoundaryTick}
+      {splitMarker}
+    </span>
+  );
+}
+
+/** Props for {@link SplitMarker}. */
+type SplitMarkerProps = Readonly<{
+  /** Accessible label and tooltip for the marker. */
+  label: string;
+  /** Runs the split at the resolved anchor; called only for a genuine Alt+click. */
+  onSplit: () => void;
+}>;
+
+/**
+ * The Alt-gated split marker: a lightweight `UnfoldHorizontal` glyph that reveals a splittable
+ * word-word gap while Alt is held. Only an actual Alt+click runs the split — a plain click (Alt
+ * released between render and click) is ignored — so the marker never fights the plain-click
+ * select/focus behavior. Keyboard split is out of scope, so this is a pointer-only affordance (the
+ * relevant a11y lint rules are disabled, matching the segment-container click handlers).
+ *
+ * @param props - Component props.
+ * @param props.label - Accessible label and tooltip.
+ * @param props.onSplit - Runs the split; called only for a genuine Alt+click.
+ * @returns The split-marker span.
+ */
+function SplitMarker({ label, onSplit }: SplitMarkerProps) {
+  return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <span
+      aria-label={label}
+      className="tw:inline-flex tw:cursor-pointer tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+      data-testid="boundary-split-marker"
+      title={label}
+      onClick={(event: MouseEvent) => {
+        if (event.altKey) onSplit();
+      }}
+    >
+      <UnfoldHorizontal className="tw:h-3 tw:w-3" />
     </span>
   );
 }
@@ -347,8 +377,9 @@ export function PhraseSlot({
           <BoundaryControl
             prevSegmentId={prevSegmentId}
             nextSegmentId={nextSegmentId}
-            prevTokenRef={prevToken?.ref}
-            nextTokenRef={nextToken?.ref}
+            prevToken={prevToken}
+            nextToken={nextToken}
+            punctuation={punctuation}
           />
         </>
       )}

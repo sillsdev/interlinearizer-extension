@@ -211,13 +211,13 @@ jest.mock('../../components/SegmentView', () => ({
    * @param props.rest - Any additional props forwarded from the parent.
    * @returns A div with `data-testid="segment-view"` and the segment id.
    */
-  default: ({
+  default: function MockSegmentView({
     segment,
     isActive,
     hoveredPhraseId,
     onHoverPhrase,
     ...rest
-  }: CapturedSegmentViewProps) => {
+  }: CapturedSegmentViewProps) {
     capturedSegmentViewPropsList.push({
       segment,
       isActive,
@@ -225,9 +225,14 @@ jest.mock('../../components/SegmentView', () => ({
       onHoverPhrase,
       ...rest,
     });
+    // Surface the Alt-held context so the wiring test can confirm Interlinearizer feeds it from
+    // useAltHeld. Read lazily (not via an outer import) because jest.mock factories are hoisted.
+    // eslint-disable-next-line global-require, @typescript-eslint/no-require-imports
+    const { useAltHeldValue } = require('../../components/AltHeldContext');
     return (
       <div
         aria-current={isActive ? 'true' : undefined}
+        data-alt-held={String(useAltHeldValue())}
         data-testid="segment-view"
         data-segment-id={segment.id}
       />
@@ -1687,28 +1692,37 @@ describe('between-rows merge control', () => {
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('outlines and tints the two adjacent rows while the merge button is hovered', () => {
+  it('does not tint the adjacent rows on merge-button hover (the preview is removed)', () => {
     const { container } = renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
-    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
     fireEvent.mouseEnter(button);
-    // Both rows around the hovered gap carry the preview outline and tint.
-    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(2);
-    fireEvent.mouseLeave(button);
+    // The adjacent-row tint/outline preview is gone; the button keeps only its own hover style.
     expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
   });
 
-  it('clears the merge preview synchronously when the merge button is clicked', () => {
-    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
-    const { container } = renderInterlinearizer({
-      book: GEN_1_MULTI_BOOK,
-      segmentationDispatch: raw,
-    });
+  it('labels the merge button with the concise merge string and the split-hint tooltip', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
-    fireEvent.mouseEnter(button);
-    fireEvent.click(button);
-    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
-    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
+    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
+    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeHint%');
+  });
+});
+
+describe('Alt-held wiring', () => {
+  it('feeds the Alt-held state through context to the views', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    // The context reads false before any Alt press.
+    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'false');
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { altKey: true }));
+    });
+    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'true');
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keyup', { altKey: false }));
+    });
+    expect(screen.getAllByTestId('segment-view')[0]).toHaveAttribute('data-alt-held', 'false');
   });
 });
 

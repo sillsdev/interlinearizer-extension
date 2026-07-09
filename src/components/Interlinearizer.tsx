@@ -15,8 +15,10 @@ import {
   type SegmentationDispatch,
 } from './SegmentationStore';
 import ContinuousView from './ContinuousView';
+import { AltHeldProvider } from './AltHeldContext';
 import EditPhraseControls from './controls/EditPhraseControls';
 import useBookIndexes from '../hooks/useBookIndexes';
+import { useAltHeld } from '../hooks/useAltHeld';
 import useLatestRef from '../hooks/useLatestRef';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
@@ -141,6 +143,11 @@ function InterlinearizerInner({
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, and `reportSettled` lifts the cross-book curtain once the new book is laid out.
   const { navigate, consumeInternalNav, reportSettled } = useInterlinearNav();
+
+  // Whether Alt is currently held. Provided through a dedicated context (not SegmentationContext,
+  // which is memoized so boundary leaves don't re-render on unrelated changes) so an Alt press
+  // re-renders only the split-gap markers that consume it.
+  const altHeld = useAltHeld();
 
   /**
    * Finds the book segment that owns the active verse named by `scrRef`: the first segment in
@@ -415,62 +422,64 @@ function InterlinearizerInner({
   );
 
   return (
-    <SegmentationProvider value={segmentationValue}>
-      <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
-        {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
-          <div className="tw:confirm-bar">
-            {phraseMode.kind === 'confirm-unlink' ? (
-              <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
-            ) : (
-              <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
-            )}
-          </div>
-        )}
-        <div
-          className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-          style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
-        >
-          {displayContinuousScroll && (
-            <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
-              <ContinuousView
-                book={book}
-                editPhraseSegmentId={editPhraseSegmentId}
-                focusedTokenRef={focusedTokenRef}
-                onFocusedTokenRefChange={focusToken}
-                phraseMode={phraseMode}
-                setPhraseMode={setPhraseMode}
-                tokenSegmentMap={tokenSegmentMap}
-                tokenDocOrder={tokenDocOrder}
-                wordTokenByRef={wordTokenByRef}
-                viewOptions={viewOptions}
-              />
+    <AltHeldProvider value={altHeld}>
+      <SegmentationProvider value={segmentationValue}>
+        <div className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0">
+          {(phraseMode.kind === 'confirm-unlink' || phraseMode.kind === 'edit') && (
+            <div className="tw:confirm-bar">
+              {phraseMode.kind === 'confirm-unlink' ? (
+                <UnlinkPhraseConfirm phraseId={phraseMode.phraseId} setPhraseMode={setPhraseMode} />
+              ) : (
+                <EditPhraseControls phraseMode={phraseMode} setPhraseMode={setPhraseMode} />
+              )}
             </div>
           )}
+          <div
+            className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
+            style={{ opacity: isModeToggleFading ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
+          >
+            {displayContinuousScroll && (
+              <div className="tw:shrink-0 tw:border-b tw:border-border tw:bg-background tw:py-2">
+                <ContinuousView
+                  book={book}
+                  editPhraseSegmentId={editPhraseSegmentId}
+                  focusedTokenRef={focusedTokenRef}
+                  onFocusedTokenRefChange={focusToken}
+                  phraseMode={phraseMode}
+                  setPhraseMode={setPhraseMode}
+                  tokenSegmentMap={tokenSegmentMap}
+                  tokenDocOrder={tokenDocOrder}
+                  wordTokenByRef={wordTokenByRef}
+                  viewOptions={viewOptions}
+                />
+              </div>
+            )}
 
-          <SegmentListView
-            book={book}
-            scrRef={scrRef}
-            segmentationVersion={segmentationVersion}
-            focusedTokenRef={focusedTokenRef}
-            continuousScroll={continuousScroll}
-            displayContinuousScroll={displayContinuousScroll}
-            onDisplayContinuousScrollChange={setDisplayContinuousScroll}
-            consumeInternalNav={consumeInternalNav}
-            reportSettled={reportSettled}
-            phraseMode={phraseMode}
-            setPhraseMode={setPhraseMode}
-            viewOptions={viewOptions}
-            hoveredPhraseId={hoveredPhraseId}
-            setHoveredPhraseId={setHoveredPhraseId}
-            editPhraseSegmentId={editPhraseSegmentId}
-            onSelect={handleSegmentSelect}
-            tokenSegmentMap={tokenSegmentMap}
-            tokenDocOrder={tokenDocOrder}
-            wordTokenByRef={wordTokenByRef}
-          />
+            <SegmentListView
+              book={book}
+              scrRef={scrRef}
+              segmentationVersion={segmentationVersion}
+              focusedTokenRef={focusedTokenRef}
+              continuousScroll={continuousScroll}
+              displayContinuousScroll={displayContinuousScroll}
+              onDisplayContinuousScrollChange={setDisplayContinuousScroll}
+              consumeInternalNav={consumeInternalNav}
+              reportSettled={reportSettled}
+              phraseMode={phraseMode}
+              setPhraseMode={setPhraseMode}
+              viewOptions={viewOptions}
+              hoveredPhraseId={hoveredPhraseId}
+              setHoveredPhraseId={setHoveredPhraseId}
+              editPhraseSegmentId={editPhraseSegmentId}
+              onSelect={handleSegmentSelect}
+              tokenSegmentMap={tokenSegmentMap}
+              tokenDocOrder={tokenDocOrder}
+              wordTokenByRef={wordTokenByRef}
+            />
+          </div>
         </div>
-      </div>
-    </SegmentationProvider>
+      </SegmentationProvider>
+    </AltHeldProvider>
   );
 }
 

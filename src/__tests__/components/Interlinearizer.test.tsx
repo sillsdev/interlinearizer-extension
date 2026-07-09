@@ -366,6 +366,70 @@ const GEN_TWO_CHAPTER_BOOK: Book = {
   ),
 };
 
+/**
+ * GEN book whose verse 1 has two word tokens (so it can be split into portions "1a"/"1b") and verse
+ * 2 one word. The default one-segment-per-verse form; {@link GEN_V1_SPLIT_BOOK} is its split
+ * counterpart.
+ */
+const GEN_SPLITTABLE_V1_BOOK: Book = {
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'In beginning.',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'In',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 2,
+        },
+        {
+          ref: 'GEN 1:1:3',
+          surfaceText: 'beginning',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 3,
+          charEnd: 12,
+        },
+      ],
+    },
+    {
+      id: 'GEN 1:2',
+      startRef: { book: 'GEN', chapter: 1, verse: 2 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2 },
+      baselineText: 'And the earth.',
+      tokens: [
+        {
+          ref: 'GEN 1:2:0',
+          surfaceText: 'And',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 3,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * {@link GEN_SPLITTABLE_V1_BOOK} with verse 1 split before its second word, so verse 1 becomes two
+ * portions ("1a" = segment `GEN 1:1` holding `GEN 1:1:0`; "1b" = segment `GEN 1:1:3` holding `GEN
+ * 1:1:3`). Both portions' verse ranges contain verse 1, so a verse-1 navigation resolves to the
+ * first portion — the condition behind the non-first-portion focus bug.
+ */
+const GEN_V1_SPLIT_BOOK: Book = resegmentBook(GEN_SPLITTABLE_V1_BOOK, {
+  removedVerseStarts: [],
+  addedStarts: ['GEN 1:1:3'],
+});
+
 /** GEN book whose chapter 1 opens with a verse-0 superscription segment before verse 1. */
 const GEN_SUPERSCRIPTION_BOOK: Book = {
   id: 'GEN',
@@ -996,6 +1060,116 @@ describe('Interlinearizer', () => {
       act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
       const reseeded = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 2:2:0');
+      expect(reseeded).toBeDefined();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('keeps focus on a clicked non-first portion of a split verse', () => {
+    // Verse 1 is split into portions "1a" (GEN 1:1) and "1b" (GEN 1:1:3). Focus starts on verse 2.
+    // Clicking a token in "1b" sets focus to 'GEN 1:1:3' and navigates to verse 1. The host echoes
+    // verse 1 back, firing the reseed effect: its guard must recognize that the focused token
+    // already sits in a segment (portion "1b") containing verse 1 and leave it alone — rather than
+    // reseeding to the *first* portion ("1a") and snapping focus to that portion's first word.
+    const { rerender } = render(
+      withNav(
+        <Interlinearizer
+          book={GEN_V1_SPLIT_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          viewOptions={{ ...allFalseViewOptions }}
+        />,
+      ),
+    );
+
+    const secondPortion = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:1:3');
+    if (!secondPortion || typeof secondPortion.onSelect !== 'function') {
+      throw new Error('Expected an onSelect for the "1b" split portion (GEN 1:1:3)');
+    }
+    act(() => {
+      secondPortion.onSelect?.({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:3');
+    });
+
+    // Host delivers the echo of the clicked verse (verse 1).
+    capturedSegmentViewPropsList = [];
+    rerender(
+      withNav(
+        <Interlinearizer
+          book={GEN_V1_SPLIT_BOOK}
+          continuousScroll={false}
+          scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          viewOptions={{ ...allFalseViewOptions }}
+        />,
+      ),
+    );
+
+    // Focus stays on the deliberately clicked "1b" token, not reseeded to "1a"'s first word.
+    const stillFocused = capturedSegmentViewPropsList.find(
+      (p) => p.focusedTokenRef === 'GEN 1:1:3',
+    );
+    expect(stillFocused).toBeDefined();
+    const reseededToFirstPortion = capturedSegmentViewPropsList.find(
+      (p) => p.focusedTokenRef === 'GEN 1:1:0',
+    );
+    expect(reseededToFirstPortion).toBeUndefined();
+  });
+
+  it('reseeds focus out of a split portion on an external jump to a verse it does not contain', () => {
+    // The negative counterpart to the split-portion focus test: focus sits in portion "1b"
+    // (GEN 1:1:3), which contains verse 1 but not verse 2. A genuine external jump to verse 2 lands
+    // outside the focused token's segment, so the containment guard must let the reseed run and move
+    // focus to verse 2's first word — proving the guard is verse-exact and not merely chapter-wide.
+    // The segment view's focus highlight lags through the recenter fade, so advance past it.
+    jest.useFakeTimers();
+    try {
+      const { rerender } = render(
+        withNav(
+          <Interlinearizer
+            book={GEN_V1_SPLIT_BOOK}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            viewOptions={{ ...allFalseViewOptions }}
+          />,
+        ),
+      );
+
+      // Focus the second portion so focus sits off the verse's first word.
+      const secondPortion = capturedSegmentViewPropsList.find((p) => p.segment.id === 'GEN 1:1:3');
+      if (!secondPortion || typeof secondPortion.onSelect !== 'function') {
+        throw new Error('Expected an onSelect for the "1b" split portion (GEN 1:1:3)');
+      }
+      act(() => {
+        secondPortion.onSelect?.({ book: 'GEN', chapter: 1, verse: 1 }, 'GEN 1:1:3');
+      });
+
+      // External jump to verse 2 — a verse the focused portion does not contain.
+      capturedSegmentViewPropsList = [];
+      rerender(
+        withNav(
+          <Interlinearizer
+            book={GEN_V1_SPLIT_BOOK}
+            continuousScroll={false}
+            scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
+            analysisLanguage="und"
+            phraseMode={{ kind: 'view' }}
+            setPhraseMode={() => {}}
+            viewOptions={{ ...allFalseViewOptions }}
+          />,
+        ),
+      );
+      act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+
+      const reseeded = capturedSegmentViewPropsList.find((p) => p.focusedTokenRef === 'GEN 1:2:0');
       expect(reseeded).toBeDefined();
     } finally {
       jest.useRealTimers();

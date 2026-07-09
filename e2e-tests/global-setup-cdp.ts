@@ -25,6 +25,14 @@ export const CDP_PID_FILE = path.join(__dirname, '.cdp-app.pid');
 /** File the launched Electron's isolated user-data dir is written to, for teardown to remove it. */
 export const CDP_USER_DATA_FILE = path.join(__dirname, '.cdp-app.user-data-dir');
 
+/**
+ * File the launched app's stdout/stderr is streamed to. Kept alongside the other `.cdp-*` marker
+ * files in `e2e-tests/` — a location Playwright does not clear (unlike `outputDir`) — and added to
+ * the CI artifact upload so it survives a failed run. Without this the app is spawned `stdio:
+ * 'ignore'` and a startup crash surfaces only as an opaque WebSocket-port timeout with no cause.
+ */
+export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
+
 /** How long to wait for the launched app's WebSocket / CDP port before failing setup. */
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
@@ -92,9 +100,13 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
 
+  // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
+  // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
+  const appLogFd = fs.openSync(CDP_APP_LOG_FILE, 'w');
+
   // Detached: unlike the smoke fixture's Playwright-owned `_electron.launch()`, the CDP fixture
   // connects to this process over CDP, so Playwright must not own its lifecycle. Teardown kills the
-  // whole process group by the recorded PID.
+  // whole process tree by the recorded PID.
   const appProcess = spawn(
     electronExecutable,
     [
@@ -107,17 +119,43 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     {
       cwd: coreDir,
       env: { ...restEnv, NODE_ENV: 'development', DEV_NOISY: process.env.DEV_NOISY ?? 'false' },
-      stdio: 'ignore',
+      stdio: ['ignore', appLogFd, appLogFd],
       detached: true,
     },
   );
   appProcess.unref();
+  // The child has inherited the fd; close our copy so the file is flushed and released on exit.
+  fs.closeSync(appLogFd);
 
   if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
 
   console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
-  await waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT);
+  try {
+    await waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT);
+  } catch (error) {
+    // The app never came up. Echo its captured output so the failure cause is in the CI log itself,
+    // not just buried in the uploaded artifact, then re-throw the original timeout.
+    dumpAppLog();
+    throw error;
+  }
   console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
   await waitForPort(CDP_PORT, APP_READY_TIMEOUT);
   console.log('Platform.Bible (CDP) is ready.');
+}
+
+/**
+ * Print the launched app's captured stdout/stderr to the console. Called when the app fails to open
+ * its ports so the startup failure's cause appears inline in the CI log.
+ *
+ * @returns Nothing; logging-only.
+ */
+function dumpAppLog(): void {
+  try {
+    const log = fs.readFileSync(CDP_APP_LOG_FILE, 'utf-8');
+    console.error(
+      `--- Launched Platform.Bible (CDP) output (${CDP_APP_LOG_FILE}) ---\n${log || '(empty)'}\n--- end app output ---`,
+    );
+  } catch {
+    console.error(`Could not read app log at ${CDP_APP_LOG_FILE}.`);
+  }
 }

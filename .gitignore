@@ -44,3 +44,4 @@ e2e-tests/test-results
 e2e-tests/.dev-server.pid
 e2e-tests/.cdp-app.pid
 e2e-tests/.cdp-app.user-data-dir
+e2e-tests/.cdp-app-startup.log

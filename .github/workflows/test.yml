@@ -52,9 +52,11 @@ jobs:
         working-directory: extension-repo
         run: npm run test:coverage
 
-  e2e-smoke:
+  e2e:
     runs-on: ${{ matrix.os }}
     strategy:
+      # Don't cancel the other OS's e2e run when one fails — we want both reports.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
@@ -112,11 +114,17 @@ jobs:
         working-directory: paranext-core
         run: npm run build:dll
 
-      - name: Run e2e smoke tests (Linux)
+      # Linux runs the FULL suite: smoke plus the CDP feature tests. `test:e2e:cdp` self-launches
+      # its own Platform.Bible instance (globalSetup, --remote-debugging-port=9223), so the whole
+      # thing runs under one xvfb display with no separate app-start step.
+      - name: Run e2e tests (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: extension-repo
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e:smoke
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
 
+      # Windows runs smoke only. The CDP self-launch spawns a detached Electron and kills it by
+      # POSIX process group (process.kill(-pid, ...)), which has no Windows equivalent, so the CDP
+      # tier is Linux-only until that teardown path is made Windows-safe.
       - name: Run e2e smoke tests (Windows)
         if: matrix.os == 'windows-latest'
         working-directory: extension-repo

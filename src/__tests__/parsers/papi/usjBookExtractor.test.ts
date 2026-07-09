@@ -50,7 +50,7 @@ describe('extractBookFromUsj', () => {
           type: 'para',
           marker: 'p',
           content: [
-            { type: 'verse', sid: 'GEN 1:1' },
+            { type: 'verse', sid: 'GEN 1:1', number: '1' },
             'In the beginning God created the heavens and the earth.',
           ],
         },
@@ -60,7 +60,42 @@ describe('extractBookFromUsj', () => {
     expect(result.verses).toHaveLength(1);
     expect(result.verses[0]).toEqual({
       sid: 'GEN 1:1',
+      number: '1',
       text: 'In the beginning God created the heavens and the earth.',
+    });
+  });
+
+  it('captures the verse marker number string verbatim, including a range', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:3', number: '3-4' }, 'Combined verse text.'],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses[0]).toEqual({ sid: 'GEN 1:3', number: '3-4', text: 'Combined verse text.' });
+  });
+
+  it('falls back to the sid-derived verse number when the marker has no number', () => {
+    const usj: UsjDocument = {
+      content: [
+        { type: 'book', code: 'GEN', content: [] },
+        {
+          type: 'para',
+          marker: 'p',
+          content: [{ type: 'verse', sid: 'GEN 1:7' }, 'Verse without a number attribute.'],
+        },
+      ],
+    };
+    const { verses } = extractBookFromUsj(usj, WS);
+    expect(verses[0]).toEqual({
+      sid: 'GEN 1:7',
+      number: '7',
+      text: 'Verse without a number attribute.',
     });
   });
 
@@ -82,8 +117,8 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(2);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'First verse text.' });
-    expect(verses[1]).toEqual({ sid: 'GEN 1:2', text: 'Second verse text.' });
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', number: '1', text: 'First verse text.' });
+    expect(verses[1]).toEqual({ sid: 'GEN 1:2', number: '2', text: 'Second verse text.' });
   });
 
   it('accumulates text across multiple paragraphs within a verse', () => {
@@ -165,8 +200,8 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(2);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: '' });
-    expect(verses[1]).toEqual({ sid: 'GEN 1:2', text: 'Some text.' });
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', number: '1', text: '' });
+    expect(verses[1]).toEqual({ sid: 'GEN 1:2', number: '2', text: 'Some text.' });
   });
 
   it('captures text nested directly inside a verse node', () => {
@@ -182,7 +217,7 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(1);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'Inline verse content.' });
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', number: '1', text: 'Inline verse content.' });
   });
 
   it('throws when a verse marker is missing its sid attribute', () => {
@@ -221,8 +256,12 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(2);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:31', text: 'Last verse of chapter one.' });
-    expect(verses[1]).toEqual({ sid: 'GEN 2:1', text: 'First verse of chapter two.' });
+    expect(verses[0]).toEqual({
+      sid: 'GEN 1:31',
+      number: '31',
+      text: 'Last verse of chapter one.',
+    });
+    expect(verses[1]).toEqual({ sid: 'GEN 2:1', number: '1', text: 'First verse of chapter two.' });
   });
 
   it('traverses content nested directly inside a chapter node', () => {
@@ -245,7 +284,7 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(1);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'In the beginning.' });
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', number: '1', text: 'In the beginning.' });
   });
 
   it('skips content of heading para markers encountered inside a verse', () => {
@@ -397,10 +436,12 @@ describe('extractBookFromUsj', () => {
     expect(verses).toHaveLength(2);
     expect(verses[0]).toEqual({
       sid: 'PSA 3:0',
+      number: '0',
       text: 'A Psalm by David, when he fled from Absalom his son.',
     });
     expect(verses[1]).toEqual({
       sid: 'PSA 3:1',
+      number: '1',
       text: 'Yahweh, how my adversaries have increased!',
     });
   });
@@ -420,7 +461,7 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(1);
-    expect(verses[0]).toEqual({ sid: 'GEN 1:1', text: 'In the beginning.' });
+    expect(verses[0]).toEqual({ sid: 'GEN 1:1', number: '1', text: 'In the beginning.' });
   });
 
   it('captures a verse 0 that ends the document with no following numbered verse', () => {
@@ -432,7 +473,7 @@ describe('extractBookFromUsj', () => {
       ],
     };
     const { verses } = extractBookFromUsj(usj, WS);
-    expect(verses).toEqual([{ sid: 'PSA 3:0', text: 'A Psalm by David.' }]);
+    expect(verses).toEqual([{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }]);
   });
 
   it('does not open a verse 0 scope for a chapter node without a number', () => {
@@ -451,7 +492,7 @@ describe('extractBookFromUsj', () => {
       ],
     };
     const { verses } = extractBookFromUsj(usj, WS);
-    expect(verses).toEqual([{ sid: 'GEN 1:1', text: 'In the beginning.' }]);
+    expect(verses).toEqual([{ sid: 'GEN 1:1', number: '1', text: 'In the beginning.' }]);
   });
 
   it('captures an explicit verse-0 marker as verse 0', () => {
@@ -473,9 +514,10 @@ describe('extractBookFromUsj', () => {
     };
     const { verses } = extractBookFromUsj(usj, WS);
     expect(verses).toHaveLength(2);
-    expect(verses[0]).toEqual({ sid: 'PSA 3:0', text: 'A Psalm by David.' });
+    expect(verses[0]).toEqual({ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' });
     expect(verses[1]).toEqual({
       sid: 'PSA 3:1',
+      number: '1',
       text: 'Yahweh, how my adversaries have increased!',
     });
   });

@@ -20,15 +20,15 @@ import {
  * @param verses - Verse SID + text pairs.
  * @returns The tokenized book.
  */
-function makeBook(verses: { sid: string; text: string }[]): Book {
+function makeBook(verses: { sid: string; number: string; text: string }[]): Book {
   return tokenizeBook({ bookCode: 'GEN', writingSystem: 'en', contentHash: 'h', verses });
 }
 
 /** A three-verse fixture: "Alpha beta." / "Gamma delta." / "Epsilon." */
 const THREE_VERSES = makeBook([
-  { sid: 'GEN 1:1', text: 'Alpha beta.' },
-  { sid: 'GEN 1:2', text: 'Gamma delta.' },
-  { sid: 'GEN 1:3', text: 'Epsilon.' },
+  { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+  { sid: 'GEN 1:2', number: '2', text: 'Gamma delta.' },
+  { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
 ]);
 
 // First token refs of each verse (charStart 0): "GEN 1:1:0", "GEN 1:2:0", "GEN 1:3:0".
@@ -44,9 +44,9 @@ const V1_BETA = 'GEN 1:1:6';
  * guard makes its boundaries special (only the always-present book-first lock applies).
  */
 const MID_VERSE_ZERO = makeBook([
-  { sid: 'GEN 1:1', text: 'Alpha beta.' },
-  { sid: 'GEN 2:0', text: 'Sup tee.' },
-  { sid: 'GEN 2:1', text: 'Gamma.' },
+  { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
+  { sid: 'GEN 2:0', number: '0', text: 'Sup tee.' },
+  { sid: 'GEN 2:1', number: '1', text: 'Gamma.' },
 ]);
 // Verse-0 start, an interior verse-0 word ("tee" at charStart 4), and the start of the verse right
 // after verse 0.
@@ -61,8 +61,8 @@ describe('defaultVerseStarts', () => {
 
   it('skips verses with no tokens', () => {
     const book = makeBook([
-      { sid: 'GEN 1:1', text: '   ' },
-      { sid: 'GEN 1:2', text: 'Word.' },
+      { sid: 'GEN 1:1', number: '1', text: '   ' },
+      { sid: 'GEN 1:2', number: '2', text: 'Word.' },
     ]);
     expect(defaultVerseStarts(book)).toEqual(new Set(['GEN 1:2:0']));
   });

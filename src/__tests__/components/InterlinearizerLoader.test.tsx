@@ -35,8 +35,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onHideInactiveLinkButtonsChange,
     simplifyPhrases,
     onSimplifyPhrasesChange,
-    chapterLabelInVerse,
-    onChapterLabelInVerseChange,
     showMorphology,
     onShowMorphologyChange,
     showFreeTranslation,
@@ -48,8 +46,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onHideInactiveLinkButtonsChange: (v: boolean) => void;
     simplifyPhrases: boolean;
     onSimplifyPhrasesChange: (v: boolean) => void;
-    chapterLabelInVerse: boolean;
-    onChapterLabelInVerseChange: (v: boolean) => void;
     showMorphology: boolean;
     onShowMorphologyChange: (v: boolean) => void;
     showFreeTranslation: boolean;
@@ -75,13 +71,6 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="dim-inactive-segments-toggle"
         data-checked={String(simplifyPhrases)}
         onClick={() => onSimplifyPhrasesChange(!simplifyPhrases)}
-        type="button"
-      />
-      <button
-        aria-label="chapter label in verse"
-        data-testid="chapter-label-in-verse-toggle"
-        data-checked={String(chapterLabelInVerse)}
-        onClick={() => onChapterLabelInVerseChange(!chapterLabelInVerse)}
         type="button"
       />
       <button
@@ -512,6 +501,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'PSA', chapter: 3, verse: 0 },
           baselineText: 'A Psalm by David.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '0' }],
         },
       ],
     };
@@ -550,6 +540,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 1 },
           baselineText: 'First verse.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'GEN 3:2',
@@ -557,6 +548,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 2 },
           baselineText: 'Last verse of the chapter.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '2' }],
         },
         {
           id: 'GEN 4:1',
@@ -564,6 +556,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 4, verse: 1 },
           baselineText: 'Next chapter.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
       ],
     };
@@ -601,6 +594,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 1 },
           baselineText: 'First verse.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'GEN 3:3',
@@ -608,6 +602,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 3 },
           baselineText: 'Verse after the gap.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '3' }],
         },
       ],
     };
@@ -645,6 +640,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 2 },
           baselineText: 'Two verses merged into one segment.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'GEN 3:3',
@@ -652,6 +648,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 3 },
           baselineText: 'Verse after the merged segment.',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '3' }],
         },
       ],
     };
@@ -796,7 +793,6 @@ describe('InterlinearizerLoader', () => {
 
     expect(capturedInterlinearizerProps?.viewOptions.hideInactiveLinkButtons).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
-    expect(capturedInterlinearizerProps?.viewOptions.chapterLabelInVerse).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(false);
   });
@@ -819,16 +815,6 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('dim-inactive-segments-toggle'));
     expect(onChangeByKey.get('interlinearizer.simplifyPhrases')).toHaveBeenCalledWith(true);
-  });
-
-  it('wires ViewOptionsDropdown chapter-label-in-verse to onChange from useOptimisticBooleanSetting', async () => {
-    const onChangeByKey = mockOptimisticSetting();
-    await act(async () => {
-      renderLoader();
-    });
-
-    await userEvent.click(screen.getByTestId('chapter-label-in-verse-toggle'));
-    expect(onChangeByKey.get('interlinearizer.chapterLabelInVerse')).toHaveBeenCalledWith(true);
   });
 
   it('wires ViewOptionsDropdown show-morphology to onChange from useOptimisticBooleanSetting', async () => {
@@ -1214,6 +1200,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 10,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'GEN 1:2',
@@ -1230,6 +1217,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '2' }],
         },
       ],
     };
@@ -1388,6 +1376,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '1' }],
         },
         {
           id: 'GEN 1:2',
@@ -1412,6 +1401,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 6,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '2' }],
         },
         {
           id: 'GEN 1:3',
@@ -1428,6 +1418,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '3' }],
         },
         {
           id: 'GEN 1:4',
@@ -1444,6 +1435,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 1,
             },
           ],
+          verseStarts: [{ charStart: 0, number: '4' }],
         },
         {
           id: 'GEN 1:5',
@@ -1451,6 +1443,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 1, verse: 5 },
           baselineText: '',
           tokens: [],
+          verseStarts: [{ charStart: 0, number: '5' }],
         },
       ],
     };

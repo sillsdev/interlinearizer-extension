@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import type { SerializedVerseRef } from '@sillsdev/scripture';
+import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import { FoldVertical, LocateFixed } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -9,7 +9,7 @@ import type { ViewOptions } from '../types/view-options';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
-import { buildSegmentLabels } from '../utils/segment-labels';
+import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -194,33 +194,27 @@ export default function SegmentListView({
   tokenDocOrder,
   wordTokenByRef,
 }: SegmentListViewProps) {
-  // Read directly here for the inline chapter headers; the rest of `viewOptions` is forwarded
-  // unchanged to each SegmentView.
-  const { chapterLabelInVerse } = viewOptions;
-
   /**
-   * Ids of the segments that begin a new chapter — the first segment of the book and every segment
-   * whose chapter differs from the immediately preceding segment in book order. Computed over the
-   * whole `book.segments` list (not just the mounted window) so a chapter boundary is detected even
-   * when the chapter's first segment scrolls in mid-window, and so the marker never depends on
-   * which slice happens to be mounted.
+   * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
+   * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
+   * mounted window) so the qualification is stable regardless of which slice happens to be
+   * mounted.
    */
-  const chapterStartIds = useMemo(() => {
-    const ids = new Set<string>();
-    let prevChapter: number | undefined;
-    book.segments.forEach((seg) => {
-      if (seg.startRef.chapter !== prevChapter) ids.add(seg.id);
-      prevChapter = seg.startRef.chapter;
-    });
-    return ids;
+  const verseStartLabelsBySegmentId = useMemo(
+    () => buildVerseStartLabels(book.segments),
+    [book.segments],
+  );
+
+  // English book name for the sticky chapter header, e.g. "John" (USJ verse markers carry no book
+  // name; a platform-localized name would need PAPI wiring this view does not yet have).
+  const bookName = useMemo(() => Canon.bookIdToEnglishName(book.bookRef), [book.bookRef]);
+
+  /** Segment id → the chapter it starts in, for resolving the topmost visible segment's chapter. */
+  const chapterBySegmentId = useMemo(() => {
+    const map = new Map<string, number>();
+    book.segments.forEach((seg) => map.set(seg.id, seg.startRef.chapter));
+    return map;
   }, [book.segments]);
-
-  /**
-   * Verse-based display label of every segment (bare verse, lettered split portion, or verse
-   * range), keyed by segment id. Computed over the whole `book.segments` list (not just the mounted
-   * window) so the lettering is stable regardless of which slice happens to be mounted.
-   */
-  const segmentLabels = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
 
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
@@ -287,35 +281,93 @@ export default function SegmentListView({
    */
   const [mergeHoverSegmentId, setMergeHoverSegmentId] = useState<string | undefined>(undefined);
 
+  /**
+   * Chapter shown in the pinned header overlay: the chapter of the topmost segment still touching
+   * the container's top edge. Rendered as a single always-mounted overlay (a sibling of the
+   * recenter button) rather than a per-segment sticky element, so it survives the window culling
+   * its segments as they scroll off — the in-flow header would vanish mid-chapter once its own
+   * segment unmounted.
+   */
+  const [pinnedChapter, setPinnedChapter] = useState<number | undefined>(undefined);
+
+  // Track the topmost visible segment's chapter from scroll position (plus resize/content changes),
+  // updating state only when the chapter actually changes so scrolling within a chapter causes no
+  // re-render. Reads the same "first segment whose bottom is below the container top" the window
+  // hook's compensation anchor uses, but read-only here — it never touches scrollTop, so it cannot
+  // interfere with the recenter/compensation machinery.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
+    if (!container) return undefined;
+
+    const readTopChapter = () => {
+      const containerTop = container.getBoundingClientRect().top;
+      const els = container.querySelectorAll('[data-segment-id]');
+      for (let i = 0; i < els.length; i += 1) {
+        const el = els[i];
+        // `>=` (not `>`) so a segment flush against the top edge counts as the top segment; a
+        // segment fully scrolled above has its bottom strictly less than the container top.
+        if (el.getBoundingClientRect().bottom >= containerTop) {
+          const id = el.getAttribute('data-segment-id');
+          /* v8 ignore next -- the [data-segment-id] selector guarantees a present attribute */
+          const chapter = id ? chapterBySegmentId.get(id) : undefined;
+          setPinnedChapter(chapter);
+          return;
+        }
+      }
+      setPinnedChapter(undefined);
+    };
+
+    readTopChapter();
+    container.addEventListener('scroll', readTopChapter, { passive: true });
+    const resizeObserver = new ResizeObserver(readTopChapter);
+    resizeObserver.observe(container);
+    return () => {
+      container.removeEventListener('scroll', readTopChapter);
+      resizeObserver.disconnect();
+    };
+  }, [scrollContainerRef, chapterBySegmentId, windowSegments]);
+
   return (
-    <div
-      ref={setScrollContainer}
-      className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
-      // The window hook owns scroll-position corrections (extend anchoring, above-viewport
-      // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
-      // heuristic adjustments on top of them and double-correct, so it is disabled here.
-      style={{ overflowAnchor: 'none' }}
-    >
-      {windowSegments.length === 0 && (
-        <p className="tw:text-sm tw:text-muted-foreground">
-          No verse data for {scrRef.book} {scrRef.chapterNum}.
-        </p>
+    <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
+      {/* Chapter header band — a real row above the scroll area, not an overlay inside it, so
+          scrolled content can never render behind it (which happened when recentering landed a
+          chapter's first verse under an overlaid header). The recenter button lives in this same row,
+          vertically centered with the label via tw:items-center. Kept as one always-mounted band
+          (not per-segment) so it survives the window culling its segments as they scroll off, its
+          label following the chapter of the topmost visible segment. */}
+      {windowSegments.length > 0 && (
+        <div className="tw:flex tw:items-center tw:justify-between tw:gap-2 tw:border-b tw:border-border tw:bg-background tw:px-4 tw:py-2">
+          <span className="tw:text-sm tw:font-semibold tw:text-foreground">
+            {pinnedChapter !== undefined ? `${bookName} ${pinnedChapter}` : ''}
+          </span>
+          <button
+            aria-label="Scroll to active verse"
+            className="tw:rounded tw:p-1 tw:text-foreground tw:hover:bg-muted/50"
+            tabIndex={-1}
+            onClick={recenterOnActive}
+            type="button"
+          >
+            <LocateFixed className="tw:h-4 tw:w-4" />
+          </button>
+        </div>
       )}
 
-      {windowSegments.length > 0 && (
-        <>
-          <div className="tw:sticky tw:top-0 tw:z-10 tw:flex tw:justify-end tw:pointer-events-none">
-            <button
-              aria-label="Scroll to active verse"
-              className="tw:rounded tw:p-1 tw:text-foreground tw:bg-background tw:hover:bg-muted/50 tw:pointer-events-auto"
-              tabIndex={-1}
-              onClick={recenterOnActive}
-              type="button"
-            >
-              <LocateFixed className="tw:h-4 tw:w-4" />
-            </button>
-          </div>
+      <div
+        ref={setScrollContainer}
+        className="tw:no-scrollbar tw:relative tw:min-h-0 tw:flex-1 tw:overflow-y-auto tw:flex tw:flex-col tw:gap-4 tw:p-4"
+        // The window hook owns scroll-position corrections (extend anchoring, above-viewport
+        // compensation, recenter snaps); the browser's native scroll anchoring would apply its own
+        // heuristic adjustments on top of them and double-correct, so it is disabled here.
+        style={{ overflowAnchor: 'none' }}
+      >
+        {windowSegments.length === 0 && (
+          <p className="tw:text-sm tw:text-muted-foreground">
+            No verse data for {scrRef.book} {scrRef.chapterNum}.
+          </p>
+        )}
 
+        {windowSegments.length > 0 && (
           <div
             ref={contentRef}
             className="tw:flex tw:flex-col tw:gap-2 tw:transition-opacity"
@@ -325,7 +377,7 @@ export default function SegmentListView({
             {windowSegments.map((seg, segIndex) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
-              const label = segmentLabels.get(seg.id) ?? '';
+              const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
               return (
                 <Fragment key={seg.id}>
                   {segIndex > 0 && (
@@ -334,11 +386,6 @@ export default function SegmentListView({
                       disabled={phraseMode.kind !== 'view'}
                       onHoverChange={setMergeHoverSegmentId}
                     />
-                  )}
-                  {!chapterLabelInVerse && chapterStartIds.has(seg.id) && (
-                    <span className="tw:block tw:border-b tw:border-border tw:pb-1 tw:text-sm tw:font-semibold tw:text-foreground">
-                      {`Chapter ${seg.startRef.chapter}`}
-                    </span>
                   )}
                   <div
                     // Merge preview: outline and tint the two rows the hovered gap's merge button
@@ -367,7 +414,7 @@ export default function SegmentListView({
                       phraseMode={phraseMode}
                       setPhraseMode={setPhraseMode}
                       segment={seg}
-                      label={label}
+                      verseStartLabels={verseStartLabels}
                       tokenSegmentMap={tokenSegmentMap}
                       tokenDocOrder={tokenDocOrder}
                       wordTokenByRef={wordTokenByRef}
@@ -379,9 +426,9 @@ export default function SegmentListView({
             })}
             <div ref={bottomSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
           </div>
-          <div data-snap-spacer aria-hidden="true" />
-        </>
-      )}
+        )}
+        <div data-snap-spacer aria-hidden="true" />
+      </div>
     </div>
   );
 }

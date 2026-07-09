@@ -9,7 +9,14 @@
  *   with `baselineText` and per-token char offsets recomputed so the `baselineText.slice(charStart,
  *   charEnd) === surfaceText` invariant still holds.
  */
-import type { Book, ScriptureRef, Segment, SegmentationDelta, Token } from 'interlinearizer';
+import type {
+  Book,
+  ScriptureRef,
+  Segment,
+  SegmentationDelta,
+  Token,
+  VerseStart,
+} from 'interlinearizer';
 
 import { effectiveStarts, isDefaultSegmentation } from '../../utils/segmentation';
 
@@ -23,7 +30,9 @@ type SourcedToken = { token: Token; verse: Segment };
  * Rebuilds one custom {@link Segment} from a run of tokens that may span multiple original verses.
  * The new `baselineText` is each contributing verse's text spliced to its covered span, joined by
  * {@link MERGE_SEPARATOR} between verses; every token's char offset is shifted into the new string
- * while its `ref` and `surfaceText` are preserved.
+ * while its `ref` and `surfaceText` are preserved. One `verseStarts` entry is emitted per
+ * contributing verse, at its offset in the concatenated baseline, carrying that verse's rendered
+ * number (a split's later piece keeps its source verse's number).
  *
  * @param run - The run's tokens in document order, each tagged with its source verse. Non-empty.
  * @returns The rebuilt segment.
@@ -44,12 +53,18 @@ function buildSegment(run: SourcedToken[]): Segment {
   let cursor = 0;
   let runIndex = 0;
   const tokens: Token[] = [];
+  const verseStarts: VerseStart[] = [];
   while (runIndex < run.length) {
     const { verse } = run[runIndex];
     if (runIndex > 0) {
       baselineText += MERGE_SEPARATOR;
       cursor += MERGE_SEPARATOR.length;
     }
+    // Each contributing verse begins at the current cursor in the concatenated baseline. Its
+    // rendered number is the verse segment's own single verse start (a split's later piece still
+    // carries its whole source verse's number, which is what should render).
+    /* v8 ignore next -- every original verse segment has exactly one verse start */
+    verseStarts.push({ charStart: cursor, number: verse.verseStarts[0]?.number ?? '' });
     // Consume the contiguous sub-run of tokens from this verse, shifting each token's offsets into
     // the new concatenated baseline while keeping its ref and surface text unchanged.
     const subStart = runIndex;
@@ -79,7 +94,7 @@ function buildSegment(run: SourcedToken[]): Segment {
     ? lastVerse.endRef
     : { ...lastVerse.endRef, charIndex: lastSourced.token.charEnd };
 
-  return { id, startRef, endRef, baselineText, tokens };
+  return { id, startRef, endRef, baselineText, tokens, verseStarts };
 }
 
 /**

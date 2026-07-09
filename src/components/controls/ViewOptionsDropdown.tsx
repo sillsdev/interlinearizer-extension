@@ -9,7 +9,6 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
   '%interlinearizer_viewOption_hideInactiveLinkButtons%',
   '%interlinearizer_viewOption_simplifyPhrases%',
-  '%interlinearizer_viewOption_chapterLabelInVerse%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_showSuggestions%',
@@ -64,10 +63,6 @@ type ViewOptionsDropdownProps = Readonly<{
   simplifyPhrases: boolean;
   /** Called when the simplify-phrases toggle changes. */
   onSimplifyPhrasesChange: (checked: boolean) => void;
-  /** Current value of the show-chapter-in-verse-label toggle. */
-  chapterLabelInVerse: boolean;
-  /** Called when the show-chapter-in-verse-label toggle changes. */
-  onChapterLabelInVerseChange: (checked: boolean) => void;
   /** Current value of the show-morphology toggle. */
   showMorphology: boolean;
   /** Called when the show-morphology toggle changes. */
@@ -97,8 +92,6 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
  * @param props.simplifyPhrases - Current simplify-phrases value.
  * @param props.onSimplifyPhrasesChange - Simplify-phrases change callback.
- * @param props.chapterLabelInVerse - Current show-chapter-in-verse-label value.
- * @param props.onChapterLabelInVerseChange - Show-chapter-in-verse-label change callback.
  * @param props.showMorphology - Current show-morphology value.
  * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @param props.showFreeTranslation - Current show-free-translation value.
@@ -114,8 +107,6 @@ export default function ViewOptionsDropdown({
   onHideInactiveLinkButtonsChange,
   simplifyPhrases,
   onSimplifyPhrasesChange,
-  chapterLabelInVerse,
-  onChapterLabelInVerseChange,
   showMorphology,
   onShowMorphologyChange,
   showFreeTranslation,
@@ -229,11 +220,6 @@ export default function ViewOptionsDropdown({
                 checked={simplifyPhrases}
                 label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
                 onCheckedChange={onSimplifyPhrasesChange}
-              />
-              <ViewToggle
-                checked={chapterLabelInVerse}
-                label={localizedStrings['%interlinearizer_viewOption_chapterLabelInVerse%']}
-                onCheckedChange={onChapterLabelInVerseChange}
               />
               {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
                   row (and its prop pair) once the behavior is settled. */}

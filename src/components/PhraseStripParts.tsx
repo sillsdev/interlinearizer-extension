@@ -493,6 +493,26 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
 
 // #region PhraseStrip
 
+/**
+ * Renders one inline verse-number superscript within the token strip. Marks a verse start in
+ * document order so the running text announces verse identity where a per-segment label used to.
+ *
+ * @param props - Component props.
+ * @param props.label - The verse label to display (verbatim number, or `chapter:number` at a
+ *   chapter transition).
+ * @returns A superscript element carrying the verse label.
+ */
+export function VerseSuperscript({ label }: Readonly<{ label: string }>) {
+  return (
+    <sup
+      className="tw:mr-0.5 tw:align-super tw:text-[0.6em] tw:font-semibold tw:text-muted-foreground tw:pointer-events-none"
+      data-testid="verse-superscript"
+    >
+      {label}
+    </sup>
+  );
+}
+
 /** Stable empty set passed to phrase boxes outside view mode so memoization isn't broken. */
 const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
 
@@ -526,6 +546,13 @@ export type StripItem =
       isFocused: boolean;
       /** Optional DOM-ref callback for the wrapper span; used by ContinuousView for scroll-in. */
       groupRef?: (el: HTMLSpanElement | null) => void;
+    }
+  | {
+      kind: 'superscript';
+      /** Stable React key for this superscript. */
+      key: string;
+      /** The verse label to render (verbatim number, or `chapter:number` at a chapter transition). */
+      label: string;
     };
 
 /** Props for {@link PhraseStrip}. */
@@ -600,6 +627,9 @@ export function PhraseStrip({
           hoveredPhraseId={hoveredPhraseId}
         />
       );
+    }
+    if (item.kind === 'superscript') {
+      return <VerseSuperscript key={item.key} label={item.label} />;
     }
     const { group, key: groupKey } = item;
     const phraseId = group.phraseLink?.analysisId;

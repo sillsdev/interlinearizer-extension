@@ -1,6 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
@@ -13,13 +13,12 @@ import {
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
-import type { SegmentLabel } from '../utils/segment-labels';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { PhraseStripProvider } from './PhraseStripContext';
-import { PhraseStrip, type StripItem } from './PhraseStripParts';
+import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -62,11 +61,12 @@ type SegmentViewProps = Readonly<{
   /** The segment to render. */
   segment: Segment;
   /**
-   * The segment's verse-based display label (e.g. `"5"`, `"5a"`, `"5b–7"`), computed by the list
-   * over the whole book (letters depend on how neighboring segments divide a verse, which this
-   * component cannot see from its own segment alone).
+   * Render label for each of the segment's `verseStarts`, parallel by index — the inline
+   * verse-superscript string, chapter-qualified (`chapter:number`) by the list at a chapter
+   * transition and bare otherwise. Omitted (or a missing entry) falls back to the verbatim
+   * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
    */
-  label: SegmentLabel;
+  verseStartLabels?: readonly string[];
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -85,9 +85,8 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles; `chapterLabelInVerse` sets the verse label and `showFreeTranslation`
-   * gates the free-translation input, while the rest pass through to
-   * {@link PhraseStripContextValue}.
+   * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
+   * pass through to {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
 }>;
@@ -107,8 +106,9 @@ type SegmentViewProps = Readonly<{
  *   the segment's first word token; in `token-chip` mode only word tokens trigger this callback
  *   with the clicked token. `tokenRef` is omitted only when the segment has no word token.
  * @param props.segment - The segment to render
- * @param props.label - The segment's verse-based display label, computed by the list over the whole
- *   book.
+ * @param props.verseStartLabels - Per-verse-start inline superscript labels (parallel to
+ *   `segment.verseStarts`), chapter-qualified by the list where a verse start opens a new chapter;
+ *   falls back to the verbatim verse number when absent.
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
@@ -119,10 +119,10 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label
- *   and `showFreeTranslation` gates the free-translation input, while the rest pass through to the
- *   phrase strip context.
- * @returns A div containing a verse label and the segment content (baseline text or token chips)
+ * @param props.viewOptions - Bundled display toggles; `showFreeTranslation` gates the
+ *   free-translation input, while the rest pass through to the phrase strip context.
+ * @returns A div containing the segment content (baseline text or token chips) with inline verse
+ *   superscripts
  */
 export function SegmentView({
   displayMode,
@@ -131,7 +131,7 @@ export function SegmentView({
   isActive,
   onSelect,
   segment,
-  label,
+  verseStartLabels,
   phraseMode,
   setPhraseMode,
   hoveredPhraseId,
@@ -141,13 +141,8 @@ export function SegmentView({
   wordTokenByRef,
   viewOptions,
 }: SegmentViewProps) {
-  const {
-    hideInactiveLinkButtons,
-    simplifyPhrases,
-    chapterLabelInVerse,
-    showMorphology,
-    showFreeTranslation,
-  } = viewOptions;
+  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology, showFreeTranslation } =
+    viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
@@ -185,18 +180,32 @@ export function SegmentView({
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
     : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
-  // The label is verse-based: bare verse number for a whole verse, lettered portions for a split
-  // verse, and a range for a multi-verse segment. When chapter info is folded into the label it
-  // reads `chapter:label`; the chapter qualifies the label's start, and a chapter-crossing range
-  // already carries the end's chapter (`29–2:1` → `1:29–2:1`), so no chapter is duplicated.
-  // Otherwise the label stays bare (the chapter is carried by SegmentListView's inline header).
-  const verseLabelText = chapterLabelInVerse ? `${chapter}:${label}` : label;
+  /**
+   * Resolved inline superscript label for each of the segment's verse starts: the list-supplied
+   * `verseStartLabels` entry (chapter-qualified where a verse start opens a new chapter) or, absent
+   * that, the verbatim verse number carried on the verse start itself.
+   */
+  const resolvedVerseStartLabels = useMemo(
+    () => segment.verseStarts.map((vs, i) => verseStartLabels?.[i] ?? vs.number),
+    [segment.verseStarts, verseStartLabels],
+  );
 
-  // normal-case overrides section-label's uppercase so split-portion letters render as the
-  // lowercase 1a/1b the label scheme specifies (the label is digits and letters only, so nothing
-  // else relied on the uppercasing).
-  const segmentHeader = (
-    <span className="tw:section-label tw:normal-case tw:mb-2 tw:block">{verseLabelText}</span>
+  /**
+   * `baselineText` split into `{ label, text }` chunks at each verse start, so baseline-text mode
+   * can render an inline superscript before each verse's slice. The first verse start is at offset
+   * 0, so every chunk is a verse start; a chunk's `text` runs to the next verse start (or the
+   * string end).
+   */
+  const baselineChunks = useMemo(
+    () =>
+      segment.verseStarts.map((vs, i) => ({
+        label: resolvedVerseStartLabels[i],
+        text: segment.baselineText.slice(
+          vs.charStart,
+          segment.verseStarts[i + 1]?.charStart ?? segment.baselineText.length,
+        ),
+      })),
+    [segment.verseStarts, segment.baselineText, resolvedVerseStartLabels],
   );
 
   /**
@@ -277,33 +286,62 @@ export function SegmentView({
   }, [renderUnits, focusedTokenRef]);
 
   /**
-   * Normalized strip items handed to the shared {@link PhraseStrip} body. Both slot neighbors are in
-   * this segment by construction (one segment per render), so both slot segment ids are
-   * `segment.id`.
+   * Verse-start token ref → resolved superscript label. The verse-start token is the segment token
+   * whose `charStart` matches a verse start; keying by ref lets the strip builder insert the
+   * superscript immediately before whichever render unit first renders that token (a phrase group,
+   * or a leading-punctuation slot).
+   */
+  const verseStartLabelByTokenRef = useMemo(() => {
+    const map = new Map<string, string>();
+    segment.verseStarts.forEach((vs, i) => {
+      const startToken = segment.tokens.find((t) => t.charStart === vs.charStart);
+      if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
+    });
+    return map;
+  }, [segment.verseStarts, segment.tokens, resolvedVerseStartLabels]);
+
+  /**
+   * Normalized strip items handed to the shared {@link PhraseStrip} body, with an inline
+   * verse-superscript item inserted immediately before the render unit that first renders each
+   * verse's start token. Both slot neighbors are in this segment by construction (one segment per
+   * render), so both slot segment ids are `segment.id`.
    */
   const stripItems = useMemo<StripItem[]>(
     () =>
-      renderUnits.map((unit) => {
+      renderUnits.flatMap((unit) => {
+        // The unit's first rendered token: a group's first token, or (for a leading-punctuation
+        // slot) the slot's first punctuation token. A verse start anchored to that token gets its
+        // superscript emitted just before the unit.
+        const firstTokenRef =
+          unit.kind === 'group' ? unit.group.tokens[0].ref : unit.slot.punctuation[0]?.ref;
+        const superscriptLabel =
+          firstTokenRef !== undefined ? verseStartLabelByTokenRef.get(firstTokenRef) : undefined;
+        const items: StripItem[] = [];
+        if (superscriptLabel !== undefined) {
+          items.push({ kind: 'superscript', key: `sup-${firstTokenRef}`, label: superscriptLabel });
+        }
         if (unit.kind === 'slot') {
           const { prevGroup, nextGroup } = unit.slot;
           const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
-          return {
+          items.push({
             kind: 'slot',
             key,
             slot: unit.slot,
             prevSegmentId: segment.id,
             nextSegmentId: segment.id,
             focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
-          };
+          });
+        } else {
+          items.push({
+            kind: 'group',
+            key: unit.group.tokens[0].ref,
+            group: unit.group,
+            isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
+          });
         }
-        return {
-          kind: 'group',
-          key: unit.group.tokens[0].ref,
-          group: unit.group,
-          isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
-        };
+        return items;
       }),
-    [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef],
+    [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef, verseStartLabelByTokenRef],
   );
 
   const editPhraseTokens = useEditPhraseTokens(phraseMode);
@@ -441,9 +479,14 @@ export function SegmentView({
         data-testid="segment-container"
         onClick={handleBaselineClick}
       >
-        {segmentHeader}
         <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
-          {segment.baselineText}
+          {baselineChunks.map((chunk, i) => (
+            // eslint-disable-next-line react/no-array-index-key -- chunks are positional and stable
+            <Fragment key={i}>
+              <VerseSuperscript label={chunk.label} />
+              {chunk.text}
+            </Fragment>
+          ))}
         </span>
         {showFreeTranslation && (
           <SegmentFreeTranslationInput
@@ -470,7 +513,6 @@ export function SegmentView({
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      {segmentHeader}
       <div className="tw:arc-container" ref={arcContainerRef}>
         <MemoizedArcOverlay
           arcPaths={arcPaths}

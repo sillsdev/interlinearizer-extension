@@ -116,6 +116,7 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
     nextSegmentId: 'seg-1',
     focusedSideIsPrev: undefined,
     hoveredPhraseId: undefined,
+    verseLabel: undefined,
   };
 }
 
@@ -411,7 +412,14 @@ describe('PhraseSlot boundary controls', () => {
 
   // -- Merge branch --------------------------------------------------------
 
-  it('shows a merge control on a cross-segment slot and merges on click', () => {
+  it('shows no merge button (and no dashed indicator) on a cross-segment slot while Alt is not held', () => {
+    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
+    // Row 3 is blank/verse-number when Alt is off; the dashed indicator was removed entirely.
+    expect(screen.queryByTestId('boundary-merge-indicator')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('reveals the merge button on a cross-segment slot while Alt is held and merges on click', () => {
     const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
     fireEvent.click(screen.getByTestId('boundary-merge-btn'));
     expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
@@ -426,7 +434,7 @@ describe('PhraseSlot boundary controls', () => {
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
   });
 
-  it('disables the merge control while a phrase edit is active', () => {
+  it('disables the revealed merge control while a phrase edit is active', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
       { phraseMode: { kind: 'edit', phraseId: 'p1', originalTokens: [] } },
@@ -439,6 +447,24 @@ describe('PhraseSlot boundary controls', () => {
     const button = screen.getByTestId('boundary-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
     expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeHint%');
+  });
+
+  // -- Row 3: verse number <-> boundary button share one position ----------
+
+  it('shows the verse number in row 3 while Alt is not held', () => {
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' },
+      { altHeld: false },
+    );
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('replaces the row-3 verse number with the boundary button while Alt is held', () => {
+    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
+    // Alt held: the merge button takes row 3 and the verse number is hidden (one shared position).
+    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
   // -- Split marker: gating ------------------------------------------------
@@ -570,48 +596,32 @@ describe('PhraseSlot boundary controls', () => {
     expect(dispatch.split).toHaveBeenCalledWith('q');
   });
 
-  // -- Former-boundary tick <-> marker swap --------------------------------
+  // -- Former boundary: no tick, Alt still reveals the split marker --------
 
-  it('shows the former-boundary tick (not the marker) when Alt is not held', () => {
+  // The dashed former-boundary tick was removed: the inline verse superscript already marks a
+  // merged-away verse start, so nothing extra renders there while Alt is not held.
+  it('renders nothing at a former boundary while Alt is not held', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
       { formerBoundaries: new Map([['b', 'b']]), altHeld: false },
     );
-    expect(screen.getByTestId('former-boundary-marker')).toBeInTheDocument();
     expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
   });
 
-  it('swaps the former-boundary tick for the split marker when Alt is held', () => {
+  it('reveals the split marker at a former boundary when Alt is held', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
       { formerBoundaries: new Map([['b', 'b']]) },
     );
     expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
-    expect(screen.queryByTestId('former-boundary-marker')).not.toBeInTheDocument();
   });
 
-  it('renders no former-boundary tick when the slot is not on a merged-away verse start', () => {
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' }, { altHeld: false });
-    expect(screen.queryByTestId('former-boundary-marker')).not.toBeInTheDocument();
-  });
-
-  it('keeps the former-boundary tick when the split is suppressed by the mid-phrase guard even with Alt held', () => {
+  it('renders nothing at a former boundary whose split is suppressed by the mid-phrase guard even with Alt held', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
       { formerBoundaries: new Map([['b', 'b']]), straddledBoundaryRefs: new Set(['b']) },
     );
     expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-    expect(screen.getByTestId('former-boundary-marker')).toBeInTheDocument();
-  });
-
-  it('renders no former-boundary tick on a cross-segment slot', () => {
-    // A cross-segment slot sits on a live boundary; the tick marks only merged-away ones.
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-      { formerBoundaries: new Map([['b', 'b']]) },
-    );
-    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-    expect(screen.queryByTestId('former-boundary-marker')).not.toBeInTheDocument();
   });
 });
 
@@ -747,6 +757,7 @@ describe('PhraseStrip', () => {
         prevSegmentId: 'seg-1',
         nextSegmentId: 'seg-1',
         focusedSideIsPrev: undefined,
+        verseLabel: undefined,
       },
     ];
     const { container } = render(withProvider(<PhraseStrip {...stripProps(items)} />));

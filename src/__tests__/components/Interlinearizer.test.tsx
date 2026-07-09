@@ -30,11 +30,11 @@ jest.mock('lucide-react', () => ({
    */
   LocateFixed: () => <svg data-testid="locate-fixed-icon" />,
   /**
-   * Stub for the FoldVertical icon used by the between-rows merge control.
+   * Stub for the Merge icon used by the between-rows merge control.
    *
-   * @returns An SVG element with `data-testid="fold-vertical-icon"`.
+   * @returns An SVG element with `data-testid="merge-icon"`.
    */
-  FoldVertical: () => <svg data-testid="fold-vertical-icon" />,
+  Merge: () => <svg data-testid="merge-icon" />,
 }));
 
 /**
@@ -1675,25 +1675,44 @@ describe('segmentation dispatch force-break', () => {
   });
 });
 
+/** Presses (or releases) Alt so Alt-gated boundary controls reveal (or hide) their buttons. */
+function setAltHeld(held: boolean): void {
+  act(() => {
+    window.dispatchEvent(new KeyboardEvent(held ? 'keydown' : 'keyup', { altKey: held }));
+  });
+}
+
 describe('between-rows merge control', () => {
-  it('renders a merge button between adjacent segment rows and merges on click', () => {
+  it('shows a dotted-line indicator (not a merge button) between rows while Alt is not held', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    // Two rows -> exactly one gap between them, marked by an inert indicator until Alt is held.
+    expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('floats a merge button over the persistent indicator while Alt is held and merges on click', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
+    setAltHeld(true);
     const buttons = screen.getAllByTestId('segment-merge-btn');
-    // Two rows -> exactly one gap between them.
+    // The button floats over the dotted line, which stays put so the row gap never changes height.
     expect(buttons).toHaveLength(1);
+    expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
     fireEvent.click(buttons[0]);
     // Merging removes the boundary at the lower segment's first token.
     expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
   });
 
-  it('renders no merge button when only one segment row is mounted', () => {
+  it('renders no merge affordance when only one segment row is mounted', () => {
     renderInterlinearizer({ book: GEN_1_1_BOOK });
+    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
+    setAltHeld(true);
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
   it('does not tint the adjacent rows on merge-button hover (the preview is removed)', () => {
     const { container } = renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    setAltHeld(true);
     const button = screen.getByTestId('segment-merge-btn');
     fireEvent.mouseEnter(button);
     // The adjacent-row tint/outline preview is gone; the button keeps only its own hover style.
@@ -1702,6 +1721,7 @@ describe('between-rows merge control', () => {
 
   it('labels the merge button with the concise merge string and the split-hint tooltip', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+    setAltHeld(true);
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
     expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeHint%');

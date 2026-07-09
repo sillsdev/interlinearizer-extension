@@ -85,35 +85,24 @@ export function Plus(props: Readonly<{ size?: number; className?: string }>): Re
   return <svg data-testid="plus-icon" {...props} />;
 }
 /**
- * Stub for the FoldVertical icon used by the row-gap merge control (join two stacked rows).
+ * Stub for the Merge icon used by both merge controls (the row-gap merge in the segment list and the
+ * cross-segment merge in the continuous strip). A single Y-join glyph, deliberately a different
+ * shape from the split marker's arrows-apart glyph.
  *
  * @param props - SVG props forwarded from the component.
- * @returns A ReactElement SVG element used as a vertical-merge icon stub in tests.
+ * @returns A ReactElement SVG element used as a merge icon stub in tests.
  */
-export function FoldVertical(props: Readonly<{ className?: string }>): ReactElement {
-  return <svg data-testid="fold-vertical-icon" {...props} />;
+export function Merge(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="merge-icon" {...props} />;
 }
 
 /**
- * Stub for the FoldHorizontal icon used by the continuous-strip merge control (join two adjacent
- * segments).
- *
- * @param props - SVG props forwarded from the component.
- * @returns A ReactElement SVG element used as a horizontal-merge icon stub in tests.
- */
-export function FoldHorizontal(props: Readonly<{ className?: string }>): ReactElement {
-  return <svg data-testid="fold-horizontal-icon" {...props} />;
-}
-
-/**
- * Stub for the UnfoldHorizontal icon used by the Alt-gated split marker (the visual inverse of the
- * merge `Fold*` glyphs).
+ * Stub for the Split icon used by the Alt-gated split markers (token-chip and baseline-text). One
+ * stroke diverging into two — the mirror of the `Merge` glyph's join.
  *
  * @param props - SVG props forwarded from the component.
  * @returns A ReactElement SVG element used as a split-marker icon stub in tests.
  */
-export function UnfoldHorizontal(
-  props: Readonly<{ size?: number; className?: string }>,
-): ReactElement {
-  return <svg data-testid="unfold-horizontal-icon" {...props} />;
+export function Split(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="split-icon" {...props} />;
 }

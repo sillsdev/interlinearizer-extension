@@ -3,7 +3,7 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
@@ -518,6 +518,15 @@ describe('SegmentView', () => {
       expect(screen.getByTestId('baseline-split-gap')).toBeInTheDocument();
     });
 
+    it('marks the Alt-held split gap with an insertion caret rather than a crowding Split glyph', () => {
+      renderBaseline();
+      const gap = screen.getByTestId('baseline-split-gap');
+      // A slim vertical caret (shown dim at rest, brightened on hover) signals the split point in the
+      // dense monospace run — not a Split glyph, which would collide with the surrounding letters.
+      expect(within(gap).getByTestId('baseline-split-caret')).toBeInTheDocument();
+      expect(within(gap).queryByTestId('split-icon')).not.toBeInTheDocument();
+    });
+
     it('shows no split gap while Alt is not held', () => {
       renderBaseline({ altHeld: false });
       expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
@@ -911,7 +920,8 @@ describe('SegmentView', () => {
     const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     // After mount, SegmentView stops suppressing the opacity transition so later toggles of
-    // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping.
+    // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping. The icon wrapper
+    // is the fade-carrying span; it is the slot column's first child (the link icon renders first).
     const slotWrapper = container.querySelector('[data-link-slot] > span');
     if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
     expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);

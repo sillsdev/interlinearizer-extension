@@ -1,11 +1,12 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
-import { FoldVertical, LocateFixed } from 'lucide-react';
+import { LocateFixed, Merge } from 'lucide-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
+import { useAltHeldValue } from './AltHeldContext';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
@@ -34,40 +35,67 @@ type MergeRowButtonProps = Readonly<{
 /**
  * The merge control rendered in the gap between two adjacent segment rows. Clicking it merges the
  * lower segment into the one above — the segment-list counterpart of the merge control in the
- * continuous strip's cross-segment slots. Always mounted (not hover-gated) so the row gap is the
- * only boundary affordance in this view, and it doubles as the undo for a split.
+ * continuous strip's cross-segment slots, and the undo for a split.
  *
- * The button spans the full row width so the whole gap is a click target, with the fold glyph
- * centered in it. Its only hover affordance is its own `hover:bg-accent` band; the former
- * adjacent-row tint preview is removed. The tooltip carries the split-discoverability hint (hold
- * Alt and click between words to split); the `aria-label` stays the concise merge string.
+ * Alt-gated, symmetric with the split affordance and the continuous strip's merge: a
+ * non-interactive full-width dotted line always marks the boundary between these rows (a "rail"),
+ * and while Alt **is** held a merge button floats over that line, its `Merge` glyph riding the rail
+ * as a solid rounded handle. The gap is a single fixed-height element, so revealing the button on
+ * an Alt press adds no height and never shifts the rows below. Hover only darkens the rail and
+ * brightens the handle to the accent — the button never paints an opaque band over the line, so the
+ * dashed rule stays continuous through every state. The tooltip carries the split-discoverability
+ * hint (hold Alt and click between words to split); the `aria-label` stays the concise merge
+ * string.
  *
  * @param props - Component props.
  * @param props.segment - The segment below the gap.
- * @param props.disabled - Renders the control inert while a phrase mode is active.
- * @returns A full-width merge-boundary button, or `undefined` when the segment has no tokens.
+ * @param props.disabled - Renders the button inert while a phrase mode is active.
+ * @returns The fixed-height row gap: a dotted-line indicator with the merge button floated over it
+ *   while Alt is held, or `undefined` when the segment has no tokens.
  */
 function MergeRowButton({ segment, disabled }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
+  const altHeld = useAltHeldValue();
   const [localizedStrings] = useLocalizedStrings(MERGE_STRING_KEYS);
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
+  // A single fixed-height gap that never changes size when Alt is pressed: the dashed rule is always
+  // present (centered in the gap), and while Alt is held the merge button floats over it. Because
+  // both states share the same outer height, pressing Alt reveals the button without shifting the
+  // rows below.
   return (
-    <button
-      aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-      className="tw:flex tw:w-full tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-30"
-      data-testid="segment-merge-btn"
-      disabled={disabled}
-      tabIndex={-1}
-      title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
-      type="button"
-      onClick={() => dispatch.merge(secondSegmentStartRef)}
-    >
-      <span className="tw:inline-flex tw:items-center tw:justify-center tw:p-0.5">
-        <FoldVertical className="tw:h-3 tw:w-3" />
-      </span>
-    </button>
+    <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
+      {/* The dashed rule is the always-present "rail". It stays continuous through every state; hover
+          only darkens it (the button never paints an opaque band over it), so the line never appears
+          to vanish under the control. */}
+      <div
+        aria-hidden="true"
+        className="tw:w-full tw:border-t tw:border-dashed tw:border-muted-foreground/50 tw:group-hover/merge:border-muted-foreground"
+        data-testid="segment-merge-indicator"
+      />
+      {altHeld && (
+        <button
+          aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
+          className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded tw:disabled:pointer-events-none tw:disabled:opacity-30"
+          data-testid="segment-merge-btn"
+          disabled={disabled}
+          tabIndex={-1}
+          title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
+          type="button"
+          onClick={() => dispatch.merge(secondSegmentStartRef)}
+        >
+          {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it reads
+              coherently over the dashed line regardless of the container background, brightening to
+              the accent on hover. Rotated 90° so the Y-join points along this view's vertical merge
+              axis (the lower row folds up into the one above), unlike the horizontal continuous-strip
+              merge. */}
+          <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
+            <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
+          </span>
+        </button>
+      )}
+    </div>
   );
 }
 

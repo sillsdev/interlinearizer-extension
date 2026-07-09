@@ -499,12 +499,21 @@ describe('ContinuousView initial render', () => {
     expect(screen.getByText('God')).toBeInTheDocument();
   });
 
-  it('does not render any verse label or segment separator', () => {
+  it('renders an inline verse-number superscript at each verse start', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    expect(screen.queryByText('1:1')).not.toBeInTheDocument();
-    expect(screen.queryByText('1:2')).not.toBeInTheDocument();
+    // The strip marks each verse boundary with the shared PhraseSlot's verse number (below the link
+    // icon) — the same treatment as token-chip SegmentView. This book has verses 1 and 2.
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
+  });
+
+  it('does not render an extension-generated segment separator', () => {
+    const book = makeBook();
+    render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
+
+    // Verse numbers now show, but there is still no top-left "GEN 1:1" segment label.
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 

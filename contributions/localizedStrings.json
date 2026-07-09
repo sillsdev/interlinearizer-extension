@@ -44,7 +44,6 @@
       "%interlinearizer_boundaryControl_merge%": "Merge segments",
       "%interlinearizer_boundaryControl_mergeHint%": "Merge segments. Hold Alt and click between words to split.",
       "%interlinearizer_boundaryControl_split%": "Split segment here",
-      "%interlinearizer_boundaryControl_formerBoundary%": "Former verse boundary",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",
       "%interlinearizer_modal_create_name_label%": "Name (optional)",

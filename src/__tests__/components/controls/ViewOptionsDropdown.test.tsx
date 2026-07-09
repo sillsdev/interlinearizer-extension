@@ -25,8 +25,6 @@ const DEFAULT_PROPS = {
   onHideInactiveLinkButtonsChange: jest.fn(),
   simplifyPhrases: false,
   onSimplifyPhrasesChange: jest.fn(),
-  chapterLabelInVerse: false,
-  onChapterLabelInVerseChange: jest.fn(),
   showMorphology: false,
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
@@ -89,9 +87,6 @@ describe('ViewOptionsDropdown', () => {
       screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
     ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
-    expect(
-      screen.getByText('%interlinearizer_viewOption_chapterLabelInVerse%'),
-    ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
@@ -254,31 +249,6 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /simplifyPhrases/i }));
 
       expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('chapter label in verse toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} chapterLabelInVerse />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i })).toBeChecked();
-    });
-
-    it('calls onChapterLabelInVerseChange when toggled', async () => {
-      const onChapterLabelInVerseChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          chapterLabelInVerse={false}
-          onChapterLabelInVerseChange={onChapterLabelInVerseChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i }));
-
-      expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
     });
   });
 

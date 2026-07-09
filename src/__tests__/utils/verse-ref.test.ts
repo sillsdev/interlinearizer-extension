@@ -27,6 +27,7 @@ function makeSegment(
     endRef: { book: 'GEN', chapter: endChapter, verse: endVerse },
     baselineText: '',
     tokens: [],
+    verseStarts: [{ charStart: 0, number: String(startVerse) }],
   };
 }
 

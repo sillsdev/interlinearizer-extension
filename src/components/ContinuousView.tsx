@@ -108,10 +108,7 @@ type ContinuousViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /**
-   * Bundled display toggles. The strip reads all but `chapterLabelInVerse`, which does not apply to
-   * the continuous strip.
-   */
+  /** Bundled display toggles forwarded to the strip. */
   viewOptions: ViewOptions;
 }>;
 
@@ -138,8 +135,7 @@ type ContinuousViewProps = Readonly<{
  * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
  *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
- * @param props.viewOptions - Bundled display toggles; the strip reads all but
- *   `chapterLabelInVerse`.
+ * @param props.viewOptions - Bundled display toggles forwarded to the strip.
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({

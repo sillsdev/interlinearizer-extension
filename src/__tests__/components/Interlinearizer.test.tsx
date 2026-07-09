@@ -17,7 +17,6 @@ import {
   type SegmentationDispatch,
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
-import type { SegmentLabel } from '../../utils/segment-labels';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { defaultScrRef, GEN_1_1_BOOK, makePhraseLink } from '../test-helpers';
 import { allFalseViewOptions } from './test-helpers';
@@ -66,8 +65,8 @@ let capturedSegmentation: SegmentationContextValue | undefined;
 type CapturedSegmentViewProps = {
   /** The segment the component is asked to render. */
   segment: Segment;
-  /** The segment's display label — a verse number, lettered portion, or en-dash range. */
-  label?: SegmentLabel;
+  /** Per-verse-start inline superscript labels (chapter-qualified at a chapter transition). */
+  verseStartLabels?: readonly string[];
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
   /** The `Token.ref` string of the currently focused token, if any. */
@@ -262,6 +261,34 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   default: () => <div data-testid="unlink-confirm" />,
 }));
 
+/**
+ * A fixture book whose segments may omit `verseStarts` (filled in by
+ * {@link withDefaultVerseStarts}).
+ */
+type BookWithOptionalVerseStarts = Omit<Book, 'segments'> & {
+  segments: (Omit<Segment, 'verseStarts'> & Partial<Pick<Segment, 'verseStarts'>>)[];
+};
+
+/**
+ * Fills in a default single `verseStarts` entry (offset 0, number from `startRef.verse`) on any
+ * hand-built fixture segment that lacks one, so the fixtures satisfy the `Segment` shape without
+ * every literal repeating the boilerplate. Segments that already carry `verseStarts` (e.g. produced
+ * by `resegmentBook`) are left untouched.
+ *
+ * @param book - The fixture book to normalize; its segments may omit `verseStarts`.
+ * @returns The book with every segment carrying at least one verse start.
+ */
+function withDefaultVerseStarts(book: BookWithOptionalVerseStarts): Book {
+  return {
+    ...book,
+    segments: book.segments.map((seg) =>
+      seg.verseStarts
+        ? { ...seg, verseStarts: seg.verseStarts }
+        : { ...seg, verseStarts: [{ charStart: 0, number: String(seg.startRef.verse) }] },
+    ),
+  };
+}
+
 /** Pre-built Book with no segments — used by the no-verse-data test. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
@@ -291,13 +318,14 @@ function makeLargeBook(count: number): Book {
           charEnd: 4,
         },
       ],
+      verseStarts: [{ charStart: 0, number: String(v) }],
     });
   }
   return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
 }
 
 /** Book with two segments in GEN 1 — used by chapter-display tests. */
-const GEN_1_MULTI_BOOK: Book = {
+const GEN_1_MULTI_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
@@ -335,14 +363,14 @@ const GEN_1_MULTI_BOOK: Book = {
       ],
     },
   ],
-};
+});
 
 /**
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Used to exercise the
  * focus-reseed guard when the host echoes a click back at chapter granularity (verse-0 / first
  * verse), which a verse-exact guard would misread as the chapter's first segment.
  */
-const GEN_TWO_CHAPTER_BOOK: Book = {
+const GEN_TWO_CHAPTER_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
@@ -364,14 +392,14 @@ const GEN_TWO_CHAPTER_BOOK: Book = {
       ],
     })),
   ),
-};
+});
 
 /**
  * GEN book whose verse 1 has two word tokens (so it can be split into portions "1a"/"1b") and verse
  * 2 one word. The default one-segment-per-verse form; {@link GEN_V1_SPLIT_BOOK} is its split
  * counterpart.
  */
-const GEN_SPLITTABLE_V1_BOOK: Book = {
+const GEN_SPLITTABLE_V1_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
@@ -417,7 +445,7 @@ const GEN_SPLITTABLE_V1_BOOK: Book = {
       ],
     },
   ],
-};
+});
 
 /**
  * {@link GEN_SPLITTABLE_V1_BOOK} with verse 1 split before its second word, so verse 1 becomes two
@@ -425,13 +453,13 @@ const GEN_SPLITTABLE_V1_BOOK: Book = {
  * 1:1:3`). Both portions' verse ranges contain verse 1, so a verse-1 navigation resolves to the
  * first portion — the condition behind the non-first-portion focus bug.
  */
-const GEN_V1_SPLIT_BOOK: Book = resegmentBook(GEN_SPLITTABLE_V1_BOOK, {
+const GEN_V1_SPLIT_BOOK: Book = resegmentBook(withDefaultVerseStarts(GEN_SPLITTABLE_V1_BOOK), {
   removedVerseStarts: [],
   addedStarts: ['GEN 1:1:3'],
 });
 
 /** GEN book whose chapter 1 opens with a verse-0 superscription segment before verse 1. */
-const GEN_SUPERSCRIPTION_BOOK: Book = {
+const GEN_SUPERSCRIPTION_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
@@ -469,7 +497,7 @@ const GEN_SUPERSCRIPTION_BOOK: Book = {
       ],
     },
   ],
-};
+});
 
 /**
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
@@ -511,7 +539,6 @@ function renderInterlinearizer({
   navigate = () => {},
   hideInactiveLinkButtons = false,
   simplifyPhrases = false,
-  chapterLabelInVerse = false,
   showMorphology = false,
   showFreeTranslation = false,
   segmentationDispatch,
@@ -523,7 +550,6 @@ function renderInterlinearizer({
   navigate?: (r: SerializedVerseRef) => void;
   hideInactiveLinkButtons?: boolean;
   simplifyPhrases?: boolean;
-  chapterLabelInVerse?: boolean;
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
   segmentationDispatch?: SegmentationDispatch;
@@ -532,7 +558,7 @@ function renderInterlinearizer({
   return render(
     withNav(
       <Interlinearizer
-        book={book}
+        book={withDefaultVerseStarts(book)}
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
@@ -543,7 +569,6 @@ function renderInterlinearizer({
         viewOptions={{
           hideInactiveLinkButtons,
           simplifyPhrases,
-          chapterLabelInVerse,
           showMorphology,
           showFreeTranslation,
         }}
@@ -587,22 +612,25 @@ describe('Interlinearizer', () => {
     expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
   });
 
-  it('passes verse-based segment labels to the segment views', () => {
+  it('passes per-verse-start superscript labels to the segment views', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
-    expect(capturedSegmentViewPropsList[0].label).toBe('1');
-    expect(capturedSegmentViewPropsList[1].label).toBe('2');
+    // Verse 1 opens the book's first chapter, so its superscript is chapter-qualified; verse 2 is
+    // a bare number.
+    expect(capturedSegmentViewPropsList[0].verseStartLabels).toEqual(['1:1']);
+    expect(capturedSegmentViewPropsList[1].verseStartLabels).toEqual(['2']);
   });
 
-  it('labels a merged segment with its merged verse range', () => {
-    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
+  it('passes a superscript label for every absorbed verse start of a merged segment', () => {
+    const merged = resegmentBook(withDefaultVerseStarts(GEN_1_MULTI_BOOK), {
       removedVerseStarts: ['GEN 1:2:0'],
       addedStarts: [],
     });
     renderInterlinearizer({ book: merged });
 
     expect(screen.getAllByTestId('segment-view')).toHaveLength(1);
-    expect(capturedSegmentViewPropsList[0].label).toBe('1–2');
+    // The merged segment absorbs verses 1 and 2; verse 1 opens the chapter so it is qualified.
+    expect(capturedSegmentViewPropsList[0].verseStartLabels).toEqual(['1:1', '2']);
   });
 
   it('renders a SegmentView for every segment in the current chapter', () => {
@@ -1175,29 +1203,82 @@ describe('Interlinearizer', () => {
     }
   });
 
-  it('renders an inline chapter header above the first verse of each chapter', () => {
+  /**
+   * Makes the segment `topSegmentId` the topmost one touching the container's top edge, so the
+   * pinned-chapter overlay resolves it deterministically in jsdom (which otherwise reports every
+   * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
+   * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
+   * Restored automatically by `restoreMocks`.
+   *
+   * @param orderedSegmentIds - Segment ids in document order.
+   * @param topSegmentId - The segment id to place flush against the container top.
+   */
+  function positionSegmentAtTop(orderedSegmentIds: string[], topSegmentId: string): void {
+    const targetIndex = orderedSegmentIds.indexOf(topSegmentId);
+    jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getRect(
+      this: HTMLElement,
+    ): DOMRect {
+      const segmentId = this.getAttribute('data-segment-id');
+      // Container (and any non-segment element) reports top 0. A segment before the target sits
+      // fully above the top edge; the target and later segments sit at or below it.
+      const index = segmentId ? orderedSegmentIds.indexOf(segmentId) : -1;
+      const top = index >= 0 && index < targetIndex ? -20 : 0;
+      return {
+        top,
+        bottom: top + 10,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: 10,
+        x: 0,
+        y: top,
+        toJSON() {},
+      };
+    });
+  }
+
+  it('pins a book-and-chapter header for the chapter at the top of the list', () => {
+    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 1:1');
     renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
       continuousScroll: false,
     });
 
-    // One header per chapter, rendered by the list (not inside SegmentView) at each boundary.
-    expect(screen.getByText('Chapter 1')).toBeInTheDocument();
-    expect(screen.getByText('Chapter 2')).toBeInTheDocument();
-    expect(screen.queryByText('Chapter 3')).not.toBeInTheDocument();
+    // A single pinned overlay (not a header per chapter) shows the localized book name plus the
+    // chapter of the topmost visible segment.
+    expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+    expect(screen.queryByText('Genesis 2')).not.toBeInTheDocument();
   });
 
-  it('omits inline chapter headers when chapterLabelInVerse is set', () => {
+  it('pins the chapter of the top segment even when that chapter starts merged mid-segment', () => {
+    // Merge GEN 2:1 into GEN 1:2, so the segment containing chapter 2's first token starts in
+    // chapter 1. Scrolling so that merged segment is at the top pins its start chapter (1) — the
+    // overlay follows the topmost segment, and a merged chapter start reads as its host's chapter.
+    const merged = resegmentBook(withDefaultVerseStarts(GEN_TWO_CHAPTER_BOOK), {
+      removedVerseStarts: ['GEN 2:1:0'],
+      addedStarts: [],
+    });
+    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:2'], 'GEN 1:1');
     renderInterlinearizer({
-      book: GEN_TWO_CHAPTER_BOOK,
+      book: merged,
       scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
       continuousScroll: false,
-      chapterLabelInVerse: true,
     });
 
-    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
-    expect(screen.queryByText('Chapter 2')).not.toBeInTheDocument();
+    expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+  });
+
+  it('pins the later chapter when a later-chapter segment is at the top of the list', () => {
+    positionSegmentAtTop(['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'], 'GEN 2:1');
+    renderInterlinearizer({
+      book: GEN_TWO_CHAPTER_BOOK,
+      scrRef: { book: 'GEN', chapterNum: 2, verseNum: 1 },
+      continuousScroll: false,
+    });
+
+    expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+    expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
   });
 
   it('renders the snap-to-active-verse button when segments are present', () => {
@@ -1632,7 +1713,7 @@ describe('between-rows merge control', () => {
 
 describe('focus preservation across segmentation edits', () => {
   /** GEN book whose verse 1 has two word tokens and verse 2 one — lets focus sit off a verse start. */
-  const GEN_TWO_TOKEN_V1_BOOK: Book = {
+  const GEN_TWO_TOKEN_V1_BOOK: Book = withDefaultVerseStarts({
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: 'v1',
@@ -1678,7 +1759,7 @@ describe('focus preservation across segmentation edits', () => {
         ],
       },
     ],
-  };
+  });
 
   /**
    * Builds the wrapped `<Interlinearizer>` element used by these tests, so the initial render and
@@ -1691,7 +1772,7 @@ describe('focus preservation across segmentation edits', () => {
   function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
     return withNav(
       <Interlinearizer
-        book={book}
+        book={withDefaultVerseStarts(book)}
         continuousScroll
         scrRef={scrRef}
         analysisLanguage="und"

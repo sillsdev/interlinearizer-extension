@@ -580,6 +580,7 @@ describe('TokenLinkIcon', () => {
         endRef: { book: 'GEN', chapter: 1, verse: 2 },
         baselineText: tokens.map((t) => t.surfaceText).join(' '),
         tokens: [...tokens],
+        verseStarts: [{ charStart: 0, number: '2' }],
       };
     }
 
@@ -598,6 +599,7 @@ describe('TokenLinkIcon', () => {
         endRef: { book: 'GEN', chapter: 1, verse: 1 },
         baselineText: tokens.map((t) => t.surfaceText).join(' '),
         tokens: [...tokens],
+        verseStarts: [{ charStart: 0, number: '1' }],
       };
     }
 

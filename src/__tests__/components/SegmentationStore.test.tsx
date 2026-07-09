@@ -34,6 +34,7 @@ describe('SegmentationStore', () => {
       endRef: { book: 'GEN', chapter: 1, verse: 1 },
       baselineText: 'Hi.',
       tokens: [],
+      verseStarts: [{ charStart: 0, number: String(1) }],
     };
     const value: SegmentationContextValue = {
       dispatch: NO_OP_SEGMENTATION_DISPATCH,

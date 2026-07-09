@@ -188,6 +188,7 @@ const WORD_SEGMENT: Segment = {
       charEnd: 6,
     },
   ],
+  verseStarts: [{ charStart: 0, number: '1' }],
 };
 
 /** A segment with a single punctuation (non-word) token. */
@@ -206,6 +207,7 @@ const PUNCT_SEGMENT: Segment = {
       charEnd: 1,
     },
   ],
+  verseStarts: [{ charStart: 0, number: '2' }],
 };
 
 /**
@@ -223,7 +225,6 @@ function requiredProps(): {
   onHoverPhrase: jest.Mock;
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   segment: Segment;
-  label: string;
   phraseMode: { kind: 'view' };
   setPhraseMode: jest.Mock;
   tokenSegmentMap: ReadonlyMap<string, string>;
@@ -240,7 +241,6 @@ function requiredProps(): {
     onHoverPhrase: jest.fn(),
     onSelect: jest.fn(),
     segment: WORD_SEGMENT,
-    label: '1',
     phraseMode: { kind: 'view' },
     setPhraseMode: jest.fn(),
     tokenSegmentMap: new Map(),
@@ -282,10 +282,91 @@ describe('SegmentView', () => {
     expect(screen.getByText('.')).toBeInTheDocument();
   });
 
+  it('renders an inline verse superscript at the verse start in token-chip mode', () => {
+    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups).toHaveLength(1);
+    expect(sups[0]).toHaveTextContent('1');
+  });
+
+  it('renders a verse superscript at each absorbed verse start in a merged segment (token-chip)', () => {
+    const mergedSegment: Segment = {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2 },
+      baselineText: 'Alpha Gamma',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'Alpha',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+        {
+          ref: 'GEN 1:2:0',
+          surfaceText: 'Gamma',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 6,
+          charEnd: 11,
+        },
+      ],
+      verseStarts: [
+        { charStart: 0, number: '1' },
+        { charStart: 6, number: '2' },
+      ],
+    };
+    render(<SegmentView {...requiredProps()} segment={mergedSegment} />, withAnalysisStore);
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
+  });
+
+  it('prefers the list-supplied chapter-qualified label over the verbatim number', () => {
+    render(<SegmentView {...requiredProps()} verseStartLabels={['1:1']} />, withAnalysisStore);
+
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
+  });
+
   it('renders baselineText in baseline-text mode', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+  });
+
+  it('renders an inline verse superscript before the text in baseline-text mode', () => {
+    render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups).toHaveLength(1);
+    expect(sups[0]).toHaveTextContent('1');
+  });
+
+  it('renders a verse superscript at each absorbed verse start in a merged segment (baseline-text)', () => {
+    const mergedSegment: Segment = {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2 },
+      baselineText: 'Alpha beta. Gamma delta.',
+      tokens: [],
+      verseStarts: [
+        { charStart: 0, number: '1' },
+        { charStart: 12, number: '2' },
+      ],
+    };
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" segment={mergedSegment} />,
+      withAnalysisStore,
+    );
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
+    // Each superscript sits immediately before its verse's slice of the baseline, so the running
+    // text reads "¹Alpha beta. ²Gamma delta." in order.
+    expect(screen.getByTestId('segment-container')).toHaveTextContent('1Alpha beta. 2Gamma delta.');
   });
 
   it('does not render individual tokens in baseline-text mode', () => {
@@ -295,47 +376,11 @@ describe('SegmentView', () => {
     expect(screen.queryByText('the')).not.toBeInTheDocument();
   });
 
-  it('shows the verse-based label', () => {
+  it('renders no extension-generated segment label header (only the inline verse superscript)', () => {
+    // The only number shown is the inline verse superscript; there is no separate top-left label.
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
-    expect(screen.getByText('1')).toBeInTheDocument();
-  });
-
-  it('shows a multi-verse range label for a merged segment', () => {
-    render(<SegmentView {...requiredProps()} label="2–3" />, withAnalysisStore);
-
-    expect(screen.getByText('2–3')).toBeInTheDocument();
-  });
-
-  it('shows a bare verse label by default', () => {
-    render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-
-    expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.queryByText('1:1')).not.toBeInTheDocument();
-  });
-
-  it('folds the chapter into the segment label when chapterLabelInVerse is set', () => {
-    render(
-      <SegmentView
-        {...requiredProps()}
-        viewOptions={{ ...requiredProps().viewOptions, chapterLabelInVerse: true }}
-      />,
-      withAnalysisStore,
-    );
-
-    expect(screen.getByText('1:1')).toBeInTheDocument();
-  });
-
-  it('never renders the inline chapter header (the list owns it)', () => {
-    const { rerender } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-    expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
-
-    rerender(
-      <SegmentView
-        {...requiredProps()}
-        viewOptions={{ ...requiredProps().viewOptions, chapterLabelInVerse: true }}
-      />,
-    );
+    expect(screen.getAllByTestId('verse-superscript')).toHaveLength(1);
     expect(screen.queryByText('Chapter 1')).not.toBeInTheDocument();
   });
 
@@ -480,6 +525,7 @@ describe('SegmentView', () => {
           charEnd: 16,
         },
       ],
+      verseStarts: [{ charStart: 0, number: '3' }],
     };
     const discontiguousLink: PhraseAnalysisLink = {
       analysisId: 'phrase-dc',

@@ -327,24 +327,29 @@ function InterlinearizerInner({
   }, [isRevert, updatePhrase, setPhraseMode]);
 
   // Reseed focusedTokenRef when scrRef changes externally (e.g. Paratext verse selector). Skip
-  // when focus is already inside the new verse — that case means the verse change came from a
-  // token click here (or a strip nav echoed back through `focusToken`), and we must not clobber the
-  // deliberately-focused token with the verse's first token. A verse-exact match is intentional: an
-  // external jump *within* a chapter (common in long chapters like Psalm 119) must still move focus
-  // to the newly-named verse, so matching the whole chapter would wrongly strand focus. Internal
-  // navigation never reaches the reseed branch here because the click/strip handler has already set
-  // focus into the target verse; the fade is separately suppressed by the segment window's
-  // `consumeInternalNav` (kept key-symmetric with the host echo in `InterlinearNavContext`).
+  // when the focused token's own segment already contains the new verse — that case means the verse
+  // change came from a token click here (or a strip nav echoed back through `focusToken`), and we
+  // must not clobber the deliberately-focused token with the verse's first token. The guard tests
+  // the focused token's *own* segment for containment rather than comparing against the active
+  // segment's id: when a verse is split into portions, clicking a non-first portion (e.g. "1c")
+  // leaves focus in that portion while `findActiveSegment` resolves the verse to the *first* portion
+  // ("1a"), so an id comparison would wrongly reseed focus to the first portion's leading word.
+  // Containment stays verse-exact — an external jump *within* a chapter (common in long chapters like
+  // Psalm 119) lands outside the focused token's segment and still moves focus to the newly-named
+  // verse. Internal navigation never reaches the reseed branch because the click/strip handler has
+  // already set focus into the target verse; the fade is separately suppressed by the segment
+  // window's `consumeInternalNav` (kept key-symmetric with the host echo in `InterlinearNavContext`).
   useEffect(() => {
-    const activeSeg = findActiveSegment();
-    if (focusedTokenRef && tokenSegmentMap.get(focusedTokenRef) === activeSeg?.id) return;
+    const focusedSegId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
+    const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
+    if (focusedSeg && segmentContainsVerse(focusedSeg, scrRef)) return;
     /* v8 ignore next -- activeSeg is always defined when the book includes the active verse */
-    setFocusedTokenRef(firstWordTokenRefOf(activeSeg));
+    setFocusedTokenRef(firstWordTokenRefOf(findActiveSegment()));
     // findActiveSegment is intentionally excluded: the verse-coordinate deps already capture the
-    // change we care about, and it changes identity on every scrRef update. focusedTokenRef and
-    // tokenSegmentMap are excluded too — they are read only as guards; as deps they would re-run
-    // this effect on every focus move and clobber the deliberately-focused token with the verse's
-    // first word.
+    // change we care about, and it changes identity on every scrRef update. focusedTokenRef,
+    // tokenSegmentMap, and segmentById are excluded too — they are read only as guards; as deps they
+    // would re-run this effect on every focus move and clobber the deliberately-focused token with
+    // the verse's first word.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 

@@ -454,7 +454,9 @@ export async function openInterlinearizerFromScriptureEditor(
 
   // Wait for the dock layout to actually mount before deciding which path to take — a fresh profile
   // briefly reports zero tabs, and a non-waiting `count()` would misread that as "no editor".
-  await expect(editorTab.or(homeTab)).toBeVisible({ timeout: 30_000 });
+  // `.first()` on the whole `.or()`: when both the editor and Home tabs are present the union
+  // resolves to two elements, which would trip strict mode on this visibility assertion.
+  await expect(editorTab.or(homeTab).first()).toBeVisible({ timeout: 30_000 });
 
   // If the layout came up without a Scripture Editor (single-tab Home layout), open the project
   // from Home so the editor (and its ≡ menu) exists before we try to focus it.
@@ -484,7 +486,9 @@ export async function openInterlinearizerFromScriptureEditor(
   // already has a project (a warm instance), the Interlinearizer tab opens directly instead.
   const selectProjectDialog = page.locator('.select-project-dialog');
   const interlinearizerTab = interlinearizerTabLocator(page);
-  await expect(selectProjectDialog.or(interlinearizerTab)).toBeVisible({ timeout: 15_000 });
+  // `.first()` on the whole `.or()`: if the dialog and the tab are ever both present the union
+  // resolves to two elements, which would trip strict mode on this visibility assertion.
+  await expect(selectProjectDialog.or(interlinearizerTab).first()).toBeVisible({ timeout: 15_000 });
   if (await selectProjectDialog.isVisible()) {
     const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
     await selectProjectDialog.getByRole('button', { name: projectNameRegex }).click();
@@ -555,9 +559,12 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
   // only poll rpc.discover, not the DOM, so without this a not-yet-painted Interlinearizer tab (or
   // one just closed by a prior test) would read as "absent" and send us needlessly down the full
   // open-from-editor flow. Wait until either the Interlinearizer tab or some editor/Home anchor tab
-  // is mounted, so isVisible() reflects a settled layout.
+  // is mounted, so isVisible() reflects a settled layout. When BOTH are present (the common case:
+  // an Interlinearizer tab alongside the WEB/editor tab), the union resolves to two elements, so
+  // `.first()` on the whole `.or()` keeps the visibility assertion out of strict-mode violation —
+  // per-operand `.first()` does not collapse the union to a single match.
   const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|Home|WEB/ }).first();
-  await expect(interlinearizerTab.or(anchorTab)).toBeVisible({ timeout: 30_000 });
+  await expect(interlinearizerTab.or(anchorTab).first()).toBeVisible({ timeout: 30_000 });
 
   if (await interlinearizerTab.isVisible()) {
     await interlinearizerTab.click();

@@ -30,7 +30,7 @@
     "bump-versions": "ts-node ./lib/bump-versions.ts",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "test:e2e": "playwright test --config e2e-tests/playwright.config.ts",
+    "test:e2e": "npm run test:e2e:smoke && npm run test:e2e:cdp",
     "test:e2e:cdp": "playwright test --config e2e-tests/playwright-cdp.config.ts",
     "test:e2e:smoke": "playwright test --config e2e-tests/playwright.config.ts --project=smoke",
     "core:start": "npm --prefix ../paranext-core start",

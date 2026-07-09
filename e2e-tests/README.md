@@ -3,7 +3,13 @@
 End-to-end tests for the interlinearizer extension using Playwright + Electron. The suite has two tiers:
 
 - **Smoke tests** (`tests/smoke/`, `app.fixture`) launch a fresh Platform.Bible instance with the extension loaded via `--extensions` and verify the extension starts up correctly.
-- **Feature tests** (`tests/features/`, `cdp.fixture`) attach to an already-running `npm run start:cdp` instance and exercise interlinearizer UI flows (glossing, draft persistence, project modals).
+- **Feature tests** (`tests/features/`, `cdp.fixture`) connect over CDP to a running Platform.Bible instance and exercise interlinearizer UI flows (glossing, draft persistence, project modals).
+
+Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can be run alone with `npm run test:e2e:smoke` and `npm run test:e2e:cdp`.
+
+Both tiers are self-launching: the CDP tier's `globalSetup` launches its own Platform.Bible instance (with `--remote-debugging-port=9223`) in an isolated user-data dir and tears it down afterward, so `npm run test:e2e:cdp` needs no manual `npm run start:cdp` first. To iterate against a warm instance instead, run `npm run start:cdp` in one terminal, then run the CDP config directly with `npx playwright test --config e2e-tests/playwright-cdp.config.ts`: the setup detects the in-use CDP port, reuses that instance, and leaves it running.
+
+In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on Linux under `xvfb` via `npm run test:e2e`; Windows runs the smoke tier only, because the CDP self-launch tears its app down by POSIX process group, which has no Windows equivalent. Each tier writes its Playwright HTML report to its own subfolder (`playwright-report/smoke`, `playwright-report/cdp`) so a combined run keeps both.
 
 **Contents:**
 
@@ -23,7 +29,7 @@ These tests are adapted from `paranext-core`'s e2e suite with changes to support
 
 ## Writing feature tests
 
-Feature tests run with `npm run test:e2e:cdp` against a shared, long-lived `npm run start:cdp` instance, so they must assume nothing about its state and must leave nothing behind that could poison the next run. The protocol:
+Feature tests run with `npm run test:e2e:cdp`. That command launches a fresh, isolated instance, but the tests are also run against a shared, long-lived `npm run start:cdp` instance during local iteration (see above), so they must assume nothing about the instance's state and must leave nothing behind that could poison the next run. The protocol:
 
 - **Import from `cdp.fixture`, never `app.fixture`.** The CDP config already serializes execution (`workers: 1`), so tests never race each other on the shared instance.
 - **The instance is only ever used with the WEB project.** This is an operating assumption, not something tests verify: `ensureInterlinearizerOpenOnWeb()` trusts an existing Interlinearizer tab and only picks WEB when opening fresh. Don't point `start:cdp` at other projects.

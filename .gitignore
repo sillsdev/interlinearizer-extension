@@ -39,3 +39,8 @@ temp-build
 # Playwright test output
 e2e-tests/playwright-report
 e2e-tests/test-results
+
+# Playwright runtime process markers (dev server / self-launched CDP app)
+e2e-tests/.dev-server.pid
+e2e-tests/.cdp-app.pid
+e2e-tests/.cdp-app.user-data-dir

@@ -7,10 +7,12 @@
  *
  * - No app restart needed (no port 8876 conflict)
  * - Tests run against the same app instance used during development
- * - No teardown/shutdown of the app on completion
+ * - No teardown/shutdown of the app by the fixture on completion
  *
- * Prerequisite: Platform.Bible running with --remote-debugging-port=9223 and the interlinearizer
- * extension loaded.
+ * The app is provided by the CDP config's `globalSetup` (which self-launches one for `npm run
+ * test:e2e:cdp`) or by a developer's own `npm run start:cdp`; either way it must be running with
+ * `--remote-debugging-port=9223` and the interlinearizer extension loaded by the time this fixture
+ * connects.
  */
 import { test as base, chromium, Page } from '@playwright/test';
 

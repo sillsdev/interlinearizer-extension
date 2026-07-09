@@ -106,11 +106,14 @@ export function FoldHorizontal(props: Readonly<{ className?: string }>): ReactEl
 }
 
 /**
- * Stub for the Scissors icon used by the split boundary control.
+ * Stub for the UnfoldHorizontal icon used by the Alt-gated split marker (the visual inverse of the
+ * merge `Fold*` glyphs).
  *
  * @param props - SVG props forwarded from the component.
- * @returns A ReactElement SVG element used as a split icon stub in tests.
+ * @returns A ReactElement SVG element used as a split-marker icon stub in tests.
  */
-export function Scissors(props: Readonly<{ size?: number; className?: string }>): ReactElement {
-  return <svg data-testid="scissors-icon" {...props} />;
+export function UnfoldHorizontal(
+  props: Readonly<{ size?: number; className?: string }>,
+): ReactElement {
+  return <svg data-testid="unfold-horizontal-icon" {...props} />;
 }

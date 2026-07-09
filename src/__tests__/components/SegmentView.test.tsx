@@ -3,13 +3,18 @@
 /// <reference types="@testing-library/jest-dom" />
 
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
 import type { ReactNode } from 'react';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import type { PhraseDispatch } from '../../components/AnalysisStore';
+import { AltHeldProvider } from '../../components/AltHeldContext';
 import { LINK_SLOT_TRANSITION_MS } from '../../components/PhraseStripParts';
+import {
+  SegmentationProvider,
+  type SegmentationContextValue,
+} from '../../components/SegmentationStore';
 import { SegmentView } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
 import { makePhraseLink } from '../test-helpers';
@@ -461,6 +466,147 @@ describe('SegmentView', () => {
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+  });
+
+  describe('baseline-text split gestures', () => {
+    /**
+     * Renders a SegmentView in baseline-text mode wrapped in the segmentation and Alt-held
+     * providers, so the split gap markers can be exercised.
+     *
+     * @param options - Fixture overrides: the segment, whether Alt is held, the phrase mode, and
+     *   the straddled/former-boundary maps.
+     * @returns The dispatch spy and the onSelect spy for assertions.
+     */
+    function renderBaseline(
+      options: {
+        segment?: Segment;
+        altHeld?: boolean;
+        phraseMode?: { kind: 'view' } | { kind: 'confirm-unlink'; phraseId: string };
+        straddledBoundaryRefs?: ReadonlySet<string>;
+        formerBoundaries?: ReadonlyMap<string, string>;
+      } = {},
+    ) {
+      const segment = options.segment ?? WORD_SEGMENT;
+      const dispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+      const onSelect = jest.fn();
+      const value: SegmentationContextValue = {
+        dispatch,
+        segmentById: new Map([[segment.id, segment]]),
+        segmentOrder: new Map([[segment.id, 0]]),
+        formerBoundaries: options.formerBoundaries ?? new Map(),
+        straddledBoundaryRefs: options.straddledBoundaryRefs ?? new Set(),
+      };
+      render(
+        <SegmentationProvider value={value}>
+          <AltHeldProvider value={options.altHeld ?? true}>
+            <SegmentView
+              {...requiredProps()}
+              displayMode="baseline-text"
+              segment={segment}
+              phraseMode={options.phraseMode ?? { kind: 'view' }}
+              onSelect={onSelect}
+            />
+          </AltHeldProvider>
+        </SegmentationProvider>,
+        withAnalysisStore,
+      );
+      return { dispatch, onSelect };
+    }
+
+    it('shows a split gap between two words while Alt is held', () => {
+      renderBaseline();
+      expect(screen.getByTestId('baseline-split-gap')).toBeInTheDocument();
+    });
+
+    it('shows no split gap while Alt is not held', () => {
+      renderBaseline({ altHeld: false });
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('shows no split gap while a phrase mode is active even with Alt held', () => {
+      renderBaseline({ phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } });
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('shows no split gap at a straddled (mid-phrase) boundary', () => {
+      renderBaseline({ straddledBoundaryRefs: new Set(['tok-1']) });
+      expect(screen.queryByTestId('baseline-split-gap')).not.toBeInTheDocument();
+    });
+
+    it('splits at the resolved anchor on an Alt+click of the gap', () => {
+      const { dispatch } = renderBaseline();
+      fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
+      // No punctuation between "In" and "the", so the anchor is the second word token.
+      expect(dispatch.split).toHaveBeenCalledWith('tok-1');
+    });
+
+    it('does not split on a plain (non-Alt) click of the gap', () => {
+      const { dispatch, onSelect } = renderBaseline();
+      fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: false });
+      expect(dispatch.split).not.toHaveBeenCalled();
+      // The plain click still routes to the segment-select handler.
+      expect(onSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
+    });
+
+    it('dispatches the former-boundary ref when Alt+clicking a former boundary', () => {
+      const { dispatch } = renderBaseline({
+        formerBoundaries: new Map([['tok-1', 'punct-start']]),
+      });
+      fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
+      expect(dispatch.split).toHaveBeenCalledWith('punct-start');
+    });
+
+    it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
+      // `In "the` — the quote touches "the", so the boundary lands before the quote token.
+      const quoteSegment: Segment = {
+        id: 'GEN 2:1',
+        startRef: { book: 'GEN', chapter: 2, verse: 1 },
+        endRef: { book: 'GEN', chapter: 2, verse: 1 },
+        baselineText: 'In "the',
+        tokens: [
+          {
+            ref: 'w0',
+            surfaceText: 'In',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 0,
+            charEnd: 2,
+          },
+          {
+            ref: 'q',
+            surfaceText: '"',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 3,
+            charEnd: 4,
+          },
+          {
+            ref: 'w1',
+            surfaceText: 'the',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 4,
+            charEnd: 7,
+          },
+        ],
+        verseStarts: [{ charStart: 0, number: '1' }],
+      };
+      const { dispatch } = renderBaseline({ segment: quoteSegment });
+      fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
+      expect(dispatch.split).toHaveBeenCalledWith('q');
+    });
+
+    it('renders the baseline text byte-for-byte with the verse superscript prefixed', () => {
+      renderBaseline({ altHeld: false });
+      // The rendered text is the verse label followed by the exact baseline string (whitespace and
+      // punctuation preserved), the only structural change being the span split.
+      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
+    });
+
+    it('renders the baseline text byte-for-byte even while Alt reveals the split gaps', () => {
+      renderBaseline();
+      expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
+    });
   });
 
   it('renders word tokens as interactive buttons when onSelect is provided', () => {

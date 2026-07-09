@@ -13,9 +13,10 @@ import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
-/** Localized label for the between-rows merge control; hoisted so the array reference is stable. */
+/** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
 const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeHint%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
@@ -28,11 +29,6 @@ type MergeRowButtonProps = Readonly<{
    * mode UI is operating on.
    */
   disabled: boolean;
-  /**
-   * Reports hover over this button: the segment's id on enter, `undefined` on leave. The list uses
-   * it to tint the two rows the merge would join.
-   */
-  onHoverChange: (segmentId: string | undefined) => void;
 }>;
 
 /**
@@ -42,39 +38,31 @@ type MergeRowButtonProps = Readonly<{
  * only boundary affordance in this view, and it doubles as the undo for a split.
  *
  * The button spans the full row width so the whole gap is a click target, with the fold glyph
- * centered in it. Hovering previews the merge two ways: the button itself tints across its full
- * width (a band bridging the gap), and the hover is reported to the list, which outlines and tints
- * the two rows a click would join. The hover is cleared synchronously on click so the preview can't
- * linger over the merged content.
+ * centered in it. Its only hover affordance is its own `hover:bg-accent` band; the former
+ * adjacent-row tint preview is removed. The tooltip carries the split-discoverability hint (hold
+ * Alt and click between words to split); the `aria-label` stays the concise merge string.
  *
  * @param props - Component props.
  * @param props.segment - The segment below the gap.
  * @param props.disabled - Renders the control inert while a phrase mode is active.
- * @param props.onHoverChange - Reports hover so the list can tint the two affected rows.
  * @returns A full-width merge-boundary button, or `undefined` when the segment has no tokens.
  */
-function MergeRowButton({ segment, disabled, onHoverChange }: MergeRowButtonProps) {
+function MergeRowButton({ segment, disabled }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
   const [localizedStrings] = useLocalizedStrings(MERGE_STRING_KEYS);
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
-  const mergeLabel = localizedStrings['%interlinearizer_boundaryControl_merge%'];
   return (
     <button
-      aria-label={mergeLabel}
+      aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
       className="tw:flex tw:w-full tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-30"
       data-testid="segment-merge-btn"
       disabled={disabled}
       tabIndex={-1}
-      title={mergeLabel}
+      title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
       type="button"
-      onClick={() => {
-        onHoverChange(undefined);
-        dispatch.merge(secondSegmentStartRef);
-      }}
-      onMouseEnter={() => onHoverChange(segment.id)}
-      onMouseLeave={() => onHoverChange(undefined)}
+      onClick={() => dispatch.merge(secondSegmentStartRef)}
     >
       <span className="tw:inline-flex tw:items-center tw:justify-center tw:p-0.5">
         <FoldVertical className="tw:h-3 tw:w-3" />
@@ -275,13 +263,6 @@ export default function SegmentListView({
     : undefined;
 
   /**
-   * Id of the lower segment of the row gap whose merge button is hovered, or `undefined` when none
-   * is. The hovered gap's two adjacent rows (this segment and its predecessor) render outlined and
-   * tinted so it is visible which rows a click would join.
-   */
-  const [mergeHoverSegmentId, setMergeHoverSegmentId] = useState<string | undefined>(undefined);
-
-  /**
    * Chapter shown in the pinned header overlay: the chapter of the topmost segment still touching
    * the container's top edge. Rendered as a single always-mounted overlay (a sibling of the
    * recenter button) rather than a per-segment sticky element, so it survives the window culling
@@ -381,46 +362,29 @@ export default function SegmentListView({
               return (
                 <Fragment key={seg.id}>
                   {segIndex > 0 && (
-                    <MergeRowButton
-                      segment={seg}
-                      disabled={phraseMode.kind !== 'view'}
-                      onHoverChange={setMergeHoverSegmentId}
-                    />
+                    <MergeRowButton segment={seg} disabled={phraseMode.kind !== 'view'} />
                   )}
-                  <div
-                    // Merge preview: outline and tint the two rows the hovered gap's merge button
-                    // would join — this segment when its own gap is hovered, and the row above the
-                    // hovered gap.
-                    className={`tw:rounded-md tw:transition-colors ${
-                      mergeHoverSegmentId !== undefined &&
-                      (seg.id === mergeHoverSegmentId ||
-                        windowSegments[segIndex + 1]?.id === mergeHoverSegmentId)
-                        ? 'tw:bg-accent tw:ring-1 tw:ring-ring/60'
-                        : ''
-                    }`}
-                  >
-                    <MemoizedSegmentView
-                      displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
-                      editPhraseSegmentId={editPhraseSegmentId}
-                      focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
-                      hoveredPhraseId={hoveredPhraseId}
-                      isActive={
-                        activeSegmentId !== undefined
-                          ? seg.id === activeSegmentId
-                          : segmentContainsVerse(seg, displayScrRef)
-                      }
-                      onHoverPhrase={setHoveredPhraseId}
-                      onSelect={onSelect}
-                      phraseMode={phraseMode}
-                      setPhraseMode={setPhraseMode}
-                      segment={seg}
-                      verseStartLabels={verseStartLabels}
-                      tokenSegmentMap={tokenSegmentMap}
-                      tokenDocOrder={tokenDocOrder}
-                      wordTokenByRef={wordTokenByRef}
-                      viewOptions={viewOptions}
-                    />
-                  </div>
+                  <MemoizedSegmentView
+                    displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
+                    editPhraseSegmentId={editPhraseSegmentId}
+                    focusedTokenRef={displayContinuousScroll ? undefined : displayFocusedTokenRef}
+                    hoveredPhraseId={hoveredPhraseId}
+                    isActive={
+                      activeSegmentId !== undefined
+                        ? seg.id === activeSegmentId
+                        : segmentContainsVerse(seg, displayScrRef)
+                    }
+                    onHoverPhrase={setHoveredPhraseId}
+                    onSelect={onSelect}
+                    phraseMode={phraseMode}
+                    setPhraseMode={setPhraseMode}
+                    segment={seg}
+                    verseStartLabels={verseStartLabels}
+                    tokenSegmentMap={tokenSegmentMap}
+                    tokenDocOrder={tokenDocOrder}
+                    wordTokenByRef={wordTokenByRef}
+                    viewOptions={viewOptions}
+                  />
                 </Fragment>
               );
             })}

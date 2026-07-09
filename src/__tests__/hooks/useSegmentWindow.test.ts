@@ -42,6 +42,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
         charEnd: 4,
       },
     ],
+    verseStarts: [{ charStart: 0, number: String(verse) }],
   };
 }
 

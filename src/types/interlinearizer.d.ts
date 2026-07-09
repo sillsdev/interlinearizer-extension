@@ -23,13 +23,6 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.simplifyPhrases': boolean;
     /**
-     * Controls how chapter boundaries are marked in the segment list. When false (the default), a
-     * chapter shows an inline header above the first verse of each new chapter and the verse label
-     * stays a bare verse number. When true, the inline header is omitted and the first verse of
-     * each chapter is labeled `chapter:verse` instead of a bare verse number.
-     */
-    'interlinearizer.chapterLabelInVerse': boolean;
-    /**
      * When true, each word token displays its morpheme breakdown and per-morpheme glosses beneath
      * the token-level gloss input.
      */
@@ -538,6 +531,35 @@ declare module 'interlinearizer' {
      * `TextAnalysis.tokenAnalyses`).
      */
     tokens: Token[];
+
+    /**
+     * Where each source verse begins within `baselineText`, in document order, for rendering inline
+     * verse-number superscripts. A verse-per-verse segment has exactly one entry at `charStart: 0`;
+     * a merged segment has one entry per verse it absorbed (each `charStart` pointing at that
+     * verse's first character in the concatenated baseline); a split segment's later piece begins
+     * mid-verse and carries a single entry at `charStart: 0` for that verse.
+     */
+    verseStarts: VerseStart[];
+  }
+
+  /**
+   * The start of one source verse within a {@link Segment}'s `baselineText`, used to render the
+   * inline verse-number superscript at that position.
+   */
+  export interface VerseStart {
+    /**
+     * Zero-based character offset of this verse's first character within the owning
+     * `Segment.baselineText`.
+     */
+    charStart: number;
+
+    /**
+     * Verbatim verse-label string to render as the superscript (e.g. `"1"`, or a range like
+     * `"3-4"`), taken from the USJ verse marker's `number` attribute (sid-derived when absent;
+     * `"0"` for a verse-0 superscription). Chapter qualification (`chapter:` prefix at a chapter
+     * transition) is applied by the renderer, not stored here.
+     */
+    number: string;
   }
 
   /**

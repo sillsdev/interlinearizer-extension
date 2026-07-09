@@ -5,13 +5,23 @@ import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
 
 /**
- * Builds a minimal RawBook fixture for GEN with the given verses.
+ * Builds a minimal RawBook fixture for GEN with the given verses. Each verse's rendered `number`
+ * defaults to the verse portion of its sid when not given, so existing call sites stay terse.
  *
- * @param verses - Array of verse objects (sid + text) to include in the book.
+ * @param verses - Array of verse objects (sid + text, optional number) to include in the book.
  * @returns A RawBook with fixed bookCode, writingSystem, and contentHash.
  */
-function makeRawBook(verses: { sid: string; text: string }[]): RawBook {
-  return { bookCode: 'GEN', writingSystem: 'en', contentHash: 'abc123', verses };
+function makeRawBook(verses: { sid: string; text: string; number?: string }[]): RawBook {
+  return {
+    bookCode: 'GEN',
+    writingSystem: 'en',
+    contentHash: 'abc123',
+    verses: verses.map(({ sid, text, number }) => ({
+      sid,
+      text,
+      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
+    })),
+  };
 }
 
 describe('tokenizeBook', () => {
@@ -50,12 +60,19 @@ describe('tokenizeBook', () => {
     expect(segments[0].endRef).toEqual({ book: 'GEN', chapter: 1, verse: 1 });
   });
 
+  it('records a single verse start at offset 0 carrying the verbatim number', () => {
+    const { segments } = tokenizeBook(
+      makeRawBook([{ sid: 'GEN 1:3', number: '3-4', text: 'Combined verse.' }]),
+    );
+    expect(segments[0].verseStarts).toEqual([{ charStart: 0, number: '3-4' }]);
+  });
+
   it('builds a verse-0 segment from a verse-0 SID (Psalm superscription)', () => {
     const raw: RawBook = {
       bookCode: 'PSA',
       writingSystem: 'en',
       contentHash: 'abc123',
-      verses: [{ sid: 'PSA 3:0', text: 'A Psalm by David.' }],
+      verses: [{ sid: 'PSA 3:0', number: '0', text: 'A Psalm by David.' }],
     };
     const { segments } = tokenizeBook(raw);
     expect(segments).toHaveLength(1);

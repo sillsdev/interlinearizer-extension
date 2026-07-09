@@ -198,12 +198,6 @@ function InterlinearizerLoaderInner({
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.simplifyPhrases', false);
 
   const {
-    isLoading: isChapterLabelInVerseLoading,
-    onChange: handleChapterLabelInVerseChange,
-    value: chapterLabelInVerse,
-  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.chapterLabelInVerse', false);
-
-  const {
     isLoading: isShowMorphologyLoading,
     onChange: handleShowMorphologyChange,
     value: showMorphology,
@@ -230,17 +224,10 @@ function InterlinearizerLoaderInner({
     () => ({
       hideInactiveLinkButtons,
       simplifyPhrases,
-      chapterLabelInVerse,
       showMorphology,
       showFreeTranslation,
     }),
-    [
-      hideInactiveLinkButtons,
-      simplifyPhrases,
-      chapterLabelInVerse,
-      showMorphology,
-      showFreeTranslation,
-    ],
+    [hideInactiveLinkButtons, simplifyPhrases, showMorphology, showFreeTranslation],
   );
 
   const {
@@ -357,7 +344,6 @@ function InterlinearizerLoaderInner({
     isContinuousScrollLoading ||
     isHideInactiveLinkButtonsLoading ||
     isSimplifyPhrasesLoading ||
-    isChapterLabelInVerseLoading ||
     isShowMorphologyLoading ||
     isShowFreeTranslationLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
@@ -537,8 +523,6 @@ function InterlinearizerLoaderInner({
               onHideInactiveLinkButtonsChange={handleHideInactiveLinkButtonsChange}
               simplifyPhrases={simplifyPhrases}
               onSimplifyPhrasesChange={handleSimplifyPhrasesChange}
-              chapterLabelInVerse={chapterLabelInVerse}
-              onChapterLabelInVerseChange={handleChapterLabelInVerseChange}
               showMorphology={showMorphology}
               onShowMorphologyChange={handleShowMorphologyChange}
               showFreeTranslation={showFreeTranslation}

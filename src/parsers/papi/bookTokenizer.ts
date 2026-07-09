@@ -107,7 +107,8 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  *
  * Each `RawVerse` becomes one `Segment`. The verse SID is parsed into `startRef` / `endRef` (both
  * equal — verse-level granularity). The verse text is split into `Token`s using Unicode-aware
- * word/punctuation splitting; character offsets are relative to `Segment.baselineText`.
+ * word/punctuation splitting; character offsets are relative to `Segment.baselineText`. Each
+ * segment gets a single `verseStarts` entry at offset 0 carrying the verse's rendered `number`.
  *
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
@@ -119,7 +120,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  * @throws {SyntaxError} If any `RawVerse.sid`'s book code does not match `rawBook.bookCode`.
  */
 export function tokenizeBook(rawBook: RawBook): Book {
-  const segments: Segment[] = rawBook.verses.map(({ sid, text }) => {
+  const segments: Segment[] = rawBook.verses.map(({ sid, number, text }) => {
     const ref = parseSid(sid);
     if (ref.book !== rawBook.bookCode) {
       throw new SyntaxError(`Verse SID "${sid}" does not match book code "${rawBook.bookCode}"`);
@@ -130,6 +131,7 @@ export function tokenizeBook(rawBook: RawBook): Book {
       endRef: { ...ref },
       baselineText: text,
       tokens: tokenizeVerse(text, sid, rawBook.writingSystem),
+      verseStarts: [{ charStart: 0, number }],
     };
   });
 

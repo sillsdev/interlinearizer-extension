@@ -13,12 +13,16 @@ import {
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
+import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { resolveSplitAnchor } from '../utils/split-anchor';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { useAltHeldValue } from './AltHeldContext';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
+import { useSegmentation } from './SegmentationStore';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -38,7 +42,84 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_boundaryControl_split%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * One piece of the baseline-text render: a verbatim text run, an inline verse superscript, or a
+ * splittable gap. Concatenating every piece's `text` (superscripts contribute none) reproduces the
+ * segment's `baselineText` byte-for-byte.
+ */
+type BaselinePiece =
+  | {
+      kind: 'text';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** A verbatim slice of `baselineText`. */
+      text: string;
+    }
+  | {
+      kind: 'gap';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** The verbatim inter-token gap slice of `baselineText`. */
+      text: string;
+      /** The split anchor ref an Alt+click here dispatches. */
+      splitRef: string;
+    }
+  | {
+      kind: 'superscript';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** The verse label to render as a superscript at this position. */
+      label: string;
+    };
+
+/**
+ * Builds the ordered baseline-text render pieces for a segment. Partitions `baselineText` at every
+ * token boundary, verse-start offset, and split-gap end so each slice can be rendered as its own
+ * span; the partition is exhaustive, so concatenating the slices reproduces `baselineText` exactly
+ * (no whitespace or punctuation is dropped). A verse superscript is emitted at each verse-start
+ * offset, and the gap slice ending immediately before a split anchor is marked splittable.
+ *
+ * @param segment - The segment whose baseline text is being laid out.
+ * @param verseStartLabelByOffset - Char offset → verse superscript label.
+ * @param splitGapByOffset - Anchor char offset → split anchor ref; the gap slice ending at that
+ *   offset becomes the splittable gap.
+ * @returns The ordered baseline pieces.
+ */
+function buildBaselinePieces(
+  segment: Segment,
+  verseStartLabelByOffset: ReadonlyMap<number, string>,
+  splitGapByOffset: ReadonlyMap<number, string>,
+): BaselinePiece[] {
+  const { baselineText, tokens } = segment;
+  // Every offset at which the text must be cut into its own span: string ends, token edges, verse
+  // starts, and split-anchor starts. Sorted and de-duplicated so the walk visits each once.
+  const cuts = new Set<number>([0, baselineText.length]);
+  tokens.forEach((t) => {
+    cuts.add(t.charStart);
+    cuts.add(t.charEnd);
+  });
+  verseStartLabelByOffset.forEach((_label, offset) => cuts.add(offset));
+  splitGapByOffset.forEach((_ref, offset) => cuts.add(offset));
+  const sortedCuts = [...cuts].sort((a, b) => a - b);
+
+  const pieces: BaselinePiece[] = [];
+  for (let i = 0; i < sortedCuts.length; i += 1) {
+    const start = sortedCuts[i];
+    const label = verseStartLabelByOffset.get(start);
+    if (label !== undefined) pieces.push({ kind: 'superscript', key: `sup-${start}`, label });
+    const end = sortedCuts[i + 1];
+    if (end === undefined) break;
+    const text = baselineText.slice(start, end);
+    const splitRef = splitGapByOffset.get(end);
+    const key = `piece-${start}`;
+    if (splitRef !== undefined) pieces.push({ kind: 'gap', key, text, splitRef });
+    else pieces.push({ kind: 'text', key, text });
+  }
+  return pieces;
+}
 
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
@@ -148,6 +229,9 @@ export function SegmentView({
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
+  const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
+  const altHeld = useAltHeldValue();
+
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
 
@@ -191,21 +275,79 @@ export function SegmentView({
   );
 
   /**
-   * `baselineText` split into `{ label, text }` chunks at each verse start, so baseline-text mode
-   * can render an inline superscript before each verse's slice. The first verse start is at offset
-   * 0, so every chunk is a verse start; a chunk's `text` runs to the next verse start (or the
-   * string end).
+   * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
+   * superscript wherever a verse begins.
    */
-  const baselineChunks = useMemo(
-    () =>
-      segment.verseStarts.map((vs, i) => ({
-        label: resolvedVerseStartLabels[i],
-        text: segment.baselineText.slice(
-          vs.charStart,
-          segment.verseStarts[i + 1]?.charStart ?? segment.baselineText.length,
-        ),
-      })),
-    [segment.verseStarts, segment.baselineText, resolvedVerseStartLabels],
+  const verseStartLabelByOffset = useMemo(() => {
+    const map = new Map<number, string>();
+    segment.verseStarts.forEach((vs, i) => map.set(vs.charStart, resolvedVerseStartLabels[i]));
+    return map;
+  }, [segment.verseStarts, resolvedVerseStartLabels]);
+
+  /**
+   * Split anchor by the char offset of the gap that precedes it, for baseline-text mode: for each
+   * eligible word-word pair the punctuation-travel anchor's leading gap (the inter-token region
+   * just before the anchor token) becomes a splittable gap. A pair is eligible only in `view` mode
+   * and only when its word boundary is not a mid-phrase (straddled) boundary — the same rules the
+   * token-chip marker uses. A split at a former boundary dispatches the original removed default
+   * start (which may be leading punctuation) so the delta can normalize back to the default
+   * segmentation; otherwise the anchor comes from the punctuation-travel rule. The `altHeld` gate
+   * is applied at render time, not here, so this map stays stable across Alt presses.
+   */
+  const splitGapByOffset = useMemo(() => {
+    const map = new Map<number, string>();
+    if (phraseMode.kind !== 'view') return map;
+    const { tokens, baselineText } = segment;
+    let prevWord: Token | undefined;
+    let pendingPunct: Token[] = [];
+    tokens.forEach((token) => {
+      if (!isWordToken(token)) {
+        pendingPunct.push(token);
+        return;
+      }
+      if (prevWord !== undefined && !straddledBoundaryRefs.has(token.ref)) {
+        const anchor = resolveSplitAnchor(prevWord, token, pendingPunct, baselineText);
+        const anchorToken =
+          anchor === token.ref ? token : pendingPunct.find((p) => p.ref === anchor);
+        /* v8 ignore next -- resolveSplitAnchor always returns the next word or a gap punctuation ref */
+        if (anchorToken !== undefined) {
+          map.set(anchorToken.charStart, formerBoundaries.get(token.ref) ?? anchor);
+        }
+      }
+      prevWord = token;
+      pendingPunct = [];
+    });
+    return map;
+  }, [segment, phraseMode.kind, straddledBoundaryRefs, formerBoundaries]);
+
+  /**
+   * The ordered baseline-text render pieces: plain-text runs, inline verse superscripts, and
+   * splittable gaps. Slices are taken verbatim from `baselineText` (token surfaces, inter-token
+   * gaps, and any leading/trailing text a token does not cover), so concatenating every piece's
+   * text reproduces `baselineText` byte-for-byte — the only visible additions are the verse
+   * superscripts, exactly as before. A gap whose starting offset is a split anchor carries its
+   * `splitRef` so an Alt+click there can dispatch the split.
+   */
+  const baselinePieces = useMemo<BaselinePiece[]>(
+    () => buildBaselinePieces(segment, verseStartLabelByOffset, splitGapByOffset),
+    [segment, verseStartLabelByOffset, splitGapByOffset],
+  );
+
+  /**
+   * Splits the segment at the given anchor when the click carries the Alt modifier; a plain click
+   * falls through to {@link handleBaselineClick} (which selects the segment). Keeps the gesture
+   * Alt-only so it never fights the plain-click select/focus behavior.
+   *
+   * @param event - The click event on the split gap.
+   * @param splitRef - The resolved split anchor ref to dispatch.
+   */
+  const handleBaselineGapClick = useCallback(
+    (event: MouseEvent, splitRef: string) => {
+      if (!event.altKey) return;
+      event.stopPropagation();
+      dispatch.split(splitRef);
+    },
+    [dispatch],
   );
 
   /**
@@ -480,13 +622,32 @@ export function SegmentView({
         onClick={handleBaselineClick}
       >
         <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
-          {baselineChunks.map((chunk, i) => (
-            // eslint-disable-next-line react/no-array-index-key -- chunks are positional and stable
-            <Fragment key={i}>
-              <VerseSuperscript label={chunk.label} />
-              {chunk.text}
-            </Fragment>
-          ))}
+          {baselinePieces.map((piece) => {
+            if (piece.kind === 'superscript') {
+              return <VerseSuperscript key={piece.key} label={piece.label} />;
+            }
+            // A splittable gap becomes an Alt-clickable marker only while Alt is held; otherwise it
+            // renders as its plain text so the baseline reads byte-for-byte identically. The span
+            // always carries the verbatim gap text either way.
+            if (piece.kind === 'gap' && altHeld) {
+              const { splitRef } = piece;
+              return (
+                // Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+                // segment container's own click handler); the a11y lint rules are disabled here.
+                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+                <span
+                  key={piece.key}
+                  className="tw:cursor-pointer tw:rounded tw:bg-accent/40 tw:hover:bg-accent"
+                  data-testid="baseline-split-gap"
+                  title={localizedStrings['%interlinearizer_boundaryControl_split%']}
+                  onClick={(event) => handleBaselineGapClick(event, splitRef)}
+                >
+                  {piece.text}
+                </span>
+              );
+            }
+            return <Fragment key={piece.key}>{piece.text}</Fragment>;
+          })}
         </span>
         {showFreeTranslation && (
           <SegmentFreeTranslationInput

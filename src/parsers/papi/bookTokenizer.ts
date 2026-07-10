@@ -108,7 +108,8 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  * Each `RawVerse` becomes one `Segment`. The verse SID is parsed into `startRef` / `endRef` (both
  * equal — verse-level granularity). The verse text is split into `Token`s using Unicode-aware
  * word/punctuation splitting; character offsets are relative to `Segment.baselineText`. Each
- * segment gets a single `verseStarts` entry at offset 0 carrying the verse's rendered `number`.
+ * segment gets a single `verseStarts` entry at offset 0 carrying the verse's rendered `number` and
+ * `chapter`.
  *
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
@@ -131,7 +132,7 @@ export function tokenizeBook(rawBook: RawBook): Book {
       endRef: { ...ref },
       baselineText: text,
       tokens: tokenizeVerse(text, sid, rawBook.writingSystem),
-      verseStarts: [{ charStart: 0, number }],
+      verseStarts: [{ charStart: 0, number, chapter: ref.chapter }],
     };
   });
 

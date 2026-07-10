@@ -62,9 +62,15 @@ function buildSegment(run: SourcedToken[]): Segment {
     }
     // Each contributing verse begins at the current cursor in the concatenated baseline. Its
     // rendered number is the verse segment's own single verse start (a split's later piece still
-    // carries its whole source verse's number, which is what should render).
-    /* v8 ignore next -- every original verse segment has exactly one verse start */
-    verseStarts.push({ charStart: cursor, number: verse.verseStarts[0]?.number ?? '' });
+    // carries its whole source verse's number, which is what should render); its chapter comes from
+    // the source verse's ref so the renderer can qualify chapter transitions without inspecting a
+    // token.
+    verseStarts.push({
+      charStart: cursor,
+      /* v8 ignore next -- every original verse segment has exactly one verse start */
+      number: verse.verseStarts[0]?.number ?? '',
+      chapter: verse.startRef.chapter,
+    });
     // Consume the contiguous sub-run of tokens from this verse, shifting each token's offsets into
     // the new concatenated baseline while keeping its ref and surface text unchanged.
     const subStart = runIndex;
@@ -103,7 +109,9 @@ function buildSegment(run: SourcedToken[]): Segment {
  * Returns `book` unchanged (by reference) for the default segmentation, so the common no-custom-
  * boundaries case incurs no work and no identity churn. Otherwise the flat token stream is cut at
  * the effective boundaries; a run that is exactly one original verse reuses that verse's `Segment`
- * object verbatim, while merged or split runs are rebuilt via {@link buildSegment}.
+ * object verbatim, while merged or split runs are rebuilt via {@link buildSegment}. Token-less
+ * verses (empty verse markers) pass through as their own segments in document order, so they survive
+ * a custom segmentation exactly as they do the default one.
  *
  * @param book - The verse-tokenized book from {@link tokenizeBook}.
  * @param delta - The user's boundary delta, or `undefined` for the default verse segmentation.
@@ -117,29 +125,41 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
 
   // Cut the flat token stream into runs, beginning a new run at each effective start (but never
   // splitting off a run that has no word/structural content yet — leading tokens stay with the
-  // first run).
-  const runs: SourcedToken[][] = [];
+  // first run). Runs are materialized into segments in document order as they close, interleaved
+  // with any token-less verses (empty verse markers), which carry no token to anchor a boundary and
+  // so always stand as their own segment — reused verbatim so the default path's behavior of
+  // keeping them is preserved once a custom boundary exists.
+  const segments: Segment[] = [];
   let current: SourcedToken[] = [];
-  book.segments.forEach((verse) => {
-    verse.tokens.forEach((token) => {
-      if (starts.has(token.ref) && current.length > 0) {
-        runs.push(current);
-        current = [];
-      }
-      current.push({ token, verse });
-    });
-  });
-  /* v8 ignore next -- a non-default delta always yields at least one token, so current is non-empty */
-  if (current.length > 0) runs.push(current);
 
-  const segments: Segment[] = runs.map((run) => {
+  /** Materializes the open run (if any) into a segment and resets it. */
+  const flushRun = () => {
+    if (current.length === 0) return;
+    const run = current;
+    current = [];
     const firstVerse = run[0].verse;
     // Reuse the original verse Segment when the run is exactly that verse — preserves its id,
     // baselineText, token offsets, and object identity.
     const isWholeUntouchedVerse =
       run.length === firstVerse.tokens.length && run.every((s) => s.verse === firstVerse);
-    return isWholeUntouchedVerse ? firstVerse : buildSegment(run);
+    segments.push(isWholeUntouchedVerse ? firstVerse : buildSegment(run));
+  };
+
+  book.segments.forEach((verse) => {
+    // An empty verse has no token to start a run or be absorbed into one, so flush whatever run is
+    // open and pass the empty verse's original Segment through unchanged, keeping it in document
+    // order rather than silently dropping it.
+    if (verse.tokens.length === 0) {
+      flushRun();
+      segments.push(verse);
+      return;
+    }
+    verse.tokens.forEach((token) => {
+      if (starts.has(token.ref)) flushRun();
+      current.push({ token, verse });
+    });
   });
+  flushRun();
 
   return { ...book, segments };
 }

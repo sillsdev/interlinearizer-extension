@@ -289,7 +289,12 @@ function withDefaultVerseStarts(book: BookWithOptionalVerseStarts): Book {
     segments: book.segments.map((seg) =>
       seg.verseStarts
         ? { ...seg, verseStarts: seg.verseStarts }
-        : { ...seg, verseStarts: [{ charStart: 0, number: String(seg.startRef.verse) }] },
+        : {
+            ...seg,
+            verseStarts: [
+              { charStart: 0, number: String(seg.startRef.verse), chapter: seg.startRef.chapter },
+            ],
+          },
     ),
   };
 }
@@ -323,7 +328,7 @@ function makeLargeBook(count: number): Book {
           charEnd: 4,
         },
       ],
-      verseStarts: [{ charStart: 0, number: String(v) }],
+      verseStarts: [{ charStart: 0, number: String(v), chapter: 1 }],
     });
   }
   return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };

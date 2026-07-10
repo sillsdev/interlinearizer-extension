@@ -545,11 +545,76 @@ export async function waitForAppAndInterlinearizerReady(page: Page): Promise<voi
 }
 
 /**
+ * Dismiss any modal left mounted inside the Interlinearizer iframe by a prior failed test, so its
+ * full-viewport `tw:modal-overlay` (fixed inset-0 z-50, see src/components/modals/ModalShell.tsx)
+ * can't intercept every click in the run that follows.
+ *
+ * This is the shared-instance recovery step. The CDP fixture connects to one long-lived
+ * Platform.Bible instance and never resets its DOM between tests, so a test that dies with a modal
+ * open (e.g. a `wipeDraft` whose click timed out) leaves that overlay covering the iframe — which
+ * then blocks the NEXT test before it can even open a menu. Running this at the start of the
+ * open-Interlinearizer precondition converts that cascade (one real failure reddening every
+ * downstream test) into a single self-healed hiccup, and is what makes a CDP retry actually land on
+ * a clean instance instead of re-running against the poisoned overlay.
+ *
+ * Each project modal's only reliable dismiss affordance is its Cancel/secondary button — the
+ * dialogs are rendered as a plain `<dialog open>` (not via `showModal()`), so native Escape does
+ * not fire their onCancel. Modals can chain (a discard-draft confirm can sit behind another), so
+ * cancel in a bounded loop until no overlay remains.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @returns Resolves once no modal overlay remains in the iframe (a no-op on the common clean path).
+ */
+export async function dismissLeftoverModals(page: Page): Promise<void> {
+  const frame = getInterlinearizerFrame(page);
+  // Every project modal is a `<dialog>` rendered by ModalShell inside a `tw:modal-overlay`, and
+  // that `<dialog>` element is the only one in the iframe — so `frame.locator('dialog')` (the same
+  // handle every other modal helper uses) both detects an open modal and scopes the Cancel lookup,
+  // with no separate overlay selector needed. The overlay is the invisible click-blocker, but the
+  // dialog it wraps is visible exactly when the overlay is.
+  const dialog = frame.locator('dialog').first();
+
+  // Bounded so a modal that refuses to close can't spin forever; a couple of chained confirmations
+  // is the realistic worst case.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    // Non-retrying visibility read: on the clean path (no leftover modal) this must fall through
+    // immediately rather than wait out a timeout on every single test.
+    // eslint-disable-next-line no-await-in-loop
+    if (!(await dialog.isVisible())) return;
+
+    // Prefer an explicit Cancel; fall back to any secondary button (e.g. a confirm dialog whose
+    // back-out button is labeled differently) so an unexpected modal still gets dismissed.
+    const cancelButton = dialog.getByRole('button', { name: /Cancel|Keep|Close|No\b/i }).first();
+    // eslint-disable-next-line no-await-in-loop
+    if (await cancelButton.isVisible()) {
+      // eslint-disable-next-line no-await-in-loop
+      await cancelButton.click();
+    } else {
+      // No recognizable back-out control — press Escape as a last resort and stop retrying, since a
+      // further loop would just re-click the same unknown modal.
+      // eslint-disable-next-line no-await-in-loop
+      await page.keyboard.press('Escape');
+      break;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await expect(dialog)
+      .not.toBeVisible({ timeout: 5_000 })
+      .catch(() => {
+        /* Another modal may have taken its place; the next loop iteration handles it. */
+      });
+  }
+}
+
+/**
  * Ensure the Interlinearizer is open and focused, reusing an existing tab when one is present.
  * Standard precondition for feature tests running against the shared CDP instance: an existing
  * Interlinearizer tab is trusted to be on the WEB project (the shared instance is only ever used
  * with WEB — see e2e-tests/README.md); otherwise the tab is opened fresh via the Scripture Editor
  * menu flow. Resolves only once the extension's toolbar has rendered inside the iframe.
+ *
+ * As the first shared precondition every feature test runs, this also self-heals any modal a prior
+ * failed test left mounted (via {@link dismissLeftoverModals}) so a leftover overlay can't intercept
+ * this test's clicks — see that helper for why the shared CDP instance needs it.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves when the Interlinearizer tab is focused and its toolbar is interactive.
@@ -579,6 +644,10 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
   await expect(frame.locator("button[aria-label='Project']").first()).toBeVisible({
     timeout: 30_000,
   });
+
+  // Self-heal the shared instance: clear any modal a prior failed test left mounted before this
+  // test starts driving the UI, so its overlay can't intercept the clicks below.
+  await dismissLeftoverModals(page);
 }
 
 /**
@@ -796,8 +865,15 @@ export async function wipeDraft(page: Page): Promise<void> {
 
   const wipeDialogTitle = frame.locator('#wipe-modal-title');
   await expect(wipeDialogTitle).toBeVisible({ timeout: 5_000 });
-  await frame.getByTestId('wipe-scope-all').check();
-  await frame.getByTestId('wipe-confirm').click();
+  const scopeAll = frame.getByTestId('wipe-scope-all');
+  // `force`: the radio reads visible+enabled+stable, but on a slow/software-rendered CI display the
+  // just-opened modal overlay hasn't won the hit-test yet, so a normal click is intercepted by the
+  // iframe's own `#root` for a few frames and then times out (the original gloss-roundtrip CI
+  // failure). We've already asserted this modal is open and are targeting an element inside it by a
+  // unique test id, so skipping the (spuriously-failing) hit-test check is safe here.
+  await expect(scopeAll).toBeEnabled({ timeout: 5_000 });
+  await scopeAll.check({ force: true });
+  await frame.getByTestId('wipe-confirm').click({ force: true });
   await expect(wipeDialogTitle).not.toBeVisible({ timeout: 10_000 });
 }
 

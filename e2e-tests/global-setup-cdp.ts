@@ -132,32 +132,37 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
 
   if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
 
-  console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
   /**
    * Rejects the moment {@link appProcess} exits, so a startup crash (e.g. a sandbox
    * misconfiguration) fails setup immediately instead of only surfacing after the full
-   * {@link APP_READY_TIMEOUT} port-wait below elapses.
+   * {@link APP_READY_TIMEOUT} port-wait below elapses. Raced against BOTH port waits: a crash
+   * between the WebSocket port coming up and the CDP port coming up must fail just as fast and with
+   * the same informative message, not silently swallow the exit and time out on the CDP wait.
    */
   const earlyExit = new Promise<never>((_resolve, reject) => {
     appProcess.once('exit', (code, signal) => {
       reject(
         new Error(
           `Launched Platform.Bible (CDP) process exited early (code=${code}, signal=${signal}) ` +
-            'before its WebSocket port came up.',
+            'before its WebSocket and CDP ports came up.',
         ),
       );
     });
   });
   try {
+    console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
+    console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
+    // Race the same earlyExit sentinel here too: without it, a crash after the WebSocket port is up
+    // would be swallowed and this wait would run out the full APP_READY_TIMEOUT with a generic
+    // "port not available" error instead of the "process exited early" cause below.
+    await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
   } catch (error) {
     // The app never came up. Echo its captured output so the failure cause is in the CI log itself,
     // not just buried in the uploaded artifact, then re-throw the original error.
     dumpAppLog();
     throw error;
   }
-  console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
-  await waitForPort(CDP_PORT, APP_READY_TIMEOUT);
   console.log('Platform.Bible (CDP) is ready.');
 }
 

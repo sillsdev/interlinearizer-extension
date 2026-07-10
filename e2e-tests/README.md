@@ -9,7 +9,7 @@ Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can
 
 Both tiers are self-launching: the CDP tier's `globalSetup` launches its own Platform.Bible instance (with `--remote-debugging-port=9223`) in an isolated user-data dir and tears it down afterward, so `npm run test:e2e:cdp` needs no manual `npm run start:cdp` first. To iterate against a warm instance instead, run `npm run start:cdp` in one terminal, then run the CDP config directly with `npx playwright test --config e2e-tests/playwright-cdp.config.ts`: the setup detects the in-use CDP port, reuses that instance, and leaves it running.
 
-In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on Linux under `xvfb` via `npm run test:e2e`; Windows runs the smoke tier only, because the CDP self-launch tears its app down by POSIX process group, which has no Windows equivalent. Each tier writes its Playwright HTML report to its own subfolder (`playwright-report/smoke`, `playwright-report/cdp`) so a combined run keeps both.
+In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on both Linux and Windows. Each tier writes its Playwright HTML report to its own subfolder (`playwright-report/smoke`, `playwright-report/cdp`) so a combined run keeps both.
 
 **Contents:**
 

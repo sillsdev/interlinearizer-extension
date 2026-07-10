@@ -115,6 +115,9 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       '--extensions',
       extensionDist,
       `--remote-debugging-port=${CDP_PORT}`,
+      // GitHub-hosted Linux runners don't ship a root-owned setuid chrome-sandbox binary, so
+      // Electron's SUID sandbox helper aborts on launch. Skip the OS sandbox on Linux.
+      ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
     ],
     {
       cwd: coreDir,
@@ -130,11 +133,26 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
 
   console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
+  /**
+   * Rejects the moment {@link appProcess} exits, so a startup crash (e.g. a sandbox
+   * misconfiguration) fails setup immediately instead of only surfacing after the full
+   * {@link APP_READY_TIMEOUT} port-wait below elapses.
+   */
+  const earlyExit = new Promise<never>((_resolve, reject) => {
+    appProcess.once('exit', (code, signal) => {
+      reject(
+        new Error(
+          `Launched Platform.Bible (CDP) process exited early (code=${code}, signal=${signal}) ` +
+            'before its WebSocket port came up.',
+        ),
+      );
+    });
+  });
   try {
-    await waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT);
+    await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
   } catch (error) {
     // The app never came up. Echo its captured output so the failure cause is in the CI log itself,
-    // not just buried in the uploaded artifact, then re-throw the original timeout.
+    // not just buried in the uploaded artifact, then re-throw the original error.
     dumpAppLog();
     throw error;
   }

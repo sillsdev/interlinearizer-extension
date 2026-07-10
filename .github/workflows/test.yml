@@ -114,13 +114,10 @@ jobs:
         working-directory: paranext-core
         run: npm run build:dll
 
-      # Both OSes run the FULL suite: smoke plus the CDP feature tests. `test:e2e:cdp` self-launches
-      # its own Platform.Bible instance (globalSetup, --remote-debugging-port=9223) and tears it down
-      # cross-platform (POSIX process-group SIGKILL on Linux, `taskkill /T /F` on Windows), so there
-      # is no separate app-start step on either OS. Linux additionally needs an xvfb display.
       - name: Run e2e tests (Linux)
         if: matrix.os == 'ubuntu-latest'
         working-directory: extension-repo
+        # Linux needs an xvfb display
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm run test:e2e
 
       - name: Run e2e tests (Windows)
@@ -135,7 +132,7 @@ jobs:
           name: playwright-results-${{ matrix.os }}
           retention-days: 7
           path: |
+            extension-repo/e2e-tests/.cdp-app-startup.log
             extension-repo/e2e-tests/playwright-report/
             extension-repo/e2e-tests/test-results/
-            extension-repo/e2e-tests/.cdp-app-startup.log
           if-no-files-found: warn

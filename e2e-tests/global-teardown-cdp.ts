@@ -1,49 +1,9 @@
 // Teardown for the self-launching CDP (feature-test) config.
 import type { FullConfig } from '@playwright/test';
-import { execFileSync } from 'child_process';
 import fs from 'fs';
 import { CDP_PID_FILE, CDP_USER_DATA_FILE } from './global-setup-cdp';
 import globalTeardown from './global-teardown';
-
-/**
- * Forcibly kill the launched app and all of its children, cross-platform.
- *
- * Electron spawns a tree of processes (main, renderer, GPU, utility). Leaving any alive holds the
- * PAPI WebSocket port and poisons the next run's fast-fail port check, so we must kill the whole
- * tree, not just the top process.
- *
- * - On Windows there is no process group and `process.kill(-pid)` is meaningless, so shell out to
- *   `taskkill /T /F`, which terminates the process and its entire descendant tree.
- * - Elsewhere the app was spawned `detached`, so it is its own process-group leader: signal the
- *   negative PID to SIGKILL the whole group in one call, falling back to the bare PID if the group
- *   is already gone.
- *
- * @param pid PID of the detached app process recorded by {@link globalSetupCdp}.
- * @returns `true` if a kill was issued, `false` if the process was already gone.
- */
-function killAppTree(pid: number): boolean {
-  if (process.platform === 'win32') {
-    try {
-      execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });
-      return true;
-    } catch {
-      // taskkill exits non-zero when the process is already gone — nothing left to kill.
-      return false;
-    }
-  }
-  try {
-    process.kill(-pid, 'SIGKILL');
-    return true;
-  } catch {
-    try {
-      process.kill(pid, 'SIGKILL');
-      return true;
-    } catch {
-      // Already stopped
-      return false;
-    }
-  }
-}
+import { killProcessTree } from './process-utils';
 
 /**
  * Playwright global teardown for the CDP config. Kills the Electron instance launched by
@@ -66,7 +26,7 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
       console.warn(`Invalid PID in ${CDP_PID_FILE}, skipping app kill`);
     } else {
       console.log(`Stopping self-launched Platform.Bible (CDP) app (PID: ${pid})...`);
-      appKilled = killAppTree(pid);
+      appKilled = killProcessTree(pid, 'SIGKILL');
     }
     fs.unlinkSync(CDP_PID_FILE);
   }

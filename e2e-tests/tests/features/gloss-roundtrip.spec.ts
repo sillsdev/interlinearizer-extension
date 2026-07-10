@@ -4,15 +4,13 @@ import {
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
   navigateToScriptureRef,
-  waitForAppReady,
-  waitForInterlinearizerReady,
+  waitForAppAndInterlinearizerReady,
   wipeDraft,
 } from '../../fixtures/helpers';
 
 test.describe('Gloss round-trip', () => {
   test('typing a gloss on a token renders it in the gloss field', async ({ mainPage }) => {
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    await waitForAppAndInterlinearizerReady(mainPage);
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

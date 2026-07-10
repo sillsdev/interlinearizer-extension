@@ -11,6 +11,8 @@ Both tiers are self-launching: the CDP tier's `globalSetup` launches its own Pla
 
 In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on both Linux and Windows. Each tier writes its Playwright HTML report to its own subfolder (`playwright-report/smoke`, `playwright-report/cdp`) so a combined run keeps both.
 
+To reproduce the Linux CI run locally before pushing, run `npm run test:e2e:headless` (requires `xvfb` — `sudo apt install xvfb`). It runs the full suite on the same virtual 1280x960 display CI uses, so nothing appears on screen and window geometry matches CI exactly. Ports 1212, 8876, and 9223 must be free (close any running Platform.Bible or renderer dev server first). A green local run does not cover the Windows leg, and CI's slower runners can still surface timing-dependent flakes, but it catches layout, selector, and logic failures before they reach CI.
+
 **Contents:**
 
 - `*.json` — lint configs identical to those in `paranext-core/e2e-tests/`

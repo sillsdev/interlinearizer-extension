@@ -32,6 +32,7 @@
     "test:coverage": "jest --coverage",
     "test:e2e": "npm run test:e2e:smoke && npm run test:e2e:cdp",
     "test:e2e:cdp": "playwright test --config e2e-tests/playwright-cdp.config.ts",
+    "test:e2e:headless": "xvfb-run --auto-servernum --server-args=\"-screen 0 1280x960x24\" npm run test:e2e",
     "test:e2e:smoke": "playwright test --config e2e-tests/playwright.config.ts --project=smoke",
     "core:start": "npm --prefix ../paranext-core start",
     "core:stop": "npm --prefix ../paranext-core stop",

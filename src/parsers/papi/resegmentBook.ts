@@ -110,8 +110,8 @@ function buildSegment(run: SourcedToken[]): Segment {
  * boundaries case incurs no work and no identity churn. Otherwise the flat token stream is cut at
  * the effective boundaries; a run that is exactly one original verse reuses that verse's `Segment`
  * object verbatim, while merged or split runs are rebuilt via {@link buildSegment}. Token-less
- * verses (empty verse markers) pass through as their own segments in document order, so they survive
- * a custom segmentation exactly as they do the default one.
+ * verses (empty verse markers) pass through as their own segments in document order, so they
+ * survive a custom segmentation exactly as they do the default one.
  *
  * @param book - The verse-tokenized book from {@link tokenizeBook}.
  * @param delta - The user's boundary delta, or `undefined` for the default verse segmentation.

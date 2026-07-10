@@ -15,6 +15,12 @@ export default defineConfig({
   testDir: './tests',
   testIgnore: ['**/smoke/**', '**/_example/**'],
   fullyParallel: false,
+  forbidOnly: !!process.env.CI,
+  // Retry in CI like the smoke tier. On the shared, never-reset CDP instance a retry only helps
+  // because each test self-heals leftover modals at its start (ensureInterlinearizerOpenOnWeb →
+  // dismissLeftoverModals), so the retry lands on a clean instance instead of re-running against
+  // the overlay the timed-out attempt left mounted.
+  retries: process.env.CI ? 2 : 1,
   workers: 1,
   // Tier-specific report/output folders so a combined `npm run test:e2e` run keeps both tiers'
   // reports side by side instead of the cdp run overwriting the smoke run's. `open: 'never'` keeps

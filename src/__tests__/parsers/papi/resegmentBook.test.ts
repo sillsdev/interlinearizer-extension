@@ -76,8 +76,8 @@ describe('resegmentBook', () => {
     const result = resegmentBook(BOOK, { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
     // 'Alpha beta.' is 11 chars; the merge separator adds 1, so verse 2 begins at offset 12.
     expect(result.segments[0].verseStarts).toEqual([
-      { charStart: 0, number: '1' },
-      { charStart: 12, number: '2' },
+      { charStart: 0, number: '1', chapter: 1 },
+      { charStart: 12, number: '2', chapter: 1 },
     ]);
   });
 
@@ -108,8 +108,8 @@ describe('resegmentBook', () => {
   it('gives each split piece a single verse start at offset 0 for its verse', () => {
     const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
     const [firstHalf, secondHalf] = result.segments;
-    expect(firstHalf.verseStarts).toEqual([{ charStart: 0, number: '1' }]);
-    expect(secondHalf.verseStarts).toEqual([{ charStart: 0, number: '1' }]);
+    expect(firstHalf.verseStarts).toEqual([{ charStart: 0, number: '1', chapter: 1 }]);
+    expect(secondHalf.verseStarts).toEqual([{ charStart: 0, number: '1', chapter: 1 }]);
   });
 
   it('carries a sub-verse charIndex on a split piece that begins mid-verse', () => {

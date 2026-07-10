@@ -193,7 +193,7 @@ const WORD_SEGMENT: Segment = {
       charEnd: 6,
     },
   ],
-  verseStarts: [{ charStart: 0, number: '1' }],
+  verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
 };
 
 /** A segment with a single punctuation (non-word) token. */
@@ -212,7 +212,7 @@ const PUNCT_SEGMENT: Segment = {
       charEnd: 1,
     },
   ],
-  verseStarts: [{ charStart: 0, number: '2' }],
+  verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
 };
 
 /**
@@ -320,8 +320,8 @@ describe('SegmentView', () => {
         },
       ],
       verseStarts: [
-        { charStart: 0, number: '1' },
-        { charStart: 6, number: '2' },
+        { charStart: 0, number: '1', chapter: 1 },
+        { charStart: 6, number: '2', chapter: 1 },
       ],
     };
     render(<SegmentView {...requiredProps()} segment={mergedSegment} />, withAnalysisStore);
@@ -358,8 +358,8 @@ describe('SegmentView', () => {
       baselineText: 'Alpha beta. Gamma delta.',
       tokens: [],
       verseStarts: [
-        { charStart: 0, number: '1' },
-        { charStart: 12, number: '2' },
+        { charStart: 0, number: '1', chapter: 1 },
+        { charStart: 12, number: '2', chapter: 1 },
       ],
     };
     render(
@@ -557,12 +557,58 @@ describe('SegmentView', () => {
       expect(onSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
     });
 
-    it('dispatches the former-boundary ref when Alt+clicking a former boundary', () => {
+    it('dispatches the former-boundary ref and anchors the gap at its token on a former boundary', () => {
+      // A merged segment whose absorbed verse opened on a quote: `In "the`. The word anchor is the
+      // word "the" (`w1`), but the removed default start is the leading quote (`q`), so a split there
+      // must restore the boundary before the quote — and the caret gap must sit before the quote, not
+      // before the word.
+      const quoteSegment: Segment = {
+        id: 'GEN 1:1',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 2 },
+        baselineText: 'In "the',
+        tokens: [
+          {
+            ref: 'w0',
+            surfaceText: 'In',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 0,
+            charEnd: 2,
+          },
+          {
+            ref: 'q',
+            surfaceText: '"',
+            writingSystem: 'en',
+            type: 'punctuation',
+            charStart: 3,
+            charEnd: 4,
+          },
+          {
+            ref: 'w1',
+            surfaceText: 'the',
+            writingSystem: 'en',
+            type: 'word',
+            charStart: 4,
+            charEnd: 7,
+          },
+        ],
+        verseStarts: [
+          { charStart: 0, number: '1', chapter: 1 },
+          { charStart: 3, number: '2', chapter: 1 },
+        ],
+      };
       const { dispatch } = renderBaseline({
-        formerBoundaries: new Map([['tok-1', 'punct-start']]),
+        segment: quoteSegment,
+        formerBoundaries: new Map([['w1', 'q']]),
       });
-      fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
-      expect(dispatch.split).toHaveBeenCalledWith('punct-start');
+      // Exactly one split gap, and it is the inter-token slice ending just before the quote token
+      // (offset 3) — the space between "In" and the quote — so the caret sits where the restored
+      // boundary falls rather than before the word "the" (offset 4).
+      const gap = screen.getByTestId('baseline-split-gap');
+      expect(gap.firstChild?.textContent).toBe(' ');
+      fireEvent.click(gap, { altKey: true });
+      expect(dispatch.split).toHaveBeenCalledWith('q');
     });
 
     it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
@@ -598,7 +644,7 @@ describe('SegmentView', () => {
             charEnd: 7,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 2 }],
       };
       const { dispatch } = renderBaseline({ segment: quoteSegment });
       fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
@@ -680,7 +726,7 @@ describe('SegmentView', () => {
           charEnd: 16,
         },
       ],
-      verseStarts: [{ charStart: 0, number: '3' }],
+      verseStarts: [{ charStart: 0, number: '3', chapter: 1 }],
     };
     const discontiguousLink: PhraseAnalysisLink = {
       analysisId: 'phrase-dc',

@@ -1,6 +1,6 @@
 /** @file Shared test helpers for unit and component tests. */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { ExecutionActivationContext } from '@papi/core';
+import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
 import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
@@ -94,13 +94,12 @@ export function makePhraseStripContext(
 /** Genesis 1:1 serialized verse ref — shared across tests that need a default scroll position. */
 export const defaultScrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
-/** Tuple shape returned by the PAPI scroll-group hook (`useWebViewScrollGroupScrRef`). */
-export type ScrollGroupTuple = [
-  SerializedVerseRef,
-  (r: SerializedVerseRef) => void,
-  number | undefined,
-  (id: number | undefined) => void,
-];
+/**
+ * Tuple shape returned by the PAPI scroll-group hook (`useWebViewScrollGroupScrRef`). Aliased from
+ * the platform hook's own return type so it tracks the tuple's arity (e.g. the trailing
+ * `sourceProjectId` added by the host) rather than restating — and drifting from — it.
+ */
+export type ScrollGroupTuple = ReturnType<UseWebViewScrollGroupScrRefHook>;
 
 /**
  * Builds a `useWebViewScrollGroupScrRef` host-hook stub returning the given tuple parts. Every
@@ -110,6 +109,7 @@ export type ScrollGroupTuple = [
  * @param setScrRef - The reference setter; defaults to a no-op.
  * @param scrollGroupId - The active scroll-group id; defaults to `undefined` (unlinked).
  * @param setScrollGroupId - The scroll-group setter; defaults to a no-op.
+ * @param sourceProjectId - The scroll group's source project id; defaults to `undefined`.
  * @returns A hook returning the assembled tuple.
  */
 export function makeScrollGroupHook(
@@ -117,8 +117,9 @@ export function makeScrollGroupHook(
   setScrRef: (r: SerializedVerseRef) => void = () => {},
   scrollGroupId: number | undefined = undefined,
   setScrollGroupId: (id: number | undefined) => void = () => {},
+  sourceProjectId: string | undefined = undefined,
 ): () => ScrollGroupTuple {
-  return () => [ref, setScrRef, scrollGroupId, setScrollGroupId];
+  return () => [ref, setScrRef, scrollGroupId, setScrollGroupId, sourceProjectId];
 }
 
 /** Pre-built Book with one GEN 1:1 segment and a single word token. */

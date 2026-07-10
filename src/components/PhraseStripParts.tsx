@@ -94,10 +94,10 @@ type BoundaryControlProps = Readonly<{
 }>;
 
 /**
- * Renders the boundary-edit control for one slot — the merge/split button that occupies the slot
- * column's shared bottom row while Alt is held. {@link PhraseSlot} only mounts this component when
- * Alt is held (the row otherwise shows the verse number or stays blank), so there is no Alt-off
- * state and no dashed indicator here: this always tries to render an actionable button.
+ * Renders the boundary-edit control for one slot — the merge/split button that takes over the slot
+ * column's punctuation row while Alt is held. {@link PhraseSlot} only mounts this component when Alt
+ * is held (the row otherwise shows the gap punctuation), so there is no Alt-off state and no dashed
+ * indicator here: this always tries to render an actionable button.
  *
  * - A slot straddling two different segments (a live boundary) shows the `Merge` button (combine the
  *   next segment into the previous one).
@@ -271,14 +271,23 @@ type PhraseSlotProps = Readonly<{
 }>;
 
 /**
- * Renders one between-group slot as a fixed three-row column: row 1 the link/unlink icon, row 2 any
- * gap punctuation, row 3 the verse number (when a verse begins here) — which the Alt-gated
- * merge/split button replaces while Alt is held. Every row is always reserved (blank when empty) so
- * the columns line up across the strip and the buttons all sit at the same vertical offset. Pure —
- * both views feed it identical inputs so the slot renders the same in either layout, which is why
- * the verse number and boundary controls live here rather than in each view: both strips mark verse
- * boundaries identically. The link icon's phrase mode, document-order lookup, and hover callbacks
- * come from {@link PhraseStripContext}.
+ * Renders one between-group slot as a fixed vertical column whose stacked items always land in the
+ * same place across the whole strip, top to bottom:
+ *
+ * 1. The verse number (when a verse begins here) — absolutely positioned so it peeks above the
+ *    column's top edge without consuming layout height, so it never pushes the rows below it.
+ * 2. Gap punctuation — the first in-flow row, aligned with the neighboring token surface text. While
+ *    Alt is held the merge/split boundary button REPLACES the punctuation in this same row (the two
+ *    are never shown together), so revealing the control changes nothing else about the column.
+ * 3. The link/unlink icon (the fade-carrying row).
+ *
+ * Every in-flow row is a fixed height, reserved (and blank) even when its item is absent, so the
+ * columns line up strip-wide and each item sits at an identical vertical offset regardless of which
+ * of the others are present — and pressing Alt only swaps the punctuation row's content in place.
+ * Pure — both views feed it identical inputs so the slot renders the same in either layout, which
+ * is why the verse number and boundary controls live here rather than in each view: both strips
+ * mark verse boundaries identically. The link icon's phrase mode, document-order lookup, and hover
+ * callbacks come from {@link PhraseStripContext}.
  *
  * @param props - Component props
  * @param props.slot - The slot's neighboring groups and gap punctuation
@@ -287,8 +296,8 @@ type PhraseSlotProps = Readonly<{
  * @param props.nextSegmentId - Segment id of the group after the slot
  * @param props.focusedSideIsPrev - Whether focus is start-ward of this slot
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the view
- * @param props.verseLabel - Verse label shown in row 3 (replaced by the boundary button under Alt)
- * @returns A `link-slot` three-row column, or `undefined` when the slot has nothing to render.
+ * @param props.verseLabel - Verse label that peeks above the column when a verse begins here
+ * @returns A `link-slot` fixed column, or `undefined` when the slot has nothing to render.
  */
 export function PhraseSlot({
   slot,
@@ -330,21 +339,80 @@ export function PhraseSlot({
     nextSegmentId === activeSegmentId;
   const suppressLinkIcon = hideInactiveLinkButtons && !slotInActiveSegment;
   const hasLinkableNeighbors = prevToken !== undefined || nextToken !== undefined;
-  // The slot is a fixed three-row column so every inter-phrase item lands in the same place across
-  // the whole strip: row 1 the link icon, row 2 the gap punctuation, row 3 the verse number — which
-  // the merge/split button REPLACES while Alt is held. Every row is always reserved (blank when
-  // empty) so the three rows line up column-to-column: the buttons all sit at the same vertical
-  // offset, and revealing one on an Alt press never reflows the surrounding phrases.
+  // The slot is a fixed column so every inter-phrase item lands in the same place across the whole
+  // strip, top to bottom: the verse number (peeking above the column), then gap punctuation, then
+  // the link icon, then the Alt-gated merge/split button. Each in-flow row is a fixed height,
+  // reserved (blank when empty), so the rows line up column-to-column: every item sits at the same
+  // vertical offset regardless of which others are present, and revealing the boundary button on an
+  // Alt press never reflows the surrounding phrases. `relative` anchors the peeking verse number.
   return (
     <span
-      className="tw:link-slot tw:pointer-events-auto tw:inline-flex tw:flex-col tw:items-center"
+      // `mt-1` shifts the whole column (peeking verse number included) down so the punctuation row
+      // lands on the neighboring token surface-text baseline — the slot column starts at the token
+      // row's top, above where each phrase box's border + padding push its surface text down, so
+      // without this nudge the punctuation sat a few px high.
+      //
+      // `min-w-4` reserves a normal slot's width (the link icon is ~16px) even when every in-flow row
+      // is empty — chiefly the LEADING slot before a strip's first group, which has no prev token so
+      // no link icon renders. Without it that column collapses to ~0px and a verse number opening the
+      // strip (peeking, centered on the column) crams against the first token; the reserved gap gives
+      // it the same room as a verse number mid-strip.
+      className="tw:link-slot tw:pointer-events-auto tw:relative tw:mt-1 tw:inline-flex tw:min-w-4 tw:flex-col tw:items-center"
       data-link-slot="true"
       style={{ overflowAnchor: 'none' }}
     >
-      {/* Row 1: link icon (or reserved blank height when this slot has no linkable neighbors). */}
+      {/* Verse number: absolutely positioned so it peeks ABOVE the column's top edge (bottom-anchored
+          to the top) without consuming any layout height — so the punctuation row below stays in line
+          with the neighboring token surface text, and the number never pushes the rows down. Always
+          rendered when a verse begins here; nothing in the column ever removes or covers it. */}
+      {verseLabel !== undefined && (
+        <span
+          className="tw:pointer-events-none tw:absolute tw:bottom-full tw:left-1/2 tw:-translate-x-1/2 tw:text-[0.7em] tw:font-semibold tw:leading-none tw:text-muted-foreground"
+          data-testid="verse-superscript"
+        >
+          {verseLabel}
+        </span>
+      )}
+      {/* Punctuation row — the first in-flow row, a FIXED height so a slot carrying a punctuation chip
+          is exactly as tall as an empty one. The gap punctuation is ALWAYS in normal flow, so it
+          alone sets the row's width — even while Alt is held. `items-start` sits it on the
+          neighboring token surface-text baseline. While Alt is held the merge/split button is
+          overlaid (absolutely centered over the row) and the punctuation is hidden with
+          `visibility: hidden` rather than removed, so the row keeps the SAME width it had before the
+          Alt press: multi-chip gaps no longer shrink to the button's width and shift the whole strip.
+          `relative` anchors the overlay; `min-w-4` gives the button room even when the gap is empty. */}
+      <span className="tw:relative tw:inline-flex tw:h-5 tw:min-w-4 tw:flex-row tw:items-start tw:justify-center tw:overflow-hidden">
+        <span
+          className="tw:inline-flex tw:flex-row tw:items-start"
+          data-testid="slot-punctuation"
+          style={{ visibility: altHeld && hasLinkableNeighbors ? 'hidden' : undefined }}
+        >
+          {punctuation.map((punctToken) => (
+            <InertTokenChip key={punctToken.ref} token={punctToken} />
+          ))}
+        </span>
+        {altHeld && hasLinkableNeighbors && (
+          // `translate-y-0.5` nudges the button down a couple px from the row's vertical center so it
+          // reads as centered against the neighboring token surface text (the row sits at the column
+          // top, slightly above the surface-text line).
+          <span className="tw:absolute tw:inset-0 tw:flex tw:translate-y-0.5 tw:items-center tw:justify-center">
+            <BoundaryControl
+              prevSegmentId={prevSegmentId}
+              nextSegmentId={nextSegmentId}
+              prevToken={prevToken}
+              nextToken={nextToken}
+              punctuation={punctuation}
+            />
+          </span>
+        )}
+      </span>
+      {/* Link icon (or reserved blank height when this slot has no linkable neighbors), the bottom
+          row. Carries the fade transition; identified by data-testid so tests don't depend on its
+          position. */}
       <span
         aria-hidden={!hasLinkableNeighbors || suppressLinkIcon || undefined}
         className="tw:transition-opacity tw:ease-in-out"
+        data-testid="link-slot-icon"
         style={{
           display: 'inline-flex',
           minHeight: '1rem',
@@ -363,35 +431,6 @@ export function PhraseSlot({
             prevPhraseLink={prevGroup?.phraseLink}
             prevToken={prevToken}
           />
-        )}
-      </span>
-      {/* Row 2: gap punctuation, or a reserved blank of the same min height so verse numbers and
-          buttons in row 3 stay column-aligned whether or not punctuation sits between the phrases. */}
-      <span className="tw:inline-flex tw:min-h-4 tw:flex-row tw:items-center">
-        {punctuation.map((punctToken) => (
-          <InertTokenChip key={punctToken.ref} token={punctToken} />
-        ))}
-      </span>
-      {/* Row 3: the verse number when a verse begins here, REPLACED by the Alt-gated merge/split
-          button while Alt is held; a reserved blank of the same min height otherwise. */}
-      <span className="tw:inline-flex tw:min-h-4 tw:items-center tw:justify-center">
-        {altHeld && hasLinkableNeighbors ? (
-          <BoundaryControl
-            prevSegmentId={prevSegmentId}
-            nextSegmentId={nextSegmentId}
-            prevToken={prevToken}
-            nextToken={nextToken}
-            punctuation={punctuation}
-          />
-        ) : (
-          verseLabel !== undefined && (
-            <span
-              className="tw:text-[0.7em] tw:font-semibold tw:leading-none tw:text-muted-foreground tw:pointer-events-none"
-              data-testid="verse-superscript"
-            >
-              {verseLabel}
-            </span>
-          )
         )}
       </span>
     </span>

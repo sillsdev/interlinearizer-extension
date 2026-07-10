@@ -950,8 +950,8 @@ describe('ContinuousView scroll behavior', () => {
     // ~200ms after the strip fades back in).
     rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-3' }} />);
 
-    const slotWrapper = container.querySelector('[data-link-slot] > span');
-    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
+    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot icon wrapper');
     expect(slotWrapper.style.transitionDuration).toBe('0ms');
 
     act(() => {

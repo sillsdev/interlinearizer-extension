@@ -921,9 +921,9 @@ describe('SegmentView', () => {
 
     // After mount, SegmentView stops suppressing the opacity transition so later toggles of
     // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping. The icon wrapper
-    // is the fade-carrying span; it is the slot column's first child (the link icon renders first).
-    const slotWrapper = container.querySelector('[data-link-slot] > span');
-    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot wrapper span');
+    // is the fade-carrying span, identified by its data-testid (its position in the column varies).
+    const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
+    if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot icon wrapper');
     expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);
   });
 

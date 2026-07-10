@@ -88,11 +88,33 @@ jobs:
         # transpile TypeScript on Windows.
         run: npm ci --ignore-scripts
 
-      - name: Install core dependencies
+      - name: Install core dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
         working-directory: paranext-core
         # Cannot --omit=optional: lightningcss native binaries are optional deps required by the
         # webpack build.
         run: npm ci --ignore-scripts
+
+      - name: Install core dependencies (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: paranext-core
+        shell: pwsh
+        # Same install as Linux (no --omit=optional: lightningcss native binaries are optional deps
+        # required by the webpack build), but retried: this full install fetches the most packages
+        # through the shared C:\npm\cache and intermittently races on _cacache\tmp (EEXIST) or hits a
+        # locked node_modules file during npm's pre-install cleanup (EPERM rmdir). `npm cache verify`
+        # between attempts evicts the corrupt/partial cache entry so the retry starts clean.
+        run: |
+          $ErrorActionPreference = 'Continue'
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            Write-Host "npm ci attempt $attempt of 3"
+            npm ci --ignore-scripts
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "npm ci failed (exit $LASTEXITCODE); verifying cache before retry"
+            npm cache verify
+          }
+          Write-Error 'npm ci failed after 3 attempts'
+          exit 1
 
       - name: Install Electron binary
         working-directory: paranext-core

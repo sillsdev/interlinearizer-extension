@@ -76,11 +76,17 @@ describe('buildVerseStartLabels', () => {
     expect(labelsFor(book, 'GEN 2:1')).toEqual(['2:1-2']);
   });
 
-  it('renders a bare number for a verse start with no anchoring token', () => {
-    // An empty verse tokenizes to no tokens, so its verse start has no token to read a chapter
-    // from: the label falls back to the bare number rather than being chapter-qualified.
-    const book = makeBook([{ sid: 'GEN 1:1', text: '' }]);
-    expect(labelsFor(book, 'GEN 1:1')).toEqual(['1']);
+  it('qualifies and advances the chapter for an empty verse opening a chapter', () => {
+    // An empty verse tokenizes to no tokens, but its chapter is read from VerseStart.chapter (not a
+    // token), so a chapter-opening empty verse is still qualified AND still advances the running max
+    // — so the following non-empty verse in the same chapter renders bare, not double-qualified.
+    const book = makeBook([
+      { sid: 'GEN 1:1', text: 'Alpha.' },
+      { sid: 'GEN 2:1', text: '' },
+      { sid: 'GEN 2:2', text: 'Gamma.' },
+    ]);
+    expect(labelsFor(book, 'GEN 2:1')).toEqual(['2:1']);
+    expect(labelsFor(book, 'GEN 2:2')).toEqual(['2']);
   });
 
   it('qualifies a verse-0 superscription at a chapter transition', () => {

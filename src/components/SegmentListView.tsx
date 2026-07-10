@@ -386,9 +386,15 @@ export default function SegmentListView({
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
               const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
+              // Render the merge control above every segment that has a predecessor in the FULL book,
+              // not just within the mounted window: the topmost windowed segment's boundary with a
+              // culled predecessor is still editable (merge dispatches against the delta, not the
+              // DOM), so it must show a control rather than only becoming mergeable once the user
+              // scrolls the predecessor into view.
+              const hasPredecessor = segIndex > 0 || seg.id !== book.segments[0]?.id;
               return (
                 <Fragment key={seg.id}>
-                  {segIndex > 0 && (
+                  {hasPredecessor && (
                     <MergeRowButton segment={seg} disabled={phraseMode.kind !== 'view'} />
                   )}
                   <MemoizedSegmentView

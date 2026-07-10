@@ -9,7 +9,7 @@ import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { buildVerseStartLabels } from '../utils/verse-superscripts';
+import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import {
@@ -162,25 +162,16 @@ export default function ContinuousView({
   );
 
   /**
-   * Verse-start token ref → verse label, over the whole book. Built from the same
-   * {@link buildVerseStartLabels} the segment list uses (so chapter qualification matches), then
-   * keyed by the ref of the token at each verse-start offset. The strip builder marks the slot that
-   * begins each verse with its label, and {@link PhraseSlot} renders it below the link icon — this
-   * is what gives the continuous strip its inline verse numbers (it had none before).
+   * Verse-start token ref → verse label, over the whole book. Shares
+   * {@link buildVerseStartLabelsByTokenRef} with the segment list so chapter qualification and the
+   * verse-start token resolution match exactly. The strip builder marks the slot that begins each
+   * verse with its label, and {@link PhraseSlot} renders it below the link icon — this is what gives
+   * the continuous strip its inline verse numbers (it had none before).
    */
-  const verseStartLabelByTokenRef = useMemo(() => {
-    const labelsBySegmentId = buildVerseStartLabels(book.segments);
-    const map = new Map<string, string>();
-    book.segments.forEach((seg) => {
-      /* v8 ignore next -- buildVerseStartLabels keys off these same segments, so the entry always exists */
-      const labels = labelsBySegmentId.get(seg.id) ?? [];
-      seg.verseStarts.forEach((vs, i) => {
-        const startToken = seg.tokens.find((t) => t.charStart === vs.charStart);
-        if (startToken && labels[i] !== undefined) map.set(startToken.ref, labels[i]);
-      });
-    });
-    return map;
-  }, [book.segments]);
+  const verseStartLabelByTokenRef = useMemo(
+    () => buildVerseStartLabelsByTokenRef(book.segments),
+    [book.segments],
+  );
 
   const committedPhraseLinkByRef = usePhraseLinkMap();
   const committedPhraseLinkById = usePhraseLinkByIdMap();
@@ -860,7 +851,7 @@ export default function ContinuousView({
     () =>
       renderItems.map((item) => {
         if (item.kind === 'slot') {
-          const { prevGroup, nextGroup, punctuation } = item.slot;
+          const { prevGroup, nextGroup } = item.slot;
           const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
           const prevSegmentId =
             item.prevGroupIndex !== undefined && phraseGroups[item.prevGroupIndex] !== undefined
@@ -870,15 +861,6 @@ export default function ContinuousView({
             item.nextGroupIndex !== undefined && phraseGroups[item.nextGroupIndex] !== undefined
               ? tokenSegmentMap.get(phraseGroups[item.nextGroupIndex].tokens[0].ref)
               : undefined;
-          // The slot begins a verse when the verse's first token renders next through it: the
-          // following group's first token, or (for a verse opening on leading punctuation) a token
-          // in this slot's gap punctuation.
-          const verseStartRef =
-            [nextGroup?.tokens[0]?.ref, ...punctuation.map((p) => p.ref)].find(
-              (tokenRef) => tokenRef !== undefined && verseStartLabelByTokenRef.has(tokenRef),
-            ) ?? undefined;
-          const verseLabel =
-            verseStartRef !== undefined ? verseStartLabelByTokenRef.get(verseStartRef) : undefined;
           return {
             kind: 'slot',
             key,
@@ -886,7 +868,7 @@ export default function ContinuousView({
             prevSegmentId,
             nextSegmentId,
             focusedSideIsPrev: focusedSideIsPrevByItem.get(item),
-            verseLabel,
+            verseLabel: slotVerseLabel(item.slot, verseStartLabelByTokenRef),
           };
         }
         const { group, groupIndex } = item;

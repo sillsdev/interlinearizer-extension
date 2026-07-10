@@ -48,7 +48,7 @@ const TEST_BOOK: Book = {
           charEnd: 2,
         },
       ],
-      verseStarts: [{ charStart: 0, number: String(1) }],
+      verseStarts: [{ charStart: 0, number: String(1), chapter: 1 }],
     },
     {
       id: 'GEN 1:2',
@@ -65,7 +65,7 @@ const TEST_BOOK: Book = {
           charEnd: 3,
         },
       ],
-      verseStarts: [{ charStart: 0, number: String(2) }],
+      verseStarts: [{ charStart: 0, number: String(2), chapter: 1 }],
     },
     {
       id: 'GEN 2:1',
@@ -82,7 +82,7 @@ const TEST_BOOK: Book = {
           charEnd: 3,
         },
       ],
-      verseStarts: [{ charStart: 0, number: String(1) }],
+      verseStarts: [{ charStart: 0, number: String(1), chapter: 2 }],
     },
   ],
 };

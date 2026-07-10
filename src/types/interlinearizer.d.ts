@@ -560,6 +560,14 @@ declare module 'interlinearizer' {
      * transition) is applied by the renderer, not stored here.
      */
     number: string;
+
+    /**
+     * 1-based chapter this verse belongs to. Carried explicitly so the renderer can decide chapter
+     * qualification from the verse start itself rather than parsing the ref of the token at
+     * `charStart` — which does not exist for an empty verse (a note-only marker) or lands on the
+     * wrong token when the verse's baseline begins with whitespace.
+     */
+    chapter: number;
   }
 
   /**

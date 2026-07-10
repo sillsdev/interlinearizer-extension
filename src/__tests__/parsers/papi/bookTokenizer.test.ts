@@ -64,7 +64,7 @@ describe('tokenizeBook', () => {
     const { segments } = tokenizeBook(
       makeRawBook([{ sid: 'GEN 1:3', number: '3-4', text: 'Combined verse.' }]),
     );
-    expect(segments[0].verseStarts).toEqual([{ charStart: 0, number: '3-4' }]);
+    expect(segments[0].verseStarts).toEqual([{ charStart: 0, number: '3-4', chapter: 1 }]);
   });
 
   it('builds a verse-0 segment from a verse-0 SID (Psalm superscription)', () => {

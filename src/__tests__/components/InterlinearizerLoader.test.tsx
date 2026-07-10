@@ -17,7 +17,12 @@ import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
-import { GEN_1_1_BOOK, makeScrollGroupHook, makeWebViewState } from '../test-helpers';
+import {
+  GEN_1_1_BOOK,
+  makeScrollGroupHook,
+  makeWebViewState,
+  type ScrollGroupTuple,
+} from '../test-helpers';
 
 jest.mock('../../hooks/useInterlinearizerBookData');
 jest.mock('../../hooks/useOptimisticBooleanSetting');
@@ -1835,17 +1840,9 @@ describe('InterlinearizerLoader', () => {
      */
     function makeMutableScrollGroupHook(
       initial: SerializedVerseRef,
-    ): [
-      () => [SerializedVerseRef, () => void, undefined, () => void],
-      (n: SerializedVerseRef) => void,
-    ] {
+    ): [() => ScrollGroupTuple, (n: SerializedVerseRef) => void] {
       let current = initial;
-      const hook = (): [SerializedVerseRef, () => void, undefined, () => void] => [
-        current,
-        () => {},
-        undefined,
-        () => {},
-      ];
+      const hook = (): ScrollGroupTuple => [current, () => {}, undefined, () => {}, undefined];
       return [
         hook,
         (next) => {

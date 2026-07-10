@@ -37,7 +37,7 @@ function renderNav(hook: () => ScrollGroupTuple) {
  */
 function renderNavMutable(initial: SerializedVerseRef) {
   let current = initial;
-  const hook = (): ScrollGroupTuple => [current, () => {}, undefined, () => {}];
+  const hook = (): ScrollGroupTuple => [current, () => {}, undefined, () => {}, undefined];
   const wrapper = ({ children }: { children: ReactNode }) => (
     <InterlinearNavProvider useWebViewScrollGroupScrRef={hook}>{children}</InterlinearNavProvider>
   );

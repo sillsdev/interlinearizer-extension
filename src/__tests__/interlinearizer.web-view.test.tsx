@@ -5,7 +5,7 @@
 import type { WebViewProps } from '@papi/core';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { render, screen } from '@testing-library/react';
-import { defaultScrRef } from './test-helpers';
+import { defaultScrRef, type ScrollGroupTuple } from './test-helpers';
 
 jest.mock('../components/InterlinearizerLoader', () => ({
   __esModule: true,
@@ -37,12 +37,13 @@ function makeProps(projectId?: string, scrRef: SerializedVerseRef = defaultScrRe
       () => {},
       () => {},
     ],
-    useWebViewScrollGroupScrRef: (): [
-      SerializedVerseRef,
-      (r: SerializedVerseRef) => void,
-      number | undefined,
-      (id: number | undefined) => void,
-    ] => [scrRef, () => {}, undefined, () => {}],
+    useWebViewScrollGroupScrRef: (): ScrollGroupTuple => [
+      scrRef,
+      () => {},
+      undefined,
+      () => {},
+      undefined,
+    ],
     updateWebViewDefinition: () => true,
   };
 }

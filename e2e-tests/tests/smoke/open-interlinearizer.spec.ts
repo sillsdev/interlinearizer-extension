@@ -1,14 +1,12 @@
 import { expect, test } from '../../fixtures/app.fixture';
 import {
   openInterlinearizerFromScriptureEditor,
-  waitForAppReady,
-  waitForInterlinearizerReady,
+  waitForAppAndInterlinearizerReady,
 } from '../../fixtures/helpers';
 
 test.describe('Open Interlinearizer', () => {
   test('should open the interlinearizer and see its menus', async ({ mainPage }) => {
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    await waitForAppAndInterlinearizerReady(mainPage);
 
     await openInterlinearizerFromScriptureEditor(mainPage);
 

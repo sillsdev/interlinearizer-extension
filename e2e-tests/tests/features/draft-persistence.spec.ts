@@ -5,8 +5,7 @@ import {
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
   navigateToScriptureRef,
-  waitForAppReady,
-  waitForInterlinearizerReady,
+  waitForAppAndInterlinearizerReady,
   wipeDraft,
 } from '../../fixtures/helpers';
 
@@ -17,8 +16,7 @@ test.describe('Draft persistence', () => {
     // Two full open cycles (plus first-use project creation and book loading on a cold instance)
     // legitimately exceed the default 120 s budget.
     test.slow();
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    await waitForAppAndInterlinearizerReady(mainPage);
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

@@ -3,6 +3,7 @@ import type { FullConfig } from '@playwright/test';
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { killProcessTree } from './process-utils';
 
 /**
  * Playwright global teardown. Runs once after all test workers have finished.
@@ -28,15 +29,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
       fs.unlinkSync(pidFile);
     } else {
       console.log(`Stopping renderer dev server (PID: ${pid})...`);
-      try {
-        process.kill(-pid, 'SIGTERM');
-      } catch {
-        try {
-          process.kill(pid, 'SIGTERM');
-        } catch {
-          // Already stopped
-        }
-      }
+      killProcessTree(pid, 'SIGTERM');
       fs.unlinkSync(pidFile);
     }
   }

@@ -17,12 +17,20 @@ import { execFileSync } from 'child_process';
  *   negative PID to signal the whole group in one call, falling back to the bare PID if the group
  *   is already gone.
  *
- * @param pid PID of the detached process to kill.
+ * @param pid PID of the detached process to kill. Non-positive values are rejected: `0` would
+ *   target the caller's own process group (`process.kill(-0)` === `process.kill(0)`) and a negative
+ *   value would signal an arbitrary unrelated PID, so both are treated as "nothing to kill".
  * @param signal POSIX signal to send when not on Windows (ignored on Windows, which always
  *   force-kills). Defaults to `'SIGTERM'`.
- * @returns `true` if a kill was issued, `false` if the process was already gone.
+ * @returns `true` if a kill was issued, `false` if the PID was invalid or the process was already
+ *   gone.
  */
 export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM'): boolean {
+  if (pid <= 0) {
+    // Guard against a malformed PID (e.g. parseInt yielding 0 or a negative from a corrupt PID
+    // file): signaling -0/0 would target our own process group and a negative PID an unrelated one.
+    return false;
+  }
   if (process.platform === 'win32') {
     try {
       execFileSync('taskkill', ['/pid', String(pid), '/T', '/F'], { stdio: 'ignore' });

@@ -7,6 +7,7 @@ import {
   Locator,
   Page,
 } from '@playwright/test';
+import escapeStringRegexp from 'escape-string-regexp';
 import fs from 'fs';
 import { createRequire } from 'module';
 import os from 'os';
@@ -446,7 +447,7 @@ export async function openInterlinearizerFromScriptureEditor(
   // A Scripture Editor tab is titled by the project short name once a project is loaded (e.g.
   // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded. Escape projectName so
   // a short name with regex metacharacters can't corrupt the pattern.
-  const escapedProjectName = escapeRegExp(projectName);
+  const escapedProjectName = escapeStringRegexp(projectName);
   const editorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
@@ -471,8 +472,9 @@ export async function openInterlinearizerFromScriptureEditor(
 
   // The Scripture Editor renders its own toolbar inside its iframe. Click the ≡ ("Project") button.
   const editorFrame = page
-    .frameLocator(`iframe[title*="Scripture Editor" i], iframe[title^="${projectName}"]`)
-    .first();
+    .locator(`iframe[title*="Scripture Editor" i], iframe[title^="${escapedProjectName}"]`)
+    .first()
+    .contentFrame();
   await editorFrame.locator("button[aria-label='Project']").first().click();
 
   // Click the "Open Interlinearizer for this Project" item contributed by this extension.
@@ -530,14 +532,16 @@ function interlinearizerTabLocator(page: Page): Locator {
 }
 
 /**
- * Escape a literal string so it can be embedded in a `RegExp` without its metacharacters being
- * interpreted (e.g. a project short name containing `.` or `(`).
+ * Wait for Platform.Bible and the interlinearizer extension to finish starting up. Combines
+ * {@link waitForAppReady} and {@link waitForInterlinearizerReady}.
  *
- * @param literal The raw string to escape.
- * @returns The string with all regex metacharacters backslash-escaped.
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
+ * @throws If the app or extension do not finish starting up within their default timeouts.
  */
-function escapeRegExp(literal: string): string {
-  return literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export async function waitForAppAndInterlinearizerReady(page: Page): Promise<void> {
+  await waitForAppReady(page);
+  await waitForInterlinearizerReady();
 }
 
 /**

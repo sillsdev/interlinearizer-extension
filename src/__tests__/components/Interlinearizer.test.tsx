@@ -11,7 +11,7 @@ import Interlinearizer from '../../components/Interlinearizer';
 import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import { defaultScrRef, GEN_1_1_BOOK } from '../test-helpers';
+import { defaultScrRef, GEN_1_1_BOOK, type ScrollGroupTuple } from '../test-helpers';
 import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
@@ -366,12 +366,13 @@ const GEN_SUPERSCRIPTION_BOOK: Book = {
  * @returns The element wrapped in a nav provider.
  */
 function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () => {}): ReactNode {
-  const scrollGroupHook = (): [
-    SerializedVerseRef,
-    (r: SerializedVerseRef) => void,
-    number | undefined,
-    (id: number | undefined) => void,
-  ] => [defaultScrRef, navigate, undefined, () => {}];
+  const scrollGroupHook = (): ScrollGroupTuple => [
+    defaultScrRef,
+    navigate,
+    undefined,
+    () => {},
+    undefined,
+  ];
   return (
     <InterlinearNavProvider useWebViewScrollGroupScrRef={scrollGroupHook}>
       {ui}

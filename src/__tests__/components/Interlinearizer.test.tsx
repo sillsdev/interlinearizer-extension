@@ -1683,21 +1683,24 @@ function setAltHeld(held: boolean): void {
 }
 
 describe('between-rows merge control', () => {
-  it('shows a dotted-line indicator (not a merge button) between rows while Alt is not held', () => {
+  it('renders an inert blank gap (no rail, no merge button) between rows while Alt is not held', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    // Two rows -> exactly one gap between them, marked by an inert indicator until Alt is held.
-    expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
+    // Two rows -> exactly one gap between them. Until Alt is held it is a blank inert spacer: no rail
+    // and no button, so the segment cards read as distinct and hovering the gap does nothing.
+    expect(screen.getAllByTestId('segment-row-gap')).toHaveLength(1);
+    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('floats a merge button over the persistent indicator while Alt is held and merges on click', () => {
+  it('reveals the solid rail and merge button while Alt is held and merges on click', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
     setAltHeld(true);
     const buttons = screen.getAllByTestId('segment-merge-btn');
-    // The button floats over the dotted line, which stays put so the row gap never changes height.
+    // The rail and button mount into the same reserved gap height, so the row gap never changes size.
     expect(buttons).toHaveLength(1);
     expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
+    expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
     fireEvent.click(buttons[0]);
     // Merging removes the boundary at the lower segment's first token.
     expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
@@ -1705,6 +1708,7 @@ describe('between-rows merge control', () => {
 
   it('renders no merge affordance when only one segment row is mounted', () => {
     renderInterlinearizer({ book: GEN_1_1_BOOK });
+    expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
     setAltHeld(true);
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();

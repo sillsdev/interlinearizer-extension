@@ -10,6 +10,14 @@ import type { PhraseMode } from '../types/phrase-mode';
  */
 const CONTROLS_HALF_HEIGHT_PX = 12;
 
+/**
+ * Top padding (px) a token strip needs so an inline verse-number superscript — which peeks above
+ * its slot column via `bottom-full` and so overflows above the token row — stays inside the strip
+ * instead of being clipped at the container's top edge. The floor matters only where no arcs or
+ * phrase controls already reserve more (e.g. the very start of a book, all-contiguous phrases).
+ */
+const VERSE_SUPERSCRIPT_HEADROOM_PX = 14;
+
 /** Base stem height (px) for arc connectors at nesting level 0. */
 export const ARC_BASE_STEM = 10;
 
@@ -265,7 +273,8 @@ function arcClearancePx(maxArcLevel: number): number {
  * @param hasArcs - Whether at least one arc is currently drawn.
  * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
  * @param hasRealPhrase - Whether any committed phrase is rendered in the current window.
- * @returns The required top padding in pixels, with a floor of {@link ARC_LEVEL_STEP}.
+ * @returns The required top padding in pixels, with a floor of {@link VERSE_SUPERSCRIPT_HEADROOM_PX}
+ *   so a peeking verse number is never clipped.
  */
 export function computeStripTopPadding(
   hasArcs: boolean,
@@ -274,7 +283,9 @@ export function computeStripTopPadding(
 ): number {
   const arcPadding = hasArcs ? arcClearancePx(maxArcLevel) : 0;
   const controlsHeadroom = hasRealPhrase ? 2 * CONTROLS_HALF_HEIGHT_PX : 0;
-  return Math.max(ARC_LEVEL_STEP, arcPadding + controlsHeadroom);
+  // The floor is the verse-number headroom (not ARC_LEVEL_STEP): at a book start with no arcs and no
+  // phrase controls the padding drops to this floor, which must still clear the peeking verse number.
+  return Math.max(VERSE_SUPERSCRIPT_HEADROOM_PX, arcPadding + controlsHeadroom);
 }
 
 /**

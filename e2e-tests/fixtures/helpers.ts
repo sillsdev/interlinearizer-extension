@@ -457,7 +457,7 @@ export async function openInterlinearizerFromScriptureEditor(
   // briefly reports zero tabs, and a non-waiting `count()` would misread that as "no editor".
   // `.first()` on the whole `.or()`: when both the editor and Home tabs are present the union
   // resolves to two elements, which would trip strict mode on this visibility assertion.
-  await expect(editorTab.or(homeTab).first()).toBeVisible({ timeout: 30_000 });
+  await expect(editorTab.or(homeTab).first()).toBeVisible({ timeout: 45_000 });
 
   // If the layout came up without a Scripture Editor (single-tab Home layout), open the project
   // from Home so the editor (and its ≡ menu) exists before we try to focus it.

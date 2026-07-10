@@ -185,7 +185,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 6,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       },
       {
         id: 'GEN 1:2',
@@ -210,7 +210,7 @@ function makeBook(overrides?: Partial<Book>): Book {
             charEnd: 13,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '2' }],
+        verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
       },
     ],
     ...overrides,
@@ -239,7 +239,7 @@ function makeTwoChapterBook(): Book {
             charEnd: 5,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       },
       {
         id: 'GEN 2:1',
@@ -256,7 +256,7 @@ function makeTwoChapterBook(): Book {
             charEnd: 4,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 2 }],
       },
     ],
   };
@@ -284,7 +284,7 @@ function makeSingleTokenBook(): Book {
             charEnd: 4,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       },
     ],
   };
@@ -312,7 +312,7 @@ function makeMixedBook(): Book {
             charEnd: 2,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       },
       {
         id: 'GEN 1:2',
@@ -329,7 +329,7 @@ function makeMixedBook(): Book {
             charEnd: 1,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '2' }],
+        verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
       },
     ],
   };
@@ -357,7 +357,7 @@ function makeWordFreeBook(): Book {
             charEnd: 1,
           },
         ],
-        verseStarts: [{ charStart: 0, number: '1' }],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
       },
     ],
   };
@@ -384,7 +384,7 @@ function makeLargeBook(count: number): Book {
           charEnd: String(`word${i}`).length,
         },
       ],
-      verseStarts: [{ charStart: 0, number: String(i + 1) }],
+      verseStarts: [{ charStart: 0, number: String(i + 1), chapter: 1 }],
     })),
   };
 }
@@ -504,9 +504,10 @@ describe('ContinuousView initial render', () => {
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
     // The strip marks each verse boundary with the shared PhraseSlot's verse number (below the link
-    // icon) — the same treatment as token-chip SegmentView. This book has verses 1 and 2.
+    // icon) — the same treatment as token-chip SegmentView. This book has verses 1 and 2; the first
+    // verse opens chapter 1, so its label is chapter-qualified (`1:1`).
     const sups = screen.getAllByTestId('verse-superscript');
-    expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
+    expect(sups.map((s) => s.textContent)).toEqual(['1:1', '2']);
   });
 
   it('does not render an extension-generated segment separator', () => {
@@ -599,7 +600,7 @@ describe('ContinuousView initial render', () => {
               charEnd: 5,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
         },
         {
           id: 'MAT 1:2',
@@ -616,7 +617,7 @@ describe('ContinuousView initial render', () => {
               charEnd: 4,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '2' }],
+          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
         },
       ],
     };

@@ -507,7 +507,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'PSA', chapter: 3, verse: 0 },
           baselineText: 'A Psalm by David.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '0' }],
+          verseStarts: [{ charStart: 0, number: '0', chapter: 3 }],
         },
       ],
     };
@@ -546,7 +546,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 1 },
           baselineText: 'First verse.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 3 }],
         },
         {
           id: 'GEN 3:2',
@@ -554,7 +554,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 2 },
           baselineText: 'Last verse of the chapter.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '2' }],
+          verseStarts: [{ charStart: 0, number: '2', chapter: 3 }],
         },
         {
           id: 'GEN 4:1',
@@ -562,7 +562,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 4, verse: 1 },
           baselineText: 'Next chapter.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 4 }],
         },
       ],
     };
@@ -600,7 +600,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 1 },
           baselineText: 'First verse.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 3 }],
         },
         {
           id: 'GEN 3:3',
@@ -608,7 +608,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 3 },
           baselineText: 'Verse after the gap.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '3' }],
+          verseStarts: [{ charStart: 0, number: '3', chapter: 3 }],
         },
       ],
     };
@@ -646,7 +646,12 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 2 },
           baselineText: 'Two verses merged into one segment.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          // A merged segment carries one verse start per absorbed verse, so containment resolves the
+          // interior verse 2 to it.
+          verseStarts: [
+            { charStart: 0, number: '1', chapter: 3 },
+            { charStart: 18, number: '2', chapter: 3 },
+          ],
         },
         {
           id: 'GEN 3:3',
@@ -654,7 +659,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 3, verse: 3 },
           baselineText: 'Verse after the merged segment.',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '3' }],
+          verseStarts: [{ charStart: 0, number: '3', chapter: 3 }],
         },
       ],
     };
@@ -1206,7 +1211,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 10,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
         },
         {
           id: 'GEN 1:2',
@@ -1223,7 +1228,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '2' }],
+          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
         },
       ],
     };
@@ -1382,7 +1387,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '1' }],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
         },
         {
           id: 'GEN 1:2',
@@ -1407,7 +1412,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 6,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '2' }],
+          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
         },
         {
           id: 'GEN 1:3',
@@ -1424,7 +1429,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 5,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '3' }],
+          verseStarts: [{ charStart: 0, number: '3', chapter: 1 }],
         },
         {
           id: 'GEN 1:4',
@@ -1441,7 +1446,7 @@ describe('InterlinearizerLoader', () => {
               charEnd: 1,
             },
           ],
-          verseStarts: [{ charStart: 0, number: '4' }],
+          verseStarts: [{ charStart: 0, number: '4', chapter: 1 }],
         },
         {
           id: 'GEN 1:5',
@@ -1449,7 +1454,7 @@ describe('InterlinearizerLoader', () => {
           endRef: { book: 'GEN', chapter: 1, verse: 5 },
           baselineText: '',
           tokens: [],
-          verseStarts: [{ charStart: 0, number: '5' }],
+          verseStarts: [{ charStart: 0, number: '5', chapter: 1 }],
         },
       ],
     };

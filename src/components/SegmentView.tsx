@@ -16,6 +16,7 @@ import type { RenderUnit } from '../types/token-layout';
 import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
 import { resolveSplitAnchor } from '../utils/split-anchor';
+import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
 import { useAltHeldValue } from './AltHeldContext';
 import MemoizedArcOverlay from './ArcOverlay';
@@ -288,18 +289,22 @@ export function SegmentView({
 
   /**
    * Split anchor by the char offset of the gap that precedes it, for baseline-text mode: for each
-   * eligible word-word pair the punctuation-travel anchor's leading gap (the inter-token region
-   * just before the anchor token) becomes a splittable gap. A pair is eligible only in `view` mode
-   * and only when its word boundary is not a mid-phrase (straddled) boundary — the same rules the
-   * token-chip marker uses. A split at a former boundary dispatches the original removed default
-   * start (which may be leading punctuation) so the delta can normalize back to the default
-   * segmentation; otherwise the anchor comes from the punctuation-travel rule. The `altHeld` gate
-   * is applied at render time, not here, so this map stays stable across Alt presses.
+   * eligible word-word pair the split anchor's leading gap (the inter-token region just before the
+   * anchor token) becomes a splittable gap. A pair is eligible only in `view` mode and only when
+   * its word boundary is not a mid-phrase (straddled) boundary — the same rules the token-chip
+   * marker uses. A split at a former boundary dispatches the original removed default start (which
+   * may be leading punctuation) so the delta can normalize back to the default segmentation;
+   * otherwise the anchor comes from the punctuation-travel rule. The gap is keyed by the offset of
+   * the token the split actually lands before (the dispatched ref's own token), so the highlighted
+   * caret sits exactly where the boundary will fall — including a former boundary whose
+   * leading-punctuation ref is a few characters left of the word anchor. The `altHeld` gate is
+   * applied at render time, not here, so this map stays stable across Alt presses.
    */
   const splitGapByOffset = useMemo(() => {
     const map = new Map<number, string>();
     if (phraseMode.kind !== 'view') return map;
     const { tokens, baselineText } = segment;
+    const tokenByRef = new Map(tokens.map((t) => [t.ref, t]));
     let prevWord: Token | undefined;
     let pendingPunct: Token[] = [];
     tokens.forEach((token) => {
@@ -309,11 +314,14 @@ export function SegmentView({
       }
       if (prevWord !== undefined && !straddledBoundaryRefs.has(token.ref)) {
         const anchor = resolveSplitAnchor(prevWord, token, pendingPunct, baselineText);
-        const anchorToken =
-          anchor === token.ref ? token : pendingPunct.find((p) => p.ref === anchor);
-        /* v8 ignore next -- resolveSplitAnchor always returns the next word or a gap punctuation ref */
-        if (anchorToken !== undefined) {
-          map.set(anchorToken.charStart, formerBoundaries.get(token.ref) ?? anchor);
+        const splitRef = formerBoundaries.get(token.ref) ?? anchor;
+        // Key the gap by the token the split lands before — the dispatched ref's own token — so the
+        // caret aligns with the actual cut. For a former boundary that ref can be leading punctuation
+        // sitting a few characters left of the punctuation-travel anchor.
+        const splitToken = tokenByRef.get(splitRef);
+        /* v8 ignore next -- the split ref always names a token in this segment */
+        if (splitToken !== undefined) {
+          map.set(splitToken.charStart, splitRef);
         }
       }
       prevWord = token;
@@ -430,20 +438,20 @@ export function SegmentView({
   }, [renderUnits, focusedTokenRef]);
 
   /**
-   * Verse-start token ref → resolved verse label. The verse-start token is the segment token whose
-   * `charStart` matches a verse start; keying by ref lets the strip builder mark the slot that
-   * begins each verse — the slot before the verse's first group, or (for a verse opening on leading
-   * punctuation) the slot that carries that punctuation — so {@link PhraseSlot} can render the verse
-   * number below the link icon.
+   * Verse-start token ref → resolved verse label. The verse-start token is the first token at or
+   * after a verse start's offset ({@link verseStartToken}); keying by ref lets the strip builder
+   * mark the slot that begins each verse — the slot before the verse's first group, or (for a verse
+   * opening on leading punctuation) the slot that carries that punctuation — so {@link PhraseSlot}
+   * can render the verse number below the link icon.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
     segment.verseStarts.forEach((vs, i) => {
-      const startToken = segment.tokens.find((t) => t.charStart === vs.charStart);
+      const startToken = verseStartToken(segment, vs);
       if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
     });
     return map;
-  }, [segment.verseStarts, segment.tokens, resolvedVerseStartLabels]);
+  }, [segment, resolvedVerseStartLabels]);
 
   /**
    * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
@@ -463,17 +471,8 @@ export function SegmentView({
             isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
           };
         }
-        const { prevGroup, nextGroup, punctuation } = unit.slot;
+        const { prevGroup, nextGroup } = unit.slot;
         const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
-        // The slot begins a verse when the verse's first token renders next through it: the following
-        // group's first token, or (for a verse opening on leading punctuation) a token in this slot's
-        // gap punctuation.
-        const verseStartRef =
-          [nextGroup?.tokens[0]?.ref, ...punctuation.map((p) => p.ref)].find(
-            (tokenRef) => tokenRef !== undefined && verseStartLabelByTokenRef.has(tokenRef),
-          ) ?? undefined;
-        const verseLabel =
-          verseStartRef !== undefined ? verseStartLabelByTokenRef.get(verseStartRef) : undefined;
         return {
           kind: 'slot',
           key,
@@ -481,7 +480,7 @@ export function SegmentView({
           prevSegmentId: segment.id,
           nextSegmentId: segment.id,
           focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
-          verseLabel,
+          verseLabel: slotVerseLabel(unit.slot, verseStartLabelByTokenRef),
         };
       }),
     [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef, verseStartLabelByTokenRef],

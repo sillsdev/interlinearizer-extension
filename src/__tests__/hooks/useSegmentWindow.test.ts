@@ -42,7 +42,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
         charEnd: 4,
       },
     ],
-    verseStarts: [{ charStart: 0, number: String(verse) }],
+    verseStarts: [{ charStart: 0, number: String(verse), chapter }],
   };
 }
 
@@ -309,7 +309,18 @@ describe('useSegmentWindow', () => {
     const segments = [
       ...Array.from({ length: 9 }, (_, i) => makeSegment(1, i + 1)),
       { ...makeSegment(1, 10), id: 'GEN 1:10a' },
-      { ...makeSegment(1, 10), id: 'GEN 1:10b-12', endRef: { book: 'GEN', chapter: 1, verse: 12 } },
+      {
+        ...makeSegment(1, 10),
+        id: 'GEN 1:10b-12',
+        endRef: { book: 'GEN', chapter: 1, verse: 12 },
+        // A merged segment carries one verse start per absorbed verse — 10 (its split second half),
+        // 11, and 12 — so containment resolves the interior verse 11 to it.
+        verseStarts: [10, 11, 12].map((verse) => ({
+          charStart: 0,
+          number: String(verse),
+          chapter: 1,
+        })),
+      },
       ...Array.from({ length: 8 }, (_, i) => makeSegment(1, i + 13)),
     ];
     const book: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };

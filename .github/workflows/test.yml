@@ -136,3 +136,6 @@ jobs:
             extension-repo/e2e-tests/playwright-report/
             extension-repo/e2e-tests/test-results/
           if-no-files-found: warn
+          # upload-artifact excludes hidden files by default (since v4.4), which silently dropped
+          # the dotfile app-startup log from every artifact.
+          include-hidden-files: true

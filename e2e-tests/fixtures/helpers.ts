@@ -125,6 +125,12 @@ export async function launchElectronWithExtension(
     ...restEnv,
     NODE_ENV: 'development',
     DEV_NOISY: process.env.DEV_NOISY ?? 'false',
+    // With NODE_ENV=development, paranext-core's electron-debug auto-opens DevTools on every
+    // window. On CI Linux DevTools docks INSIDE the window, squeezing the app viewport to ~469px —
+    // dock panels collapse and modals get clipped at panel edges, so clicks land on neighboring
+    // iframes. electron-is-dev honors ELECTRON_IS_DEV=0, which disables electron-debug without
+    // affecting NODE_ENV-driven behavior (dev-server URL, etc.).
+    ELECTRON_IS_DEV: '0',
     ...opts.envOverrides,
   };
 
@@ -136,7 +142,22 @@ export async function launchElectronWithExtension(
   try {
     electronApp = await electron.launch({
       executablePath: electronExecutable,
-      args: [`--user-data-dir=${userDataDir}`, coreDir, '--extensions', extensionDist],
+      args: [
+        `--user-data-dir=${userDataDir}`,
+        coreDir,
+        '--extensions',
+        extensionDist,
+        // Deterministic window size instead of the 1024x728 electron-window-state default —
+        // paranext-core supports this argument for automation. Matches the CI xvfb screen
+        // (1280x960) so the dock panels have room and modals are not clipped.
+        '--window-size',
+        '1280x960',
+        // Force the X11 backend on Linux: in a Wayland session with DISPLAY redirected to xvfb
+        // (local headless runs), Electron otherwise picks the Wayland backend from the session
+        // environment and segfaults when the compositor socket is unreachable. On CI runners
+        // (X11-only) this is a no-op.
+        ...(process.platform === 'linux' ? ['--ozone-platform=x11'] : []),
+      ],
       cwd: coreDir,
       env,
       timeout: PROCESS_READY_TIMEOUT,
@@ -371,22 +392,59 @@ export async function waitForPapiMethodRegistered(
 }
 
 /**
- * Wait for the Platform.Bible UI to be fully ready: dock layout appears and `platform.about`
- * command is registered (dialog service has finished initializing).
+ * Wait until the dock layout has at least one tab and no tab is still titled "Unknown". On a cold
+ * start the dock mounts with webview tabs titled "Unknown" (and blank panels) until project
+ * metadata resolves; every tab-title-based locator in this suite silently times out against that
+ * state. Waiting it out here turns those opaque per-test locator timeouts into either a pass (slow
+ * healthy startup) or one clear early failure (instance genuinely stuck — the Windows CI CDP-tier
+ * wipeout).
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param timeout Maximum time in milliseconds to wait before throwing.
- * @returns Resolves when the dock layout is visible and `platform.about` is registered.
- * @throws If the dock layout or `platform.about` command does not appear within `timeout`
- *   milliseconds.
+ * @returns Resolves when at least one dock tab exists and none contains "Unknown".
+ * @throws If tab titles have not resolved within `timeout` milliseconds.
  */
-export async function waitForAppReady(page: Page, timeout = 60_000): Promise<void> {
+export async function waitForDockTabTitlesResolved(page: Page, timeout: number): Promise<void> {
+  try {
+    await page.waitForFunction(
+      () => {
+        const tabs = Array.from(document.querySelectorAll('.dock-tab'));
+        return tabs.length > 0 && tabs.every((tab) => !(tab.textContent ?? '').includes('Unknown'));
+      },
+      undefined,
+      { timeout, polling: 500 },
+    );
+  } catch (error) {
+    throw new Error(
+      `Dock tab titles did not resolve within ${timeout}ms — the app came up but its webview tabs ` +
+        'are still titled "Unknown" (project metadata never loaded). ' +
+        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * Wait for the Platform.Bible UI to be fully ready: dock layout appears with resolved tab titles
+ * and `platform.about` command is registered (dialog service has finished initializing).
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param timeout Maximum time in milliseconds to wait before throwing. The default is generous
+ *   because a cold CI instance has been observed taking over 45 s just to resolve tab titles; this
+ *   is a wait-until, so healthy startups pay nothing for the headroom.
+ * @returns Resolves when the dock layout is visible with resolved tab titles and `platform.about`
+ *   is registered.
+ * @throws If the dock layout, resolved tab titles, or the `platform.about` command do not appear
+ *   within `timeout` milliseconds.
+ */
+export async function waitForAppReady(page: Page, timeout = 120_000): Promise<void> {
   const start = Date.now();
   await page.waitForSelector('div[class*="dock-layout"]', {
     state: 'attached',
     timeout,
   });
-  const remaining = Math.max(0, timeout - (Date.now() - start));
+  let remaining = Math.max(0, timeout - (Date.now() - start));
+  await waitForDockTabTitlesResolved(page, remaining);
+  remaining = Math.max(0, timeout - (Date.now() - start));
   await waitForPapiMethodRegistered(PLATFORM_ABOUT_COMMAND, DEFAULT_WEBSOCKET_PORT, remaining);
 }
 

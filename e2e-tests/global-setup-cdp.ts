@@ -1,10 +1,11 @@
 // Self-launching global setup for the CDP (feature-test) config.
-import type { FullConfig } from '@playwright/test';
+import { chromium, type FullConfig, type Page } from '@playwright/test';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { waitForDockTabTitlesResolved } from './fixtures/helpers';
 import {
   bootstrapRendererDevServer,
   isPortInUse,
@@ -37,6 +38,15 @@ export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
+ * How long to wait after the ports are up for the renderer to actually settle (dock tabs present
+ * with resolved titles) before failing setup. Port readiness alone is not enough: a Windows CI
+ * instance has come up with PAPI responding but every dock tab stuck at "Unknown" and blank panels
+ * for the whole run, which made all five feature tests burn their own timeouts against one broken
+ * shared instance. Failing setup here instead surfaces one clear error plus the app's startup log.
+ */
+const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
+
+/**
  * Playwright global setup for the CDP config. Unlike the smoke config — whose fixture launches
  * Electron per worker — the CDP fixture connects over CDP to a separately-running app. This setup
  * provides that app so `npm run test:e2e:cdp` is self-contained (no manual `npm run start:cdp`):
@@ -45,7 +55,8 @@ const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
  * 2. Launches Electron (paranext-core) detached, with the interlinearizer extension loaded via
  *    `--extensions` and Chromium remote debugging on {@link CDP_PORT}, in an isolated user-data
  *    dir.
- * 3. Waits for the PAPI WebSocket and the CDP debug port to come up.
+ * 3. Waits for the PAPI WebSocket and the CDP debug port to come up, then for the renderer to settle
+ *    (dock tabs present with resolved titles — see {@link waitForRendererSettled}).
  * 4. Records the PID and user-data dir for {@link globalTeardownCdp}.
  *
  * The isolated user-data dir means the run never touches a developer's real profile; the feature
@@ -115,13 +126,32 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       '--extensions',
       extensionDist,
       `--remote-debugging-port=${CDP_PORT}`,
-      // GitHub-hosted Linux runners don't ship a root-owned setuid chrome-sandbox binary, so
-      // Electron's SUID sandbox helper aborts on launch. Skip the OS sandbox on Linux.
-      ...(process.platform === 'linux' ? ['--no-sandbox'] : []),
+      // Deterministic window size instead of the 1024x728 electron-window-state default —
+      // paranext-core supports this argument for automation. Matches the CI xvfb screen (1280x960)
+      // so the dock panels have room and modals are not clipped.
+      '--window-size',
+      '1280x960',
+      // --no-sandbox: GitHub-hosted Linux runners don't ship a root-owned setuid chrome-sandbox
+      // binary, so Electron's SUID sandbox helper aborts on launch. --ozone-platform=x11: in a
+      // Wayland session with DISPLAY redirected to xvfb (local headless runs), Electron otherwise
+      // picks the Wayland backend from the session environment and segfaults when the compositor
+      // socket is unreachable; on CI runners (X11-only) it is a no-op.
+      ...(process.platform === 'linux' ? ['--no-sandbox', '--ozone-platform=x11'] : []),
     ],
     {
       cwd: coreDir,
-      env: { ...restEnv, NODE_ENV: 'development', DEV_NOISY: process.env.DEV_NOISY ?? 'false' },
+      env: {
+        ...restEnv,
+        NODE_ENV: 'development',
+        DEV_NOISY: process.env.DEV_NOISY ?? 'false',
+        // With NODE_ENV=development, paranext-core's electron-debug auto-opens DevTools on every
+        // window. On CI Linux DevTools docks INSIDE the window, squeezing the app viewport to
+        // ~469px — dock panels collapse and modals get clipped at panel edges, so clicks land on
+        // neighboring iframes (the gloss-roundtrip/Save-As CI failures). electron-is-dev honors
+        // ELECTRON_IS_DEV=0, which disables electron-debug without affecting NODE_ENV-driven
+        // behavior (dev-server URL, etc.).
+        ELECTRON_IS_DEV: '0',
+      },
       stdio: ['ignore', appLogFd, appLogFd],
       detached: true,
     },
@@ -135,9 +165,9 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   /**
    * Rejects the moment {@link appProcess} exits, so a startup crash (e.g. a sandbox
    * misconfiguration) fails setup immediately instead of only surfacing after the full
-   * {@link APP_READY_TIMEOUT} port-wait below elapses. Raced against BOTH port waits: a crash
-   * between the WebSocket port coming up and the CDP port coming up must fail just as fast and with
-   * the same informative message, not silently swallow the exit and time out on the CDP wait.
+   * {@link APP_READY_TIMEOUT} port-wait below elapses. Raced against BOTH port waits and the
+   * renderer-settle wait: a crash after an earlier stage completes must fail just as fast and with
+   * the same informative message, not silently swallow the exit and time out on a later wait.
    */
   const earlyExit = new Promise<never>((_resolve, reject) => {
     appProcess.once('exit', (code, signal) => {
@@ -149,6 +179,10 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       );
     });
   });
+  // Setup returns with the app still running, so once the port/settle waits are done nothing
+  // awaits earlyExit anymore — mark it handled so the eventual teardown kill (which fires the same
+  // 'exit' event) can't surface as an unhandled rejection.
+  earlyExit.catch(() => {});
   try {
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
@@ -157,13 +191,62 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     // would be swallowed and this wait would run out the full APP_READY_TIMEOUT with a generic
     // "port not available" error instead of the "process exited early" cause below.
     await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
+    console.log('Ports are up. Waiting for the renderer to settle (dock tabs with real titles)...');
+    await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
   } catch (error) {
-    // The app never came up. Echo its captured output so the failure cause is in the CI log itself,
-    // not just buried in the uploaded artifact, then re-throw the original error.
+    // The app never came up (or came up broken). Echo its captured output so the failure cause is
+    // in the CI log itself, not just buried in the uploaded artifact, then re-throw the original
+    // error.
     dumpAppLog();
     throw error;
   }
   console.log('Platform.Bible (CDP) is ready.');
+}
+
+/**
+ * Connect to the launched app over CDP and wait for its renderer to settle: the renderer page
+ * exists and the dock tabs have real titles (none stuck at "Unknown"). This is the earliest point
+ * at which the tab-title-based locators the feature tests rely on can work, so gating setup on it
+ * converts a broken shared instance into one fast, diagnosable setup failure instead of a cascade
+ * of per-test timeouts.
+ *
+ * The Playwright connection is closed before returning either way — it only disconnects; the app
+ * keeps running for the test fixtures to connect to.
+ *
+ * @param timeout Maximum time in milliseconds to wait for the renderer page and settled tabs.
+ * @returns Resolves when the renderer page shows at least one dock tab and no "Unknown" titles.
+ * @throws {Error} If no renderer page appears or tab titles do not resolve within `timeout`.
+ */
+async function waitForRendererSettled(timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+  const browser = await chromium.connectOverCDP(`http://localhost:${CDP_PORT}`, {
+    timeout: 30_000,
+  });
+  try {
+    // The renderer page may not exist yet right after the CDP port opens — poll for it. Mirrors the
+    // page-finding logic in fixtures/cdp.fixture.ts.
+    let page: Page | undefined;
+    while (!page && Date.now() < deadline) {
+      const allPages = browser.contexts().flatMap((ctx) => ctx.pages());
+      page =
+        allPages.find((p) => p.url().startsWith('http://localhost:1212/')) ??
+        allPages.find((p) => !p.url().includes('devtools://'));
+      if (!page) {
+        // intentional poll delay
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 500);
+        });
+      }
+    }
+    if (!page) {
+      throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
+    }
+    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()));
+  } finally {
+    // Disconnect only — connectOverCDP close() does not terminate the app.
+    await browser.close();
+  }
 }
 
 /**

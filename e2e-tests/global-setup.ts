@@ -220,7 +220,7 @@ export async function bootstrapRendererDevServer(): Promise<void> {
     }
 
     console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
-    await waitForPort(RENDERER_PORT, 60_000);
+    await waitForPort(RENDERER_PORT, 90_000);
     console.log(
       `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
     );

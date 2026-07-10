@@ -3,8 +3,7 @@ import {
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
   openInterlinearizerProjectMenu,
-  waitForAppReady,
-  waitForInterlinearizerReady,
+  waitForAppAndInterlinearizerReady,
 } from '../../fixtures/helpers';
 
 /**
@@ -36,15 +35,14 @@ test.describe('Project modals cancel tour', () => {
     test(`the ${modal.name} modal opens from the Project menu and cancels cleanly`, async ({
       mainPage,
     }) => {
-      await waitForAppReady(mainPage);
-      await waitForInterlinearizerReady();
+      await waitForAppAndInterlinearizerReady(mainPage);
       await ensureInterlinearizerOpenOnWeb(mainPage);
 
       const frame = await openInterlinearizerProjectMenu(mainPage);
       await frame.getByRole('menuitem', { name: modal.menuItem }).first().click();
 
       const modalTitle = frame.locator(modal.titleSelector);
-      await expect(modalTitle).toBeVisible({ timeout: 10_000 });
+      await expect(modalTitle).toBeVisible({ timeout: 5_000 });
 
       await frame.locator('dialog').getByRole('button', { name: 'Cancel' }).click();
       await expect(modalTitle).not.toBeVisible({ timeout: 5_000 });

@@ -1,5 +1,5 @@
 import { test, expect } from '../../fixtures/app.fixture';
-import { waitForAppReady, waitForInterlinearizerReady } from '../../fixtures/helpers';
+import { waitForAppAndInterlinearizerReady, waitForAppReady } from '../../fixtures/helpers';
 
 test.describe('Launch app and register Interlinearizer', () => {
   test('should launch Platform.Bible and create at least one window', async ({ electronApp }) => {
@@ -19,7 +19,6 @@ test.describe('Launch app and register Interlinearizer', () => {
   });
 
   test('should register Interlinearizer PAPI commands', async ({ mainPage }) => {
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    await waitForAppAndInterlinearizerReady(mainPage);
   });
 });

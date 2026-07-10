@@ -164,6 +164,24 @@ describe('PhraseSlot', () => {
     expect(container.firstChild).not.toBeNull();
   });
 
+  it('reserves the normal gap width on a leading slot so an opening verse number is not cramped', () => {
+    // A strip's leading slot has no prev group, so no link icon renders and every in-flow row is
+    // empty. The column still reserves a normal slot's width (tw:min-w-4) so a verse number opening
+    // the strip sits in the same gap as one mid-strip, rather than crammed against the first token.
+    const nextGroup: TokenGroup = {
+      tokens: [makeWordToken('tok-a')],
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: [],
+    };
+    const slot: LinkSlot = { prevGroup: undefined, nextGroup, punctuation: [] };
+    const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} verseLabel="1" />));
+    const column = container.querySelector('[data-link-slot]');
+    if (!(column instanceof HTMLElement)) throw new Error('Expected the leading slot column');
+    expect(column.className).toContain('tw:min-w-4');
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1');
+  });
+
   it('sets phraseRevealed when both neighbors are in the same hovered phrase', () => {
     const link = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const prevGroup: TokenGroup = {
@@ -414,7 +432,8 @@ describe('PhraseSlot boundary controls', () => {
 
   it('shows no merge button (and no dashed indicator) on a cross-segment slot while Alt is not held', () => {
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
-    // Row 3 is blank/verse-number when Alt is off; the dashed indicator was removed entirely.
+    // The punctuation row shows gap punctuation (not the button) when Alt is off; the dashed
+    // indicator was removed entirely.
     expect(screen.queryByTestId('boundary-merge-indicator')).not.toBeInTheDocument();
     expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
   });
@@ -449,9 +468,39 @@ describe('PhraseSlot boundary controls', () => {
     expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeHint%');
   });
 
-  // -- Row 3: verse number <-> boundary button share one position ----------
+  it('overlays the merge button on the gap punctuation, keeping the punctuation for width, under Alt', () => {
+    // The button is OVERLAID over the gap punctuation, which stays in the DOM (visibility: hidden)
+    // rather than being removed — so the row keeps the width the punctuation gave it and a multi-chip
+    // gap does not shrink to the button's width and shift the strip when Alt is pressed.
+    const slotWithPunct: LinkSlot = {
+      prevGroup: groupA,
+      nextGroup: groupB,
+      punctuation: [mkPunct('p1'), mkPunct('p2')],
+    };
+    renderBoundary({ slot: slotWithPunct, prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+    // The punctuation wrapper is still mounted (preserving width), just hidden.
+    expect(screen.getByTestId('slot-punctuation')).toHaveStyle({ visibility: 'hidden' });
+  });
 
-  it('shows the verse number in row 3 while Alt is not held', () => {
+  it('shows the gap punctuation with no button while Alt is not held', () => {
+    const slotWithPunct: LinkSlot = {
+      prevGroup: groupA,
+      nextGroup: groupB,
+      punctuation: [mkPunct('p1'), mkPunct('p2')],
+    };
+    renderBoundary(
+      { slot: slotWithPunct, prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+      { altHeld: false },
+    );
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    // Punctuation is visible (no visibility override) when Alt is up.
+    expect(screen.getByTestId('slot-punctuation')).not.toHaveStyle({ visibility: 'hidden' });
+  });
+
+  // -- Verse number (peeking) coexists with the boundary button (punct row) --
+
+  it('shows the peeking verse number while Alt is not held', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' },
       { altHeld: false },
@@ -460,11 +509,24 @@ describe('PhraseSlot boundary controls', () => {
     expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('replaces the row-3 verse number with the boundary button while Alt is held', () => {
+  it('keeps the peeking verse number rendered alongside the boundary button under Alt', () => {
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
-    // Alt held: the merge button takes row 3 and the verse number is hidden (one shared position).
+    // Alt held: the merge button takes over the punctuation row while the verse number keeps peeking
+    // above the column — the two coexist, so the number never vanishes when Alt is pressed.
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+  });
+
+  it('keeps the peeking verse number under Alt when no boundary edit applies at the slot', () => {
+    // An intra-segment slot on a straddled boundary suppresses the split marker, so BoundaryControl
+    // renders nothing; the verse number keeps peeking above the column regardless.
+    renderBoundary(
+      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1', verseLabel: '2' },
+      { straddledBoundaryRefs: new Set(['b']) },
+    );
+    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
   });
 
   // -- Split marker: gating ------------------------------------------------

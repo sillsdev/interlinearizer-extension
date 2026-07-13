@@ -361,6 +361,23 @@ describe('SegmentView', () => {
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
   });
 
+  it('renders the gutter label in token-chip mode', () => {
+    render(<SegmentView {...requiredProps()} gutterLabel="1a" />, withAnalysisStore);
+
+    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('1a');
+  });
+
+  it('renders the gutter label in baseline-text mode', () => {
+    render(
+      <SegmentView {...requiredProps()} displayMode="baseline-text" gutterLabel="1a" />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('1a');
+    // The running text still renders alongside the gutter.
+    expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+  });
+
   it('renders baselineText in baseline-text mode', () => {
     render(<SegmentView {...requiredProps()} displayMode="baseline-text" />, withAnalysisStore);
 

@@ -72,6 +72,8 @@ type CapturedSegmentViewProps = {
   segment: Segment;
   /** Per-verse-start inline superscript labels (chapter-qualified at a chapter transition). */
   verseStartLabels?: readonly string[];
+  /** The segment's verse/range gutter label. */
+  gutterLabel?: string;
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
   /** The `Token.ref` string of the currently focused token, if any. */
@@ -647,6 +649,24 @@ describe('Interlinearizer', () => {
     expect(screen.getAllByTestId('segment-view')).toHaveLength(1);
     // The merged segment absorbs verses 1 and 2; verse 1 opens the chapter so it is qualified.
     expect(capturedSegmentViewPropsList[0].verseStartLabels).toEqual(['1:1', '2']);
+  });
+
+  it('passes each segment its bare verse gutter label', () => {
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
+
+    expect(capturedSegmentViewPropsList[0].gutterLabel).toBe('1');
+    expect(capturedSegmentViewPropsList[1].gutterLabel).toBe('2');
+  });
+
+  it('passes a merged segment its covered-verse range gutter label', () => {
+    const merged = resegmentBook(withDefaultVerseStarts(GEN_1_MULTI_BOOK), {
+      removedVerseStarts: ['GEN 1:2:0'],
+      addedStarts: [],
+    });
+    renderInterlinearizer({ book: merged });
+
+    // The merged segment covers verses 1 and 2, so its gutter label is the range 1–2.
+    expect(capturedSegmentViewPropsList[0].gutterLabel).toBe('1–2');
   });
 
   it('renders a SegmentView for every segment in the current chapter', () => {

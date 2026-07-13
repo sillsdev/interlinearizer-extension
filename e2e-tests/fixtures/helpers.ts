@@ -714,11 +714,13 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
     state: 'attached',
     timeout,
   });
-  // Floor each leftover budget to a small positive value, never 0: a preceding stage can resolve at
-  // the very last millisecond (or wall-clock drift can push elapsed past `timeout`), leaving a
+  // Floor each leftover budget to 1000ms, never 0 or a hair above it: a preceding stage can resolve
+  // at the very last millisecond (or wall-clock drift can push elapsed past `timeout`), leaving a
   // non-positive remainder. Passing 0 to waitForDockTabTitlesResolved would trip its budget-
-  // exhausted guard on that benign near-miss; a small positive floor lets each stage still run one
-  // real poll. Mirrors the Math.max(1, …) clamp the CDP global setup uses for the same call.
+  // exhausted guard on that benign near-miss; a single-digit remainder would clear that guard but
+  // then expire during the CDP round-trip its forwarded page.waitForFunction needs to evaluate the
+  // predicate even once, failing "tabs still Unknown" on a healthy app. 1000ms lets each stage still
+  // run one real poll. The CDP global setup applies the same Math.max(1_000, …) floor for this call.
   const budgetLeft = () => Math.max(1_000, timeout - (Date.now() - start));
   // Arm the fatal-startup tripwire around BOTH the service-host wait and the tab-title wait: the
   // fatal theme-settle error can surface during either stage (the hosts and the theme settle

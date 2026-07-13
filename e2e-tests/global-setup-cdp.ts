@@ -254,6 +254,14 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
     if (!page) {
       throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
     }
+    // Floor each leftover budget to 1000ms, never a hair above 0: the preceding stage can finish at
+    // (or, once waitForServiceHostsRegistered applies its own Math.max(1_000, …) floor, past) the
+    // deadline, leaving a non-positive or single-digit remainder. waitForDockTabTitlesResolved
+    // forwards its budget straight to page.waitForFunction, whose predicate is evaluated over a CDP
+    // round-trip — a ~1ms budget expires during that round-trip and fails with a misleading "tabs
+    // still Unknown" error even on a healthy app, whereas 1000ms leaves room for one real poll.
+    // Matches the budgetLeft floor in waitForAppReady, which forwards to the same call.
+    const budgetLeft = () => Math.max(1_000, deadline - Date.now());
     // Arm the fatal-startup tripwire around BOTH readiness stages, mirroring waitForAppReady: this
     // is the freshly-launched cold-start instance, so a fatal theme-settle error means the launch is
     // doomed — fail setup fast (and dump the app log) rather than wait out the full budget. The error
@@ -263,10 +271,10 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
       // freshly-launched instance's tabs stay "Unknown" until the settings/menu-data/theme hosts
       // serve their metadata, and this is the exact path a Windows CDP cold start stalled on. Polls
       // the same rpc.discover WebSocket the tab-title wait's siblings use, so it needs no CDP page.
-      await waitForServiceHostsRegistered(Math.max(1, deadline - Date.now()));
+      await waitForServiceHostsRegistered(budgetLeft());
       // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
       // tab must resolve. The per-test feature gate is lenient (shared instance already settled).
-      await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), {
+      await waitForDockTabTitlesResolved(page, budgetLeft(), {
         strict: true,
       });
     });

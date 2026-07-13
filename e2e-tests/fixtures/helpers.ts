@@ -13,6 +13,7 @@ import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
+import { killProcessTree } from '../process-utils';
 
 const DEFAULT_WEBSOCKET_PORT = 8876;
 const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
@@ -247,17 +248,7 @@ export async function launchElectronWithExtension(
     await flushAppLog(appLog);
     dumpSmokeAppLog();
     const proc = electronApp.process();
-    if (proc?.pid) {
-      try {
-        process.kill(-proc.pid, 'SIGKILL');
-      } catch {
-        try {
-          proc.kill('SIGKILL');
-        } catch {
-          /* already dead */
-        }
-      }
-    }
+    if (proc?.pid) killProcessTree(proc.pid, 'SIGKILL');
     fs.rmSync(userDataDir, { recursive: true, force: true });
     throw error;
   }
@@ -330,30 +321,11 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
     `[teardown] Closing Electron app... pid=${electronProcess?.pid} exitCode=${electronProcess?.exitCode} signalCode=${electronProcess?.signalCode}`,
   );
 
-  /**
-   * Send `sig` to the Electron process group, falling back to the process itself if group kill
-   * fails.
-   *
-   * @param sig Signal to send (e.g. `'SIGKILL'`).
-   */
-  const killGroup = (sig: NodeJS.Signals) => {
-    if (!electronProcess?.pid) return;
-    try {
-      process.kill(-electronProcess.pid, sig);
-    } catch {
-      try {
-        electronProcess.kill(sig);
-      } catch {
-        /* already dead */
-      }
-    }
-  };
-
   // Node.js ChildProcess.exitCode/signalCode are null until the process exits
   // eslint-disable-next-line no-null/no-null
   if (electronProcess && electronProcess.exitCode === null && electronProcess.signalCode === null) {
     console.log('[teardown] Sending SIGKILL to process group...');
-    killGroup('SIGKILL');
+    if (electronProcess.pid) killProcessTree(electronProcess.pid, 'SIGKILL');
     console.log('[teardown] Waiting for appClosed after SIGKILL (up to 3s)...');
     await Promise.race([
       appClosed,

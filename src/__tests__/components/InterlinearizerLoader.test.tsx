@@ -580,6 +580,50 @@ describe('InterlinearizerLoader', () => {
     });
   });
 
+  it('resolves an over-shoot within a chapter opened by a cross-chapter segment', async () => {
+    // A cross-chapter segment covers 4:20 through 5:3 — its `startRef.chapter` is 4, but its verse
+    // starts include chapter 5's opening verses. When the host over-shoots past chapter 5's real end
+    // (verse 4 here, with only 5:1..5:3 present), the fallback must still find the nearest preceding
+    // verse start in chapter 5 — 5:3 — even though no segment's `startRef` sits in chapter 5.
+    const crossChapterBook: Book = {
+      id: 'GEN',
+      bookRef: 'GEN',
+      textVersion: 'v1',
+      segments: [
+        {
+          id: 'GEN 4:20',
+          startRef: { book: 'GEN', chapter: 4, verse: 20 },
+          endRef: { book: 'GEN', chapter: 5, verse: 3 },
+          baselineText: 'Chapter four tail folded into chapter five opening.',
+          tokens: [],
+          verseStarts: [
+            { charStart: 0, number: '20', chapter: 4 },
+            { charStart: 20, number: '1', chapter: 5 },
+            { charStart: 30, number: '2', chapter: 5 },
+            { charStart: 40, number: '3', chapter: 5 },
+          ],
+        },
+      ],
+    };
+    mockBookData({ book: crossChapterBook });
+
+    await act(async () => {
+      renderLoader({
+        useWebViewScrollGroupScrRef: makeScrollGroupHook({
+          book: 'GEN',
+          chapterNum: 5,
+          verseNum: 4,
+        }),
+      });
+    });
+
+    expect(capturedInterlinearizerProps?.scrRef).toEqual({
+      book: 'GEN',
+      chapterNum: 5,
+      verseNum: 3,
+    });
+  });
+
   it('resolves a verse missing from the text to the nearest preceding segment start, never a later one', async () => {
     // A verse absent from the book's content (e.g. bridged away in the source) is contained in no
     // segment, so the loader resolves it to the nearest preceding segment start in the chapter —

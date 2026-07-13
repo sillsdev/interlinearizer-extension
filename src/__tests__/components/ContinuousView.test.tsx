@@ -510,6 +510,54 @@ describe('ContinuousView initial render', () => {
     expect(sups.map((s) => s.textContent)).toEqual(['1:1', '2']);
   });
 
+  it('renders no verse superscript at a mid-verse continuation start', () => {
+    // Verse 1 is split into two segments: the second is a continuation (its verse start flagged
+    // isContinuation). The strip shows the verse-1 number only once — at the piece that truly begins
+    // the verse — not again at the continuation.
+    const splitBook = makeBook({
+      segments: [
+        {
+          id: 'GEN 1:1',
+          startRef: { book: 'GEN', chapter: 1, verse: 1 },
+          endRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+          baselineText: 'In',
+          tokens: [
+            {
+              ref: 'tok-0',
+              surfaceText: 'In',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 2,
+            },
+          ],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
+        },
+        {
+          id: 'GEN 1:1:3',
+          startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
+          endRef: { book: 'GEN', chapter: 1, verse: 1 },
+          baselineText: 'the',
+          tokens: [
+            {
+              ref: 'tok-1',
+              surfaceText: 'the',
+              writingSystem: 'en',
+              type: 'word',
+              charStart: 0,
+              charEnd: 3,
+            },
+          ],
+          verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
+        },
+      ],
+    });
+    render(<ContinuousView {...requiredProps(splitBook)} />, withAnalysisStore);
+
+    const sups = screen.getAllByTestId('verse-superscript');
+    expect(sups.map((s) => s.textContent)).toEqual(['1:1']);
+  });
+
   it('does not render an extension-generated segment separator', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);

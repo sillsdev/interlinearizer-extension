@@ -3,7 +3,7 @@
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Segment } from 'interlinearizer';
-import { segmentContainsVerse } from '../../utils/verse-ref';
+import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
 
 /**
  * Builds a minimal token-less {@link Segment} covering the given verses. Containment reads the
@@ -150,5 +150,19 @@ describe('segmentContainsVerse', () => {
       [1, 3],
     ]);
     expect(segmentContainsVerse(seg, makeRef(1, 2, 'EXO'))).toBe(false);
+  });
+});
+
+describe('firstVerseNumber', () => {
+  it('returns the number of a plain verse label', () => {
+    expect(firstVerseNumber('7')).toBe(7);
+  });
+
+  it('returns the first endpoint of a hyphenated range label', () => {
+    expect(firstVerseNumber('3-4')).toBe(3);
+  });
+
+  it('returns undefined for a label that begins with no digits', () => {
+    expect(firstVerseNumber('')).toBeUndefined();
   });
 });

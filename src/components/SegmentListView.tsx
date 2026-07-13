@@ -17,60 +17,48 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 /** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
 const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
-  '%interlinearizer_boundaryControl_mergeHint%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
 ] as const satisfies `%${string}%`[];
 
 /** Props for {@link MergeRowButton}. */
 type MergeRowButtonProps = Readonly<{
-  /** The segment below the gap this button sits in — the one a click merges into its predecessor. */
+  /** The segment below the gap this button sits in — the one a click joins to its predecessor. */
   segment: Segment;
-  /**
-   * When `true` the control renders inert. Set while a phrase mode (edit / confirm-unlink) is
-   * active, matching the in-gap boundary controls: a merge mid-mode could re-segment the phrase the
-   * mode UI is operating on.
-   */
-  disabled: boolean;
 }>;
 
 /**
- * The merge control rendered in the gap between two adjacent segment rows. Clicking it merges the
- * lower segment into the one above — the segment-list counterpart of the merge control in the
- * continuous strip's cross-segment slots, and the undo for a split.
+ * The merge control rendered in the gap between two adjacent segment rows. Clicking it joins the
+ * two neighboring segments — the segment-list counterpart of the merge control in the continuous
+ * strip's cross-segment slots, and the undo for a split.
  *
- * Alt-gated and fully inert until Alt is held. When Alt is **not** held the gap reserves its fixed
- * height but paints nothing and reacts to nothing — no rail, no hover response — so the segment
- * cards below and above read as distinct cards separated only by the list's own spacing. While Alt
- * **is** held a solid rail appears with the merge button riding it as a rounded handle; the
- * hover-driven rail-darkening and handle-accent are scoped to this Alt-held branch, so they never
- * fire when Alt is up. The gap keeps the same fixed height in both states, so revealing the rail
- * and button on an Alt press adds no height and never shifts the rows below. The tooltip carries
- * the split-discoverability hint (hold Alt and click between words to split); the `aria-label`
- * stays the concise merge string.
+ * Always visible and always enabled — merging needs no Alt. A solid rail carries the merge button
+ * as a rounded handle; hover darkens the rail and accents the handle. (Splitting, by contrast,
+ * stays Alt-gated in the continuous/token-chip strips.) The tooltip is stateful: while Alt is
+ * **not** held it carries the Alt-split discoverability hint (the split markers are hidden then, so
+ * it advertises the gesture that reveals them); once Alt **is** held the markers are visible, so it
+ * drops to the concise merge string. The `aria-label` stays the concise merge string in both
+ * states.
+ *
+ * The caller omits this control entirely while a phrase mode (edit / confirm-unlink) is active — a
+ * merge mid-mode could re-segment the phrase the mode UI is operating on — so this component itself
+ * has no disabled state.
  *
  * @param props - Component props.
  * @param props.segment - The segment below the gap.
- * @param props.disabled - Renders the button inert while a phrase mode is active.
- * @returns The fixed-height row gap: empty and inert when Alt is up, or a solid rail with the merge
- *   button while Alt is held; `undefined` when the segment has no tokens.
+ * @returns The fixed-height row gap with its rail and always-enabled merge button; `undefined` when
+ *   the segment has no tokens.
  */
-function MergeRowButton({ segment, disabled }: MergeRowButtonProps) {
+function MergeRowButton({ segment }: MergeRowButtonProps) {
   const { dispatch } = useSegmentation();
   const altHeld = useAltHeldValue();
   const [localizedStrings] = useLocalizedStrings(MERGE_STRING_KEYS);
   const secondSegmentStartRef = segment.tokens[0]?.ref;
   /* v8 ignore next -- a rendered segment always has at least one token */
   if (secondSegmentStartRef === undefined) return undefined;
-  // A single fixed-height gap that never changes size when Alt is pressed. Until Alt is held it is a
-  // blank, inert spacer (no rail element mounts, and there is no hover group, so hovering the gap
-  // does nothing); pressing Alt mounts the rail and merge button into the same reserved height, so
-  // the rows below never shift.
-  if (!altHeld) {
-    return <div aria-hidden="true" className="tw:h-4 tw:w-full" data-testid="segment-row-gap" />;
-  }
   return (
     <div className="tw:group/merge tw:relative tw:flex tw:h-4 tw:w-full tw:items-center">
-      {/* The solid rail appears only under Alt. Hover darkens it (the button never paints an opaque
-          band over it), so the line stays continuous through the hover state. */}
+      {/* The solid rail is always present. Hover darkens it (the button never paints an opaque band
+          over it), so the line stays continuous through the hover state. */}
       <div
         aria-hidden="true"
         className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:group-hover/merge:border-muted-foreground"
@@ -78,11 +66,14 @@ function MergeRowButton({ segment, disabled }: MergeRowButtonProps) {
       />
       <button
         aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-        className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded tw:disabled:pointer-events-none tw:disabled:opacity-30"
+        className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded"
         data-testid="segment-merge-btn"
-        disabled={disabled}
         tabIndex={-1}
-        title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
+        title={
+          altHeld
+            ? localizedStrings['%interlinearizer_boundaryControl_merge%']
+            : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']
+        }
         type="button"
         onClick={() => dispatch.merge(secondSegmentStartRef)}
       >
@@ -326,12 +317,28 @@ export default function SegmentListView({
       setPinnedChapter(undefined);
     };
 
+    // Coalesce scroll-driven reads to at most one per animation frame. Native scroll events fire more
+    // often than paints during an inertial/trackpad fling, and each read scans every mounted segment's
+    // bounding rect, so an uncoalesced handler would run that scan several times per frame for no
+    // visible benefit. A single rAF gate collapses a burst of scroll events into one measure.
+    let rafScheduled = false;
+    const onScroll = () => {
+      if (rafScheduled) return;
+      rafScheduled = true;
+      requestAnimationFrame(() => {
+        rafScheduled = false;
+        readTopChapter();
+      });
+    };
+
     readTopChapter();
-    container.addEventListener('scroll', readTopChapter, { passive: true });
+    container.addEventListener('scroll', onScroll, { passive: true });
+    // The resize/content-change path reads synchronously: these fire far less often than scroll and
+    // must settle the pinned chapter in the same frame the layout changed, without a frame of lag.
     const resizeObserver = new ResizeObserver(readTopChapter);
     resizeObserver.observe(container);
     return () => {
-      container.removeEventListener('scroll', readTopChapter);
+      container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };
   }, [scrollContainerRef, chapterBySegmentId, windowSegments]);
@@ -392,11 +399,13 @@ export default function SegmentListView({
               // DOM), so it must show a control rather than only becoming mergeable once the user
               // scrolls the predecessor into view.
               const hasPredecessor = segIndex > 0 || seg.id !== book.segments[0]?.id;
+              // Omit the merge control entirely while a phrase mode is active: a merge mid-mode could
+              // re-segment the phrase the mode UI is operating on. (The strip's boundary controls do
+              // the same by rendering nothing during a phrase mode.)
+              const showMergeControl = hasPredecessor && phraseMode.kind === 'view';
               return (
                 <Fragment key={seg.id}>
-                  {hasPredecessor && (
-                    <MergeRowButton segment={seg} disabled={phraseMode.kind !== 'view'} />
-                  )}
+                  {showMergeControl && <MergeRowButton segment={seg} />}
                   <MemoizedSegmentView
                     displayMode={displayContinuousScroll ? 'baseline-text' : 'token-chip'}
                     editPhraseSegmentId={editPhraseSegmentId}

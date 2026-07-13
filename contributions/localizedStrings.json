@@ -41,8 +41,8 @@
       "%interlinearizer_tokenChip_editMorphemes%": "Edit morpheme breakdown for {token}",
       "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",
       "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Only a free edge token of an adjacent segment can be linked across a boundary.",
-      "%interlinearizer_boundaryControl_merge%": "Merge segments",
-      "%interlinearizer_boundaryControl_mergeHint%": "Merge segments. Hold Alt and click between words to split.",
+      "%interlinearizer_boundaryControl_merge%": "Join these two segments",
+      "%interlinearizer_boundaryControl_mergeAltHint%": "Join these two segments. Hold Alt (Option on Mac) and click between words to split.",
       "%interlinearizer_boundaryControl_split%": "Split segment here",
 
       "%interlinearizer_modal_create_title%": "Create Interlinear Project",

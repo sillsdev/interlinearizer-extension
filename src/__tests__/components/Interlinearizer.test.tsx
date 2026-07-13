@@ -1297,6 +1297,37 @@ describe('Interlinearizer', () => {
     expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
   });
 
+  it('updates the pinned chapter on scroll, coalesced to one read per animation frame', () => {
+    jest.useFakeTimers();
+    try {
+      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
+      // Mount with chapter 1 at the top.
+      positionSegmentAtTop(ids, 'GEN 1:1');
+      const { container } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+      expect(screen.getByText('Genesis 1')).toBeInTheDocument();
+
+      // Scroll so a chapter-2 segment reaches the top, then fire two scroll events in the same frame.
+      // The rAF gate coalesces them into a single read, which settles the header on chapter 2.
+      positionSegmentAtTop(ids, 'GEN 2:1');
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        scrollContainer.dispatchEvent(new Event('scroll'));
+        jest.runOnlyPendingTimers();
+      });
+
+      expect(screen.getByText('Genesis 2')).toBeInTheDocument();
+      expect(screen.queryByText('Genesis 1')).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('renders the snap-to-active-verse button when segments are present', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
@@ -1693,26 +1724,28 @@ function setAltHeld(held: boolean): void {
 }
 
 describe('between-rows merge control', () => {
-  it('renders an inert blank gap (no rail, no merge button) between rows while Alt is not held', () => {
-    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    // Two rows -> exactly one gap between them. Until Alt is held it is a blank inert spacer: no rail
-    // and no button, so the segment cards read as distinct and hovering the gap does nothing.
-    expect(screen.getAllByTestId('segment-row-gap')).toHaveLength(1);
-    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+  it('shows an always-visible, always-enabled merge button between rows even while Alt is not held', () => {
+    const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
+    // Two rows -> exactly one gap between them, always carrying the rail and an enabled merge button
+    // (no Alt required). The old blank inert spacer is gone.
+    expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
+    const buttons = screen.getAllByTestId('segment-merge-btn');
+    expect(buttons).toHaveLength(1);
+    expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
+    expect(buttons[0]).toBeEnabled();
+    fireEvent.click(buttons[0]);
+    // Merging removes the boundary at the lower segment's first token.
+    expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
   });
 
-  it('reveals the solid rail and merge button while Alt is held and merges on click', () => {
+  it('keeps the merge button enabled while Alt is held', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
     setAltHeld(true);
-    const buttons = screen.getAllByTestId('segment-merge-btn');
-    // The rail and button mount into the same reserved gap height, so the row gap never changes size.
-    expect(buttons).toHaveLength(1);
-    expect(screen.getAllByTestId('segment-merge-indicator')).toHaveLength(1);
-    expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
-    fireEvent.click(buttons[0]);
-    // Merging removes the boundary at the lower segment's first token.
+    const button = screen.getByTestId('segment-merge-btn');
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
     expect(raw.merge).toHaveBeenCalledWith('GEN 1:2:0');
   });
 
@@ -1720,25 +1753,49 @@ describe('between-rows merge control', () => {
     renderInterlinearizer({ book: GEN_1_1_BOOK });
     expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
-    setAltHeld(true);
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
   });
 
-  it('does not tint the adjacent rows on merge-button hover (the preview is removed)', () => {
-    const { container } = renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
-    setAltHeld(true);
+  it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
+    // Alt up → split markers are hidden, so the always-enabled merge button advertises the Alt
+    // gesture that reveals them.
+    renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
-    fireEvent.mouseEnter(button);
-    // The adjacent-row tint/outline preview is gone; the button keeps only its own hover style.
-    expect(container.getElementsByClassName('tw:ring-ring/60')).toHaveLength(0);
+    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
+    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeAltHint%');
   });
 
-  it('labels the merge button with the concise merge string and the split-hint tooltip', () => {
+  it('labels the merge button with the plain merge string while Alt is held', () => {
+    // Alt held → the split markers are already visible, so the merge tooltip drops the hint.
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     setAltHeld(true);
     const button = screen.getByTestId('segment-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeHint%');
+    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_merge%');
+  });
+
+  it('renders no merge control while a phrase mode is active', () => {
+    // A merge mid-mode could re-segment the phrase the mode UI is operating on, so the between-rows
+    // control is omitted entirely (not merely disabled) throughout a phrase edit.
+    render(
+      withNav(
+        <Interlinearizer
+          book={GEN_1_MULTI_BOOK}
+          continuousScroll={false}
+          scrRef={defaultScrRef}
+          analysisLanguage="und"
+          phraseMode={{
+            kind: 'edit',
+            phraseId: 'phrase-1',
+            originalTokens: [{ tokenRef: 'GEN 1:1:0', surfaceText: 'In' }],
+          }}
+          setPhraseMode={() => {}}
+          viewOptions={{ ...allFalseViewOptions }}
+        />,
+      ),
+    );
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
   });
 });
 

@@ -19,6 +19,15 @@ const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
 export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
+ * File the smoke launcher streams the app's main-process stdout/stderr to. Named to mirror the CDP
+ * tier's `.cdp-app-startup.log` and kept in `e2e-tests/` (a directory Playwright does not clear,
+ * and one already covered by the CI artifact upload's `include-hidden-files: true`), so a
+ * cold-start stall's main-process log survives a failed run. Overwritten on each launch — one
+ * worker's app at a time — so it always holds the most recent launch's output.
+ */
+const SMOKE_APP_LOG_FILE = path.join(__dirname, '.smoke-app-startup.log');
+
+/**
  * Same serialized request type as `registerCommand('platform.about', ...)` in command.service
  * (`command` + `:` + `platform.about`).
  */
@@ -168,11 +177,26 @@ export async function launchElectronWithExtension(
     throw error;
   }
 
+  // Stream the launched app's main-process stdout/stderr to a log file. Unlike the CDP tier, the
+  // smoke launcher previously discarded this output, so a cold-start startup stall (the app comes up
+  // with dock tabs stuck at "Unknown" and never resolves — a silent platform-side race we can only
+  // tolerate, not fix) left NO main-process evidence to diagnose from; the renderer console was
+  // empty. Capturing it here means the next stall leaves a log to inspect. Best-effort: the log is
+  // not required, and any write error is swallowed so logging never fails a launch.
+  const appLog = fs.createWriteStream(SMOKE_APP_LOG_FILE, { flags: 'w' });
+  appLog.on('error', () => {
+    /* Logging is best-effort; never let a log write failure break the launch. */
+  });
+  const appProcess = electronApp.process();
+  appProcess.stdout?.pipe(appLog);
+  appProcess.stderr?.pipe(appLog);
+
   console.log('Waiting for WebSocket server on port 8876...');
   try {
     await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, PROCESS_READY_TIMEOUT);
   } catch (error) {
     console.error('WebSocket readiness check failed after Electron launch:', error);
+    dumpSmokeAppLog();
     const proc = electronApp.process();
     if (proc?.pid) {
       try {
@@ -197,6 +221,25 @@ export async function launchElectronWithExtension(
   });
 
   return { electronApp, userDataDir, appClosed };
+}
+
+/**
+ * Echo the smoke launcher's captured main-process output ({@link SMOKE_APP_LOG_FILE}) to the
+ * console. Called when the app fails to open its WebSocket port so the startup failure's cause
+ * appears inline in the CI log, not only in the uploaded artifact. Best-effort: a missing or
+ * unreadable log is reported, never thrown.
+ *
+ * @returns Nothing; logging-only.
+ */
+function dumpSmokeAppLog(): void {
+  try {
+    const log = fs.readFileSync(SMOKE_APP_LOG_FILE, 'utf-8');
+    console.error(
+      `--- Launched Platform.Bible (smoke) output (${SMOKE_APP_LOG_FILE}) ---\n${log || '(empty)'}\n--- end app output ---`,
+    );
+  } catch {
+    console.error(`Could not read smoke app log at ${SMOKE_APP_LOG_FILE}.`);
+  }
 }
 
 /**
@@ -391,36 +434,99 @@ export async function waitForPapiMethodRegistered(
   throw new Error(`PAPI method "${methodName}" not listed in rpc.discover within ${timeoutMs}ms`);
 }
 
+/** Options for {@link waitForDockTabTitlesResolved}. */
+interface DockTabTitlesOptions {
+  /**
+   * How to judge the dock is ready:
+   *
+   * - `true` (cold-start): EVERY dock tab must have a resolved (non-"Unknown") title. Correct for a
+   *   fresh per-worker instance (smoke tests, CDP global setup): a cold instance whose tabs are all
+   *   still "Unknown" is genuinely broken, and there are no unrelated tabs to interfere.
+   * - `false` (shared/warm): the dock is mounted and AT LEAST ONE tab has a resolved title. Correct
+   *   for the shared CDP feature instance, which global setup already settled before any test ran.
+   *   Re-asserting the strict "no tab anywhere is Unknown" invariant per test is both redundant and
+   *   fragile there: a single stray/leftover panel (e.g. one briefly re-titled by a close/reopen
+   *   cycle) would fail the gate for EVERY subsequent test against that one shared instance, and no
+   *   per-test retry can recover it — the Windows CDP-tier cascade this whole run showed.
+   */
+  strict: boolean;
+}
+
 /**
- * Wait until the dock layout has at least one tab and no tab is still titled "Unknown". On a cold
- * start the dock mounts with webview tabs titled "Unknown" (and blank panels) until project
+ * Wait until the dock layout is mounted with resolved tab titles (none stuck at "Unknown"). On a
+ * cold start the dock mounts with webview tabs titled "Unknown" (and blank panels) until project
  * metadata resolves; every tab-title-based locator in this suite silently times out against that
  * state. Waiting it out here turns those opaque per-test locator timeouts into either a pass (slow
- * healthy startup) or one clear early failure (instance genuinely stuck — the Windows CI CDP-tier
- * wipeout).
+ * healthy startup) or one clear early failure.
+ *
+ * The strictness of "resolved" depends on {@link DockTabTitlesOptions.strict} — see that field for
+ * why the shared CDP instance must not use the strict all-tabs check.
+ *
+ * A torn-down renderer (page/context/browser closed out from under us — the actual symptom in the
+ * Windows CDP run, where `waitForFunction` reports "Target page … has been closed") is surfaced as
+ * its own error rather than mislabeled "tabs still Unknown", so the real cause is not buried.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param timeout Maximum time in milliseconds to wait before throwing.
- * @returns Resolves when at least one dock tab exists and none contains "Unknown".
- * @throws If tab titles have not resolved within `timeout` milliseconds.
+ * @param options Readiness options; see {@link DockTabTitlesOptions}.
+ * @returns Resolves once the dock is ready per the chosen `strict` mode.
+ * @throws If tab titles have not resolved within `timeout` milliseconds, or if the renderer page
+ *   was closed while waiting.
  */
-export async function waitForDockTabTitlesResolved(page: Page, timeout: number): Promise<void> {
+export async function waitForDockTabTitlesResolved(
+  page: Page,
+  timeout: number,
+  options: DockTabTitlesOptions,
+): Promise<void> {
+  const { strict } = options;
   try {
     await page.waitForFunction(
-      () => {
+      (isStrict) => {
         const tabs = Array.from(document.querySelectorAll('.dock-tab'));
-        return tabs.length > 0 && tabs.every((tab) => !(tab.textContent ?? '').includes('Unknown'));
+        if (tabs.length === 0) return false;
+        const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
+        // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which is
+        // enough to know the app is up and rendering real tabs on an already-settled shared instance.
+        return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
       },
-      undefined,
+      strict,
       { timeout, polling: 500 },
     );
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // A closed page is a torn-down renderer, not a project-metadata stall — report it as such so it
+    // isn't chased as the "Unknown tabs" startup race (which it superficially resembles because the
+    // waitForFunction times out either way).
+    if (/target (page|context|browser) .*closed/i.test(message)) {
+      throw new Error(
+        `The renderer page was closed while waiting for the dock to become ready (after up to ` +
+          `${timeout}ms) — the app or its window went away mid-test, not a slow startup. ` +
+          `Original error: ${message}`,
+      );
+    }
     throw new Error(
       `Dock tab titles did not resolve within ${timeout}ms — the app came up but its webview tabs ` +
-        'are still titled "Unknown" (project metadata never loaded). ' +
-        `Original error: ${error instanceof Error ? error.message : String(error)}`,
+        `are still titled "Unknown" (project metadata never loaded). Original error: ${message}`,
     );
   }
+}
+
+/** Options for {@link waitForAppReady} and {@link waitForAppAndInterlinearizerReady}. */
+interface AppReadyOptions {
+  /**
+   * Timeout in milliseconds for the whole readiness wait. The default is generous because a cold CI
+   * instance has been observed taking over 45 s just to resolve tab titles; this is a wait-until,
+   * so healthy startups pay nothing for the headroom.
+   */
+  timeout?: number;
+  /**
+   * Whether the dock-tab-title gate uses the strict cold-start check (every tab resolved) or the
+   * lenient shared-instance check (dock mounted, at least one tab resolved). Defaults to `true`
+   * (cold-start), correct for the fresh per-worker smoke instance. The CDP feature tests, which run
+   * against one shared, already-settled instance, pass `false` so one stray panel can't cascade
+   * across the whole tier — see {@link DockTabTitlesOptions.strict}.
+   */
+  strict?: boolean;
 }
 
 /**
@@ -428,22 +534,21 @@ export async function waitForDockTabTitlesResolved(page: Page, timeout: number):
  * and `platform.about` command is registered (dialog service has finished initializing).
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param timeout Maximum time in milliseconds to wait before throwing. The default is generous
- *   because a cold CI instance has been observed taking over 45 s just to resolve tab titles; this
- *   is a wait-until, so healthy startups pay nothing for the headroom.
+ * @param options Readiness options; see {@link AppReadyOptions}.
  * @returns Resolves when the dock layout is visible with resolved tab titles and `platform.about`
  *   is registered.
  * @throws If the dock layout, resolved tab titles, or the `platform.about` command do not appear
  *   within `timeout` milliseconds.
  */
-export async function waitForAppReady(page: Page, timeout = 120_000): Promise<void> {
+export async function waitForAppReady(page: Page, options: AppReadyOptions = {}): Promise<void> {
+  const { timeout = 120_000, strict = true } = options;
   const start = Date.now();
   await page.waitForSelector('div[class*="dock-layout"]', {
     state: 'attached',
     timeout,
   });
   let remaining = Math.max(0, timeout - (Date.now() - start));
-  await waitForDockTabTitlesResolved(page, remaining);
+  await waitForDockTabTitlesResolved(page, remaining, { strict });
   remaining = Math.max(0, timeout - (Date.now() - start));
   await waitForPapiMethodRegistered(PLATFORM_ABOUT_COMMAND, DEFAULT_WEBSOCKET_PORT, remaining);
 }
@@ -654,11 +759,17 @@ function interlinearizerTabLocator(page: Page): Locator {
  * {@link waitForAppReady} and {@link waitForInterlinearizerReady}.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param options Readiness options forwarded to {@link waitForAppReady}. Feature tests on the shared
+ *   CDP instance pass `{ strict: false }` so one stray "Unknown" panel can't cascade across the
+ *   tier; smoke tests (fresh per-worker instance) use the default strict cold-start gate.
  * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws If the app or extension do not finish starting up within their default timeouts.
  */
-export async function waitForAppAndInterlinearizerReady(page: Page): Promise<void> {
-  await waitForAppReady(page);
+export async function waitForAppAndInterlinearizerReady(
+  page: Page,
+  options: AppReadyOptions = {},
+): Promise<void> {
+  await waitForAppReady(page, options);
   await waitForInterlinearizerReady();
 }
 

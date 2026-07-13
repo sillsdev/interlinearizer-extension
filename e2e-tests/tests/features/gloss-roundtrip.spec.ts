@@ -10,7 +10,9 @@ import {
 
 test.describe('Gloss round-trip', () => {
   test('typing a gloss on a token renders it in the gloss field', async ({ mainPage }) => {
-    await waitForAppAndInterlinearizerReady(mainPage);
+    // Lenient gate: the shared CDP instance was already settled by global setup, so a single stray
+    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved.
+    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

@@ -242,7 +242,9 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
     if (!page) {
       throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
     }
-    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()));
+    // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
+    // tab must resolve. The per-test feature gate is lenient (shared instance already settled here).
+    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), { strict: true });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.
     await browser.close();

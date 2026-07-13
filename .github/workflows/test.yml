@@ -156,6 +156,7 @@ jobs:
           retention-days: 7
           path: |
             extension-repo/e2e-tests/.cdp-app-startup.log
+            extension-repo/e2e-tests/.smoke-app-startup.log
             extension-repo/e2e-tests/playwright-report/
             extension-repo/e2e-tests/test-results/
           if-no-files-found: warn

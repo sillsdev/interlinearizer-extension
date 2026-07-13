@@ -16,7 +16,9 @@ test.describe('Draft persistence', () => {
     // Two full open cycles (plus first-use project creation and book loading on a cold instance)
     // legitimately exceed the default 120 s budget.
     test.slow();
-    await waitForAppAndInterlinearizerReady(mainPage);
+    // Lenient gate: the shared CDP instance was already settled by global setup, so a single stray
+    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved.
+    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

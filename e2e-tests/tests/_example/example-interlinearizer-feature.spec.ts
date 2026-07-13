@@ -34,7 +34,10 @@ function filterConsoleErrors(errors: string[]): string[] {
 
 test.describe('Example: Open Interlinearizer via menu', () => {
   test('should open the interlinearizer WebView via menu', async ({ mainPage }) => {
-    await waitForAppAndInterlinearizerReady(mainPage);
+    // Feature tests run against the shared CDP instance, already settled by global setup. Pass
+    // `{ strict: false }` so one stray/leftover "Unknown" panel can't fail this (and every
+    // downstream) test — see waitForDockTabTitlesResolved in fixtures/helpers.ts.
+    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
 
     // Step 1: Click the top-level menu that contains the interlinearizer entry
     const menuTrigger = mainPage.getByRole('menuitem', { name: /Tools/i });
@@ -50,7 +53,10 @@ test.describe('Example: Open Interlinearizer via menu', () => {
   });
 
   test('should render without critical console errors', async ({ mainPage }) => {
-    await waitForAppAndInterlinearizerReady(mainPage);
+    // Feature tests run against the shared CDP instance, already settled by global setup. Pass
+    // `{ strict: false }` so one stray/leftover "Unknown" panel can't fail this (and every
+    // downstream) test — see waitForDockTabTitlesResolved in fixtures/helpers.ts.
+    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
 
     const consoleErrors: string[] = [];
     mainPage.on('console', (msg) => {

@@ -18,7 +18,7 @@ import { resolveSplitAnchor } from '../utils/split-anchor';
 /** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
 const BOUNDARY_STRING_KEYS = [
   '%interlinearizer_boundaryControl_merge%',
-  '%interlinearizer_boundaryControl_mergeHint%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
   '%interlinearizer_boundaryControl_split%',
 ] as const satisfies `%${string}%`[];
 
@@ -32,33 +32,31 @@ type BoundaryButtonProps = Readonly<{
   testId: string;
   /** The icon rendered inside the button. */
   icon: ReactNode;
-  /** When `true` the control renders inert; used while a phrase mode (edit / unlink) is active. */
-  disabled: boolean;
   /** The boundary edit to run on click. */
   action: () => void;
 }>;
 
 /**
- * One boundary-edit button (only merge, now — split is the Alt-gated marker below). Its own CSS
- * `hover:bg-accent` is the only hover affordance; it no longer feeds the shared candidate-token
- * highlight channel (that channel stays for the link icon).
+ * One boundary-edit button (only merge — split is the Alt-gated marker below). Merge is always
+ * available (no phrase-mode disabled state; the caller renders nothing during a phrase mode), so
+ * there is no disabled styling. Its own CSS `hover:bg-accent` is the only hover affordance; it no
+ * longer feeds the shared candidate-token highlight channel (that channel stays for the link
+ * icon).
  *
  * @param props - Component props.
  * @param props.label - Accessible label for screen readers.
  * @param props.title - Tooltip text (may differ from the label).
  * @param props.testId - `data-testid` for the button element.
  * @param props.icon - The icon rendered inside the button.
- * @param props.disabled - Renders the control inert while a phrase mode is active.
  * @param props.action - The boundary edit to run on click.
  * @returns The styled boundary button.
  */
-function BoundaryButton({ label, title, testId, icon, disabled, action }: BoundaryButtonProps) {
+function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonProps) {
   return (
     <button
       aria-label={label}
-      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground tw:disabled:pointer-events-none tw:disabled:opacity-30"
+      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
       data-testid={testId}
-      disabled={disabled}
       tabIndex={-1}
       title={title}
       type="button"
@@ -94,22 +92,22 @@ type BoundaryControlProps = Readonly<{
 }>;
 
 /**
- * Renders the boundary-edit control for one slot — the merge/split button that takes over the slot
- * column's punctuation row while Alt is held. {@link PhraseSlot} only mounts this component when Alt
- * is held (the row otherwise shows the gap punctuation), so there is no Alt-off state and no dashed
- * indicator here: this always tries to render an actionable button.
+ * Renders the boundary-edit control for one slot — the merge button or the Alt-gated split marker,
+ * shown in the slot column's dedicated boundary row below the link icon.
  *
- * - A slot straddling two different segments (a live boundary) shows the `Merge` button (combine the
- *   next segment into the previous one).
- * - A slot inside one segment shows the `Split` marker (start a new segment at the resolved
- *   punctuation-travel anchor). `Split` (one stroke diverging into two) and `Merge` (two strokes
- *   converging into one) are a mirrored lucide pair, so the two operations read as one system yet
- *   stay distinct at icon size.
+ * - A slot straddling two different segments (a live boundary) shows the `Merge` button. Merge is
+ *   **always available** (no Alt needed) and joins the two adjacent segments. Its tooltip carries
+ *   the Alt-split discoverability hint while Alt is up (when the split markers are hidden) and
+ *   drops to the concise action once Alt is held (the split markers are then visible).
+ * - A slot inside one segment shows the `Split` marker only **while Alt is held** (start a new
+ *   segment at the resolved punctuation-travel anchor). `Split` (one stroke diverging into two) and
+ *   `Merge` (two strokes converging into one) are a mirrored lucide pair, so the two operations
+ *   read as one system yet stay distinct at icon size.
  *
- * Returns `undefined` (leaving the row blank even under Alt) for slots where no edit applies:
- * leading/trailing slots (a word token missing on either side — a leading slot sits on an existing
- * segment start, where a split would be a no-op), and intra-segment slots where the split is
- * suppressed by the not-mid-phrase UI guard.
+ * Returns `undefined` (leaving the row blank) for slots where no edit applies: leading/trailing
+ * slots (a word token missing on either side — a leading slot sits on an existing segment start,
+ * where a split would be a no-op), intra-segment slots while Alt is up, and intra-segment slots
+ * where the split is suppressed by the not-mid-phrase UI guard.
  *
  * The not-mid-phrase rule: no split marker renders at a boundary that would cut a phrase —
  * including the gap between two fragments of a discontiguous phrase — and an Alt+click there is a
@@ -118,9 +116,9 @@ type BoundaryControlProps = Readonly<{
  * take that path.) Merge needs no such guard: removing a boundary can never leave a phrase
  * straddling one.
  *
- * The merge button renders disabled, and the split marker is hidden, while a phrase mode (edit /
- * confirm-unlink) is active: a boundary edit mid-mode could re-segment the phrase the mode UI is
- * operating on (e.g. canceling an edit would then restore a phrase spanning the new boundary).
+ * No boundary control renders at all while a phrase mode (edit / confirm-unlink) is active: a
+ * boundary edit mid-mode could re-segment the phrase the mode UI is operating on (e.g. canceling an
+ * edit would then restore a phrase spanning the new boundary).
  *
  * @param props - Component props.
  * @param props.prevSegmentId - Segment id before the slot.
@@ -139,6 +137,7 @@ function BoundaryControl({
 }: BoundaryControlProps) {
   const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
   const { phraseMode } = usePhraseStripContext();
+  const altHeld = useAltHeldValue();
   const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
   if (
     prevSegmentId === undefined ||
@@ -149,8 +148,11 @@ function BoundaryControl({
     return undefined;
   }
 
+  // A boundary edit mid-mode could re-segment the phrase the mode UI is operating on, so no boundary
+  // control renders at all while a phrase mode (edit / confirm-unlink) is active.
+  if (phraseMode.kind !== 'view') return undefined;
+
   const nextTokenRef = nextToken.ref;
-  const boundaryEditsDisabled = phraseMode.kind !== 'view';
 
   // A cross-segment slot sits on a live boundary → merge; an intra-segment slot can be split.
   if (prevSegmentId !== nextSegmentId) {
@@ -158,23 +160,30 @@ function BoundaryControl({
     const secondStart = nextSegment?.tokens[0]?.ref;
     /* v8 ignore next -- a rendered cross-segment slot always resolves the next segment's start */
     if (nextSegment === undefined || secondStart === undefined) return undefined;
+    // Merge is always available (no Alt needed). While Alt is up the split markers are hidden, so the
+    // merge tooltip advertises the Alt gesture that reveals them; while Alt is held that hint is
+    // redundant (the split marker is already visible), so the tooltip is the concise action.
     return (
       <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
           label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-          title={localizedStrings['%interlinearizer_boundaryControl_mergeHint%']}
+          title={
+            altHeld
+              ? localizedStrings['%interlinearizer_boundaryControl_merge%']
+              : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']
+          }
           testId="boundary-merge-btn"
           icon={<Merge className="tw:h-3 tw:w-3" />}
-          disabled={boundaryEditsDisabled}
           action={() => dispatch.merge(secondStart)}
         />
       </span>
     );
   }
 
-  // The not-mid-phrase UI guard: no split marker at a boundary that would cut a phrase (the absent
-  // marker is the explanation; an Alt+click there is a silent no-op).
-  const splittable = !boundaryEditsDisabled && !straddledBoundaryRefs.has(nextTokenRef);
+  // Split stays Alt-gated: the marker only appears while Alt is held. The not-mid-phrase UI guard
+  // additionally suppresses it at a boundary that would cut a phrase (the absent marker is the
+  // explanation; an Alt+click there is a silent no-op).
+  const splittable = altHeld && !straddledBoundaryRefs.has(nextTokenRef);
   if (!splittable) return undefined;
 
   return (
@@ -310,7 +319,6 @@ export function PhraseSlot({
 }: PhraseSlotProps) {
   const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
   const { segmentOrder } = useSegmentation();
-  const altHeld = useAltHeldValue();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -341,10 +349,11 @@ export function PhraseSlot({
   const hasLinkableNeighbors = prevToken !== undefined || nextToken !== undefined;
   // The slot is a fixed column so every inter-phrase item lands in the same place across the whole
   // strip, top to bottom: the verse number (peeking above the column), then gap punctuation, then
-  // the link icon, then the Alt-gated merge/split button. Each in-flow row is a fixed height,
-  // reserved (blank when empty), so the rows line up column-to-column: every item sits at the same
-  // vertical offset regardless of which others are present, and revealing the boundary button on an
-  // Alt press never reflows the surrounding phrases. `relative` anchors the peeking verse number.
+  // the link icon, then the boundary row (the always-visible merge button or the Alt-gated split
+  // marker). Each in-flow row is a fixed height, reserved (blank when empty), so the rows line up
+  // column-to-column: every item sits at the same vertical offset regardless of which others are
+  // present, and revealing the split marker on an Alt press never reflows the surrounding phrases.
+  // `relative` anchors the peeking verse number.
   return (
     <span
       // `mt-1` shifts the whole column (peeking verse number included) down so the punctuation row
@@ -374,37 +383,17 @@ export function PhraseSlot({
         </span>
       )}
       {/* Punctuation row — the first in-flow row, a FIXED height so a slot carrying a punctuation chip
-          is exactly as tall as an empty one. The gap punctuation is ALWAYS in normal flow, so it
-          alone sets the row's width — even while Alt is held. `items-start` sits it on the
-          neighboring token surface-text baseline. While Alt is held the merge/split button is
-          overlaid (absolutely centered over the row) and the punctuation is hidden with
-          `visibility: hidden` rather than removed, so the row keeps the SAME width it had before the
-          Alt press: multi-chip gaps no longer shrink to the button's width and shift the whole strip.
-          `relative` anchors the overlay; `min-w-4` gives the button room even when the gap is empty. */}
-      <span className="tw:relative tw:inline-flex tw:h-5 tw:min-w-4 tw:flex-row tw:items-start tw:justify-center tw:overflow-hidden">
-        <span
-          className="tw:inline-flex tw:flex-row tw:items-start"
-          data-testid="slot-punctuation"
-          style={{ visibility: altHeld && hasLinkableNeighbors ? 'hidden' : undefined }}
-        >
+          is exactly as tall as an empty one. The gap punctuation is always in normal flow and sets
+          the row's width; `items-start` sits it on the neighboring token surface-text baseline. The
+          boundary (merge/split) control no longer shares this row — it has its own row below the link
+          icon — so the punctuation is never hidden or overlaid. `min-w-4` reserves a normal slot
+          width even when the gap is empty. */}
+      <span className="tw:inline-flex tw:h-5 tw:min-w-4 tw:flex-row tw:items-start tw:justify-center">
+        <span className="tw:inline-flex tw:flex-row tw:items-start" data-testid="slot-punctuation">
           {punctuation.map((punctToken) => (
             <InertTokenChip key={punctToken.ref} token={punctToken} />
           ))}
         </span>
-        {altHeld && hasLinkableNeighbors && (
-          // `translate-y-0.5` nudges the button down a couple px from the row's vertical center so it
-          // reads as centered against the neighboring token surface text (the row sits at the column
-          // top, slightly above the surface-text line).
-          <span className="tw:absolute tw:inset-0 tw:flex tw:translate-y-0.5 tw:items-center tw:justify-center">
-            <BoundaryControl
-              prevSegmentId={prevSegmentId}
-              nextSegmentId={nextSegmentId}
-              prevToken={prevToken}
-              nextToken={nextToken}
-              punctuation={punctuation}
-            />
-          </span>
-        )}
       </span>
       {/* Link icon (or reserved blank height when this slot has no linkable neighbors), the bottom
           row. Carries the fade transition; identified by data-testid so tests don't depend on its
@@ -433,6 +422,21 @@ export function PhraseSlot({
           />
         )}
       </span>
+      {/* Boundary (merge/split) row — its own dedicated row below the link icon, so the always-visible
+          merge button and the Alt-gated split marker never share space with the gap punctuation.
+          `BoundaryControl` self-gates: it renders the merge button on a live boundary, the split
+          marker only under Alt, and nothing where no edit applies (leading slot, phrase mode, a
+          boundary that would cut a phrase). Rendered only when the slot has linkable neighbors, since
+          a slot with none can carry no boundary. */}
+      {hasLinkableNeighbors && (
+        <BoundaryControl
+          prevSegmentId={prevSegmentId}
+          nextSegmentId={nextSegmentId}
+          prevToken={prevToken}
+          nextToken={nextToken}
+          punctuation={punctuation}
+        />
+      )}
     </span>
   );
 }

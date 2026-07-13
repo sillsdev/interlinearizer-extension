@@ -7,7 +7,6 @@ import papi, { logger } from '@papi/frontend';
 import { useData, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
-import type { ScriptureRef } from 'interlinearizer';
 import { isPlatformError } from 'platform-bible-utils';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
@@ -31,7 +30,7 @@ import { WipeModal, type WipeScope } from './modals/WipeModal';
 import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
-import { segmentContainsVerse, toSerializedVerseRef } from '../utils/verse-ref';
+import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -330,13 +329,23 @@ function InterlinearizerLoaderInner({
     if (!book) return scrRef;
     if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;
     if (scrRef.verseNum === 0) return { ...scrRef, verseNum: 1 };
-    let preceding: ScriptureRef | undefined;
-    book.segments.forEach(({ startRef }) => {
-      if (startRef.book !== scrRef.book || startRef.chapter !== scrRef.chapterNum) return;
-      if (startRef.verse > scrRef.verseNum) return;
-      if (!preceding || startRef.verse > preceding.verse) preceding = startRef;
+    // Search the verse starts themselves rather than each segment's `startRef`: a cross-chapter
+    // segment (e.g. one starting at 4:20 but covering through 5:3) has `startRef.chapter === 4`, so
+    // filtering by `startRef` would exclude it when resolving an over-shoot within chapter 5 even
+    // though it is the segment holding that chapter's opening verses. Each verse start carries its
+    // own chapter, so filtering by `vs.chapter` finds the nearest preceding verse in the target
+    // chapter regardless of where its segment's boundary falls.
+    let precedingVerse: number | undefined;
+    book.segments.forEach((segment) => {
+      if (segment.startRef.book !== scrRef.book) return;
+      segment.verseStarts.forEach((vs) => {
+        if (vs.chapter !== scrRef.chapterNum) return;
+        const verse = firstVerseNumber(vs.number);
+        if (verse === undefined || verse > scrRef.verseNum) return;
+        if (precedingVerse === undefined || verse > precedingVerse) precedingVerse = verse;
+      });
     });
-    return preceding ? toSerializedVerseRef(preceding) : scrRef;
+    return precedingVerse !== undefined ? { ...scrRef, verseNum: precedingVerse } : scrRef;
   }, [scrRef, book]);
 
   const hasError = !!bookError || !!tokenizeError;

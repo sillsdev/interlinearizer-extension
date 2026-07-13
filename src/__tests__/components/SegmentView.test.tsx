@@ -330,6 +330,31 @@ describe('SegmentView', () => {
     expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
   });
 
+  it('renders no verse superscript at a mid-verse continuation start (token-chip)', () => {
+    // The later piece of a mid-verse split carries an isContinuation verse start: the verse's number
+    // already showed where it truly began (in the previous segment), so this piece shows none.
+    const continuationSegment: Segment = {
+      id: 'GEN 1:1:6',
+      startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'beta',
+      tokens: [
+        {
+          ref: 'GEN 1:1:6',
+          surfaceText: 'beta',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 4,
+        },
+      ],
+      verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
+    };
+    render(<SegmentView {...requiredProps()} segment={continuationSegment} />, withAnalysisStore);
+
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+  });
+
   it('prefers the list-supplied chapter-qualified label over the verbatim number', () => {
     render(<SegmentView {...requiredProps()} verseStartLabels={['1:1']} />, withAnalysisStore);
 
@@ -372,6 +397,29 @@ describe('SegmentView', () => {
     // Each superscript sits immediately before its verse's slice of the baseline, so the running
     // text reads "¹Alpha beta. ²Gamma delta." in order.
     expect(screen.getByTestId('segment-container')).toHaveTextContent('1Alpha beta. 2Gamma delta.');
+  });
+
+  it('renders no verse superscript at a mid-verse continuation start (baseline-text)', () => {
+    const continuationSegment: Segment = {
+      id: 'GEN 1:1:6',
+      startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'beta.',
+      tokens: [],
+      verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
+    };
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        segment={continuationSegment}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+    // The baseline text still renders — only the leading number is suppressed.
+    expect(screen.getByTestId('segment-container')).toHaveTextContent('beta.');
   });
 
   it('does not render individual tokens in baseline-text mode', () => {

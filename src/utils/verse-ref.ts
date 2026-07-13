@@ -16,6 +16,19 @@ export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): bool
 }
 
 /**
+ * Parses the first verse number out of a verbatim USJ verse label. A plain number returns itself; a
+ * hyphenated range (e.g. `"3-4"`) returns its first endpoint. A label that begins with no digits
+ * (e.g. an empty or note-only marker) returns `undefined`.
+ *
+ * @param verseStartNumber - The verse start's verbatim `number`.
+ * @returns The label's leading verse number, or `undefined` when it names none.
+ */
+export function firstVerseNumber(verseStartNumber: string): number | undefined {
+  const match = /^(\d+)(?:-(\d+))?/.exec(verseStartNumber);
+  return match ? Number(match[1]) : undefined;
+}
+
+/**
  * Reports whether `verseStartNumber` (a verbatim USJ verse label, e.g. `"7"` or a range like
  * `"3-4"`) names the verse `verseNum`. A plain number matches on equality; a hyphenated range
  * matches any verse from its first to its last endpoint inclusive. A label that parses to no digits

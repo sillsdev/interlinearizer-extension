@@ -279,11 +279,15 @@ export function SegmentView({
 
   /**
    * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
-   * superscript wherever a verse begins.
+   * superscript wherever a verse begins. Continuation entries (a mid-verse split's later piece,
+   * whose verse truly started in a previous segment) are skipped: their number already showed at
+   * the real start, so repeating it here would duplicate it.
    */
   const verseStartLabelByOffset = useMemo(() => {
     const map = new Map<number, string>();
-    segment.verseStarts.forEach((vs, i) => map.set(vs.charStart, resolvedVerseStartLabels[i]));
+    segment.verseStarts.forEach((vs, i) => {
+      if (!vs.isContinuation) map.set(vs.charStart, resolvedVerseStartLabels[i]);
+    });
     return map;
   }, [segment.verseStarts, resolvedVerseStartLabels]);
 
@@ -442,11 +446,13 @@ export function SegmentView({
    * after a verse start's offset ({@link verseStartToken}); keying by ref lets the strip builder
    * mark the slot that begins each verse — the slot before the verse's first group, or (for a verse
    * opening on leading punctuation) the slot that carries that punctuation — so {@link PhraseSlot}
-   * can render the verse number below the link icon.
+   * can render the verse number below the link icon. Continuation entries (a mid-verse split's
+   * later piece) contribute no label: the verse's number already showed at its real start.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
     segment.verseStarts.forEach((vs, i) => {
+      if (vs.isContinuation) return;
       const startToken = verseStartToken(segment, vs);
       if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
     });

@@ -64,12 +64,16 @@ function buildSegment(run: SourcedToken[]): Segment {
     // rendered number is the verse segment's own single verse start (a split's later piece still
     // carries its whole source verse's number, which is what should render); its chapter comes from
     // the source verse's ref so the renderer can qualify chapter transitions without inspecting a
-    // token.
+    // token. The run's FIRST verse start is a continuation when this segment does not begin at a
+    // verse boundary — i.e. a split's later piece, whose verse truly started in a previous segment;
+    // flagging it lets the renderer keep containment (for navigation) without repeating the number.
+    // Every later verse in a merged run genuinely starts here, so it is never a continuation.
     verseStarts.push({
       charStart: cursor,
       /* v8 ignore next -- every original verse segment has exactly one verse start */
       number: verse.verseStarts[0]?.number ?? '',
       chapter: verse.startRef.chapter,
+      ...(runIndex === 0 && !startsAtVerseBoundary ? { isContinuation: true } : {}),
     });
     // Consume the contiguous sub-run of tokens from this verse, shifting each token's offsets into
     // the new concatenated baseline while keeping its ref and surface text unchanged.

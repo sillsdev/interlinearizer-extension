@@ -16,6 +16,7 @@ import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
+import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
   GEN_1_1_BOOK,
   makeScrollGroupHook,

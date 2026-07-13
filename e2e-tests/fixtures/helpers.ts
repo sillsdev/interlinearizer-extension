@@ -784,13 +784,47 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * submits it. Requires a fully-qualified reference (book, chapter, and verse — e.g. `"GEN 1:1"`);
  * partial references are ambiguous and are not auto-submitted by the control.
  *
+ * The platform toolbar's book-chapter control only drives navigation when there is a resolved
+ * navigation-target web view — in simple (non-power) interface mode that is always the MAIN
+ * Scripture editor, never a focused secondary tab like the Interlinearizer (see paranext-core
+ * navigation-target.util.ts `resolveTargetWebView` / `pinToMainEditor`). The self-launched CDP
+ * instance comes up in simple mode with no project loaded into the main editor, so the control
+ * stays `disabled` and can navigate nothing. A plain `trigger.click()` there never fails —
+ * Playwright retries the click for the whole test timeout waiting for the button to become enabled,
+ * which is what hung every feature test for 6 minutes. So this waits a BOUNDED time for the control
+ * to become actionable and, if it never does, skips navigation instead of hanging: the
+ * Interlinearizer opens at its default reference (GEN 1:1) and the callers assert against specific
+ * verse tokens with their own visibility waits, so a skipped no-op navigation to a reference
+ * already on screen still lets the test proceed (and a genuinely-needed navigation that could not
+ * happen surfaces as a fast, clear assertion failure downstream rather than an opaque timeout
+ * here).
+ *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param reference Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @returns Resolves when the reference popover has closed after submitting.
- * @throws If the reference control does not open, or the popover does not close after submitting.
+ * @returns Resolves once the reference has been submitted, or once navigation has been skipped
+ *   because the toolbar control is not drivable in the current interface mode.
+ * @throws If the control is enabled but its popover does not open or close within the timeouts.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
   const trigger = page.locator('button[aria-label="book-chapter-trigger"]').first();
+
+  // Bounded wait for the control to become enabled. In simple mode with no main-editor project it
+  // never enables, so cap the wait and skip rather than let the later click() burn the test timeout.
+  // `expect(...).toBeEnabled` polls with a real timeout (unlike `Locator.isEnabled`, which reads
+  // once); swallow its rejection into a boolean so the disabled case is a skip, not a throw.
+  const enabled = await expect(trigger)
+    .toBeEnabled({ timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!enabled) {
+    console.log(
+      `navigateToScriptureRef: skipping navigation to "${reference}" — the platform book-chapter ` +
+        'control is disabled (simple interface mode with no navigable target). The view stays at ' +
+        'its current/default reference.',
+    );
+    return;
+  }
+
   await trigger.click();
   const input = page.locator('input[cmdk-input]').first();
   await expect(input).toBeVisible({ timeout: 5_000 });

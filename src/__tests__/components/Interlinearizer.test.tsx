@@ -1348,6 +1348,46 @@ describe('Interlinearizer', () => {
     }
   });
 
+  it('cancels a scroll-scheduled animation frame when unmounted before it runs', () => {
+    jest.useFakeTimers();
+    try {
+      const ids = ['GEN 1:1', 'GEN 1:2', 'GEN 2:1', 'GEN 2:2'];
+      positionSegmentAtTop(ids, 'GEN 1:1');
+      const { container, unmount } = renderInterlinearizer({
+        book: GEN_TWO_CHAPTER_BOOK,
+        scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        continuousScroll: false,
+      });
+
+      // Fire a scroll to queue the coalescing rAF, then unmount before the frame runs. The effect
+      // cleanup must cancel that exact frame so its readTopChapter never fires against the detached
+      // container. Capture the handle the scroll schedules and assert cancelAnimationFrame is called
+      // with it — other cleanups may also cancel frames, so match the specific handle rather than
+      // any call.
+      const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
+      if (!scrollContainer) throw new Error('scroll container not found');
+      const scheduledHandles: number[] = [];
+      const rafSpy = jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(() => {
+        const handle = scheduledHandles.length + 1;
+        scheduledHandles.push(handle);
+        return handle;
+      });
+      const cancelSpy = jest.spyOn(globalThis, 'cancelAnimationFrame');
+      act(() => {
+        scrollContainer.dispatchEvent(new Event('scroll'));
+      });
+      expect(scheduledHandles).toHaveLength(1);
+      act(() => {
+        unmount();
+      });
+
+      expect(cancelSpy).toHaveBeenCalledWith(scheduledHandles[0]);
+      rafSpy.mockRestore();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('renders the snap-to-active-verse button when segments are present', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 

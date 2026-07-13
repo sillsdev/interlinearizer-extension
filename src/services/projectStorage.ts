@@ -1,6 +1,11 @@
 import papi, { logger } from '@papi/backend';
 import type { ExecutionToken } from '@papi/core';
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  DraftProject,
+  InterlinearProject,
+  SegmentationDelta,
+  TextAnalysis,
+} from 'interlinearizer';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
 import { isDraftProject } from '../types/type-guards';
 
@@ -256,11 +261,14 @@ export async function getProjectsForSource(
 }
 
 /**
- * Replaces the analysis of an existing interlinearizer project.
+ * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
+ * boundaries, in one atomic write.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
  * @param analysis - The new `TextAnalysis` to persist.
+ * @param segmentation - The new boundary delta to persist (`SegmentationDelta`), `null` to clear
+ *   any stored boundaries, or `undefined` to leave the project's existing boundaries unchanged.
  * @returns The updated project record, or `undefined` if no project with the given ID exists.
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
@@ -270,11 +278,15 @@ export async function updateAnalysis(
   token: ExecutionToken,
   id: string,
   analysis: TextAnalysis,
+  segmentation?: SegmentationDelta | null,
 ): Promise<InterlinearProject | undefined> {
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
     const updated: InterlinearProject = { ...project, analysis };
+    // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
+    if (segmentation === null) delete updated.segmentation;
+    else if (segmentation !== undefined) updated.segmentation = segmentation;
     await papi.storage.writeUserData(token, projectKey(id), JSON.stringify(updated));
     return updated;
   });

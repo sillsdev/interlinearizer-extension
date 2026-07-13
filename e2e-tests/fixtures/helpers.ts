@@ -223,14 +223,28 @@ export async function launchElectronWithExtension(
     /* Logging is best-effort; never let a log write failure break the launch. */
   });
   const appProcess = electronApp.process();
-  appProcess.stdout?.pipe(appLog);
-  appProcess.stderr?.pipe(appLog);
+  // { end: false } on BOTH pipes: two sources share one destination, so the default end-on-source-end
+  // would have whichever stream (stdout/stderr) closes first call appLog.end(), dropping the other
+  // stream's later output and throwing "write after end". We own appLog's lifecycle instead — closing
+  // it when the app exits (below) or when we flush it before dumping on a failed launch.
+  appProcess.stdout?.pipe(appLog, { end: false });
+  appProcess.stderr?.pipe(appLog, { end: false });
+  // Close the log once the app process is gone: with { end: false } the pipes never close it, so tie
+  // its lifetime to the app to avoid leaking the descriptor on a healthy launch.
+  electronApp.once('close', () => {
+    appLog.end();
+  });
 
   console.log('Waiting for WebSocket server on port 8876...');
   try {
     await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, PROCESS_READY_TIMEOUT);
   } catch (error) {
     console.error('WebSocket readiness check failed after Electron launch:', error);
+    // Flush buffered pipe output to disk before the synchronous read in dumpSmokeAppLog: the app is
+    // still alive here (killed just below), so we cannot wait for the source streams to end — ending
+    // appLog ourselves flushes what has been written so the dump captures the failure's evidence
+    // instead of an empty file.
+    await flushAppLog(appLog);
     dumpSmokeAppLog();
     const proc = electronApp.process();
     if (proc?.pid) {
@@ -256,6 +270,30 @@ export async function launchElectronWithExtension(
   });
 
   return { electronApp, userDataDir, appClosed };
+}
+
+/**
+ * Flush and close the smoke app-log write stream, resolving once its buffered data has reached
+ * disk. The launcher pipes the app's stdout/stderr into this stream with `{ end: false }` (so
+ * neither source closes it), which means those writes may still be buffered when a failed launch
+ * wants to read the file back; ending the stream here forces the flush and this awaits the
+ * resulting `finish` (or `error`) so a following synchronous read sees the captured output rather
+ * than an empty file. Best-effort: a stream error resolves rather than rejects, so a logging
+ * failure never breaks launch.
+ *
+ * @param appLog The write stream created for {@link SMOKE_APP_LOG_FILE}.
+ * @returns Resolves once the stream has flushed and closed (or errored).
+ */
+function flushAppLog(appLog: fs.WriteStream): Promise<void> {
+  return new Promise<void>((resolve) => {
+    // Already-closed stream: end() would never emit 'finish', so resolve immediately.
+    if (appLog.writableEnded) {
+      resolve();
+      return;
+    }
+    appLog.once('error', () => resolve());
+    appLog.end(() => resolve());
+  });
 }
 
 /**
@@ -517,16 +555,69 @@ interface DockTabTitlesOptions {
    *   per-test retry can recover it (a cascade the Windows CDP tier is prone to).
    */
   strict: boolean;
-  /**
-   * When set, abort the wait the moment the renderer emits a {@link FATAL_STARTUP_PAGE_ERROR} —
-   * turning a doomed cold start (theme data never settled, tabs stuck "Unknown" for the full
-   * timeout) into a fast, correctly-labeled failure instead of a 120 s dead wait. Only meaningful
-   * on a cold start (a fresh smoke launch or CDP global setup, where the error signals _this_
-   * launch failed and a fresh one is the only remedy), so it is opt-in; the warm shared-instance
-   * path leaves it off, where a stale error from a long-past cold start must not abort an
-   * otherwise-healthy wait.
-   */
-  failFastOnFatalPageError?: boolean;
+}
+
+/**
+ * Run `fn` with a fatal-startup-error tripwire armed on `page`: if the renderer emits a
+ * {@link FATAL_STARTUP_PAGE_ERROR} while `fn` is in flight, the returned promise rejects immediately
+ * with a fast, correctly-labeled failure instead of `fn` running out its full readiness budget.
+ *
+ * This wraps the WHOLE readiness sequence (service-host wait AND dock-tab wait), not just one
+ * stage: the fatal theme-settle error can surface during either, and it never self-recovers, so a
+ * doomed cold start must abort the moment the error fires no matter which stage is running. Keeping
+ * the listener armed across both stages is why this is a wrapper rather than logic inside a single
+ * wait.
+ *
+ * The listener is registered only when `enabled` (a warm shared instance leaves it off — a stale
+ * error from a long-past cold start must not abort an otherwise-healthy wait), and always removed
+ * in `finally` so it can't leak across tests on the shared CDP page. A sentinel distinguishes
+ * "tripwire fired" from an ordinary `fn` rejection, so only a genuine fatal error is remapped to
+ * the fast failure; any other rejection from `fn` propagates unchanged.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param enabled Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
+ * @param fn The readiness work to run under the tripwire.
+ * @returns Resolves with `fn`'s result once it completes without the tripwire firing.
+ * @throws If the renderer emitted a fatal startup error while `fn` was in flight (with `enabled`),
+ *   or whatever `fn` itself throws.
+ */
+export async function withFatalStartupTripwire<T>(
+  page: Page,
+  enabled: boolean,
+  fn: () => Promise<T>,
+): Promise<T> {
+  // A sentinel value distinguishes "tripwire fired" from an ordinary reject of `fn`.
+  const fatalError: { message?: string } = {};
+  let onFatalPageError: ((err: Error) => void) | undefined;
+  const fatalErrorTripped = new Promise<never>((_resolve, reject) => {
+    if (!enabled) return;
+    onFatalPageError = (err: Error) => {
+      if (!FATAL_STARTUP_PAGE_ERROR.test(err.message)) return;
+      fatalError.message = err.message;
+      reject(new Error(err.message));
+    };
+    page.on('pageerror', onFatalPageError);
+  });
+  // Without an opted-in tripwire nothing ever rejects this promise; swallow the unused rejection
+  // path so a stray rejection (there is none) could never surface as an unhandled rejection.
+  fatalErrorTripped.catch(() => {});
+
+  try {
+    return await Promise.race([fn(), fatalErrorTripped]);
+  } catch (error) {
+    // The tripwire won the race: this cold start is doomed (theme data never settled), so report it
+    // as its own fast failure. A smoke retry or a re-run of CDP setup relaunches the app, which is
+    // the only thing that recovers this.
+    if (fatalError.message !== undefined) {
+      throw new Error(
+        `Platform.Bible startup failed: the renderer reported a fatal startup error, so its dock ` +
+          `tabs will never resolve on this launch (a fresh launch is required). Error: ${fatalError.message}`,
+      );
+    }
+    throw error;
+  } finally {
+    if (onFatalPageError) page.off('pageerror', onFatalPageError);
+  }
 }
 
 /**
@@ -543,9 +634,9 @@ interface DockTabTitlesOptions {
  * reports "Target page … has been closed") is surfaced as its own error rather than mislabeled
  * "tabs still Unknown", so the real cause is not buried.
  *
- * With {@link DockTabTitlesOptions.failFastOnFatalPageError}, a doomed cold start (the renderer's
- * theme data never settling — see {@link FATAL_STARTUP_PAGE_ERROR}) aborts the wait immediately
- * instead of running out the full budget, since that failure never self-recovers.
+ * A doomed cold start (the renderer's theme data never settling — see
+ * {@link FATAL_STARTUP_PAGE_ERROR}) is aborted early by {@link withFatalStartupTripwire}, which
+ * callers wrap around the whole readiness sequence; this wait does not arm that tripwire itself.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param timeout Maximum time in milliseconds to wait before throwing. Must be positive: a
@@ -556,15 +647,15 @@ interface DockTabTitlesOptions {
  * @param options Readiness options; see {@link DockTabTitlesOptions}.
  * @returns Resolves once the dock is ready per the chosen `strict` mode.
  * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
- *   have not resolved within `timeout` milliseconds, if the renderer emitted a fatal startup error
- *   (with `failFastOnFatalPageError`), or if the renderer page was closed while waiting.
+ *   have not resolved within `timeout` milliseconds, or if the renderer page was closed while
+ *   waiting.
  */
 export async function waitForDockTabTitlesResolved(
   page: Page,
   timeout: number,
   options: DockTabTitlesOptions,
 ): Promise<void> {
-  const { strict, failFastOnFatalPageError = false } = options;
+  const { strict } = options;
   // A non-positive budget must not reach page.waitForFunction: { timeout: 0 } disables Playwright's
   // timeout entirely (an unbounded wait), so an already-exhausted budget would hang instead of
   // failing. Fail fast with a clear message instead.
@@ -575,52 +666,21 @@ export async function waitForDockTabTitlesResolved(
     );
   }
 
-  // Fatal-startup-error tripwire: reject the moment the renderer emits FATAL_STARTUP_PAGE_ERROR, so
-  // the wait below can lose the race to it and abort a doomed cold start early. The listener is
-  // registered only when opted in, and always removed in `finally` so it can't leak across tests on
-  // the shared CDP page. A sentinel value distinguishes "tripwire fired" from an ordinary reject.
-  const fatalError: { message?: string } = {};
-  let onFatalPageError: ((err: Error) => void) | undefined;
-  const fatalErrorTripped = new Promise<never>((_resolve, reject) => {
-    if (!failFastOnFatalPageError) return;
-    onFatalPageError = (err: Error) => {
-      if (!FATAL_STARTUP_PAGE_ERROR.test(err.message)) return;
-      fatalError.message = err.message;
-      reject(new Error(err.message));
-    };
-    page.on('pageerror', onFatalPageError);
-  });
-  // Without an opted-in tripwire nothing ever rejects this promise; swallow the unused rejection
-  // path so a stray rejection (there is none) could never surface as an unhandled rejection.
-  fatalErrorTripped.catch(() => {});
-
   try {
-    await Promise.race([
-      page.waitForFunction(
-        (isStrict) => {
-          const tabs = Array.from(document.querySelectorAll('.dock-tab'));
-          if (tabs.length === 0) return false;
-          const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
-          // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which
-          // is enough to know the app is up and rendering real tabs on an already-settled instance.
-          return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
-        },
-        strict,
-        { timeout, polling: 500 },
-      ),
-      fatalErrorTripped,
-    ]);
+    await page.waitForFunction(
+      (isStrict) => {
+        const tabs = Array.from(document.querySelectorAll('.dock-tab'));
+        if (tabs.length === 0) return false;
+        const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
+        // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which
+        // is enough to know the app is up and rendering real tabs on an already-settled instance.
+        return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
+      },
+      strict,
+      { timeout, polling: 500 },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // The tripwire won the race: this cold start is doomed (theme data never settled), so report it
-    // as its own fast failure rather than the generic "tabs still Unknown" timeout. A smoke retry or
-    // a re-run of CDP setup relaunches the app, which is the only thing that recovers this.
-    if (fatalError.message !== undefined) {
-      throw new Error(
-        `Platform.Bible startup failed: the renderer reported a fatal startup error, so its dock ` +
-          `tabs will never resolve on this launch (a fresh launch is required). Error: ${fatalError.message}`,
-      );
-    }
     // A closed page is a torn-down renderer, not a project-metadata stall — report it as such so it
     // isn't chased as the "Unknown tabs" startup race (which it superficially resembles because the
     // waitForFunction times out either way).
@@ -635,8 +695,6 @@ export async function waitForDockTabTitlesResolved(
       `Dock tab titles did not resolve within ${timeout}ms — the app came up but its webview tabs ` +
         `are still titled "Unknown" (project metadata never loaded). Original error: ${message}`,
     );
-  } finally {
-    if (onFatalPageError) page.off('pageerror', onFatalPageError);
   }
 }
 
@@ -690,17 +748,19 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
   // exhausted guard on that benign near-miss; a small positive floor lets each stage still run one
   // real poll. Mirrors the Math.max(1, …) clamp the CDP global setup uses for the same call.
   const budgetLeft = () => Math.max(1_000, timeout - (Date.now() - start));
-  // Gate on the upstream service hosts BEFORE the tab-title wait: the tabs can only resolve once
-  // these hosts serve their metadata, so waiting on them first means a slow cold start is spent on
-  // the real cause rather than surfacing as an opaque "tabs still Unknown" timeout downstream.
-  await waitForServiceHostsRegistered(budgetLeft());
-  // failFastOnFatalPageError mirrors `strict`: a strict wait is a fresh cold-start instance (smoke),
-  // where a fatal theme-settle error means THIS launch is doomed and a retry's fresh launch is the
-  // fix. The lenient shared-instance path (CDP features) leaves it off — there a stale error from a
-  // long-past cold start must not abort an otherwise-healthy per-test wait.
-  await waitForDockTabTitlesResolved(page, budgetLeft(), {
-    strict,
-    failFastOnFatalPageError: strict,
+  // Arm the fatal-startup tripwire around BOTH the service-host wait and the tab-title wait: the
+  // fatal theme-settle error can surface during either stage (the hosts and the theme settle
+  // concurrently), so a doomed cold start must abort the moment it fires no matter which stage is
+  // running. The tripwire mirrors `strict`: a strict wait is a fresh cold-start instance (smoke),
+  // where a fatal error means THIS launch is doomed and a retry's fresh launch is the fix. The
+  // lenient shared-instance path (CDP features) leaves it off — there a stale error from a long-past
+  // cold start must not abort an otherwise-healthy per-test wait.
+  await withFatalStartupTripwire(page, strict, async () => {
+    // Gate on the upstream service hosts BEFORE the tab-title wait: the tabs can only resolve once
+    // these hosts serve their metadata, so waiting on them first means a slow cold start is spent on
+    // the real cause rather than surfacing as an opaque "tabs still Unknown" timeout downstream.
+    await waitForServiceHostsRegistered(budgetLeft());
+    await waitForDockTabTitlesResolved(page, budgetLeft(), { strict });
   });
   await waitForPapiMethodRegistered(PLATFORM_ABOUT_COMMAND, DEFAULT_WEBSOCKET_PORT, budgetLeft());
 }

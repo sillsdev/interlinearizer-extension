@@ -5,7 +5,11 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { waitForDockTabTitlesResolved, waitForServiceHostsRegistered } from './fixtures/helpers';
+import {
+  waitForDockTabTitlesResolved,
+  waitForServiceHostsRegistered,
+  withFatalStartupTripwire,
+} from './fixtures/helpers';
 import {
   bootstrapRendererDevServer,
   isPortInUse,
@@ -250,18 +254,21 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
     if (!page) {
       throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
     }
-    // Gate on the upstream service hosts before the dock-tab wait, mirroring waitForAppReady: the
-    // freshly-launched instance's tabs stay "Unknown" until the settings/menu-data/theme hosts serve
-    // their metadata, and this is the exact path a Windows CDP cold start stalled on. Polls the same
-    // rpc.discover WebSocket the tab-title wait's siblings use, so it needs no CDP page.
-    await waitForServiceHostsRegistered(Math.max(1, deadline - Date.now()));
-    // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
-    // tab must resolve. The per-test feature gate is lenient (shared instance already settled here).
-    // failFastOnFatalPageError: this is that cold start, so a fatal theme-settle error means the
-    // launch is doomed — fail setup fast (and dump the app log) rather than wait out the full budget.
-    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), {
-      strict: true,
-      failFastOnFatalPageError: true,
+    // Arm the fatal-startup tripwire around BOTH readiness stages, mirroring waitForAppReady: this
+    // is the freshly-launched cold-start instance, so a fatal theme-settle error means the launch is
+    // doomed — fail setup fast (and dump the app log) rather than wait out the full budget. The error
+    // can surface during either stage, so the tripwire must stay armed across both.
+    await withFatalStartupTripwire(page, true, async () => {
+      // Gate on the upstream service hosts before the dock-tab wait, mirroring waitForAppReady: the
+      // freshly-launched instance's tabs stay "Unknown" until the settings/menu-data/theme hosts
+      // serve their metadata, and this is the exact path a Windows CDP cold start stalled on. Polls
+      // the same rpc.discover WebSocket the tab-title wait's siblings use, so it needs no CDP page.
+      await waitForServiceHostsRegistered(Math.max(1, deadline - Date.now()));
+      // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
+      // tab must resolve. The per-test feature gate is lenient (shared instance already settled).
+      await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), {
+        strict: true,
+      });
     });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.

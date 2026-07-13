@@ -194,7 +194,84 @@ describe('useDraftProject', () => {
     });
   });
 
+  describe('autosaveSegmentation', () => {
+    it('stores the boundary delta on the draft, marks it dirty, and persists it', async () => {
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      act(() => {
+        result.current.autosaveSegmentation(delta);
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(result.current.dirty).toBe(true);
+      expect(result.current.getDraftSnapshot()?.segmentation).toEqual(delta);
+      expect(lastSavedDraft().segmentation).toEqual(delta);
+    });
+
+    it('replaces a pending debounced write when called again before it flushes', async () => {
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      // A second call before the debounce fires clears the pending timer and schedules a new write.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(lastSavedDraft().segmentation).toEqual({
+        removedVerseStarts: [],
+        addedStarts: ['GEN 1:1:6'],
+      });
+    });
+
+    it('clears the segmentation field when passed undefined (back to default segmentation)', async () => {
+      // Seed a draft that already has custom boundaries so clearing them is observable.
+      mockGetDraftResolves(
+        makeDraft({ segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] } }),
+      );
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveSegmentation(undefined);
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(result.current.getDraftSnapshot()?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
+  });
+
   describe('loadFromProject', () => {
+    it('copies a project segmentation delta into the draft when present', async () => {
+      const { result } = await renderLoaded();
+
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:1:6'] };
+      act(() => {
+        result.current.loadFromProject({
+          analysis: analysisWithToken('tok-open'),
+          analysisLanguages: ['de'],
+          segmentation: delta,
+        });
+      });
+
+      expect(result.current.draft?.segmentation).toEqual(delta);
+    });
+
     it('copies analysis, analysis languages, and target, clears dirty, and bumps the version', async () => {
       const { result } = await renderLoaded();
       const versionBefore = result.current.draftVersion;
@@ -350,6 +427,24 @@ describe('useDraftProject', () => {
       expect(result.current.dirty).toBe(false);
       expect(result.current.draftVersion).toBe(versionBefore + 1);
       expect(lastSavedDraft().dirty).toBe(false);
+    });
+
+    it('clears any custom segment boundaries as part of the clean baseline', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          analysis: analysisWithToken('tok-wipe-all'),
+          dirty: true,
+          segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeAll();
+      });
+
+      expect(result.current.draft?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
     });
   });
 

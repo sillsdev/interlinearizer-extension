@@ -16,6 +16,24 @@ export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): bool
 }
 
 /**
+ * Parses the leading verse range out of a verbatim USJ verse label. A plain number (e.g. `"7"`)
+ * yields `{ first: 7, last: 7 }`; a hyphenated range (e.g. `"3-4"`) yields `{ first: 3, last: 4 }`.
+ * A label that begins with no digits (e.g. an empty or note-only marker) yields `undefined`. Shared
+ * by {@link firstVerseNumber} and {@link verseLabelCovers} so the label grammar lives in one place.
+ *
+ * @param verseStartNumber - The verse start's verbatim `number`.
+ * @returns The label's `first`/`last` endpoints (equal for a plain number), or `undefined` when it
+ *   names no verse.
+ */
+function parseVerseLabel(verseStartNumber: string): { first: number; last: number } | undefined {
+  const match = /^(\d+)(?:-(\d+))?/.exec(verseStartNumber);
+  if (!match) return undefined;
+  const first = Number(match[1]);
+  const last = match[2] === undefined ? first : Number(match[2]);
+  return { first, last };
+}
+
+/**
  * Parses the first verse number out of a verbatim USJ verse label. A plain number returns itself; a
  * hyphenated range (e.g. `"3-4"`) returns its first endpoint. A label that begins with no digits
  * (e.g. an empty or note-only marker) returns `undefined`.
@@ -24,8 +42,7 @@ export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): bool
  * @returns The label's leading verse number, or `undefined` when it names none.
  */
 export function firstVerseNumber(verseStartNumber: string): number | undefined {
-  const match = /^(\d+)(?:-(\d+))?/.exec(verseStartNumber);
-  return match ? Number(match[1]) : undefined;
+  return parseVerseLabel(verseStartNumber)?.first;
 }
 
 /**
@@ -39,11 +56,9 @@ export function firstVerseNumber(verseStartNumber: string): number | undefined {
  * @returns `true` when the label names `verseNum`.
  */
 function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
-  const match = /^(\d+)(?:-(\d+))?/.exec(verseStartNumber);
-  if (!match) return false;
-  const first = Number(match[1]);
-  const last = match[2] === undefined ? first : Number(match[2]);
-  return verseNum >= first && verseNum <= last;
+  const range = parseVerseLabel(verseStartNumber);
+  if (!range) return false;
+  return verseNum >= range.first && verseNum <= range.last;
 }
 
 /**

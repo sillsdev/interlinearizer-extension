@@ -329,12 +329,11 @@ export default function SegmentListView({
     // often than paints during an inertial/trackpad fling, and each read scans every mounted segment's
     // bounding rect, so an uncoalesced handler would run that scan several times per frame for no
     // visible benefit. A single rAF gate collapses a burst of scroll events into one measure.
-    let rafScheduled = false;
+    let rafId: number | undefined;
     const onScroll = () => {
-      if (rafScheduled) return;
-      rafScheduled = true;
-      requestAnimationFrame(() => {
-        rafScheduled = false;
+      if (rafId !== undefined) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = undefined;
         readTopChapter();
       });
     };
@@ -346,6 +345,9 @@ export default function SegmentListView({
     const resizeObserver = new ResizeObserver(readTopChapter);
     resizeObserver.observe(container);
     return () => {
+      // Cancel a scroll-scheduled frame still pending at cleanup so it can't run readTopChapter after
+      // the container is detached or the effect re-runs.
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
       container.removeEventListener('scroll', onScroll);
       resizeObserver.disconnect();
     };

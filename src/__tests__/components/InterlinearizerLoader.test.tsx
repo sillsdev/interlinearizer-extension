@@ -151,7 +151,6 @@ type CapturedInterlinearizerProps = {
   book: Book;
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
-  setScrRef: (newScrRef: SerializedVerseRef) => void;
   analysisLanguage: string;
   initialAnalysis?: TextAnalysis;
   onSaveAnalysis?: (analysis: TextAnalysis) => void;

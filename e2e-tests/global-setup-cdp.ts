@@ -5,7 +5,7 @@ import { createRequire } from 'module';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { waitForDockTabTitlesResolved } from './fixtures/helpers';
+import { waitForDockTabTitlesResolved, waitForServiceHostsRegistered } from './fixtures/helpers';
 import {
   bootstrapRendererDevServer,
   isPortInUse,
@@ -83,6 +83,14 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       `CDP port ${CDP_PORT} already in use — reusing the already-running Platform.Bible instance ` +
         '(not launching or tearing down an app).',
     );
+    // Clear any stale ownership markers left on disk by a PRIOR launched run whose teardown never
+    // completed (a crash or a `kill -9` of the test runner). This reuse path launches nothing and
+    // records nothing, but globalTeardownCdp infers "this run launched an app" purely from these
+    // files' existence — so a leftover .cdp-app.pid would make teardown SIGKILL a PID it never
+    // started (which the OS may have recycled onto an unrelated process) and rm a user-data dir it
+    // doesn't own. Removing them here keeps teardown a true no-op, honoring "leaves the developer's
+    // instance running." e2e-tests/ is never auto-cleared, so nothing else sweeps them.
+    clearStaleOwnershipMarkers();
     return;
   }
 
@@ -242,13 +250,43 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
     if (!page) {
       throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
     }
+    // Gate on the upstream service hosts before the dock-tab wait, mirroring waitForAppReady: the
+    // freshly-launched instance's tabs stay "Unknown" until the settings/menu-data/theme hosts serve
+    // their metadata, and this is the exact path a Windows CDP cold start stalled on. Polls the same
+    // rpc.discover WebSocket the tab-title wait's siblings use, so it needs no CDP page.
+    await waitForServiceHostsRegistered(Math.max(1, deadline - Date.now()));
     // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
     // tab must resolve. The per-test feature gate is lenient (shared instance already settled here).
-    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), { strict: true });
+    // failFastOnFatalPageError: this is that cold start, so a fatal theme-settle error means the
+    // launch is doomed — fail setup fast (and dump the app log) rather than wait out the full budget.
+    await waitForDockTabTitlesResolved(page, Math.max(1, deadline - Date.now()), {
+      strict: true,
+      failFastOnFatalPageError: true,
+    });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.
     await browser.close();
   }
+}
+
+/**
+ * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present.
+ * Called from the warm-instance reuse path, where this run launches no app and so owns none of the
+ * resources those markers describe. {@link globalTeardownCdp} treats a present marker as "this run
+ * launched an app it must kill/clean," so a stale marker from a prior launched run whose teardown
+ * never completed would make teardown act on foreign resources — clearing them here prevents that.
+ * Best-effort: each removal is guarded so a missing or unreadable marker never fails setup.
+ *
+ * @returns Nothing.
+ */
+function clearStaleOwnershipMarkers(): void {
+  [CDP_PID_FILE, CDP_USER_DATA_FILE].forEach((markerFile) => {
+    try {
+      fs.rmSync(markerFile, { force: true });
+    } catch (error) {
+      console.warn(`Could not remove stale CDP marker ${markerFile}: ${error}`);
+    }
+  });
 }
 
 /**

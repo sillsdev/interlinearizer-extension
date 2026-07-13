@@ -44,6 +44,48 @@ const SMOKE_APP_LOG_FILE = path.join(__dirname, '.smoke-app-startup.log');
 const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
 
 /**
+ * `rpc.discover` method names that flip present exactly when paranext-core's settings, menu-data,
+ * and theme service hosts finish registering their data-provider network objects — the upstream
+ * signal that actually gates a resolved dock (see {@link waitForServiceHostsRegistered}).
+ *
+ * Each service host exposes its provider as a data-provider network object, whose JSON-RPC handlers
+ * are enumerated by `rpc.discover` the instant it registers. Data providers append a `-data` suffix
+ * to the provider name and network-object request types are prefixed `object:`, so the existence
+ * handler for the settings provider `platform.settingsServiceDataProvider` serializes to
+ * `object:platform.settingsServiceDataProvider-data`. paranext-core's own smoke suite waits on the
+ * settings provider's `.set` method for the same "settings host is up" purpose, so the shape is
+ * load-bearing there too.
+ *
+ * These are the bare EXISTENCE handlers (`object:{id}`, no method suffix), not a named method like
+ * `.set`/`.getCurrentTheme`: `networkObjectService.set` registers the existence handler
+ * unconditionally as the first step of registering any network object — before fanning out the
+ * per-method handlers — so it is the canonical "this object is on the network" signal and can't be
+ * invalidated by a provider method being renamed.
+ */
+const SERVICE_HOST_OBJECT_METHODS = [
+  'object:platform.settingsServiceDataProvider-data',
+  'object:platform.menuDataServiceDataProvider-data',
+  'object:platform.themeServiceDataProvider-data',
+];
+
+/**
+ * Renderer page error that means this cold start is doomed, not merely slow. paranext-core's theme
+ * service host arms a 30 s `AsyncVariable` for `theme.service-host.allThemeFamiliesById`; if the
+ * extension host never pushes the initial theme data within that window it rejects with this
+ * message, and the dock is left with its webview tabs stuck at "Unknown" for the remainder of the
+ * run (the exact 120 s stall this suite kept eating on Windows/Linux cold starts).
+ *
+ * Crucially this fires AFTER the theme provider's network object has already registered — the host
+ * registers its data provider, then separately awaits the data to settle — so the positive
+ * {@link waitForServiceHostsRegistered} gate can pass while the renderer is still headed for this
+ * timeout. That is why the tab-title wait additionally fast-fails on this specific error rather
+ * than waiting out its full budget: once it fires, no amount of further waiting recovers the
+ * launch, and a fresh launch (a smoke retry, or a re-run of CDP setup) is the only path forward.
+ */
+const FATAL_STARTUP_PAGE_ERROR =
+  /Timeout reached when waiting for .*allThemeFamiliesById to settle/i;
+
+/**
  * Keep in sync with GET_METHODS from @shared/data/rpc.model. Required to be 'rpc.discover' by the
  * OpenRPC specification.
  */
@@ -444,6 +486,39 @@ export async function waitForPapiMethodRegistered(
   throw new Error(`PAPI method "${methodName}" not listed in rpc.discover within ${timeoutMs}ms`);
 }
 
+/**
+ * Wait for paranext-core's settings, menu-data, and theme service hosts to finish registering, by
+ * polling `rpc.discover` for each host's data-provider existence handler
+ * ({@link SERVICE_HOST_OBJECT_METHODS}).
+ *
+ * This is the UPSTREAM readiness signal for a resolved dock. On a cold start the renderer paints
+ * its webview tabs titled "Unknown" (and its panels blank) until the metadata these hosts serve
+ * arrives; the renderer even throws transient `Settings service undefined` / `Menu data service
+ * undefined` page errors while it retries against not-yet-registered providers. Gating here —
+ * before {@link waitForDockTabTitlesResolved} — absorbs that cold-start race into the readiness wait
+ * instead of letting it surface downstream as an opaque tab-title timeout: waiting on the hosts
+ * directly means the tab-title wait only ever runs once the data behind those titles actually
+ * exists. On a healthy startup the hosts are already up, so this resolves immediately and costs
+ * nothing; the poll uses the same `rpc.discover` mechanism as every other readiness check here.
+ *
+ * The three waits run concurrently and share the one `timeout` budget (the hosts register in
+ * parallel — settings and menu-data in the extension host, theme in the renderer — so serializing
+ * would triple the worst-case wait for no benefit).
+ *
+ * @param timeout Maximum time in milliseconds to wait for all three hosts. Floored to a small
+ *   positive value so an already-thin remaining budget still gets one real poll.
+ * @returns Resolves once all three service-host providers are listed in `rpc.discover`.
+ * @throws {Error} If any of the three hosts is not registered within `timeout` milliseconds.
+ */
+export async function waitForServiceHostsRegistered(timeout: number): Promise<void> {
+  const budget = Math.max(1_000, timeout);
+  await Promise.all(
+    SERVICE_HOST_OBJECT_METHODS.map((method) =>
+      waitForPapiMethodRegistered(method, DEFAULT_WEBSOCKET_PORT, budget),
+    ),
+  );
+}
+
 /** Options for {@link waitForDockTabTitlesResolved}. */
 interface DockTabTitlesOptions {
   /**
@@ -460,6 +535,16 @@ interface DockTabTitlesOptions {
    *   per-test retry can recover it — the Windows CDP-tier cascade this whole run showed.
    */
   strict: boolean;
+  /**
+   * When set, abort the wait the moment the renderer emits a {@link FATAL_STARTUP_PAGE_ERROR} —
+   * turning a doomed cold start (theme data never settled, tabs stuck "Unknown" for the full
+   * timeout) into a fast, correctly-labeled failure instead of a 120 s dead wait. Only meaningful
+   * on a cold start (a fresh smoke launch or CDP global setup, where the error signals _this_
+   * launch failed and a fresh one is the only remedy), so it is opt-in; the warm shared-instance
+   * path leaves it off, where a stale error from a long-past cold start must not abort an
+   * otherwise-healthy wait.
+   */
+  failFastOnFatalPageError?: boolean;
 }
 
 /**
@@ -476,34 +561,84 @@ interface DockTabTitlesOptions {
  * Windows CDP run, where `waitForFunction` reports "Target page … has been closed") is surfaced as
  * its own error rather than mislabeled "tabs still Unknown", so the real cause is not buried.
  *
+ * With {@link DockTabTitlesOptions.failFastOnFatalPageError}, a doomed cold start (the renderer's
+ * theme data never settling — see {@link FATAL_STARTUP_PAGE_ERROR}) aborts the wait immediately
+ * instead of running out the full budget, since that failure never self-recovers.
+ *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param timeout Maximum time in milliseconds to wait before throwing.
+ * @param timeout Maximum time in milliseconds to wait before throwing. Must be positive: a
+ *   non-positive value means the caller's readiness budget is already exhausted, and is failed fast
+ *   rather than forwarded — Playwright treats `waitForFunction({ timeout: 0 })` as "no timeout" (an
+ *   unbounded wait), so a `0` here would silently turn an exhausted budget into a hang on the exact
+ *   "Unknown"-tab stall this helper exists to bound.
  * @param options Readiness options; see {@link DockTabTitlesOptions}.
  * @returns Resolves once the dock is ready per the chosen `strict` mode.
- * @throws If tab titles have not resolved within `timeout` milliseconds, or if the renderer page
- *   was closed while waiting.
+ * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
+ *   have not resolved within `timeout` milliseconds, if the renderer emitted a fatal startup error
+ *   (with `failFastOnFatalPageError`), or if the renderer page was closed while waiting.
  */
 export async function waitForDockTabTitlesResolved(
   page: Page,
   timeout: number,
   options: DockTabTitlesOptions,
 ): Promise<void> {
-  const { strict } = options;
-  try {
-    await page.waitForFunction(
-      (isStrict) => {
-        const tabs = Array.from(document.querySelectorAll('.dock-tab'));
-        if (tabs.length === 0) return false;
-        const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
-        // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which is
-        // enough to know the app is up and rendering real tabs on an already-settled shared instance.
-        return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
-      },
-      strict,
-      { timeout, polling: 500 },
+  const { strict, failFastOnFatalPageError = false } = options;
+  // A non-positive budget must not reach page.waitForFunction: { timeout: 0 } disables Playwright's
+  // timeout entirely (an unbounded wait), so an already-exhausted budget would hang instead of
+  // failing. Fail fast with a clear message instead.
+  if (timeout <= 0) {
+    throw new Error(
+      `Dock tab titles could not be waited for: the readiness budget was exhausted before this ` +
+        `wait began (timeout=${timeout}ms). An earlier startup stage consumed the whole timeout.`,
     );
+  }
+
+  // Fatal-startup-error tripwire: reject the moment the renderer emits FATAL_STARTUP_PAGE_ERROR, so
+  // the wait below can lose the race to it and abort a doomed cold start early. The listener is
+  // registered only when opted in, and always removed in `finally` so it can't leak across tests on
+  // the shared CDP page. A sentinel value distinguishes "tripwire fired" from an ordinary reject.
+  const fatalError: { message?: string } = {};
+  let onFatalPageError: ((err: Error) => void) | undefined;
+  const fatalErrorTripped = new Promise<never>((_resolve, reject) => {
+    if (!failFastOnFatalPageError) return;
+    onFatalPageError = (err: Error) => {
+      if (!FATAL_STARTUP_PAGE_ERROR.test(err.message)) return;
+      fatalError.message = err.message;
+      reject(new Error(err.message));
+    };
+    page.on('pageerror', onFatalPageError);
+  });
+  // Without an opted-in tripwire nothing ever rejects this promise; swallow the unused rejection
+  // path so a stray rejection (there is none) could never surface as an unhandled rejection.
+  fatalErrorTripped.catch(() => {});
+
+  try {
+    await Promise.race([
+      page.waitForFunction(
+        (isStrict) => {
+          const tabs = Array.from(document.querySelectorAll('.dock-tab'));
+          if (tabs.length === 0) return false;
+          const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
+          // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which
+          // is enough to know the app is up and rendering real tabs on an already-settled instance.
+          return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
+        },
+        strict,
+        { timeout, polling: 500 },
+      ),
+      fatalErrorTripped,
+    ]);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    // The tripwire won the race: this cold start is doomed (theme data never settled), so report it
+    // as its own fast failure rather than the generic "tabs still Unknown" timeout. A smoke retry or
+    // a re-run of CDP setup relaunches the app, which is the only thing that recovers this.
+    if (fatalError.message !== undefined) {
+      throw new Error(
+        `Platform.Bible startup failed: the renderer reported a fatal startup error, so its dock ` +
+          `tabs will never resolve on this launch (a fresh launch is required). Error: ${fatalError.message}`,
+      );
+    }
     // A closed page is a torn-down renderer, not a project-metadata stall — report it as such so it
     // isn't chased as the "Unknown tabs" startup race (which it superficially resembles because the
     // waitForFunction times out either way).
@@ -518,6 +653,8 @@ export async function waitForDockTabTitlesResolved(
       `Dock tab titles did not resolve within ${timeout}ms — the app came up but its webview tabs ` +
         `are still titled "Unknown" (project metadata never loaded). Original error: ${message}`,
     );
+  } finally {
+    if (onFatalPageError) page.off('pageerror', onFatalPageError);
   }
 }
 
@@ -540,15 +677,23 @@ interface AppReadyOptions {
 }
 
 /**
- * Wait for the Platform.Bible UI to be fully ready: dock layout appears with resolved tab titles
- * and `platform.about` command is registered (dialog service has finished initializing).
+ * Wait for the Platform.Bible UI to be fully ready: dock layout attaches, the settings/menu-data/
+ * theme service hosts register, the dock tab titles resolve, and `platform.about` is registered
+ * (dialog service has finished initializing).
+ *
+ * The service-host wait is what makes the tab-title wait meaningful rather than a downstream guess:
+ * the tabs stay titled "Unknown" precisely until those hosts serve their metadata, so waiting on
+ * the hosts first (see {@link waitForServiceHostsRegistered}) means the tab-title poll only runs
+ * once the data behind the titles exists — turning the cold-start "Unknown for the full timeout"
+ * stall from an opaque per-test tab-title timeout into an early, correctly-attributed wait on the
+ * actual cause. On a healthy startup the hosts are already up, so this stage resolves immediately.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param options Readiness options; see {@link AppReadyOptions}.
- * @returns Resolves when the dock layout is visible with resolved tab titles and `platform.about`
- *   is registered.
- * @throws If the dock layout, resolved tab titles, or the `platform.about` command do not appear
- *   within `timeout` milliseconds.
+ * @returns Resolves when the dock layout is visible with resolved tab titles, the service hosts are
+ *   registered, and `platform.about` is registered.
+ * @throws If the dock layout, service hosts, resolved tab titles, or the `platform.about` command
+ *   do not appear within `timeout` milliseconds.
  */
 export async function waitForAppReady(page: Page, options: AppReadyOptions = {}): Promise<void> {
   const { timeout = 120_000, strict = true } = options;
@@ -557,10 +702,25 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
     state: 'attached',
     timeout,
   });
-  let remaining = Math.max(0, timeout - (Date.now() - start));
-  await waitForDockTabTitlesResolved(page, remaining, { strict });
-  remaining = Math.max(0, timeout - (Date.now() - start));
-  await waitForPapiMethodRegistered(PLATFORM_ABOUT_COMMAND, DEFAULT_WEBSOCKET_PORT, remaining);
+  // Floor each leftover budget to a small positive value, never 0: a preceding stage can resolve at
+  // the very last millisecond (or wall-clock drift can push elapsed past `timeout`), leaving a
+  // non-positive remainder. Passing 0 to waitForDockTabTitlesResolved would trip its budget-
+  // exhausted guard on that benign near-miss; a small positive floor lets each stage still run one
+  // real poll. Mirrors the Math.max(1, …) clamp the CDP global setup uses for the same call.
+  const budgetLeft = () => Math.max(1_000, timeout - (Date.now() - start));
+  // Gate on the upstream service hosts BEFORE the tab-title wait: the tabs can only resolve once
+  // these hosts serve their metadata, so waiting on them first means a slow cold start is spent on
+  // the real cause rather than surfacing as an opaque "tabs still Unknown" timeout downstream.
+  await waitForServiceHostsRegistered(budgetLeft());
+  // failFastOnFatalPageError mirrors `strict`: a strict wait is a fresh cold-start instance (smoke),
+  // where a fatal theme-settle error means THIS launch is doomed and a retry's fresh launch is the
+  // fix. The lenient shared-instance path (CDP features) leaves it off — there a stale error from a
+  // long-past cold start must not abort an otherwise-healthy per-test wait.
+  await waitForDockTabTitlesResolved(page, budgetLeft(), {
+    strict,
+    failFastOnFatalPageError: strict,
+  });
+  await waitForPapiMethodRegistered(PLATFORM_ABOUT_COMMAND, DEFAULT_WEBSOCKET_PORT, budgetLeft());
 }
 
 /**

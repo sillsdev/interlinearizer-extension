@@ -18,7 +18,12 @@ import {
 } from '../../components/SegmentationStore';
 import type { SegmentDisplayMode } from '../../components/SegmentView';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
-import { defaultScrRef, GEN_1_1_BOOK, type ScrollGroupTuple } from '../test-helpers';
+import {
+  defaultScrRef,
+  GEN_1_1_BOOK,
+  makePhraseLink,
+  type ScrollGroupTuple,
+} from '../test-helpers';
 import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({

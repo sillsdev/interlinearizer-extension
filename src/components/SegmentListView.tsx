@@ -11,6 +11,7 @@ import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
 import useSegmentWindow from '../hooks/useSegmentWindow';
 import { buildVerseStartLabels } from '../utils/verse-superscripts';
+import { buildSegmentLabels } from '../utils/segment-labels';
 import { segmentContainsVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
@@ -210,6 +211,13 @@ export default function SegmentListView({
     () => buildVerseStartLabels(book.segments),
     [book.segments],
   );
+
+  /**
+   * Verse/range gutter label for every segment (`5`, `5a`, `5b–7`, `29–2:1`), keyed by segment id.
+   * Computed over the whole `book.segments` list (not just the mounted window) so the split-portion
+   * lettering stays stable regardless of which slice is mounted.
+   */
+  const gutterLabelsBySegmentId = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
 
   // English book name for the sticky chapter header, e.g. "John" (USJ verse markers carry no book
   // name; a platform-localized name would need PAPI wiring this view does not yet have).
@@ -422,6 +430,7 @@ export default function SegmentListView({
                     setPhraseMode={setPhraseMode}
                     segment={seg}
                     verseStartLabels={verseStartLabels}
+                    gutterLabel={gutterLabelsBySegmentId.get(seg.id)}
                     tokenSegmentMap={tokenSegmentMap}
                     tokenDocOrder={tokenDocOrder}
                     wordTokenByRef={wordTokenByRef}

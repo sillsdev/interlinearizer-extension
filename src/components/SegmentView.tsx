@@ -122,6 +122,30 @@ function buildBaselinePieces(
   return pieces;
 }
 
+/**
+ * The segment's left gutter cell: a fixed-width column showing the segment's verse/range label
+ * (e.g. `5`, `5a`, `5b–7`), top-aligned so the number sits level with the first content row. Purely
+ * presentational — clicks fall through to the card's own background-select — so it carries no
+ * interactive role and is not a tab stop; the inline verse superscript already announces verse
+ * identity in reading order, so the gutter is `aria-hidden` to avoid a duplicate announcement.
+ *
+ * @param props - Component props.
+ * @param props.label - The verse/range label to render, or `undefined` to render an empty gutter
+ *   (reserving the column width so the content stays aligned across cards).
+ * @returns The fixed-width gutter cell.
+ */
+function SegmentGutter({ label }: { label: string | undefined }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="tw:w-8 tw:shrink-0 tw:select-none tw:pt-0.5 tw:text-right tw:text-xs tw:font-semibold tw:leading-none tw:text-muted-foreground"
+      data-testid="segment-gutter-label"
+    >
+      {label}
+    </span>
+  );
+}
+
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
@@ -149,6 +173,13 @@ type SegmentViewProps = Readonly<{
    * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
    */
   verseStartLabels?: readonly string[];
+  /**
+   * The segment's verse/range label shown in its left gutter column (e.g. `5`, `5a`, `5b–7`,
+   * `29–2:1`), computed by the list from the whole book's segmentation. Coexists with the inline
+   * verse superscripts. Omitted when the list has no label for this segment (the gutter renders
+   * empty).
+   */
+  gutterLabel?: string;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -191,6 +222,7 @@ type SegmentViewProps = Readonly<{
  * @param props.verseStartLabels - Per-verse-start inline superscript labels (parallel to
  *   `segment.verseStarts`), chapter-qualified by the list where a verse start opens a new chapter;
  *   falls back to the verbatim verse number when absent.
+ * @param props.gutterLabel - The segment's verse/range label shown in its left gutter column.
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
@@ -214,6 +246,7 @@ export function SegmentView({
   onSelect,
   segment,
   verseStartLabels,
+  gutterLabel,
   phraseMode,
   setPhraseMode,
   hoveredPhraseId,
@@ -261,8 +294,8 @@ export function SegmentView({
   // Both states carry a real border so activating a segment only recolors it — never adds or removes
   // one, which would change the segment's height by 2px and shift every segment below it (a visible
   // jump in the list whenever the active verse moves on a click). The inactive border is a faint
-  // (`border-border/40`) always-visible outline so each segment reads as its own card now that the
-  // between-row rail is inert until Alt is held; activating brightens it to the full `border-border`.
+  // (`border-border/40`) always-visible outline so each segment reads as its own card; activating
+  // brightens it to the full `border-border`.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
     : 'tw:w-full tw:rounded tw:border tw:border-border/40 tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
@@ -622,58 +655,61 @@ export function SegmentView({
       // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div
         aria-current={isActive ? 'true' : undefined}
-        className={`${sharedClassName} tw:text-left`}
+        className={`${sharedClassName} tw:flex tw:flex-row tw:gap-2 tw:text-left`}
         data-segment-id={segment.id}
         data-testid="segment-container"
         onClick={handleBaselineClick}
       >
-        <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
-          {baselinePieces.map((piece) => {
-            if (piece.kind === 'superscript') {
-              return <VerseSuperscript key={piece.key} label={piece.label} />;
-            }
-            // A splittable gap becomes an Alt-clickable marker only while Alt is held; otherwise it
-            // renders as its plain text so the baseline reads byte-for-byte identically. Unlike the
-            // token-chip / continuous strip (which have room for a `Split` glyph in their between-box
-            // slots), an icon dropped into a monospace inter-word space just collides with the
-            // letters. So on Alt-hold every eligible gap gets a tint plus a slim vertical insertion
-            // caret shown dimly at rest — a discoverable map of where a split can land — and the
-            // hovered gap brightens both to full strength so the pointed-at split point stands out.
-            // The verbatim gap text stays as the span's content (same width — no reflow when Alt is
-            // pressed); the caret is absolutely positioned so it adds no width and never pushes the
-            // surrounding text around.
-            if (piece.kind === 'gap' && altHeld) {
-              const { splitRef } = piece;
-              return (
-                // Keyboard split is out of scope, so this is a pointer-only affordance (matching the
-                // segment container's own click handler); the a11y lint rules are disabled here.
-                // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-                <span
-                  key={piece.key}
-                  className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
-                  data-testid="baseline-split-gap"
-                  title={localizedStrings['%interlinearizer_boundaryControl_split%']}
-                  onClick={(event) => handleBaselineGapClick(event, splitRef)}
-                >
-                  {piece.text}
+        <SegmentGutter label={gutterLabel} />
+        <div className="tw:min-w-0 tw:flex-1">
+          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
+            {baselinePieces.map((piece) => {
+              if (piece.kind === 'superscript') {
+                return <VerseSuperscript key={piece.key} label={piece.label} />;
+              }
+              // A splittable gap becomes an Alt-clickable marker only while Alt is held; otherwise it
+              // renders as its plain text so the baseline reads byte-for-byte identically. Unlike the
+              // token-chip / continuous strip (which have room for a `Split` glyph in their between-box
+              // slots), an icon dropped into a monospace inter-word space just collides with the
+              // letters. So on Alt-hold every eligible gap gets a tint plus a slim vertical insertion
+              // caret shown dimly at rest — a discoverable map of where a split can land — and the
+              // hovered gap brightens both to full strength so the pointed-at split point stands out.
+              // The verbatim gap text stays as the span's content (same width — no reflow when Alt is
+              // pressed); the caret is absolutely positioned so it adds no width and never pushes the
+              // surrounding text around.
+              if (piece.kind === 'gap' && altHeld) {
+                const { splitRef } = piece;
+                return (
+                  // Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+                  // segment container's own click handler); the a11y lint rules are disabled here.
+                  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
                   <span
-                    aria-hidden="true"
-                    className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
-                    data-testid="baseline-split-caret"
-                  />
-                </span>
-              );
-            }
-            return <Fragment key={piece.key}>{piece.text}</Fragment>;
-          })}
-        </span>
-        {showFreeTranslation && (
-          <SegmentFreeTranslationInput
-            segmentId={segment.id}
-            surfaceText={segment.baselineText}
-            onFocus={handleFreeTranslationFocus}
-          />
-        )}
+                    key={piece.key}
+                    className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
+                    data-testid="baseline-split-gap"
+                    title={localizedStrings['%interlinearizer_boundaryControl_split%']}
+                    onClick={(event) => handleBaselineGapClick(event, splitRef)}
+                  >
+                    {piece.text}
+                    <span
+                      aria-hidden="true"
+                      className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+                      data-testid="baseline-split-caret"
+                    />
+                  </span>
+                );
+              }
+              return <Fragment key={piece.key}>{piece.text}</Fragment>;
+            })}
+          </span>
+          {showFreeTranslation && (
+            <SegmentFreeTranslationInput
+              segmentId={segment.id}
+              surfaceText={segment.baselineText}
+              onFocus={handleFreeTranslationFocus}
+            />
+          )}
+        </div>
       </div>
     );
   }
@@ -687,58 +723,61 @@ export function SegmentView({
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div
       aria-current={isActive ? 'true' : undefined}
-      className={sharedClassName}
+      className={`${sharedClassName} tw:flex tw:flex-row tw:gap-2`}
       data-segment-id={segment.id}
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      <div className="tw:arc-container" ref={arcContainerRef}>
-        <MemoizedArcOverlay
-          arcPaths={arcPaths}
-          phraseMode={phraseMode}
-          hoveredPhraseId={hoveredPhraseId}
-          focusedPhraseId={focus.focusedPhraseId}
-          candidatePhraseIds={candidatePhraseIds}
-          phraseLinkById={phraseLinkById}
-          tokenDocOrder={tokenDocOrder}
-          onArcSplit={handleArcSplit}
-          onSplitHoverChange={handleSplitHoverChange}
-          onHoverPhrase={onHoverPhrase}
-          simplifyPhrases={simplifyPhrases}
-        />
-        <PhraseStripProvider value={stripContext}>
-          <span
-            className="tw:token-row tw:pointer-events-none"
-            style={{
-              paddingTop: `${tokenRowTopPadding}px`,
-              paddingLeft: `${stripLeftPadding}px`,
-              paddingRight: `${stripRightPadding}px`,
-              rowGap: `${stripRowGap}px`,
-            }}
-            onMouseLeave={clearAllHoverState}
-          >
-            <PhraseStrip
-              items={stripItems}
-              phraseMode={phraseMode}
-              focus={focus}
-              hoveredPhraseId={hoveredPhraseId}
-              hoveredGroupKey={hoveredGroupKey}
-              candidateTokenRefs={candidateTokenRefs}
-              splitFreeTokenRefs={splitFreeTokenRefs}
-              onHoverPhrase={onHoverPhrase}
-              setHoveredGroupKey={setHoveredGroupKey}
-              onFocusPhrase={handleTokenClick}
-            />
-          </span>
-        </PhraseStripProvider>
+      <SegmentGutter label={gutterLabel} />
+      <div className="tw:min-w-0 tw:flex-1">
+        <div className="tw:arc-container" ref={arcContainerRef}>
+          <MemoizedArcOverlay
+            arcPaths={arcPaths}
+            phraseMode={phraseMode}
+            hoveredPhraseId={hoveredPhraseId}
+            focusedPhraseId={focus.focusedPhraseId}
+            candidatePhraseIds={candidatePhraseIds}
+            phraseLinkById={phraseLinkById}
+            tokenDocOrder={tokenDocOrder}
+            onArcSplit={handleArcSplit}
+            onSplitHoverChange={handleSplitHoverChange}
+            onHoverPhrase={onHoverPhrase}
+            simplifyPhrases={simplifyPhrases}
+          />
+          <PhraseStripProvider value={stripContext}>
+            <span
+              className="tw:token-row tw:pointer-events-none"
+              style={{
+                paddingTop: `${tokenRowTopPadding}px`,
+                paddingLeft: `${stripLeftPadding}px`,
+                paddingRight: `${stripRightPadding}px`,
+                rowGap: `${stripRowGap}px`,
+              }}
+              onMouseLeave={clearAllHoverState}
+            >
+              <PhraseStrip
+                items={stripItems}
+                phraseMode={phraseMode}
+                focus={focus}
+                hoveredPhraseId={hoveredPhraseId}
+                hoveredGroupKey={hoveredGroupKey}
+                candidateTokenRefs={candidateTokenRefs}
+                splitFreeTokenRefs={splitFreeTokenRefs}
+                onHoverPhrase={onHoverPhrase}
+                setHoveredGroupKey={setHoveredGroupKey}
+                onFocusPhrase={handleTokenClick}
+              />
+            </span>
+          </PhraseStripProvider>
+        </div>
+        {showFreeTranslation && (
+          <SegmentFreeTranslationInput
+            segmentId={segment.id}
+            surfaceText={segment.baselineText}
+            onFocus={handleFreeTranslationFocus}
+          />
+        )}
       </div>
-      {showFreeTranslation && (
-        <SegmentFreeTranslationInput
-          segmentId={segment.id}
-          surfaceText={segment.baselineText}
-          onFocus={handleFreeTranslationFocus}
-        />
-      )}
     </div>
   );
 }

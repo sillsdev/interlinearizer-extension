@@ -32,7 +32,7 @@ export const CDP_FEATURE_READY_TIMEOUT = 30_000;
  * directory Playwright does not clear, and one the CI artifact upload includes) so a cold-start
  * stall's main-process log survives a failed run. Overwritten on each launch.
  */
-const SMOKE_APP_LOG_FILE = path.join(__dirname, '.smoke-app-startup.log');
+const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
 
 /**
  * Same serialized request type as `registerCommand('platform.about', ...)` in command.service

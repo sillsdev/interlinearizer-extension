@@ -13,6 +13,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_showSuggestions%',
+  '%interlinearizer_viewOption_boundaryEditMode%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -84,6 +85,10 @@ type ViewOptionsDropdownProps = Readonly<{
   showSuggestions: boolean;
   /** Called when the show-suggestions toggle changes. */
   onShowSuggestionsChange: (checked: boolean) => void;
+  /** Current value of the edit-segment-boundaries toggle. */
+  boundaryEditMode: boolean;
+  /** Called when the edit-segment-boundaries toggle changes. */
+  onBoundaryEditModeChange: (checked: boolean) => void;
 }>;
 
 /**
@@ -105,6 +110,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
  * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
  * @param props.onShowSuggestionsChange - Show-suggestions change callback.
+ * @param props.boundaryEditMode - Current edit-segment-boundaries value.
+ * @param props.onBoundaryEditModeChange - Edit-segment-boundaries change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
@@ -122,6 +129,8 @@ export default function ViewOptionsDropdown({
   onShowFreeTranslationChange,
   showSuggestions,
   onShowSuggestionsChange,
+  boundaryEditMode,
+  onBoundaryEditModeChange,
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
@@ -241,6 +250,11 @@ export default function ViewOptionsDropdown({
                 checked={showSuggestions}
                 label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
                 onCheckedChange={onShowSuggestionsChange}
+              />
+              <ViewToggle
+                checked={boundaryEditMode}
+                label={localizedStrings['%interlinearizer_viewOption_boundaryEditMode%']}
+                onCheckedChange={onBoundaryEditModeChange}
               />
             </div>
           </>,

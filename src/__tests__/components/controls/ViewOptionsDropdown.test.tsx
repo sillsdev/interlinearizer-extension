@@ -33,6 +33,8 @@ const DEFAULT_PROPS = {
   onShowFreeTranslationChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
+  boundaryEditMode: false,
+  onBoundaryEditModeChange: jest.fn(),
 };
 
 describe('ViewOptionsDropdown', () => {

@@ -21,19 +21,16 @@ export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 /**
  * Fail-fast readiness budget (ms) for a CDP feature test's per-test
  * `waitForAppAndInterlinearizerReady`. The shared instance is proven-settled by global setup before
- * any feature test runs, so a per-test readiness wait that runs long means the instance DIED
- * mid-run — which no per-test retry can revive. Capping at 30 s (vs. the 120 s cold-start default)
- * makes a dead shared instance fail in 30 s × the retry count instead of 120 s × it, the difference
- * between a ~90 s and a 6-minute broken Windows run.
+ * any feature test runs, so a per-test readiness wait that runs long means the instance died
+ * mid-run — which no per-test retry can revive. A short cap (vs. the 120 s cold-start default)
+ * fails a dead shared instance fast instead of burning the full cold-start budget on every retry.
  */
 export const CDP_FEATURE_READY_TIMEOUT = 30_000;
 
 /**
- * File the smoke launcher streams the app's main-process stdout/stderr to. Named to mirror the CDP
- * tier's `.cdp-app-startup.log` and kept in `e2e-tests/` (a directory Playwright does not clear,
- * and one already covered by the CI artifact upload's `include-hidden-files: true`), so a
- * cold-start stall's main-process log survives a failed run. Overwritten on each launch — one
- * worker's app at a time — so it always holds the most recent launch's output.
+ * File the smoke launcher streams the app's main-process stdout/stderr to. Kept in `e2e-tests/` (a
+ * directory Playwright does not clear, and one the CI artifact upload includes) so a cold-start
+ * stall's main-process log survives a failed run. Overwritten on each launch.
  */
 const SMOKE_APP_LOG_FILE = path.join(__dirname, '.smoke-app-startup.log');
 
@@ -44,23 +41,15 @@ const SMOKE_APP_LOG_FILE = path.join(__dirname, '.smoke-app-startup.log');
 const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
 
 /**
- * `rpc.discover` method names that flip present exactly when paranext-core's settings, menu-data,
- * and theme service hosts finish registering their data-provider network objects — the upstream
- * signal that actually gates a resolved dock (see {@link waitForServiceHostsRegistered}).
+ * `rpc.discover` method names that flip present when paranext-core's settings, menu-data, and theme
+ * service hosts finish registering their provider network objects — the upstream signal that gates
+ * a resolved dock (see {@link waitForServiceHostsRegistered}).
  *
- * Each service host exposes its provider as a data-provider network object, whose JSON-RPC handlers
- * are enumerated by `rpc.discover` the instant it registers. Data providers append a `-data` suffix
- * to the provider name and network-object request types are prefixed `object:`, so the existence
- * handler for the settings provider `platform.settingsServiceDataProvider` serializes to
- * `object:platform.settingsServiceDataProvider-data`. paranext-core's own smoke suite waits on the
- * settings provider's `.set` method for the same "settings host is up" purpose, so the shape is
- * load-bearing there too.
- *
- * These are the bare EXISTENCE handlers (`object:{id}`, no method suffix), not a named method like
- * `.set`/`.getCurrentTheme`: `networkObjectService.set` registers the existence handler
- * unconditionally as the first step of registering any network object — before fanning out the
- * per-method handlers — so it is the canonical "this object is on the network" signal and can't be
- * invalidated by a provider method being renamed.
+ * These are each object's bare EXISTENCE handler (`object:{id}`, no method suffix), not a named
+ * method like `.set`/`.getCurrentTheme`: the existence handler registers first when any network
+ * object comes up, so it is the "this object is on the network" signal and can't be invalidated by
+ * a provider method being renamed. These strings mirror upstream's serialization; if paranext-core
+ * changes how it names provider objects, update them to match.
  */
 const SERVICE_HOST_OBJECT_METHODS = [
   'object:platform.settingsServiceDataProvider-data',
@@ -69,18 +58,16 @@ const SERVICE_HOST_OBJECT_METHODS = [
 ];
 
 /**
- * Renderer page error that means this cold start is doomed, not merely slow. paranext-core's theme
- * service host arms a 30 s `AsyncVariable` for `theme.service-host.allThemeFamiliesById`; if the
- * extension host never pushes the initial theme data within that window it rejects with this
- * message, and the dock is left with its webview tabs stuck at "Unknown" for the remainder of the
- * run (the exact 120 s stall this suite kept eating on Windows/Linux cold starts).
+ * Renderer page error that means this cold start is doomed, not merely slow: the theme host's
+ * initial theme data never settled, so the dock's webview tabs stay stuck at "Unknown" for the rest
+ * of the run. Once it fires no amount of further waiting recovers the launch — only a fresh launch
+ * (a smoke retry, or a re-run of CDP setup) does.
  *
- * Crucially this fires AFTER the theme provider's network object has already registered — the host
- * registers its data provider, then separately awaits the data to settle — so the positive
- * {@link waitForServiceHostsRegistered} gate can pass while the renderer is still headed for this
- * timeout. That is why the tab-title wait additionally fast-fails on this specific error rather
- * than waiting out its full budget: once it fires, no amount of further waiting recovers the
- * launch, and a fresh launch (a smoke retry, or a re-run of CDP setup) is the only path forward.
+ * This fires AFTER the theme provider's network object has registered (the host registers the
+ * provider, then separately awaits its data), so the positive {@link waitForServiceHostsRegistered}
+ * gate can pass while the renderer is still headed for this timeout — which is why the tab-title
+ * wait fast-fails on this error instead of waiting out its budget. The pattern matches an upstream
+ * paranext-core message; if that message changes, this stops catching the doomed start.
  */
 const FATAL_STARTUP_PAGE_ERROR =
   /Timeout reached when waiting for .*allThemeFamiliesById to settle/i;
@@ -186,11 +173,10 @@ export async function launchElectronWithExtension(
     ...restEnv,
     NODE_ENV: 'development',
     DEV_NOISY: process.env.DEV_NOISY ?? 'false',
-    // With NODE_ENV=development, paranext-core's electron-debug auto-opens DevTools on every
-    // window. On CI Linux DevTools docks INSIDE the window, squeezing the app viewport to ~469px —
-    // dock panels collapse and modals get clipped at panel edges, so clicks land on neighboring
-    // iframes. electron-is-dev honors ELECTRON_IS_DEV=0, which disables electron-debug without
-    // affecting NODE_ENV-driven behavior (dev-server URL, etc.).
+    // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI Linux
+    // DevTools docks inside the window and squeezes the app viewport enough that dock panels
+    // collapse and modals get clipped, so clicks land on neighboring iframes. ELECTRON_IS_DEV=0
+    // disables the auto-open without changing other NODE_ENV-driven behavior (dev-server URL, etc.).
     ELECTRON_IS_DEV: '0',
     ...opts.envOverrides,
   };
@@ -208,9 +194,8 @@ export async function launchElectronWithExtension(
         coreDir,
         '--extensions',
         extensionDist,
-        // Deterministic window size instead of the 1024x728 electron-window-state default —
-        // paranext-core supports this argument for automation. Matches the CI xvfb screen
-        // (1280x960) so the dock panels have room and modals are not clipped.
+        // Deterministic window size (paranext-core supports this arg for automation) matching the
+        // CI xvfb screen (1280x960), so dock panels have room and modals are not clipped.
         '--window-size',
         '1280x960',
         // Force the X11 backend on Linux: in a Wayland session with DISPLAY redirected to xvfb
@@ -229,12 +214,10 @@ export async function launchElectronWithExtension(
     throw error;
   }
 
-  // Stream the launched app's main-process stdout/stderr to a log file. Unlike the CDP tier, the
-  // smoke launcher previously discarded this output, so a cold-start startup stall (the app comes up
-  // with dock tabs stuck at "Unknown" and never resolves — a silent platform-side race we can only
-  // tolerate, not fix) left NO main-process evidence to diagnose from; the renderer console was
-  // empty. Capturing it here means the next stall leaves a log to inspect. Best-effort: the log is
-  // not required, and any write error is swallowed so logging never fails a launch.
+  // Stream the launched app's main-process stdout/stderr to a log file, so a cold-start stall (dock
+  // tabs stuck at "Unknown" and never resolving — a platform-side race we can only tolerate, not
+  // fix) leaves main-process evidence to diagnose from; the renderer console is empty in that case.
+  // Best-effort: any write error is swallowed so logging never fails a launch.
   const appLog = fs.createWriteStream(SMOKE_APP_LOG_FILE, { flags: 'w' });
   appLog.on('error', () => {
     /* Logging is best-effort; never let a log write failure break the launch. */
@@ -491,15 +474,14 @@ export async function waitForPapiMethodRegistered(
  * polling `rpc.discover` for each host's data-provider existence handler
  * ({@link SERVICE_HOST_OBJECT_METHODS}).
  *
- * This is the UPSTREAM readiness signal for a resolved dock. On a cold start the renderer paints
+ * This is the upstream readiness signal for a resolved dock. On a cold start the renderer paints
  * its webview tabs titled "Unknown" (and its panels blank) until the metadata these hosts serve
- * arrives; the renderer even throws transient `Settings service undefined` / `Menu data service
- * undefined` page errors while it retries against not-yet-registered providers. Gating here —
- * before {@link waitForDockTabTitlesResolved} — absorbs that cold-start race into the readiness wait
- * instead of letting it surface downstream as an opaque tab-title timeout: waiting on the hosts
- * directly means the tab-title wait only ever runs once the data behind those titles actually
- * exists. On a healthy startup the hosts are already up, so this resolves immediately and costs
- * nothing; the poll uses the same `rpc.discover` mechanism as every other readiness check here.
+ * arrives. Gating here — before {@link waitForDockTabTitlesResolved} — absorbs that cold-start race
+ * into the readiness wait instead of letting it surface downstream as an opaque tab-title timeout:
+ * waiting on the hosts directly means the tab-title wait only ever runs once the data behind those
+ * titles actually exists. On a healthy startup the hosts are already up, so this resolves
+ * immediately and costs nothing; the poll uses the same `rpc.discover` mechanism as every other
+ * readiness check here.
  *
  * The three waits run concurrently and share the one `timeout` budget (the hosts register in
  * parallel — settings and menu-data in the extension host, theme in the renderer — so serializing
@@ -532,7 +514,7 @@ interface DockTabTitlesOptions {
    *   Re-asserting the strict "no tab anywhere is Unknown" invariant per test is both redundant and
    *   fragile there: a single stray/leftover panel (e.g. one briefly re-titled by a close/reopen
    *   cycle) would fail the gate for EVERY subsequent test against that one shared instance, and no
-   *   per-test retry can recover it — the Windows CDP-tier cascade this whole run showed.
+   *   per-test retry can recover it (a cascade the Windows CDP tier is prone to).
    */
   strict: boolean;
   /**
@@ -557,9 +539,9 @@ interface DockTabTitlesOptions {
  * The strictness of "resolved" depends on {@link DockTabTitlesOptions.strict} — see that field for
  * why the shared CDP instance must not use the strict all-tabs check.
  *
- * A torn-down renderer (page/context/browser closed out from under us — the actual symptom in the
- * Windows CDP run, where `waitForFunction` reports "Target page … has been closed") is surfaced as
- * its own error rather than mislabeled "tabs still Unknown", so the real cause is not buried.
+ * A torn-down renderer (page/context/browser closed out from under us, where `waitForFunction`
+ * reports "Target page … has been closed") is surfaced as its own error rather than mislabeled
+ * "tabs still Unknown", so the real cause is not buried.
  *
  * With {@link DockTabTitlesOptions.failFastOnFatalPageError}, a doomed cold start (the renderer's
  * theme data never settling — see {@link FATAL_STARTUP_PAGE_ERROR}) aborts the wait immediately
@@ -936,10 +918,10 @@ function interlinearizerTabLocator(page: Page): Locator {
  *
  * The CDP feature tier passes a short budget (`{ strict: false, timeout: ~30s }`): its shared
  * instance is already proven-settled by global setup, so a per-test readiness wait that runs long
- * means the instance DIED mid-run, not that startup is slow — and no per-test retry can revive a
- * dead shared instance. Failing that in ~30s instead of the default 120s is what turns a broken
- * Windows CDP run from a 6-minute-per-test crawl (120s × 3 attempts) into a ~90s one. Smoke tests
- * (fresh per-worker instance, genuine cold start) omit `timeout` and keep the generous default.
+ * means the instance died mid-run, not that startup is slow — and no per-test retry can revive a
+ * dead shared instance, so failing fast beats burning the full cold-start budget on every retry.
+ * Smoke tests (fresh per-worker instance, genuine cold start) omit `timeout` and keep the generous
+ * default.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param options Readiness options forwarded to {@link waitForAppReady}. Feature tests on the shared
@@ -1086,18 +1068,17 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * The platform toolbar's book-chapter control only drives navigation when there is a resolved
  * navigation-target web view — in simple (non-power) interface mode that is always the MAIN
- * Scripture editor, never a focused secondary tab like the Interlinearizer (see paranext-core
- * navigation-target.util.ts `resolveTargetWebView` / `pinToMainEditor`). The self-launched CDP
- * instance comes up in simple mode with no project loaded into the main editor, so the control
- * stays `disabled` and can navigate nothing. A plain `trigger.click()` there never fails —
- * Playwright retries the click for the whole test timeout waiting for the button to become enabled,
- * which is what hung every feature test for 6 minutes. So this waits a BOUNDED time for the control
- * to become actionable and, if it never does, skips navigation instead of hanging: the
- * Interlinearizer opens at its default reference (GEN 1:1) and the callers assert against specific
- * verse tokens with their own visibility waits, so a skipped no-op navigation to a reference
- * already on screen still lets the test proceed (and a genuinely-needed navigation that could not
- * happen surfaces as a fast, clear assertion failure downstream rather than an opaque timeout
- * here).
+ * Scripture editor, never a focused secondary tab like the Interlinearizer (this is paranext-core's
+ * navigation-target logic). The self-launched CDP instance comes up in simple mode with no project
+ * loaded into the main editor, so the control stays `disabled` and can navigate nothing. A plain
+ * `trigger.click()` there never fails — Playwright retries the click for the whole test timeout
+ * waiting for the button to become enabled, which is what hung every feature test for 6 minutes. So
+ * this waits a BOUNDED time for the control to become actionable and, if it never does, skips
+ * navigation instead of hanging: the Interlinearizer opens at its default reference (GEN 1:1) and
+ * the callers assert against specific verse tokens with their own visibility waits, so a skipped
+ * no-op navigation to a reference already on screen still lets the test proceed (and a
+ * genuinely-needed navigation that could not happen surfaces as a fast, clear assertion failure
+ * downstream rather than an opaque timeout here).
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param reference Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).

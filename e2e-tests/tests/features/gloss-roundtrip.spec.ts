@@ -1,5 +1,6 @@
 import { expect, test } from '../../fixtures/cdp.fixture';
 import {
+  CDP_FEATURE_READY_TIMEOUT,
   ensureE2eProjectActive,
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
@@ -11,8 +12,12 @@ import {
 test.describe('Gloss round-trip', () => {
   test('typing a gloss on a token renders it in the gloss field', async ({ mainPage }) => {
     // Lenient gate: the shared CDP instance was already settled by global setup, so a single stray
-    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved.
-    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
+    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved. Short
+    // budget: a long wait here means the shared instance died, so fail fast instead of burning 120s.
+    await waitForAppAndInterlinearizerReady(mainPage, {
+      strict: false,
+      timeout: CDP_FEATURE_READY_TIMEOUT,
+    });
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

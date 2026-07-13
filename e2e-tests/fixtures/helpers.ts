@@ -19,6 +19,16 @@ const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
 export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
+ * Fail-fast readiness budget (ms) for a CDP feature test's per-test
+ * `waitForAppAndInterlinearizerReady`. The shared instance is proven-settled by global setup before
+ * any feature test runs, so a per-test readiness wait that runs long means the instance DIED
+ * mid-run — which no per-test retry can revive. Capping at 30 s (vs. the 120 s cold-start default)
+ * makes a dead shared instance fail in 30 s × the retry count instead of 120 s × it, the difference
+ * between a ~90 s and a 6-minute broken Windows run.
+ */
+export const CDP_FEATURE_READY_TIMEOUT = 30_000;
+
+/**
  * File the smoke launcher streams the app's main-process stdout/stderr to. Named to mirror the CDP
  * tier's `.cdp-app-startup.log` and kept in `e2e-tests/` (a directory Playwright does not clear,
  * and one already covered by the CI artifact upload's `include-hidden-files: true`), so a
@@ -557,15 +567,20 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
  * Wait for the interlinearizer extension to finish activating by polling `rpc.discover` until
  * `interlinearizer.openForWebView` is listed.
  *
- * @param timeoutMs Maximum time in milliseconds to poll before throwing.
+ * @param timeoutMs Maximum time in milliseconds to poll before throwing. `undefined` selects the
+ *   generous default (a cold instance can be slow to register the command); callers threading a
+ *   shared budget pass the remaining time, clamped to a small floor so an already-exhausted budget
+ *   still gets one real poll rather than throwing instantly.
  * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws {Error} If the extension does not register within `timeoutMs` milliseconds.
  */
-export async function waitForInterlinearizerReady(timeoutMs = 90_000): Promise<void> {
+export async function waitForInterlinearizerReady(
+  timeoutMs: number | undefined = 90_000,
+): Promise<void> {
   await waitForPapiMethodRegistered(
     'command:interlinearizer.openForWebView',
     DEFAULT_WEBSOCKET_PORT,
-    timeoutMs,
+    Math.max(1_000, timeoutMs ?? 90_000),
   );
 }
 
@@ -756,21 +771,35 @@ function interlinearizerTabLocator(page: Page): Locator {
 
 /**
  * Wait for Platform.Bible and the interlinearizer extension to finish starting up. Combines
- * {@link waitForAppReady} and {@link waitForInterlinearizerReady}.
+ * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the `timeout` budget
+ * across both so an explicit (shorter) budget caps the WHOLE wait, not just the first half.
+ *
+ * The CDP feature tier passes a short budget (`{ strict: false, timeout: ~30s }`): its shared
+ * instance is already proven-settled by global setup, so a per-test readiness wait that runs long
+ * means the instance DIED mid-run, not that startup is slow — and no per-test retry can revive a
+ * dead shared instance. Failing that in ~30s instead of the default 120s is what turns a broken
+ * Windows CDP run from a 6-minute-per-test crawl (120s × 3 attempts) into a ~90s one. Smoke tests
+ * (fresh per-worker instance, genuine cold start) omit `timeout` and keep the generous default.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param options Readiness options forwarded to {@link waitForAppReady}. Feature tests on the shared
  *   CDP instance pass `{ strict: false }` so one stray "Unknown" panel can't cascade across the
  *   tier; smoke tests (fresh per-worker instance) use the default strict cold-start gate.
  * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
- * @throws If the app or extension do not finish starting up within their default timeouts.
+ * @throws If the app or extension do not finish starting up within the `timeout` budget.
  */
 export async function waitForAppAndInterlinearizerReady(
   page: Page,
   options: AppReadyOptions = {},
 ): Promise<void> {
+  const start = Date.now();
   await waitForAppReady(page, options);
-  await waitForInterlinearizerReady();
+  // Cap the extension-registration wait by whatever budget remains, so an explicit short `timeout`
+  // bounds the combined wait. With no explicit budget (smoke), fall back to this helper's own
+  // generous default rather than starving it.
+  const remaining =
+    options.timeout === undefined ? undefined : options.timeout - (Date.now() - start);
+  await waitForInterlinearizerReady(remaining);
 }
 
 /**

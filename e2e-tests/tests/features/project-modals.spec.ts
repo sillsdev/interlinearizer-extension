@@ -1,5 +1,6 @@
 import { expect, test } from '../../fixtures/cdp.fixture';
 import {
+  CDP_FEATURE_READY_TIMEOUT,
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
   openInterlinearizerProjectMenu,
@@ -37,7 +38,11 @@ test.describe('Project modals cancel tour', () => {
     }) => {
       // Lenient gate: the shared CDP instance was already settled by global setup, so a single stray
       // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved.
-      await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
+      // Short budget: a long wait here means the shared instance died, so fail fast, not in 120s.
+      await waitForAppAndInterlinearizerReady(mainPage, {
+        strict: false,
+        timeout: CDP_FEATURE_READY_TIMEOUT,
+      });
       await ensureInterlinearizerOpenOnWeb(mainPage);
 
       const frame = await openInterlinearizerProjectMenu(mainPage);

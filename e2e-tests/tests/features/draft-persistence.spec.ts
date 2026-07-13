@@ -1,5 +1,6 @@
 import { expect, test } from '../../fixtures/cdp.fixture';
 import {
+  CDP_FEATURE_READY_TIMEOUT,
   closeInterlinearizerTab,
   ensureE2eProjectActive,
   ensureInterlinearizerOpenOnWeb,
@@ -17,8 +18,14 @@ test.describe('Draft persistence', () => {
     // legitimately exceed the default 120 s budget.
     test.slow();
     // Lenient gate: the shared CDP instance was already settled by global setup, so a single stray
-    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved.
-    await waitForAppAndInterlinearizerReady(mainPage, { strict: false });
+    // panel must not fail this (and every downstream) test — see waitForDockTabTitlesResolved. Short
+    // budget: a long wait here means the shared instance died, so fail fast instead of burning 120s.
+    // (test.slow() above triples only the overall test timeout for the two open-cycles below, not
+    // this startup readiness check.)
+    await waitForAppAndInterlinearizerReady(mainPage, {
+      strict: false,
+      timeout: CDP_FEATURE_READY_TIMEOUT,
+    });
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
     await navigateToScriptureRef(mainPage, 'GEN 1:1');

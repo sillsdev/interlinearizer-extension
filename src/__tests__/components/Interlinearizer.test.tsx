@@ -356,9 +356,9 @@ const GEN_SUPERSCRIPTION_BOOK: Book = {
 
 /**
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
- * `useInterlinearNav` call resolves. `Interlinearizer` now writes the reference through the
- * context's `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang
- * off the `navigate` spy supplied here rather than a `setScrRef` prop.
+ * `useInterlinearNav` call resolves. `Interlinearizer` writes the reference through the context's
+ * `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang off the
+ * `navigate` spy supplied here.
  *
  * @param ui - The `<Interlinearizer>` element to wrap.
  * @param navigate - Spy wired as the scroll-group hook's setter; receives the reference each
@@ -477,7 +477,7 @@ describe('Interlinearizer', () => {
     expect(screen.getAllByTestId('segment-view')).toHaveLength(2);
   });
 
-  it('calls setScrRef with the segment ref when a segment fires onSelect', () => {
+  it('calls navigate with the segment ref when a segment fires onSelect', () => {
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, navigate: mockNavigate });
 
@@ -517,7 +517,7 @@ describe('Interlinearizer', () => {
     expect(allElements[0]).toBe(continuousView);
   });
 
-  it('calls setScrRef with the segment ref when a token is clicked', () => {
+  it('calls navigate with the segment ref when a token is clicked', () => {
     const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
@@ -664,7 +664,7 @@ describe('Interlinearizer', () => {
     // During an external book change scrRef names the new book before its data loads, so the
     // mounted book (and its focused token) still belong to the previous book. The echo-back effect
     // must not fire that stale book's verse back as scrRef. Here the mounted book is GEN but scrRef
-    // names EXO, so a GEN focus move must not call setScrRef.
+    // names EXO, so a GEN focus move must not call navigate.
     const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,

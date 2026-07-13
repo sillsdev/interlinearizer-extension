@@ -544,10 +544,14 @@ export async function openInterlinearizerFromScriptureEditor(
   // When the editor has no project selected, the command calls papi.dialogs.selectProject, which
   // opens a floating "Open Interlinearizer" dock tab with the project list. When the editor
   // already has a project (a warm instance), the Interlinearizer tab opens directly instead.
-  const selectProjectDialog = page.locator('.select-project-dialog');
+  //
+  // `.first()` throughout: on the shared CDP instance a prior test (or a prior call in this one)
+  // can leave the picker's floating dock tab mounted, so `.select-project-dialog` may match more
+  // than one element. Scoping to `.first()` keeps every read here — the union visibility wait AND
+  // the isVisible() branch — out of strict-mode violation, so a leaked picker can't crash this
+  // test before closeSelectProjectPickers has a chance to clean it up. See closeSelectProjectPickers.
+  const selectProjectDialog = page.locator('.select-project-dialog').first();
   const interlinearizerTab = interlinearizerTabLocator(page);
-  // `.first()` on the whole `.or()`: if the dialog and the tab are ever both present the union
-  // resolves to two elements, which would trip strict mode on this visibility assertion.
   await expect(selectProjectDialog.or(interlinearizerTab).first()).toBeVisible({ timeout: 15_000 });
   if (await selectProjectDialog.isVisible()) {
     const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
@@ -557,6 +561,62 @@ export async function openInterlinearizerFromScriptureEditor(
   // Wait for the Interlinearizer tab to appear and focus it.
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   await interlinearizerTab.click();
+
+  // Close the "Open Interlinearizer" picker tab we just opened. Selecting a project opens the
+  // Interlinearizer but leaves the picker's floating dock tab mounted; on the shared CDP instance,
+  // where the DOM is never reset between tests, one leaks per open and they accumulate until a bare
+  // `.select-project-dialog` read trips strict mode across the whole suite. Closing it here stops
+  // the leak at its source. Bounded and best-effort: the picker only appears on the cold path, and
+  // a failure to close it is self-healed by closeSelectProjectPickers before the next test runs.
+  await closeSelectProjectPickers(page);
+}
+
+/**
+ * Close every "Open Interlinearizer" project-picker dock tab currently mounted. The picker is the
+ * floating dock tab that `papi.dialogs.selectProject` opens (title "Open Interlinearizer",
+ * containing a `.select-project-dialog` panel); selecting a project from it opens the
+ * Interlinearizer but does not dispose the picker itself.
+ *
+ * On the shared CDP instance the renderer DOM is never reset between tests, so each leaked picker
+ * persists and a bare `.select-project-dialog` locator resolves to N elements — which trips
+ * Playwright strict mode on the very next `isVisible()`/`click()` and reddens every downstream
+ * test. This closes them via each tab's `.dock-tab-close-btn` (dispatched, mirroring
+ * {@link closeInterlinearizerTab}, so an off-viewport tab on small CI viewports still closes).
+ *
+ * Best-effort and non-throwing: a picker that refuses to close must not fail the caller, because
+ * the picker is incidental cleanup, not the behavior under test. It is bounded so a tab that won't
+ * close can't spin forever.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @returns Resolves once no picker tab remains, or after the bounded attempts are exhausted (a
+ *   no-op on the common warm path where no picker was ever opened).
+ */
+export async function closeSelectProjectPickers(page: Page): Promise<void> {
+  const pickerTab = page.locator('.dock-tab', { hasText: 'Open Interlinearizer' });
+
+  // Bounded so a picker that refuses to close can't spin forever. The realistic worst case is a
+  // handful of leaked pickers from earlier crashed tests plus the one this call opened.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    // eslint-disable-next-line no-await-in-loop
+    const remaining = await pickerTab.count();
+    if (remaining === 0) return;
+    // eslint-disable-next-line no-await-in-loop
+    await pickerTab
+      .first()
+      .locator('.dock-tab-close-btn')
+      .dispatchEvent('click')
+      .catch(() => {
+        /* The tab may have closed between the count() and the dispatch; the next loop re-checks. */
+      });
+    // Wait for this close to land (count drops) before the next iteration, so we don't race the
+    // dock's async tab removal and re-dispatch against the same, still-present tab.
+    // eslint-disable-next-line no-await-in-loop
+    await expect(pickerTab)
+      .toHaveCount(remaining - 1, { timeout: 5_000 })
+      .catch(() => {
+        /* Slow removal or another picker took its place; the next iteration re-reads and retries. */
+      });
+  }
 }
 
 /**
@@ -670,9 +730,14 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
  * with WEB — see e2e-tests/README.md); otherwise the tab is opened fresh via the Scripture Editor
  * menu flow. Resolves only once the extension's toolbar has rendered inside the iframe.
  *
- * As the first shared precondition every feature test runs, this also self-heals any modal a prior
- * failed test left mounted (via {@link dismissLeftoverModals}) so a leftover overlay can't intercept
- * this test's clicks — see that helper for why the shared CDP instance needs it.
+ * As the first shared precondition every feature test runs, this also self-heals two kinds of
+ * leftover state a prior failed test can leave on the shared CDP instance: any modal left mounted
+ * in the iframe (via {@link dismissLeftoverModals}, whose overlay would otherwise intercept this
+ * test's clicks) and any "Open Interlinearizer" project-picker dock tab left open (via
+ * {@link closeSelectProjectPickers}, whose accumulation would otherwise trip strict mode on the
+ * `.select-project-dialog` locator). A test that dies mid-open — e.g. the renderer is torn down
+ * before it can close its picker — is exactly how one picker leaks and then reddens every
+ * downstream test, so clearing it here is what keeps that single crash from cascading.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves when the Interlinearizer tab is focused and its toolbar is interactive.
@@ -703,9 +768,14 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
     timeout: 30_000,
   });
 
-  // Self-heal the shared instance: clear any modal a prior failed test left mounted before this
-  // test starts driving the UI, so its overlay can't intercept the clicks below.
+  // Self-heal the shared instance before this test starts driving the UI: clear any modal a prior
+  // failed test left mounted (its overlay would intercept the clicks below) and any project-picker
+  // dock tab a prior test left open (its accumulation would trip strict mode on the
+  // `.select-project-dialog` locator). The picker cleanup covers the warm path too, where
+  // openInterlinearizerFromScriptureEditor never runs and so never gets a chance to close a picker
+  // leaked by an earlier crash.
   await dismissLeftoverModals(page);
+  await closeSelectProjectPickers(page);
 }
 
 /**

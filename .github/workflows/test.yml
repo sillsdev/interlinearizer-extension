@@ -112,6 +112,7 @@ jobs:
             if ($LASTEXITCODE -eq 0) { exit 0 }
             Write-Host "npm ci failed (exit $LASTEXITCODE); verifying cache before retry"
             npm cache verify
+            if ($LASTEXITCODE -ne 0) { Write-Host "npm cache verify failed (exit $LASTEXITCODE)" }
           }
           Write-Error 'npm ci failed after 3 attempts'
           exit 1

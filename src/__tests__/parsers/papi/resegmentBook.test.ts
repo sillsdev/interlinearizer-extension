@@ -108,8 +108,12 @@ describe('resegmentBook', () => {
   it('gives each split piece a single verse start at offset 0 for its verse', () => {
     const result = resegmentBook(BOOK, { removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
     const [firstHalf, secondHalf] = result.segments;
+    // The first piece begins the verse (no continuation flag); the second piece continues it
+    // mid-verse, so its verse start is flagged as a continuation and renders no superscript.
     expect(firstHalf.verseStarts).toEqual([{ charStart: 0, number: '1', chapter: 1 }]);
-    expect(secondHalf.verseStarts).toEqual([{ charStart: 0, number: '1', chapter: 1 }]);
+    expect(secondHalf.verseStarts).toEqual([
+      { charStart: 0, number: '1', chapter: 1, isContinuation: true },
+    ]);
   });
 
   it('carries a sub-verse charIndex on a split piece that begins mid-verse', () => {

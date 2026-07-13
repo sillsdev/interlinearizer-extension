@@ -99,6 +99,9 @@ export function buildVerseStartLabelsByTokenRef(segments: readonly Segment[]): M
     /* v8 ignore next -- buildVerseStartLabels keys off these same segments, so the entry always exists */
     const labels = labelsBySegmentId.get(segment.id) ?? [];
     segment.verseStarts.forEach((vs, i) => {
+      // A continuation entry (a mid-verse split's later piece) contributes no label: the verse's
+      // number already showed at its real start in a previous segment.
+      if (vs.isContinuation) return;
       const startToken = verseStartToken(segment, vs);
       if (startToken && labels[i] !== undefined) labelByTokenRef.set(startToken.ref, labels[i]);
     });

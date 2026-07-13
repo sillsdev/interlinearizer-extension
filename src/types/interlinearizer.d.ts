@@ -537,7 +537,9 @@ declare module 'interlinearizer' {
      * verse-number superscripts. A verse-per-verse segment has exactly one entry at `charStart: 0`;
      * a merged segment has one entry per verse it absorbed (each `charStart` pointing at that
      * verse's first character in the concatenated baseline); a split segment's later piece begins
-     * mid-verse and carries a single entry at `charStart: 0` for that verse.
+     * mid-verse and carries a single entry at `charStart: 0` for that verse, flagged
+     * `isContinuation` so it keeps the segment "containing" the verse (for navigation) without
+     * rendering a duplicate superscript.
      */
     verseStarts: VerseStart[];
   }
@@ -568,6 +570,15 @@ declare module 'interlinearizer' {
      * wrong token when the verse's baseline begins with whitespace.
      */
     chapter: number;
+
+    /**
+     * `true` when this entry marks a verse that actually _begins_ in a previous segment and merely
+     * continues into this one — the leading verse start of a mid-verse split's later piece. Such an
+     * entry keeps the segment "containing" the verse for navigation and highlight, but renders
+     * **no** superscript: the number already showed where the verse truly started, so repeating it
+     * at the continuation's start would duplicate it. Absent (falsy) for a genuine verse start.
+     */
+    isContinuation?: boolean;
   }
 
   /**

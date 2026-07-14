@@ -185,9 +185,8 @@ describe('useDraftProject', () => {
       jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
-      // The second autosave does not bump draftVersion and dirty was already true, so it does not
-      // re-render: the rendered `draft` still reflects the first edit while the live ref holds the
-      // second. The second edit is persisted and visible through the synchronous snapshot.
+      // The second autosave neither bumps draftVersion nor flips dirty, so it doesn't re-render: the
+      // rendered `draft` still shows the first edit while the ref (and snapshot) hold the second.
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('first');
       expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe('second');
       expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('second');
@@ -214,10 +213,8 @@ describe('useDraftProject', () => {
     });
 
     it('bumps segmentationVersion on every edit, including when the draft was already dirty', async () => {
-      // The resegmented book is derived from the draft's segmentation, which lives in a ref, and
-      // `setDirty(true)` bails out of the re-render once the draft is already dirty — so without the
-      // version bump a second boundary edit would silently fail to update the view (the reported
-      // "clicking merge/split doesn't re-render"). Assert the counter advances on each call.
+      // `setDirty(true)` bails out of the re-render once the draft is already dirty, so the version
+      // bump is what forces the view to recompute the ref-held segmentation on each edit.
       const { result } = await renderLoaded();
 
       jest.useFakeTimers();

@@ -1,18 +1,15 @@
 /**
- * @file Pure helper deriving each segment's verse-range gutter label in a (re)segmented book.
+ * @file Pure helper deriving each segment's verse-range gutter label in a (re)segmented book, shown
+ *   in the segment-view gutter column (never in the running text).
  *
- *   After boundary edits (merge/split) a segment no longer corresponds 1:1 to a verse, so its label
- *   cannot simply be the start verse number. The gutter names the verse range a segment overlaps:
- *   an unsplit verse's segment (and every portion of a split verse) is labeled with its bare verse
- *   number, and a segment spanning several verses shows the range between its two covered ends
- *   (`2–3`, `29–2:1`). Split-verse portions are deliberately not lettered: the gutter is an
- *   alternative to the inline verse superscripts, and two adjacent portions of verse 1 both reading
- *   `1` reflects the overlap honestly without inventing per-portion identity. These labels are
- *   shown in the segment-view gutter column, never in the running text.
+ *   After boundary edits a segment need not map 1:1 to a verse, so the label names the verse range it
+ *   covers: a single-verse segment (and each portion of a split verse) shows its bare number, a
+ *   multi-verse segment the range between its covered ends (`2–3`, `29–2:1`). Split portions are
+ *   not lettered — two portions of verse 1 both reading `1` reflects the overlap honestly.
  *
- *   The label is derived from the segment's `verseStarts` — the exact set of source verses it covers
- *   — not the `startRef`/`endRef` interval, so a cross-chapter or gapped merge names only the
- *   verses it actually covers instead of over-claiming every verse between its endpoints.
+ *   The label is derived from the segment's `verseStarts` — the exact set of covered source verses —
+ *   not the `startRef`/`endRef` interval, so a cross-chapter or gapped merge names only the verses
+ *   it actually covers instead of over-claiming every verse between its endpoints.
  */
 import type { Segment, VerseStart } from 'interlinearizer';
 

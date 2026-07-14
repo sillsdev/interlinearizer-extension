@@ -78,9 +78,8 @@ function renderSegmentWindow(
 ) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  // Mirrors the context's internal-nav classification: a test calls `markInternal(ref)` to mimic an
-  // internally-originated navigation (a segment/strip click) before a rerender; the hook's
-  // `consumeInternalNav` matches+clears it, exactly as the real context does.
+  // Mirrors the context's internal-nav classification: `markInternal(ref)` stamps a nav as internal
+  // before a rerender, and `consumeInternalNav` matches and clears it as the real context does.
   const pendingInternal = new Set<string>();
   const markInternal = (ref: SerializedVerseRef) => pendingInternal.add(verseKey(ref));
   const consumeInternalNav = (ref: SerializedVerseRef) => {
@@ -89,8 +88,7 @@ function renderSegmentWindow(
     pendingInternal.delete(key);
     return true;
   };
-  // Records each gated continuous-scroll value the hook reports at a recenter midpoint, so a test can
-  // assert the strip-visibility flip lands with (not after) the window rebuild.
+  // Records each gated continuous-scroll value the hook reports at a recenter midpoint.
   const displayContinuousScrollReports: boolean[] = [];
   const onDisplayContinuousScrollChange = (v: boolean) => displayContinuousScrollReports.push(v);
   const hook = renderHook<
@@ -154,11 +152,8 @@ function mountSentinels(
 }
 
 /**
- * Installs a stub `ResizeObserver` that records the most recently created callback (and the
- * elements it observes) and returns a `fire` helper (invokes it inside `act`) plus a `restore` to
- * put the original observer back. Shared by every test that drives the scroll-compensation /
- * re-snap observer by hand, so the stub class is declared once at module scope rather than
- * re-declared in each test.
+ * Installs a stub `ResizeObserver` that records the most recently created callback and the elements
+ * it observes, for tests that drive the scroll-compensation / re-snap observer by hand.
  *
  * @returns `fire` to invoke the recorded observer callback, `observedTargets` to read the elements
  *   the most recent observer watches, and `restore` to reinstate the original.
@@ -326,8 +321,7 @@ describe('useSegmentWindow', () => {
     const book: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
 
-    // The merged segment sits at flat index 10, so the centered window runs [2, 19) — anchoring
-    // at the chapter start instead would have produced [0, 9).
+    // The merged segment sits at flat index 10, so the centered window runs [2, 19).
     const ids = result.current.windowSegments.map((s) => s.id);
     expect(ids).toContain('GEN 1:10b-12');
     expect(ids[0]).toBe('GEN 1:3');
@@ -401,8 +395,8 @@ describe('useSegmentWindow', () => {
 
     const firstBefore = result.current.windowSegments[0].id;
     // Mount the window's segment roots so the extend can anchor on the old first segment. The
-    // prepend pushes that anchor down by 300px (100 → 400); the correction must add exactly that
-    // delta to scrollTop so the visible content holds still.
+    // prepend pushes that anchor down 300px (100 → 400); the correction adds that delta to scrollTop
+    // so the visible content holds still.
     const els = mountSegmentEls(
       container,
       result.current.windowSegments.map((s) => s.id),
@@ -619,9 +613,8 @@ describe('useSegmentWindow', () => {
   });
 
   it('fades and recenters when a book swap changes the segments identity at the same anchor index', () => {
-    // A book swap hands the hook a new `segments` array whose anchor can resolve to the same index
-    // as before; the identity check must still detect the change and recenter rather than leaving
-    // the window on stale segment objects.
+    // A book swap can resolve its anchor to the same index as before; the identity check must still
+    // detect the change and recenter rather than leaving the window on stale segment objects.
     const book = makeBook(10, 0);
     const { result, rerender } = renderSegmentWindow(book, {
       book: 'GEN',
@@ -640,10 +633,9 @@ describe('useSegmentWindow', () => {
   });
 
   it('redraws in place without fading on a boundary edit (segments change with a version bump)', () => {
-    // A boundary edit (merge/split) re-segments the loaded book: new `segments` identity carrying a
-    // `segmentationVersion` bump. The new slice already rendered in the same commit, so a fade
-    // afterwards would flash content the user is looking at and snap it away from the point they
-    // clicked — the window must leave the redraw alone.
+    // A boundary edit (merge/split) hands a new `segments` identity with a `segmentationVersion`
+    // bump. The new slice already rendered in the same commit, so fading would flash and snap away
+    // content the user is looking at — the window must leave the redraw alone.
     const book = makeBook(10, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
@@ -652,16 +644,16 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
 
     expect(result.current.isFaded).toBe(false);
-    // The window slices the edited book's segments immediately — no midpoint swap to wait for.
+    // The window slices the edited book's segments immediately, with no midpoint swap to wait for.
     expect(result.current.windowSegments[0]).toBe(editedBook.segments[0]);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
   });
 
   it('does not fade on a boundary edit even when the anchor verse changes', () => {
-    // A merge that absorbs the active verse's segment start (GEN 1:2 merged into GEN 1:1) makes the
-    // loader re-resolve the scrRef to the surviving segment's verse in the same commit. The verse
-    // changed, but the version bump identifies this as a boundary edit, not a navigation — no fade.
+    // A merge that absorbs the active verse's start (GEN 1:2 into GEN 1:1) re-resolves the scrRef to
+    // the surviving segment's verse in the same commit. The verse changed, but the version bump
+    // marks this a boundary edit, not a navigation, so no fade.
     const book = makeBook(10, 0);
     const { result, rerender } = renderSegmentWindow(book, {
       book: 'GEN',
@@ -704,9 +696,9 @@ describe('useSegmentWindow', () => {
   });
 
   it('fades and recenters when the segments change without a version bump at the same anchor verse', () => {
-    // A re-tokenization of the loaded book hands the hook a new `segments` identity with the same
-    // `segmentationVersion` and can keep the anchor verse. The mounted index range no longer
-    // matches the content, so this must recenter with the fade like any external change.
+    // A re-tokenization hands a new `segments` identity with the same `segmentationVersion` at the
+    // same anchor verse. The mounted index range no longer matches the content, so this recenters
+    // with the fade like any external change.
     const book = makeBook(10, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
@@ -748,9 +740,8 @@ describe('useSegmentWindow', () => {
       undefined,
     );
 
-    // Toggle continuous scroll on while triggering a recenter (external nav). The report must NOT fire
-    // during the fade-out — only when the window rebuilds at the midpoint, so the parent's strip
-    // mounts in the same commit.
+    // Toggle continuous scroll on while triggering a recenter. The report must not fire during the
+    // fade-out, only when the window rebuilds at the midpoint.
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, cont: true }));
     expect(displayContinuousScrollReports).toEqual([]);
 
@@ -915,9 +906,8 @@ describe('useSegmentWindow', () => {
     act(() => jest.advanceTimersByTime(16));
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
-    // No further resizes fire (jsdom doesn't lay out), so the event-driven snap stays quiet — unlike
-    // the old per-frame loop it does not keep snapping on idle frames. The quiet timer then reports
-    // settled and the deadline elapses with no extra snaps.
+    // No further resizes fire (jsdom doesn't lay out), so the event-driven snap stays quiet on idle
+    // frames; the quiet timer reports settled and the deadline elapses with no extra snaps.
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS * 2));
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
@@ -978,8 +968,8 @@ describe('useSegmentWindow', () => {
   });
 
   it('snaps the active verse to the top on a fresh mount whose anchor sits mid-book', () => {
-    // A cross-book remount mounts this hook fresh with the new book centered on a mid-book anchor.
-    // Without a mount snap the verse renders mid-window, below the fold, at scrollTop 0.
+    // On a fresh mid-book mount, without a mount snap the anchor verse renders mid-window, below the
+    // fold, at scrollTop 0.
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -987,8 +977,8 @@ describe('useSegmentWindow', () => {
 
     mountActiveSegment(container);
 
-    // The mount-snap loop runs on this fresh mid-book mount (skipped when the anchor is at the book
-    // start), pulling the active verse to the top behind the loader curtain.
+    // The mount-snap loop runs on a mid-book mount (skipped when the anchor is at the book start),
+    // pulling the active verse to the top behind the loader curtain.
     act(() => jest.advanceTimersByTime(16));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
@@ -1063,9 +1053,8 @@ describe('useSegmentWindow', () => {
       container.appendChild(wrapper);
       act(() => result.current.contentRef(wrapper));
 
-      // A layout that resizes faster than the quiet window keeps relaying re-snaps, so the quiet
-      // timer never fires. The deadline backstop reports settled exactly once so the curtain is never
-      // stranded. Fire a resize on every quiet interval right up to the deadline.
+      // Firing a resize on every quiet interval keeps the quiet timer from ever settling, so the
+      // deadline backstop is what must report settled exactly once. Fire right up to the deadline.
       const ticks = Math.ceil(RECENTER_FADE_MS / 50) + 2;
       for (let i = 0; i < ticks; i += 1) {
         fire();
@@ -1118,9 +1107,8 @@ describe('useSegmentWindow', () => {
     const observerBefore = global.ioInstances[0];
 
     // An IntersectionObserver only fires on transitions, so a sentinel that never leaves the arming
-    // margin (compact baseline-text segments) would otherwise extend once and stall scrolling. Each
-    // extend must re-subscribe a fresh observer, whose initial delivery re-evaluates the sentinel
-    // and keeps the window filling.
+    // margin would extend once and stall. Each extend re-subscribes a fresh observer whose initial
+    // delivery re-evaluates the sentinel and keeps the window filling.
     act(() => global.triggerIntersection(bottom, true));
     expect(result.current.windowSegments).toHaveLength(15);
     expect(global.ioInstances).toHaveLength(1);
@@ -1360,8 +1348,8 @@ describe('useSegmentWindow', () => {
       const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      // Growth above the viewport pushes the anchor segment down 30px; the correction scrolls down
-      // by the same amount so the visible content never moves.
+      // Growth above the viewport pushes the anchor down 30px; the correction scrolls down the same
+      // amount so the visible content never moves.
       stubRect(els[0], 40, 80);
       fire();
 
@@ -1392,10 +1380,9 @@ describe('useSegmentWindow', () => {
       const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      // The user scrolls down 60px: every segment moves up by that amount on screen and the seeded
-      // anchor scrolls out of the viewport. The scroll listener re-baselines onto the next visible
-      // segment, so the following resize wave reads a zero delta — without it, the stale anchor
-      // offset would re-apply the 60px as a phantom "correction".
+      // The user scrolls down 60px, pushing the seeded anchor out of the viewport. The scroll
+      // listener re-baselines onto the next visible segment so the following resize wave reads a zero
+      // delta rather than re-applying the 60px as a phantom correction.
       container.scrollTop = 160;
       stubRect(els[0], -50, -10);
       stubRect(els[1], -10, 30);
@@ -1438,9 +1425,8 @@ describe('useSegmentWindow', () => {
 
     it('re-baselines after an extend so the next resize does not re-apply the extend shift', () => {
       const { fire } = installBlockResizeObserver();
-      // Anchor mid-book so the window starts past the book start, leaving earlier segments to
-      // prepend. The mid-book mount snap settles below, clearing recenterInFlight — otherwise the
-      // compensation observer stands down for the whole test.
+      // Anchor mid-book so earlier segments remain to prepend. The mid-book mount snap settles below,
+      // clearing recenterInFlight — otherwise the compensation observer stands down for the test.
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',
@@ -1471,9 +1457,8 @@ describe('useSegmentWindow', () => {
       });
       expect(container.scrollTop).toBe(200);
 
-      // The resize wave the prepend triggers must read the re-baselined anchor offset, not the
-      // stale pre-extend one — re-applying the 100px delta would land scrollTop at 300, the random
-      // jump.
+      // The resize wave the prepend triggers must read the re-baselined anchor offset; re-applying
+      // the stale pre-extend 100px delta would jump scrollTop to 300.
       fire();
       expect(container.scrollTop).toBe(200);
     });
@@ -1499,9 +1484,9 @@ describe('useSegmentWindow', () => {
       act(() => result.current.contentRef(wrapper));
       container.scrollTop = 100;
 
-      // Start an external recenter; while it is in flight the observer relays each resize to the
-      // re-snap handler (which pins the verse via scrollIntoView) rather than compensating, so it
-      // never moves scrollTop directly — the two corrections can't fight.
+      // While a recenter is in flight the observer relays each resize to the re-snap handler (which
+      // pins the verse via scrollIntoView) rather than moving scrollTop directly, so the two
+      // corrections can't fight.
       act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
       stubRect(els[0], 50, 90);
       fire();

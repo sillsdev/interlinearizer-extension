@@ -37,9 +37,9 @@ type TokenLinkIconProps = Readonly<{
  * Renders a small icon between two adjacent word token groups.
  *
  * When both sides belong to the same phrase, renders `Unlink2` (unlink): clicking splits the phrase
- * at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused). `Unlink2` —
- * rather than `Link2Off` — because its chain sits at the same vertical position as `Link2`'s, so
- * the two buttons' visual centers line up when they appear in adjacent gap slots.
+ * at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused). `Unlink2`
+ * rather than `Link2Off` so its chain aligns vertically with `Link2`'s, keeping the two buttons'
+ * visual centers level when they appear in adjacent gap slots.
  *
  * Otherwise renders `Link2` (link): clicking joins the non-focused-side neighbor to the focused
  * side. The icon is active whenever `focusedSideIsPrev` is defined and the resulting join is valid.
@@ -127,11 +127,8 @@ export function TokenLinkIcon({
    * the next (right) segment; `prevToken` is the previous segment's last word, so the boundary
    * moves back to start at it.
    *
-   * The segment whose start ref is being moved is always resolved via `nextToken.ref`: in the
-   * `true` case that is the adjacent (right) segment whose boundary moves forward; in the `false`
-   * case `nextToken` sits in the _focused_ segment, whose start moves back to include `prevToken`.
-   * Hence the neutral name `boundarySegment` rather than "adjacent" — it names whichever segment
-   * owns the boundary being moved, which is not always the non-focused neighbor.
+   * `boundarySegment` is whichever segment owns the boundary being moved — resolved via
+   * `nextToken.ref` in both cases — which is not always the non-focused neighbor.
    */
   const performBoundaryPull = useCallback(() => {
     /* v8 ignore next -- only invoked from handleLinkClick after the same defined-token guards */
@@ -145,21 +142,18 @@ export function TokenLinkIcon({
     if (currentStart === undefined) return;
     if (focusedSideIsPrev) {
       const index = boundarySegment.tokens.findIndex((t) => t.ref === nextToken.ref);
-      // The new boundary must land on a word token: a boundary ref names where the next segment
-      // starts, and the delta's added starts are word refs by contract. Skipping punctuation also
-      // keeps punctuation trailing the pulled word (e.g. a comma) traveling with it.
+      // The new boundary must land on a word token (added starts are word refs by contract);
+      // skipping punctuation also keeps a trailing comma traveling with the pulled word.
       const newStart = boundarySegment.tokens.slice(index + 1).find(isWordToken)?.ref;
-      // No word token remains past the pulled one (at most trailing punctuation), so the adjacent
-      // segment merges wholly into the focused one rather than leaving a word-less remainder.
+      // No word token remains past the pulled one, so the adjacent segment merges wholly into the
+      // focused one rather than leaving a word-less remainder.
       if (newStart === undefined) segmentationDispatch.merge(currentStart);
       else segmentationDispatch.move(currentStart, newStart);
     } else {
       // Mirror of the true branch: `prevToken` is the previous segment's last word. Moving the
-      // boundary onto it strands whatever precedes it in that segment; when those preceding tokens
-      // are all punctuation (no word remains before the pulled one), that remainder would be a
-      // word-less segment. Resolve the previous segment and, in that case, merge it wholly into the
-      // focused one instead. When nothing precedes the pulled token (it is the segment's first
-      // token) the move strands nothing, so proceed with the move as before.
+      // boundary onto it strands whatever precedes it; when that remainder is all punctuation (no
+      // word remains before the pulled one) it would be a word-less segment, so merge the previous
+      // segment wholly into the focused one instead. Otherwise proceed with the move.
       const prevSegmentId = tokenSegmentMap.get(prevToken.ref);
       const prevSegment =
         /* v8 ignore next -- a rendered prevToken always maps to a segment; undefined is defensive */
@@ -337,8 +331,8 @@ export function TokenLinkIcon({
 
   // A cross-segment (adjacent-edge) pull moves the boundary by exactly one token, so it is valid
   // only when the pulled edge token is free: pulling a token that belongs to a phrase would leave
-  // that phrase straddling the moved boundary. (The not-mid-phrase rule is a UI guard — the
-  // segmentation dispatch itself accepts such boundaries and force-breaks the straddled phrases.)
+  // that phrase straddling the moved boundary. This is a UI guard only; the segmentation dispatch
+  // itself accepts such boundaries and force-breaks the straddled phrases.
   const pulledTokenInPhrase =
     focusedSideIsPrev === undefined
       ? false

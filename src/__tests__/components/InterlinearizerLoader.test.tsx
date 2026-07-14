@@ -1354,11 +1354,10 @@ describe('InterlinearizerLoader', () => {
     });
 
     it('re-renders the interlinearizer with the new segments in place after a boundary edit', async () => {
-      // The reported bug: clicking merge/split did not update the view. The resegmented book is
-      // derived from the draft's ref-held segmentation, and the auto-save's `setDirty(true)` bails
-      // out of the re-render once the draft is dirty — so the new `book` prop only reaches the
-      // interlinearizer because `autosaveSegmentation` bumps a dedicated version. Assert the split
-      // actually reaches the rendered `book` (verse 1 becomes two segments) without a remount.
+      // The resegmented book is derived from the draft's ref-held segmentation, and the auto-save's
+      // `setDirty(true)` no-ops the re-render once the draft is dirty, so the new `book` prop reaches
+      // the interlinearizer only because `autosaveSegmentation` bumps a dedicated version. Assert the
+      // split reaches the rendered `book` (verse 1 becomes two segments) without a remount.
       mockBookData({ book: TWO_VERSE_BOOK });
       await act(async () => {
         renderLoader();
@@ -1981,10 +1980,9 @@ describe('InterlinearizerLoader', () => {
       });
       expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
 
-      // Cross-book jump to MAT while the loaded book is still GEN (the window before the USJ arrives /
-      // Interlinearizer remounts). Rather than leave the previous book's views mounted — where they
-      // would show through the fade as the swap happens — the loader shows the Loading curtain, so
-      // nothing of either book is visible until the new one mounts and fades in.
+      // Cross-book jump to MAT while the loaded book is still GEN (before the USJ arrives and
+      // Interlinearizer remounts). The loader shows the Loading curtain rather than the previous
+      // book's views, so nothing of either book is visible until the new one mounts and fades in.
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       controls?.rerenderNow();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
@@ -2014,8 +2012,7 @@ describe('InterlinearizerLoader', () => {
       expect(interlinearizerMountCount).toBe(1);
 
       // A book change must tear down the old instance and mount a fresh one keyed by the new book, so
-      // it never updates in place against carried-over (wrong-book) scroll/focus state — the shuffle
-      // that surfaced before the curtain settled.
+      // it never updates in place against carried-over (wrong-book) scroll/focus state.
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });
       controls?.rerenderNow();

@@ -418,8 +418,7 @@ describe('useGlossDispatch', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
 
-    // tok-1 reads the new 'b'; tok-2 keeps the original 'a' because the reducer forked the
-    // shared payload before editing.
+    // tok-1 reads the new 'b'; tok-2 keeps 'a' because editing forked the shared payload.
     expect(screen.getByTestId('gloss')).toHaveTextContent('b');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses).toHaveLength(2);
@@ -795,8 +794,7 @@ describe('usePhraseDispatch', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'merge' }));
 
-    // A single dispatch means a single save — the intermediate state where tokens belonged to two
-    // phrases is never observed.
+    // A single dispatch means a single save — the intermediate two-phrase state is never observed.
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalysisLinks[0].tokens.map((t) => t.tokenRef)).toStrictEqual([
@@ -1745,8 +1743,8 @@ describe('useResolvedTokenAnalysis', () => {
     );
     const before = sink.length;
 
-    // Glossing 'cat' rebuilds the pool but leaves the 'logos' suggestion untouched; the custom
-    // equalityFn keeps the selected value referentially stable so the reader never re-renders.
+    // Glossing 'cat' rebuilds the pool but leaves the 'logos' suggestion referentially stable (via
+    // the custom equalityFn), so the reader never re-renders.
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
 
     expect(sink.length).toBe(before);

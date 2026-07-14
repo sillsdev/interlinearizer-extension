@@ -52,9 +52,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGlossDispatch: () => () => {},
 }));
 
-// The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
-// ContinuousView's tests don't redundantly re-exercise the hook's internals; the view only forwards
-// its handlers, which a no-op stub satisfies.
+// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
   __esModule: true,
@@ -73,9 +72,9 @@ jest.mock('../../hooks/usePhraseHoverState', () => ({
 jest.mock('../../components/TokenChip');
 
 /**
- * Spy invoked once per rendered link icon (mounted, whether suppressed or not). Rendering a span
- * with data attributes encoding the token refs lets DOM queries check suppression state via the
- * parent wrapper's style. Cleared in `beforeEach`.
+ * Spy invoked once per rendered link icon (mounted, whether suppressed or not). The rendered span
+ * encodes the token refs as data attributes so DOM queries can check suppression via the parent
+ * wrapper's style. Cleared in `beforeEach`.
  */
 const tokenLinkIconSpy = jest.fn();
 jest.mock('../../components/TokenLinkIcon', () => ({
@@ -536,17 +535,13 @@ describe('ContinuousView initial render', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    // The strip marks each verse boundary with the shared PhraseSlot's verse number (below the link
-    // icon) — the same treatment as token-chip SegmentView. This book has verses 1 and 2; the first
-    // verse opens chapter 1, so its label is chapter-qualified (`1:1`).
+    // Verses 1 and 2; the first opens chapter 1, so its label is chapter-qualified (`1:1`).
     const sups = screen.getAllByTestId('verse-superscript');
     expect(sups.map((s) => s.textContent)).toEqual(['1:1', '2']);
   });
 
   it('renders no verse superscript at a mid-verse continuation start', () => {
-    // Verse 1 is split into two segments: the second is a continuation (its verse start flagged
-    // isContinuation). The strip shows the verse-1 number only once — at the piece that truly begins
-    // the verse — not again at the continuation.
+    // Verse 1 split across two segments; the second's verse start is flagged isContinuation.
     const splitBook = makeBook({
       segments: [
         {
@@ -595,7 +590,6 @@ describe('ContinuousView initial render', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    // Verse numbers now show, but there is still no top-left "GEN 1:1" segment label.
     expect(screen.queryByText('GEN 1:1')).not.toBeInTheDocument();
   });
 
@@ -650,17 +644,16 @@ describe('ContinuousView initial render', () => {
   });
 
   it('falls back to focusedTokenRef when the lagging displayed ref is from another book', () => {
-    // During a book change displayFocusedTokenRef lags by one fade, so it briefly names a token from
-    // the previous book that no longer exists in the new book. The focus must follow the live
-    // focusedTokenRef (the new book's active verse) rather than collapsing to the book's first phrase.
+    // During a book change displayFocusedTokenRef lags by one fade, briefly naming a token absent
+    // from the new book; focus must follow the live focusedTokenRef, not collapse to phrase 0.
     const book = makeBook();
     const { rerender } = render(
       <ContinuousView {...requiredProps(book, { focusedTokenRef: 'tok-2' })} />,
       withAnalysisStore,
     );
 
-    // Swap to a different book whose token refs share none of the previous book's. The displayed ref
-    // ('tok-2') is now absent; focusedTokenRef points at the new book's *second* phrase.
+    // A different book sharing no token refs: the displayed 'tok-2' is now absent, and
+    // focusedTokenRef points at the new book's second phrase.
     const otherBook: Book = {
       id: 'MAT',
       bookRef: 'MAT',
@@ -706,9 +699,7 @@ describe('ContinuousView initial render', () => {
     scrollIntoViewMock.mockClear();
     rerender(<ContinuousView {...requiredProps(otherBook, { focusedTokenRef: 'mat-tok-1' })} />);
 
-    // The scroll target is resolved through focusPhraseIndex, which falls back to focusedTokenRef
-    // ('mat-tok-1', the second phrase) rather than collapsing to phrase 0. So the element scrolled
-    // into view is the one containing "Beta", never "Alpha".
+    // The scroll lands on "Beta" (the focusedTokenRef phrase), never "Alpha" (phrase 0).
     const scrolledTexts = scrollIntoViewMock.mock.contexts.map((el) =>
       el instanceof HTMLElement ? el.textContent : undefined,
     );
@@ -749,9 +740,8 @@ describe('ContinuousView focus changes', () => {
   });
 
   it('does not notify the parent when clicking the group of an already-focused non-first token', async () => {
-    // Group tok-0 and tok-1 into one phrase box (keyed by tok-0), then focus tok-1 — the second
-    // token of the group, as a segment-view click on a middle token would. Clicking the box must
-    // stay a no-op even though its groupKey (tok-0) differs from focusedTokenRef (tok-1).
+    // tok-0/tok-1 grouped into one box (keyed by tok-0) with focus on tok-1: clicking the box stays
+    // a no-op even though its groupKey differs from focusedTokenRef.
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-1',
       status: 'approved',
@@ -912,13 +902,11 @@ describe('ContinuousView arrow navigation', () => {
   });
 
   it('steps from the externally-imposed focus, not the stale pending index, after an external change interrupts an in-flight internal nav', async () => {
-    // Sequence: an external nav (tok-3) starts its fade while tok-1 is still displayed; the user
-    // clicks Next during the fade (internal nav in flight — this parent never echoes it); then a
-    // second external change lands back on the still-displayed tok-1. Because that value equals the
-    // displayed ref, the focus-change effect early-returns without clearing the in-flight marker,
-    // so only the render-phase external-override detection resyncs the pending index. Without it,
-    // the next step would advance from the stale pending index (group 2 → tok-1) instead of the
-    // externally-imposed position (group 1 → tok-0).
+    // An external nav (tok-3) fades while tok-1 is displayed; the user clicks Next mid-fade (internal
+    // nav in flight, never echoed); a second external change lands back on the still-displayed tok-1.
+    // Since that equals the displayed ref, the focus-change effect early-returns without clearing the
+    // in-flight marker, so render-phase external-override detection must resync the pending index —
+    // otherwise the next step advances from the stale pending index instead of the imposed position.
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
@@ -972,10 +960,9 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('holds the group centered on animation frames after an external jump within the active segment', () => {
-    // An external jump landing in the already-active segment never flips committedActiveSegmentId,
-    // so the layout-effect re-center loop does not run for it; the scroll effect's own hold loop
-    // must keep the group pinned while late layout (arc padding settling on the slid window)
-    // shifts the strip after the instant snap.
+    // An external jump within the already-active segment never flips committedActiveSegmentId, so the
+    // scroll effect's own hold loop must keep the group pinned while late layout (arc padding
+    // settling on the slid window) shifts the strip after the instant snap.
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
@@ -1020,11 +1007,9 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('re-centers the focused group when the strip content reflows after the initial hold window', () => {
-    // Regression: the window's glosses / morpheme rows / arcs settle asynchronously over many
-    // frames, and content that widens to the left of the focus shifts the focused box (and its
-    // arcs) sideways. A fixed-duration hold expires before that late reflow lands, stranding the
-    // focus off-center. The hold must observe the content row and re-center on each reflow, so a
-    // resize firing after the initial quiet window still snaps the focus back to center.
+    // Glosses/morpheme rows/arcs settle asynchronously over many frames; content widening to the
+    // left of the focus shifts the focused box sideways. The hold observes the content row and
+    // re-centers on each reflow, so a resize after the initial quiet window still snaps to center.
     const originalResizeObserver = global.ResizeObserver;
     resizeObserverInstances = [];
     global.ResizeObserver = TrackingResizeObserver;
@@ -1045,7 +1030,7 @@ describe('ContinuousView scroll behavior', () => {
           jest.advanceTimersByTime(510);
         });
 
-        // Let the initial quiet window fully lapse so the fixed-clock hold would have stopped.
+        // Let the initial quiet window fully lapse.
         act(() => {
           jest.advanceTimersByTime(1000);
         });
@@ -1071,14 +1056,9 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('keeps the content-row observer connected after the quiet window so a late reflow still re-centers', () => {
-    // Regression (real-app, CDP-reproduced): the dominant strip-width reflow (gloss-placeholder
-    // resolution / arc settle) can land 300-500ms after mount — after the hold's 200ms quiet window
-    // has already lapsed. The old hold disconnected its ResizeObserver the moment the rAF loop
-    // stopped at the quiet deadline, so that late reflow was never observed and the focus stayed
-    // stranded ~1100px off-center. The observer must remain connected for the full hard-deadline
-    // window, restarting the re-center loop whenever a late reflow fires. A no-op disconnect mock
-    // (as an earlier test used) hides this: it must assert the observer was NOT disconnected while
-    // still inside the hold window.
+    // The dominant strip-width reflow (gloss-placeholder resolution / arc settle) can land after the
+    // hold's 200ms quiet window lapses. The observer must remain connected for the full hard-deadline
+    // window, restarting the re-center loop whenever a late reflow fires.
     const originalResizeObserver = global.ResizeObserver;
     resizeObserverInstances = [];
     global.ResizeObserver = TrackingResizeObserver;
@@ -1092,10 +1072,10 @@ describe('ContinuousView scroll behavior', () => {
         jest.useFakeTimers();
       });
       try {
-        // Drive an external jump so the hold loop runs under fake-timer control (jsdom rAF on the
-        // initial real-timer mount is not deterministically advanceable). tok-1 shares GEN 1:1 with
-        // tok-0, so no committed-active-segment flip: only the scroll effect's own hold pins the
-        // group, exercising the same observer lifetime as the initial mount.
+        // Drive the hold loop via an external jump so it runs under fake-timer control (jsdom rAF on
+        // the initial real-timer mount is not deterministically advanceable). tok-1 shares GEN 1:1
+        // with tok-0, so there's no committed-active-segment flip: only the scroll effect's own hold
+        // pins the group, exercising the same observer lifetime as the initial mount.
         rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-1' }} />);
         // Complete the fade-out (RECENTER_FADE_MS) so the instant snap + hold start.
         act(() => {
@@ -1110,8 +1090,7 @@ describe('ContinuousView scroll behavior', () => {
 
         // The active (latest) observer must still be connected to catch a reflow that lands this
         // late. Superseded holds torn down during the fade/rerender are earlier instances; the last
-        // one is the live hold. The old code called disconnect() the moment the tick loop stopped, so
-        // this was already true — the regression this test locks down.
+        // one is the live hold.
         const activeObserver = resizeObserverInstances.at(-1);
         if (!activeObserver) throw new Error('Expected the hold to create a content-row observer');
         expect(activeObserver.disconnected).toBe(false);
@@ -1142,8 +1121,7 @@ describe('ContinuousView scroll behavior', () => {
       jest.useFakeTimers();
     });
     // External nav into the other verse: the active segment commits instantly behind the fade, so
-    // the slots must snap to their new widths rather than animating (which would slide the boxes for
-    // ~200ms after the strip fades back in).
+    // the slots snap to their new widths rather than animating (which would slide the boxes).
     rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-3' }} />);
 
     const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
@@ -1157,10 +1135,9 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('smooth-scrolls for internal nav once the parent echoes the ref back synchronously', async () => {
-    // The smooth-scroll path requires the displayed focus to already agree with the prop and the
-    // strip to be visible when the scroll effect runs. That only happens when a real (stateful)
-    // parent reflects the internal ref change straight back, so simulate one here rather than
-    // driving the ref via a jest.fn() that never updates the prop.
+    // The smooth-scroll path needs the displayed focus to agree with the prop and the strip to be
+    // visible, which only happens with a real (stateful) parent reflecting the ref change back, so
+    // simulate one here rather than a jest.fn() that never updates the prop.
     const book = makeBook();
     const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     function Parent() {
@@ -1181,8 +1158,8 @@ describe('ContinuousView scroll behavior', () => {
       );
     }
     render(<Parent />, withAnalysisStore);
-    // Wait for the initial-load requestAnimationFrame fade-in to complete (strip becomes visible)
-    // before navigating; the smooth path is only taken while the strip is already visible.
+    // Wait for the initial fade-in (strip visible) before navigating; the smooth path is only taken
+    // while the strip is already visible.
     await waitFor(() =>
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
@@ -1226,9 +1203,8 @@ describe('ContinuousView scroll behavior', () => {
       );
     }
     render(<Parent />, withAnalysisStore);
-    // Returns true when the tok-0/tok-1 link icon is rendered AND its wrapper is visible (not
-    // suppressed). Icons stay mounted but are hidden via opacity:0 when suppressed, so
-    // we query the DOM wrapper's style rather than spy calls.
+    // Returns true when the tok-0/tok-1 link icon is rendered and its wrapper is visible. Suppressed
+    // icons stay mounted but hidden via opacity:0, so query the wrapper's style, not spy calls.
     return () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
@@ -1239,10 +1215,9 @@ describe('ContinuousView scroll behavior', () => {
   }
 
   it('keeps the old segment’s link icon until the scroll settles, then drops it on scrollend', async () => {
-    // With hideInactiveLinkButtons on, crossing a boundary wants to add/remove icons — but doing so
-    // mid-scroll shifts every box and breaks the smooth glide. The view defers the active-segment
-    // switch until the scroll settles (signaled by the container's `scrollend`), so the old segment
-    // keeps its icon during the animation and only loses it once the scroll finishes.
+    // With hideInactiveLinkButtons on, adding/removing icons mid-scroll would shift every box and
+    // break the glide. The view defers the active-segment switch until the scroll settles (the
+    // container's `scrollend`), so the old segment keeps its icon through the animation.
     const inSegmentIconMounted = renderHideInactiveCrossing();
     await waitFor(() =>
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
@@ -1255,9 +1230,8 @@ describe('ContinuousView scroll behavior', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
     expect(inSegmentIconMounted()).toBe(true);
 
-    // The scroll settles → `scrollend` fires on the clipping viewport (the element that actually
-    // scrolls) → the active segment switches to GEN 1:2 and the GEN 1:1 icon disappears (its
-    // in-segment slot is now inactive and suppressed).
+    // On `scrollend` (fired on the clipping viewport that actually scrolls), the active segment
+    // switches to GEN 1:2 and the GEN 1:1 icon disappears (its in-segment slot is now suppressed).
     tokenLinkIconSpy.mockClear();
     act(() => {
       screen.getByTestId('strip-scroll-viewport').dispatchEvent(new Event('scrollend'));
@@ -1284,9 +1258,8 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('commits the deferred relayout via the fallback timeout when scrollend never fires', () => {
-    // Browsers without `scrollend` (or when the target was already centered, so no scroll happens)
-    // must still commit the deferred relayout. A backstop timeout covers that case. Fake timers are
-    // installed before render so every scheduled timer is captured, then advanced past the fallback.
+    // Browsers without `scrollend` (or when the target was already centered) still commit via a
+    // backstop timeout. Fake timers are installed before render so every timer is captured.
     jest.useFakeTimers();
     try {
       const inSegmentIconMounted = renderHideInactiveCrossing();
@@ -1315,12 +1288,10 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('defers the reconcile to the scroll settle when a boundary edit lands mid-glide', () => {
-    // A boundary edit that changes the focused token's segment id while an internal-nav smooth
-    // scroll is still animating must NOT commit the active segment early: doing so would flip
-    // committedActiveSegmentId and fire an instant re-center, truncating the glide into a jump. The
-    // reconcile effect defers to the in-flight scroll's settle instead. Probe: with the old segment
-    // still committed, its in-segment link icon stays mounted through the edit and only drops once
-    // the scroll settles.
+    // A boundary edit that changes the focused token's segment id mid-glide must not commit the
+    // active segment early (that would flip committedActiveSegmentId and truncate the glide into a
+    // jump); the reconcile defers to the scroll's settle. Probe: with the old segment still
+    // committed, its in-segment link icon stays mounted through the edit until the scroll settles.
     const book = makeBook();
     const merged = resegmentBook(book, { removedVerseStarts: ['tok-1'], addedStarts: [] });
     const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
@@ -1369,9 +1340,8 @@ describe('ContinuousView scroll behavior', () => {
       expect(inSegmentIconMounted()).toBe(true);
 
       // Boundary edit mid-glide: merge GEN 1:2 into GEN 1:1. Token refs survive so focus is
-      // unchanged; the reconcile effect must defer (not commit-and-relayout), so the old segment's
-      // in-segment icon stays mounted rather than the strip snapping to a committed relayout. The
-      // deferred commit runs later via the pending scroll settle.
+      // unchanged; the reconcile defers rather than commit-and-relayout, so the old segment's
+      // in-segment icon stays mounted.
       act(() => {
         applyBoundaryEdit();
       });
@@ -1382,11 +1352,9 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('re-centers the focused group each frame while the inactive-link slots animate, then stops', () => {
-    // After the active segment commits (post-scrollend), the inactive-link slots slide open/closed
-    // over LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. The view
-    // re-centers the focused group on every animation frame for that whole window so it stays dead
-    // center, then tears the loop down once the transition completes. Fake timers drive both the
-    // rAF callbacks and performance.now() deterministically.
+    // After the active segment commits, the inactive-link slots slide open/closed over
+    // LINK_SLOT_TRANSITION_MS, shifting every box around the center. The view re-centers on every
+    // frame for that window, then tears the loop down once the transition completes.
     jest.useFakeTimers();
     try {
       const inSegmentIconMounted = renderHideInactiveCrossing();
@@ -1446,15 +1414,13 @@ describe('ContinuousView scroll behavior', () => {
   });
 
   it('re-centers once when simplifyPhrases toggles but not when hideInactiveLinkButtons toggles', () => {
-    // Inactive link slots are now hidden via visibility:hidden (not max-width collapse), so toggling
-    // hideInactiveLinkButtons no longer shifts the strip layout — no re-center needed.
-    // simplifyPhrases still affects layout, so it should trigger one re-center.
+    // Inactive link slots hide via visibility:hidden (not max-width collapse), so toggling
+    // hideInactiveLinkButtons doesn't shift layout; simplifyPhrases does, so it re-centers once.
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
     scrollIntoViewMock.mockClear();
 
-    // Toggling hideInactiveLinkButtons should not cause any re-centering.
     rerender(
       <ContinuousView
         {...props}
@@ -1463,7 +1429,6 @@ describe('ContinuousView scroll behavior', () => {
     );
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
-    // Toggling simplifyPhrases re-centers exactly once (no rAF loop needed).
     rerender(
       <ContinuousView
         {...props}
@@ -1526,13 +1491,13 @@ describe('ContinuousView segmentation edits', () => {
     // Focus sits in GEN 1:2, so the slot between its two tokens is active and visible.
     expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
 
-    // Merge GEN 1:2 into GEN 1:1 — the exact transform the loader applies on a boundary edit.
-    // Token refs survive, so focus does not move, but the focused token's segment id changes.
+    // Merge GEN 1:2 into GEN 1:1. Token refs survive, so focus stays put, but the focused token's
+    // segment id changes.
     const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
     rerender(<ContinuousView {...{ ...props, book: merged, ...buildLookups(merged) }} />);
 
-    // The committed active segment must follow the merge; a stale id names a segment that no
-    // longer exists, which would suppress every link button until the next navigation.
+    // The committed active segment must follow the merge; a stale id would suppress every link
+    // button until the next navigation.
     expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
   });
 });
@@ -1711,9 +1676,8 @@ describe('ContinuousView phrase grouping', () => {
   });
 
   it('clears the hovered phrase highlight when the pointer leaves the token strip', async () => {
-    // Group tok-0/tok-1 into one hoverable phrase so hovering it sets hoveredPhraseId, which
-    // ContinuousView forwards to ArcOverlay. Leaving the strip runs clearAllHoverState, which must
-    // reset hoveredPhraseId to undefined.
+    // tok-0/tok-1 grouped into one hoverable phrase so hovering it sets hoveredPhraseId (forwarded
+    // to ArcOverlay); leaving the strip must reset it to undefined.
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-1',
       status: 'approved',
@@ -1742,12 +1706,9 @@ describe('ContinuousView phrase grouping', () => {
   });
 
   it('applies the internal focus transition when the parent reflects a click-driven ref change', async () => {
-    // Simulate: ContinuousView clicks Next, sets internalFocusedTokenRefRef, calls
-    // onFocusedTokenRefChange. The parent then passes the new focusedTokenRef back. This exercises
-    // the isInternal=true branch of the focus-change effect, which applies the new ref *immediately*
-    // (setDisplayFocusedTokenRef) without fading the strip out. The external (non-internal) branch
-    // would instead defer the display update behind a fade timeout, so the focused box would still
-    // be 'In' (tok-0) right after the rerender.
+    // A click Next stamps the ref internally-originated; when the parent echoes it back, the
+    // isInternal branch applies it immediately (no fade-out). The external branch would defer the
+    // display update behind a fade timeout, leaving 'In' (tok-0) focused right after the rerender.
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
@@ -1759,12 +1720,10 @@ describe('ContinuousView phrase grouping', () => {
     );
 
     await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
-    // Now reflect the new ref back as a prop change (as a real parent would do). Because the click
-    // stamped tok-1 as internally-originated, the echo is recognized as internal and applied at once.
+    // Reflect the new ref back as a prop change; the click stamped it internal, so it applies at once.
     rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
 
-    // The displayed focus moved synchronously to tok-1's box ('the') — the internal path, not the
-    // fade-then-snap external path (which would leave 'In' focused until the fade timeout fires).
+    // The displayed focus moved synchronously to tok-1's box ('the') — the internal path.
     expect(screen.getByText('the').closest('[data-phrase-box="true"]')).toHaveAttribute(
       'data-focus-state',
       'focused',
@@ -1886,8 +1845,7 @@ describe('ContinuousView phrase grouping', () => {
     mockCandidateTokenRefs.current = new Set(['tok-0']);
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
-    // useCandidatePhraseIds resolves the hovered candidate ref (tok-0) to the phrase that contains
-    // it, and ContinuousView forwards the set to ArcOverlay. The mock surfaces it as a data attr.
+    // The hovered candidate ref (tok-0) resolves to its phrase, forwarded to ArcOverlay.
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
       'data-candidate-phrase-ids',
       'phrase-1',

@@ -78,8 +78,7 @@ describe('ViewOptionsDropdown', () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
     await userEvent.click(screen.getByTestId('view-options-button'));
 
-    // The mock returns each key as its own label value, so every toggle's
-    // localization key must surface as visible text — one assertion per toggle.
+    // The mock returns each key as its own label, so each toggle's key surfaces as visible text.
     expect(screen.getByText('%interlinearizer_viewOption_continuousScroll%')).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_showMorphology%')).toBeInTheDocument();
     expect(

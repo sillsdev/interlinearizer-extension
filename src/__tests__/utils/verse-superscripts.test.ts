@@ -78,9 +78,9 @@ describe('buildVerseStartLabels', () => {
   });
 
   it('qualifies and advances the chapter for an empty verse opening a chapter', () => {
-    // An empty verse tokenizes to no tokens, but its chapter is read from VerseStart.chapter (not a
-    // token), so a chapter-opening empty verse is still qualified AND still advances the running max
-    // — so the following non-empty verse in the same chapter renders bare, not double-qualified.
+    // An empty verse tokenizes to no tokens, but its chapter comes from VerseStart.chapter, so a
+    // chapter-opening empty verse is still qualified and still advances the running max — the
+    // following non-empty verse in the same chapter renders bare.
     const book = makeBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 2:1', text: '' },
@@ -150,7 +150,7 @@ describe('slotVerseLabel', () => {
 
   it('returns the label when the verse start is buried mid-group (phrase fused across a merged verse boundary)', () => {
     // A phrase link fusing verse 1's last word with verse 2's first word puts the verse-2 start as a
-    // non-first token; keying only on tokens[0] would drop the number in the group-based strips.
+    // non-first token of the group.
     const labels = new Map([['GEN 1:2:0', '2']]);
     const fused = group([wordToken('GEN 1:1:5'), wordToken('GEN 1:2:0')]);
     expect(slotVerseLabel(slot(fused), labels)).toBe('2');

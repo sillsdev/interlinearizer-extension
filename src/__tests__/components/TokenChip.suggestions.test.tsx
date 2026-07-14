@@ -226,14 +226,13 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('shows no + button when the token has only one suggestion', async () => {
-    // A single suggestion needs no chooser: the ghost placeholder advertises it and focusing the
-    // gloss opens the dropdown to accept it, so the "+" button is reserved for tokens with a choice.
+    // A single suggestion needs no chooser: the ghost placeholder advertises it and focusing opens
+    // the dropdown to accept it, so the "+" button is reserved for tokens with a choice.
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
     const input = await focusGloss('logos');
 
-    // The dropdown is open (its single accept row is present) but no chooser button is rendered,
-    // even on hover.
+    // The dropdown is open (single accept row) but no chooser button renders, even on hover.
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
     await userEvent.hover(input);
@@ -255,22 +254,21 @@ describe('TokenChip suggestion dropdown', () => {
   });
 
   it('auto-opens the dropdown on an approved token that has a different pool alternative', async () => {
-    // r1 is approved to ta-river; the pool also holds ta-fin ('finance') for the homograph 'bank'.
-    // The approved payload is filtered out of the dropdown, leaving the genuine alternative. Focusing
-    // the gloss opens the dropdown over the committed gloss even though the token already has a
-    // decision; with only one alternative there is no "+" button.
+    // r1 is approved to ta-river; the pool also holds ta-fin ('finance') for 'bank'. The approved
+    // payload is filtered out, leaving the alternative, and focusing opens the dropdown over the
+    // committed gloss; with one alternative there is no "+" button.
     renderChip(wordToken('r1', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
     await focusGloss('bank');
 
-    // On an already-approved token every alternative is a grey "promote" row, not the blue "accept"
-    // row — there is no suggestion to accept, only candidates to promote to.
+    // On an already-approved token every alternative is a grey "promote" row, not a blue "accept"
+    // row: there is nothing to accept, only candidates to promote to.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
     const promote = screen.getByTestId('suggestion-candidate');
     expect(promote).toHaveTextContent('finance');
     expect(promote.className).toContain('tw:gloss-candidate');
-    // The already-approved 'riverbank' is excluded — only the alternative is offered.
+    // The already-approved 'riverbank' is excluded; only the alternative is offered.
     expect(screen.queryByText('riverbank')).not.toBeInTheDocument();
   });
 
@@ -401,9 +399,9 @@ describe('TokenChip suggestion dropdown', () => {
 
     await focusGloss('bank');
 
-    // ta-blank (French-only, frequency 2) outranks ta-fin but has no English gloss, so rather than
-    // hiding the whole suggestion the top row surfaces ta-fin's 'finance', with no leftover candidate
-    // row (ta-blank is the only other analysis and it's gloss-less in English).
+    // ta-blank (French-only, frequency 2) outranks ta-fin but has no English gloss, so the top row
+    // surfaces ta-fin's 'finance' instead, with no leftover candidate row (ta-blank is gloss-less in
+    // English).
     const accept = screen.getByTestId('suggestion-accept');
     expect(accept).toHaveTextContent('finance');
     expect(screen.queryByTestId('suggestion-candidate')).not.toBeInTheDocument();
@@ -438,11 +436,10 @@ function homographMajorityPool(): TextAnalysis {
 
 describe('TokenChip suggestion after clearing an approved gloss', () => {
   it('previews the pool majority, not the lone alternative, when an approved gloss is cleared', async () => {
-    // r1 is approved to the majority 'riverbank'; focused, its dropdown offers only the minority
-    // 'finance' alternative (the approved payload is excluded). Clearing the gloss must not leave
-    // 'finance' standing in as the suggestion: discounting r1's own approval (3 → 2) keeps
-    // 'riverbank' on top, so the accept row and ghost placeholder both surface 'riverbank' — matching
-    // what re-derives once the empty value commits on blur, rather than flipping on blur.
+    // r1 is approved to the majority 'riverbank'; its dropdown offers only the minority 'finance'
+    // alternative. On clearing, discounting r1's own approval (3 → 2) keeps 'riverbank' on top, so
+    // the accept row and ghost placeholder both surface 'riverbank' — matching what re-derives once
+    // the empty value commits on blur, rather than flipping to 'finance'.
     renderChip(wordToken('r1', 'bank'), { initialAnalysis: homographMajorityPool() });
 
     const input = await focusGloss('bank');
@@ -459,8 +456,8 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
   });
 
   it('shows no suggestion when the cleared gloss was the surface form only approval', async () => {
-    // 'logos' is approved exactly once; clearing it empties the pool match, so nothing is suggested —
-    // consistent with the empty pool the committed deletion produces (no flip back to a suggestion).
+    // 'logos' is approved exactly once; clearing it empties the pool match, so nothing is suggested,
+    // consistent with the empty pool the committed deletion produces.
     renderChip(wordToken('tok-approved', 'logos'), {
       initialAnalysis: poolWithOneApproved('word'),
     });
@@ -618,8 +615,8 @@ describe('TokenChip suggestion keyboard navigation', () => {
 
 describe('TokenChip suggestion + button', () => {
   it('fades in on hover even when the input is not focused, and fades out again on unhover', async () => {
-    // The homograph 'bank' has two suggestions, so the "+" button is rendered; at rest it is present
-    // but invisible and non-interactive (its slot is reserved so the chip never reflows).
+    // 'bank' has two suggestions, so the "+" button renders; at rest it is present but invisible and
+    // non-interactive (its slot is reserved so the chip never reflows).
     renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
     const addButton = screen.getByTestId('suggestion-add');

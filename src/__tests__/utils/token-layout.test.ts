@@ -252,7 +252,6 @@ describe('groupTokens', () => {
       ['tok-a', link],
       ['tok-c', link],
     ]);
-    // tok-b is free, breaking the phrase into two separate groups
     const groups = groupTokens(
       [mkWord('tok-a'), mkWord('tok-b'), mkWord('tok-c')],
       phraseLinkByRef,
@@ -265,7 +264,6 @@ describe('groupTokens', () => {
 
   it('records the correct firstIndex for each group', () => {
     const groups = groupTokens([mkPunct('p0'), mkWord('tok-a'), mkWord('tok-b')], new Map());
-    // tok-a is at index 1, tok-b at index 2
     expect(groups[0].firstIndex).toBe(1);
     expect(groups[1].firstIndex).toBe(2);
   });
@@ -280,7 +278,6 @@ describe('buildRenderUnits', () => {
     const tok = mkWord('tok-a');
     const group = { tokens: [tok], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] };
     const units = buildRenderUnits([tok], [group]);
-    // leading slot, group, trailing slot
     expect(units).toHaveLength(3);
     expect(units[0].kind).toBe('slot');
     expect(units[1].kind).toBe('group');
@@ -325,9 +322,8 @@ describe('buildRenderUnits', () => {
   });
 
   it('routes punctuation following an open intra-group gap into that same group', () => {
-    // A three-token group where punctuation appears between the second and third tokens.
-    // The first punctuation token opens the intra-group tracker (pendingIntraGroup); the
-    // second punctuation token must be routed through that tracker rather than buffered.
+    // A three-token group with two punctuation tokens between its second and third tokens: the
+    // second punctuation token must join the intra-group gap opened by the first, not be buffered.
     const a = mkWord('tok-a');
     const b = mkWord('tok-b');
     const p1 = mkPunct('p1', ',');
@@ -343,8 +339,7 @@ describe('buildRenderUnits', () => {
       ]),
     );
     buildRenderUnits([a, b, p1, p2, c], groups);
-    // Both punctuation tokens are routed into the currently-open intra-group gap (the gap that
-    // led to the most recently consumed group token, tokens[1] = b) rather than buffered.
+    // Both punctuation tokens land in the open intra-group gap after tokens[1] (b).
     const routed = groups[0].punctuationBetween.flat().map((t) => t.ref);
     expect(routed).toEqual(['p1', 'p2']);
   });
@@ -368,10 +363,9 @@ describe('buildRenderUnits', () => {
   });
 
   it('routes punctuation after the last token of a group into the following inter-group slot, not punctuationBetween', () => {
-    // Crash scenario: [A, B] (phrase group 1), punct, [C] (phrase group 2).
-    // After processing B (last token of group 1), pendingIntraGroup must be cleared so the
-    // punctuation is routed into the inter-group LinkSlot, not into an out-of-bounds
-    // punctuationBetween index.
+    // [A, B] (phrase group 1), punct, [C] (phrase group 2): after B (group 1's last token) the
+    // intra-group gap must be closed so the punctuation goes to the inter-group slot, not an
+    // out-of-bounds punctuationBetween index.
     const a = mkWord('tok-a');
     const b = mkWord('tok-b');
     const punct = mkPunct('p1', ',');
@@ -386,7 +380,6 @@ describe('buildRenderUnits', () => {
         ['tok-c', link2],
       ]),
     );
-    // Must not throw (was crashing with "Cannot read properties of undefined" before the fix).
     const units = buildRenderUnits([a, b, punct, c], groups);
 
     // The punctuation must appear in the inter-group slot between group 1 and group 2.

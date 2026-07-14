@@ -305,7 +305,6 @@ describe('extractBookFromUsj', () => {
   });
 
   it('skips text inside a heading para marker that appears mid-verse (before the verse is closed)', () => {
-    // An s1 heading node that arrives while a verse is still open must not contribute its text.
     const usj: UsjDocument = {
       content: [
         { type: 'book', code: 'PSA', content: [] },

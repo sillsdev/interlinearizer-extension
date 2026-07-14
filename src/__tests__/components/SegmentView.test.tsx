@@ -60,9 +60,8 @@ jest.mock('../../components/AnalysisStore', () => ({
   useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
 }));
 
-// The shared hover-preview state is covered in full by usePhraseHoverState.test.ts. Stub it here so
-// SegmentView's tests don't redundantly re-exercise the hook's internals; the view only forwards its
-// handlers, which a no-op stub satisfies.
+// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 const mockSplitFreeTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
@@ -83,8 +82,8 @@ jest.mock('../../components/TokenChip');
 
 jest.mock('../../components/TokenLinkIcon', () => ({
   __esModule: true,
-  // Surface the slot's focus side and its neighboring token refs so tests can assert which side of
-  // each slot SegmentView decided the focused group falls on (the focusedSideIsPrevByUnit walk).
+  // Surface the slot's focus side and neighboring token refs so tests can assert which side of each
+  // slot the focused group falls on.
   default: ({
     slotFocus,
     prevToken,
@@ -115,8 +114,8 @@ jest.mock('../../components/ArcOverlay', () => ({
     <button
       type="button"
       data-testid="arc-split-btn"
-      // Surface candidatePhraseIds (computed by useCandidatePhraseIds) so tests can assert the memo
-      // resolved the hovered candidate tokens to the right phrase ids; sorted for a stable string.
+      // Surface candidatePhraseIds so tests can assert the hovered candidate tokens resolved to the
+      // right phrase ids; sorted for a stable string.
       data-candidate-phrase-ids={[...candidatePhraseIds].sort().join(',')}
       onClick={() => onArcSplit('phrase-1', 'tok-0')}
     >
@@ -149,8 +148,8 @@ jest.mock('../../components/PhraseBox', () => ({
       data-focus-state={isFocused ? 'focused' : 'default'}
       data-phrase-box="true"
       data-show-gloss={showGlossInput}
-      // Surface the split-free refs PhraseStrip selected for this group so tests can assert the
-      // edit-mode branch swaps in EMPTY_SPLIT_FREE_REFS rather than the live hover set.
+      // Surface the split-free refs so tests can assert the edit-mode branch swaps in
+      // EMPTY_SPLIT_FREE_REFS rather than the live hover set.
       data-split-free-refs={[...splitFreeTokenRefs].sort().join(',')}
     >
       {tokens.map((t) => (
@@ -331,8 +330,8 @@ describe('SegmentView', () => {
   });
 
   it('renders no verse superscript at a mid-verse continuation start (token-chip)', () => {
-    // The later piece of a mid-verse split carries an isContinuation verse start: the verse's number
-    // already showed where it truly began (in the previous segment), so this piece shows none.
+    // The later piece of a mid-verse split carries an isContinuation verse start, so it shows no
+    // number (the verse's number already showed in the previous segment).
     const continuationSegment: Segment = {
       id: 'GEN 1:1:6',
       startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
@@ -457,8 +456,7 @@ describe('SegmentView', () => {
 
     const sups = screen.getAllByTestId('verse-superscript');
     expect(sups.map((s) => s.textContent)).toEqual(['1', '2']);
-    // Each superscript sits immediately before its verse's slice of the baseline, so the running
-    // text reads "¹Alpha beta. ²Gamma delta." in order.
+    // Each superscript sits immediately before its verse's slice of the baseline.
     expect(screen.getByTestId('segment-container')).toHaveTextContent('1Alpha beta. 2Gamma delta.');
   });
 
@@ -493,7 +491,6 @@ describe('SegmentView', () => {
   });
 
   it('renders no extension-generated segment label header (only the inline verse superscript)', () => {
-    // The only number shown is the inline verse superscript; there is no separate top-left label.
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
     expect(screen.getAllByTestId('verse-superscript')).toHaveLength(1);
@@ -530,8 +527,7 @@ describe('SegmentView', () => {
 
     await userEvent.click(screen.getByTestId('segment-container'));
 
-    // Passes the first word token so the segment gains focus (and the active highlight) on click,
-    // letting the parent both highlight the segment and navigate to its verse.
+    // Passes the first word token so the parent can both highlight the segment and navigate its verse.
     expect(handleSelect).toHaveBeenCalledTimes(1);
     expect(handleSelect).toHaveBeenCalledWith({ book: 'GEN', chapter: 1, verse: 1 }, 'tok-0');
   });
@@ -561,8 +557,8 @@ describe('SegmentView', () => {
       withAnalysisStore,
     );
 
-    // Focusing the input selects the verse via its token ref; the container's click handler must
-    // not also fire a bare-ref select, so onSelect lands exactly once.
+    // Focusing the input selects the verse; the container's click handler must not also fire, so
+    // onSelect lands exactly once.
     await userEvent.click(screen.getByTestId('segment-free-translation-input'));
 
     expect(handleSelect).toHaveBeenCalledTimes(1);
@@ -632,8 +628,8 @@ describe('SegmentView', () => {
     it('marks the Alt-held split gap with an insertion caret rather than a crowding Split glyph', () => {
       renderBaseline();
       const gap = screen.getByTestId('baseline-split-gap');
-      // A slim vertical caret (shown dim at rest, brightened on hover) signals the split point in the
-      // dense monospace run — not a Split glyph, which would collide with the surrounding letters.
+      // A slim vertical caret signals the split point in the dense monospace run, not a Split glyph
+      // that would collide with the surrounding letters.
       expect(within(gap).getByTestId('baseline-split-caret')).toBeInTheDocument();
       expect(within(gap).queryByTestId('split-icon')).not.toBeInTheDocument();
     });
@@ -669,10 +665,9 @@ describe('SegmentView', () => {
     });
 
     it('dispatches the former-boundary ref and anchors the gap at its token on a former boundary', () => {
-      // A merged segment whose absorbed verse opened on a quote: `In "the`. The word anchor is the
-      // word "the" (`w1`), but the removed default start is the leading quote (`q`), so a split there
-      // must restore the boundary before the quote — and the caret gap must sit before the quote, not
-      // before the word.
+      // A merged segment whose absorbed verse opened on a quote: `In "the`. The word anchor is "the"
+      // (`w1`), but the removed start is the leading quote (`q`), so a split there restores the
+      // boundary before the quote, and the caret gap sits before the quote, not the word.
       const quoteSegment: Segment = {
         id: 'GEN 1:1',
         startRef: { book: 'GEN', chapter: 1, verse: 1 },
@@ -713,9 +708,8 @@ describe('SegmentView', () => {
         segment: quoteSegment,
         formerBoundaries: new Map([['w1', 'q']]),
       });
-      // Exactly one split gap, and it is the inter-token slice ending just before the quote token
-      // (offset 3) — the space between "In" and the quote — so the caret sits where the restored
-      // boundary falls rather than before the word "the" (offset 4).
+      // The one split gap is the inter-token slice ending just before the quote (offset 3, the space
+      // between "In" and the quote), so the caret sits at the restored boundary, not before "the".
       const gap = screen.getByTestId('baseline-split-gap');
       expect(gap.firstChild?.textContent).toBe(' ');
       fireEvent.click(gap, { altKey: true });
@@ -764,8 +758,7 @@ describe('SegmentView', () => {
 
     it('renders the baseline text byte-for-byte with the verse superscript prefixed', () => {
       renderBaseline({ altHeld: false });
-      // The rendered text is the verse label followed by the exact baseline string (whitespace and
-      // punctuation preserved), the only structural change being the span split.
+      // The verse label followed by the exact baseline string (whitespace and punctuation preserved).
       expect(screen.getByTestId('segment-container').textContent).toBe('1In the beginning.');
     });
 
@@ -798,7 +791,7 @@ describe('SegmentView', () => {
 
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
-    // Both tokens are grouped into one PhraseBox (the mock renders both as buttons inside one wrapper)
+    // Both tokens grouped into one PhraseBox: one wrapper, two buttons.
     expect(document.querySelectorAll('[data-focus-state]')).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'In' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'the' })).toBeInTheDocument();
@@ -863,9 +856,8 @@ describe('SegmentView', () => {
   });
 
   it('sets focusedGroupSeen when focusedTokenRef matches a token in a group', () => {
-    // tok-0 and tok-1 are unlinked, so they form two solo groups with a slot between them. With
-    // tok-0 focused, the focusedSideIsPrevByUnit walk marks every slot *after* the tok-0 group as
-    // focusedSideIsPrev=true (focus is start-ward) and the leading slot before it as false.
+    // tok-0 and tok-1 are unlinked, forming two solo groups with a slot between. With tok-0 focused,
+    // every slot after its group is focusedSideIsPrev=true and the leading slot before it is false.
     render(<SegmentView {...requiredProps()} focusedTokenRef="tok-0" />, withAnalysisStore);
 
     const leadingSlot = document.querySelector('[data-prev-ref="none"][data-next-ref="tok-0"]');
@@ -889,8 +881,7 @@ describe('SegmentView', () => {
         ['tok-1', sharedLink],
       ]),
     );
-    // A non-empty live hover set so the edit-mode swap to EMPTY_SPLIT_FREE_REFS is observable: if the
-    // branch were absent, the box would receive this set instead of an empty one.
+    // A non-empty live hover set makes the edit-mode swap to EMPTY_SPLIT_FREE_REFS observable.
     mockSplitFreeTokenRefs.current = new Set(['tok-0']);
     render(
       <SegmentView
@@ -899,8 +890,6 @@ describe('SegmentView', () => {
       />,
       withAnalysisStore,
     );
-    // Edit mode forces EMPTY_SPLIT_FREE_REFS, so the box's split-free refs are empty even though the
-    // hover state has tok-0.
     expect(document.querySelector('[data-phrase-box]')).toHaveAttribute('data-split-free-refs', '');
   });
 
@@ -921,8 +910,7 @@ describe('SegmentView', () => {
     );
     mockSplitFreeTokenRefs.current = new Set(['tok-0']);
     render(<SegmentView {...requiredProps()} phraseMode={{ kind: 'view' }} />, withAnalysisStore);
-    // In view mode (controls allowed) the live hover set passes through unchanged — the contrast
-    // that makes the edit-mode EMPTY_SPLIT_FREE_REFS swap meaningful.
+    // In view mode the live hover set passes through unchanged.
     expect(document.querySelector('[data-phrase-box]')).toHaveAttribute(
       'data-split-free-refs',
       'tok-0',
@@ -1042,10 +1030,9 @@ describe('SegmentView', () => {
     const handleSelect = jest.fn();
     render(<SegmentView {...requiredProps()} onSelect={handleSelect} />, withAnalysisStore);
 
-    // Clicking a token chip's surface text lands on a <label>/<span> inside the phrase box, not on
-    // the gloss input itself. The browser still forwards that click to the input (which fires its
-    // own phrase focus), so the bubbled background click must NOT also fire and refocus the
-    // segment's first phrase — the bug seen when clicking an out-of-segment phrase fragment.
+    // Clicking a chip's surface text lands on a <label>/<span> inside the phrase box; the browser
+    // forwards that to the input (firing its own phrase focus), so the bubbled background click must
+    // not also refocus the segment's first phrase.
     await userEvent.click(screen.getByText('label-the'));
 
     expect(handleSelect).not.toHaveBeenCalled();
@@ -1054,10 +1041,8 @@ describe('SegmentView', () => {
   it('ignores background clicks that bubble up from an inter-phrase link slot', async () => {
     const handleSelect = jest.fn();
     const { container } = render(
-      // Inactive segment with link buttons hidden: the slot between the two token groups collapses
-      // its link button to zero width, leaving an empty clickable gap. Clicking that gap must NOT
-      // snap focus to the segment's first phrase (the reported out-of-segment bug); it should be a
-      // no-op, matching the buttons-visible case where the button absorbs it.
+      // Inactive segment with link buttons hidden: the slot between the two token groups leaves an
+      // empty clickable gap. Clicking that gap must be a no-op, not snap focus to the first phrase.
       <SegmentView
         {...requiredProps()}
         viewOptions={{ ...requiredProps().viewOptions, hideInactiveLinkButtons: true }}
@@ -1076,9 +1061,9 @@ describe('SegmentView', () => {
   it('enables the link-slot fade transition after mount', () => {
     const { container } = render(<SegmentView {...requiredProps()} />, withAnalysisStore);
 
-    // After mount, SegmentView stops suppressing the opacity transition so later toggles of
-    // isActive / hideInactiveLinkButtons fade the icon in/out instead of snapping. The icon wrapper
-    // is the fade-carrying span, identified by its data-testid (its position in the column varies).
+    // After mount, SegmentView stops suppressing the opacity transition so later toggles of isActive
+    // / hideInactiveLinkButtons fade the icon rather than snapping. The fade-carrying span is the
+    // icon wrapper, identified by data-testid (its column position varies).
     const slotWrapper = container.querySelector('[data-testid="link-slot-icon"]');
     if (!(slotWrapper instanceof HTMLElement)) throw new Error('Expected a link-slot icon wrapper');
     expect(slotWrapper.style.transitionDuration).toBe(`${LINK_SLOT_TRANSITION_MS}ms`);
@@ -1093,8 +1078,7 @@ describe('SegmentView', () => {
     mockUsePhraseLinkMap.mockReturnValue(new Map([['tok-0', phraseLink]]));
     mockCandidateTokenRefs.current = new Set(['tok-0']);
     render(<SegmentView {...requiredProps()} />, withAnalysisStore);
-    // useCandidatePhraseIds maps the hovered candidate token (tok-0) to its phrase id (phrase-1),
-    // and SegmentView passes that set to ArcOverlay's candidatePhraseIds prop.
+    // The hovered candidate token (tok-0) resolves to its phrase (phrase-1), passed to ArcOverlay.
     expect(screen.getByTestId('arc-split-btn')).toHaveAttribute(
       'data-candidate-phrase-ids',
       'phrase-1',

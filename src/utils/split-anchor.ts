@@ -1,19 +1,16 @@
 /**
  * @file The punctuation-travel rule that decides which token a segment split is anchored before,
  *   for a gap between two adjacent words. `resegmentBook` cuts immediately before whatever anchor
- *   it is given, so placing punctuation on the correct side of a split is entirely a matter of
- *   choosing the right anchor. This helper sits **above** the delta layer — it does not modify
- *   `utils/segmentation.ts` or `resegmentBook`.
+ *   it is given, so which side of a split punctuation lands on is entirely a matter of anchor
+ *   choice.
  */
 import type { Token } from 'interlinearizer';
 
 /**
- * Opening-class punctuation: marks that bind to the **following** word when they are whitespace-
- * isolated on both sides (the only case with no adjacency signal). Everything else — closing marks
- * (`»`, `)`, `]`, `}`, `”`, `’`, `›`, CJK closers) and sentence punctuation (`!`, `?`, `;`, `:`,
- * `.`, `,`) — is treated as non-opening and binds preceding when isolated. This list governs **only
- * whitespace-isolated** punctuation and is deliberately extensible; adjacency (a touching word)
- * always wins over it.
+ * Opening-class punctuation: marks that bind to the **following** word when whitespace-isolated on
+ * both sides (the only case with no adjacency signal). Everything else — closing marks and sentence
+ * punctuation — binds preceding when isolated. Governs **only** whitespace-isolated punctuation;
+ * adjacency (a touching word) always wins over it.
  */
 const OPENING_MARKS: ReadonlySet<string> = new Set([
   '"',

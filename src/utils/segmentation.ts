@@ -19,8 +19,7 @@ const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: []
 
 /**
  * The whole-book lookups every transform in this module needs, derived in a single pass over the
- * token stream. Bundled so one boundary op walks the book once instead of each helper re-walking
- * it.
+ * token stream so one boundary op walks the book once.
  */
 type BookLookups = Readonly<{
   /**
@@ -37,10 +36,8 @@ type BookLookups = Readonly<{
 }>;
 
 /**
- * Per-book cache of {@link BookLookups}. `verseBook` identity is stable for a given tokenization (it
- * changes only on re-tokenization), so caching by book reference lets every op — including the
- * two-op `moveBoundary` — reuse a single traversal rather than rebuilding four structures each
- * call.
+ * Per-book cache of {@link BookLookups}, keyed by book reference. `verseBook` identity is stable for
+ * a given tokenization (changing only on re-tokenization), so every op reuses one traversal.
  */
 const bookLookupsCache = new WeakMap<Book, BookLookups>();
 

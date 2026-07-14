@@ -163,14 +163,12 @@ function InterlinearizerLoaderInner({
 
   // Whether any gloss input currently holds uncommitted text. Gloss writes are deferred to blur, so
   // the persisted `dirty` flag does not flip until then; tracking in-progress edits here lets the
-  // unsaved indicator light up the moment the user starts typing. A draft swap (New / Open / Wipe /
-  // book change) remounts the editor, whose gloss inputs unregister on unmount, so the provider
-  // reports `false` and this clears back to a clean baseline.
+  // unsaved indicator light up the moment the user starts typing.
   const [pendingEdits, setPendingEdits] = useState(false);
 
-  // Reflect the draft's unsaved-changes state in the tab title. PAPI has no native dirty indicator,
-  // so we append a marker to the title via the host-injected `updateWebViewDefinition`. The marker
-  // shows for both committed changes (`dirty`) and in-progress typing (`pendingEdits`).
+  // Reflect the draft's unsaved-changes state in the tab title via the host-injected
+  // `updateWebViewDefinition`, since PAPI has no native dirty indicator. The marker shows for both
+  // committed changes (`dirty`) and in-progress typing (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
   useEffect(() => {
     updateWebViewDefinition({
@@ -221,10 +219,9 @@ function InterlinearizerLoaderInner({
   // Remove this state and its dropdown row once the UX is decided.
   const [showSuggestions, setShowSuggestions] = useState(true);
 
-  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps
-  // the reference identical across the loader's frequent re-renders (driven by `useData`,
-  // `useSetting`, etc.), so the `memo()` wrapping `SegmentView` can shallow-compare it away instead
-  // of re-rendering every windowed segment when no toggle actually changed.
+  // Bundle the display toggles into one stable object. Memoizing on the primitive values keeps the
+  // reference identical across the loader's frequent re-renders, so the `memo()` wrapping
+  // `SegmentView` can shallow-compare it away when no toggle actually changed.
   const viewOptions = useMemo(
     () => ({
       hideInactiveLinkButtons,
@@ -260,13 +257,11 @@ function InterlinearizerLoaderInner({
    *
    * `draft.segmentation` is read fresh from the ref-held draft at recompute time; the deps are the
    * two version counters that cover every path that can change it — `segmentationVersion` for
-   * boundary edits and `draftVersion` for wholesale replacements (New / Open / Wipe). The draft
-   * object itself is deliberately NOT a dep: gloss auto-saves replace the draft identity on every
-   * write without touching the boundaries, and keying on it would re-run the full-book
-   * re-segmentation (and cascade a fresh `book` identity through every downstream index and memo)
-   * after every gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter:
-   * the initial draft load, which must invalidate a book computed while the stored boundaries were
-   * still in flight.
+   * boundary edits, `draftVersion` for wholesale replacements (New / Open / Wipe). The draft object
+   * itself is deliberately NOT a dep: gloss auto-saves replace its identity on every write without
+   * touching the boundaries, so keying on it would re-run the full re-segmentation after every
+   * gloss edit. `isDraftLoading` covers the one replacement that bumps neither counter: the initial
+   * draft load.
    */
   const book = useMemo(
     () => (verseBook ? resegmentBook(verseBook, draft?.segmentation) : undefined),
@@ -280,9 +275,7 @@ function InterlinearizerLoaderInner({
    * first token of any type, per the delta's `removedVerseStarts`). The two differ when a verse
    * begins with punctuation (e.g. an opening quote); mapping through the word anchor lets the slot
    * render the former-boundary tick and dispatch a split that cancels the removal exactly. Deps
-   * mirror the `book` memo above: the version counters cover every path that changes the
-   * segmentation, `isDraftLoading` covers the initial draft load, and the draft identity is
-   * deliberately not a dep.
+   * mirror the `book` memo above.
    */
   const formerBoundaries = useMemo<ReadonlyMap<string, string>>(() => {
     const map = new Map<string, string>();
@@ -330,24 +323,20 @@ function InterlinearizerLoaderInner({
 
   // The active reference handed to the interlinearizer. The host emits `verseNum: 0` both for a
   // chapter's verse-0 superscription (which has its own segment) and for a plain whole-chapter
-  // selection (which does not). Keep verse 0 when the loaded book actually has a verse-0 segment for
-  // that chapter — so a Psalm superscription becomes the active verse — and otherwise fall back to
-  // the chapter's first numbered verse, so an ordinary chapter selection still lands on verse 1
-  // rather than leaving nothing highlighted. A reference contained in any segment's verse range —
-  // including a verse absorbed mid-segment by a merge — passes through unchanged; the views resolve
-  // it to its containing segment. Only a reference no segment contains at all (the host's
+  // selection (which does not): keep verse 0 when the loaded book has a verse-0 segment for that
+  // chapter, otherwise fall back to the chapter's first numbered verse. A reference contained in any
+  // segment's verse range passes through unchanged. A reference no segment contains (the host's
   // next-verse over-shooting the chapter's end) resolves to the nearest preceding segment start in
-  // the same chapter (falling through unchanged when the chapter has none).
+  // the same chapter, falling through unchanged when the chapter has none.
   const activeScrRef = useMemo(() => {
     if (!book) return scrRef;
     if (book.segments.some((segment) => segmentContainsVerse(segment, scrRef))) return scrRef;
     if (scrRef.verseNum === 0) return { ...scrRef, verseNum: 1 };
     // Search the verse starts themselves rather than each segment's `startRef`: a cross-chapter
     // segment (e.g. one starting at 4:20 but covering through 5:3) has `startRef.chapter === 4`, so
-    // filtering by `startRef` would exclude it when resolving an over-shoot within chapter 5 even
-    // though it is the segment holding that chapter's opening verses. Each verse start carries its
-    // own chapter, so filtering by `vs.chapter` finds the nearest preceding verse in the target
-    // chapter regardless of where its segment's boundary falls.
+    // filtering by `startRef` would miss it when resolving an over-shoot within chapter 5. Each verse
+    // start carries its own chapter, so `vs.chapter` finds the nearest preceding verse regardless of
+    // where the segment's boundary falls.
     let precedingVerse: number | undefined;
     book.segments.forEach((segment) => {
       if (segment.startRef.book !== scrRef.book) return;
@@ -370,11 +359,9 @@ function InterlinearizerLoaderInner({
     isShowFreeTranslationLoading ||
     isShowVerseGutterLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
-  // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
-  // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
-  // components stay visible while the new book loads, so the swap is seen before the fade hides it.
-  // Treating this window as loading swaps the old view for the Loading… curtain immediately, so
-  // nothing of either book shows until the new one has mounted and fades in.
+  // is still the previous one (its USJ hasn't arrived yet). Treating this window as loading swaps the
+  // old view for the Loading… curtain immediately, so nothing of either book shows until the new one
+  // has mounted and fades in.
   const isCrossBookSwap = !!book && scrRef.book !== book.bookRef;
   const showLoading = isLoading || isDraftLoading || isSettingLoading || isCrossBookSwap;
   const isLoaded = !hasError && !showLoading && !!book;
@@ -567,13 +554,10 @@ function InterlinearizerLoaderInner({
       <div
         data-testid="book-fade-wrapper"
         className="tw:flex tw:flex-col tw:flex-1 tw:min-h-0 tw:transition-opacity"
-        // The fade-out must hide content instantly, not transition to 0: the old book is swapped
-        // for the Loading… placeholder in the same commit the curtain drops, so a gradual descent
-        // has nothing left to fade — it only lets the new book ghost in at partial opacity when a
-        // fast load mounts it mid-descent, then dim and rise again (the "false-start fade"). A
-        // zero-duration descent enforces the intended contract — nothing of either book shows
-        // until the new one has mounted and fades in — while the rise (`in` → `idle`) keeps the
-        // shared recenter timing.
+        // The fade-out must hide content instantly (zero-duration), not transition to 0: the old
+        // book is swapped for the Loading… placeholder in the same commit the curtain drops, so a
+        // gradual descent would only let a fast-loading new book ghost in at partial opacity, then
+        // dim and rise again. The rise (`in` → `idle`) keeps the shared recenter timing.
         style={{
           opacity: fadePhase === 'out' ? 0 : 1,
           ...RECENTER_FADE_TRANSITION_STYLE,

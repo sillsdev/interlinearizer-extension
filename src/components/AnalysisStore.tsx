@@ -57,9 +57,9 @@ type CallbackRefs = {
   reportEditing: (active: boolean) => void;
   /**
    * Stable entry point {@link useGlossDispatch} returns for writing a gloss. Every gloss edit is
-   * per-token: a shared payload is forked in the reducer before the edit lands, so editing one
-   * token never rewrites the others. (Editing every occurrence of a shared analysis is deferred;
-   * see user-questions.md "separating per-token edits from global analysis edits".)
+   * per-token: the reducer forks any shared payload before the edit lands, so editing one token
+   * never rewrites the others. (Editing every occurrence of a shared analysis is deferred; see
+   * user-questions.md "separating per-token edits from global analysis edits".)
    */
   requestGlossEdit: (tokenRef: string, surfaceText: string, value: string) => void;
   /**
@@ -106,8 +106,8 @@ type AnalysisStoreProviderProps = Readonly<{
   /**
    * When `true`, un-approved tokens that match the analysis pool render the engine's derived
    * suggestion (blue) with accept / promote affordances ({@link useResolvedTokenAnalysis},
-   * {@link useShowSuggestions}). Defaults to `false` so existing consumers and isolated tests show
-   * no suggestions; the app opts in via a removable demo toggle.
+   * {@link useShowSuggestions}). Defaults to `false` so isolated tests show no suggestions; the app
+   * opts in via a demo toggle.
    */
   showSuggestions?: boolean;
 }>;
@@ -399,9 +399,8 @@ export function useAnalysis(): TextAnalysis {
 /**
  * Returns a stable callback that creates or updates the approved `TokenAnalysis` for a token. The
  * edit is per-token: the reducer forks a shared payload before writing, so editing one token never
- * rewrites the others (editing every occurrence of a shared analysis is deferred; see
- * user-questions.md "separating per-token edits from global analysis edits"). Commits immediately,
- * invoking `onSave` and the optional (test-only) `onGlossChange` spy.
+ * rewrites the others. Commits immediately, invoking `onSave` and the optional (test-only)
+ * `onGlossChange` spy.
  *
  * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
@@ -441,9 +440,8 @@ export function useApproveAnalysisDispatch(): (
 /**
  * Returns a stable callback that replaces the morpheme breakdown on the approved `TokenAnalysis`
  * for a given token. The edit is per-token: the reducer forks a shared payload before
- * re-segmenting, so editing one token's breakdown never rewrites the others (editing every
- * occurrence of a shared analysis is deferred; see user-questions.md "separating per-token edits
- * from global analysis edits"). Commits immediately and triggers `onSave`.
+ * re-segmenting, so editing one token's breakdown never rewrites the others. Commits immediately
+ * and triggers `onSave`.
  *
  * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
  *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
@@ -491,9 +489,8 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 /**
  * Returns a stable callback that writes a gloss on a single morpheme within the approved
  * `TokenAnalysis` for a given token. The edit is per-token: the reducer forks a shared payload
- * before writing, so editing one token's morpheme gloss never rewrites the others (editing every
- * occurrence of a shared analysis is deferred; see user-questions.md "separating per-token edits
- * from global analysis edits"). Commits immediately and triggers `onSave`.
+ * before writing, so editing one token's morpheme gloss never rewrites the others. Commits
+ * immediately and triggers `onSave`.
  *
  * @returns A function `(tokenRef, morphemeId, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.

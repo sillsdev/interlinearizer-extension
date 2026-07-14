@@ -72,9 +72,8 @@ describe('buildSegmentLabels', () => {
 
   it('labels every portion of a split verse with the bare verse number, not lettered portions', () => {
     // Verse 1 is split into three pieces; each covers only verse 1, so each reads a bare `1`. The
-    // gutter reflects the overlapping verse range rather than inventing per-portion identity — two
-    // adjacent portions of verse 1 both reading `1` is the intended behavior (the inline verse
-    // superscripts, not the gutter, distinguish the pieces).
+    // gutter reflects the overlapping verse range rather than lettering per-portion; the inline
+    // verse superscripts distinguish the pieces.
     const labels = buildSegmentLabels([
       makeSegment('p1', [[1, 1]]),
       {

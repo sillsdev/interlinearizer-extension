@@ -276,10 +276,9 @@ describe('main', () => {
 
       await activate(context);
 
-      // Every registration produced during activation must be handed to the context so the platform
-      // disposes it on deactivation: the WebView provider, one per command and validator, plus the
-      // two WebView lifecycle subscriptions. Deriving the count from the mock calls keeps this
-      // resilient when commands or validators are added or removed.
+      // Every registration must reach the context for disposal: WebView provider, each command and
+      // validator, and the two lifecycle subscriptions. Deriving the count from mock calls stays
+      // resilient as commands are added or removed.
       const expectedRegistrationCount =
         __mockRegisterWebViewProvider.mock.calls.length +
         __mockRegisterCommand.mock.calls.length +

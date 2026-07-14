@@ -119,6 +119,8 @@ export type PhraseStripContextParams = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
   crossSegmentLinkTooltip: string;
+  /** Placeholder for all gloss inputs, fetched once per strip (see the context field's doc). */
+  glossPlaceholder: string;
   /** When true, the link-slot sliding-door transition is suppressed (duration 0ms). */
   skipLinkTransition: boolean;
   /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
@@ -152,6 +154,7 @@ export function usePhraseStripContextValue(
     simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
+    glossPlaceholder,
     skipLinkTransition,
     showMorphology,
   } = params;
@@ -171,6 +174,7 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      glossPlaceholder,
       skipLinkTransition,
       showMorphology,
     }),
@@ -188,6 +192,7 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      glossPlaceholder,
       skipLinkTransition,
       showMorphology,
     ],

@@ -1,5 +1,4 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
@@ -15,19 +14,14 @@ import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
-import { resolvedOrEmpty } from '../utils/localized-strings';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
 /**
- * Localized string keys this module needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders (a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render).
- */
-const STRING_KEYS = ['%interlinearizer_glossInput_placeholder%'] as const satisfies `%${string}%`[];
-
-/**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
- * Separated into its own component so hooks are always called unconditionally.
+ * Separated into its own component so hooks are always called unconditionally. The placeholder
+ * comes from strip context (fetched once per strip) rather than a per-instance
+ * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
+ * first frame instead of widening when a per-mount fetch resolves.
  *
  * @param props - Component props
  * @param props.phraseId - ID of the `PhraseAnalysis` to read/write.
@@ -43,7 +37,7 @@ function PhraseGlossInput({
 }: Readonly<{ phraseId: string; disabled?: boolean; onFocus?: () => void }>) {
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const { glossPlaceholder } = usePhraseStripContext();
   const [draft, setDraft] = useState(committed);
 
   useEffect(() => {
@@ -59,7 +53,7 @@ function PhraseGlossInput({
       className="tw:mt-0.5 tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
-      placeholder={resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])}
+      placeholder={glossPlaceholder}
       style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}
@@ -189,6 +183,7 @@ export function PhraseBox({
     tokenDocOrder,
     simplifyPhrases,
     showMorphology,
+    glossPlaceholder,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
   // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
@@ -425,6 +420,7 @@ export function PhraseBox({
                   </span>
                 )}
                 <MemoizedTokenChip
+                  glossPlaceholder={glossPlaceholder}
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
@@ -478,6 +474,7 @@ export function PhraseBox({
                 )}
                 <MemoizedTokenChip
                   disabled
+                  glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -546,6 +543,7 @@ export function PhraseBox({
               >
                 <MemoizedTokenChip
                   disabled
+                  glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -603,6 +601,7 @@ export function PhraseBox({
               punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
             <MemoizedTokenChip
               disabled
+              glossPlaceholder={glossPlaceholder}
               onFocus={handleFocus}
               showMorphology={showMorphology}
               token={token}

@@ -460,6 +460,39 @@ function requiredProps(
   };
 }
 
+/** Every {@link TrackingResizeObserver} created since the last reset, newest last. */
+let resizeObserverInstances: TrackingResizeObserver[] = [];
+
+/**
+ * A ResizeObserver test double that records its callback and disconnect state and appends itself to
+ * {@link resizeObserverInstances}. Used by the hold-loop tests to fire a simulated late content
+ * reflow and to assert whether the active observer was disconnected. Module-scoped (rather than an
+ * inline class per test) so the file stays under `max-classes-per-file`.
+ */
+class TrackingResizeObserver implements ResizeObserver {
+  /** Whether {@link disconnect} has been called on this instance. */
+  disconnected = false;
+
+  /** @param callback - Stored so a test can fire it, simulating a late content reflow. */
+  constructor(public callback: ResizeObserverCallback) {
+    resizeObserverInstances.push(this);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  observe() {}
+
+  // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+  unobserve() {}
+
+  /**
+   * Records the disconnect so tests can distinguish a still-connected observer from a torn-down
+   * one.
+   */
+  disconnect() {
+    this.disconnected = true;
+  }
+}
+
 beforeAll(() => {
   // jsdom does not implement scrollIntoView.
   HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
@@ -993,22 +1026,8 @@ describe('ContinuousView scroll behavior', () => {
     // focus off-center. The hold must observe the content row and re-center on each reflow, so a
     // resize firing after the initial quiet window still snaps the focus back to center.
     const originalResizeObserver = global.ResizeObserver;
-    let observerCallback: ResizeObserverCallback | undefined;
-    global.ResizeObserver = class implements ResizeObserver {
-      /** @param callback - Stored so the test can fire it, simulating a late content reflow. */
-      constructor(callback: ResizeObserverCallback) {
-        observerCallback = callback;
-      }
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      observe() {}
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      unobserve() {}
-
-      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-      disconnect() {}
-    };
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
 
     try {
       const book = makeBook();
@@ -1034,12 +1053,75 @@ describe('ContinuousView scroll behavior', () => {
 
         // A late content reflow fires the content-row observer; the hold must re-center in response.
         act(() => {
-          const observer = observerCallback;
+          const observer = resizeObserverInstances.at(-1);
           if (!observer) throw new Error('Expected the hold to observe the content row');
-          observer([], { disconnect() {}, observe() {}, unobserve() {} });
+          observer.callback([], { disconnect() {}, observe() {}, unobserve() {} });
           jest.advanceTimersByTime(16);
         });
 
+        expect(scrollIntoViewMock).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
+  });
+
+  it('keeps the content-row observer connected after the quiet window so a late reflow still re-centers', () => {
+    // Regression (real-app, CDP-reproduced): the dominant strip-width reflow (gloss-placeholder
+    // resolution / arc settle) can land 300-500ms after mount — after the hold's 200ms quiet window
+    // has already lapsed. The old hold disconnected its ResizeObserver the moment the rAF loop
+    // stopped at the quiet deadline, so that late reflow was never observed and the focus stayed
+    // stranded ~1100px off-center. The observer must remain connected for the full hard-deadline
+    // window, restarting the re-center loop whenever a late reflow fires. A no-op disconnect mock
+    // (as an earlier test used) hides this: it must assert the observer was NOT disconnected while
+    // still inside the hold window.
+    const originalResizeObserver = global.ResizeObserver;
+    resizeObserverInstances = [];
+    global.ResizeObserver = TrackingResizeObserver;
+
+    try {
+      const book = makeBook();
+      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+      act(() => {
+        jest.useFakeTimers();
+      });
+      try {
+        // Drive an external jump so the hold loop runs under fake-timer control (jsdom rAF on the
+        // initial real-timer mount is not deterministically advanceable). tok-1 shares GEN 1:1 with
+        // tok-0, so no committed-active-segment flip: only the scroll effect's own hold pins the
+        // group, exercising the same observer lifetime as the initial mount.
+        rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+        // Complete the fade-out (RECENTER_FADE_MS) so the instant snap + hold start.
+        act(() => {
+          jest.advanceTimersByTime(510);
+        });
+
+        // Let the quiet window (LINK_SLOT_TRANSITION_MS = 200) fully lapse so the tick loop goes
+        // idle — but stay well within HOLD_CENTERED_MAX_MS (2000).
+        act(() => {
+          jest.advanceTimersByTime(400);
+        });
+
+        // The active (latest) observer must still be connected to catch a reflow that lands this
+        // late. Superseded holds torn down during the fade/rerender are earlier instances; the last
+        // one is the live hold. The old code called disconnect() the moment the tick loop stopped, so
+        // this was already true — the regression this test locks down.
+        const activeObserver = resizeObserverInstances.at(-1);
+        if (!activeObserver) throw new Error('Expected the hold to create a content-row observer');
+        expect(activeObserver.disconnected).toBe(false);
+
+        // A late content reflow fires the still-connected observer; the hold re-centers in response.
+        scrollIntoViewMock.mockClear();
+        act(() => {
+          activeObserver.callback([], { disconnect() {}, observe() {}, unobserve() {} });
+          jest.advanceTimersByTime(16);
+        });
         expect(scrollIntoViewMock).toHaveBeenCalledWith(
           expect.objectContaining({ behavior: 'auto', inline: 'center' }),
         );

@@ -329,43 +329,64 @@ export default function ContinuousView({
    * dozens of groups whose glosses, morpheme rows, and arcs finish laying out asynchronously over
    * many frames, and each such reflow of the content left of the focus shifts the focused box
    * sideways. A fixed {@link LINK_SLOT_TRANSITION_MS} hold expires before that settle completes,
-   * leaving the focus (and its arcs) stranded off-center; observing the content row and treating
-   * each size change as a fresh {@link LINK_SLOT_TRANSITION_MS} quiet-period extension keeps the
-   * hold alive across the late reflow and re-centers once it lands. A hard cap bounds the total
-   * hold so a strip that never stabilizes can't spin the loop forever.
+   * leaving the focus (and its arcs) stranded off-center; observing the content row and
+   * re-centering on each size change keeps the hold alive across a late reflow and re-centers once
+   * it lands.
+   *
+   * The observer's lifetime is deliberately decoupled from the re-center loop's. The loop is a
+   * quiet-period tick: it re-centers every frame, then stops once no reflow has fired for
+   * {@link LINK_SLOT_TRANSITION_MS} (so it isn't spinning rAF forever while the strip is idle). But
+   * the dominant reflow — the gloss-placeholder string resolving and the arc-settle passes widening
+   * content to the left of the focus — routinely lands 300-500ms after mount, i.e. AFTER that quiet
+   * window has already lapsed. If the observer were torn down when the loop stopped (as it once
+   * was), that late reflow would go unobserved and the focus would be stranded ~1100px off-center —
+   * the exact intermittent "not centered on first load" bug. So the observer stays connected for
+   * the full {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't
+   * hold the observer forever), and any reflow within it restarts the tick loop to re-center.
    *
    * @param groupIndex - Index of the group to keep centered.
-   * @returns A cancel function that stops the loop and observer; call it from the owning effect's
-   *   cleanup.
+   * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
+   *   it from the owning effect's cleanup.
    */
   const holdCentered = useCallback(
     (groupIndex: number) => {
-      const hardDeadline = performance.now() + HOLD_CENTERED_MAX_MS;
-      // Extended on every content reflow so the hold outlasts the last late layout shift, not just
-      // the link-slot fade. Seeded one quiet period out so a reflow-free jump still holds briefly.
+      // Quiet deadline for the tick loop only; extended on each reflow. Seeded one quiet period out
+      // so a reflow-free jump still holds briefly.
       let quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
       let rafId = 0;
-      const observer = new ResizeObserver(() => {
-        // A resize of the content row means the strip is still settling; push the quiet deadline
-        // out (capped at the hard deadline) and restart the loop if it had already stopped, so the
-        // re-center tracks the new layout instead of leaving the focus stranded off-center.
-        quietDeadline = Math.min(performance.now() + LINK_SLOT_TRANSITION_MS, hardDeadline);
-        cancelAnimationFrame(rafId);
-        // eslint-disable-next-line @typescript-eslint/no-use-before-define -- tick is hoisted below
-        rafId = requestAnimationFrame(tick);
-      });
+      let stopped = false;
       const tick = () => {
         centerGroup(groupIndex, 'auto');
-        if (performance.now() < Math.min(quietDeadline, hardDeadline)) {
+        if (performance.now() < quietDeadline) {
           rafId = requestAnimationFrame(tick);
         } else {
-          observer.disconnect();
+          // Idle: stop ticking but leave the observer connected so a late reflow can restart us.
+          stopped = true;
         }
       };
+      const observer = new ResizeObserver(() => {
+        // A resize of the content row means the strip is still settling; push the quiet deadline out
+        // and restart the loop if it had gone idle, so the re-center tracks the new layout instead of
+        // leaving the focus stranded off-center.
+        quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+        if (stopped) {
+          stopped = false;
+          cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(tick);
+        }
+      });
       const row = stripRowRef.current;
       if (row) observer.observe(row);
       rafId = requestAnimationFrame(tick);
+      // Hard cap: disconnect the observer and stop ticking after the max hold, independent of the
+      // quiet loop, so a never-settling strip can't hold resources forever.
+      const hardStopTimer = setTimeout(() => {
+        cancelAnimationFrame(rafId);
+        observer.disconnect();
+        stopped = true;
+      }, HOLD_CENTERED_MAX_MS);
       return () => {
+        clearTimeout(hardStopTimer);
         cancelAnimationFrame(rafId);
         observer.disconnect();
       };

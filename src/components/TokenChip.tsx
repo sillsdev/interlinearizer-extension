@@ -13,7 +13,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { resolvedOrEmpty } from '../utils/localized-strings';
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
   useAnalysisLanguage,
@@ -34,7 +33,6 @@ import SuggestionDropdown from './SuggestionDropdown';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_defineMorphemes%',
-  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -60,6 +58,11 @@ const STRING_KEYS = [
  *   hovered split/unlink button were clicked; previewed with a destructive border on the chip.
  * @param props.showMorphology - When true, morpheme breakdown and per-morpheme glosses are shown
  *   below the surface text.
+ * @param props.glossPlaceholder - Placeholder for the gloss input, resolved once per strip and
+ *   passed down (see `PhraseStripContextValue.glossPlaceholder`): the input is `field-sizing:
+ *   content`, so a per-chip async string fetch would make every fresh chip mount ~14px too narrow
+ *   and widen a beat later, shifting the strip under the arcs. Passed as a prop rather than read
+ *   from context so the chip's memoization keeps shielding it from unrelated context churn.
  * @returns A styled label containing the surface text, optionally morpheme rows, and a gloss input.
  */
 export function TokenChip({
@@ -69,6 +72,7 @@ export function TokenChip({
   onRemove,
   isSplitFree = false,
   showMorphology = false,
+  glossPlaceholder = '',
 }: Readonly<{
   token: Token & { type: 'word' };
   onFocus: () => void;
@@ -76,6 +80,7 @@ export function TokenChip({
   onRemove?: () => void;
   isSplitFree?: boolean;
   showMorphology?: boolean;
+  glossPlaceholder?: string;
 }>) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const committedGloss = useGloss(token.ref);
@@ -468,11 +473,7 @@ export function TokenChip({
             className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}
             id={glossInputId}
-            placeholder={
-              showSuggestedPlaceholder
-                ? suggestedGloss
-                : resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])
-            }
+            placeholder={showSuggestedPlaceholder ? suggestedGloss : glossPlaceholder}
             role={hasSuggestions ? 'combobox' : undefined}
             // Inline padding overrides the `gloss-input` utility's default px to reserve room for the
             // trailing "+" button symmetrically (keeping the gloss text centered) without a separate

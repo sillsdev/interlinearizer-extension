@@ -139,7 +139,7 @@ function renderChip(
       onSave={onSave}
       onGlossChange={onGlossChange}
     >
-      <TokenChip token={token} onFocus={() => {}} />
+      <TokenChip glossPlaceholder="gloss" token={token} onFocus={() => {}} />
     </AnalysisStoreProvider>,
   );
 }

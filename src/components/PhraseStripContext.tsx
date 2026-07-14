@@ -71,6 +71,15 @@ export type PhraseStripContextValue = Readonly<{
   /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
   /**
+   * Placeholder text for every gloss input (token- and phrase-level), fetched once per strip rather
+   * than per chip. Gloss inputs are `field-sizing: content`, so their width depends on the
+   * placeholder; a per-chip `useLocalizedStrings` resolves asynchronously after mount, which made
+   * every freshly mounted chip render ~14px too narrow and widen a beat later — shifting the whole
+   * strip, mis-measuring arcs, and knocking the focused phrase off-center. Empty string until the
+   * strip's own fetch resolves (one strip-wide reflow at most, behind the initial fade).
+   */
+  glossPlaceholder: string;
+  /**
    * When `true`, the sliding-door transition on link-slot wrappers is suppressed (duration set to
    * 0ms). Set during external navigation and initial mount so the layout snaps to its final state
    * before the strip fades in, rather than animating while the strip is becoming visible.

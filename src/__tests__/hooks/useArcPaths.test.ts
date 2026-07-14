@@ -35,6 +35,66 @@ describe('useArcPaths', () => {
     computeStripRowGap.mockReturnValue(24);
   });
 
+  const originalResizeObserver = global.ResizeObserver;
+
+  afterEach(() => {
+    global.ResizeObserver = originalResizeObserver;
+    jest.useRealTimers();
+  });
+
+  /**
+   * Installs a stubbed `ResizeObserver` that records its callback and a manual rAF queue, then
+   * returns helpers to fire one observer notification and flush its deferred measurement. The
+   * observer callback defers its measurement to the next animation frame (avoiding a synchronous
+   * setState-in-observer loop), so the pump drives rAF manually to flush it. Shared by every
+   * observer-driven test so only a single mock class is defined in this file.
+   *
+   * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
+   *   `computeAllArcPaths` calls it triggered.
+   */
+  const installObserverHarness = (): { pump: () => number } => {
+    const rafCallbacks: FrameRequestCallback[] = [];
+    jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    let observerCallback: ResizeObserverCallback | undefined;
+    const stubObserver: ResizeObserver = {
+      observe() {},
+      unobserve() {},
+      disconnect() {},
+    };
+    global.ResizeObserver = class implements ResizeObserver {
+      /** @param callback - Stored so the test can fire it on demand. */
+      constructor(callback: ResizeObserverCallback) {
+        observerCallback = callback;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      observe() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      unobserve() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      disconnect() {}
+    };
+
+    const pump = (): number => {
+      const before = computeAllArcPaths.mock.calls.length;
+      act(() => {
+        observerCallback?.([], stubObserver);
+        const pending = rafCallbacks.splice(0);
+        pending.forEach((cb) => cb(0));
+      });
+      return computeAllArcPaths.mock.calls.length - before;
+    };
+
+    return { pump };
+  };
+
   it('returns empty results when enabled is false', () => {
     const containerRef = { current: document.createElement('div') };
     const { result } = renderHook(() => useArcPaths(containerRef, false, false, []));
@@ -195,65 +255,6 @@ describe('useArcPaths', () => {
   });
 
   describe('re-measures when the ResizeObserver fires', () => {
-    // The observer callback defers its measurement to the next animation frame to avoid a
-    // synchronous setState-in-observer loop, so drive rAF manually to flush it.
-    const originalResizeObserver = global.ResizeObserver;
-
-    afterEach(() => {
-      global.ResizeObserver = originalResizeObserver;
-    });
-
-    /**
-     * Installs a stubbed `ResizeObserver` that records its callback and a manual rAF queue, then
-     * returns helpers to fire one observer notification and flush its deferred measurement. Shared
-     * by both tests so only a single mock class is defined in this file.
-     *
-     * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
-     *   `computeAllArcPaths` calls it triggered.
-     */
-    const installObserverHarness = (): { pump: () => number } => {
-      const rafCallbacks: FrameRequestCallback[] = [];
-      jest.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((cb) => {
-        rafCallbacks.push(cb);
-        return rafCallbacks.length;
-      });
-      jest.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {});
-
-      let observerCallback: ResizeObserverCallback | undefined;
-      const stubObserver: ResizeObserver = {
-        observe() {},
-        unobserve() {},
-        disconnect() {},
-      };
-      global.ResizeObserver = class implements ResizeObserver {
-        /** @param callback - Stored so the test can fire it on demand. */
-        constructor(callback: ResizeObserverCallback) {
-          observerCallback = callback;
-        }
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        observe() {}
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        unobserve() {}
-
-        // eslint-disable-next-line @typescript-eslint/class-methods-use-this
-        disconnect() {}
-      };
-
-      const pump = (): number => {
-        const before = computeAllArcPaths.mock.calls.length;
-        act(() => {
-          observerCallback?.([], stubObserver);
-          const pending = rafCallbacks.splice(0);
-          pending.forEach((cb) => cb(0));
-        });
-        return computeAllArcPaths.mock.calls.length - before;
-      };
-
-      return { pump };
-    };
-
     it('triggers computeAllArcPaths after the rAF fires', () => {
       const { pump } = installObserverHarness();
       const containerRef = { current: document.createElement('div') };
@@ -290,6 +291,102 @@ describe('useArcPaths', () => {
       const settled = result.current.stripLeftPadding;
       for (let i = 0; i < 20; i += 1) pump();
       expect(result.current.stripLeftPadding).toBe(settled);
+    });
+  });
+
+  describe('settle-aware measurement', () => {
+    /**
+     * Builds a minimal measurement result whose signature is distinguished by the arc's `d` string.
+     *
+     * @param d - The SVG path string to embed in the single returned arc.
+     * @returns A `computeAllArcPaths`-shaped result with one arc and zero paddings.
+     */
+    const measurementWithPath = (d: string) => ({
+      paths: [
+        { phraseId: 'p1', d, midX: 5, midY: 0, runLeft: 0, runRight: 10, splitAfterTokenRef: 't' },
+      ],
+      maxLevel: 0,
+      leftPadding: 0,
+      rightPadding: 0,
+    });
+
+    it('re-applies a historical signature when the layout recovers after a transient collapse', () => {
+      // The vanish bug: during a settle the phrase transiently measures with no discontiguous
+      // boxes (no arcs), then recovers to exactly the pre-collapse geometry. The recovery's
+      // signature matches the 2-deep history, so the old guard swallowed it forever.
+      const { pump } = installObserverHarness();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
+      const containerRef = { current: document.createElement('div') };
+      const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
+      expect(result.current.arcPaths).toHaveLength(1);
+
+      // Transient collapse: the phrase momentarily measures as a single box → no arcs.
+      computeAllArcPaths.mockReturnValue({
+        paths: [],
+        maxLevel: 0,
+        leftPadding: 0,
+        rightPadding: 0,
+      });
+      pump();
+      expect(result.current.arcPaths).toHaveLength(0);
+
+      // Recovery reproduces the pre-collapse signature — it must be re-applied, not swallowed.
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
+      pump();
+      expect(result.current.arcPaths).toHaveLength(1);
+    });
+
+    it('freezes after the consecutive flip-back budget so a period-2 oscillation still terminates', () => {
+      const { pump } = installObserverHarness();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M A'));
+      const containerRef = { current: document.createElement('div') };
+      const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
+
+      // A → B (fresh), B → A (flip 1), A → B (flip 2), B → A (frozen: budget exhausted).
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M B'));
+      pump();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M A'));
+      pump();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M B'));
+      pump();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M A'));
+      pump();
+      expect(result.current.arcPaths[0].d).toBe('M B');
+    });
+
+    it('re-measures after a quiet period and applies geometry that drifted without a resize event', () => {
+      // The stale-endpoint bug: a box reaches final width after the last measurement, and nothing
+      // the hook observes resizes, so no corrective measure ever runs. The settle verification
+      // must catch the drift on a timer instead.
+      jest.useFakeTimers();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
+      const containerRef = { current: document.createElement('div') };
+      const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
+      expect(result.current.arcPaths[0].d).toBe('M0 0 L10 0');
+
+      // Geometry drifts silently: no observer event, only the verification timer can see it.
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L20 0'));
+      act(() => {
+        jest.advanceTimersByTime(200);
+      });
+      expect(result.current.arcPaths[0].d).toBe('M0 0 L20 0');
+    });
+
+    it('stops verifying once the measurement reaches a stable fixed point', () => {
+      jest.useFakeTimers();
+      computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
+      const containerRef = { current: document.createElement('div') };
+      renderHook(() => useArcPaths(containerRef, true, false, []));
+
+      // Let the whole verification chain (all rounds) run against stable geometry.
+      act(() => {
+        jest.advanceTimersByTime(10_000);
+      });
+      const settledCallCount = computeAllArcPaths.mock.calls.length;
+      act(() => {
+        jest.advanceTimersByTime(10_000);
+      });
+      expect(computeAllArcPaths.mock.calls.length).toBe(settledCallCount);
     });
   });
 

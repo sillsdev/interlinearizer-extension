@@ -86,6 +86,7 @@ export function makePhraseStripContext(
     showMorphology: false,
     activeSegmentId: undefined,
     crossSegmentLinkTooltip: '',
+    glossPlaceholder: '',
     skipLinkTransition: false,
     ...overrides,
   };

@@ -391,9 +391,33 @@ export function PhraseBox({
             {tokens.map((token, i) => (
               <span key={token.ref} className="tw:phrase-token-row">
                 {i > 0 && (
-                  <span className="tw:inline-flex tw:flex-col tw:items-center">
+                  // Intra-phrasal (inter-token) gap column, stacked to match the inter-phrasal
+                  // PhraseSlot column exactly so the unlink icon and gap punctuation land at the
+                  // same vertical offset whether the gap is inside a phrase box or between two
+                  // boxes: a FIXED-height punctuation row sits first (so a gap carrying punctuation
+                  // is exactly as tall as an empty one), then the unlink icon below it.
+                  //
+                  // The nudge is `mt-px` (1px), not the slot's `mt-1` (4px): the slot sits OUTSIDE
+                  // the phrase box and its `mt-1` clears the box's top border + `py-0.5` padding to
+                  // reach the surface-text baseline, but this column already sits INSIDE the box,
+                  // below that 3px (border + padding), so it needs only the remaining 1px.
+                  <span className="tw:mt-px tw:inline-flex tw:flex-col tw:items-center">
+                    <span className="tw:inline-flex tw:h-5 tw:flex-row tw:items-start tw:justify-center">
+                      {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
+                        <span className="tw:inline-flex tw:flex-row tw:items-start">
+                          {punctuationBetween[i - 1].map((p) => (
+                            <InertTokenChip key={p.ref} token={p} />
+                          ))}
+                        </span>
+                      )}
+                    </span>
                     {isRealPhrase && (
                       <span
+                        // `inline-flex` (matching the slot's icon wrapper) so the span hugs the icon
+                        // at its exact 16px height. A bare inline span instead picks up the
+                        // surrounding line-box leading, adding a couple of pixels of dead space above
+                        // the icon that push the unlink button below its inter-phrase counterpart.
+                        className="tw:inline-flex"
                         aria-hidden={controlsSuppressed || undefined}
                         style={{
                           opacity: controlsSuppressed ? 0 : 1,
@@ -408,13 +432,6 @@ export function PhraseBox({
                           prevPhraseLink={phraseLink}
                           prevToken={tokens[i - 1]}
                         />
-                      </span>
-                    )}
-                    {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
-                      <span className="tw:inline-flex tw:flex-row tw:items-center">
-                        {punctuationBetween[i - 1].map((p) => (
-                          <InertTokenChip key={p.ref} token={p} />
-                        ))}
                       </span>
                     )}
                   </span>

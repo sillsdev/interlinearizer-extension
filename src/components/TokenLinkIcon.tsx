@@ -1,6 +1,6 @@
 /** @file Inline link / unlink icon rendered between adjacent word token groups. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
-import { Link2, Link2Off } from 'lucide-react';
+import { Link2, Unlink2 } from 'lucide-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -36,8 +36,10 @@ type TokenLinkIconProps = Readonly<{
 /**
  * Renders a small icon between two adjacent word token groups.
  *
- * When both sides belong to the same phrase, renders `Link2Off` (unlink): clicking splits the
- * phrase at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused).
+ * When both sides belong to the same phrase, renders `Unlink2` (unlink): clicking splits the phrase
+ * at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused). `Unlink2` —
+ * rather than `Link2Off` — because its chain sits at the same vertical position as `Link2`'s, so
+ * the two buttons' visual centers line up when they appear in adjacent gap slots.
  *
  * Otherwise renders `Link2` (link): clicking joins the non-focused-side neighbor to the focused
  * side. The icon is active whenever `focusedSideIsPrev` is defined and the resulting join is valid.
@@ -328,7 +330,7 @@ export function TokenLinkIcon({
         onMouseLeave={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseLeave : undefined}
         type="button"
       >
-        <Link2Off className="tw:h-3 tw:w-3" />
+        <Unlink2 className="tw:h-3 tw:w-3" />
       </button>
     );
   }

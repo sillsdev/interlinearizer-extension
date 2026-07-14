@@ -46,6 +46,15 @@ function clampIndex(index: number, len: number): number {
 const SCROLL_SETTLE_FALLBACK_MS = 600;
 
 /**
+ * Hard cap (ms) on how long {@link holdCentered} keeps re-centering the focused phrase after an
+ * instant jump. The hold normally ends a short quiet period after the strip's last content reflow
+ * (glosses, morpheme rows, and arcs settling asynchronously push the focus sideways for a while);
+ * this cap bounds the total so a strip that never fully stabilizes cannot spin the rAF loop
+ * indefinitely. Sized to comfortably outlast the observed settle on slow hardware.
+ */
+const HOLD_CENTERED_MAX_MS = 2_000;
+
+/**
  * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
  * realistic viewport can ever render all tokens simultaneously.
  */
@@ -289,6 +298,10 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /** Ref to the token-strip row; the content row and mouse-leave target. */
+  // eslint-disable-next-line no-null/no-null
+  const stripRowRef = useRef<HTMLDivElement | null>(null);
+
   /**
    * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
    * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
@@ -308,30 +321,55 @@ export default function ContinuousView({
   }, []);
 
   /**
-   * Holds the group at `groupIndex` centered by re-centering it each animation frame for
-   * {@link LINK_SLOT_TRANSITION_MS} — the shared clock of the link-slot fade, whose async layout
-   * settling (arcs, morpheme rows) is what the hold outlasts. Used after an instant jump's reveal
-   * and after the committed-active-segment flip, so both holds run one loop implementation on one
-   * clock.
+   * Holds the group at `groupIndex` centered while the strip settles after an instant jump or the
+   * committed-active-segment flip. Re-centers every animation frame — and, crucially, keeps holding
+   * until the strip content has stopped reflowing rather than for a fixed clock: the window mounts
+   * dozens of groups whose glosses, morpheme rows, and arcs finish laying out asynchronously over
+   * many frames, and each such reflow of the content left of the focus shifts the focused box
+   * sideways. A fixed {@link LINK_SLOT_TRANSITION_MS} hold expires before that settle completes,
+   * leaving the focus (and its arcs) stranded off-center; observing the content row and treating
+   * each size change as a fresh {@link LINK_SLOT_TRANSITION_MS} quiet-period extension keeps the
+   * hold alive across the late reflow and re-centers once it lands. A hard cap bounds the total
+   * hold so a strip that never stabilizes can't spin the loop forever.
    *
    * @param groupIndex - Index of the group to keep centered.
-   * @returns A cancel function that stops the loop; call it from the owning effect's cleanup.
+   * @returns A cancel function that stops the loop and observer; call it from the owning effect's
+   *   cleanup.
    */
   const holdCentered = useCallback(
     (groupIndex: number) => {
-      const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
-      let rafId = requestAnimationFrame(function holdFrame() {
-        centerGroup(groupIndex, 'auto');
-        if (performance.now() < deadline) rafId = requestAnimationFrame(holdFrame);
+      const hardDeadline = performance.now() + HOLD_CENTERED_MAX_MS;
+      // Extended on every content reflow so the hold outlasts the last late layout shift, not just
+      // the link-slot fade. Seeded one quiet period out so a reflow-free jump still holds briefly.
+      let quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+      let rafId = 0;
+      const observer = new ResizeObserver(() => {
+        // A resize of the content row means the strip is still settling; push the quiet deadline
+        // out (capped at the hard deadline) and restart the loop if it had already stopped, so the
+        // re-center tracks the new layout instead of leaving the focus stranded off-center.
+        quietDeadline = Math.min(performance.now() + LINK_SLOT_TRANSITION_MS, hardDeadline);
+        cancelAnimationFrame(rafId);
+        // eslint-disable-next-line @typescript-eslint/no-use-before-define -- tick is hoisted below
+        rafId = requestAnimationFrame(tick);
       });
-      return () => cancelAnimationFrame(rafId);
+      const tick = () => {
+        centerGroup(groupIndex, 'auto');
+        if (performance.now() < Math.min(quietDeadline, hardDeadline)) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          observer.disconnect();
+        }
+      };
+      const row = stripRowRef.current;
+      if (row) observer.observe(row);
+      rafId = requestAnimationFrame(tick);
+      return () => {
+        cancelAnimationFrame(rafId);
+        observer.disconnect();
+      };
     },
     [centerGroup],
   );
-
-  /** Ref to the token-strip row; the content row and mouse-leave target. */
-  // eslint-disable-next-line no-null/no-null
-  const stripRowRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * Ref to the fixed-width clipping viewport that wraps the content row. Because the inner row is

@@ -986,6 +986,71 @@ describe('ContinuousView scroll behavior', () => {
     }
   });
 
+  it('re-centers the focused group when the strip content reflows after the initial hold window', () => {
+    // Regression: the window's glosses / morpheme rows / arcs settle asynchronously over many
+    // frames, and content that widens to the left of the focus shifts the focused box (and its
+    // arcs) sideways. A fixed-duration hold expires before that late reflow lands, stranding the
+    // focus off-center. The hold must observe the content row and re-center on each reflow, so a
+    // resize firing after the initial quiet window still snaps the focus back to center.
+    const originalResizeObserver = global.ResizeObserver;
+    let observerCallback: ResizeObserverCallback | undefined;
+    global.ResizeObserver = class implements ResizeObserver {
+      /** @param callback - Stored so the test can fire it, simulating a late content reflow. */
+      constructor(callback: ResizeObserverCallback) {
+        observerCallback = callback;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      observe() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      unobserve() {}
+
+      // eslint-disable-next-line @typescript-eslint/class-methods-use-this
+      disconnect() {}
+    };
+
+    try {
+      const book = makeBook();
+      const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
+      const { rerender } = render(<ContinuousView {...props} />, withAnalysisStore);
+
+      act(() => {
+        jest.useFakeTimers();
+      });
+      try {
+        // tok-1 shares GEN 1:1 with tok-0, so the active segment is unchanged: only the scroll
+        // effect's own hold loop keeps the group pinned.
+        rerender(<ContinuousView {...{ ...props, focusedTokenRef: 'tok-1' }} />);
+        act(() => {
+          jest.advanceTimersByTime(510);
+        });
+
+        // Let the initial quiet window fully lapse so the fixed-clock hold would have stopped.
+        act(() => {
+          jest.advanceTimersByTime(1000);
+        });
+        scrollIntoViewMock.mockClear();
+
+        // A late content reflow fires the content-row observer; the hold must re-center in response.
+        act(() => {
+          const observer = observerCallback;
+          if (!observer) throw new Error('Expected the hold to observe the content row');
+          observer([], { disconnect() {}, observe() {}, unobserve() {} });
+          jest.advanceTimersByTime(16);
+        });
+
+        expect(scrollIntoViewMock).toHaveBeenCalledWith(
+          expect.objectContaining({ behavior: 'auto', inline: 'center' }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    } finally {
+      global.ResizeObserver = originalResizeObserver;
+    }
+  });
+
   it('snaps the link slots (no transition) during an external jump so they do not slide after the fade-in', () => {
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });

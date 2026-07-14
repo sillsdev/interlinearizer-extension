@@ -230,6 +230,23 @@ export default function SegmentListView({
     return map;
   }, [book.segments]);
 
+  /**
+   * Segment ids whose merge-into-predecessor would actually take effect: those with a token-bearing
+   * segment immediately before them in the full book. A token-less predecessor (an empty verse
+   * marker) forces its own segment boundary that a merge cannot cross, so removing this segment's
+   * start would leave the segments unchanged; offering the merge there would be a silent no-op that
+   * still persists a dead boundary in the delta. Restoring the merged segment's number is deferred:
+   * merging across an empty verse needs a segmentation-semantics decision, so the affordance is
+   * suppressed rather than made to guess.
+   */
+  const mergeableSegmentIds = useMemo(() => {
+    const ids = new Set<string>();
+    book.segments.forEach((seg, i) => {
+      if (i > 0 && book.segments[i - 1].tokens.length > 0) ids.add(seg.id);
+    });
+    return ids;
+  }, [book.segments]);
+
   const scrollContainerRef = useRef<HTMLDivElement | undefined>(undefined);
 
   /**
@@ -399,20 +416,22 @@ export default function SegmentListView({
             style={{ opacity: isFaded ? 0 : 1, ...RECENTER_FADE_TRANSITION_STYLE }}
           >
             <div ref={topSentinelRef} aria-hidden="true" className="tw:h-px tw:w-full" />
-            {windowSegments.map((seg, segIndex) => {
+            {windowSegments.map((seg) => {
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
               const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
-              // Render the merge control above every segment that has a predecessor in the FULL book,
-              // not just within the mounted window: the topmost windowed segment's boundary with a
-              // culled predecessor is still editable (merge dispatches against the delta, not the
-              // DOM), so it must show a control rather than only becoming mergeable once the user
-              // scrolls the predecessor into view.
-              const hasPredecessor = segIndex > 0 || seg.id !== book.segments[0]?.id;
+              // Render the merge control above every segment whose merge would take effect — one with
+              // a token-bearing predecessor in the FULL book, not just within the mounted window: the
+              // topmost windowed segment's boundary with a culled predecessor is still editable (merge
+              // dispatches against the delta, not the DOM), so it must show a control rather than only
+              // becoming mergeable once the user scrolls the predecessor into view. A token-less
+              // predecessor is excluded (see mergeableSegmentIds) so the button never offers a
+              // silent-no-op merge.
+              const canMerge = mergeableSegmentIds.has(seg.id);
               // Omit the merge control entirely while a phrase mode is active: a merge mid-mode could
               // re-segment the phrase the mode UI is operating on. (The strip's boundary controls do
               // the same by rendering nothing during a phrase mode.)
-              const showMergeControl = hasPredecessor && phraseMode.kind === 'view';
+              const showMergeControl = canMerge && phraseMode.kind === 'view';
               return (
                 <Fragment key={seg.id}>
                   {showMergeControl && <MergeRowButton segment={seg} />}

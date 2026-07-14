@@ -8,7 +8,7 @@ import type {
 } from 'interlinearizer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { removeBookFromAnalysis } from '../utils/analysis-book';
+import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
 import { isDefaultSegmentation } from '../utils/segmentation';
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
@@ -343,11 +343,20 @@ export default function useDraftProject(
       /* v8 ignore next -- wipe is only reachable from the mounted editor */
       if (!current) return;
 
-      applyReplacement({
+      // Drop the book's custom segment boundaries alongside its analysis: the anchors are working
+      // state keyed by book, so a per-book wipe that kept them would silently re-apply the wiped
+      // book's merges/splits on reload and leave the draft dirty over refs the user thought they
+      // removed. Clear the field when nothing remains for any other book, mirroring the persisted
+      // draft's default-segmentation minimalism.
+      const segmentation = removeBookFromSegmentation(current.segmentation, bookCode);
+      const next: DraftProject = {
         ...current,
         analysis: removeBookFromAnalysis(current.analysis, bookCode),
         dirty: true,
-      });
+      };
+      if (segmentation !== undefined) next.segmentation = segmentation;
+      else delete next.segmentation;
+      applyReplacement(next);
     },
     [applyReplacement],
   );

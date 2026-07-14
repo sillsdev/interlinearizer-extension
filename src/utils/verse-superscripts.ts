@@ -59,10 +59,19 @@ export function buildVerseStartLabels(segments: readonly Segment[]): Map<string,
 
 /**
  * Resolves the inline verse label for a between-group slot: the label of the verse that begins as
- * the slot is crossed. A verse begins at a slot when its start token renders next through it — the
- * following group's first token, or (for a verse opening on leading punctuation) one of the slot's
- * own gap-punctuation tokens. Shared by both strips so they mark verse boundaries on the same
- * slot.
+ * the slot is crossed. A verse begins at a slot when its start token renders next through it — one
+ * of the slot's own gap-punctuation tokens (for a verse opening on leading punctuation), or a token
+ * of the following group. All of the following group's tokens are candidates, not just its first:
+ * when a phrase link spans an internal verse boundary of a merged segment, that phrase's tokens
+ * fuse into a single group, so the verse-start word can sit mid-group; keying only on the first
+ * token would drop the number in the group-based strips (token-chip / continuous) while the
+ * baseline-text strip — which emits superscripts by char offset — still showed it, an inconsistency
+ * across display modes. Marking the boundary at the slot before that group keeps the number visible
+ * and adjacent. Shared by both strips so they mark verse boundaries on the same slot.
+ *
+ * A group that fuses across _two_ internal verse boundaries still shows only the first verse's
+ * number here (a slot carries one label); the exact rendering of a second buried verse start would
+ * require an in-box superscript, which this slot model does not provide.
  *
  * @param slot - The between-group slot to test.
  * @param verseStartLabelByTokenRef - Verse-start token ref → label, from
@@ -73,7 +82,15 @@ export function slotVerseLabel(
   slot: LinkSlot,
   verseStartLabelByTokenRef: ReadonlyMap<string, string>,
 ): string | undefined {
-  const candidateRefs = [slot.nextGroup?.tokens[0]?.ref, ...slot.punctuation.map((p) => p.ref)];
+  // Order preserves the original priority for existing cases (next group's first token, then gap
+  // punctuation) and only adds the remaining group tokens after, so a verse start buried mid-group is
+  // caught without changing which ref wins when the leading token or punctuation already names one.
+  const nextGroupRefs = slot.nextGroup?.tokens.map((t) => t.ref) ?? [];
+  const candidateRefs = [
+    nextGroupRefs[0],
+    ...slot.punctuation.map((p) => p.ref),
+    ...nextGroupRefs.slice(1),
+  ];
   const verseStartRef = candidateRefs.find(
     (tokenRef) => tokenRef !== undefined && verseStartLabelByTokenRef.has(tokenRef),
   );

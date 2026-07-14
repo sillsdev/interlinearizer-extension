@@ -146,6 +146,60 @@ function SegmentGutter({ label }: { label: string | undefined }) {
   );
 }
 
+/** Props for {@link BaselineSplitGap}. */
+type BaselineSplitGapProps = Readonly<{
+  /** The verbatim inter-token gap text; rendered as the span's content so widths never reflow. */
+  text: string;
+  /** The split anchor ref an Alt+click here dispatches. */
+  splitRef: string;
+  /** Localized tooltip for the split affordance. */
+  splitLabel: string;
+  /** Dispatches the split; receives the click event (to gate on Alt) and the anchor ref. */
+  onSplit: (event: MouseEvent, splitRef: string) => void;
+}>;
+
+/**
+ * Renders one splittable baseline-text gap. Reads the Alt-held state itself — rather than the
+ * parent {@link SegmentView} reading it at component scope — so an Alt press/release re-renders only
+ * these leaves (a handful per visible segment) instead of every mounted `SegmentView` and its whole
+ * baseline-piece list. While Alt is not held the gap is its plain verbatim text, so the baseline
+ * reads byte-for-byte identically and its width never changes; while Alt is held the gap gains a
+ * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
+ * lands.
+ *
+ * @param props - Component props.
+ * @param props.text - The verbatim gap text.
+ * @param props.splitRef - The split anchor ref an Alt+click dispatches.
+ * @param props.splitLabel - Localized tooltip for the split affordance.
+ * @param props.onSplit - Dispatches the split, gated on the Alt key inside the handler.
+ * @returns The gap span — plain text at rest, an Alt-clickable marker while Alt is held.
+ */
+function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
+  const altHeld = useAltHeldValue();
+  if (!altHeld) return text;
+  return (
+    // Keyboard split is out of scope, so this is a pointer-only affordance (matching the segment
+    // container's own click handler); the a11y lint rules are disabled here.
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <span
+      className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
+      data-testid="baseline-split-gap"
+      title={splitLabel}
+      onClick={(event) => onSplit(event, splitRef)}
+    >
+      {text}
+      <span
+        aria-hidden="true"
+        className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+        data-testid="baseline-split-caret"
+      />
+    </span>
+  );
+}
+
+/** Memoized {@link BaselineSplitGap}; stable props so Alt churn re-renders only the toggled leaves. */
+const MemoizedBaselineSplitGap = memo(BaselineSplitGap);
+
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
@@ -264,7 +318,6 @@ export function SegmentView({
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
-  const altHeld = useAltHeldValue();
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -667,36 +720,21 @@ export function SegmentView({
               if (piece.kind === 'superscript') {
                 return <VerseSuperscript key={piece.key} label={piece.label} />;
               }
-              // A splittable gap becomes an Alt-clickable marker only while Alt is held; otherwise it
-              // renders as its plain text so the baseline reads byte-for-byte identically. Unlike the
-              // token-chip / continuous strip (which have room for a `Split` glyph in their between-box
-              // slots), an icon dropped into a monospace inter-word space just collides with the
-              // letters. So on Alt-hold every eligible gap gets a tint plus a slim vertical insertion
-              // caret shown dimly at rest — a discoverable map of where a split can land — and the
-              // hovered gap brightens both to full strength so the pointed-at split point stands out.
-              // The verbatim gap text stays as the span's content (same width — no reflow when Alt is
-              // pressed); the caret is absolutely positioned so it adds no width and never pushes the
-              // surrounding text around.
-              if (piece.kind === 'gap' && altHeld) {
-                const { splitRef } = piece;
+              // A splittable gap renders as an Alt-clickable marker only while Alt is held, otherwise
+              // as its plain text; the leaf reads Alt itself so toggling Alt re-renders only these
+              // gaps, not the whole segment list. (Unlike the token-chip / continuous strip, which
+              // have room for a `Split` glyph in their between-box slots, an icon dropped into a
+              // monospace inter-word space would collide with the letters — hence a tint plus a slim
+              // vertical caret rather than an icon.)
+              if (piece.kind === 'gap') {
                 return (
-                  // Keyboard split is out of scope, so this is a pointer-only affordance (matching the
-                  // segment container's own click handler); the a11y lint rules are disabled here.
-                  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-                  <span
+                  <MemoizedBaselineSplitGap
                     key={piece.key}
-                    className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
-                    data-testid="baseline-split-gap"
-                    title={localizedStrings['%interlinearizer_boundaryControl_split%']}
-                    onClick={(event) => handleBaselineGapClick(event, splitRef)}
-                  >
-                    {piece.text}
-                    <span
-                      aria-hidden="true"
-                      className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
-                      data-testid="baseline-split-caret"
-                    />
-                  </span>
+                    text={piece.text}
+                    splitRef={piece.splitRef}
+                    splitLabel={localizedStrings['%interlinearizer_boundaryControl_split%']}
+                    onSplit={handleBaselineGapClick}
+                  />
                 );
               }
               return <Fragment key={piece.key}>{piece.text}</Fragment>;

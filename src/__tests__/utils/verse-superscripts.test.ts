@@ -1,10 +1,11 @@
 /** @file Unit tests for utils/verse-superscripts.ts. */
 /// <reference types="jest" />
 
-import type { Book } from 'interlinearizer';
+import type { Book, Token } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
-import { buildVerseStartLabels } from '../../utils/verse-superscripts';
+import type { LinkSlot, TokenGroup } from '../../types/token-layout';
+import { buildVerseStartLabels, slotVerseLabel } from '../../utils/verse-superscripts';
 
 /**
  * Builds a verse-tokenized book from the given verses. Each verse's rendered `number` defaults to
@@ -96,5 +97,72 @@ describe('buildVerseStartLabels', () => {
     ]);
     expect(labelsFor(book, 'PSA 3:0')).toEqual(['3:0']);
     expect(labelsFor(book, 'PSA 3:1')).toEqual(['1']);
+  });
+});
+
+describe('slotVerseLabel', () => {
+  /**
+   * Builds a minimal word token fixture with only the fields `slotVerseLabel` reads.
+   *
+   * @param ref - The token ref.
+   * @returns A word token carrying that ref.
+   */
+  function wordToken(ref: string): Token & { type: 'word' } {
+    return { ref, surfaceText: ref, type: 'word', writingSystem: 'en', charStart: 0, charEnd: 1 };
+  }
+
+  /**
+   * Builds a token group from the given word tokens.
+   *
+   * @param tokens - The group's word tokens, in order.
+   * @returns A token group with no phrase link and empty punctuation-between.
+   */
+  function group(tokens: (Token & { type: 'word' })[]): TokenGroup {
+    return {
+      tokens,
+      phraseLink: undefined,
+      firstIndex: 0,
+      punctuationBetween: tokens.map(() => []),
+    };
+  }
+
+  /**
+   * Builds a between-group slot with the given next group and gap punctuation.
+   *
+   * @param nextGroup - The group following the slot, or `undefined`.
+   * @param punctuation - The slot's gap punctuation tokens.
+   * @returns A link slot.
+   */
+  function slot(nextGroup: TokenGroup | undefined, punctuation: Token[] = []): LinkSlot {
+    return { prevGroup: undefined, nextGroup, punctuation };
+  }
+
+  it('returns the label when the next group’s first token is a verse start', () => {
+    const labels = new Map([['GEN 1:2:0', '2']]);
+    expect(slotVerseLabel(slot(group([wordToken('GEN 1:2:0')])), labels)).toBe('2');
+  });
+
+  it('returns the label when a gap-punctuation token is the verse start', () => {
+    const labels = new Map([['GEN 1:2:0', '2']]);
+    const punct = wordToken('GEN 1:2:0');
+    expect(slotVerseLabel(slot(group([wordToken('GEN 1:2:3')]), [punct]), labels)).toBe('2');
+  });
+
+  it('returns the label when the verse start is buried mid-group (phrase fused across a merged verse boundary)', () => {
+    // A phrase link fusing verse 1's last word with verse 2's first word puts the verse-2 start as a
+    // non-first token; keying only on tokens[0] would drop the number in the group-based strips.
+    const labels = new Map([['GEN 1:2:0', '2']]);
+    const fused = group([wordToken('GEN 1:1:5'), wordToken('GEN 1:2:0')]);
+    expect(slotVerseLabel(slot(fused), labels)).toBe('2');
+  });
+
+  it('returns undefined when no candidate ref is a verse start', () => {
+    const labels = new Map([['GEN 1:2:0', '2']]);
+    expect(slotVerseLabel(slot(group([wordToken('GEN 1:1:0')])), labels)).toBeUndefined();
+  });
+
+  it('returns undefined for a trailing slot with no next group and no punctuation', () => {
+    const labels = new Map([['GEN 1:2:0', '2']]);
+    expect(slotVerseLabel(slot(undefined), labels)).toBeUndefined();
   });
 });

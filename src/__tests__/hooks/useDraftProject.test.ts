@@ -436,6 +436,39 @@ describe('useDraftProject', () => {
       expect(result.current.draftVersion).toBe(versionBefore + 1);
       expect(lastSavedDraft().dirty).toBe(true);
     });
+
+    it('drops the wiped book’s custom boundaries while keeping other books’', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          segmentation: { removedVerseStarts: ['GEN 1:2:0', 'MAT 3:4:0'], addedStarts: [] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeBook('GEN');
+      });
+
+      const expected = { removedVerseStarts: ['MAT 3:4:0'], addedStarts: [] };
+      expect(result.current.draft?.segmentation).toEqual(expected);
+      expect(lastSavedDraft().segmentation).toEqual(expected);
+    });
+
+    it('clears the segmentation field entirely when only the wiped book had boundaries', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:3:5'] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeBook('GEN');
+      });
+
+      expect(result.current.draft?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
   });
 
   describe('wipeAll', () => {

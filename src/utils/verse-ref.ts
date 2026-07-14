@@ -26,7 +26,11 @@ export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): bool
  *   names no verse.
  */
 function parseVerseLabel(verseStartNumber: string): { first: number; last: number } | undefined {
-  const match = /^(\d+)(?:-(\d+))?/.exec(verseStartNumber);
+  // Accept an ASCII hyphen or any common Unicode dash (U+2010–U+2015: hyphen, non-breaking hyphen,
+  // figure/en/em dash, horizontal bar) as the range separator: while USFM ranges are conventionally
+  // ASCII-hyphenated, a source rendered with a typographic dash must still resolve its later verses
+  // for containment. `\uXXXX` escapes keep auto-formatters from rewriting the dash characters.
+  const match = /^(\d+)(?:[-\u2010-\u2015](\d+))?/.exec(verseStartNumber);
   if (!match) return undefined;
   const first = Number(match[1]);
   const last = match[2] === undefined ? first : Number(match[2]);

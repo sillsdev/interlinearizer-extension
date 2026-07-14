@@ -984,7 +984,6 @@ describe('main', () => {
 
       await handler('proj-id', JSON.stringify(stubAnalysis), 'null');
 
-      // eslint-disable-next-line no-null/no-null -- asserting the clear-boundaries sentinel is forwarded
       expect(mockUpdateAnalysis).toHaveBeenCalledWith(
         expect.anything(),
         'proj-id',

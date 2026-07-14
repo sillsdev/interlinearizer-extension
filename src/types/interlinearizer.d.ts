@@ -32,6 +32,11 @@ declare module 'papi-shared-types' {
      * mode) or its baseline text (continuous-scroll mode).
      */
     'interlinearizer.showFreeTranslation': boolean;
+    /**
+     * When true, each segment shows its verse range in a left gutter column instead of the inline
+     * verse superscripts. The two are mutually exclusive display styles.
+     */
+    'interlinearizer.showVerseGutter': boolean;
   }
 
   /**

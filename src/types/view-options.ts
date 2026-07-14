@@ -13,4 +13,10 @@ export type ViewOptions = Readonly<{
   showMorphology: boolean;
   /** When true, a free-translation input is shown beneath each segment's tokens or baseline text. */
   showFreeTranslation: boolean;
+  /**
+   * When true, each segment shows its verse range in a left gutter column and suppresses the inline
+   * verse superscripts; when false, the inline superscripts show and the gutter is hidden. The two
+   * are mutually exclusive display styles for the same verse information.
+   */
+  showVerseGutter: boolean;
 }>;

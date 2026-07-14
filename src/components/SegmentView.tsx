@@ -123,14 +123,15 @@ function buildBaselinePieces(
 }
 
 /**
- * The segment's left gutter cell: a fixed-width column showing the segment's verse/range label
- * (e.g. `5`, `5a`, `5b–7`), top-aligned so the number sits level with the first content row. Purely
- * presentational — clicks fall through to the card's own background-select — so it carries no
- * interactive role and is not a tab stop; the inline verse superscript already announces verse
- * identity in reading order, so the gutter is `aria-hidden` to avoid a duplicate announcement.
+ * The segment's left gutter cell: a fixed-width column showing the segment's verse-range label
+ * (e.g. `5`, `2–3`, `29–2:1`), top-aligned so the number sits level with the first content row.
+ * Purely presentational — clicks fall through to the card's own background-select — so it carries
+ * no interactive role and is not a tab stop. It is `aria-hidden` because the verse numbers already
+ * appear in the running text's reference markup, so announcing the gutter too would duplicate
+ * them.
  *
  * @param props - Component props.
- * @param props.label - The verse/range label to render, or `undefined` to render an empty gutter
+ * @param props.label - The verse-range label to render, or `undefined` to render an empty gutter
  *   (reserving the column width so the content stays aligned across cards).
  * @returns The fixed-width gutter cell.
  */
@@ -228,10 +229,10 @@ type SegmentViewProps = Readonly<{
    */
   verseStartLabels?: readonly string[];
   /**
-   * The segment's verse/range label shown in its left gutter column (e.g. `5`, `5a`, `5b–7`,
-   * `29–2:1`), computed by the list from the whole book's segmentation. Coexists with the inline
-   * verse superscripts. Omitted when the list has no label for this segment (the gutter renders
-   * empty).
+   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
+   * computed by the list from the whole book's segmentation. Rendered only when
+   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
+   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
    */
   gutterLabel?: string;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
@@ -276,7 +277,8 @@ type SegmentViewProps = Readonly<{
  * @param props.verseStartLabels - Per-verse-start inline superscript labels (parallel to
  *   `segment.verseStarts`), chapter-qualified by the list where a verse start opens a new chapter;
  *   falls back to the verbatim verse number when absent.
- * @param props.gutterLabel - The segment's verse/range label shown in its left gutter column.
+ * @param props.gutterLabel - The segment's verse-range label shown in its left gutter column when
+ *   `viewOptions.showVerseGutter` is on.
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
@@ -289,8 +291,8 @@ type SegmentViewProps = Readonly<{
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
  * @param props.viewOptions - Bundled display toggles; `showFreeTranslation` gates the
  *   free-translation input, while the rest pass through to the phrase strip context.
- * @returns A div containing the segment content (baseline text or token chips) with inline verse
- *   superscripts
+ * @returns A div containing the segment content (baseline text or token chips) with either inline
+ *   verse superscripts or a left verse-range gutter, depending on `viewOptions.showVerseGutter`.
  */
 export function SegmentView({
   displayMode,
@@ -310,8 +312,13 @@ export function SegmentView({
   wordTokenByRef,
   viewOptions,
 }: SegmentViewProps) {
-  const { hideInactiveLinkButtons, simplifyPhrases, showMorphology, showFreeTranslation } =
-    viewOptions;
+  const {
+    hideInactiveLinkButtons,
+    simplifyPhrases,
+    showMorphology,
+    showFreeTranslation,
+    showVerseGutter,
+  } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
@@ -367,15 +374,17 @@ export function SegmentView({
    * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
    * superscript wherever a verse begins. Continuation entries (a mid-verse split's later piece,
    * whose verse truly started in a previous segment) are skipped: their number already showed at
-   * the real start, so repeating it here would duplicate it.
+   * the real start, so repeating it here would duplicate it. Empty when the verse gutter is on,
+   * since the gutter then carries the verse information instead of these inline superscripts.
    */
   const verseStartLabelByOffset = useMemo(() => {
     const map = new Map<number, string>();
+    if (showVerseGutter) return map;
     segment.verseStarts.forEach((vs, i) => {
       if (!vs.isContinuation) map.set(vs.charStart, resolvedVerseStartLabels[i]);
     });
     return map;
-  }, [segment.verseStarts, resolvedVerseStartLabels]);
+  }, [segment.verseStarts, resolvedVerseStartLabels, showVerseGutter]);
 
   /**
    * Split anchor by the char offset of the gap that precedes it, for baseline-text mode: for each
@@ -533,17 +542,20 @@ export function SegmentView({
    * mark the slot that begins each verse — the slot before the verse's first group, or (for a verse
    * opening on leading punctuation) the slot that carries that punctuation — so {@link PhraseSlot}
    * can render the verse number below the link icon. Continuation entries (a mid-verse split's
-   * later piece) contribute no label: the verse's number already showed at its real start.
+   * later piece) contribute no label: the verse's number already showed at its real start. Empty
+   * when the verse gutter is on, since the gutter then carries the verse information instead of
+   * these inline slot labels.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
+    if (showVerseGutter) return map;
     segment.verseStarts.forEach((vs, i) => {
       if (vs.isContinuation) return;
       const startToken = verseStartToken(segment, vs);
       if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
     });
     return map;
-  }, [segment, resolvedVerseStartLabels]);
+  }, [segment, resolvedVerseStartLabels, showVerseGutter]);
 
   /**
    * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
@@ -713,7 +725,7 @@ export function SegmentView({
         data-testid="segment-container"
         onClick={handleBaselineClick}
       >
-        <SegmentGutter label={gutterLabel} />
+        {showVerseGutter && <SegmentGutter label={gutterLabel} />}
         <div className="tw:min-w-0 tw:flex-1">
           <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
             {baselinePieces.map((piece) => {
@@ -766,7 +778,7 @@ export function SegmentView({
       data-testid="segment-container"
       onClick={handleBackgroundClick}
     >
-      <SegmentGutter label={gutterLabel} />
+      {showVerseGutter && <SegmentGutter label={gutterLabel} />}
       <div className="tw:min-w-0 tw:flex-1">
         <div className="tw:arc-container" ref={arcContainerRef}>
           <MemoizedArcOverlay

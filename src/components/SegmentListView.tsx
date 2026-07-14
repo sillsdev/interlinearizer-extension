@@ -213,9 +213,9 @@ export default function SegmentListView({
   );
 
   /**
-   * Verse/range gutter label for every segment (`5`, `5a`, `5b–7`, `29–2:1`), keyed by segment id.
-   * Computed over the whole `book.segments` list (not just the mounted window) so the split-portion
-   * lettering stays stable regardless of which slice is mounted.
+   * Verse-range gutter label for every segment (`5`, `2–3`, `29–2:1`), keyed by segment id.
+   * Computed over the whole `book.segments` list (not just the mounted window) so cross-chapter
+   * ranges resolve the same regardless of which slice is mounted.
    */
   const gutterLabelsBySegmentId = useMemo(() => buildSegmentLabels(book.segments), [book.segments]);
 

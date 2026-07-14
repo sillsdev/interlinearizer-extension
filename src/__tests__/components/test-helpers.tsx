@@ -23,4 +23,5 @@ export const allFalseViewOptions: ViewOptions = {
   simplifyPhrases: false,
   showMorphology: false,
   showFreeTranslation: false,
+  showVerseGutter: false,
 };

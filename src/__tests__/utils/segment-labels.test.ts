@@ -70,10 +70,11 @@ describe('buildSegmentLabels', () => {
     expect(labels.get('crossing')).toBe('29–2:1');
   });
 
-  it('letters the portions of a split verse in document order', () => {
-    // Verse 1 is split into three pieces; each covers verse 1, so they letter a/b/c. The later
-    // pieces carry isContinuation on their verse start, but the lettering only needs the per-verse
-    // portion count.
+  it('labels every portion of a split verse with the bare verse number, not lettered portions', () => {
+    // Verse 1 is split into three pieces; each covers only verse 1, so each reads a bare `1`. The
+    // gutter reflects the overlapping verse range rather than inventing per-portion identity — two
+    // adjacent portions of verse 1 both reading `1` is the intended behavior (the inline verse
+    // superscripts, not the gutter, distinguish the pieces).
     const labels = buildSegmentLabels([
       makeSegment('p1', [[1, 1]]),
       {
@@ -87,10 +88,9 @@ describe('buildSegmentLabels', () => {
       makeSegment('s2', [[1, 2]]),
     ]);
 
-    expect(labels.get('p1')).toBe('1a');
-    expect(labels.get('p2')).toBe('1b');
-    expect(labels.get('p3')).toBe('1c');
-    // An unsplit verse in the same book keeps its bare number.
+    expect(labels.get('p1')).toBe('1');
+    expect(labels.get('p2')).toBe('1');
+    expect(labels.get('p3')).toBe('1');
     expect(labels.get('s2')).toBe('2');
   });
 
@@ -100,8 +100,9 @@ describe('buildSegmentLabels', () => {
     expect(labels.get('sup')).toBe('0');
   });
 
-  it('letters a split portion that also spans into a following verse', () => {
-    // Verse 5 is split; its second portion (5b) is then merged with verse 6, giving 5b–6.
+  it('ranges a split portion that also spans into a following verse without lettering it', () => {
+    // Verse 5 is split; its second portion is then merged with verse 6. The first piece covers only
+    // verse 5 (bare `5`); the second covers verses 5 and 6 (range `5–6`). No portion letters.
     const labels = buildSegmentLabels([
       makeSegment('p1', [[1, 5]]),
       makeSegment('p2', [
@@ -110,13 +111,13 @@ describe('buildSegmentLabels', () => {
       ]),
     ]);
 
-    expect(labels.get('p1')).toBe('5a');
-    expect(labels.get('p2')).toBe('5b–6');
+    expect(labels.get('p1')).toBe('5');
+    expect(labels.get('p2')).toBe('5–6');
   });
 
-  it('letters the split end verse of a range', () => {
-    // Verse 6 is split; the first segment covers verse 5 plus verse 6's first portion (5–6a), the
-    // second covers verse 6's remaining portion (6b).
+  it('ranges to the bare end verse even when that verse is split across segments', () => {
+    // Verse 6 is split; the first segment covers verse 5 plus verse 6's first portion (range `5–6`),
+    // the second covers verse 6's remaining portion (bare `6`). No portion letters on either end.
     const labels = buildSegmentLabels([
       makeSegment('r1', [
         [1, 5],
@@ -125,7 +126,7 @@ describe('buildSegmentLabels', () => {
       makeSegment('r2', [[1, 6]]),
     ]);
 
-    expect(labels.get('r1')).toBe('5–6a');
-    expect(labels.get('r2')).toBe('6b');
+    expect(labels.get('r1')).toBe('5–6');
+    expect(labels.get('r2')).toBe('6');
   });
 });

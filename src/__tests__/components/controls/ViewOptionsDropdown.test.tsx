@@ -29,6 +29,8 @@ const DEFAULT_PROPS = {
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
+  showVerseGutter: false,
+  onShowVerseGutterChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
 };
@@ -87,6 +89,7 @@ describe('ViewOptionsDropdown', () => {
       screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
     ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_viewOption_showVerseGutter%')).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
@@ -199,6 +202,31 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /freeTranslation/i }));
 
       expect(onShowFreeTranslationChange).toHaveBeenCalledWith(true);
+    });
+  });
+
+  describe('show verse gutter toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showVerseGutter />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /verseGutter/i })).toBeChecked();
+    });
+
+    it('calls onShowVerseGutterChange when toggled', async () => {
+      const onShowVerseGutterChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showVerseGutter={false}
+          onShowVerseGutterChange={onShowVerseGutterChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /verseGutter/i }));
+
+      expect(onShowVerseGutterChange).toHaveBeenCalledWith(true);
     });
   });
 

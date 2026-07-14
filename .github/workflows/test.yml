@@ -99,8 +99,7 @@ jobs:
         if: matrix.os == 'windows-latest'
         working-directory: paranext-core
         shell: pwsh
-        # Same install as Linux (no --omit=optional: lightningcss native binaries are optional deps
-        # required by the webpack build), but retried: this full install fetches the most packages
+        # Same install as Linux, but retried: this full install fetches the most packages
         # through the shared C:\npm\cache and intermittently races on _cacache\tmp (EEXIST) or hits a
         # locked node_modules file during npm's pre-install cleanup (EPERM rmdir). `npm cache verify`
         # between attempts evicts the corrupt/partial cache entry so the retry starts clean.

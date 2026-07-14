@@ -20,9 +20,8 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,
   workers: 1,
-  // Tier-specific report/output folders so `npm run test:e2e` (smoke then cdp, sequentially) doesn't
-  // have the second tier's report overwrite the first's. The `open: 'never'` keeps a run from
-  // auto-launching a browser in CI.
+  // Tier-specific report/output folders so the second tier's report doesn't overwrite the first's.
+  // The `open: 'never'` keeps a run from auto-launching a browser in CI.
   reporter: [['html', { outputFolder: 'playwright-report/smoke', open: 'never' }], ['list']],
   timeout: 120_000,
   expect: {

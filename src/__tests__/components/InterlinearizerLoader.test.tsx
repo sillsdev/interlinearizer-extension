@@ -40,6 +40,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onShowMorphologyChange,
     showFreeTranslation,
     onShowFreeTranslationChange,
+    showVerseGutter,
+    onShowVerseGutterChange,
   }: {
     continuousScroll: boolean;
     onContinuousScrollChange: (v: boolean) => void;
@@ -51,6 +53,8 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
     onShowMorphologyChange: (v: boolean) => void;
     showFreeTranslation: boolean;
     onShowFreeTranslationChange: (v: boolean) => void;
+    showVerseGutter: boolean;
+    onShowVerseGutterChange: (v: boolean) => void;
   }) => (
     <div data-testid="view-options-dropdown">
       <button
@@ -86,6 +90,13 @@ jest.mock('../../components/controls/ViewOptionsDropdown', () => ({
         data-testid="show-free-translation-toggle"
         data-checked={String(showFreeTranslation)}
         onClick={() => onShowFreeTranslationChange(!showFreeTranslation)}
+        type="button"
+      />
+      <button
+        aria-label="show verse gutter"
+        data-testid="show-verse-gutter-toggle"
+        data-checked={String(showVerseGutter)}
+        onClick={() => onShowVerseGutterChange(!showVerseGutter)}
         type="button"
       />
     </div>
@@ -851,6 +862,7 @@ describe('InterlinearizerLoader', () => {
     expect(capturedInterlinearizerProps?.viewOptions.simplifyPhrases).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.showMorphology).toBe(false);
     expect(capturedInterlinearizerProps?.viewOptions.showFreeTranslation).toBe(false);
+    expect(capturedInterlinearizerProps?.viewOptions.showVerseGutter).toBe(false);
   });
 
   it('wires ViewOptionsDropdown hide-inactive-link-buttons to onChange from useOptimisticBooleanSetting', async () => {
@@ -891,6 +903,16 @@ describe('InterlinearizerLoader', () => {
 
     await userEvent.click(screen.getByTestId('show-free-translation-toggle'));
     expect(onChangeByKey.get('interlinearizer.showFreeTranslation')).toHaveBeenCalledWith(true);
+  });
+
+  it('wires ViewOptionsDropdown show-verse-gutter to onChange from useOptimisticBooleanSetting', async () => {
+    const onChangeByKey = mockOptimisticSetting();
+    await act(async () => {
+      renderLoader();
+    });
+
+    await userEvent.click(screen.getByTestId('show-verse-gutter-toggle'));
+    expect(onChangeByKey.get('interlinearizer.showVerseGutter')).toHaveBeenCalledWith(true);
   });
 
   it('passes continuousScroll=true to Interlinearizer when the setting is true', async () => {

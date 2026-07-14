@@ -612,6 +612,7 @@ function renderInterlinearizer({
   simplifyPhrases = false,
   showMorphology = false,
   showFreeTranslation = false,
+  showVerseGutter = false,
   segmentationDispatch,
   formerBoundaries,
 }: {
@@ -623,6 +624,7 @@ function renderInterlinearizer({
   simplifyPhrases?: boolean;
   showMorphology?: boolean;
   showFreeTranslation?: boolean;
+  showVerseGutter?: boolean;
   segmentationDispatch?: SegmentationDispatch;
   formerBoundaries?: ReadonlyMap<string, string>;
 } = {}) {
@@ -642,6 +644,7 @@ function renderInterlinearizer({
           simplifyPhrases,
           showMorphology,
           showFreeTranslation,
+          showVerseGutter,
         }}
       />,
       navigate,

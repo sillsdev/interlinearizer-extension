@@ -361,21 +361,67 @@ describe('SegmentView', () => {
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('1:1');
   });
 
-  it('renders the gutter label in token-chip mode', () => {
-    render(<SegmentView {...requiredProps()} gutterLabel="1a" />, withAnalysisStore);
-
-    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('1a');
-  });
-
-  it('renders the gutter label in baseline-text mode', () => {
+  it('renders the gutter label in token-chip mode when the verse gutter is on', () => {
     render(
-      <SegmentView {...requiredProps()} displayMode="baseline-text" gutterLabel="1a" />,
+      <SegmentView
+        {...requiredProps()}
+        gutterLabel="2–3"
+        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+      />,
       withAnalysisStore,
     );
 
-    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('1a');
+    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
+  });
+
+  it('renders the gutter label in baseline-text mode when the verse gutter is on', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        gutterLabel="2–3"
+        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.getByTestId('segment-gutter-label')).toHaveTextContent('2–3');
     // The running text still renders alongside the gutter.
     expect(screen.getByText('In the beginning.')).toBeInTheDocument();
+  });
+
+  it('hides the gutter and shows inline superscripts when the verse gutter is off', () => {
+    render(<SegmentView {...requiredProps()} gutterLabel="2–3" />, withAnalysisStore);
+
+    expect(screen.queryByTestId('segment-gutter-label')).not.toBeInTheDocument();
+    expect(screen.getByTestId('verse-superscript')).toBeInTheDocument();
+  });
+
+  it('suppresses inline superscripts in token-chip mode when the verse gutter is on', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        gutterLabel="2–3"
+        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
+  });
+
+  it('suppresses inline superscripts in baseline-text mode when the verse gutter is on', () => {
+    render(
+      <SegmentView
+        {...requiredProps()}
+        displayMode="baseline-text"
+        gutterLabel="2–3"
+        viewOptions={{ ...allFalseViewOptions, showVerseGutter: true }}
+      />,
+      withAnalysisStore,
+    );
+
+    expect(screen.queryByTestId('verse-superscript')).not.toBeInTheDocument();
   });
 
   it('renders baselineText in baseline-text mode', () => {

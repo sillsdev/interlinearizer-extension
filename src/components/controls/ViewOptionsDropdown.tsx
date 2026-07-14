@@ -11,6 +11,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_simplifyPhrases%',
   '%interlinearizer_viewOption_showMorphology%',
   '%interlinearizer_viewOption_showFreeTranslation%',
+  '%interlinearizer_viewOption_showVerseGutter%',
   '%interlinearizer_viewOption_showSuggestions%',
 ] as const satisfies `%${string}%`[];
 
@@ -72,6 +73,13 @@ type ViewOptionsDropdownProps = Readonly<{
   /** Called when the show-free-translation toggle changes. */
   onShowFreeTranslationChange: (checked: boolean) => void;
   /**
+   * Current value of the show-verse-gutter toggle. When on, segments show their verse range in a
+   * left gutter column instead of the inline verse superscripts.
+   */
+  showVerseGutter: boolean;
+  /** Called when the show-verse-gutter toggle changes. */
+  onShowVerseGutterChange: (checked: boolean) => void;
+  /**
    * Current value of the show-suggestions toggle. Removable demo switch: while on, un-approved
    * tokens render the engine's derived suggestion (see `user-questions.md`, "display prominence and
    * candidate review"). Drop this prop and its row once the UX is settled.
@@ -96,6 +104,8 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowMorphologyChange - Show-morphology change callback.
  * @param props.showFreeTranslation - Current show-free-translation value.
  * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
+ * @param props.showVerseGutter - Current show-verse-gutter value.
+ * @param props.onShowVerseGutterChange - Show-verse-gutter change callback.
  * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
  * @param props.onShowSuggestionsChange - Show-suggestions change callback.
  * @returns A gear button that opens a dropdown panel of view toggles.
@@ -111,6 +121,8 @@ export default function ViewOptionsDropdown({
   onShowMorphologyChange,
   showFreeTranslation,
   onShowFreeTranslationChange,
+  showVerseGutter,
+  onShowVerseGutterChange,
   showSuggestions,
   onShowSuggestionsChange,
 }: ViewOptionsDropdownProps) {
@@ -210,6 +222,11 @@ export default function ViewOptionsDropdown({
                 checked={showFreeTranslation}
                 label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
                 onCheckedChange={onShowFreeTranslationChange}
+              />
+              <ViewToggle
+                checked={showVerseGutter}
+                label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
+                onCheckedChange={onShowVerseGutterChange}
               />
               <ViewToggle
                 checked={hideInactiveLinkButtons}

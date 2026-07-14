@@ -208,6 +208,12 @@ function InterlinearizerLoaderInner({
     value: showFreeTranslation,
   } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showFreeTranslation', false);
 
+  const {
+    isLoading: isShowVerseGutterLoading,
+    onChange: handleShowVerseGutterChange,
+    value: showVerseGutter,
+  } = useOptimisticBooleanSetting(projectId, 'interlinearizer.showVerseGutter', false);
+
   // Removable demo toggle (not persisted) for the open "suggestion display prominence" UX question
   // (see `user-questions.md`): while on, un-approved tokens matching the pool render the engine's
   // blue suggestion with accept / promote affordances. Defaults on (suggestions are always-on by
@@ -225,8 +231,15 @@ function InterlinearizerLoaderInner({
       simplifyPhrases,
       showMorphology,
       showFreeTranslation,
+      showVerseGutter,
     }),
-    [hideInactiveLinkButtons, simplifyPhrases, showMorphology, showFreeTranslation],
+    [
+      hideInactiveLinkButtons,
+      simplifyPhrases,
+      showMorphology,
+      showFreeTranslation,
+      showVerseGutter,
+    ],
   );
 
   const {
@@ -354,7 +367,8 @@ function InterlinearizerLoaderInner({
     isHideInactiveLinkButtonsLoading ||
     isSimplifyPhrasesLoading ||
     isShowMorphologyLoading ||
-    isShowFreeTranslationLoading;
+    isShowFreeTranslationLoading ||
+    isShowVerseGutterLoading;
   // True during a cross-book swap: the live `scrRef` already names the new book but the loaded `book`
   // is still the previous one (its USJ hasn't arrived yet). The old `Interlinearizer` is still
   // mounted here; showing it (even frozen on its last in-book reference) lets the previous book's
@@ -536,6 +550,8 @@ function InterlinearizerLoaderInner({
               onShowMorphologyChange={handleShowMorphologyChange}
               showFreeTranslation={showFreeTranslation}
               onShowFreeTranslationChange={handleShowFreeTranslationChange}
+              showVerseGutter={showVerseGutter}
+              onShowVerseGutterChange={handleShowVerseGutterChange}
               showSuggestions={showSuggestions}
               onShowSuggestionsChange={setShowSuggestions}
             />

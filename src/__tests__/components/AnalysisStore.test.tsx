@@ -1606,6 +1606,7 @@ describe('useReportGlossEditing', () => {
  *
  * @param props.tokenRef - Token ref to resolve.
  * @param props.surfaceText - The token's surface text.
+ * @param props.enabled - Whether the hook should derive; `false` short-circuits to `undefined`.
  * @param props.sink - Array each render appends its resolved value to (for render-count
  *   assertions).
  * @returns JSX element suitable for passing to `render`.
@@ -1613,13 +1614,15 @@ describe('useReportGlossEditing', () => {
 function ResolvedReader({
   tokenRef,
   surfaceText,
+  enabled = true,
   sink,
 }: Readonly<{
   tokenRef: string;
   surfaceText: string;
+  enabled?: boolean;
   sink?: (ResolvedTokenAnalysis | undefined)[];
 }>) {
-  const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText);
+  const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText, enabled);
   sink?.push(resolved);
   return <span data-testid="resolved">{resolved?.status ?? 'none'}</span>;
 }
@@ -1711,6 +1714,19 @@ describe('useResolvedTokenAnalysis', () => {
     render(
       <AnalysisStoreProvider analysisLanguage="und">
         <ResolvedReader tokenRef="tok-2" surfaceText="unseen" />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('none');
+  });
+
+  it('short-circuits to undefined without deriving when disabled', () => {
+    // With enabled=false the hook must not resolve even a token that would otherwise be approved.
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+      >
+        <ResolvedReader tokenRef="tok-1" surfaceText="logos" enabled={false} />
       </AnalysisStoreProvider>,
     );
     expect(screen.getByTestId('resolved')).toHaveTextContent('none');

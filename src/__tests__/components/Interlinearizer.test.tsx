@@ -383,6 +383,59 @@ const GEN_1_MULTI_BOOK: Book = withDefaultVerseStarts({
 });
 
 /**
+ * GEN book with a token-less (empty) verse marker between two token-bearing verses. A merge into an
+ * empty predecessor cannot take effect (the empty verse forces its own segment boundary), so the
+ * list must offer no merge button for the segment after the empty one.
+ */
+const GEN_1_EMPTY_MIDDLE_BOOK: Book = withDefaultVerseStarts({
+  id: 'GEN',
+  bookRef: 'GEN',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'GEN 1:1',
+      startRef: { book: 'GEN', chapter: 1, verse: 1 },
+      endRef: { book: 'GEN', chapter: 1, verse: 1 },
+      baselineText: 'Alpha.',
+      tokens: [
+        {
+          ref: 'GEN 1:1:0',
+          surfaceText: 'Alpha',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+      ],
+    },
+    {
+      id: 'GEN 1:2',
+      startRef: { book: 'GEN', chapter: 1, verse: 2 },
+      endRef: { book: 'GEN', chapter: 1, verse: 2 },
+      baselineText: '',
+      tokens: [],
+      verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
+    },
+    {
+      id: 'GEN 1:3',
+      startRef: { book: 'GEN', chapter: 1, verse: 3 },
+      endRef: { book: 'GEN', chapter: 1, verse: 3 },
+      baselineText: 'Gamma.',
+      tokens: [
+        {
+          ref: 'GEN 1:3:0',
+          surfaceText: 'Gamma',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+      ],
+    },
+  ],
+});
+
+/**
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Used to exercise the
  * focus-reseed guard when the host echoes a click back at chapter granularity (verse-0 / first
  * verse), which a verse-exact guard would misread as the chapter's first segment.
@@ -1814,6 +1867,14 @@ describe('between-rows merge control', () => {
     expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
     expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+  });
+
+  it('offers no merge button for a segment whose predecessor is an empty verse (the merge would be a no-op)', () => {
+    // v1[Alpha] · v2[empty] · v3[Gamma]: merging v3 up cannot cross the empty v2 (it forces its own
+    // boundary), so the button — which would silently persist a dead boundary — must not appear.
+    renderInterlinearizer({ book: GEN_1_EMPTY_MIDDLE_BOOK });
+    expect(screen.queryByTestId('segment-merge-btn')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('segment-merge-indicator')).not.toBeInTheDocument();
   });
 
   it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {

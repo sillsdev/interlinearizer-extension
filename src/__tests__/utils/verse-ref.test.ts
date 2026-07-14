@@ -131,6 +131,19 @@ describe('segmentContainsVerse', () => {
     expect(segmentContainsVerse(seg, makeRef(1, 5))).toBe(false);
   });
 
+  it('contains the later verse of a range label written with a non-ASCII (en-dash) separator', () => {
+    const seg: Segment = {
+      id: 'seg',
+      startRef: { book: 'GEN', chapter: 1, verse: 3 },
+      endRef: { book: 'GEN', chapter: 1, verse: 4 },
+      baselineText: '',
+      tokens: [],
+      verseStarts: [{ charStart: 0, number: '3–4', chapter: 1 }],
+    };
+    expect(segmentContainsVerse(seg, makeRef(1, 4))).toBe(true);
+    expect(segmentContainsVerse(seg, makeRef(1, 5))).toBe(false);
+  });
+
   it('does not match a verse start whose label has no digits', () => {
     const seg: Segment = {
       id: 'seg',
@@ -160,6 +173,10 @@ describe('firstVerseNumber', () => {
 
   it('returns the first endpoint of a hyphenated range label', () => {
     expect(firstVerseNumber('3-4')).toBe(3);
+  });
+
+  it('returns the first endpoint of a range label written with an en-dash', () => {
+    expect(firstVerseNumber('3–4')).toBe(3);
   });
 
   it('returns undefined for a label that begins with no digits', () => {

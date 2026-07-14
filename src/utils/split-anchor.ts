@@ -81,7 +81,7 @@ function reachesWord(
 
 /**
  * Decides whether the punctuation at index `i` in `run` binds to the following word (rather than
- * the preceding one), per the plan's per-token priority order. Adjacency is evaluated over the
+ * the preceding one), per the per-token priority order below. Adjacency is evaluated over the
  * whitespace-free cluster the mark belongs to, so a cluster like `("` or `,"` binds as a unit:
  *
  * 1. Touches a word (via its cluster) — reaching the following word binds following (checked first);

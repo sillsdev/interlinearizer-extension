@@ -8,7 +8,11 @@ import type {
   TokenAnalysis,
   TokenAnalysisLink,
 } from 'interlinearizer';
-import { bookOfRef, removeBookFromAnalysis } from '../../utils/analysis-book';
+import {
+  bookOfRef,
+  removeBookFromAnalysis,
+  removeBookFromSegmentation,
+} from '../../utils/analysis-book';
 import { makePhraseLink } from '../test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -190,5 +194,54 @@ describe('removeBookFromAnalysis', () => {
     expect(result.tokenAnalyses.map((a) => a.id)).toEqual(['tok-gen', 'tok-exo', 'tok-orphan']);
     expect(result.segmentAnalyses.map((a) => a.id)).toEqual(['seg-gen', 'seg-exo']);
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-cross']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// removeBookFromSegmentation
+// ---------------------------------------------------------------------------
+
+describe('removeBookFromSegmentation', () => {
+  it('returns undefined for an undefined delta', () => {
+    expect(removeBookFromSegmentation(undefined, 'GEN')).toBeUndefined();
+  });
+
+  it('drops the book’s removed-verse-start anchors and keeps other books’', () => {
+    const result = removeBookFromSegmentation(
+      { removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'], addedStarts: [] },
+      'GEN',
+    );
+    expect(result).toEqual({ removedVerseStarts: ['EXO 3:4:0'], addedStarts: [] });
+  });
+
+  it('drops the book’s added-start anchors and keeps other books’', () => {
+    const result = removeBookFromSegmentation(
+      { removedVerseStarts: [], addedStarts: ['GEN 1:2:5', 'EXO 3:4:5'] },
+      'GEN',
+    );
+    expect(result).toEqual({ removedVerseStarts: [], addedStarts: ['EXO 3:4:5'] });
+  });
+
+  it('collapses to undefined when removing the book empties both arrays', () => {
+    const result = removeBookFromSegmentation(
+      { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:3:5'] },
+      'GEN',
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it('keeps every anchor when no anchor belongs to the book code', () => {
+    const result = removeBookFromSegmentation(
+      { removedVerseStarts: ['EXO 1:2:0'], addedStarts: ['EXO 1:3:5'] },
+      'GEN',
+    );
+    expect(result).toEqual({ removedVerseStarts: ['EXO 1:2:0'], addedStarts: ['EXO 1:3:5'] });
+  });
+
+  it('does not mutate the input delta', () => {
+    const input = { removedVerseStarts: ['GEN 1:2:0', 'EXO 3:4:0'], addedStarts: ['GEN 1:3:5'] };
+    const snapshot = JSON.parse(JSON.stringify(input));
+    removeBookFromSegmentation(input, 'GEN');
+    expect(input).toEqual(snapshot);
   });
 });

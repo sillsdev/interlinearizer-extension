@@ -187,8 +187,9 @@ export function SegmentView({
 
   // The label is verse-based: bare verse number for a whole verse, lettered portions for a split
   // verse, and a range for a multi-verse segment. When chapter info is folded into the label it
-  // reads `chapter:label`; otherwise it stays bare (the chapter is carried by SegmentListView's
-  // inline header).
+  // reads `chapter:label`; the chapter qualifies the label's start, and a chapter-crossing range
+  // already carries the end's chapter (`29–2:1` → `1:29–2:1`), so no chapter is duplicated.
+  // Otherwise the label stays bare (the chapter is carried by SegmentListView's inline header).
   const verseLabelText = chapterLabelInVerse ? `${chapter}:${label}` : label;
 
   // normal-case overrides section-label's uppercase so split-portion letters render as the

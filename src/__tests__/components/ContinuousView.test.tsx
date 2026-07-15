@@ -1093,6 +1093,73 @@ describe('ContinuousView scroll behavior', () => {
     }
   });
 
+  it('defers the reconcile to the scroll settle when a boundary edit lands mid-glide', () => {
+    // A boundary edit that changes the focused token's segment id while an internal-nav smooth
+    // scroll is still animating must NOT commit the active segment early: doing so would flip
+    // committedActiveSegmentId and fire an instant re-center, truncating the glide into a jump. The
+    // reconcile effect defers to the in-flight scroll's settle instead. Probe: with the old segment
+    // still committed, its in-segment link icon stays mounted through the edit and only drops once
+    // the scroll settles.
+    const book = makeBook();
+    const merged = resegmentBook(book, { removedVerseStarts: ['tok-1'], addedStarts: [] });
+    const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
+    const mergedLookups = buildLookups(merged);
+    let applyBoundaryEdit: () => void = () => {};
+    /** Stateful parent that starts on the verse book and swaps to the merged book on demand. */
+    function Parent() {
+      const [ref, setRef] = useState<string | undefined>('tok-1');
+      const [edited, setEdited] = useState(false);
+      applyBoundaryEdit = () => setEdited(true);
+      const lookups = edited ? mergedLookups : { tokenSegmentMap, tokenDocOrder, wordTokenByRef };
+      return (
+        <ContinuousView
+          book={edited ? merged : book}
+          editPhraseSegmentId={undefined}
+          focusedTokenRef={ref}
+          onFocusedTokenRefChange={setRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={jest.fn()}
+          tokenSegmentMap={lookups.tokenSegmentMap}
+          tokenDocOrder={lookups.tokenDocOrder}
+          wordTokenByRef={lookups.wordTokenByRef}
+          viewOptions={{ ...allFalseViewOptions, hideInactiveLinkButtons: true }}
+        />
+      );
+    }
+    /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
+    const inSegmentIconMounted = () => {
+      const icon = document.querySelector<HTMLElement>(
+        '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
+      );
+      return !!icon && icon.parentElement?.style.opacity !== '0';
+    };
+    jest.useFakeTimers();
+    try {
+      render(<Parent />, withAnalysisStore);
+      act(() => {
+        jest.runOnlyPendingTimers();
+      });
+      expect(inSegmentIconMounted()).toBe(true);
+
+      // Step into GEN 1:2 (internal nav) — the scroll is now animating and its commit is pending.
+      act(() => {
+        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+      });
+      expect(inSegmentIconMounted()).toBe(true);
+
+      // Boundary edit mid-glide: merge GEN 1:2 into GEN 1:1. Token refs survive so focus is
+      // unchanged; the reconcile effect must defer (not commit-and-relayout), so the old segment's
+      // in-segment icon stays mounted rather than the strip snapping to a committed relayout. The
+      // deferred commit runs later via the pending scroll settle.
+      act(() => {
+        applyBoundaryEdit();
+      });
+      expect(inSegmentIconMounted()).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('re-centers the focused group each frame while the inactive-link slots animate, then stops', () => {
     // After the active segment commits (post-scrollend), the inactive-link slots slide open/closed
     // over LINK_SLOT_TRANSITION_MS, continuously shifting every box around the center. The view

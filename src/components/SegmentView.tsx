@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
@@ -180,22 +181,26 @@ function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplit
   const altHeld = useAltHeldValue();
   if (!altHeld) return text;
   return (
-    // Keyboard split is out of scope, so this is a pointer-only affordance (matching the segment
-    // container's own click handler); the a11y lint rules are disabled here.
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <span
-      className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
-      data-testid="baseline-split-gap"
-      title={splitLabel}
-      onClick={(event) => onSplit(event, splitRef)}
-    >
-      {text}
-      <span
-        aria-hidden="true"
-        className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
-        data-testid="baseline-split-caret"
-      />
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+            segment container's own click handler); the a11y lint rules are disabled here. */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <span
+          className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
+          data-testid="baseline-split-gap"
+          onClick={(event) => onSplit(event, splitRef)}
+        >
+          {text}
+          <span
+            aria-hidden="true"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+            data-testid="baseline-split-caret"
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{splitLabel}</TooltipContent>
+    </Tooltip>
   );
 }
 

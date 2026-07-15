@@ -460,7 +460,8 @@ describe('PhraseSlot boundary controls', () => {
     });
 
     it('labels the merge button with the plain merge string while Alt is held', () => {
-      // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint.
+      // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint. The
+      // tooltip text rides the Tooltip component; the mock projects it onto the trigger as `title`.
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toHaveAttribute('aria-label', 'Merge');
@@ -469,7 +470,7 @@ describe('PhraseSlot boundary controls', () => {
 
     it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
       // Alt up → split markers are hidden, so the merge tooltip advertises the Alt gesture that
-      // reveals them.
+      // reveals them. The tooltip text rides the Tooltip component (see the plain-merge test above).
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
       const button = screen.getByTestId('boundary-merge-btn');
       expect(button).toHaveAttribute('aria-label', 'Merge');
@@ -527,6 +528,15 @@ describe('PhraseSlot boundary controls', () => {
       renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
       expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
       expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('supplies the split-marker tooltip through the Tooltip component (not a native title)', () => {
+      // The marker only exists while Alt is held, and browsers suppress the native `title` tooltip
+      // while a modifier is down — so the hover text must come from the platform-bible-react
+      // Tooltip. The mock projects TooltipContent's text onto the trigger, so its presence here
+      // proves the text flows through the component rather than a raw `title` attribute.
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      expect(screen.getByTestId('boundary-split-marker')).toHaveAttribute('title', 'Split');
     });
 
     it('hides the split marker on an intra-segment slot while Alt is not held', () => {

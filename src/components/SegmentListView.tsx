@@ -2,6 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -61,27 +62,31 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         className="tw:w-full tw:border-t tw:border-muted-foreground/50 tw:group-hover/merge:border-muted-foreground"
         data-testid="segment-merge-indicator"
       />
-      <button
-        aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-        className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded"
-        data-testid="segment-merge-btn"
-        tabIndex={-1}
-        title={
-          altHeld
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
+            className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded"
+            data-testid="segment-merge-btn"
+            tabIndex={-1}
+            type="button"
+            onClick={() => dispatch.merge(secondSegmentStartRef)}
+          >
+            {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it
+                reads coherently over the line, brightening to the accent on hover. Rotated 90° so
+                the Y-join points along this view's vertical merge axis (the lower row folds up into
+                the one above), unlike the horizontal continuous-strip merge. */}
+            <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
+              <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
+            </span>
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {altHeld
             ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-            : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']
-        }
-        type="button"
-        onClick={() => dispatch.merge(secondSegmentStartRef)}
-      >
-        {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it reads
-            coherently over the line, brightening to the accent on hover. Rotated 90° so the Y-join
-            points along this view's vertical merge axis (the lower row folds up into the one above),
-            unlike the horizontal continuous-strip merge. */}
-        <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
-          <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
-        </span>
-      </button>
+            : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }

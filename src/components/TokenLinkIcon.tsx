@@ -1,6 +1,7 @@
 /** @file Inline link / unlink icon rendered between adjacent word token groups. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Unlink2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -315,14 +316,13 @@ export function TokenLinkIcon({
     if (candidateTokenRefs) onHoverCandidateTokens(undefined);
   };
 
-  return (
+  const linkButton = (
     <button
       aria-label="Link tokens"
       className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       tabIndex={-1}
-      title={linkTitle}
       onClick={isActive ? handleLinkClick : undefined}
       onMouseEnter={isActive ? handleLinkMouseEnter : undefined}
       onMouseLeave={isActive ? handleLinkMouseLeave : undefined}
@@ -330,6 +330,17 @@ export function TokenLinkIcon({
     >
       <Link2 className="tw:h-3 tw:w-3" />
     </button>
+  );
+
+  // Only the cross-segment-disabled case carries a tooltip.
+  if (linkTitle === undefined) return linkButton;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="tw:inline-flex">{linkButton}</span>
+      </TooltipTrigger>
+      <TooltipContent>{linkTitle}</TooltipContent>
+    </Tooltip>
   );
 }
 

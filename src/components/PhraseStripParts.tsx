@@ -1,6 +1,7 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
 import type { Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
@@ -44,17 +45,21 @@ type BoundaryButtonProps = Readonly<{
  */
 function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonProps) {
   return (
-    <button
-      aria-label={label}
-      className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
-      data-testid={testId}
-      tabIndex={-1}
-      title={title}
-      type="button"
-      onClick={action}
-    >
-      {icon}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          aria-label={label}
+          className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+          data-testid={testId}
+          tabIndex={-1}
+          type="button"
+          onClick={action}
+        >
+          {icon}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{title}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -214,18 +219,22 @@ type SplitMarkerProps = Readonly<{
  */
 function SplitMarker({ label, onSplit }: SplitMarkerProps) {
   return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <span
-      aria-label={label}
-      className="tw:inline-flex tw:cursor-pointer tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
-      data-testid="boundary-split-marker"
-      title={label}
-      onClick={(event: MouseEvent) => {
-        if (event.altKey) onSplit();
-      }}
-    >
-      <Split className="tw:h-3 tw:w-3" />
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <span
+          aria-label={label}
+          className="tw:inline-flex tw:cursor-pointer tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+          data-testid="boundary-split-marker"
+          onClick={(event: MouseEvent) => {
+            if (event.altKey) onSplit();
+          }}
+        >
+          <Split className="tw:h-3 tw:w-3" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -556,14 +556,18 @@ describe('TokenLinkIcon', () => {
       renderCrossSegment(true);
       const button = screen.getByTestId('token-link-btn');
       expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', 'nope');
+      // A disabled button can't be the hover trigger, so the tooltip rides the wrapper span (the
+      // mock projects TooltipContent's text onto it); the button itself carries no native title.
+      expect(button).not.toHaveAttribute('title');
+      expect(button.parentElement).toHaveAttribute('title', 'nope');
     });
 
     it('disables the link with the cross-segment tooltip when focus is the next segment', () => {
       renderCrossSegment(false);
       const button = screen.getByTestId('token-link-btn');
       expect(button).toBeDisabled();
-      expect(button).toHaveAttribute('title', 'nope');
+      expect(button).not.toHaveAttribute('title');
+      expect(button.parentElement).toHaveAttribute('title', 'nope');
     });
 
     it('creates no phrase when the disabled cross-segment link is clicked', async () => {

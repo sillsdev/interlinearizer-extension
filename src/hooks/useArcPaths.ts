@@ -51,15 +51,20 @@ const MAX_CONSECUTIVE_SIGNATURE_FLIPS = 2;
 const SETTLE_VERIFY_DELAYS_MS = [200, 400, 800];
 
 /**
- * Serializes a measurement's padding-affecting outputs into a stable key. Arc level and the gutter
- * paddings are what feed back into layout, so two measurements with the same signature produce the
- * same applied padding and cannot represent genuine progress.
+ * Serializes a measurement's applied outputs into a stable key. Arc level and the gutter paddings
+ * are what feed back into layout, and the arc `d` plus the split-button geometry (`midX`/`midY` and
+ * the run bounds) are what the strip renders. Including the split-button fields matters because a
+ * deconfliction-only shift mutates `midX` without touching `d`, level, or padding: were it omitted,
+ * such a pass would match `history[0]`, be dropped as a fixed point, and never reach `setArcPaths`
+ * — leaving the button in its pre-shift position. Two measurements with the same signature
+ * therefore produce both the same applied padding and the same rendered arcs, so they cannot
+ * represent genuine progress.
  *
  * @param paths - The measured arc paths.
  * @param maxLevel - The measured max nesting level.
  * @param leftPadding - The measured left gutter padding.
  * @param rightPadding - The measured right gutter padding.
- * @returns A signature string that is equal iff the layout-affecting outputs match.
+ * @returns A signature string that is equal iff the layout- and render-affecting outputs match.
  */
 function signatureOf(
   paths: ArcPath[],
@@ -68,7 +73,10 @@ function signatureOf(
   rightPadding: number,
 ): string {
   return `${maxLevel}:${leftPadding}:${rightPadding}:${paths
-    .map((p) => `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}`)
+    .map(
+      (p) =>
+        `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}:${p.midX}:${p.midY}:${p.runLeft}:${p.runRight}`,
+    )
     .join('|')}`;
 }
 
@@ -218,9 +226,15 @@ export function useArcPaths(
       // other applies prepend onto a 2-deep window so entry 0 stays the applied signature.
       recentArcSignaturesRef.current = force ? [signature] : [signature, ...history].slice(0, 2);
       setArcPaths((prev) => {
-        // Include the split-button geometry (midX/midY and run bounds) so a deconfliction-only shift
-        // — which mutates midX without touching `d` — still replaces the paths rather than leaving
-        // the button in its pre-shift position.
+        /**
+         * Serializes one arc path into an identity key for the referential-equality guard below.
+         * Includes the split-button geometry (midX/midY and run bounds) so a deconfliction-only
+         * shift — which mutates midX without touching `d` — still replaces the paths rather than
+         * leaving the button in its pre-shift position.
+         *
+         * @param p - The arc path to serialize.
+         * @returns A string equal iff the rendered arc and its split-button geometry match.
+         */
         const key = (p: ArcPath) =>
           `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}:${p.midX}:${p.midY}:${p.runLeft}:${p.runRight}`;
         const prevKey = prev.map(key).join('|');

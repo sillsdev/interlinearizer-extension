@@ -79,6 +79,12 @@ describe('useArcPaths', () => {
       disconnect() {}
     };
 
+    /**
+     * Fires the ResizeObserver callback and flushes the queued rAF, then reports how many
+     * measurement passes (`computeAllArcPaths` calls) that observer tick triggered.
+     *
+     * @returns The number of `computeAllArcPaths` calls made during this pump.
+     */
     const pump = (): number => {
       const before = computeAllArcPaths.mock.calls.length;
       act(() => {
@@ -277,6 +283,42 @@ describe('useArcPaths', () => {
       const settled = result.current.stripLeftPadding;
       for (let i = 0; i < 20; i += 1) pump();
       expect(result.current.stripLeftPadding).toBe(settled);
+    });
+
+    it('applies a split-button shift that moves midX without touching d, level, or padding', () => {
+      // A deconfliction pass nudges the split button (midX/midY, run bounds) while the arc path `d`,
+      // nesting level, and gutter paddings are unchanged. The apply gate keys on `signatureOf`, so
+      // that signature must include the button geometry — otherwise this pass matches the applied
+      // signature, is dropped as a fixed point, and the button stays in its pre-shift position.
+      const { pump } = installObserverHarness();
+      const before = {
+        phraseId: 'p1',
+        d: 'M0 0 L10 0',
+        midX: 5,
+        midY: 0,
+        runLeft: 0,
+        runRight: 10,
+        splitAfterTokenRef: 't',
+      };
+      computeAllArcPaths.mockReturnValue({
+        paths: [before],
+        maxLevel: 0,
+        leftPadding: 0,
+        rightPadding: 0,
+      });
+      const containerRef = { current: document.createElement('div') };
+      const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
+      expect(result.current.arcPaths[0].midX).toBe(5);
+
+      // Only midX drifts; every other field (including `d`) is identical.
+      computeAllArcPaths.mockReturnValue({
+        paths: [{ ...before, midX: 20 }],
+        maxLevel: 0,
+        leftPadding: 0,
+        rightPadding: 0,
+      });
+      pump();
+      expect(result.current.arcPaths[0].midX).toBe(20);
     });
   });
 

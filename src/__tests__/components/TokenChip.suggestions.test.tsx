@@ -261,7 +261,7 @@ describe('TokenChip suggestion dropdown', () => {
 
     await focusGloss('bank');
 
-    // On an already-approved token every alternative is a grey "promote" row, not a blue "accept"
+    // On an already-approved token every alternative is a gray "promote" row, not a blue "accept"
     // row: there is nothing to accept, only candidates to promote to.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();

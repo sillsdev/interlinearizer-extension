@@ -217,26 +217,39 @@ function readIds(token: ExecutionToken): Promise<string[]> {
 }
 
 /**
+ * Outcome of reading the pending-cleanup set, distinguishing a genuinely-empty (or well-formed) set
+ * from a corrupt stored value. {@link sweepPendingCleanup} uses `corrupt` to decide whether it must
+ * overwrite the stored value even when there are no ids to process, so a bad value is repaired
+ * rather than re-read (and re-warned about) on every launch.
+ */
+interface PendingCleanupRead {
+  /** The recovered pending-cleanup ids: the parsed array, or `[]` when the stored value was corrupt. */
+  ids: string[];
+  /** Whether the stored value was unparseable or not an array of strings. */
+  corrupt: boolean;
+}
+
+/**
  * Reads the stored set of orphaned project IDs awaiting cleanup, tolerating corruption so a bad
  * value can never wedge {@link sweepPendingCleanup} (which runs fire-and-forget at activation, where
  * a thrown error would be invisible and would recur on every launch). A value that is missing
- * (ENOENT), unparseable, or not an array of strings is treated as an empty set: the sweep then has
- * nothing to do and its terminal rewrite replaces the bad value with a valid one, self-healing the
- * key.
+ * (ENOENT), unparseable, or not an array of strings is recovered as an empty set; when the value
+ * was present but corrupt, `corrupt` is set so the caller can rewrite the key with a valid value,
+ * self-healing it instead of re-reading (and re-warning about) the bad value on every launch.
  *
  * @param token - The execution token for storage access.
- * @returns The stored pending-cleanup ID array, or an empty array when the value is missing or
- *   corrupt.
+ * @returns The recovered ids and whether the stored value was corrupt. A missing (ENOENT) value is
+ *   an empty, non-corrupt set (nothing to repair).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
-async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
+async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanupRead> {
   let parsed: unknown;
   try {
     parsed = await readJsonArray(token, PENDING_CLEANUP_KEY);
   } catch (e) {
     if (e instanceof SyntaxError) {
       logger.warn('Interlinearizer: pending-cleanup set contains invalid JSON; resetting to empty');
-      return [];
+      return { ids: [], corrupt: true };
     }
     throw e;
   }
@@ -244,9 +257,9 @@ async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
     logger.warn(
       'Interlinearizer: pending-cleanup set is not an array of strings; resetting to empty',
     );
-    return [];
+    return { ids: [], corrupt: true };
   }
-  return parsed;
+  return { ids: parsed, corrupt: false };
 }
 
 /**
@@ -263,7 +276,7 @@ async function readPendingCleanup(token: ExecutionToken): Promise<string[]> {
  */
 function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> {
   return enqueuePendingCleanupOp(async () => {
-    const ids = await readPendingCleanup(token);
+    const { ids } = await readPendingCleanup(token);
     if (ids.includes(id)) return;
     await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([...ids, id]));
   });
@@ -297,8 +310,13 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  */
 export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
   return enqueuePendingCleanupOp(async () => {
-    const ids = await readPendingCleanup(token);
-    if (ids.length === 0) return 0;
+    const { ids, corrupt } = await readPendingCleanup(token);
+    if (ids.length === 0) {
+      // Nothing to sweep. If the stored value was corrupt, overwrite it with a valid empty set so
+      // it self-heals; otherwise it would be re-read and re-warned about on every launch.
+      if (corrupt) await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([]));
+      return 0;
+    }
     const indexed = new Set(await readIds(token));
     // For each id, decide whether to keep it in the set and whether its record was cleaned.
     const outcomes = await Promise.all(

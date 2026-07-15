@@ -634,7 +634,7 @@ describe('projectStorage', () => {
       expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
     });
 
-    it('resets a pending-cleanup value containing invalid JSON to empty instead of wedging', async () => {
+    it('self-heals a pending-cleanup value containing invalid JSON by rewriting it to an empty set', async () => {
       __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
         key === 'pendingCleanup' ? Promise.resolve('{ not json') : Promise.reject(enoentError()),
       );
@@ -644,9 +644,11 @@ describe('projectStorage', () => {
       expect(cleaned).toBe(0);
       expect(__mockDeleteUserData).not.toHaveBeenCalled();
       expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('invalid JSON'));
+      // The corrupt value is overwritten so it is not re-read and re-warned about on every launch.
+      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
     });
 
-    it('resets a pending-cleanup value that is not an array of strings to empty', async () => {
+    it('self-heals a pending-cleanup value that is not an array of strings by rewriting it to an empty set', async () => {
       __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>
         key === 'pendingCleanup'
           ? Promise.resolve(JSON.stringify([1, 2, 3]))
@@ -658,6 +660,8 @@ describe('projectStorage', () => {
       expect(cleaned).toBe(0);
       expect(__mockDeleteUserData).not.toHaveBeenCalled();
       expect(__mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('not an array'));
+      // The corrupt value is overwritten so it is not re-read and re-warned about on every launch.
+      expect(__mockWriteUserData).toHaveBeenCalledWith(token, 'pendingCleanup', JSON.stringify([]));
     });
   });
 

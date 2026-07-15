@@ -29,7 +29,9 @@ const CDP_FEATURE_READY_TIMEOUT = 30_000;
 /**
  * File the smoke launcher streams the app's main-process stdout/stderr to. Kept in `e2e-tests/`
  * (which Playwright doesn't clear and CI uploads as an artifact) so a failed run's log survives.
- * Overwritten on each launch.
+ * Appended to (not truncated) across launches, each attempt preceded by a delimiter, so a
+ * Playwright retry doesn't overwrite the previous failed attempt's output — every attempt's log is
+ * uploaded.
  */
 const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
 
@@ -210,10 +212,13 @@ export async function launchElectronWithExtension(
 
   // Stream the app's main-process stdout/stderr to a log file so a cold-start stall (dock tabs stuck
   // at "Unknown") leaves evidence to diagnose from; the renderer console is empty in that case.
-  const appLog = fs.createWriteStream(SMOKE_APP_LOG_FILE, { flags: 'w' });
+  // Append rather than truncate so a Playwright retry preserves the previous attempt's log instead
+  // of overwriting it; a delimiter separates attempts within the single uploaded artifact.
+  const appLog = fs.createWriteStream(SMOKE_APP_LOG_FILE, { flags: 'a' });
   appLog.on('error', () => {
     /* Logging is best-effort; never let a log write failure break the launch. */
   });
+  appLog.write(`\n===== launch attempt @ ${new Date().toISOString()} =====\n`);
   const appProcess = electronApp.process();
   // { end: false } on BOTH pipes: two sources share one destination, so the default end-on-source-end
   // would have whichever stream closes first call appLog.end(), dropping the other's later output and
@@ -776,7 +781,13 @@ export async function openInterlinearizerFromScriptureEditor(
   if ((await loadedEditorTab.count()) === 0) {
     await homeButton.click();
     const homeFrame = page.frameLocator('iframe[title="Home"]');
-    await homeFrame.locator(`tr:has-text("${projectName}") button:has-text("Open")`).click();
+    // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
+    // so a shorter project name can't select a row for a differently-named project that merely
+    // contains it. The name is JSON-encoded before interpolation so a `"` in it can't break out of
+    // the selector string.
+    await homeFrame
+      .locator(`tr:has(:text-is(${JSON.stringify(projectName)})) button:has-text("Open")`)
+      .click();
     // Wait for the project to load (tab retitles to the project short name) before continuing.
     await expect(loadedEditorTab).toBeVisible({ timeout: 30_000 });
 
@@ -800,8 +811,12 @@ export async function openInterlinearizerFromScriptureEditor(
   await loadedEditorTab.click();
 
   // Click the ≡ ("Project") button in the editor's own toolbar. The project is loaded, so the iframe
-  // title is the project short name (not "Scripture Editor").
-  const editorFrame = page.locator(`iframe[title^="${projectName}"]`).first().contentFrame();
+  // title starts with the project short name (e.g. "WEB (Editable)"), hence a `^=` prefix rather than
+  // an exact match. JSON-encode the name so a `"` in it can't break out of the attribute selector.
+  const editorFrame = page
+    .locator(`iframe[title^=${JSON.stringify(projectName)}]`)
+    .first()
+    .contentFrame();
   await editorFrame.locator("button[aria-label='Project']").first().click();
 
   // Click "Open Interlinearizer for this Project". With a project loaded, this opens the

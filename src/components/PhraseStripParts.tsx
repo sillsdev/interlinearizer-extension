@@ -312,7 +312,6 @@ export function PhraseSlot({
   verseLabel,
 }: PhraseSlotProps) {
   const { hideInactiveLinkButtons, activeSegmentId, skipLinkTransition } = usePhraseStripContext();
-  const { segmentOrder } = useSegmentation();
   const { prevGroup, nextGroup, punctuation } = slot;
   if (!prevGroup && !nextGroup && punctuation.length === 0) return undefined;
   const prevToken = prevGroup?.tokens[prevGroup.tokens.length - 1];
@@ -323,16 +322,7 @@ export function PhraseSlot({
     prevPhraseId !== undefined &&
     prevPhraseId === nextPhraseId &&
     (prevPhraseId === hoveredPhraseId || prevPhraseId === focus.focusedPhraseId);
-  const slotFocus = resolveSlotFocus(
-    prevSegmentId,
-    nextSegmentId,
-    focus,
-    focusedSideIsPrev,
-    segmentOrder,
-  );
-  // The slot is "in the active segment" only when both neighboring phrases belong to it, so a link
-  // crossing a verse boundary counts as inactive and is hidden when hideInactiveLinkButtons is on.
-  // (A link slot sits between phrases, so segment — not phrase focus — governs it.)
+  const slotFocus = resolveSlotFocus(prevSegmentId, nextSegmentId, focus, focusedSideIsPrev);
   const slotInActiveSegment =
     activeSegmentId !== undefined &&
     prevSegmentId === activeSegmentId &&

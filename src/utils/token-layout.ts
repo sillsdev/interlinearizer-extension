@@ -61,9 +61,6 @@ export function resolveFocusContext(
  * @param focus - Resolved focus context for the whole strip.
  * @param focusedSideIsPrev - The layout-specific bool indicating whether focus is start-ward of
  *   this slot.
- * @param segmentOrder - Segment id → document-order index, used to detect when this slot is the
- *   boundary between the focused segment and an immediately adjacent one. Defaults to empty (no
- *   adjacency, e.g. single-segment SegmentView slots).
  * @returns Slot focus info ready to pass as `slotFocus` to `MemoizedTokenLinkIcon`.
  */
 export function resolveSlotFocus(
@@ -71,34 +68,15 @@ export function resolveSlotFocus(
   nextSegmentId: string | undefined,
   focus: FocusContext,
   focusedSideIsPrev: boolean | undefined,
-  segmentOrder: ReadonlyMap<string, number> = new Map(),
 ): SlotFocusInfo {
   const { focusedSegmentId } = focus;
   const isSameSegmentAsFocus =
     focusedSegmentId !== undefined &&
     prevSegmentId === focusedSegmentId &&
     nextSegmentId === focusedSegmentId;
-  // The slot is an adjacent edge when exactly one neighbor is the focused segment, the other is a
-  // different segment, and the two are neighbors in document order.
-  const isAdjacentEdgeOfFocus = (() => {
-    if (
-      focusedSegmentId === undefined ||
-      prevSegmentId === undefined ||
-      nextSegmentId === undefined
-    )
-      return false;
-    if (prevSegmentId === nextSegmentId) return false;
-    const focusedIsPrev = prevSegmentId === focusedSegmentId;
-    const focusedIsNext = nextSegmentId === focusedSegmentId;
-    if (!focusedIsPrev && !focusedIsNext) return false;
-    const prevIndex = segmentOrder.get(prevSegmentId);
-    const nextIndex = segmentOrder.get(nextSegmentId);
-    return prevIndex !== undefined && nextIndex !== undefined && nextIndex - prevIndex === 1;
-  })();
   return {
     focusedSideIsPrev,
     isSameSegmentAsFocus,
-    isAdjacentEdgeOfFocus,
     focusedPhraseLink: focus.focusedPhraseLink,
     focusedFreeToken: focus.focusedFreeToken,
   };
@@ -111,7 +89,6 @@ export function resolveSlotFocus(
 export const NO_SLOT_FOCUS: SlotFocusInfo = {
   focusedSideIsPrev: undefined,
   isSameSegmentAsFocus: false,
-  isAdjacentEdgeOfFocus: false,
   focusedPhraseLink: undefined,
   focusedFreeToken: undefined,
 };

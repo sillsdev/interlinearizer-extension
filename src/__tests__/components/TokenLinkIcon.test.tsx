@@ -4,18 +4,12 @@
 
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { Segment, Token } from 'interlinearizer';
 import type { ComponentProps, ReactElement } from 'react';
 import { TokenLinkIcon } from '../../components/TokenLinkIcon';
 import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import {
-  SegmentationProvider,
-  type SegmentationContextValue,
-  type SegmentationDispatch,
-} from '../../components/SegmentationStore';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
@@ -54,7 +48,6 @@ function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
   return {
     focusedSideIsPrev: undefined,
     isSameSegmentAsFocus: true,
-    isAdjacentEdgeOfFocus: false,
     focusedPhraseLink: undefined,
     focusedFreeToken: undefined,
     ...overrides,
@@ -533,295 +526,51 @@ describe('TokenLinkIcon', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Cross-segment edge link (pulls an adjacent segment's edge token + moves the boundary)
+  // Cross-segment slot — a phrase may not span a segment boundary, so the link is inert
   // ---------------------------------------------------------------------------
 
-  describe('cross-segment edge link', () => {
-    /** A fresh segmentation dispatch whose calls the tests assert on. */
-    function makeDispatch(): jest.Mocked<SegmentationDispatch> {
-      return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
-    }
-
+  describe('cross-segment slot', () => {
     /**
-     * Builds a punctuation token fixture for adjacent-segment layouts that interleave punctuation
-     * with the word tokens.
+     * Renders a `TokenLinkIcon` for a slot straddling a segment boundary (neighbors in different
+     * segments, so `isSameSegmentAsFocus` is false).
      *
-     * @param ref - Token ref.
-     * @returns A punctuation token.
-     */
-    function mkPunct(ref: string): Token {
-      return {
-        ref,
-        surfaceText: ',',
-        writingSystem: 'en',
-        type: 'punctuation',
-        charStart: 0,
-        charEnd: 1,
-      };
-    }
-
-    /**
-     * Builds an adjacent segment ("seg-B") containing the given tokens in order.
-     *
-     * @param tokens - The segment's tokens, in document order.
-     * @returns A segment with id `seg-B`.
-     */
-    function segB(tokens: readonly Token[]): Segment {
-      return {
-        id: 'seg-B',
-        startRef: { book: 'GEN', chapter: 1, verse: 2 },
-        endRef: { book: 'GEN', chapter: 1, verse: 2 },
-        baselineText: tokens.map((t) => t.surfaceText).join(' '),
-        tokens: [...tokens],
-        verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-      };
-    }
-
-    /**
-     * Builds the previous segment ("seg-A") containing the given tokens in order — the segment the
-     * false-branch (focus-is-next) pull reads to decide whether moving the boundary onto the pulled
-     * token would strand a word-less remainder.
-     *
-     * @param tokens - The segment's tokens, in document order.
-     * @returns A segment with id `seg-A`.
-     */
-    function segA(tokens: readonly Token[]): Segment {
-      return {
-        id: 'seg-A',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: tokens.map((t) => t.surfaceText).join(' '),
-        tokens: [...tokens],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      };
-    }
-
-    /**
-     * Renders a cross-segment edge `TokenLinkIcon` inside both providers.
-     *
-     * @param dispatch - The segmentation dispatch to capture calls on.
-     * @param opts - `focusedSideIsPrev`, the adjacent (seg-B) tokens, and optionally the previous
-     *   (seg-A) tokens the false-branch pull inspects (defaults to just the pulled word `tok-a`).
+     * @param focusedSideIsPrev - Which side holds focus.
      * @returns The render result.
      */
-    function renderEdge(
-      dispatch: SegmentationDispatch,
-      opts: {
-        focusedSideIsPrev: boolean;
-        segmentTokens: readonly Token[];
-        prevSegmentTokens?: readonly Token[];
-        mapToken?: boolean;
-      },
-    ) {
-      const prevSegmentTokens = opts.prevSegmentTokens ?? [makeWordToken('tok-a')];
-      const segmentation: SegmentationContextValue = {
-        dispatch,
-        segmentById: new Map([
-          ['seg-A', segA(prevSegmentTokens)],
-          ['seg-B', segB(opts.segmentTokens)],
-        ]),
-        segmentOrder: new Map([
-          ['seg-A', 0],
-          ['seg-B', 1],
-        ]),
-        formerBoundaries: new Map(),
-        straddledBoundaryRefs: new Set(),
-      };
-      const tokenSegmentMap =
-        opts.mapToken === false
-          ? new Map<string, string>()
-          : new Map([
-              ...prevSegmentTokens.map((t): [string, string] => [t.ref, 'seg-A']),
-              ['tok-b', 'seg-B'],
-            ]);
+    function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(
-        <SegmentationProvider value={segmentation}>
-          <PhraseStripProvider value={makePhraseStripContext({ tokenSegmentMap })}>
-            <TokenLinkIcon
-              {...requiredProps()}
-              slotFocus={slotFocus({
-                focusedSideIsPrev: opts.focusedSideIsPrev,
-                isSameSegmentAsFocus: false,
-                isAdjacentEdgeOfFocus: true,
-                focusedFreeToken: makeWordToken(opts.focusedSideIsPrev ? 'tok-a' : 'tok-b'),
-              })}
-            />
-          </PhraseStripProvider>
-        </SegmentationProvider>,
-      );
-    }
-
-    it('activates the link button at an adjacent edge even across a segment boundary', () => {
-      renderEdge(makeDispatch(), {
-        focusedSideIsPrev: true,
-        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
-      });
-      expect(screen.getByTestId('token-link-btn')).toBeEnabled();
-    });
-
-    it('pulls one token forward (move) when focus is the previous segment', async () => {
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: true,
-        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      // The adjacent segment B starts at tok-b; pulling tok-b leaves tok-c as B's new start.
-      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-c');
-      expect(mockCreatePhrase).toHaveBeenCalled();
-    });
-
-    it('moves the boundary to the next word token, skipping punctuation after the pulled word', async () => {
-      // Segment B is [tok-b, punct, tok-c]: the boundary must land on a word token, so the comma
-      // after the pulled tok-b travels with it and tok-c becomes B's new start.
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: true,
-        segmentTokens: [makeWordToken('tok-b'), mkPunct('punct-1'), makeWordToken('tok-c')],
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-c');
-    });
-
-    it('merges the whole adjacent segment when it has only the pulled token', async () => {
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, { focusedSideIsPrev: true, segmentTokens: [makeWordToken('tok-b')] });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
-    });
-
-    it('merges the whole adjacent segment when only punctuation follows the pulled token', async () => {
-      // Segment B is [tok-b, punct]: no word token remains past tok-b, so a move would strand a
-      // word-less remainder — the segment merges wholly into the focused one instead.
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: true,
-        segmentTokens: [makeWordToken('tok-b'), mkPunct('punct-1')],
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
-      expect(dispatch.move).not.toHaveBeenCalled();
-    });
-
-    it('moves the boundary back to the pulled token when focus is the next segment', async () => {
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: false,
-        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      // Focus is segment B (starting at tok-b); pulling the previous segment's tok-a moves B's start to tok-a.
-      expect(dispatch.move).toHaveBeenCalledWith('tok-b', 'tok-a');
-    });
-
-    it('merges the whole previous segment when only punctuation precedes the pulled token', async () => {
-      // seg-A is [punct, tok-a], so moving the boundary onto tok-a would strand the leading
-      // punctuation as a word-less segment; the whole previous segment merges instead.
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: false,
-        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
-        prevSegmentTokens: [mkPunct('punct-0'), makeWordToken('tok-a')],
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      expect(dispatch.merge).toHaveBeenCalledWith('tok-b');
-      expect(dispatch.move).not.toHaveBeenCalled();
-    });
-
-    it('skips the boundary move but still phrases when the pulled token maps to no segment', async () => {
-      const dispatch = makeDispatch();
-      renderEdge(dispatch, {
-        focusedSideIsPrev: true,
-        segmentTokens: [makeWordToken('tok-b'), makeWordToken('tok-c')],
-        mapToken: false,
-      });
-      await userEvent.click(screen.getByTestId('token-link-btn'));
-      expect(dispatch.move).not.toHaveBeenCalled();
-      expect(dispatch.merge).not.toHaveBeenCalled();
-      expect(mockCreatePhrase).toHaveBeenCalled();
-    });
-
-    it('leaves the link button inactive (with tooltip) for a non-edge cross-segment slot', () => {
-      render(
         <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
           <TokenLinkIcon
             {...requiredProps()}
             slotFocus={slotFocus({
-              focusedSideIsPrev: true,
+              focusedSideIsPrev,
               isSameSegmentAsFocus: false,
-              isAdjacentEdgeOfFocus: false,
+              focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
             })}
           />
         </PhraseStripProvider>,
       );
+    }
+
+    it('disables the link with the cross-segment tooltip when focus is the previous segment', () => {
+      renderCrossSegment(true);
       const button = screen.getByTestId('token-link-btn');
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute('title', 'nope');
     });
 
-    // A pull moves the boundary by one token, so pulling an edge token that belongs to a phrase
-    // would leave that phrase straddling the boundary — the icon disables (not-mid-phrase guard).
+    it('disables the link with the cross-segment tooltip when focus is the next segment', () => {
+      renderCrossSegment(false);
+      const button = screen.getByTestId('token-link-btn');
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('title', 'nope');
+    });
 
-    describe('pulled edge token in a phrase', () => {
-      /**
-       * Renders a cross-segment edge slot whose pulled edge token belongs to a phrase in the
-       * adjacent segment. `focusedSideIsPrev` picks which side holds focus; the pulled token is on
-       * the opposite side (`tok-b` when focus is prev-ward, `tok-a` when focus is next-ward).
-       *
-       * @param opts - Which side holds focus.
-       * @returns The render result.
-       */
-      function renderPhrasePull(opts: { focusedSideIsPrev: boolean }) {
-        const segmentation: SegmentationContextValue = {
-          dispatch: makeDispatch(),
-          segmentById: new Map([['seg-B', segB([makeWordToken('tok-b'), makeWordToken('tok-c')])]]),
-          segmentOrder: new Map([
-            ['seg-A', 0],
-            ['seg-B', 1],
-          ]),
-          formerBoundaries: new Map(),
-          straddledBoundaryRefs: new Set(),
-        };
-        const tokenSegmentMap = new Map([
-          ['tok-a', 'seg-A'],
-          ['tok-b', 'seg-B'],
-        ]);
-        const pulledLink = opts.focusedSideIsPrev
-          ? { nextPhraseLink: makePhraseLink('pB', ['tok-b', 'tok-c']) }
-          : { prevPhraseLink: makePhraseLink('pA', ['tok-z', 'tok-a']) };
-        return render(
-          <SegmentationProvider value={segmentation}>
-            <PhraseStripProvider
-              value={makePhraseStripContext({ tokenSegmentMap, crossSegmentLinkTooltip: 'nope' })}
-            >
-              <TokenLinkIcon
-                {...requiredProps()}
-                {...pulledLink}
-                slotFocus={slotFocus({
-                  focusedSideIsPrev: opts.focusedSideIsPrev,
-                  isSameSegmentAsFocus: false,
-                  isAdjacentEdgeOfFocus: true,
-                  focusedFreeToken: makeWordToken(opts.focusedSideIsPrev ? 'tok-a' : 'tok-b'),
-                })}
-              />
-            </PhraseStripProvider>
-          </SegmentationProvider>,
-        );
-      }
-
-      it('disables the link when the pulled next-side token belongs to a phrase', () => {
-        renderPhrasePull({ focusedSideIsPrev: true });
-        const button = screen.getByTestId('token-link-btn');
-        expect(button).toBeDisabled();
-        expect(button).toHaveAttribute('title', 'nope');
-      });
-
-      it('disables the link when the pulled prev-side token belongs to a phrase', () => {
-        renderPhrasePull({ focusedSideIsPrev: false });
-        const button = screen.getByTestId('token-link-btn');
-        expect(button).toBeDisabled();
-        expect(button).toHaveAttribute('title', 'nope');
-      });
+    it('creates no phrase when the disabled cross-segment link is clicked', async () => {
+      renderCrossSegment(true);
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(mockCreatePhrase).not.toHaveBeenCalled();
+      expect(mockMergePhrases).not.toHaveBeenCalled();
     });
   });
 });

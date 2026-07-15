@@ -20,13 +20,14 @@ const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
 export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
- * Fail-fast readiness budget (ms) for a CDP feature test's per-test
- * `waitForAppAndInterlinearizerReady`. The shared instance is proven-settled by global setup before
- * any feature test runs, so a per-test readiness wait that runs long means the instance died
- * mid-run — which no per-test retry can revive. A short cap (vs. the 120 s cold-start default)
- * fails a dead shared instance fast instead of burning the full cold-start budget on every retry.
+ * Fail-fast readiness budget (ms) that {@link waitForAppAndInterlinearizerReady} applies for a CDP
+ * feature test's per-test wait (its `{ cdp: true }` profile). The shared instance is proven-settled
+ * by global setup before any feature test runs, so a per-test readiness wait that runs long means
+ * the instance died mid-run — which no per-test retry can revive. A short cap (vs. the 120 s
+ * cold-start default) fails a dead shared instance fast instead of burning the full cold-start
+ * budget on every retry.
  */
-export const CDP_FEATURE_READY_TIMEOUT = 30_000;
+const CDP_FEATURE_READY_TIMEOUT = 30_000;
 
 /**
  * File the smoke launcher streams the app's main-process stdout/stderr to. Kept in `e2e-tests/` (a
@@ -945,36 +946,55 @@ function interlinearizerTabLocator(page: Page): Locator {
     .first();
 }
 
+/** Options for {@link waitForAppAndInterlinearizerReady}. */
+interface AppAndInterlinearizerReadyOptions {
+  /**
+   * Select the readiness profile for the shared CDP feature instance instead of a fresh cold start.
+   * Defaults to `false` (cold start), correct for the fresh per-worker smoke instance, which uses
+   * the strict all-tabs-resolved gate and the generous cold-start budget.
+   *
+   * Pass `true` for a feature test running against the one shared, already-settled CDP instance. It
+   * expands to two coupled behaviors that always travel together on that tier:
+   *
+   * - The lenient dock-tab gate (dock mounted, at least one tab resolved) rather than the strict
+   *   every-tab-resolved gate, so one stray/leftover "Unknown" panel can't fail this (and every
+   *   downstream) test — the shared instance's DOM is never reset, and no per-test retry can undo a
+   *   cascade. See {@link DockTabTitlesOptions.strict}.
+   * - A short {@link CDP_FEATURE_READY_TIMEOUT} budget rather than the cold-start default. The shared
+   *   instance was proven-settled by global setup, so a per-test readiness wait that runs long
+   *   means the instance died mid-run, not that startup is slow — and no per-test retry revives a
+   *   dead shared instance, so failing fast beats burning the full cold-start budget on every
+   *   retry.
+   */
+  cdp?: boolean;
+}
+
 /**
  * Wait for Platform.Bible and the interlinearizer extension to finish starting up. Combines
- * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the `timeout` budget
+ * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the timeout budget
  * across both so an explicit (shorter) budget caps the WHOLE wait, not just the first half.
  *
- * The CDP feature tier passes a short budget (`{ strict: false, timeout: ~30s }`): its shared
- * instance is already proven-settled by global setup, so a per-test readiness wait that runs long
- * means the instance died mid-run, not that startup is slow — and no per-test retry can revive a
- * dead shared instance, so failing fast beats burning the full cold-start budget on every retry.
- * Smoke tests (fresh per-worker instance, genuine cold start) omit `timeout` and keep the generous
- * default.
- *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param options Readiness options forwarded to {@link waitForAppReady}. Feature tests on the shared
- *   CDP instance pass `{ strict: false }` so one stray "Unknown" panel can't cascade across the
- *   tier; smoke tests (fresh per-worker instance) use the default strict cold-start gate.
+ * @param options Readiness options; see {@link AppAndInterlinearizerReadyOptions.cdp} for the
+ *   shared-CDP-instance profile feature tests pass.
  * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
- * @throws If the app or extension do not finish starting up within the `timeout` budget.
+ * @throws If the app or extension do not finish starting up within the timeout budget.
  */
 export async function waitForAppAndInterlinearizerReady(
   page: Page,
-  options: AppReadyOptions = {},
+  options: AppAndInterlinearizerReadyOptions = {},
 ): Promise<void> {
+  // The shared-CDP profile couples a lenient gate with a short fail-fast budget; a cold start uses
+  // the strict gate and the generous cold-start default (an undefined timeout).
+  const { strict, timeout } = options.cdp
+    ? { strict: false, timeout: CDP_FEATURE_READY_TIMEOUT }
+    : { strict: true, timeout: undefined };
   const start = Date.now();
-  await waitForAppReady(page, options);
+  await waitForAppReady(page, { strict, timeout });
   // Cap the extension-registration wait by whatever budget remains, so an explicit short `timeout`
   // bounds the combined wait. With no explicit budget (smoke), fall back to this helper's own
   // generous default rather than starving it.
-  const remaining =
-    options.timeout === undefined ? undefined : options.timeout - (Date.now() - start);
+  const remaining = timeout === undefined ? undefined : timeout - (Date.now() - start);
   await waitForInterlinearizerReady(remaining);
 }
 

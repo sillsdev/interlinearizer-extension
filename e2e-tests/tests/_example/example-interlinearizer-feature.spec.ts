@@ -14,10 +14,7 @@
  * This file is excluded from test runs — it's documentation only.
  */
 import { test, expect } from '../../fixtures/cdp.fixture';
-import {
-  CDP_FEATURE_READY_TIMEOUT,
-  waitForAppAndInterlinearizerReady,
-} from '../../fixtures/helpers';
+import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
 
 /**
  * Filter out expected/benign console errors from a list of captured error messages.
@@ -38,13 +35,9 @@ function filterConsoleErrors(errors: string[]): string[] {
 test.describe('Example: Open Interlinearizer via menu', () => {
   test('should open the interlinearizer WebView via menu', async ({ mainPage }) => {
     // Feature tests run against the shared CDP instance, already settled by global setup. Pass
-    // `{ strict: false }` so one stray/leftover "Unknown" panel can't fail this (and every
-    // downstream) test — see waitForDockTabTitlesResolved in fixtures/helpers.ts. The short
-    // `timeout` fails fast when the shared instance has died mid-run (no retry can revive it).
-    await waitForAppAndInterlinearizerReady(mainPage, {
-      strict: false,
-      timeout: CDP_FEATURE_READY_TIMEOUT,
-    });
+    // `{ cdp: true }` for the shared-instance readiness profile (lenient gate + short fail-fast
+    // budget) — see the `cdp` option's docs in fixtures/helpers.ts for the full rationale.
+    await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     // Step 1: Click the top-level menu that contains the interlinearizer entry
     const menuTrigger = mainPage.getByRole('menuitem', { name: /Tools/i });
@@ -61,13 +54,9 @@ test.describe('Example: Open Interlinearizer via menu', () => {
 
   test('should render without critical console errors', async ({ mainPage }) => {
     // Feature tests run against the shared CDP instance, already settled by global setup. Pass
-    // `{ strict: false }` so one stray/leftover "Unknown" panel can't fail this (and every
-    // downstream) test — see waitForDockTabTitlesResolved in fixtures/helpers.ts. The short
-    // `timeout` fails fast when the shared instance has died mid-run (no retry can revive it).
-    await waitForAppAndInterlinearizerReady(mainPage, {
-      strict: false,
-      timeout: CDP_FEATURE_READY_TIMEOUT,
-    });
+    // `{ cdp: true }` for the shared-instance readiness profile (lenient gate + short fail-fast
+    // budget) — see the `cdp` option's docs in fixtures/helpers.ts for the full rationale.
+    await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     const consoleErrors: string[] = [];
     mainPage.on('console', (msg) => {

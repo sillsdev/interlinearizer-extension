@@ -2,8 +2,7 @@
 import type { FullConfig } from '@playwright/test';
 import fs from 'fs';
 import { CDP_PID_FILE, CDP_USER_DATA_FILE } from './global-setup-cdp';
-import globalTeardown from './global-teardown';
-import { killProcessTree } from './process-utils';
+import globalTeardown, { killProcessFromPidFile } from './global-teardown';
 
 /**
  * Playwright global teardown for the CDP config. Kills the Electron instance launched by
@@ -17,19 +16,13 @@ import { killProcessTree } from './process-utils';
  */
 export default async function globalTeardownCdp(config: FullConfig): Promise<void> {
   // Kill the app we launched (whole process tree) before the shared teardown's generic sweep.
-  // SIGKILL/`/F` (not SIGTERM) to match the smoke teardown: Electron can ignore SIGTERM, and we
-  // need it fully dead before removing its user-data dir below.
-  let appKilled = false;
-  if (fs.existsSync(CDP_PID_FILE)) {
-    const pid = parseInt(fs.readFileSync(CDP_PID_FILE, 'utf-8').trim(), 10);
-    if (Number.isNaN(pid)) {
-      console.warn(`Invalid PID in ${CDP_PID_FILE}, skipping app kill`);
-    } else {
-      console.log(`Stopping self-launched Platform.Bible (CDP) app (PID: ${pid})...`);
-      appKilled = killProcessTree(pid, 'SIGKILL');
-    }
-    fs.unlinkSync(CDP_PID_FILE);
-  }
+  // SIGKILL (not SIGTERM): Electron can ignore SIGTERM, and we need it fully dead before removing
+  // its user-data dir below.
+  const appKilled = killProcessFromPidFile(
+    CDP_PID_FILE,
+    'SIGKILL',
+    'self-launched Platform.Bible (CDP) app',
+  );
 
   // Remove the isolated user-data dir created for this run. Give the just-killed Electron a moment
   // to release the SingletonLock and flush files before removing, then retry once — the smoke

@@ -1293,11 +1293,15 @@ describe('ContinuousView scroll behavior', () => {
     // jump); the reconcile defers to the scroll's settle. Probe: with the old segment still
     // committed, its in-segment link icon stays mounted through the edit until the scroll settles.
     const book = makeBook();
-    const merged = resegmentBook(book, { removedVerseStarts: ['tok-1'], addedStarts: [] });
+    const merged = resegmentBook(book, { removedVerseStarts: ['tok-2'], addedStarts: [] });
     const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     const mergedLookups = buildLookups(merged);
     let applyBoundaryEdit: () => void = () => {};
-    /** Stateful parent that starts on the verse book and swaps to the merged book on demand. */
+    /**
+     * Stateful parent that starts on the verse book and swaps to the merged book on demand.
+     *
+     * @returns The rendered `ContinuousView` element.
+     */
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-1');
       const [edited, setEdited] = useState(false);
@@ -1318,7 +1322,11 @@ describe('ContinuousView scroll behavior', () => {
         />
       );
     }
-    /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
+    /**
+     * Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible.
+     *
+     * @returns `true` when that in-segment link icon is mounted and not hidden.
+     */
     const inSegmentIconMounted = () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',

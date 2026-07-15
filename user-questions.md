@@ -253,10 +253,11 @@ Remove the demo toggle (and these affordances' tuning) once the treatment is dec
 Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
 their own segment boundaries, with no dedicated edit mode:
 
-- The gap between two token groups shows an always-visible **split** control (start a new segment
-  at the next token), or a **merge** control when the gap is a segment boundary (combine the
-  segment into the one before it — this appears in the continuous strip, where adjacent segments
-  share a row).
+- The gap between two token groups shows a **merge** control when the gap is a segment boundary
+  (combine the two adjacent segments — this appears in the continuous strip, where adjacent
+  segments share a row). Merge controls are always visible; a **split** marker (start a new segment
+  at the next token) appears only while Alt is held, and a split is committed by Alt-clicking the
+  gap.
 - In the segment list, an always-visible **merge** button sits between adjacent segment rows.
 - Linking a phrase across a verse boundary pulls the adjacent segment's free **edge** token into
   the focused segment (only the immediate adjacent-edge link buttons are active for this).

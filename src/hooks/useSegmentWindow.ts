@@ -562,16 +562,36 @@ export default function useSegmentWindow({
     const currentScrRef = scrRefRef.current;
     const isBoundaryEdit =
       segments !== prev.segments && segmentationVersion !== prev.segmentationVersion;
-    if (isBoundaryEdit || consumeInternalNavRef.current(currentScrRef)) {
+    if (isBoundaryEdit) {
+      // A merge/split shifts every segment after the edit point by ±1, so the mounted `range` (held
+      // in absolute indices) would slice the wrong content — dropping a top-visible segment merged
+      // into its predecessor, or pulling one in from above on a split. The active verse does not
+      // move (a merge that absorbs its start re-resolves to the same verse in the surviving
+      // segment), so `anchorIndex - prev.index` is the structural shift at the anchor; apply it to
+      // `range` so the same content stays framed, without the fade a full recenter would incur.
+      const anchorDelta = anchorIndex - prev.index;
+      if (anchorDelta !== 0) {
+        setRange((r) => ({
+          start: Math.max(0, r.start + anchorDelta),
+          end: Math.min(total, r.end + anchorDelta),
+        }));
+      }
+      setDisplayScrRef(currentScrRef);
+      setDisplayFocusedTokenRef(focusedTokenRefRef.current);
+      return;
+    }
+    if (consumeInternalNavRef.current(currentScrRef)) {
       setDisplayScrRef(currentScrRef);
       setDisplayFocusedTokenRef(focusedTokenRefRef.current);
       return;
     }
     triggerRecenter();
     // scrRef is read (via ref) only to key the internal-nav check; anchorIndex, segments, and
-    // segmentationVersion already capture every change we classify on, and triggerRecenter has a
-    // stable identity. The timeout is owned by triggerRecenter (recenterTimeoutRef), not torn down
-    // here, so an incidental re-render that re-runs this effect can never cancel an in-flight fade.
+    // segmentationVersion already capture every change we classify on (and `total === segments.length`
+    // tracks with `segments`, so the boundary-edit clamp never reads a stale total). `range` is
+    // shifted through the functional `setRange` updater rather than closed over, and triggerRecenter
+    // has a stable identity. The timeout is owned by triggerRecenter (recenterTimeoutRef), not torn
+    // down here, so an incidental re-render that re-runs this effect can never cancel an in-flight fade.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorIndex, segments, segmentationVersion, triggerRecenter]);
 

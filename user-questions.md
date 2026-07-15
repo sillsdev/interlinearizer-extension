@@ -87,6 +87,17 @@ Decisions made during development that we'd like reviewed:
     two separate menu items (each a single click, no scope step). Current choice: one menu item plus a
     scope-picker dialog.
 
+11. **In-progress typing guards a project swap.** Switching projects (New / Open) shows the discard
+    confirm (item 2) whenever the draft has unsaved changes. This now also fires when a gloss field
+    holds **uncommitted** text — the same eager signal that lights the `●` marker (item 7) — not only
+    after that text has committed on blur. Previously the guard checked committed changes only, so
+    opening or creating a project while mid-typing a gloss discarded that in-progress text silently.
+    The two definitions of "unsaved" (the tab marker vs. the discard guard) are now unified, so the
+    prompt and the indicator always agree. Is prompting on uncommitted typing the right behavior, or
+    should a project swap only guard against changes that have actually committed (accepting that
+    mid-typing text is then lost without warning)? Note this is coupled to item 7: if the marker is
+    changed to wait until an edit commits, this guard should follow.
+
 ## Suggestion engine: editing a shared analysis, and per-instance analyses
 
 The suggestion engine reuses an existing analysis on other matching surface forms by creating a new

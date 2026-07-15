@@ -2,20 +2,28 @@
 import { defineConfig } from '@playwright/test';
 
 /**
- * Playwright configuration for running E2E tests against an already-running Platform.Bible instance
- * with CDP enabled (port 9223).
+ * Playwright configuration for the CDP (feature) test tier. These tests connect over CDP (port
+ * 9223) to a running Platform.Bible instance with the interlinearizer extension loaded.
  *
- * Prerequisites: Platform.Bible running with --remote-debugging-port=9223 and the interlinearizer
- * extension loaded.
- *
- * Use: npx playwright test --config=e2e-tests/playwright-cdp.config.ts
+ * `globalSetup` launches that instance automatically (with `--remote-debugging-port=9223`) and
+ * `globalTeardown` shuts it down, so `npm run test:e2e:cdp` is self-contained — no manual `npm run
+ * start:cdp` first. If the CDP port is already taken, the setup instead reuses the running instance
+ * and leaves it up, so a developer iterating against a warm `npm run start:cdp` instance can point
+ * Playwright at it directly (`npx playwright test --config e2e-tests/playwright-cdp.config.ts`).
  */
 export default defineConfig({
   testDir: './tests',
   testIgnore: ['**/smoke/**', '**/_example/**'],
   fullyParallel: false,
+  forbidOnly: !!process.env.CI,
+  // Retries help on the never-reset shared instance only because each test self-heals leftover
+  // modals at its start (ensureInterlinearizerOpenOnWeb → dismissLeftoverModals), so a retry lands
+  // on a clean instance.
+  retries: process.env.CI ? 2 : 1,
   workers: 1,
-  reporter: [['html', { outputFolder: 'playwright-report' }], ['list']],
+  // Tier-specific report folder so a combined `npm run test:e2e` run doesn't overwrite the smoke
+  // tier's report. `open: 'never'` keeps CI from auto-launching a browser.
+  reporter: [['html', { outputFolder: 'playwright-report/cdp', open: 'never' }], ['list']],
   timeout: 120_000,
   expect: { timeout: 10_000 },
   use: {
@@ -23,6 +31,7 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
   },
-  outputDir: './test-results',
-  // NO globalSetup/globalTeardown — app is already running
+  globalSetup: './global-setup-cdp.ts',
+  globalTeardown: './global-teardown-cdp.ts',
+  outputDir: './test-results/cdp',
 });

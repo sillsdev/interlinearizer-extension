@@ -243,7 +243,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
 type ModalsOverrides = Partial<{
   activeProject: InterlinearProjectSummary | undefined;
   defaultAnalysisLanguage: string;
-  dirty: boolean;
+  hasUnsavedWork: boolean;
   getDraftSnapshot: () => DraftProject | undefined;
   loadFromProject: jest.Mock;
   newDraft: jest.Mock;
@@ -264,7 +264,7 @@ function buildProps(overrides: ModalsOverrides = {}) {
   return {
     activeProject: overrides.activeProject,
     defaultAnalysisLanguage: overrides.defaultAnalysisLanguage,
-    dirty: overrides.dirty ?? false,
+    hasUnsavedWork: overrides.hasUnsavedWork ?? false,
     getDraftSnapshot: overrides.getDraftSnapshot ?? (() => MOCK_DRAFT),
     loadFromProject: overrides.loadFromProject ?? jest.fn(),
     newDraft: overrides.newDraft ?? jest.fn(),
@@ -584,7 +584,11 @@ describe('ProjectModals', () => {
         .mocked(papi.commands.sendCommand)
         .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
       const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', dirty: true, loadFromProject })} />);
+      render(
+        <ProjectModals
+          {...buildProps({ modal: 'select', hasUnsavedWork: true, loadFromProject })}
+        />,
+      );
 
       await userEvent.click(screen.getByTestId('select-select'));
       // The discard confirm overlays the still-mounted select modal (so confirming Open does not
@@ -599,7 +603,11 @@ describe('ProjectModals', () => {
 
     it('cancels the discard confirm and returns to the select modal', async () => {
       const loadFromProject = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'select', dirty: true, loadFromProject })} />);
+      render(
+        <ProjectModals
+          {...buildProps({ modal: 'select', hasUnsavedWork: true, loadFromProject })}
+        />,
+      );
 
       await userEvent.click(screen.getByTestId('select-select'));
       await userEvent.click(screen.getByTestId('discard-cancel'));
@@ -611,7 +619,9 @@ describe('ProjectModals', () => {
 
     it('confirms before creating a project when the draft is dirty', async () => {
       const newDraft = jest.fn();
-      render(<ProjectModals {...buildProps({ modal: 'create', dirty: true, newDraft })} />);
+      render(
+        <ProjectModals {...buildProps({ modal: 'create', hasUnsavedWork: true, newDraft })} />,
+      );
 
       await userEvent.click(screen.getByTestId('create-submit'));
       expect(screen.getByTestId('discard-modal')).toBeInTheDocument();
@@ -652,7 +662,7 @@ describe('ProjectModals', () => {
         <ProjectModals
           {...buildProps({
             modal: 'create',
-            dirty: true,
+            hasUnsavedWork: true,
             setModal,
             useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
           })}
@@ -674,7 +684,7 @@ describe('ProjectModals', () => {
           resolveGet = resolve;
         }),
       );
-      render(<ProjectModals {...buildProps({ modal: 'select', dirty: true })} />);
+      render(<ProjectModals {...buildProps({ modal: 'select', hasUnsavedWork: true })} />);
 
       await userEvent.click(screen.getByTestId('select-select'));
       expect(screen.getByTestId('discard-confirm')).toBeEnabled();

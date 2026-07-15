@@ -14,7 +14,7 @@
  * This file is excluded from test runs — it's documentation only.
  */
 import { test, expect } from '../../fixtures/cdp.fixture';
-import { waitForAppReady, waitForInterlinearizerReady } from '../../fixtures/helpers';
+import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
 
 /**
  * Filter out expected/benign console errors from a list of captured error messages.
@@ -34,8 +34,8 @@ function filterConsoleErrors(errors: string[]): string[] {
 
 test.describe('Example: Open Interlinearizer via menu', () => {
   test('should open the interlinearizer WebView via menu', async ({ mainPage }) => {
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
+    await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     // Step 1: Click the top-level menu that contains the interlinearizer entry
     const menuTrigger = mainPage.getByRole('menuitem', { name: /Tools/i });
@@ -51,8 +51,8 @@ test.describe('Example: Open Interlinearizer via menu', () => {
   });
 
   test('should render without critical console errors', async ({ mainPage }) => {
-    await waitForAppReady(mainPage);
-    await waitForInterlinearizerReady();
+    // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
+    await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     const consoleErrors: string[] = [];
     mainPage.on('console', (msg) => {

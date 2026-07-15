@@ -36,6 +36,8 @@ temp-build
 # AI files
 .claude
 
-# Playwright test output
+# Playwright output
+e2e-tests/.cdp-*
+e2e-tests/.dev-*
 e2e-tests/playwright-report
 e2e-tests/test-results

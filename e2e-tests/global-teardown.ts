@@ -3,6 +3,52 @@ import type { FullConfig } from '@playwright/test';
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { killProcessTree } from './process-utils';
+
+/**
+ * Kill a process recorded in a PID file (whole tree), then remove the PID file. Shared by this
+ * teardown's dev-server kill and {@link globalTeardownCdp}'s launched-app kill, which follow the
+ * same read-PID-file → validate → kill → remove-marker shape and differ only in signal and
+ * logging.
+ *
+ * A missing PID file is a no-op; a file whose contents don't parse as an integer is warned about
+ * and skipped rather than used to kill an arbitrary PID. The PID file is always removed when
+ * present, so no run leaves a stale marker behind. A filesystem error (concurrent deletion, a
+ * locked file) is warned about and swallowed so teardown continues rather than aborting.
+ *
+ * @param pidFile Absolute path to the file holding the target process's PID.
+ * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
+ * @param label Human-readable name of the process, used in the "Stopping <label>" log line.
+ * @returns `true` if a valid PID was found and {@link killProcessTree} reported the kill succeeded;
+ *   `false` if the PID file was absent, its contents were not a valid integer, or a filesystem
+ *   error occurred.
+ */
+export function killProcessFromPidFile(
+  pidFile: string,
+  signal: 'SIGTERM' | 'SIGKILL',
+  label: string,
+): boolean {
+  // Teardown runs once after every worker; a filesystem error here (the PID file deleted by a
+  // concurrent run between reads, or locked) must not abort the remaining cleanup (the core stop
+  // script) and leak Electron processes. Wrap the whole read → validate → kill → unlink sequence so
+  // any such error is logged and swallowed, continuing to return false.
+  try {
+    if (!fs.existsSync(pidFile)) return false;
+    const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
+    if (Number.isNaN(pid)) {
+      console.warn(`Invalid PID in ${pidFile}, skipping ${label} kill`);
+      fs.unlinkSync(pidFile);
+      return false;
+    }
+    console.log(`Stopping ${label} (PID: ${pid})...`);
+    const killed = killProcessTree(pid, signal);
+    fs.unlinkSync(pidFile);
+    return killed;
+  } catch (e) {
+    console.warn(`Failed to kill ${label} from ${pidFile}: ${e}`);
+    return false;
+  }
+}
 
 /**
  * Playwright global teardown. Runs once after all test workers have finished.
@@ -21,25 +67,7 @@ export default async function globalTeardown(_config: FullConfig): Promise<void>
 
   // Kill the renderer dev server if we started it
   const pidFile = path.join(extensionRoot, 'e2e-tests', '.dev-server.pid');
-  if (fs.existsSync(pidFile)) {
-    const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
-    if (Number.isNaN(pid)) {
-      console.warn(`Invalid PID in ${pidFile}, skipping process kill`);
-      fs.unlinkSync(pidFile);
-    } else {
-      console.log(`Stopping renderer dev server (PID: ${pid})...`);
-      try {
-        process.kill(-pid, 'SIGTERM');
-      } catch {
-        try {
-          process.kill(pid, 'SIGTERM');
-        } catch {
-          // Already stopped
-        }
-      }
-      fs.unlinkSync(pidFile);
-    }
-  }
+  killProcessFromPidFile(pidFile, 'SIGTERM', 'renderer dev server');
 
   // Run the core stop script to ensure all Electron processes are terminated
   console.log('Running cleanup: npm run stop (in paranext-core)');

@@ -36,18 +36,10 @@ export type SlotFocusInfo = {
    */
   focusedSideIsPrev: boolean | undefined;
   /**
-   * `true` when both slot neighbors are in the same segment as the focused token. Within one
-   * segment the link button joins tokens into a phrase as usual.
+   * `true` when both slot neighbors are in the same segment as the focused token. The link button
+   * is active only when linking joins tokens within one segment.
    */
   isSameSegmentAsFocus: boolean;
-  /**
-   * `true` when this slot is the boundary between the focused token's segment and an immediately
-   * adjacent segment (one neighbor in the focused segment, the other in the segment directly before
-   * or after it in document order). The cross-segment link button is active only at these edges, so
-   * pulling an adjacent segment's edge token into the focused phrase moves the boundary by one
-   * token and keeps both segments contiguous.
-   */
-  isAdjacentEdgeOfFocus: boolean;
   /** The phrase containing the focused token, or `undefined` when the focused token is free. */
   focusedPhraseLink: PhraseAnalysisLink | undefined;
   /** The focused token when it is not part of any phrase ("free"); `undefined` otherwise. */

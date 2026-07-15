@@ -43,7 +43,7 @@
       "%interlinearizer_morphemeGloss_label%": "Gloss for morpheme {form}",
       "%interlinearizer_tokenChip_editMorphemes%": "Edit morpheme breakdown for {token}",
       "%interlinearizer_tokenChip_defineMorphemes%": "Define morpheme breakdown for {token}",
-      "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Only a free edge token of an adjacent segment can be linked across a boundary.",
+      "%interlinearizer_linkButton_crossSegmentDisabledTooltip%": "Tokens in different segments can't be linked. Join the segments first to link across this boundary.",
       "%interlinearizer_boundaryControl_merge%": "Join these two segments",
       "%interlinearizer_boundaryControl_mergeAltHint%": "Join these two segments. Hold Alt (Option on Mac) and click between words to split.",
       "%interlinearizer_boundaryControl_split%": "Split segment here",

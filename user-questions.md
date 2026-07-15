@@ -273,42 +273,14 @@ Decisions made during development that we'd like reviewed:
    scriptio continua (Chinese, Thai, …) and for cases where the USFM implied a different break.
    Should the separator be configurable per project/writing system, or derived from the source?
 
-2. **Split-segment baseline display.** A segment created by splitting a verse currently keeps only
-   the baseline text spanning **its own tokens** — `buildSegment` slices the verse baseline from the
-   first token's `charStart` to the last token's `charEnd` and shifts each token's offsets into the
-   new string, so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still holds.
-   The trade-off is that any whitespace or punctuation sitting between the split boundary and the
-   adjacent token's edge is dropped from both halves (e.g. the space at position 5 between "Alpha"
-   and "beta" in "Alpha beta." belongs to neither half). The alternative — keeping the whole verse's
-   baseline text under each half — avoids dropping edge characters but duplicates the verse text in
-   the baseline-text display mode. Current choice: trim each half to its own span, accepting the
-   dropped edge whitespace.
-
-3. **Free translation when merging.** A segment's free translation is keyed by segment id. An
+2. **Free translation when merging.** A segment's free translation is keyed by segment id. An
    untouched or merged segment keeps the **leading** verse's id (so its free translation survives);
    the **absorbed** verse's free translation is retained in storage but hidden while merged, and
    reappears if the segments are split back apart. Splitting keeps the first half's free translation
    and starts later halves blank. Is "hide-and-restore" the desired behavior, or should merging
    prompt the user to keep/discard the absorbed verse's translation?
 
-4. **Boundary edits and the unsaved indicator.** Merging/splitting/pulling a boundary marks the
-   draft dirty (lighting the tab `●`), exactly like a gloss edit. Confirm this is desired, or whether
-   boundary edits should be treated differently from analysis edits.
-
-5. **Boundary controls are always available (no edit mode).** There is no separate
-   boundary-editing mode: the merge/split controls share the gaps with the phrase link icons and
-   are always visible, as are the segment list's between-row merge buttons. (They disable, like the
-   link icons, while a phrase is being edited or an unlink is awaiting confirmation, so a boundary
-   edit can't re-segment the phrase that UI is operating on.) Always-visible keeps the controls
-   discoverable but places a scissors one small icon away from a link button at all times. Both
-   actions are cheaply reversible (merge undoes split and vice versa, and boundary edits never harm
-   phrases — see item 7). Two questions:
-   - Is the added visual density of always-visible in-gap controls acceptable, or should they be
-     revealed on hover instead? (A hover-reveal variant is a small change; we can ship both behind
-     a view toggle for field comparison if useful.)
-   - Is the misclick risk (scissors next to link icon) acceptable in practice?
-
-6. **Chapter superscriptions are ordinary segments.** A chapter heading (a `d` descriptive title,
+3. **Chapter superscriptions are ordinary segments.** A chapter heading (a `d` descriptive title,
    e.g. a Psalm superscription) is extracted as a synthetic **verse 0** segment that sits in
    document order between the previous chapter's last verse and the new chapter's verse 1. Verse 0
    participates in boundary editing like any other segment: it can be merged into the previous
@@ -319,13 +291,4 @@ Decisions made during development that we'd like reviewed:
      prevented? (An earlier build treated verse 0 as a hard wall that no edit could touch; that
      protection was removed in favor of uniform, predictable behavior.)
    - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
-     behavior of item 3 — confirm that parallels hold for headings too.
-
-7. **Boundaries that would cut a phrase.** The stored model accepts any contiguous re-segmentation,
-   including one that lands a boundary in the middle of an existing phrase; when that happens the
-   straddled phrase is **force-broken** — split at the boundary (a one-token side becomes a free
-   token again). The token-chip views never offer such an edit (the split control hides and the
-   cross-segment pull disables at boundaries that would cut a phrase), so today force-breaking can
-   only be triggered by future surfaces that re-segment without showing phrases. Confirm that
-   silent force-breaking (no confirmation prompt) is acceptable for those surfaces, given the
-   alternative is a phrase spanning two segments, which the editing model forbids.
+     behavior of item 2 — confirm that parallels hold for headings too.

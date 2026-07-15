@@ -48,7 +48,14 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
         }
       }
     }
-    fs.unlinkSync(CDP_USER_DATA_FILE);
+    // Guard the marker removal: an fs error here (locked file on Windows, or the file deleted by a
+    // concurrent run between the existsSync above and this unlink) must not abort teardown before
+    // the shared cleanup below — that would leak the renderer dev server and lingering Electron.
+    try {
+      fs.unlinkSync(CDP_USER_DATA_FILE);
+    } catch (e) {
+      console.warn(`Could not remove CDP user-data marker ${CDP_USER_DATA_FILE}: ${e}`);
+    }
   }
 
   // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.

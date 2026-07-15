@@ -216,6 +216,7 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
       name?: string;
       description?: string;
       analysisLanguages: string[];
+      updatedAt?: string;
     }) => void;
     onProjectDeleted?: (id: string) => void;
   }) => (
@@ -227,7 +228,11 @@ jest.mock('../../../components/modals/ProjectMetadataModal', () => ({
         type="button"
         data-testid="metadata-save"
         onClick={() => {
-          onProjectSaved?.({ name: 'Updated', analysisLanguages: ['fr'] });
+          onProjectSaved?.({
+            name: 'Updated',
+            analysisLanguages: ['fr'],
+            updatedAt: '2026-06-15T09:00:00Z',
+          });
           onClose();
         }}
       >
@@ -852,6 +857,55 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
+    it('makes the server-returned project (with its refreshed updatedAt) the active project on overwrite', async () => {
+      const setActiveProject = jest.fn();
+      const refreshed = { ...MOCK_PROJECT, updatedAt: '2026-06-15T09:00:00Z' };
+      jest
+        .mocked(papi.commands.sendCommand)
+        // saveAnalysis resolves void, then updateProjectMetadata returns the refreshed project.
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(JSON.stringify(refreshed));
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      // The refreshed project — not a copy of the pre-save summary — becomes active, so the cached
+      // Modified time reflects the write rather than the stale value.
+      await waitFor(() => expect(setActiveProject).toHaveBeenCalledWith(refreshed));
+    });
+
+    it('falls back to the pre-save summary with the draft config when overwrite metadata returns no project', async () => {
+      const setActiveProject = jest.fn();
+      // Both commands resolve undefined (the blanket default), so the update payload is missing.
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      // With no server payload the active project is rebuilt from the target plus the draft's
+      // config (languages carried over, target cleared since the draft has none).
+      await waitFor(() =>
+        expect(setActiveProject).toHaveBeenCalledWith({
+          ...MOCK_PROJECT,
+          analysisLanguages: ['en'],
+          targetProjectId: undefined,
+        }),
+      );
+    });
+
     it('sends the draft segmentation delta when overwriting an existing project', async () => {
       const markSynced = jest.fn();
       render(
@@ -969,11 +1023,14 @@ describe('ProjectModals', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The saved edits ({ name: 'Updated', analysisLanguages: ['fr'] }) merge onto the active project.
+      // The saved edits (name, languages, and the server-refreshed updatedAt) are merged onto the
+      // active project, so a regression that drops the update branch — or the refreshed timestamp —
+      // is caught here.
       expect(setActiveProject).toHaveBeenCalledWith({
         ...MOCK_PROJECT,
         name: 'Updated',
         analysisLanguages: ['fr'],
+        updatedAt: '2026-06-15T09:00:00Z',
       });
       expect(setModal).toHaveBeenCalledWith('none');
     });

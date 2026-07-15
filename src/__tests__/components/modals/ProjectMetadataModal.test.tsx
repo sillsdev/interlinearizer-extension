@@ -154,6 +154,33 @@ describe('ProjectMetadataModal', () => {
     );
   });
 
+  it('threads the server-refreshed updatedAt from the returned project into onProjectSaved', async () => {
+    mockSendCommand.mockResolvedValue(
+      JSON.stringify({ id: 'il-project-uuid', updatedAt: '2026-06-15T09:00:00.000Z' }),
+    );
+    const onProjectSaved = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(onProjectSaved).toHaveBeenCalledWith(
+        expect.objectContaining({ updatedAt: '2026-06-15T09:00:00.000Z' }),
+      ),
+    );
+  });
+
+  it('omits updatedAt from onProjectSaved when the returned project has none', async () => {
+    // The default mock returns '{}', so no updatedAt is present to thread through.
+    const onProjectSaved = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(onProjectSaved).toHaveBeenCalled());
+    expect(onProjectSaved.mock.calls[0][0]).not.toHaveProperty('updatedAt');
+  });
+
   it('calls onClose after a successful save', async () => {
     const onClose = jest.fn();
     render(<ProjectMetadataModal {...testProps} onClose={onClose} />);

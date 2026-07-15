@@ -116,6 +116,21 @@ describe('SelectInterlinearProjectModal', () => {
     expect(rows[1]).toHaveAccessibleName(/unnamed/i);
   });
 
+  it('keeps both projects listed when their modified times are equal', async () => {
+    // Two distinct projects sharing an identical updatedAt exercise the sort comparator's
+    // equal-timestamp branch; both must still render.
+    const sameTimeAsStub: InterlinearProjectSummary = {
+      ...STUB_PROJECT_2,
+      id: 'proj-uuid-3',
+      updatedAt: STUB_PROJECT.updatedAt,
+    };
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, sameTimeAsStub]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getByText('Unnamed')).toBeInTheDocument();
+  });
+
   it('shows the modified date in each row', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

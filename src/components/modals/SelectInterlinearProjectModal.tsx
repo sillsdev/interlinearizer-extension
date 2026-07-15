@@ -20,6 +20,20 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
+ * Compares two ISO 8601 timestamps for a descending (newest-first) sort by their parsed epoch
+ * milliseconds, so ordering is locale-independent (unlike `localeCompare`, whose result can vary by
+ * collator).
+ *
+ * @param a - The first ISO 8601 timestamp.
+ * @param b - The second ISO 8601 timestamp.
+ * @returns A negative number when `a` is newer than `b` (sorts first), positive when older, `0`
+ *   when the two timestamps are equal.
+ */
+function compareUpdatedAtDescending(a: string, b: string): number {
+  return Date.parse(b) - Date.parse(a);
+}
+
+/**
  * Formats the modified-date subline for a project row, e.g. `"Modified Jan 1, 2026, 12:00 PM"`. The
  * prefix is a localized label; the timestamp is rendered in the user's locale via
  * `toLocaleString`.
@@ -105,8 +119,11 @@ export function SelectInterlinearProjectModal({
         );
       // Most-recently-modified first so the project the user is likeliest to reopen sits at the top
       // and the modified date reads as a meaningful distinguisher between otherwise-identical
-      // unnamed projects.
-      const sorted = [...valid].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      // unnamed projects. Ordered by parsed epoch time so it stays locale-independent (no
+      // `localeCompare`/collator involvement).
+      const sorted = [...valid].sort((a, b) =>
+        compareUpdatedAtDescending(a.updatedAt, b.updatedAt),
+      );
       setProjects(sorted);
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);

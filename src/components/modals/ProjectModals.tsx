@@ -152,12 +152,18 @@ export default function ProjectModals({
 
   /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one.
+   * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
+   * cached Modified time (shown in the picker and on modal reopen) stays current.
    *
-   * @param updated - The updated name, description, and analysisLanguages.
+   * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: { name?: string; description?: string; analysisLanguages: string[] }) => {
+    (updated: {
+      name?: string;
+      description?: string;
+      analysisLanguages: string[];
+      updatedAt?: string;
+    }) => {
       if (activeProject && resolvedMetadataProject?.id === activeProject.id) {
         setActiveProject({ ...activeProject, ...updated });
       }
@@ -448,7 +454,7 @@ export default function ProjectModals({
         // metadata stays consistent with the glosses just written (mirroring how Save As → New
         // carries the draft's config into the created project). The project's name and description
         // are intentionally preserved — overwriting keeps the target's identity.
-        await papi.commands.sendCommand(
+        const updatedJson = await papi.commands.sendCommand(
           'interlinearizer.updateProjectMetadata',
           project.id,
           project.name,
@@ -456,13 +462,21 @@ export default function ProjectModals({
           snapshot.analysisLanguages,
           snapshot.targetProjectId,
         );
-        setActiveProject({
-          ...project,
-          analysisLanguages: snapshot.analysisLanguages,
-          // Assign explicitly (rather than a conditional spread) so a target binding on the
-          // overwritten project is cleared when the draft has none, matching what was persisted.
-          targetProjectId: snapshot.targetProjectId,
-        });
+        // Prefer the server-returned project (it carries the refreshed `updatedAt`) as the new
+        // active project; fall back to the pre-save object with the draft's config if the payload is
+        // missing or malformed so the Save still completes.
+        const parsedUpdated: unknown = updatedJson ? JSON.parse(updatedJson) : undefined;
+        setActiveProject(
+          isInterlinearProjectSummary(parsedUpdated)
+            ? parsedUpdated
+            : {
+                ...project,
+                analysisLanguages: snapshot.analysisLanguages,
+                // Assign explicitly (rather than a conditional spread) so a target binding on the
+                // overwritten project is cleared when the draft has none, matching what was persisted.
+                targetProjectId: snapshot.targetProjectId,
+              },
+        );
         markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {

@@ -257,12 +257,14 @@ export function SegmentView({
     [segment.tokens, phraseLinkByRef],
   );
 
-  // The inactive border is transparent rather than absent so activating a segment only recolors
-  // it: adding/removing a real border would change the segment's height by 2px, shifting every
-  // segment below it — a visible jump in the list whenever the active verse moves on a click.
+  // Both states carry a real border so activating a segment only recolors it — never adds or removes
+  // one, which would change the segment's height by 2px and shift every segment below it (a visible
+  // jump in the list whenever the active verse moves on a click). The inactive border is a faint
+  // (`border-border/40`) always-visible outline so each segment reads as its own card now that the
+  // between-row rail is inert until Alt is held; activating brightens it to the full `border-border`.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
-    : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+    : 'tw:w-full tw:rounded tw:border tw:border-border/40 tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
   /**
    * Resolved inline superscript label for each of the segment's verse starts: the list-supplied

@@ -4,7 +4,10 @@ import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlineari
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
-import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
+import {
+  toProjectSummary,
+  type InterlinearProjectSummary,
+} from '../../types/interlinear-project-summary';
 import {
   isInterlinearProjectSummary,
   isSegmentationDelta,
@@ -273,7 +276,9 @@ export default function ProjectModals({
         );
         const parsed: unknown = JSON.parse(createdJson);
         if (isInterlinearProjectSummary(parsed)) {
-          created = parsed;
+          // `createProject` returns a full `InterlinearProject`; project it so its `analysis` is not
+          // cached into WebView state (see `toProjectSummary`).
+          created = toProjectSummary(parsed);
         } else {
           await papi.notifications
             .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
@@ -405,7 +410,7 @@ export default function ProjectModals({
           return;
         }
 
-        await papi.commands.sendCommand(
+        const savedJson = await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',
           created.id,
           JSON.stringify(snapshot.analysis),
@@ -414,7 +419,12 @@ export default function ProjectModals({
           // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
           JSON.stringify(snapshot.segmentation ?? null),
         );
-        setActiveProject(created);
+        // `saveAnalysis` bumps `updatedAt` past the creation time it was born with, so prefer the
+        // project it returns; fall back to the freshly created object if the payload is malformed.
+        const parsedSaved: unknown = savedJson ? JSON.parse(savedJson) : undefined;
+        setActiveProject(
+          toProjectSummary(isInterlinearProjectSummary(parsedSaved) ? parsedSaved : created),
+        );
         markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {
@@ -468,7 +478,7 @@ export default function ProjectModals({
         const parsedUpdated: unknown = updatedJson ? JSON.parse(updatedJson) : undefined;
         setActiveProject(
           isInterlinearProjectSummary(parsedUpdated)
-            ? parsedUpdated
+            ? toProjectSummary(parsedUpdated)
             : {
                 ...project,
                 analysisLanguages: snapshot.analysisLanguages,

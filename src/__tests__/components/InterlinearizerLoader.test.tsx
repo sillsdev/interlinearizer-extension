@@ -187,6 +187,7 @@ jest.mock('../../components/Interlinearizer', () => {
 type MockProject = {
   id: string;
   createdAt: string;
+  updatedAt?: string;
   sourceProjectId: string;
   analysisLanguages: string[];
   name?: string;
@@ -256,6 +257,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
         data-default-lang={defaultAnalysisLanguage}
         data-has-unsaved-work={hasUnsavedWork}
         data-active-project-name={activeProject?.name}
+        data-active-project-updated={activeProject?.updatedAt}
       >
         {modal === 'select' && (
           <div data-testid="select-modal">
@@ -1647,6 +1649,86 @@ describe('InterlinearizerLoader', () => {
         JSON.stringify(draftAnalysis),
         // The draft has no custom boundaries, so Save sends "null" to clear any stored ones.
         'null',
+      );
+    });
+
+    it('refreshes the cached activeProject updatedAt from the saveAnalysis response', async () => {
+      // saveAnalysis returns the persisted project carrying the storage-refreshed updatedAt; every
+      // other command keeps its default (the empty-draft load) so the editor still mounts.
+      mockSendCommand.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.saveAnalysis'
+          ? JSON.stringify({ ...STUB_ACTIVE_PROJECT, updatedAt: '2026-02-02T00:00:00Z' })
+          : JSON.stringify(emptyDraft(testProjectId)),
+      );
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
+      );
+      // The stubbed active project starts with no Modified time cached.
+      expect(screen.getByTestId('project-modals')).not.toHaveAttribute(
+        'data-active-project-updated',
+      );
+
+      // Dirty the draft so the post-save markSynced flips dirty back off, forcing the re-render that
+      // reflects the newly cached updatedAt down to the ProjectModals stub.
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      // The stub surfaces the cached activeProject's updatedAt, so the refreshed value proves the
+      // fold reached WebView state.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-updated',
+        '2026-02-02T00:00:00Z',
+      );
+    });
+
+    it('leaves the cached activeProject untouched when the saveAnalysis response is malformed', async () => {
+      const seeded: MockProject = { ...STUB_ACTIVE_PROJECT, updatedAt: '2026-01-01T00:00:00Z' };
+      // saveAnalysis returns a payload with no `updatedAt` (e.g. an unexpected shape), so there is
+      // nothing to fold in; other commands keep the default empty-draft load.
+      mockSendCommand.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.saveAnalysis'
+          ? JSON.stringify({ notAProject: true })
+          : JSON.stringify(emptyDraft(testProjectId)),
+      );
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) }),
+      );
+
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      // The previously cached Modified time is preserved rather than being cleared.
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-updated',
+        '2026-01-01T00:00:00Z',
+      );
+    });
+
+    it('leaves the cached activeProject untouched when saveAnalysis reports the project is gone', async () => {
+      const seeded: MockProject = { ...STUB_ACTIVE_PROJECT, updatedAt: '2026-01-01T00:00:00Z' };
+      // saveAnalysis resolves to `undefined` (the project no longer exists), so the loader has no
+      // response body to parse and the cache is left as-is.
+      mockSendCommand.mockImplementation(async (...args) =>
+        args[0] === 'interlinearizer.saveAnalysis'
+          ? undefined
+          : JSON.stringify(emptyDraft(testProjectId)),
+      );
+      await act(async () =>
+        renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) }),
+      );
+
+      act(() => {
+        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+      });
+      await userEvent.click(screen.getByTestId('tab-toolbar-save'));
+
+      expect(screen.getByTestId('project-modals')).toHaveAttribute(
+        'data-active-project-updated',
+        '2026-01-01T00:00:00Z',
       );
     });
 

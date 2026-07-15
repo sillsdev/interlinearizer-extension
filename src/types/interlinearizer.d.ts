@@ -169,7 +169,9 @@ declare module 'papi-shared-types' {
      * @param segmentationJson Optional JSON-stringified `SegmentationDelta` to persist, or the
      *   string `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
      *   existing boundaries unchanged.
-     * @returns Promise that resolves to void once the analysis has been written to storage.
+     * @returns The saved `InterlinearProject` (with its refreshed `updatedAt`) as a JSON string, or
+     *   `undefined` if no project with the given ID exists. The WebView uses the refreshed
+     *   `updatedAt` to keep the cached Modified time current after a Save.
      * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
      *   before rethrowing so callers do not need to send a second notification.
      */
@@ -177,7 +179,7 @@ declare module 'papi-shared-types' {
       interlinearProjectId: string,
       analysisJson: string,
       segmentationJson?: string,
-    ) => Promise<void>;
+    ) => Promise<string | undefined>;
 
     /**
      * Returns the draft working buffer for the given source project, serialized as a JSON string.

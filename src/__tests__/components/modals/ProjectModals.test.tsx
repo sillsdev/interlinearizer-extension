@@ -515,7 +515,10 @@ describe('ProjectModals', () => {
 
   describe('new (create) flow', () => {
     it('seeds the draft, calls createProject on the backend, and closes', async () => {
-      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      // createProject returns a FULL project (analysis included); only its summary should be cached.
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
       const newDraft = jest.fn();
       const setModal = jest.fn();
       const setActiveProject = jest.fn();
@@ -537,6 +540,7 @@ describe('ProjectModals', () => {
       await userEvent.click(screen.getByTestId('create-submit'));
 
       await waitFor(() => expect(setActiveProject).toHaveBeenCalledWith(MOCK_PROJECT));
+      expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
       expect(newDraft).toHaveBeenCalledWith({
         analysisLanguages: ['en'],
         suggestedName: 'New',
@@ -814,6 +818,63 @@ describe('ProjectModals', () => {
       );
     });
 
+    it('caches only the summary of the server-returned project (with its refreshed updatedAt) on Save As New', async () => {
+      const setActiveProject = jest.fn();
+      // saveAnalysis returns a FULL project (analysis included) with a bumped updatedAt.
+      const refreshedFull = {
+        ...MOCK_FULL_PROJECT,
+        updatedAt: '2026-06-15T09:00:00Z',
+      };
+      jest
+        .mocked(papi.commands.sendCommand)
+        // createProject returns the freshly created project, then saveAnalysis returns the same
+        // project with its post-analysis-write updatedAt bumped.
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT))
+        .mockResolvedValueOnce(JSON.stringify(refreshedFull));
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      // Expected value is `refreshedFull` projected to a summary: the bumped updatedAt is kept, the
+      // analysis dropped.
+      await waitFor(() =>
+        expect(setActiveProject).toHaveBeenCalledWith({
+          ...MOCK_PROJECT,
+          updatedAt: '2026-06-15T09:00:00Z',
+        }),
+      );
+      expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
+    });
+
+    it('caches the created project summary when the Save As New analysis write returns no project', async () => {
+      const setActiveProject = jest.fn();
+      // createProject returns a FULL project; saveAnalysis resolves undefined (blanket default), so
+      // there is no refreshed payload to prefer and the created project's summary is cached.
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT));
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            useWebViewState: makeWebViewStateWithActiveProjectSpies({ set: setActiveProject }),
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() => expect(setActiveProject).toHaveBeenCalledWith(MOCK_PROJECT));
+      expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
+    });
+
     it('notifies and does not mark synced when create returns a non-project shape', async () => {
       jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify({ bad: true }));
       const markSynced = jest.fn();
@@ -857,14 +918,15 @@ describe('ProjectModals', () => {
       expect(setModal).toHaveBeenCalledWith('none');
     });
 
-    it('makes the server-returned project (with its refreshed updatedAt) the active project on overwrite', async () => {
+    it('caches only the summary of the server-returned project (with its refreshed updatedAt) on overwrite', async () => {
       const setActiveProject = jest.fn();
-      const refreshed = { ...MOCK_PROJECT, updatedAt: '2026-06-15T09:00:00Z' };
+      // updateProjectMetadata returns a FULL project (analysis included) with a bumped updatedAt.
+      const refreshedFull = { ...MOCK_FULL_PROJECT, updatedAt: '2026-06-15T09:00:00Z' };
       jest
         .mocked(papi.commands.sendCommand)
         // saveAnalysis resolves void, then updateProjectMetadata returns the refreshed project.
         .mockResolvedValueOnce(undefined)
-        .mockResolvedValueOnce(JSON.stringify(refreshed));
+        .mockResolvedValueOnce(JSON.stringify(refreshedFull));
       render(
         <ProjectModals
           {...buildProps({
@@ -876,9 +938,15 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // The refreshed project — not a copy of the pre-save summary — becomes active, so the cached
-      // Modified time reflects the write rather than the stale value.
-      await waitFor(() => expect(setActiveProject).toHaveBeenCalledWith(refreshed));
+      // The bumped updatedAt (not the seeded one) proves the server response was preferred over the
+      // pre-save fallback; projecting it to a summary drops the analysis.
+      await waitFor(() =>
+        expect(setActiveProject).toHaveBeenCalledWith({
+          ...MOCK_PROJECT,
+          updatedAt: '2026-06-15T09:00:00Z',
+        }),
+      );
+      expect(setActiveProject.mock.calls[0][0]).not.toHaveProperty('analysis');
     });
 
     it('falls back to the pre-save summary with the draft config when overwrite metadata returns no project', async () => {

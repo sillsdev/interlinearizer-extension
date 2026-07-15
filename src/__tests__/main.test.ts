@@ -903,11 +903,11 @@ describe('main', () => {
       );
     });
 
-    it('delegates to projectStorage.updateAnalysis with the parsed analysis', async () => {
+    it('delegates to projectStorage.updateAnalysis with the parsed analysis and returns undefined when the project is gone', async () => {
       mockUpdateAnalysis.mockResolvedValue(undefined);
       const handler = await getSaveAnalysisHandler();
 
-      await handler('proj-id', JSON.stringify(stubAnalysis));
+      const result = await handler('proj-id', JSON.stringify(stubAnalysis));
 
       // No segmentationJson passed ⇒ the 4th arg is undefined (leave stored boundaries unchanged).
       expect(mockUpdateAnalysis).toHaveBeenCalledWith(
@@ -916,6 +916,19 @@ describe('main', () => {
         stubAnalysis,
         undefined,
       );
+      expect(result).toBeUndefined();
+    });
+
+    it('returns the saved project (carrying the refreshed updatedAt) as JSON when the update succeeds', async () => {
+      const saved = { ...makeStubProject('proj-id'), updatedAt: '2026-06-15T09:00:00Z' };
+      mockUpdateAnalysis.mockResolvedValue(saved);
+      const handler = await getSaveAnalysisHandler();
+
+      const result = await handler('proj-id', JSON.stringify(stubAnalysis));
+
+      // The command serializes the storage layer's refreshed project so the WebView can read the new
+      // Modified time without a second fetch.
+      expect(result).toBe(JSON.stringify(saved));
     });
 
     it('logs the error, sends an error notification, and rethrows when storage throws', async () => {

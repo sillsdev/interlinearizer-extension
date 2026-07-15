@@ -417,265 +417,277 @@ describe('PhraseSlot boundary controls', () => {
     return dispatch;
   }
 
-  // -- Merge branch --------------------------------------------------------
+  describe('merge branch', () => {
+    it('shows an enabled merge button on a cross-segment slot while Alt is not held', () => {
+      // The merge button is always present and enabled on a live boundary, no Alt needed.
+      const dispatch = renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { altHeld: false },
+      );
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toBeEnabled();
+      fireEvent.click(button);
+      expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
+      // Split markers stay Alt-gated, so none shows while Alt is up.
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
 
-  it('shows an enabled merge button on a cross-segment slot while Alt is not held', () => {
-    // The merge button is always present and enabled on a live boundary, no Alt needed.
-    const dispatch = renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-      { altHeld: false },
-    );
-    const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
-    expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
-    // Split markers stay Alt-gated, so none shows while Alt is up.
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    it('shows an enabled merge button on a cross-segment slot while Alt is held and merges on click', () => {
+      const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toBeEnabled();
+      fireEvent.click(button);
+      expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
+
+    it('keeps the merge control at a straddled boundary ref (merge never cuts a phrase)', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { straddledBoundaryRefs: new Set(['b']) },
+      );
+      expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+    });
+
+    it('renders no merge control while a phrase edit is active', () => {
+      // A boundary edit mid-mode could re-segment the phrase the mode UI operates on, so the control
+      // is absent (not merely disabled) throughout a phrase mode.
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
+        { phraseMode: { kind: 'edit', phraseId: 'p1', originalTokens: [] } },
+      );
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('labels the merge button with the plain merge string while Alt is held', () => {
+      // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint.
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toHaveAttribute('aria-label', 'Merge');
+      expect(button).toHaveAttribute('title', 'Merge');
+    });
+
+    it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
+      // Alt up → split markers are hidden, so the merge tooltip advertises the Alt gesture that
+      // reveals them.
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
+      const button = screen.getByTestId('boundary-merge-btn');
+      expect(button).toHaveAttribute('aria-label', 'Merge');
+      expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
+    });
+
+    it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
+      // The boundary button lives in a dedicated row below the link icon, so the gap punctuation stays
+      // in normal flow and the two coexist.
+      const slotWithPunct: LinkSlot = {
+        prevGroup: groupA,
+        nextGroup: groupB,
+        punctuation: [mkPunct('p1'), mkPunct('p2')],
+      };
+      renderBoundary({ slot: slotWithPunct, prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
+      expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('slot-punctuation')).not.toHaveStyle({ visibility: 'hidden' });
+    });
   });
 
-  it('shows an enabled merge button on a cross-segment slot while Alt is held and merges on click', () => {
-    const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
-    const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toBeEnabled();
-    fireEvent.click(button);
-    expect(dispatch.merge).toHaveBeenCalledWith('seg2-start');
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+  // Verse number (peeking) coexists with the boundary button (punct row).
+  describe('verse number and boundary button coexistence', () => {
+    it('keeps the peeking verse number alongside the always-visible merge button while Alt is not held', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' },
+        { altHeld: false },
+      );
+      expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+      // Merge stays visible with Alt up; the verse number still peeks above the column.
+      expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+    });
+
+    it('keeps the peeking verse number rendered alongside the boundary button under Alt', () => {
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
+      // The merge button sits below the link icon while the verse number peeks above the column.
+      expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+      expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+    });
+
+    it('keeps the peeking verse number under Alt when no boundary edit applies at the slot', () => {
+      // A straddled intra-segment slot suppresses the split marker, so BoundaryControl renders
+      // nothing; the verse number keeps peeking above the column.
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1', verseLabel: '2' },
+        { straddledBoundaryRefs: new Set(['b']) },
+      );
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+      expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
+    });
   });
 
-  it('keeps the merge control at a straddled boundary ref (merge never cuts a phrase)', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-      { straddledBoundaryRefs: new Set(['b']) },
-    );
-    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
+  describe('split marker gating', () => {
+    it('shows the split marker on an intra-segment slot while Alt is held', () => {
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('hides the split marker on an intra-segment slot while Alt is not held', () => {
+      renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' }, { altHeld: false });
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
+
+    it('hides the split marker at a straddled boundary ref (not-mid-phrase UI guard)', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { straddledBoundaryRefs: new Set(['b']) },
+      );
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
+
+    it('keeps the split marker when the anchor is not among the straddled boundary refs', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { straddledBoundaryRefs: new Set(['other-ref']) },
+      );
+      expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
+    });
+
+    it('hides the split marker while a confirm-unlink prompt is active even with Alt held', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
+      );
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
+
+    it('renders no split marker at a leading slot inside a segment (the boundary already exists)', () => {
+      // A leading slot has no group before it but carries the segment id on both sides; splitting at
+      // the segment's first token would be a no-op, so no control renders.
+      const leadingSlot: LinkSlot = { prevGroup: undefined, nextGroup: groupB, punctuation: [] };
+      renderBoundary({ slot: leadingSlot, prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+    });
+
+    it('renders no control at a leading slot with no previous segment', () => {
+      renderBoundary({ prevSegmentId: undefined, nextSegmentId: 'seg-1' });
+      expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
   });
 
-  it('renders no merge control while a phrase edit is active', () => {
-    // A boundary edit mid-mode could re-segment the phrase the mode UI operates on, so the control
-    // is absent (not merely disabled) throughout a phrase mode.
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
-      { phraseMode: { kind: 'edit', phraseId: 'p1', originalTokens: [] } },
-    );
-    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
+  describe('split marker gesture', () => {
+    it('splits at the word anchor on an Alt+click of the marker', () => {
+      const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
+      // With no gap punctuation the resolved anchor is the next word token, 'b'.
+      expect(dispatch.split).toHaveBeenCalledWith('b');
+    });
+
+    it('does not split on a plain (non-Alt) click of the marker', () => {
+      const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
+      fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: false });
+      expect(dispatch.split).not.toHaveBeenCalled();
+    });
+
+    it('dispatches the original removed ref when Alt+clicking a former boundary', () => {
+      // The merged-away verse began with punctuation: the word anchor 'b' maps to the removed
+      // punctuation start ref, and the restore dispatches that original ref, not the travel anchor.
+      const dispatch = renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { formerBoundaries: new Map([['b', 'punct-start']]) },
+      );
+      fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
+      expect(dispatch.split).toHaveBeenCalledWith('punct-start');
+    });
+
+    it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
+      // `word1 "word2` — the quote touches word2, so the boundary lands before the quote.
+      const quote: Token = {
+        ref: 'q',
+        surfaceText: '"',
+        writingSystem: 'en',
+        type: 'punctuation',
+        charStart: 6,
+        charEnd: 7,
+      };
+      const word1: Token & { type: 'word' } = { ...makeWordToken('w1'), charStart: 0, charEnd: 5 };
+      const word2: Token & { type: 'word' } = { ...makeWordToken('w2'), charStart: 7, charEnd: 12 };
+      const quoteSlot: LinkSlot = {
+        prevGroup: {
+          tokens: [word1],
+          phraseLink: undefined,
+          firstIndex: 0,
+          punctuationBetween: [],
+        },
+        nextGroup: {
+          tokens: [word2],
+          phraseLink: undefined,
+          firstIndex: 1,
+          punctuationBetween: [],
+        },
+        punctuation: [quote],
+      };
+      const dispatch = {
+        merge: jest.fn(),
+        split: jest.fn(),
+        move: jest.fn(),
+      };
+      const quoteSegment: Segment = {
+        id: 'seg-q',
+        startRef: { book: 'GEN', chapter: 1, verse: 1 },
+        endRef: { book: 'GEN', chapter: 1, verse: 1 },
+        baselineText: 'word1 "word2',
+        tokens: [word1, quote, word2],
+        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
+      };
+      render(
+        <SegmentationProvider
+          value={{
+            dispatch,
+            segmentById: new Map([['seg-q', quoteSegment]]),
+            segmentOrder: new Map([['seg-q', 0]]),
+            formerBoundaries: new Map(),
+            straddledBoundaryRefs: new Set(),
+          }}
+        >
+          <AltHeldProvider value>
+            <PhraseStripProvider value={makePhraseStripContext()}>
+              <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
+            </PhraseStripProvider>
+          </AltHeldProvider>
+        </SegmentationProvider>,
+      );
+      fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
+      expect(dispatch.split).toHaveBeenCalledWith('q');
+    });
   });
 
-  it('labels the merge button with the plain merge string while Alt is held', () => {
-    // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint.
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
-    const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toHaveAttribute('aria-label', 'Merge');
-    expect(button).toHaveAttribute('title', 'Merge');
-  });
+  // Former boundary: no tick, Alt still reveals the split marker.
+  describe('former boundary', () => {
+    // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
+    // at a former boundary while Alt is not held.
+    it('renders nothing at a former boundary while Alt is not held', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { formerBoundaries: new Map([['b', 'b']]), altHeld: false },
+      );
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
 
-  it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
-    // Alt up → split markers are hidden, so the merge tooltip advertises the Alt gesture that
-    // reveals them.
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
-    const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toHaveAttribute('aria-label', 'Merge');
-    expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
-  });
+    it('reveals the split marker at a former boundary when Alt is held', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { formerBoundaries: new Map([['b', 'b']]) },
+      );
+      expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
+    });
 
-  it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
-    // The boundary button lives in a dedicated row below the link icon, so the gap punctuation stays
-    // in normal flow and the two coexist.
-    const slotWithPunct: LinkSlot = {
-      prevGroup: groupA,
-      nextGroup: groupB,
-      punctuation: [mkPunct('p1'), mkPunct('p2')],
-    };
-    renderBoundary({ slot: slotWithPunct, prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
-    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-    expect(screen.getByTestId('slot-punctuation')).not.toHaveStyle({ visibility: 'hidden' });
-  });
-
-  // -- Verse number (peeking) coexists with the boundary button (punct row) --
-
-  it('keeps the peeking verse number alongside the always-visible merge button while Alt is not held', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' },
-      { altHeld: false },
-    );
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
-    // Merge stays visible with Alt up; the verse number still peeks above the column.
-    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-  });
-
-  it('keeps the peeking verse number rendered alongside the boundary button under Alt', () => {
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
-    // The merge button sits below the link icon while the verse number peeks above the column.
-    expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
-  });
-
-  it('keeps the peeking verse number under Alt when no boundary edit applies at the slot', () => {
-    // A straddled intra-segment slot suppresses the split marker, so BoundaryControl renders
-    // nothing; the verse number keeps peeking above the column.
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1', verseLabel: '2' },
-      { straddledBoundaryRefs: new Set(['b']) },
-    );
-    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-    expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
-  });
-
-  // -- Split marker: gating ------------------------------------------------
-
-  it('shows the split marker on an intra-segment slot while Alt is held', () => {
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
-    expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
-    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
-  });
-
-  it('hides the split marker on an intra-segment slot while Alt is not held', () => {
-    renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' }, { altHeld: false });
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
-  it('hides the split marker at a straddled boundary ref (not-mid-phrase UI guard)', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { straddledBoundaryRefs: new Set(['b']) },
-    );
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
-  it('keeps the split marker when the anchor is not among the straddled boundary refs', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { straddledBoundaryRefs: new Set(['other-ref']) },
-    );
-    expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
-  });
-
-  it('hides the split marker while a confirm-unlink prompt is active even with Alt held', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { phraseMode: { kind: 'confirm-unlink', phraseId: 'p1' } },
-    );
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
-  it('renders no split marker at a leading slot inside a segment (the boundary already exists)', () => {
-    // A leading slot has no group before it but carries the segment id on both sides; splitting at
-    // the segment's first token would be a no-op, so no control renders.
-    const leadingSlot: LinkSlot = { prevGroup: undefined, nextGroup: groupB, punctuation: [] };
-    renderBoundary({ slot: leadingSlot, prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
-  });
-
-  it('renders no control at a leading slot with no previous segment', () => {
-    renderBoundary({ prevSegmentId: undefined, nextSegmentId: 'seg-1' });
-    expect(screen.queryByTestId('boundary-merge-btn')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
-  // -- Split marker: gesture -----------------------------------------------
-
-  it('splits at the word anchor on an Alt+click of the marker', () => {
-    const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
-    fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
-    // With no gap punctuation the resolved anchor is the next word token, 'b'.
-    expect(dispatch.split).toHaveBeenCalledWith('b');
-  });
-
-  it('does not split on a plain (non-Alt) click of the marker', () => {
-    const dispatch = renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
-    fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: false });
-    expect(dispatch.split).not.toHaveBeenCalled();
-  });
-
-  it('dispatches the original removed ref when Alt+clicking a former boundary', () => {
-    // The merged-away verse began with punctuation: the word anchor 'b' maps to the removed
-    // punctuation start ref, and the restore dispatches that original ref, not the travel anchor.
-    const dispatch = renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaries: new Map([['b', 'punct-start']]) },
-    );
-    fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
-    expect(dispatch.split).toHaveBeenCalledWith('punct-start');
-  });
-
-  it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
-    // `word1 "word2` — the quote touches word2, so the boundary lands before the quote.
-    const quote: Token = {
-      ref: 'q',
-      surfaceText: '"',
-      writingSystem: 'en',
-      type: 'punctuation',
-      charStart: 6,
-      charEnd: 7,
-    };
-    const word1: Token & { type: 'word' } = { ...makeWordToken('w1'), charStart: 0, charEnd: 5 };
-    const word2: Token & { type: 'word' } = { ...makeWordToken('w2'), charStart: 7, charEnd: 12 };
-    const quoteSlot: LinkSlot = {
-      prevGroup: { tokens: [word1], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] },
-      nextGroup: { tokens: [word2], phraseLink: undefined, firstIndex: 1, punctuationBetween: [] },
-      punctuation: [quote],
-    };
-    const dispatch = {
-      merge: jest.fn(),
-      split: jest.fn(),
-      move: jest.fn(),
-    };
-    const quoteSegment: Segment = {
-      id: 'seg-q',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'word1 "word2',
-      tokens: [word1, quote, word2],
-      verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-    };
-    render(
-      <SegmentationProvider
-        value={{
-          dispatch,
-          segmentById: new Map([['seg-q', quoteSegment]]),
-          segmentOrder: new Map([['seg-q', 0]]),
-          formerBoundaries: new Map(),
-          straddledBoundaryRefs: new Set(),
-        }}
-      >
-        <AltHeldProvider value>
-          <PhraseStripProvider value={makePhraseStripContext()}>
-            <PhraseSlot {...slotProps(quoteSlot)} prevSegmentId="seg-q" nextSegmentId="seg-q" />
-          </PhraseStripProvider>
-        </AltHeldProvider>
-      </SegmentationProvider>,
-    );
-    fireEvent.click(screen.getByTestId('boundary-split-marker'), { altKey: true });
-    expect(dispatch.split).toHaveBeenCalledWith('q');
-  });
-
-  // -- Former boundary: no tick, Alt still reveals the split marker --------
-
-  // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
-  // at a former boundary while Alt is not held.
-  it('renders nothing at a former boundary while Alt is not held', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaries: new Map([['b', 'b']]), altHeld: false },
-    );
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
-  });
-
-  it('reveals the split marker at a former boundary when Alt is held', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaries: new Map([['b', 'b']]) },
-    );
-    expect(screen.getByTestId('boundary-split-marker')).toBeInTheDocument();
-  });
-
-  it('renders nothing at a former boundary whose split is suppressed by the mid-phrase guard even with Alt held', () => {
-    renderBoundary(
-      { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
-      { formerBoundaries: new Map([['b', 'b']]), straddledBoundaryRefs: new Set(['b']) },
-    );
-    expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    it('renders nothing at a former boundary whose split is suppressed by the mid-phrase guard even with Alt held', () => {
+      renderBoundary(
+        { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
+        { formerBoundaries: new Map([['b', 'b']]), straddledBoundaryRefs: new Set(['b']) },
+      );
+      expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
+    });
   });
 });
 

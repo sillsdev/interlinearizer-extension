@@ -174,7 +174,7 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       reject(
         new Error(
           `Launched Platform.Bible (CDP) process exited early (code=${code}, signal=${signal}) ` +
-            'before its WebSocket and CDP ports came up.',
+            'during startup, before it became ready.',
         ),
       );
     });

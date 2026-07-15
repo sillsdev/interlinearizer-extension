@@ -235,14 +235,13 @@ export default function ProjectModals({
    * persisted immediately so it shows up in "Select Interlinear Project" right away.
    *
    * `newDraft` is called synchronously before the backend round-trip so the editor is ready
-   * immediately regardless of whether persistence succeeds. This is safe: when `hasUnsavedWork` is
-   * `false` (no discard confirmation shown), any data in the draft is either already committed to
-   * the active project or the draft was empty — nothing is lost. When `hasUnsavedWork` is `true`
-   * the {@link DiscardDraftConfirm} dialog has already obtained explicit user consent to discard.
+   * regardless of whether persistence succeeds. This is safe: when `hasUnsavedWork` is `false` the
+   * draft is either already committed to the active project or empty (nothing to lose); when
+   * `hasUnsavedWork` is `true` the {@link DiscardDraftConfirm} dialog has already obtained consent
+   * to discard.
    *
    * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
-   * so the catch block only needs to log — callers do not need to send a second notification. This
-   * matches {@link handleSaveAsNew}, which uses the same command and follows the same pattern.
+   * so the catch block only needs to log, matching {@link handleSaveAsNew}.
    *
    * @param config - The configuration collected by the New dialog.
    * @returns `true` if the project was created and persisted successfully; `false` otherwise.

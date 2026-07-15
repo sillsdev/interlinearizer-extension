@@ -40,8 +40,8 @@ const V1_BETA = 'GEN 1:1:6';
 
 /**
  * A fixture with a mid-book verse-0 superscription: GEN 1:1, then GEN 2:0 (the superscription),
- * then GEN 2:1. Pins the decision that verse 0 is an ordinary segment for boundary editing — no
- * guard makes its boundaries special (only the always-present book-first lock applies).
+ * then GEN 2:1. Verse 0 is an ordinary segment for boundary editing (only the book-first lock
+ * applies).
  */
 const MID_VERSE_ZERO = makeBook([
   { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },

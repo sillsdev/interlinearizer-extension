@@ -50,12 +50,9 @@ export type SegmentationContextValue = Readonly<{
    * the mapped ref so the restore cancels the removal exactly — even when the verse begins with
    * punctuation, whose ref no word-anchored slot could otherwise name.
    *
-   * This map exists to bridge two anchor conventions: `SegmentationDelta.removedVerseStarts`
-   * anchors on a verse's leading token of **any** type (the default starts in
-   * `utils/segmentation`), while the boundary slots are keyed by word tokens. The two diverge only
-   * when a verse begins with punctuation; this lookup reconciles them at that seam. If the delta
-   * ever anchors removed starts on word tokens too, this map and its
-   * loader→context→`BoundaryControl` plumbing can be removed.
+   * Bridges two anchor conventions: `SegmentationDelta.removedVerseStarts` anchors on a verse's
+   * leading token of **any** type, while the boundary slots are keyed by word tokens. The two
+   * diverge only when a verse begins with punctuation; this lookup reconciles them at that seam.
    */
   formerBoundaries: ReadonlyMap<string, string>;
   /**

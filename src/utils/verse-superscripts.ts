@@ -7,21 +7,19 @@
  *   their bare verbatim number. (The pinned "Book N" chapter header is a separate scroll-driven
  *   overlay in the list, not derived here.)
  *
- *   The chapter of a verse start is read from `VerseStart.chapter`, so a chapter boundary absorbed
- *   into a merged segment is still qualified — the qualifier triggers off "verse start whose
- *   chapter exceeds every chapter seen so far", regardless of where the segment boundary falls, and
- *   is correct even for an empty verse (no token to inspect) or a verse whose baseline begins with
- *   whitespace (first token not at the verse-start offset).
+ *   The chapter of a verse start is read from `VerseStart.chapter`, not from a token, so the
+ *   qualifier triggers off "chapter exceeds every chapter seen so far" regardless of where segment
+ *   boundaries fall — correct even for an empty verse or one whose baseline begins with
+ *   whitespace.
  */
 import type { Segment, Token, VerseStart } from 'interlinearizer';
 import type { LinkSlot } from '../types/token-layout';
 
 /**
  * Finds the token that renders a verse start — the first token whose `charStart` is at or after the
- * verse start's offset. An exact `charStart === vs.charStart` match is not required: a verse whose
- * baseline begins with whitespace has its first token a few characters in, so the strict match
- * would miss it and drop the inline number. Returns `undefined` for an empty verse, which has no
- * token to carry the superscript.
+ * verse start's offset. Not an exact match: a verse whose baseline begins with whitespace has its
+ * first token a few characters in, which a strict `===` would miss. Returns `undefined` for an
+ * empty verse, which has no token to carry the superscript.
  *
  * @param segment - The segment the verse start belongs to.
  * @param vs - The verse start whose leading token is wanted.
@@ -60,18 +58,15 @@ export function buildVerseStartLabels(segments: readonly Segment[]): Map<string,
 /**
  * Resolves the inline verse label for a between-group slot: the label of the verse that begins as
  * the slot is crossed. A verse begins at a slot when its start token renders next through it — one
- * of the slot's own gap-punctuation tokens (for a verse opening on leading punctuation), or a token
- * of the following group. All of the following group's tokens are candidates, not just its first:
- * when a phrase link spans an internal verse boundary of a merged segment, that phrase's tokens
- * fuse into a single group, so the verse-start word can sit mid-group; keying only on the first
- * token would drop the number in the group-based strips (token-chip / continuous) while the
- * baseline-text strip — which emits superscripts by char offset — still showed it, an inconsistency
- * across display modes. Marking the boundary at the slot before that group keeps the number visible
- * and adjacent. Shared by both strips so they mark verse boundaries on the same slot.
+ * of the slot's own gap-punctuation tokens (for a verse opening on leading punctuation), or any
+ * token of the following group. All group tokens are candidates, not just the first: a phrase
+ * spanning an internal verse boundary of a merged segment fuses its tokens into one group, so the
+ * verse-start word can sit mid-group. Shared by both strips so they mark verse boundaries on the
+ * same slot.
  *
- * A group that fuses across _two_ internal verse boundaries still shows only the first verse's
- * number here (a slot carries one label); the exact rendering of a second buried verse start would
- * require an in-box superscript, which this slot model does not provide.
+ * A group fusing across _two_ internal verse boundaries shows only the first verse's number (a slot
+ * carries one label); a second buried verse start would need an in-box superscript this model
+ * lacks.
  *
  * @param slot - The between-group slot to test.
  * @param verseStartLabelByTokenRef - Verse-start token ref → label, from
@@ -82,9 +77,8 @@ export function slotVerseLabel(
   slot: LinkSlot,
   verseStartLabelByTokenRef: ReadonlyMap<string, string>,
 ): string | undefined {
-  // Order preserves the original priority for existing cases (next group's first token, then gap
-  // punctuation) and only adds the remaining group tokens after, so a verse start buried mid-group is
-  // caught without changing which ref wins when the leading token or punctuation already names one.
+  // Priority: next group's first token, then gap punctuation, then the remaining group tokens — so a
+  // verse start buried mid-group is caught only after the leading token and punctuation are checked.
   const nextGroupRefs = slot.nextGroup?.tokens.map((t) => t.ref) ?? [];
   const candidateRefs = [
     nextGroupRefs[0],

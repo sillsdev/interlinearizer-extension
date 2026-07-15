@@ -29,27 +29,24 @@ export type ArcPathsResult = {
 // #region useArcPaths
 
 /**
- * Maximum consecutive re-applies of a signature that already appears in the recent-signature
- * history. A single flip back to a recent signature is usually a genuine correction — the layout
- * transiently collapsed (e.g. a discontiguous phrase momentarily measuring as one box) and then
- * recovered to its pre-collapse geometry — so it must be applied, not swallowed. But an unbounded
- * allowance would re-open the cross-row gutter feedback loop (period-2 padding oscillation), so
- * after this many consecutive flip-backs without reaching a fixed point the hook freezes and skips
- * further history matches, exactly like the original guard.
+ * Maximum consecutive re-applies of a signature already in the recent-signature history. A single
+ * flip back to a recent signature is usually a genuine correction (the layout transiently collapsed
+ * — e.g. a discontiguous phrase momentarily measuring as one box — then recovered), so it must be
+ * applied. But an unbounded allowance re-opens the cross-row gutter feedback loop (period-2 padding
+ * oscillation), so after this many consecutive flip-backs without a fixed point the hook freezes
+ * and skips further history matches.
  */
 const MAX_CONSECUTIVE_SIGNATURE_FLIPS = 2;
 
 /**
  * Quiet-period delays (ms) at which settle verification re-measures after the last measurement
  * activity. Box geometry can drift with no resize event on the observed container: content settling
- * elsewhere in the strip shifts box positions without resizing the container, and a box reaching
- * its final width doesn't change the container's size either (proven in the running app — the strip
- * content row resized twice after the last observer event while the container stayed fixed). Each
- * verification pass re-measures; one that applies new geometry restarts the schedule from the first
- * delay, one that finds a fixed point (or a frozen oscillation) advances to the next delay and the
- * chain stops after the last. Roughly doubling delays cover late reflows (fonts, morpheme rows) out
- * to ~1.4s — comfortably past the observed settle — at a cost of at most three idle re-measures per
- * settle burst.
+ * elsewhere shifts box positions without resizing the container, and a box reaching its final width
+ * doesn't change the container's size either. Each verification pass re-measures; one that applies
+ * new geometry restarts the schedule from the first delay, one that finds a fixed point (or a
+ * frozen oscillation) advances to the next delay, and the chain stops after the last. Doubling
+ * delays cover late reflows (fonts, morpheme rows) out to ~1.4s at a cost of at most three idle
+ * re-measures per settle burst.
  */
 const SETTLE_VERIFY_DELAYS_MS = [200, 400, 800];
 
@@ -84,8 +81,8 @@ function signatureOf(
  *
  * Measurement is settle-aware: because box geometry can drift without any resize event on the
  * observed container (see {@link SETTLE_VERIFY_DELAYS_MS}), each pass arms a delayed verification
- * re-measure that repeats until the measured geometry reaches a stable fixed point, so arcs always
- * converge on the strip's final layout even when the last reflow produces no observer event.
+ * re-measure that repeats until the geometry reaches a fixed point, so arcs converge on the strip's
+ * final layout even when the last reflow produces no observer event.
  *
  * The hook owns its top/left/right padding and re-measures when any changes, because the applied
  * padding shifts the layout the arcs are measured against — otherwise a 0→1 arc transition would
@@ -136,26 +133,24 @@ export function useArcPaths(
   const depsVersion = depsVersionRef.current;
 
   /**
-   * Serialized signatures of the hook's two most recent applied measurements, most-recent first (so
-   * entry 0 is always the currently-applied state). A non-forced measurement matching entry 0 is a
-   * fixed point — the layout re-settled to exactly what's applied — and is skipped as pure echo.
-   * One matching entry 1 is ambiguous: either a period-2 oscillation (padding A → re-wrap → padding
-   * B → re-wrap → padding A → …) or a genuine recovery from a transient mis-measure; the flip
-   * counter below disambiguates by allowing a bounded number of consecutive flip-backs. Without
-   * this guard the cross-row gutter padding (which shifts where tokens wrap, which changes the
-   * arcs, which changes the padding) never reaches a fixed point and the ResizeObserver spins at
-   * frame rate, freezing the WebView. Empty so the first measure always runs; reset whenever a
-   * genuine input change forces a measure.
+   * Serialized signatures of the two most recent applied measurements, most-recent first (entry 0
+   * is always the currently-applied state). A non-forced measurement matching entry 0 is a fixed
+   * point and is skipped as pure echo. One matching entry 1 is ambiguous: either a period-2
+   * oscillation (padding A → re-wrap → padding B → re-wrap → padding A → …) or a genuine recovery
+   * from a transient mis-measure; the flip counter disambiguates by allowing a bounded number of
+   * consecutive flip-backs. Without this guard the cross-row gutter padding (which shifts where
+   * tokens wrap, which changes the arcs, which changes the padding) never reaches a fixed point and
+   * the ResizeObserver spins at frame rate, freezing the WebView. Empty so the first measure always
+   * runs; reset whenever a forced measure occurs.
    */
   const recentArcSignaturesRef = useRef<string[]>([]);
 
   /**
    * Count of consecutive non-forced applies whose signature matched the recent-signature history
-   * (flip-backs) without an intervening fixed point, fresh signature, or forced measure. While
-   * below {@link MAX_CONSECUTIVE_SIGNATURE_FLIPS} a history match is applied anyway (a transient
-   * collapse-then-recover reproduces its pre-collapse signature and must not be swallowed); at the
-   * cap further history matches are skipped, freezing a true period-2 oscillation after a bounded
-   * number of extra passes.
+   * (flip-backs) without an intervening fixed point, fresh signature, or forced measure. Below
+   * {@link MAX_CONSECUTIVE_SIGNATURE_FLIPS} a history match is applied anyway (a transient
+   * collapse-then-recover must not be swallowed); at the cap further history matches are skipped,
+   * freezing a true period-2 oscillation after a bounded number of passes.
    */
   const flipCountRef = useRef(0);
 
@@ -169,16 +164,15 @@ export function useArcPaths(
     /**
      * Runs one measurement pass against `container` and flushes the results into state. Called from
      * the layout effects, the ResizeObserver, and its own settle-verification timeout (named so the
-     * timeout can re-enter it — the outer `measure` const is the same function). Per-field equality
-     * guards keep stable measurements from churning state.
+     * timeout can re-enter it). Per-field equality guards keep stable measurements from churning
+     * state.
      *
      * @param container - The element to measure phrase boxes inside.
      * @param force - When `true`, measure even if the signature was recently seen, and reset the
      *   recent-signature history afterward. Used for genuine input changes (token data, phrase
      *   mode, enabled); other callers pass `false` so echoes and oscillations are damped.
-     * @param isVerify - `true` when this pass was scheduled by the settle-verification timer rather
-     *   than an observer event or effect; such passes advance the verification round when they find
-     *   nothing new, so the chain terminates.
+     * @param isVerify - `true` when scheduled by the settle-verification timer; such passes advance
+     *   the verification round when they find nothing new, so the chain terminates.
      */
     function measurePass(container: Element, force: boolean, isVerify = false) {
       const { paths, maxLevel, leftPadding, rightPadding } = computeAllArcPaths(container);
@@ -204,12 +198,11 @@ export function useArcPaths(
         apply = true;
       }
 
-      // Settle verification: geometry can drift with no resize event on the observed container
-      // (positions shift when content elsewhere settles; a box reaching final width doesn't resize
-      // the container), so every pass arms a delayed re-measure. Ordinary passes restart the
-      // schedule; verification passes that found nothing new advance to the next (longer) delay so
-      // the chain stops after SETTLE_VERIFY_DELAYS_MS runs out — including in the frozen-oscillation
-      // state, where each verification skips and the chain dies instead of re-fueling the loop.
+      // Settle verification: geometry can drift with no resize event on the observed container, so
+      // every pass arms a delayed re-measure. Ordinary passes restart the schedule; verification
+      // passes that found nothing new advance to the next (longer) delay so the chain stops after
+      // SETTLE_VERIFY_DELAYS_MS runs out — including in the frozen-oscillation state, where each
+      // verification skips and the chain dies instead of re-fueling the loop.
       if (!isVerify || apply) settleVerifyRoundRef.current = 0;
       else settleVerifyRoundRef.current += 1;
       clearTimeout(settleVerifyTimerRef.current);
@@ -225,9 +218,9 @@ export function useArcPaths(
       // other applies prepend onto a 2-deep window so entry 0 stays the applied signature.
       recentArcSignaturesRef.current = force ? [signature] : [signature, ...history].slice(0, 2);
       setArcPaths((prev) => {
-        // Include the split-button geometry (midX/midY and run bounds) so that a deconfliction-only
-        // shift — which mutates midX without touching `d` — still replaces the paths rather than
-        // reusing the stale array and leaving the button in its pre-shift position.
+        // Include the split-button geometry (midX/midY and run bounds) so a deconfliction-only shift
+        // — which mutates midX without touching `d` — still replaces the paths rather than leaving
+        // the button in its pre-shift position.
         const key = (p: ArcPath) =>
           `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}:${p.midX}:${p.midY}:${p.runLeft}:${p.runRight}`;
         const prevKey = prev.map(key).join('|');
@@ -246,8 +239,8 @@ export function useArcPaths(
   // The callback is deferred to the next frame, not run synchronously: measuring sets the strip's
   // padding, which resizes the wrapping row, which the observer reports as a new resize. Measuring
   // synchronously turns that into a same-tick setState storm React escalates to "Maximum update
-  // depth exceeded" (the crash when shrinking enough to wrap many cross-row arcs). One measurement
-  // per frame lets layout settle between passes (and silences the "ResizeObserver loop" warning).
+  // depth exceeded". One measurement per frame lets layout settle between passes (and silences the
+  // "ResizeObserver loop" warning).
   //
   // `force: false` makes the observer skip a re-measure whose result matches the last one — the
   // self-induced echo from our own padding application — so the cross-row gutter feedback loop
@@ -264,8 +257,8 @@ export function useArcPaths(
     return () => {
       cancelAnimationFrame(rafId);
       observer.disconnect();
-      // Also stop any pending settle verification: after unmount (or container change) its captured
-      // container is stale, and the input-driven measure re-arms the chain if we're still live.
+      // Stop any pending settle verification: after unmount (or container change) its captured
+      // container is stale; the input-driven measure re-arms the chain if still live.
       clearTimeout(settleVerifyTimerRef.current);
     };
   }, [containerRef, enabled, measure]);
@@ -277,8 +270,8 @@ export function useArcPaths(
     const container = enabled ? containerRef.current : undefined;
     if (!container) {
       // Reset the echo guard so re-enabling re-measures from scratch rather than matching a stale
-      // signature left over from before the container unmounted, and stop the settle-verification
-      // chain — its captured container no longer reflects a live measurement target.
+      // signature, and stop the settle-verification chain (its captured container no longer reflects
+      // a live measurement target).
       recentArcSignaturesRef.current = [];
       flipCountRef.current = 0;
       settleVerifyRoundRef.current = 0;
@@ -292,12 +285,12 @@ export function useArcPaths(
     measure(container, true);
   }, [containerRef, enabled, depsVersion, measure]);
 
-  // Padding-driven re-measure: applying the hook's own top/row/left/right padding shifts the
-  // layout the arcs are measured against (see the hook doc), so a padding change must re-measure
-  // once to reposition the paths. `force: false` applies the echo guard: if the re-measure
-  // reproduces the last signature — the common case, and the only outcome when the gutter padding
-  // would otherwise oscillate (pad → re-wrap → pad → …) — it stops here instead of looping. A
-  // padding change that yields genuinely new geometry still flows through and settles next pass.
+  // Padding-driven re-measure: applying the hook's own top/row/left/right padding shifts the layout
+  // the arcs are measured against (see the hook doc), so a padding change must re-measure once to
+  // reposition the paths. `force: false` applies the echo guard: if the re-measure reproduces the
+  // last signature (the common case, and the only outcome when the gutter padding would otherwise
+  // oscillate) it stops here instead of looping. New geometry still flows through and settles next
+  // pass.
   useLayoutEffect(() => {
     const container = enabled ? containerRef.current : undefined;
     if (!container) return;

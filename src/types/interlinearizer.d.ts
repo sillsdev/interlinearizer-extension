@@ -539,12 +539,9 @@ declare module 'interlinearizer' {
 
     /**
      * Where each source verse begins within `baselineText`, in document order, for rendering inline
-     * verse-number superscripts. A verse-per-verse segment has exactly one entry at `charStart: 0`;
-     * a merged segment has one entry per verse it absorbed (each `charStart` pointing at that
-     * verse's first character in the concatenated baseline); a split segment's later piece begins
-     * mid-verse and carries a single entry at `charStart: 0` for that verse, flagged
-     * `isContinuation` so it keeps the segment "containing" the verse (for navigation) without
-     * rendering a duplicate superscript.
+     * verse-number superscripts. One entry per verse the segment contains, each `charStart`
+     * pointing at that verse's first character. A split segment's continuation piece carries one
+     * entry at `charStart: 0` flagged `isContinuation`.
      */
     verseStarts: VerseStart[];
   }
@@ -570,18 +567,16 @@ declare module 'interlinearizer' {
 
     /**
      * 1-based chapter this verse belongs to. Carried explicitly so the renderer can decide chapter
-     * qualification from the verse start itself rather than parsing the ref of the token at
-     * `charStart` — which does not exist for an empty verse (a note-only marker) or lands on the
-     * wrong token when the verse's baseline begins with whitespace.
+     * qualification without parsing the ref of the token at `charStart`, which may not exist (empty
+     * verse) or may be the wrong token (verse baseline begins with whitespace).
      */
     chapter: number;
 
     /**
-     * `true` when this entry marks a verse that actually _begins_ in a previous segment and merely
-     * continues into this one — the leading verse start of a mid-verse split's later piece. Such an
-     * entry keeps the segment "containing" the verse for navigation and highlight, but renders
-     * **no** superscript: the number already showed where the verse truly started, so repeating it
-     * at the continuation's start would duplicate it. Absent (falsy) for a genuine verse start.
+     * `true` when this verse begins in a previous segment and merely continues into this one — the
+     * leading verse start of a split's continuation piece. Such an entry keeps the segment
+     * "containing" the verse for navigation and highlight but renders no superscript (the number
+     * already showed at the true start). Absent (falsy) for a genuine verse start.
      */
     isContinuation?: boolean;
   }
@@ -1150,40 +1145,37 @@ declare module 'interlinearizer' {
   // ---------------------------------------------------------------------------
 
   /**
-   * A user's custom segment boundaries, stored as a **delta from the default one-segment-per-verse
-   * segmentation** rather than as explicit segment definitions.
+   * A user's custom segment boundaries, stored as a delta from the default one-segment-per-verse
+   * segmentation rather than as explicit segment definitions.
    *
-   * The text layer is rebuilt from USJ on every load as one `Segment` per verse (see {@link Book}).
-   * A segment is otherwise just a maximal contiguous run of the book's document-order token stream
-   * between "start" tokens; the default start tokens are each verse's first token. This delta
-   * records where the user's boundaries differ from that default:
+   * A segment is a maximal contiguous run of the book's document-order token stream between "start"
+   * tokens; by default the start tokens are each verse's first token. This delta records where the
+   * user's boundaries differ:
    *
-   * - A verse's first token listed in `removedVerseStarts` no longer starts a segment, so that verse
-   *   is **merged** into the preceding segment.
-   * - A mid-verse token listed in `addedStarts` starts a new segment, **splitting** its verse.
+   * - A verse's first token in `removedVerseStarts` no longer starts a segment, so that verse is
+   *   **merged** into the preceding segment.
+   * - A mid-verse token in `addedStarts` starts a new segment, **splitting** its verse.
    *
-   * Boundaries are anchored to token refs (stable opaque ids), so the model degrades gracefully
-   * when the baseline text drifts: an anchor whose token no longer exists is ignored on load,
-   * leaving every other boundary intact. Because a segment can only ever be a contiguous run
-   * between start tokens, discontiguous segments are unrepresentable by construction.
+   * Anchoring to token refs (stable opaque ids) lets the model degrade gracefully when the baseline
+   * drifts: an anchor whose token no longer exists is ignored on load, leaving other boundaries
+   * intact. Because a segment is always a contiguous run between start tokens, discontiguous
+   * segments are unrepresentable by construction.
    *
-   * Absent (`undefined`) ⇒ the default verse segmentation. The empty delta (both arrays empty) is
-   * equivalent.
+   * Absent (`undefined`) or the empty delta ⇒ the default verse segmentation.
    */
   export interface SegmentationDelta {
     /**
-     * Refs of a verse's first token in the default segmentation that should **not** start a segment
-     * — i.e. the verse is merged into the preceding segment. This is the verse's leading token of
-     * **any** type (a verse beginning with punctuation contributes that punctuation ref), matching
-     * how the default starts are derived (each verse's first token). A ref whose token no longer
-     * exists is ignored on load.
+     * Refs of a verse's first token that should **not** start a segment, merging that verse into
+     * the preceding segment. This is the verse's leading token of **any** type (a verse beginning
+     * with punctuation contributes that punctuation ref), matching how default starts are derived.
+     * A ref whose token no longer exists is ignored on load.
      */
     removedVerseStarts: string[];
 
     /**
-     * Mid-verse word-token refs that should start a new segment — i.e. the verse is split before
-     * this token. Split anchors are always word tokens (leading punctuation stays with the run it
-     * follows). A ref whose token no longer exists is ignored on load.
+     * Mid-verse word-token refs that should start a new segment, splitting the verse before this
+     * token. Always word tokens (leading punctuation stays with the run it follows). A ref whose
+     * token no longer exists is ignored on load.
      */
     addedStarts: string[];
   }

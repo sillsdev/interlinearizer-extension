@@ -232,8 +232,7 @@ jest.mock('../../components/SegmentView', () => ({
       onHoverPhrase,
       ...rest,
     });
-    // Surface the Alt-held context so the wiring test can confirm Interlinearizer feeds it from
-    // useAltHeld. Read lazily (not via an outer import) because jest.mock factories are hoisted.
+    // Read lazily (not via an outer import) because jest.mock factories are hoisted.
     // eslint-disable-next-line global-require, @typescript-eslint/no-require-imports
     const { useAltHeldValue } = require('../../components/AltHeldContext');
     return (
@@ -436,9 +435,8 @@ const GEN_1_EMPTY_MIDDLE_BOOK: Book = withDefaultVerseStarts({
 });
 
 /**
- * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Used to exercise the
- * focus-reseed guard when the host echoes a click back at chapter granularity (verse-0 / first
- * verse), which a verse-exact guard would misread as the chapter's first segment.
+ * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Exercises the
+ * focus-reseed guard against a host click echoed back at chapter granularity.
  */
 const GEN_TWO_CHAPTER_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
@@ -521,7 +519,7 @@ const GEN_SPLITTABLE_V1_BOOK: Book = withDefaultVerseStarts({
  * {@link GEN_SPLITTABLE_V1_BOOK} with verse 1 split before its second word, so verse 1 becomes two
  * portions ("1a" = segment `GEN 1:1` holding `GEN 1:1:0`; "1b" = segment `GEN 1:1:3` holding `GEN
  * 1:1:3`). Both portions' verse ranges contain verse 1, so a verse-1 navigation resolves to the
- * first portion — the condition behind the non-first-portion focus bug.
+ * first portion.
  */
 const GEN_V1_SPLIT_BOOK: Book = resegmentBook(withDefaultVerseStarts(GEN_SPLITTABLE_V1_BOOK), {
   removedVerseStarts: [],
@@ -658,8 +656,8 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
-  // resetMocks clears the shared useLocalizedStrings implementation the between-rows merge
-  // control's label relies on; re-establish the key-to-itself mapping.
+  // resetMocks clears the shared useLocalizedStrings implementation; re-establish the
+  // key-to-itself mapping the merge control's label relies on.
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [
@@ -806,9 +804,8 @@ describe('Interlinearizer', () => {
   });
 
   it('writes a verse-0 reference to the host when a verse-0 token is selected', () => {
-    // Selecting a superscription token navigates the host to verse 0 like any other verse; the
-    // 'internal' origin records a nav marker so the segment window skips the recenter fade for our
-    // own move. Default scrRef is GEN 1:1, so this is a real verse change.
+    // Selecting a superscription token navigates the host to verse 0 like any other verse. Default
+    // scrRef is GEN 1:1, so this is a real verse change.
     const mockNavigate = jest.fn();
     renderInterlinearizer({ book: GEN_SUPERSCRIPTION_BOOK, navigate: mockNavigate });
 
@@ -933,9 +930,8 @@ describe('Interlinearizer', () => {
 
   it('does not echo scrRef when the focused token belongs to a different book than scrRef', () => {
     // During an external book change scrRef names the new book before its data loads, so the
-    // mounted book (and its focused token) still belong to the previous book. The echo-back effect
-    // must not fire that stale book's verse back as scrRef. Here the mounted book is GEN but scrRef
-    // names EXO, so a GEN focus move must not call navigate.
+    // mounted book (and its focused token) still belong to the previous book. Here the mounted book
+    // is GEN but scrRef names EXO, so a GEN focus move must not echo back as scrRef.
     const mockNavigate = jest.fn();
     renderInterlinearizer({
       book: GEN_1_MULTI_BOOK,
@@ -1109,10 +1105,9 @@ describe('Interlinearizer', () => {
   });
 
   it('keeps the clicked token focused when the host echoes the click back as the clicked verse', () => {
-    // Active verse starts at GEN 1:1. Click a token in a later chapter/verse (GEN 2:2): focus is set
-    // to 'GEN 2:2:0'. The host echoes the navigation back as the actual clicked verse (GEN 2:2). The
-    // verse-exact reseed guard must see focus already in the active verse and leave the deliberately
-    // clicked token alone — never reseeding to the verse's (here, the only) first word from scratch.
+    // Active verse starts at GEN 1:1. Click a token in a later chapter/verse (GEN 2:2), setting
+    // focus to 'GEN 2:2:0'; the host then echoes the navigation back as the clicked verse (GEN 2:2).
+    // The reseed guard must see focus already in the active verse and leave the clicked token alone.
     const { rerender } = renderInterlinearizer({
       book: GEN_TWO_CHAPTER_BOOK,
       continuousScroll: false,
@@ -1150,10 +1145,9 @@ describe('Interlinearizer', () => {
   });
 
   it('reseeds focus to the first word of the active verse on an external within-chapter jump', () => {
-    // A genuine external jump within a long chapter (here GEN 2:1 → GEN 2:2) must move focus to the
-    // newly-named verse — a chapter-wide guard would wrongly strand focus on the old verse. Focus
-    // starts at the active verse's first word; after the jump it must point at the new verse's word.
-    // The segment view's focus highlight lags through the recenter fade, so advance past it.
+    // A genuine external jump within a chapter (GEN 2:1 → GEN 2:2) must move focus to the newly-named
+    // verse's first word. The segment view's focus highlight lags through the recenter fade, so
+    // advance past it.
     jest.useFakeTimers();
     try {
       const { rerender } = renderInterlinearizer({
@@ -1187,10 +1181,9 @@ describe('Interlinearizer', () => {
 
   it('keeps focus on a clicked non-first portion of a split verse', () => {
     // Verse 1 is split into portions "1a" (GEN 1:1) and "1b" (GEN 1:1:3). Focus starts on verse 2.
-    // Clicking a token in "1b" sets focus to 'GEN 1:1:3' and navigates to verse 1. The host echoes
-    // verse 1 back, firing the reseed effect: its guard must recognize that the focused token
-    // already sits in a segment (portion "1b") containing verse 1 and leave it alone — rather than
-    // reseeding to the *first* portion ("1a") and snapping focus to that portion's first word.
+    // Clicking a token in "1b" sets focus to 'GEN 1:1:3' and navigates to verse 1; the host echoes
+    // verse 1 back, firing the reseed effect. Its guard must recognize the focused token already
+    // sits in a segment containing verse 1 and leave it alone, not reseed to portion "1a".
     const { rerender } = render(
       withNav(
         <Interlinearizer
@@ -1241,11 +1234,10 @@ describe('Interlinearizer', () => {
   });
 
   it('reseeds focus out of a split portion on an external jump to a verse it does not contain', () => {
-    // The negative counterpart to the split-portion focus test: focus sits in portion "1b"
-    // (GEN 1:1:3), which contains verse 1 but not verse 2. A genuine external jump to verse 2 lands
-    // outside the focused token's segment, so the containment guard must let the reseed run and move
-    // focus to verse 2's first word — proving the guard is verse-exact and not merely chapter-wide.
-    // The segment view's focus highlight lags through the recenter fade, so advance past it.
+    // Focus sits in portion "1b" (GEN 1:1:3), which contains verse 1 but not verse 2. A genuine
+    // external jump to verse 2 lands outside the focused token's segment, so the containment guard
+    // lets the reseed run and moves focus to verse 2's first word. The segment view's focus highlight
+    // lags through the recenter fade, so advance past it.
     jest.useFakeTimers();
     try {
       const { rerender } = render(
@@ -1416,10 +1408,8 @@ describe('Interlinearizer', () => {
       });
 
       // Fire a scroll to queue the coalescing rAF, then unmount before the frame runs. The effect
-      // cleanup must cancel that exact frame so its readTopChapter never fires against the detached
-      // container. Capture the handle the scroll schedules and assert cancelAnimationFrame is called
-      // with it — other cleanups may also cancel frames, so match the specific handle rather than
-      // any call.
+      // cleanup must cancel that exact frame. Other cleanups may also cancel frames, so capture the
+      // handle the scroll schedules and match it specifically rather than asserting on any call.
       const scrollContainer = container.querySelector('.tw\\:overflow-y-auto');
       if (!scrollContainer) throw new Error('scroll container not found');
       const scheduledHandles: number[] = [];
@@ -1675,10 +1665,9 @@ describe('Interlinearizer', () => {
         throw new Error('Expected GEN 1:7 onSelect to be a function');
       act(() => select({ book: 'GEN', chapter: 1, verse: 7 }, 'GEN 1:7:0'));
 
-      // Target the inner list wrapper (tw:gap-2) — the one that fades on external nav via isFaded —
-      // matching the positive-fade test above. The bare .tw:transition-opacity selector would return
-      // the outer mode-toggle wrapper instead, whose opacity is never driven here, masking a regressed
-      // (non-suppressed) recenter fade of the list.
+      // Target the inner list wrapper (tw:gap-2) — the one that fades on external nav via isFaded.
+      // The bare .tw:transition-opacity selector would return the outer mode-toggle wrapper instead,
+      // whose opacity is never driven here.
       expect(container.querySelector('.tw\\:gap-2.tw\\:transition-opacity')).toHaveStyle({
         opacity: '1',
       });
@@ -1844,7 +1833,7 @@ describe('between-rows merge control', () => {
     const raw: SegmentationDispatch = { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK, segmentationDispatch: raw });
     // Two rows -> exactly one gap between them, always carrying the rail and an enabled merge button
-    // (no Alt required). The old blank inert spacer is gone.
+    // (no Alt required).
     expect(screen.queryByTestId('segment-row-gap')).not.toBeInTheDocument();
     const buttons = screen.getAllByTestId('segment-merge-btn');
     expect(buttons).toHaveLength(1);

@@ -131,9 +131,8 @@ export type UseDraftProjectResult = {
  * draft wholesale (New / Open / Wipe).
  *
  * The full draft lives in a ref — the synchronous source of truth for persistence and Save — while
- * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders. As a
- * result per-edit auto-saves never re-render the loader unless the dirty flag actually flips,
- * matching the prior behavior where editing did not re-render the loader.
+ * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders, so
+ * per-edit auto-saves never re-render the loader unless the dirty flag actually flips.
  *
  * @param sourceProjectId - The Platform.Bible source project whose draft to manage.
  * @param platformLanguage - BCP 47 tag used to seed `analysisLanguages` for a brand-new source.
@@ -163,12 +162,10 @@ export default function useDraftProject(
    * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
    * failure; here we only log so a rejected write never throws into a render or event handler.
    *
-   * Note: the draft is the **only** persistence path — there is no secondary write on blur or
-   * unmount that would retry a failed autosave. If storage is unavailable during editing, the
-   * backend sends one error notification per failed write; if that notification itself fails (the
-   * `.catch(() => {})` in `main.ts`), edits made in that window are silently lost on the next page
-   * refresh. The tab title's `●` marker stays lit because `dirty` is set optimistically before the
-   * write, not in response to its outcome.
+   * This is the only persistence path — there is no retry on blur or unmount. If storage is
+   * unavailable during editing the backend sends one error notification per failed write; should
+   * that notification itself fail, edits in that window are silently lost on the next refresh. The
+   * `dirty` flag is set optimistically before the write, not in response to its outcome.
    *
    * @param draft - The draft envelope to write.
    */
@@ -344,10 +341,8 @@ export default function useDraftProject(
       if (!current) return;
 
       // Drop the book's custom segment boundaries alongside its analysis: the anchors are working
-      // state keyed by book, so a per-book wipe that kept them would silently re-apply the wiped
-      // book's merges/splits on reload and leave the draft dirty over refs the user thought they
-      // removed. Clear the field when nothing remains for any other book, mirroring the persisted
-      // draft's default-segmentation minimalism.
+      // state keyed by book, so keeping them would re-apply the wiped book's merges/splits on
+      // reload. Clear the field when nothing remains for any other book.
       const segmentation = removeBookFromSegmentation(current.segmentation, bookCode);
       const next: DraftProject = {
         ...current,
@@ -366,11 +361,10 @@ export default function useDraftProject(
     /* v8 ignore next -- wipe is only reachable from the mounted editor */
     if (!current) return;
 
-    // Wiping the whole draft is treated as a clean baseline rather than an unsaved edit: it clears
-    // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
-    // draft. The active project is intentionally left untouched, so a subsequent Save still targets
-    // it. Per-book wipe stays dirty, since it is a partial edit the user will usually want to save.
-    // Custom segment boundaries are part of the working state, so a whole-draft wipe clears them too.
+    // Wiping the whole draft is treated as a clean baseline (dirty: false) so the user is not nagged
+    // to save an empty draft. The active project is left untouched, so a subsequent Save still
+    // targets it. Custom segment boundaries are working state, so a whole-draft wipe clears them too.
+    // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
     const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
     delete next.segmentation;
     applyReplacement(next);
@@ -384,10 +378,9 @@ export default function useDraftProject(
 
       // If an edit landed during the save round-trip, the auto-save has already swapped a newer
       // analysis or boundary delta (a fresh object) into the ref and marked the draft dirty. Leave
-      // it dirty so the unsaved indicator and the next Save reflect that un-persisted edit, rather
-      // than clearing it against the now-stale snapshot we just wrote. Both fields are compared:
-      // a boundary edit carries `analysis` over by reference, so checking the analysis alone would
-      // wrongly clear the dirty flag over an unsaved segmentation change.
+      // it dirty so the next Save reflects that un-persisted edit rather than clearing against the
+      // stale snapshot. Both fields are compared: a boundary edit carries `analysis` over by
+      // reference, so checking analysis alone would wrongly clear dirty over a segmentation change.
       if (current.analysis !== savedAnalysis || current.segmentation !== savedSegmentation) return;
 
       // Cancel any pending debounced autosave before persisting the clean state so a stale

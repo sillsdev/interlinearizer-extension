@@ -24,10 +24,9 @@ export type FocusContext = {
 };
 
 /**
- * The complete bundle of focus-derived inputs `TokenLinkIcon` needs for a single between-group
- * slot. Combines the slot-specific direction/segment flags with the two focus-context fields the
- * icon reads directly (`focusedPhraseLink` / `focusedFreeToken`), so the icon takes one focus
- * object instead of four separate props.
+ * The focus-derived inputs `TokenLinkIcon` needs for a single between-group slot: the slot-specific
+ * direction/segment flags plus the two focus-context fields the icon reads directly
+ * (`focusedPhraseLink` / `focusedFreeToken`), bundled so the icon takes one focus object.
  */
 export type SlotFocusInfo = {
   /**
@@ -43,10 +42,10 @@ export type SlotFocusInfo = {
   isSameSegmentAsFocus: boolean;
   /**
    * `true` when this slot is the boundary between the focused token's segment and an immediately
-   * adjacent segment — i.e. one neighbor is in the focused segment and the other is in the segment
-   * directly before or after it in document order. The cross-segment link button is active only at
-   * these edges, so pulling an adjacent segment's edge token into the focused phrase moves the
-   * boundary by exactly one token and keeps both segments contiguous.
+   * adjacent segment (one neighbor in the focused segment, the other in the segment directly before
+   * or after it in document order). The cross-segment link button is active only at these edges, so
+   * pulling an adjacent segment's edge token into the focused phrase moves the boundary by one
+   * token and keeps both segments contiguous.
    */
   isAdjacentEdgeOfFocus: boolean;
   /** The phrase containing the focused token, or `undefined` when the focused token is free. */

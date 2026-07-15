@@ -125,10 +125,8 @@ describe('tokenizeBook', () => {
     const text = 'A B C.';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
     const { tokens } = segments[0];
-    // Refs must be unique so each token can be referenced unambiguously.
     const refs = tokens.map((t) => t.ref);
     expect(new Set(refs).size).toBe(refs.length);
-    // Each token must be retrievable by its ref.
     refs.forEach((ref, i) => {
       expect(tokens.find((t) => t.ref === ref)).toBe(tokens[i]);
     });
@@ -140,13 +138,11 @@ describe('tokenizeBook', () => {
       { sid: 'GEN 1:2', text: 'Word.' },
     ]);
     const book = tokenizeBook(raw);
-    // Each token ref must start with its segment's id (the SID).
     book.segments.forEach((s) => {
       s.tokens.forEach((t) => {
         expect(t.ref.startsWith(s.id)).toBe(true);
       });
     });
-    // All token refs across all segments must be globally unique.
     const refs = book.segments.flatMap((s) => s.tokens.map((t) => t.ref));
     expect(new Set(refs).size).toBe(refs.length);
   });
@@ -181,8 +177,7 @@ describe('tokenizeBook', () => {
 
   it('treats a combining-mark sequence as a single word token', () => {
     // 'ñ' is the letter n followed by a combining tilde (U+0303).
-    // The \p{M} branch of TOKEN_RE must match the combining mark so the whole
-    // sequence is captured as one token rather than split.
+    // the combining mark must be absorbed so the whole sequence is one token, not split.
     const text = 'ñ';
     expect(text.length).toBe(2); // n (U+006E) + combining tilde (U+0303)
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
@@ -333,8 +328,7 @@ describe('tokenizeBook', () => {
 
   it('classifies astral-plane letters (surrogate pairs) as word tokens', () => {
     // Gothic letters U+10330–U+1034F are outside the BMP; each code point is two UTF-16 code
-    // units. Testing surfaceText[0] (a lone surrogate) against WORD_CONTAIN_RE would fail — the
-    // fix is to test the full surfaceText string.
+    // units, so classification must test the full surfaceText string, not a lone leading surrogate.
     const text = '𐌰𐌱𐌲';
     const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text }]));
     expect(segments[0].tokens).toHaveLength(1);

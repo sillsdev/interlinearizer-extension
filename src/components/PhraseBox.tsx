@@ -21,7 +21,7 @@ import { NO_SLOT_FOCUS } from '../utils/token-layout';
  * Separated into its own component so hooks are always called unconditionally. The placeholder
  * comes from strip context (fetched once per strip) rather than a per-instance
  * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
- * first frame instead of widening when a per-mount fetch resolves.
+ * first frame.
  *
  * @param props - Component props
  * @param props.phraseId - ID of the `PhraseAnalysis` to read/write.
@@ -186,9 +186,9 @@ export function PhraseBox({
     glossPlaceholder,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
-  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
-  // gap they occupy is preserved. The remove-token ✕ is omitted from onRemove instead (it only
-  // appears as a prop-driven overlay, so omitting it has no layout impact).
+  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) to preserve the
+  // layout gap they occupy; the remove-token ✕ is omitted from onRemove instead (it's a prop-driven
+  // overlay, so omitting it has no layout impact).
   const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -201,18 +201,15 @@ export function PhraseBox({
   const handleFocus = useCallback(() => onFocusPhrase(groupKey), [groupKey, onFocusPhrase]);
 
   /**
-   * Focuses the box's first gloss input when any non-interactive part of the box is clicked — the
-   * bordered container, the token-row wrapper spans, the padding, or the gloss area around the
-   * input. Each token chip's own input/button handles its own focus, so clicks that land directly
-   * on one of those are left alone (the `closest` check); everything else is treated as "click the
-   * phrase" and forwards focus to the first gloss input, which fires its `onFocus` →
-   * {@link onFocusPhrase} and so highlights this phrase. This is what makes clicking the body of a
-   * phrase box (not just a chip) select it; without it, such clicks fell through to the segment
-   * background handler, which focused the segment's first phrase instead. Focus is forwarded with
-   * `preventScroll` — the user clicked something already on screen, so the browser's default
-   * scroll-focused-element-into-view would realign the segment list for no reason (the input may
+   * Focuses the box's first gloss input when any non-interactive part of the box is clicked (the
+   * container, wrapper spans, padding, or gloss area), so clicking the phrase body — not just a
+   * chip — selects it. Each token chip's own input/button handles its own focus, so clicks landing
+   * directly on one are left alone (the `closest` check); everything else forwards focus to the
+   * first gloss input, whose `onFocus` → {@link onFocusPhrase} highlights this phrase. Focus is
+   * forwarded with `preventScroll` because the clicked element is already on screen, so the
+   * browser's default scroll-into-view would realign the segment list for no reason (the input may
    * sit on another wrapped row of the phrase, partially out of view). Morpheme gloss inputs are
-   * excluded from the lookup — when morphology is shown they precede the token gloss input in DOM
+   * excluded from the lookup: when morphology is shown they precede the token gloss input in DOM
    * order, and only the token gloss input fires the `onFocus` → {@link onFocusPhrase} chain.
    *
    * @param e - The container's click event.
@@ -321,18 +318,16 @@ export function PhraseBox({
 
   const isRealPhrase = phraseLink !== undefined;
 
-  // The pop-out (✕) guard below must compare against the phrase's first/last token in *document*
-  // order, not stored order. The stored token list is kept sorted by all current write paths, but
-  // we sort defensively here (matching `splitPhraseAtBoundary`) so legacy/unsorted data still places
-  // the ✕ on the visually-first/last tokens rather than wherever they happen to sit in storage.
+  // The pop-out (✕) guard below compares against the phrase's first/last token in *document* order,
+  // not stored order. Sorted defensively here (matching `splitPhraseAtBoundary`) so unsorted data
+  // still places the ✕ on the visually-first/last tokens rather than wherever they sit in storage.
   const orderedPhraseRefs = phraseLink
     ? sortByDocOrder(phraseLink.tokens, tokenDocOrder).map((t) => t.tokenRef)
     : [];
 
   // The whole box previews as becoming free only when it is a lone single-token fragment that would
-  // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box always reddens the
-  // affected chips individually below, even when every token would be freed (a 2-token phrase
-  // splits into two free tokens, but each is shown on its own chip rather than as a box).
+  // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box reddens the
+  // affected chips individually below, even when every token would be freed.
   const isBoxSplitFree = tokens.length === 1 && (splitFreeTokenRefs?.has(tokens[0].ref) ?? false);
 
   if (phraseMode.kind === 'view') {
@@ -392,15 +387,15 @@ export function PhraseBox({
               <span key={token.ref} className="tw:phrase-token-row">
                 {i > 0 && (
                   // Intra-phrasal (inter-token) gap column, stacked to match the inter-phrasal
-                  // PhraseSlot column exactly so the unlink icon and gap punctuation land at the
-                  // same vertical offset whether the gap is inside a phrase box or between two
-                  // boxes: a FIXED-height punctuation row sits first (so a gap carrying punctuation
-                  // is exactly as tall as an empty one), then the unlink icon below it.
+                  // PhraseSlot column so the unlink icon and gap punctuation land at the same
+                  // vertical offset whether the gap is inside a phrase box or between two: a
+                  // fixed-height punctuation row first (so a gap carrying punctuation is exactly as
+                  // tall as an empty one), then the unlink icon below it.
                   //
-                  // The nudge is `mt-px` (1px), not the slot's `mt-1` (4px): the slot sits OUTSIDE
-                  // the phrase box and its `mt-1` clears the box's top border + `py-0.5` padding to
-                  // reach the surface-text baseline, but this column already sits INSIDE the box,
-                  // below that 3px (border + padding), so it needs only the remaining 1px.
+                  // The nudge is `mt-px` (1px), not the slot's `mt-1` (4px): the slot sits outside
+                  // the box and clears its top border + `py-0.5` padding to reach the surface-text
+                  // baseline, but this column already sits inside the box, below that 3px, so it
+                  // needs only the remaining 1px.
                   <span className="tw:mt-px tw:inline-flex tw:flex-col tw:items-center">
                     <span className="tw:inline-flex tw:h-5 tw:flex-row tw:items-start tw:justify-center">
                       {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
@@ -414,9 +409,9 @@ export function PhraseBox({
                     {isRealPhrase && (
                       <span
                         // `inline-flex` (matching the slot's icon wrapper) so the span hugs the icon
-                        // at its exact 16px height. A bare inline span instead picks up the
-                        // surrounding line-box leading, adding a couple of pixels of dead space above
-                        // the icon that push the unlink button below its inter-phrase counterpart.
+                        // at its exact 16px height; a bare inline span picks up line-box leading,
+                        // adding dead space that pushes the unlink button below its inter-phrase
+                        // counterpart.
                         className="tw:inline-flex"
                         aria-hidden={controlsSuppressed || undefined}
                         style={{

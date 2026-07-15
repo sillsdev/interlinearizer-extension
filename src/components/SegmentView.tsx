@@ -38,9 +38,8 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders. A fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render, which (with one SegmentView per verse) escalates
- * into an infinite update loop that freezes the WebView.
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, escalating into an infinite update loop.
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
@@ -162,11 +161,9 @@ type BaselineSplitGapProps = Readonly<{
 }>;
 
 /**
- * Renders one splittable baseline-text gap. Reads the Alt-held state itself — rather than the
- * parent {@link SegmentView} reading it at component scope — so an Alt press/release re-renders only
- * these leaves (a handful per visible segment) instead of every mounted `SegmentView` and its whole
- * baseline-piece list. While Alt is not held the gap is its plain verbatim text, so the baseline
- * reads byte-for-byte identically and its width never changes; while Alt is held the gap gains a
+ * Renders one splittable baseline-text gap. Reads the Alt-held state itself so an Alt press/release
+ * re-renders only these leaves rather than every mounted `SegmentView`. While Alt is not held the
+ * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
  * lands.
  *
@@ -354,9 +351,8 @@ export function SegmentView({
   );
 
   // Both states carry a real border so activating a segment only recolors it — never adds or removes
-  // one, which would change the segment's height by 2px and shift every segment below it (a visible
-  // jump in the list whenever the active verse moves on a click). The inactive border is a faint
-  // (`border-border/40`) always-visible outline so each segment reads as its own card; activating
+  // one, which would change the segment's height by 2px and shift every segment below it. The
+  // inactive border is a faint (`border-border/40`) always-visible card outline; activating
   // brightens it to the full `border-border`.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
@@ -436,8 +432,8 @@ export function SegmentView({
    * splittable gaps. Slices are taken verbatim from `baselineText` (token surfaces, inter-token
    * gaps, and any leading/trailing text a token does not cover), so concatenating every piece's
    * text reproduces `baselineText` byte-for-byte — the only visible additions are the verse
-   * superscripts, exactly as before. A gap whose starting offset is a split anchor carries its
-   * `splitRef` so an Alt+click there can dispatch the split.
+   * superscripts. A gap whose starting offset is a split anchor carries its `splitRef` so an
+   * Alt+click there can dispatch the split.
    */
   const baselinePieces = useMemo<BaselinePiece[]>(
     () => buildBaselinePieces(segment, verseStartLabelByOffset, splitGapByOffset),
@@ -636,20 +632,15 @@ export function SegmentView({
    * Brings this segment's first phrase into focus and updates the active verse when the click lands
    * on segment background or structural wrappers rather than a genuinely interactive element. The
    * token row and arc container fill most of the segment, so a strict `target === currentTarget`
-   * check would only catch the thin padding ring; instead we ignore the click only when it
-   * originated inside an interactive element (token button, gloss input, etc.) or anywhere inside a
-   * phrase box, each of which handles its own selection. The `label` and `[data-phrase-box]` cases
-   * matter for clicks that land on a token chip's surrounding `<label>` or its surface-text span
-   * rather than directly on the gloss input: those targets are not in the interactive-tag list, but
-   * the browser still forwards the click to the chip's input (firing its own phrase focus), so the
-   * background handler must not also fire and override that focus with the segment's first phrase —
-   * which was most visible when clicking an out-of-segment phrase fragment. The `[data-link-slot]`
-   * case is the inter-phrase link slot: when its link button is visible the button absorbs the
-   * click, but when `hideInactiveLinkButtons` hides the button in place the slot becomes an empty
-   * clickable gap between phrases. Treating it as background was the bug where clicking near a
-   * phrase in an inactive segment (buttons hidden) snapped focus to the segment's first phrase;
-   * ignoring it leaves the click a no-op, matching the buttons-visible behavior. Everything else —
-   * padding, arc gutters, empty wrap space — focuses the first phrase.
+   * check would only catch the thin padding ring; instead we ignore the click when it originated
+   * inside an interactive element or anywhere inside a phrase box, each of which handles its own
+   * selection. The `label` and `[data-phrase-box]` cases cover clicks on a token chip's surrounding
+   * `<label>` or surface-text span: the browser forwards those to the chip's input (firing its own
+   * phrase focus), so the background handler must not override that focus. The `[data-link-slot]`
+   * case is the inter-phrase link slot, which becomes an empty clickable gap when
+   * `hideInactiveLinkButtons` hides its button in place; ignoring it keeps the click a no-op,
+   * matching the buttons-visible behavior. Everything else — padding, arc gutters, empty wrap space
+   * — focuses the first phrase.
    *
    * @param event - The click event on the segment container.
    */
@@ -713,12 +704,11 @@ export function SegmentView({
   ]);
 
   if (displayMode === 'baseline-text') {
-    // Intentional: baseline-text mode renders a clickable div, not a button, so the
-    // free-translation input can sit inside the same box (an input may not be nested in a button).
-    // The free-translation input is the only interactive child and handles its own focus, so the
-    // container only needs a click handler; a redundant key handler / role / tabIndex would add a
-    // non-functional tab stop, so the relevant a11y rules are disabled here (matching token-chip
-    // mode below).
+    // Baseline-text mode renders a clickable div, not a button, so the free-translation input can
+    // sit inside the same box (an input may not be nested in a button). That input is the only
+    // interactive child and handles its own focus, so the container only needs a click handler; a
+    // redundant key handler / role / tabIndex would add a non-functional tab stop, so the a11y
+    // rules are disabled here.
     return (
       // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div
@@ -735,12 +725,10 @@ export function SegmentView({
               if (piece.kind === 'superscript') {
                 return <VerseSuperscript key={piece.key} label={piece.label} />;
               }
-              // A splittable gap renders as an Alt-clickable marker only while Alt is held, otherwise
-              // as its plain text; the leaf reads Alt itself so toggling Alt re-renders only these
-              // gaps, not the whole segment list. (Unlike the token-chip / continuous strip, which
-              // have room for a `Split` glyph in their between-box slots, an icon dropped into a
-              // monospace inter-word space would collide with the letters — hence a tint plus a slim
-              // vertical caret rather than an icon.)
+              // A splittable gap renders as an Alt-clickable marker while Alt is held, otherwise as
+              // its plain text. Unlike the token-chip / continuous strip's between-box slots, an
+              // icon dropped into a monospace inter-word space would collide with the letters, so
+              // the marker is a tint plus a slim vertical caret rather than a `Split` glyph.
               if (piece.kind === 'gap') {
                 return (
                   <MemoizedBaselineSplitGap
@@ -767,11 +755,10 @@ export function SegmentView({
     );
   }
 
-  // Intentional: token-chip mode renders a div, not a button. In this mode individual word tokens
-  // (via PhraseBox gloss inputs) are the interactive elements; the background click below only
-  // focuses the first phrase, which keyboard users reach through those token elements directly. A
-  // redundant key handler / role / tabIndex on the container would add a non-functional tab stop, so
-  // the click-events-have-key-events and no-static-element-interactions rules are disabled here.
+  // Token-chip mode renders a div, not a button: the word tokens (via PhraseBox gloss inputs) are
+  // the interactive elements, and the background click below only focuses the first phrase, which
+  // keyboard users reach through those token elements directly. A redundant key handler / role /
+  // tabIndex would add a non-functional tab stop, so the a11y rules are disabled here.
   return (
     // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
     <div

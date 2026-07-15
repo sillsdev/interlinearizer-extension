@@ -136,10 +136,9 @@ interface TraversalState {
  * rather than pushed when it accumulated no text, so chapters without a superscription emit no
  * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
  *
- * Every emitted verse's SID is recorded in `seenVerseIds`. Real verse markers are already recorded
- * when opened (see {@link handleVerseNode}), so this matters for synthetic verse-0 scopes: it lets a
- * later explicit verse marker with the same SID be rejected as a duplicate rather than silently
- * emitting two verses with the same ID.
+ * Every emitted verse's SID is recorded in `seenVerseIds`. Real markers are already recorded when
+ * opened (see {@link handleVerseNode}); recording synthetic verse-0 scopes here lets a later
+ * explicit marker with the same SID be rejected as a duplicate.
  *
  * @param state - Shared traversal state updated in place.
  */

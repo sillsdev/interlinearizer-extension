@@ -283,8 +283,8 @@ export function computeStripTopPadding(
 ): number {
   const arcPadding = hasArcs ? arcClearancePx(maxArcLevel) : 0;
   const controlsHeadroom = hasRealPhrase ? 2 * CONTROLS_HALF_HEIGHT_PX : 0;
-  // The floor is the verse-number headroom (not ARC_LEVEL_STEP): at a book start with no arcs and no
-  // phrase controls the padding drops to this floor, which must still clear the peeking verse number.
+  // Floor at the verse-number headroom: with no arcs and no phrase controls the padding must still
+  // clear the peeking verse number.
   return Math.max(VERSE_SUPERSCRIPT_HEADROOM_PX, arcPadding + controlsHeadroom);
 }
 

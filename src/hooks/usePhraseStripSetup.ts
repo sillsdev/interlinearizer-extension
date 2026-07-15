@@ -1,10 +1,8 @@
 /**
  * @file Shared phrase-strip setup hooks used by both `SegmentView` and `ContinuousView`.
  *
- *   The two views already share their render path (`PhraseStrip`) and hover-preview state
- *   (`usePhraseHoverState`), but each previously re-declared the same setup logic — the arc-split
- *   handler, the candidate-phrase-id derivation, and the strip-wide context value — verbatim. These
- *   hooks consolidate that logic so the two views can never drift apart in how a split is
+ *   Consolidates the setup logic the two views share — the arc-split handler, the candidate-phrase-id
+ *   derivation, and the strip-wide context value — so they can't drift apart in how a split is
  *   dispatched, how hovered candidates resolve to phrase ids, or which fields the leaf components
  *   receive.
  */
@@ -18,8 +16,7 @@ import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
- * Reads the by-id phrase-link map internally so both `SegmentView` and `ContinuousView` share one
- * derivation rather than each maintaining an identical `useMemo`.
+ * Reads the by-id phrase-link map internally so both views share one derivation.
  *
  * @param phraseMode - Current phrase-interaction mode; only `edit` mode resolves a token list.
  * @returns The edit-mode phrase's token snapshots, or `undefined` when not editing.
@@ -131,8 +128,7 @@ export type PhraseStripContextParams = Readonly<{
  * Builds the memoized strip-wide {@link PhraseStripContextValue} shared by every phrase group and
  * link slot in one render, so the leaf `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers
  * don't re-render on unrelated changes. Centralizing the build keeps the (long) dependency list in
- * one place — `SegmentView` and `ContinuousView` previously each maintained their own copy and
- * could drift apart when a field was added.
+ * one place so the two views can't drift apart when a field is added.
  *
  * @param params - The fields each view resolves and passes in.
  * @returns The memoized strip-wide context value.

@@ -2,11 +2,9 @@
  * @file Render-scoped context shared by the two phrase strips (`SegmentView` and `ContinuousView`).
  *
  *   Holds the values that are identical for every phrase group and link slot within a single strip
- *   render: the edit-mode context and the hover-preview callbacks. These were previously threaded
- *   as individual props through `PhraseGroup`/`PhraseSlot` purely to reach the leaf components
- *   (`PhraseBox`, `TokenLinkIcon`) that actually use them. Delivering them via context lets the
- *   structural intermediaries stop declaring and forwarding props they never touch, so each
- *   remaining prop on `PhraseGroup`/`PhraseSlot` describes something genuinely per-group/per-slot.
+ *   render: the edit-mode context and the hover-preview callbacks. Delivering them via context
+ *   keeps the structural intermediaries (`PhraseGroup`/`PhraseSlot`) from forwarding props they
+ *   never touch, so each remaining prop on them describes something genuinely per-group/per-slot.
  *
  *   Per-instance values (focus, highlight, arc offset, slot geometry) are intentionally **not** here
  *   — they vary per item and belong at the call site as props.
@@ -35,9 +33,7 @@ export type PhraseStripContextValue = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /**
    * Called with a phraseId (or `undefined`) when a phrase or a link/unlink candidate is hovered, so
-   * the parent can highlight the relevant phrase box and arcs. Merges what used to be two separate
-   * callbacks (`onHoverPhrase` / `onHoverCandidatePhrase`) — both strips always passed the same
-   * function for them.
+   * the parent can highlight the relevant phrase box and arcs.
    */
   onHoverPhrase: (phraseId: string | undefined) => void;
   /**
@@ -73,10 +69,9 @@ export type PhraseStripContextValue = Readonly<{
   /**
    * Placeholder text for every gloss input (token- and phrase-level), fetched once per strip rather
    * than per chip. Gloss inputs are `field-sizing: content`, so their width depends on the
-   * placeholder; a per-chip `useLocalizedStrings` resolves asynchronously after mount, which made
-   * every freshly mounted chip render ~14px too narrow and widen a beat later — shifting the whole
-   * strip, mis-measuring arcs, and knocking the focused phrase off-center. Empty string until the
-   * strip's own fetch resolves (one strip-wide reflow at most, behind the initial fade).
+   * placeholder; fetching per chip would let each mount render narrow until its async string
+   * resolves, shifting the strip and mis-measuring arcs. Empty string until the strip's own fetch
+   * resolves (one strip-wide reflow at most, behind the initial fade).
    */
   glossPlaceholder: string;
   /**

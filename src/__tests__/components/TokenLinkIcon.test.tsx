@@ -388,11 +388,8 @@ describe('TokenLinkIcon', () => {
   });
 
   it('absorbs bridging free token when neighbor is a different fragment of the focused phrase', async () => {
-    // Setup: prevToken=tok-b (free, bridging), nextToken=tok-c (in phrase p1 fragment 2).
-    // focusedSideIsPrev=true means focus is prev-ward (tok-a's side is prev).
-    // neighborLink = nextPhraseLink (focus is prev → neighbor is next side).
-    // When neighborLink.analysisId === focusedPhraseLink.analysisId, the bridging free token
-    // (prevToken = tok-b) is absorbed into the phrase.
+    // prevToken=tok-b is a free token bridging two fragments of phrase p1 (tok-a, tok-c). When the
+    // neighbor and focused phrase are the same phrase, the bridging token is absorbed into it.
     const focusedPhrase = makePhraseLink('p1', ['tok-a', 'tok-c']);
     renderIcon(
       <TokenLinkIcon
@@ -411,7 +408,6 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
-    // bridgingToken is prevToken (tok-b) when focusedSideIsPrev=true
     expect(mockUpdatePhrase).toHaveBeenCalledWith(
       'p1',
       expect.arrayContaining([{ tokenRef: 'tok-b', surfaceText: 'tok-b' }]),
@@ -459,7 +455,6 @@ describe('TokenLinkIcon', () => {
   });
 
   it('uses the false branch of focusedSideIsPrev ternaries when focus is end-ward', async () => {
-    // focusedSideIsPrev=false: neighbor is prevToken/prevPhraseLink, bridging is nextToken
     const focusedPhrase = makePhraseLink('p1', ['tok-b']);
     renderIcon(
       <TokenLinkIcon
@@ -508,13 +503,11 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.hover(screen.getByTestId('token-link-btn'));
-    // All tokens of the neighbor phrase plus the focused free token
     expect(onHoverCandidateTokens).toHaveBeenCalledWith(['tok-a', 'tok-b', 'tok-c']);
   });
 
   it('does not call onHoverSplitFreeTokens when splitFreeRefs is empty (both halves ≥ 2 tokens)', async () => {
-    // 4-token phrase: prevToken=tok-b, so split is after tok-b.
-    // before=[tok-a, tok-b] (length 2), after=[tok-c, tok-d] (length 2) — no free tokens.
+    // Splitting a 4-token phrase after tok-b yields two 2-token halves, so neither half is freed.
     const onHoverSplitFreeTokens = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
     renderIcon(
@@ -722,9 +715,8 @@ describe('TokenLinkIcon', () => {
     });
 
     it('merges the whole previous segment when only punctuation precedes the pulled token', async () => {
-      // Mirror of the focus-is-prev word-less-remainder guard: seg-A is [punct, tok-a], so moving
-      // the boundary onto tok-a would strand the leading punctuation as a word-less segment. The
-      // whole previous segment merges into the focused one instead.
+      // seg-A is [punct, tok-a], so moving the boundary onto tok-a would strand the leading
+      // punctuation as a word-less segment; the whole previous segment merges instead.
       const dispatch = makeDispatch();
       renderEdge(dispatch, {
         focusedSideIsPrev: false,
@@ -767,10 +759,8 @@ describe('TokenLinkIcon', () => {
       expect(button).toHaveAttribute('title', 'nope');
     });
 
-    // -------------------------------------------------------------------------
-    // The not-mid-phrase UI guard: a pull moves the boundary by one token, so a pulled edge token
-    // that belongs to a phrase would leave that phrase straddling the boundary — the icon disables.
-    // -------------------------------------------------------------------------
+    // A pull moves the boundary by one token, so pulling an edge token that belongs to a phrase
+    // would leave that phrase straddling the boundary — the icon disables (not-mid-phrase guard).
 
     describe('pulled edge token in a phrase', () => {
       /**

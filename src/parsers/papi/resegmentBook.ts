@@ -3,11 +3,10 @@
  *   {@link SegmentationDelta}, without touching the text-layer tokenizer.
  *
  *   {@link tokenizeBook} always produces one `Segment` per verse; this pass runs on its output and
- *   cuts the flat document-order token stream at the delta's effective boundaries. Token refs and
- *   token objects are preserved unchanged for untouched verses (reused by reference) so analyses
- *   keep resolving and React memoization is undisturbed; only merged or split segments are rebuilt,
- *   with `baselineText` and per-token char offsets recomputed so the `baselineText.slice(charStart,
- *   charEnd) === surfaceText` invariant still holds.
+ *   cuts the flat document-order token stream at the delta's effective boundaries. Untouched verses
+ *   are reused by reference so analyses keep resolving and React memoization is undisturbed; only
+ *   merged or split segments are rebuilt, with `baselineText` and per-token char offsets recomputed
+ *   so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still holds.
  */
 import type {
   Book,
@@ -60,14 +59,12 @@ function buildSegment(run: SourcedToken[]): Segment {
       baselineText += MERGE_SEPARATOR;
       cursor += MERGE_SEPARATOR.length;
     }
-    // Each contributing verse begins at the current cursor in the concatenated baseline. Its
-    // rendered number is the verse segment's own single verse start (a split's later piece still
-    // carries its whole source verse's number, which is what should render); its chapter comes from
-    // the source verse's ref so the renderer can qualify chapter transitions without inspecting a
-    // token. The run's FIRST verse start is a continuation when this segment does not begin at a
-    // verse boundary — i.e. a split's later piece, whose verse truly started in a previous segment;
-    // flagging it lets the renderer keep containment (for navigation) without repeating the number.
-    // Every later verse in a merged run genuinely starts here, so it is never a continuation.
+    // Each contributing verse begins at the current cursor in the concatenated baseline, carrying
+    // its source verse's rendered number and chapter (the latter lets the renderer qualify chapter
+    // transitions without inspecting a token). The run's FIRST verse start is flagged a continuation
+    // when this segment begins mid-verse (a split's later piece): the verse truly started in an
+    // earlier segment, so the flag keeps containment for navigation without repeating the number.
+    // Every later verse in a merged run genuinely starts here and is never a continuation.
     verseStarts.push({
       charStart: cursor,
       /* v8 ignore next -- every original verse segment has exactly one verse start */
@@ -127,12 +124,10 @@ export function resegmentBook(book: Book, delta: SegmentationDelta | undefined):
 
   const starts = effectiveStarts(book, delta);
 
-  // Cut the flat token stream into runs, beginning a new run at each effective start (but never
-  // splitting off a run that has no word/structural content yet — leading tokens stay with the
-  // first run). Runs are materialized into segments in document order as they close, interleaved
-  // with any token-less verses (empty verse markers), which carry no token to anchor a boundary and
-  // so always stand as their own segment — reused verbatim so the default path's behavior of
-  // keeping them is preserved once a custom boundary exists.
+  // Cut the flat token stream into runs, beginning a new run at each effective start. Runs are
+  // materialized into segments in document order as they close, interleaved with any token-less
+  // verses (empty verse markers): those carry no token to anchor a boundary, so each stands as its
+  // own segment, reused verbatim.
   const segments: Segment[] = [];
   let current: SourcedToken[] = [];
 

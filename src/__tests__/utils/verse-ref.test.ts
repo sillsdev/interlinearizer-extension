@@ -7,10 +7,9 @@ import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
 
 /**
  * Builds a minimal token-less {@link Segment} covering the given verses. Containment reads the
- * segment's `verseStarts` (the exact set of source verses it covers), so `covered` enumerates each
- * covered verse as a `[chapter, verse]` pair — mirroring how a real merged segment carries one
- * verse start per absorbed verse. `startRef` / `endRef` are taken from the first and last covered
- * verse.
+ * segment's `verseStarts`, so `covered` enumerates each covered verse as a `[chapter, verse]` pair,
+ * mirroring how a merged segment carries one verse start per absorbed verse. `startRef` / `endRef`
+ * are taken from the first and last covered verse.
  *
  * @param covered - The verses the segment covers, in document order, as `[chapter, verse]` pairs.
  * @returns The assembled segment.

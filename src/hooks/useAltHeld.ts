@@ -15,10 +15,9 @@ import { useEffect, useRef, useState } from 'react';
 export function useAltHeld(): boolean {
   const [altHeld, setAltHeld] = useState(false);
 
-  // Mirror of the current held state, read synchronously in the event handlers so a repeated
-  // keydown (Alt auto-repeats while held) can short-circuit before ever calling the state setter —
-  // avoiding the extra render React schedules even when a functional updater returns the same
-  // value.
+  // Mirror of the held state, read synchronously in the handlers so a repeated keydown (Alt
+  // auto-repeats while held) short-circuits before calling the setter — avoiding the extra render
+  // React schedules even when a functional updater returns the same value.
   const altHeldRef = useRef(false);
 
   useEffect(() => {

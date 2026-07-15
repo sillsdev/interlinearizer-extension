@@ -67,15 +67,12 @@ function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
 
 /**
  * Whether `segment` contains the verse named by `scrRef`. Containment is verse-level and tested
- * against the segment's `verseStarts` — the exact set of source verses it covers — rather than a
- * lexicographic `startRef`..`endRef` interval. This matters for a cross-chapter merge (e.g. a
- * segment spanning `1:2`..`2:1`): the interval would over-claim every verse in the start chapter
- * above `2` (including phantom verses past that chapter's real end that the host's next-verse
- * button can over-shoot to), whereas the covered-verse set claims only `1:2` and `2:1`. Character
- * anchors are ignored — after a mid-verse split, every portion of the split verse carries that
- * verse's start, so each portion "contains" it. Used wherever a verse must resolve to the segment
- * that owns it (navigation, active highlight), since after a merge or split a segment's start verse
- * alone no longer identifies every verse it covers.
+ * against the segment's `verseStarts` — the exact set of covered source verses — rather than a
+ * lexicographic `startRef`..`endRef` interval: for a cross-chapter merge (e.g. `1:2`..`2:1`) the
+ * interval would over-claim every verse in the start chapter above `2`, whereas the covered-verse
+ * set claims only `1:2` and `2:1`. Character anchors are ignored, so every portion of a split verse
+ * "contains" it. Used wherever a verse must resolve to its owning segment (navigation, active
+ * highlight).
  *
  * @param segment - The segment whose covered verses to test.
  * @param scrRef - Verse coordinate in the platform's `SerializedVerseRef` shape.

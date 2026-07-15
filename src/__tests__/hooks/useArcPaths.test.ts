@@ -43,11 +43,8 @@ describe('useArcPaths', () => {
   });
 
   /**
-   * Installs a stubbed `ResizeObserver` that records its callback and a manual rAF queue, then
-   * returns helpers to fire one observer notification and flush its deferred measurement. The
-   * observer callback defers its measurement to the next animation frame (avoiding a synchronous
-   * setState-in-observer loop), so the pump drives rAF manually to flush it. Shared by every
-   * observer-driven test so only a single mock class is defined in this file.
+   * Installs a stubbed `ResizeObserver` with a manual rAF queue. The observer callback defers its
+   * measurement to the next animation frame, so `pump` drives rAF by hand to flush it.
    *
    * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
    *   `computeAllArcPaths` calls it triggered.
@@ -131,7 +128,6 @@ describe('useArcPaths', () => {
     );
     expect(result.current.arcPaths).toHaveLength(1);
 
-    // Transition to disabled
     computeAllArcPaths.mockReturnValue({
       paths: [],
       maxLevel: 0,
@@ -159,7 +155,6 @@ describe('useArcPaths', () => {
     );
     expect(result.current.maxArcLevel).toBe(1);
 
-    // Transition to disabled — maxArcLevel must reset to 0.
     computeAllArcPaths.mockReturnValue({
       paths: [],
       maxLevel: 0,
@@ -187,7 +182,6 @@ describe('useArcPaths', () => {
     );
     expect(result.current.maxArcLevel).toBe(0);
 
-    // Second measurement produces a different maxLevel.
     computeAllArcPaths.mockReturnValue({
       paths: [arc],
       maxLevel: 1,
@@ -246,7 +240,6 @@ describe('useArcPaths', () => {
     expect(result.current.stripLeftPadding).toBe(8);
     expect(result.current.stripRightPadding).toBe(16);
 
-    // Transition to disabled — both paddings must reset to 0.
     act(() => {
       rerender({ enabled: false });
     });
@@ -264,15 +257,10 @@ describe('useArcPaths', () => {
     });
 
     it('stops an oscillating observer-driven re-measure once a signature repeats', () => {
-      // Reproduces the cross-row gutter feedback loop: applying the hook's padding re-wraps the
-      // strip, which the ResizeObserver reports, which re-measures to a *different* padding, which
-      // re-wraps again, … Without the echo guard every observer pass commits new state and the
-      // WebView freezes. With the guard, a re-measure whose signature matches one of the last two
-      // passes is dropped, so a period-2 oscillation terminates after a bounded number of passes.
       const { pump } = installObserverHarness();
 
-      // Alternate the measured gutter padding between two values on every call so, left unchecked,
-      // the layout never reaches a fixed point.
+      // Alternate the measured gutter padding between two values on every call so the layout never
+      // reaches a fixed point unless the echo guard drops a repeated signature.
       const arc = { phraseId: 'p1', d: 'M0 0 L10 0', midX: 5, midY: 0, splitAfterTokenRef: 't' };
       let toggle = false;
       computeAllArcPaths.mockImplementation(() => {
@@ -283,10 +271,8 @@ describe('useArcPaths', () => {
       const containerRef = { current: document.createElement('div') };
       const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
 
-      // Because the guard drops the repeated signature instead of committing fresh padding, the
-      // strip's padding settles to one of the two values and then never changes again, even though
-      // the mocked measurement keeps alternating. The key property is termination: the value is
-      // stable across many further pumps rather than flipping on every one.
+      // The key property is termination: the padding settles to one value and stays stable across
+      // many further pumps rather than flipping on every one.
       for (let i = 0; i < 4; i += 1) pump();
       const settled = result.current.stripLeftPadding;
       for (let i = 0; i < 20; i += 1) pump();
@@ -311,16 +297,13 @@ describe('useArcPaths', () => {
     });
 
     it('re-applies a historical signature when the layout recovers after a transient collapse', () => {
-      // The vanish bug: during a settle the phrase transiently measures with no discontiguous
-      // boxes (no arcs), then recovers to exactly the pre-collapse geometry. The recovery's
-      // signature matches the 2-deep history, so the old guard swallowed it forever.
       const { pump } = installObserverHarness();
       computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
       const containerRef = { current: document.createElement('div') };
       const { result } = renderHook(() => useArcPaths(containerRef, true, false, []));
       expect(result.current.arcPaths).toHaveLength(1);
 
-      // Transient collapse: the phrase momentarily measures as a single box → no arcs.
+      // Transient collapse: the phrase momentarily measures as a single box, so no arcs.
       computeAllArcPaths.mockReturnValue({
         paths: [],
         maxLevel: 0,
@@ -355,9 +338,8 @@ describe('useArcPaths', () => {
     });
 
     it('re-measures after a quiet period and applies geometry that drifted without a resize event', () => {
-      // The stale-endpoint bug: a box reaches final width after the last measurement, and nothing
-      // the hook observes resizes, so no corrective measure ever runs. The settle verification
-      // must catch the drift on a timer instead.
+      // A box can reach its final width after the last measurement with nothing the hook observes
+      // resizing, so only the settle-verification timer can catch the drift.
       jest.useFakeTimers();
       computeAllArcPaths.mockReturnValue(measurementWithPath('M0 0 L10 0'));
       const containerRef = { current: document.createElement('div') };

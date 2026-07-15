@@ -112,8 +112,7 @@ describe('useInterlinearizerBookData', () => {
   beforeEach(() => {
     jest.mocked(logger.error).mockImplementation(() => {});
     setupDefaultProjectDataMock();
-    // Configures useProjectSetting to return the writing system code 'en' so the hook uses a valid
-    // BCP 47 tag rather than falling back to 'und'.
+    // A valid writing-system tag so the hook doesn't fall back to 'und'.
     mockUseProjectSettings('en');
   });
 

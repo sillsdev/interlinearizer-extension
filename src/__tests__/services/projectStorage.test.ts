@@ -561,7 +561,6 @@ describe('projectStorage', () => {
 
       await Promise.all([p1, p2]);
 
-      // Serialized order: read1 → write1 → read2 → write2 (no interleaving)
       expect(ops).toEqual(['read:1', 'write:index', 'read:2', 'write:index']);
     });
   });

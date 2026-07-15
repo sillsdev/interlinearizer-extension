@@ -55,13 +55,12 @@ export interface UseSegmentWindowArgs {
   /** Current scripture reference; the active verse it names is the recenter anchor. */
   scrRef: SerializedVerseRef;
   /**
-   * Monotonic counter the loader bumps on every boundary edit (merge/split/move). The hook uses it
-   * to classify a segments-identity change: a change carrying a version bump is a boundary edit —
-   * the window redraws in place with no fade — while a change without one is a re-tokenization of
-   * the loaded book (or a book swap) and recenters with the fade. The cause is stated by this
-   * explicit signal rather than reverse-engineered from anchor coordinates, which misclassify in
-   * both directions (a merge absorbing the active verse's segment start changes the anchor verse; a
-   * re-tokenization can keep it).
+   * Monotonic counter the loader bumps on every boundary edit (merge/split/move). Classifies a
+   * segments-identity change: a change carrying a version bump is a boundary edit (the window
+   * redraws in place with no fade), while a change without one is a re-tokenization of the loaded
+   * book (or a book swap) and recenters with the fade. An explicit signal is needed because anchor
+   * coordinates misclassify in both directions — a merge absorbing the active verse's segment start
+   * changes the anchor verse, and a re-tokenization can keep it.
    */
   segmentationVersion: number;
   /**
@@ -88,7 +87,7 @@ export interface UseSegmentWindowArgs {
    * change arrives: `true` means the change came from within the views (no fade — the target is
    * already shown), `false` means an external navigation (Paratext selector, scroll group) and
    * triggers the recenter fade. Supplied by {@link InterlinearNavProvider}, which records the origin
-   * at the `navigate` call site rather than having the hook reverse-engineer it.
+   * at the `navigate` call site.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
   /**
@@ -96,10 +95,9 @@ export interface UseSegmentWindowArgs {
    * continuous-scroll value the views should now render. The parent owns the horizontal strip,
    * which must mount/unmount in the _same_ React commit as the window rebuild here, so the
    * post-recenter re-snap loop measures the active verse against the final layout (strip included).
-   * Routing this through a callback in the timeout (rather than the parent reacting to a
-   * hook-returned value via an effect, which would land a commit later) keeps the two in one commit
-   * — otherwise the strip mounts after the snap has already settled and the verse lands off
-   * screen.
+   * Routing this through a callback in the timeout — rather than the parent reacting to a
+   * hook-returned value via an effect, which would land a commit later — keeps the two in one
+   * commit, so the strip is present when the snap settles.
    *
    * @param displayContinuousScroll - The continuous-scroll mode to render from now on.
    */
@@ -284,9 +282,7 @@ export default function useSegmentWindow({
    * mutation. The layout effect restores the element to that exact viewport position by adding its
    * rect delta to `scrollTop`, which is correct regardless of what the mutation did around it —
    * prepended height, culled height at either end, chapter headings, flex gaps, and any browser
-   * clamping of `scrollTop` are all captured by the element's measured movement. (The previous
-   * scheme compared `scrollHeight` before/after, which conflated growth at one end with cull
-   * shrinkage at the other and jumped the list once the window hit its cap.)
+   * clamping of `scrollTop` are all captured by the element's measured movement.
    */
   const pendingExtendAnchorRef = useRef<{ el: Element; top: number } | undefined>(undefined);
 
@@ -506,9 +502,8 @@ export default function useSegmentWindow({
    *
    * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
    * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade
-   * (clearing the prior timer) rather than letting incidental effect cleanups cancel it. This keeps
-   * a running fade from being stranded by an unrelated re-render — the failure that left the list
-   * parked on its initial range and the strip on the book's first phrase.
+   * (clearing the prior timer) rather than letting incidental effect cleanups cancel it, so a
+   * running fade is never stranded by an unrelated re-render.
    */
   const triggerRecenter = useCallback(() => {
     if (recenterTimeoutRef.current !== undefined) clearTimeout(recenterTimeoutRef.current);
@@ -540,22 +535,18 @@ export default function useSegmentWindow({
   ]);
 
   // Recenter on external navigation. An `scrRef` change the parent originated internally (a click in
-  // this list, or strip arrow nav echoed back) was recorded as internal at the `navigate` call site;
-  // `consumeInternalNav` returns true, so skip the fade — the target is already shown. Any other
-  // anchor change is an external
-  // navigation (Paratext selector, scroll group): fade out, rebuild the window centered on the new
-  // verse, snap that verse into view behind the fade, then fade back in — on the same clock as the
-  // strip so the two views fade as one. The fade fires for every external nav, even one already
-  // inside the window, so the two views can never disagree about whether a fade is happening.
+  // this list, or strip arrow nav echoed back) makes `consumeInternalNav` return true, so skip the
+  // fade — the target is already shown. Any other anchor change is an external navigation (Paratext
+  // selector, scroll group) and recenters with the fade.
   //
   // A segments-identity change carrying a `segmentationVersion` bump is NOT a navigation: it is a
   // boundary edit (merge/split from the mounted controls). The window slice already re-renders the
   // new segments in the same commit, so fading afterwards would flash content the user is already
   // looking at and snap it away from the point they just clicked — sync the display refs (a merge
   // that absorbs the active verse's segment start re-resolves the anchor verse in the same commit)
-  // and let the redraw stand. A segments change withOUT a version bump is a re-tokenization of the
-  // loaded book or a book swap at the same anchor index: the mounted index range no longer matches
-  // the content, so it recenters like any external change.
+  // and let the redraw stand. A segments change withOUT a version bump is a re-tokenization or book
+  // swap at the same anchor index: the mounted range no longer matches the content, so it recenters
+  // like any external change.
   const prevAnchorRef = useRef<{
     index: number;
     segments: readonly Segment[];
@@ -590,7 +581,7 @@ export default function useSegmentWindow({
   // fade is in flight — that swap owns the display ref and lands the new focus at the midpoint, so
   // updating here too would move the highlight (and re-dim buttons) on the old content before the
   // fade-out completes. `recenterTimeoutRef` is set synchronously by `triggerRecenter`, so it reads
-  // true even in the same commit the external nav starts the fade — when `isFaded` state is still
+  // true even in the same commit the external nav starts the fade, when `isFaded` state is still
   // stale.
   useEffect(() => {
     if (recenterTimeoutRef.current !== undefined) return;
@@ -638,13 +629,11 @@ export default function useSegmentWindow({
   // recenter (via `recenterEpoch`), and on every `range` change. The re-subscriptions matter because
   // an IntersectionObserver only fires on intersection *transitions*: after a recenter or an extend
   // the sentinel nodes are unchanged and may still sit inside the arming margin (compact
-  // baseline-text segments routinely leave the bottom sentinel within it), so a stale observer
-  // would stay silent no matter how far the user scrolls. A fresh observer re-delivers the initial
-  // intersection state, which both kicks the window after a recenter and keeps extending — one
-  // chunk per delivery — until the sentinel finally leaves the margin, filling a viewport that a
-  // single chunk cannot cover. The loop terminates because each delivery either grows the window
-  // (pushing the sentinel away), hits the book edge, or hits the hard cap (no range change, so no
-  // re-subscription).
+  // baseline-text segments routinely leave the bottom sentinel within it), so a stale observer stays
+  // silent however far the user scrolls. A fresh observer re-delivers the initial intersection state,
+  // extending one chunk per delivery until the sentinel leaves the margin. The loop terminates
+  // because each delivery either grows the window (pushing the sentinel away), hits the book edge, or
+  // hits the hard cap (no range change, so no re-subscription).
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || (!topSentinel && !bottomSentinel)) return undefined;
@@ -673,10 +662,9 @@ export default function useSegmentWindow({
   // frames). This single observer plays two roles depending on whether a recenter is in flight:
   //
   // - **While a recenter is in flight** it relays each resize to the re-snap handler
-  //   (`onResnapResizeRef`, installed by the re-snap effect), which re-snaps the verse to the top
-  //   against the now-settled geometry and restarts the settle's quiet timer. The recenter owns the
-  //   scroll position here, so this is how the verse stays pinned through every settling wave —
-  //   replacing the old per-frame re-snap loop with one re-snap per actual layout change.
+  //   (`relayResize`), which re-snaps the verse to the top against the now-settled geometry and
+  //   restarts the settle's quiet timer. The recenter owns the scroll position here, so this is how
+  //   the verse stays pinned through every settling wave — one re-snap per actual layout change.
   //
   // - **Otherwise** it compensates: on each resize it restores the anchor segment (see
   //   `compensationAnchorRef`) to its recorded offset below the container top, generalizing the
@@ -688,12 +676,11 @@ export default function useSegmentWindow({
   //
   // The container's scroll event re-baselines the anchor so user scrolling between waves is never
   // misread as a height change and "corrected" — the anchor's offset must only ever drift via
-  // layout shifts, never via scrolling. Observes BOTH the segment wrapper (`contentEl`) — the
-  // element whose box actually changes when segment heights settle; the container's own box is
-  // fixed by the panel layout, so observing it alone would never report content growth and both
-  // roles above would go silent — and the container, whose box changes on panel/strip resizes (the
-  // waves the in-flight relay role must see). Re-subscribes on each recenter so the anchor is
-  // re-seeded for the new geometry rather than carried over from the pre-recenter layout.
+  // layout shifts, never via scrolling. Observes BOTH the segment wrapper (`contentEl`), whose box
+  // changes when segment heights settle (the container's own box is fixed by the panel layout, so
+  // observing it alone would never report content growth), and the container, whose box changes on
+  // panel/strip resizes (the waves the in-flight relay role must see). Re-subscribes on each recenter
+  // so the anchor is re-seeded for the new geometry.
   useEffect(() => {
     const root = scrollContainerRef.current;
     if (!root || !contentEl) return undefined;

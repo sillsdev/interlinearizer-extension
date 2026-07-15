@@ -165,9 +165,8 @@ describe('PhraseSlot', () => {
   });
 
   it('reserves the normal gap width on a leading slot so an opening verse number is not cramped', () => {
-    // A strip's leading slot has no prev group, so no link icon renders and every in-flow row is
-    // empty. The column still reserves a normal slot's width (tw:min-w-4) so a verse number opening
-    // the strip sits in the same gap as one mid-strip, rather than crammed against the first token.
+    // A leading slot has no prev group and no link icon, but the column still reserves a normal
+    // slot's width (tw:min-w-4) so an opening verse number sits in the same gap as one mid-strip.
     const nextGroup: TokenGroup = {
       tokens: [makeWordToken('tok-a')],
       phraseLink: undefined,
@@ -197,8 +196,8 @@ describe('PhraseSlot', () => {
       punctuationBetween: [],
     };
     const slot: LinkSlot = { prevGroup, nextGroup, punctuation: [] };
-    // phraseRevealed flows into TokenLinkIcon as isPhraseRevealed; the mock
-    // surfaces it as data-phrase-revealed so we can assert the computation directly.
+    // phraseRevealed reaches TokenLinkIcon as isPhraseRevealed, surfaced by the mock as
+    // data-phrase-revealed.
     render(withProvider(<PhraseSlot {...slotProps(slot)} hoveredPhraseId="p1" />));
     expect(screen.getByTestId('link-icon')).toHaveAttribute('data-phrase-revealed', 'true');
   });
@@ -244,8 +243,7 @@ describe('PhraseSlot', () => {
       focusedSegmentId: 'seg-1',
       focusedPhraseId: 'p1',
     };
-    // With no hover, the only way phraseRevealed becomes true is the focus.focusedPhraseId branch;
-    // the mock exposes it via data-phrase-revealed.
+    // With no hover, phraseRevealed can only become true via the focus.focusedPhraseId branch.
     render(
       withProvider(
         <PhraseSlot {...slotProps(slot)} focus={focusedContext} hoveredPhraseId={undefined} />,
@@ -287,7 +285,7 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
+    // The icon stays mounted but hidden via opacity:0 (min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
@@ -332,7 +330,7 @@ describe('PhraseSlot', () => {
         <PhraseSlot {...slotProps(slot)} prevSegmentId="seg-2" nextSegmentId="seg-1" />
       </PhraseStripProvider>,
     );
-    // Icon stays mounted but invisible (opacity:0 hides it while the min-height preserves layout space).
+    // The icon stays mounted but hidden via opacity:0 (min-height preserves layout space).
     const icon = screen.getByTestId('link-icon');
     expect(icon.parentElement?.style.opacity).toBe('0');
   });
@@ -431,7 +429,7 @@ describe('PhraseSlot boundary controls', () => {
   // -- Merge branch --------------------------------------------------------
 
   it('shows an enabled merge button on a cross-segment slot while Alt is not held', () => {
-    // Merge no longer needs Alt: the button is always present and always enabled on a live boundary.
+    // The merge button is always present and enabled on a live boundary, no Alt needed.
     const dispatch = renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
       { altHeld: false },
@@ -462,8 +460,8 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('renders no merge control while a phrase edit is active', () => {
-    // A boundary edit mid-mode could re-segment the phrase the mode UI is operating on, so the
-    // control is absent (not merely disabled) throughout a phrase mode.
+    // A boundary edit mid-mode could re-segment the phrase the mode UI operates on, so the control
+    // is absent (not merely disabled) throughout a phrase mode.
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' },
       { phraseMode: { kind: 'edit', phraseId: 'p1', originalTokens: [] } },
@@ -472,8 +470,7 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('labels the merge button with the plain merge string while Alt is held', () => {
-    // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint: it is
-    // just the concise action.
+    // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint.
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
     const button = screen.getByTestId('boundary-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
@@ -481,8 +478,8 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
-    // Alt up → split markers are hidden, so the always-enabled merge button advertises the Alt
-    // gesture that reveals them.
+    // Alt up → split markers are hidden, so the merge tooltip advertises the Alt gesture that
+    // reveals them.
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
     const button = screen.getByTestId('boundary-merge-btn');
     expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
@@ -490,9 +487,8 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {
-    // The boundary button now lives in a dedicated row below the link icon, so the gap punctuation
-    // stays in normal flow and is never hidden — the two coexist rather than the button overlaying
-    // (and hiding) the punctuation.
+    // The boundary button lives in a dedicated row below the link icon, so the gap punctuation stays
+    // in normal flow and the two coexist.
     const slotWithPunct: LinkSlot = {
       prevGroup: groupA,
       nextGroup: groupB,
@@ -511,21 +507,20 @@ describe('PhraseSlot boundary controls', () => {
       { altHeld: false },
     );
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
-    // Merge is always visible now, even with Alt up; the verse number still peeks above the column.
+    // Merge stays visible with Alt up; the verse number still peeks above the column.
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
   });
 
   it('keeps the peeking verse number rendered alongside the boundary button under Alt', () => {
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2', verseLabel: '2' });
-    // The merge button sits in its own row below the link icon while the verse number keeps peeking
-    // above the column — the two coexist, so the number never vanishes.
+    // The merge button sits below the link icon while the verse number peeks above the column.
     expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
     expect(screen.getByTestId('verse-superscript')).toHaveTextContent('2');
   });
 
   it('keeps the peeking verse number under Alt when no boundary edit applies at the slot', () => {
-    // An intra-segment slot on a straddled boundary suppresses the split marker, so BoundaryControl
-    // renders nothing; the verse number keeps peeking above the column regardless.
+    // A straddled intra-segment slot suppresses the split marker, so BoundaryControl renders
+    // nothing; the verse number keeps peeking above the column.
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1', verseLabel: '2' },
       { straddledBoundaryRefs: new Set(['b']) },
@@ -573,8 +568,8 @@ describe('PhraseSlot boundary controls', () => {
   });
 
   it('renders no split marker at a leading slot inside a segment (the boundary already exists)', () => {
-    // A SegmentView strip's leading slot has no group before it but carries the segment's id on
-    // both sides; splitting at the segment's first token would be a no-op, so no control renders.
+    // A leading slot has no group before it but carries the segment id on both sides; splitting at
+    // the segment's first token would be a no-op, so no control renders.
     const leadingSlot: LinkSlot = { prevGroup: undefined, nextGroup: groupB, punctuation: [] };
     renderBoundary({ slot: leadingSlot, prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' });
     expect(screen.queryByTestId('boundary-split-marker')).not.toBeInTheDocument();
@@ -604,7 +599,7 @@ describe('PhraseSlot boundary controls', () => {
 
   it('dispatches the original removed ref when Alt+clicking a former boundary', () => {
     // The merged-away verse began with punctuation: the word anchor 'b' maps to the removed
-    // punctuation start ref, and the restore must dispatch that original ref (not the travel anchor).
+    // punctuation start ref, and the restore dispatches that original ref, not the travel anchor.
     const dispatch = renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
       { formerBoundaries: new Map([['b', 'punct-start']]) },
@@ -666,8 +661,8 @@ describe('PhraseSlot boundary controls', () => {
 
   // -- Former boundary: no tick, Alt still reveals the split marker --------
 
-  // The dashed former-boundary tick was removed: the inline verse superscript already marks a
-  // merged-away verse start, so nothing extra renders there while Alt is not held.
+  // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
+  // at a former boundary while Alt is not held.
   it('renders nothing at a former boundary while Alt is not held', () => {
     renderBoundary(
       { prevSegmentId: 'seg-1', nextSegmentId: 'seg-1' },
@@ -848,8 +843,8 @@ describe('PhraseStrip', () => {
         <PhraseStrip {...stripProps(items, { candidateTokenRefs: new Set(['tok-a']) })} />,
       ),
     );
-    // The candidate preview renders through its own dedicated tier — it must not double as the
-    // hover highlight, which also reveals phrase edit controls.
+    // The candidate preview has its own tier; it must not double as the hover highlight, which also
+    // reveals phrase edit controls.
     expect(document.querySelector('[data-candidate="true"]')).toBeInTheDocument();
     expect(document.querySelector('[data-highlighted="true"]')).not.toBeInTheDocument();
   });

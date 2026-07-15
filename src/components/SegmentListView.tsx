@@ -29,20 +29,16 @@ type MergeRowButtonProps = Readonly<{
 
 /**
  * The merge control rendered in the gap between two adjacent segment rows. Clicking it joins the
- * two neighboring segments — the segment-list counterpart of the merge control in the continuous
- * strip's cross-segment slots, and the undo for a split.
+ * two neighboring segments — the segment-list counterpart of the continuous strip's cross-segment
+ * merge control.
  *
- * Always visible and always enabled — merging needs no Alt. A solid rail carries the merge button
- * as a rounded handle; hover darkens the rail and accents the handle. (Splitting, by contrast,
- * stays Alt-gated in the continuous/token-chip strips.) The tooltip is stateful: while Alt is
- * **not** held it carries the Alt-split discoverability hint (the split markers are hidden then, so
- * it advertises the gesture that reveals them); once Alt **is** held the markers are visible, so it
- * drops to the concise merge string. The `aria-label` stays the concise merge string in both
- * states.
+ * Always visible and always enabled: merging needs no Alt (splitting stays Alt-gated). The tooltip
+ * is stateful — while Alt is not held it carries the Alt-split discoverability hint (the split
+ * markers are hidden then), dropping to the concise merge string once Alt is held; the `aria-label`
+ * stays the concise merge string in both states.
  *
- * The caller omits this control entirely while a phrase mode (edit / confirm-unlink) is active — a
- * merge mid-mode could re-segment the phrase the mode UI is operating on — so this component itself
- * has no disabled state.
+ * The caller omits this control entirely while a phrase mode is active (a merge could re-segment
+ * the phrase the mode UI is operating on), so this component itself has no disabled state.
  *
  * @param props - Component props.
  * @param props.segment - The segment below the gap.
@@ -79,9 +75,9 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
         onClick={() => dispatch.merge(secondSegmentStartRef)}
       >
         {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it reads
-            coherently over the line regardless of the container background, brightening to the accent
-            on hover. Rotated 90° so the Y-join points along this view's vertical merge axis (the
-            lower row folds up into the one above), unlike the horizontal continuous-strip merge. */}
+            coherently over the line, brightening to the accent on hover. Rotated 90° so the Y-join
+            points along this view's vertical merge axis (the lower row folds up into the one above),
+            unlike the horizontal continuous-strip merge. */}
         <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
           <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
         </span>
@@ -233,11 +229,9 @@ export default function SegmentListView({
   /**
    * Segment ids whose merge-into-predecessor would actually take effect: those with a token-bearing
    * segment immediately before them in the full book. A token-less predecessor (an empty verse
-   * marker) forces its own segment boundary that a merge cannot cross, so removing this segment's
-   * start would leave the segments unchanged; offering the merge there would be a silent no-op that
-   * still persists a dead boundary in the delta. Restoring the merged segment's number is deferred:
-   * merging across an empty verse needs a segmentation-semantics decision, so the affordance is
-   * suppressed rather than made to guess.
+   * marker) forces its own boundary that a merge cannot cross, so removing this segment's start
+   * would leave the segments unchanged; offering the merge there would be a silent no-op that still
+   * persists a dead boundary in the delta.
    */
   const mergeableSegmentIds = useMemo(() => {
     const ids = new Set<string>();
@@ -295,30 +289,24 @@ export default function SegmentListView({
     recenterOnActive();
   }, [continuousScroll, recenterOnActive]);
 
-  // Segment that wears the active highlight. It follows the focused token's segment so the highlight
-  // lands on the segment whose token is focused — including a verse-0 superscription. Normal
-  // navigation keeps the focused token inside the active verse, so this resolves to the same segment
-  // as the `displayScrRef` verse; it can diverge briefly when a focus move and the host echo it
-  // triggers are not yet reconciled. Falls back to the active verse when nothing is focused (e.g. the
-  // active verse has no word token).
+  // Segment that wears the active highlight. Follows the focused token's segment so the highlight
+  // lands on the segment whose token is focused — including a verse-0 superscription — and falls
+  // back to the active verse when nothing is focused (e.g. the active verse has no word token).
   const activeSegmentId = displayFocusedTokenRef
     ? tokenSegmentMap.get(displayFocusedTokenRef)
     : undefined;
 
   /**
-   * Chapter shown in the pinned header overlay: the chapter of the topmost segment still touching
-   * the container's top edge. Rendered as a single always-mounted overlay (a sibling of the
-   * recenter button) rather than a per-segment sticky element, so it survives the window culling
-   * its segments as they scroll off — the in-flow header would vanish mid-chapter once its own
-   * segment unmounted.
+   * Chapter shown in the pinned header: the chapter of the topmost segment still touching the
+   * container's top edge. A single always-mounted overlay rather than a per-segment sticky element,
+   * so it survives the window culling its segments as they scroll off.
    */
   const [pinnedChapter, setPinnedChapter] = useState<number | undefined>(undefined);
 
   // Track the topmost visible segment's chapter from scroll position (plus resize/content changes),
   // updating state only when the chapter actually changes so scrolling within a chapter causes no
-  // re-render. Reads the same "first segment whose bottom is below the container top" the window
-  // hook's compensation anchor uses, but read-only here — it never touches scrollTop, so it cannot
-  // interfere with the recenter/compensation machinery.
+  // re-render. Read-only — it never touches scrollTop, so it cannot interfere with the
+  // recenter/compensation machinery.
   useEffect(() => {
     const container = scrollContainerRef.current;
     /* v8 ignore next -- the effect only runs while the list (and so the container) is mounted */
@@ -342,10 +330,9 @@ export default function SegmentListView({
       setPinnedChapter(undefined);
     };
 
-    // Coalesce scroll-driven reads to at most one per animation frame. Native scroll events fire more
-    // often than paints during an inertial/trackpad fling, and each read scans every mounted segment's
-    // bounding rect, so an uncoalesced handler would run that scan several times per frame for no
-    // visible benefit. A single rAF gate collapses a burst of scroll events into one measure.
+    // Coalesce scroll-driven reads to at most one per animation frame: scroll events fire more often
+    // than paints during a fling, and each read scans every mounted segment's bounding rect, so an
+    // uncoalesced handler would run that scan several times per frame for no benefit.
     let rafId: number | undefined;
     const onScroll = () => {
       if (rafId !== undefined) return;
@@ -373,11 +360,9 @@ export default function SegmentListView({
   return (
     <div className="tw:flex tw:min-h-0 tw:flex-1 tw:flex-col">
       {/* Chapter header band — a real row above the scroll area, not an overlay inside it, so
-          scrolled content can never render behind it (which happened when recentering landed a
-          chapter's first verse under an overlaid header). The recenter button lives in this same row,
-          vertically centered with the label via tw:items-center. Kept as one always-mounted band
-          (not per-segment) so it survives the window culling its segments as they scroll off, its
-          label following the chapter of the topmost visible segment. */}
+          scrolled content can never render behind it. The recenter button shares this row. Kept as
+          one always-mounted band (not per-segment) so it survives the window culling its segments as
+          they scroll off, its label following the chapter of the topmost visible segment. */}
       {windowSegments.length > 0 && (
         <div className="tw:flex tw:items-center tw:justify-between tw:gap-2 tw:border-b tw:border-border tw:bg-background tw:px-4 tw:py-2">
           <span className="tw:text-sm tw:font-semibold tw:text-foreground">
@@ -420,17 +405,13 @@ export default function SegmentListView({
               /* v8 ignore next 2 -- the ?? arm is a defensive fallback for the Map.get type: every
                  windowed segment comes from book.segments, so the lookup always resolves */
               const verseStartLabels = verseStartLabelsBySegmentId.get(seg.id) ?? [];
-              // Render the merge control above every segment whose merge would take effect — one with
-              // a token-bearing predecessor in the FULL book, not just within the mounted window: the
-              // topmost windowed segment's boundary with a culled predecessor is still editable (merge
-              // dispatches against the delta, not the DOM), so it must show a control rather than only
-              // becoming mergeable once the user scrolls the predecessor into view. A token-less
-              // predecessor is excluded (see mergeableSegmentIds) so the button never offers a
-              // silent-no-op merge.
+              // Merge control renders above every segment whose merge would take effect (see
+              // mergeableSegmentIds). Eligibility is computed over the FULL book, not the mounted
+              // window: merge dispatches against the delta, not the DOM, so the topmost windowed
+              // segment's boundary with a culled predecessor is still editable.
               const canMerge = mergeableSegmentIds.has(seg.id);
-              // Omit the merge control entirely while a phrase mode is active: a merge mid-mode could
-              // re-segment the phrase the mode UI is operating on. (The strip's boundary controls do
-              // the same by rendering nothing during a phrase mode.)
+              // Omit the merge control while a phrase mode is active: a merge could re-segment the
+              // phrase the mode UI is operating on.
               const showMergeControl = canMerge && phraseMode.kind === 'view';
               return (
                 <Fragment key={seg.id}>

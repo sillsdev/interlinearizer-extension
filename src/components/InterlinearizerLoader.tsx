@@ -299,6 +299,12 @@ function InterlinearizerLoaderInner({
    * to `undefined` when the edit restores the default verse segmentation.
    */
   const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
+    /**
+     * Auto-saves the result of a boundary transform, clearing the segmentation field back to
+     * `undefined` when the edit restores the default verse segmentation.
+     *
+     * @param next - The transformed segmentation delta to persist.
+     */
     const apply = (next: ReturnType<typeof mergeSegments>) => {
       autosaveSegmentation(isDefaultSegmentation(next) ? undefined : next);
     };

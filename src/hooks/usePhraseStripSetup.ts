@@ -116,6 +116,12 @@ export type PhraseStripContextParams = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
   crossSegmentLinkTooltip: string;
+  /** Label and concise tooltip for the merge boundary button, fetched once per strip. */
+  boundaryMergeLabel: string;
+  /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
+  boundaryMergeAltHint: string;
+  /** Label and tooltip for the Alt-gated split marker. */
+  boundarySplitLabel: string;
   /** Placeholder for all gloss inputs, fetched once per strip (see the context field's doc). */
   glossPlaceholder: string;
   /** When true, the link-slot sliding-door transition is suppressed (duration 0ms). */
@@ -150,6 +156,9 @@ export function usePhraseStripContextValue(
     simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
+    boundaryMergeLabel,
+    boundaryMergeAltHint,
+    boundarySplitLabel,
     glossPlaceholder,
     skipLinkTransition,
     showMorphology,
@@ -170,6 +179,9 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      boundaryMergeLabel,
+      boundaryMergeAltHint,
+      boundarySplitLabel,
       glossPlaceholder,
       skipLinkTransition,
       showMorphology,
@@ -188,6 +200,9 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      boundaryMergeLabel,
+      boundaryMergeAltHint,
+      boundarySplitLabel,
       glossPlaceholder,
       skipLinkTransition,
       showMorphology,

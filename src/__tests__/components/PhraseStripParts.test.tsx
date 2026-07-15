@@ -2,7 +2,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
 import type { ReactElement } from 'react';
@@ -95,17 +94,6 @@ function mkPunct(ref: string, surfaceText = '.'): Token {
 
 /** A minimal no-focus context. */
 const NO_FOCUS: FocusContext = emptyFocusContext();
-
-// Every PhraseSlot render mounts BoundaryControl, whose labels come from useLocalizedStrings;
-// resetMocks clears the shared implementation, so re-establish the key-to-itself mapping globally.
-beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}),
-      false,
-    ]);
-});
 
 /** Default props shared by PhraseSlot tests. */
 function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
@@ -414,9 +402,12 @@ describe('PhraseSlot boundary controls', () => {
       <SegmentationProvider value={value}>
         <AltHeldProvider value={options.altHeld ?? true}>
           <PhraseStripProvider
-            value={makePhraseStripContext(
-              options.phraseMode ? { phraseMode: options.phraseMode } : {},
-            )}
+            value={makePhraseStripContext({
+              boundaryMergeLabel: 'Merge',
+              boundaryMergeAltHint: 'Merge (Alt+click a gap to split)',
+              boundarySplitLabel: 'Split',
+              ...(options.phraseMode ? { phraseMode: options.phraseMode } : {}),
+            })}
           >
             <PhraseSlot {...slotProps(slot)} {...props} />
           </PhraseStripProvider>
@@ -473,8 +464,8 @@ describe('PhraseSlot boundary controls', () => {
     // Alt held → the split marker is already visible, so the merge tooltip needs no Alt hint.
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
     const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_merge%');
+    expect(button).toHaveAttribute('aria-label', 'Merge');
+    expect(button).toHaveAttribute('title', 'Merge');
   });
 
   it('adds the Alt-split hint to the merge tooltip while Alt is not held', () => {
@@ -482,8 +473,8 @@ describe('PhraseSlot boundary controls', () => {
     // reveals them.
     renderBoundary({ prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' }, { altHeld: false });
     const button = screen.getByTestId('boundary-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeAltHint%');
+    expect(button).toHaveAttribute('aria-label', 'Merge');
+    expect(button).toHaveAttribute('title', 'Merge (Alt+click a gap to split)');
   });
 
   it('shows the merge button in its own row alongside the always-visible gap punctuation', () => {

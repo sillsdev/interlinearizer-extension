@@ -69,6 +69,9 @@ const PHRASE_WINDOW_HALF = 100;
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
+  '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
@@ -793,6 +796,9 @@ export default function ContinuousView({
     activeSegmentId: committedActiveSegmentId,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
+    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+    boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !isVisible || skipSlotTransitionForJump,
     showMorphology,

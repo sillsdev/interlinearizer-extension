@@ -43,6 +43,8 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
   '%interlinearizer_boundaryControl_split%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
@@ -611,6 +613,9 @@ export function SegmentView({
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
+    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+    boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,

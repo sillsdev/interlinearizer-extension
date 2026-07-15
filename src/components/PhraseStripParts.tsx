@@ -1,5 +1,4 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
 import { memo } from 'react';
@@ -14,13 +13,6 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
 import { resolveSlotFocus } from '../utils/token-layout';
 import { resolveSplitAnchor } from '../utils/split-anchor';
-
-/** Localized labels for the merge/split boundary controls; hoisted so the array reference is stable. */
-const BOUNDARY_STRING_KEYS = [
-  '%interlinearizer_boundaryControl_merge%',
-  '%interlinearizer_boundaryControl_mergeAltHint%',
-  '%interlinearizer_boundaryControl_split%',
-] as const satisfies `%${string}%`[];
 
 /** Props for {@link BoundaryButton}. */
 type BoundaryButtonProps = Readonly<{
@@ -132,9 +124,9 @@ function BoundaryControl({
   punctuation,
 }: BoundaryControlProps) {
   const { dispatch, segmentById, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
-  const { phraseMode } = usePhraseStripContext();
+  const { phraseMode, boundaryMergeLabel, boundaryMergeAltHint, boundarySplitLabel } =
+    usePhraseStripContext();
   const altHeld = useAltHeldValue();
-  const [localizedStrings] = useLocalizedStrings(BOUNDARY_STRING_KEYS);
   if (
     prevSegmentId === undefined ||
     nextSegmentId === undefined ||
@@ -162,12 +154,8 @@ function BoundaryControl({
     return (
       <span className="tw:inline-flex tw:min-h-4 tw:items-center">
         <BoundaryButton
-          label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-          title={
-            altHeld
-              ? localizedStrings['%interlinearizer_boundaryControl_merge%']
-              : localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%']
-          }
+          label={boundaryMergeLabel}
+          title={altHeld ? boundaryMergeLabel : boundaryMergeAltHint}
           testId="boundary-merge-btn"
           icon={<Merge className="tw:h-3 tw:w-3" />}
           action={() => dispatch.merge(secondStart)}
@@ -185,7 +173,7 @@ function BoundaryControl({
   return (
     <span className="tw:inline-flex tw:min-h-4 tw:items-center">
       <SplitMarker
-        label={localizedStrings['%interlinearizer_boundaryControl_split%']}
+        label={boundarySplitLabel}
         // A split on a former boundary dispatches the original removed default start (which may be a
         // leading punctuation token no word-anchored slot could name), so the restore cancels the
         // removal exactly and the delta can normalize back to the default segmentation. Otherwise

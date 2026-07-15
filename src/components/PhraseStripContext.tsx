@@ -67,6 +67,17 @@ export type PhraseStripContextValue = Readonly<{
   /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
   /**
+   * Label and concise tooltip for the merge boundary button, fetched once per strip rather than per
+   * slot (every between-group slot renders its own boundary control). Same rationale as
+   * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per
+   * slot.
+   */
+  boundaryMergeLabel: string;
+  /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
+  boundaryMergeAltHint: string;
+  /** Label and tooltip for the Alt-gated split marker. */
+  boundarySplitLabel: string;
+  /**
    * Placeholder text for every gloss input (token- and phrase-level), fetched once per strip rather
    * than per chip. Gloss inputs are `field-sizing: content`, so their width depends on the
    * placeholder; fetching per chip would let each mount render narrow until its async string

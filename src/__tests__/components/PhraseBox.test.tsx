@@ -288,9 +288,8 @@ describe('PhraseBox', () => {
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     await userEvent.click(phraseBox ?? document.body);
 
-    // The clicked box is already on screen; the browser's default scroll-focused-input-into-view
-    // would realign the segment list (the first input can sit on another wrapped row), so the
-    // forwarded focus must opt out of scrolling.
+    // The box is already on screen; the browser's default scroll-focused-input-into-view would
+    // realign the segment list, so the forwarded focus opts out of scrolling.
     expect(focusSpy).toHaveBeenCalledWith({ preventScroll: true });
   });
 
@@ -304,11 +303,9 @@ describe('PhraseBox', () => {
       />,
     );
 
-    // The token-row wrapper span is a descendant of the box container, not the container itself, so
-    // the old `target === currentTarget` guard ignored clicks on it. Such clicks must still focus the
-    // phrase (forwarding to the first gloss input, which fires onFocusPhrase) rather than doing
-    // nothing — otherwise the click fell through to the segment background and focused the wrong
-    // phrase.
+    // The token-row wrapper span is a descendant of the box, not the container itself. A click on it
+    // must still focus the phrase (forwarding to the first gloss input, which fires onFocusPhrase)
+    // rather than falling through to the segment background.
     const tokenRow = document.querySelector('[data-phrase-box="true"] .tw\\:phrase-token-row');
     if (!tokenRow) throw new Error('Expected a nested token-row span inside the phrase box');
     await userEvent.click(tokenRow);
@@ -331,8 +328,8 @@ describe('PhraseBox', () => {
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     await userEvent.click(phraseBox ?? document.body);
 
-    // Morpheme gloss inputs precede the token gloss input in DOM order; the box-click handler must
-    // skip them — only the token gloss input fires onFocus → onFocusPhrase.
+    // Morpheme gloss inputs precede the token gloss input in DOM order; the box-click handler skips
+    // them, so only the token gloss input fires onFocus → onFocusPhrase.
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).toHaveFocus();
     expect(onFocusPhrase).toHaveBeenCalledWith('test-group');
   });
@@ -365,6 +362,22 @@ describe('PhraseBox', () => {
     expect(phraseBox).toHaveClass('tw:phrase-dimmed');
   });
 
+  it('applies the candidate outline when isCandidate is true', () => {
+    renderBox(<PhraseBox {...requiredProps()} isCandidate />);
+
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:phrase-candidate');
+  });
+
+  it('gives the candidate outline precedence over the focused style', () => {
+    renderBox(<PhraseBox {...requiredProps()} isCandidate isFocused />);
+
+    // While an operation preview is hovered, what it affects matters more than what is focused.
+    const phraseBox = document.querySelector('[data-phrase-box="true"]');
+    expect(phraseBox).toHaveClass('tw:phrase-candidate');
+    expect(phraseBox).not.toHaveClass('tw:phrase-focused');
+  });
+
   it('reddens only the chips whose refs are in splitFreeTokenRefs, leaving the box border neutral', () => {
     renderBox(
       <PhraseBox
@@ -374,8 +387,7 @@ describe('PhraseBox', () => {
       />,
     );
 
-    // Only one of the two tokens would become free, so the box border stays neutral and just the
-    // affected chip is flagged.
+    // Only one token would become free, so the box border stays neutral and just that chip is flagged.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).not.toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
@@ -391,8 +403,8 @@ describe('PhraseBox', () => {
       />,
     );
 
-    // A 2-token phrase splits into two free tokens; each is shown on its own chip, never as a
-    // whole-box border (that would draw a single border around both rather than per token).
+    // A 2-token phrase splits into two free tokens, each flagged on its own chip, never as a
+    // whole-box border.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).not.toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'true');
@@ -408,8 +420,8 @@ describe('PhraseBox', () => {
       />,
     );
 
-    // A single-token fragment (e.g. one run of a discontiguous phrase) reddens at the box level;
-    // per-chip flagging is suppressed so the border isn't drawn twice.
+    // A single-token fragment reddens at the box level; per-chip flagging is suppressed so the
+    // border isn't drawn twice.
     const phraseBox = document.querySelector('[data-phrase-box="true"]');
     expect(phraseBox).toHaveClass('tw:phrase-destructive');
     expect(screen.getByTestId('token-token-1')).toHaveAttribute('data-split-free', 'false');
@@ -671,8 +683,8 @@ describe('PhraseBox', () => {
   });
 
   it('does not remove the last remaining token of the edited phrase (would empty it)', async () => {
-    // A single-token phrase: removing its only token would leave zero tokens — the early-return
-    // guard keeps the phrase alive so the user can add more tokens before committing.
+    // A single-token phrase: removing its only token would empty it, so the guard keeps the phrase
+    // alive for the user to add more tokens before committing.
     const singleTokenLink: PhraseAnalysisLink = {
       analysisId: 'phrase-1',
       status: 'approved',
@@ -742,9 +754,9 @@ describe('PhraseBox', () => {
   });
 
   it('splits a discontiguous phrase at the last intra-box boundary in document order even when the stored token list is scrambled', async () => {
-    // Phrase displayed as [A,C,D,E] (A discontiguous, [C,D,E] a contiguous run) but STORED out of
-    // document order — the bug that frees the wrong tokens. The split must use document order, so
-    // clicking the last intra-box boundary (D|E) frees E and keeps [A,C,D].
+    // Phrase displayed as [A,C,D,E] (A discontiguous, [C,D,E] a contiguous run) but stored out of
+    // document order. The split uses document order, so clicking the last intra-box boundary (D|E)
+    // frees E and keeps [A,C,D].
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-x',
       status: 'approved',
@@ -781,10 +793,10 @@ describe('PhraseBox', () => {
     );
 
     const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
-    // Click the LAST intra-box button (boundary between D and E in document order).
+    // Click the last intra-box button (the D|E boundary in document order).
     await userEvent.click(unlinkBtns[unlinkBtns.length - 1]);
 
-    // Expect: phrase shrinks to [A,C,D] (document order), E freed — not the scrambled stored order.
+    // Phrase shrinks to [A,C,D] in document order, E freed.
     expect(updatePhraseSpy).toHaveBeenCalledWith('phrase-x', [
       { tokenRef: 'A', surfaceText: 'A' },
       { tokenRef: 'C', surfaceText: 'C' },
@@ -794,8 +806,8 @@ describe('PhraseBox', () => {
   });
 
   it('hovering an intra-phrase unlink button reports the would-be-free tokens to onHoverSplitFreeTokens', async () => {
-    // Splitting a two-token phrase leaves both halves length-1, so both tokens would become free.
-    // The intra-phrase icon must forward that preview up so the parent can redden the chips.
+    // Splitting a two-token phrase leaves both halves length-1, so both tokens would become free;
+    // the icon forwards that preview up so the parent can redden the chips.
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-x',
       status: 'approved',
@@ -829,10 +841,9 @@ describe('PhraseBox', () => {
   });
 
   it('clicking an inline unlink button does not pop out any other token (no label click-forwarding)', async () => {
-    // The phrase box used to be a <label>, which forwards a click on any descendant to the box's
-    // first labelable control — the first token's remove-✕ — firing a phantom pop-out. With a plain
-    // <div>, clicking the unlink button between B and C must split there and never call deletePhrase
-    // (no token popped out) nor produce an updatePhrase that drops an unrelated token.
+    // The box is a plain <div> (not a <label> that would forward a descendant click to the first
+    // token's remove-✕): clicking the unlink button between B and C splits there and never calls
+    // deletePhrase nor drops an unrelated token via updatePhrase.
     const phraseLink: PhraseAnalysisLink = {
       analysisId: 'phrase-x',
       status: 'approved',
@@ -868,7 +879,7 @@ describe('PhraseBox', () => {
     );
 
     // Click the B|C unlink button (second intra-box boundary). Both halves are length 2, so the
-    // split shrinks the phrase to [A,B] and creates [C,D]; crucially nothing is popped out.
+    // split shrinks the phrase to [A,B] and creates [C,D], popping nothing out.
     const unlinkBtns = screen.getAllByTestId('token-unlink-btn');
     await userEvent.click(unlinkBtns[1]);
 
@@ -933,9 +944,7 @@ describe('PhraseBox', () => {
     renderBox(<PhraseBox {...requiredProps()} />);
     const box = document.querySelector('[data-phrase-box="true"]');
     expect(box).not.toBeNull();
-    // Focus the box container, then press Enter → the keydown handler forwards focus to the first
-    // gloss input. Asserting toHaveFocus makes the test fail if the Enter branch of
-    // focusFirstGlossOnSelfKeyDown is broken or removed.
+    // Focused box + Enter → the keydown handler forwards focus to the first gloss input.
     if (box instanceof HTMLElement) box.focus();
     await userEvent.keyboard('{Enter}');
 
@@ -943,7 +952,7 @@ describe('PhraseBox', () => {
   });
 
   it('pops out a middle token from a 3+ token phrase in view mode (updatePhrase)', async () => {
-    // A 4-token phrase: remove the middle non-edge token (token-2). The phrase shrinks to 3 tokens.
+    // Remove the middle non-edge token (token-2) from a 4-token phrase.
     const fourTokenPhrase: PhraseAnalysisLink = {
       analysisId: 'phrase-big',
       status: 'approved',
@@ -1068,9 +1077,8 @@ describe('PhraseBox', () => {
     renderBox(<PhraseBox {...requiredProps()} />);
     const box = document.querySelector('[data-phrase-box="true"]');
     if (box instanceof HTMLElement) box.focus();
-    // ArrowRight is neither Enter nor Space and does not move focus by default, so
-    // focusFirstGlossOnSelfKeyDown must return early without focusing the first gloss input. If the
-    // Enter/Space guard were dropped, this key would forward focus to the gloss input and fail here.
+    // ArrowRight is neither Enter nor Space and doesn't move focus by default, so the handler
+    // returns early without focusing the first gloss input.
     await userEvent.keyboard('{ArrowRight}');
     expect(screen.getByRole('textbox', { name: 'Gloss for Hello' })).not.toHaveFocus();
   });

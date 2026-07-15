@@ -185,16 +185,117 @@ describe('useDraftProject', () => {
       jest.useRealTimers();
 
       expect(result.current.dirty).toBe(true);
-      // The second autosave does not bump draftVersion and dirty was already true, so it does not
-      // re-render: the rendered `draft` still reflects the first edit while the live ref holds the
-      // second. The second edit is persisted and visible through the synchronous snapshot.
+      // The second autosave neither bumps draftVersion nor flips dirty, so it doesn't re-render: the
+      // rendered `draft` still shows the first edit while the ref (and snapshot) hold the second.
       expect(result.current.draft?.analysis.tokenAnalyses[0].id).toBe('first');
       expect(result.current.getDraftSnapshot()?.analysis.tokenAnalyses[0].id).toBe('second');
       expect(lastSavedDraft().analysis.tokenAnalyses[0].id).toBe('second');
     });
   });
 
+  describe('autosaveSegmentation', () => {
+    it('stores the boundary delta on the draft, marks it dirty, and persists it', async () => {
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      act(() => {
+        result.current.autosaveSegmentation(delta);
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(result.current.dirty).toBe(true);
+      expect(result.current.getDraftSnapshot()?.segmentation).toEqual(delta);
+      expect(lastSavedDraft().segmentation).toEqual(delta);
+    });
+
+    it('bumps segmentationVersion on every edit, including when the draft was already dirty', async () => {
+      // `setDirty(true)` bails out of the re-render once the draft is already dirty, so the version
+      // bump is what forces the view to recompute the ref-held segmentation on each edit.
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      const versionBefore = result.current.segmentationVersion;
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      expect(result.current.dirty).toBe(true);
+      expect(result.current.segmentationVersion).toBe(versionBefore + 1);
+
+      // A second edit while already dirty must still bump the version so the view recomputes.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+      });
+      expect(result.current.segmentationVersion).toBe(versionBefore + 2);
+
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+    });
+
+    it('replaces a pending debounced write when called again before it flushes', async () => {
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      // A second call before the debounce fires clears the pending timer and schedules a new write.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: [], addedStarts: ['GEN 1:1:6'] });
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(lastSavedDraft().segmentation).toEqual({
+        removedVerseStarts: [],
+        addedStarts: ['GEN 1:1:6'],
+      });
+    });
+
+    it('clears the segmentation field when passed undefined (back to default segmentation)', async () => {
+      // Seed a draft that already has custom boundaries so clearing them is observable.
+      mockGetDraftResolves(
+        makeDraft({ segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] } }),
+      );
+      const { result } = await renderLoaded();
+
+      jest.useFakeTimers();
+      act(() => {
+        result.current.autosaveSegmentation(undefined);
+      });
+      act(() => {
+        jest.advanceTimersByTime(300);
+      });
+      jest.useRealTimers();
+
+      expect(result.current.getDraftSnapshot()?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
+  });
+
   describe('loadFromProject', () => {
+    it('copies a project segmentation delta into the draft when present', async () => {
+      const { result } = await renderLoaded();
+
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:1:6'] };
+      act(() => {
+        result.current.loadFromProject({
+          analysis: analysisWithToken('tok-open'),
+          analysisLanguages: ['de'],
+          segmentation: delta,
+        });
+      });
+
+      expect(result.current.draft?.segmentation).toEqual(delta);
+    });
+
     it('copies analysis, analysis languages, and target, clears dirty, and bumps the version', async () => {
       const { result } = await renderLoaded();
       const versionBefore = result.current.draftVersion;
@@ -332,6 +433,39 @@ describe('useDraftProject', () => {
       expect(result.current.draftVersion).toBe(versionBefore + 1);
       expect(lastSavedDraft().dirty).toBe(true);
     });
+
+    it('drops the wiped book’s custom boundaries while keeping other books’', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          segmentation: { removedVerseStarts: ['GEN 1:2:0', 'MAT 3:4:0'], addedStarts: [] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeBook('GEN');
+      });
+
+      const expected = { removedVerseStarts: ['MAT 3:4:0'], addedStarts: [] };
+      expect(result.current.draft?.segmentation).toEqual(expected);
+      expect(lastSavedDraft().segmentation).toEqual(expected);
+    });
+
+    it('clears the segmentation field entirely when only the wiped book had boundaries', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: ['GEN 1:3:5'] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeBook('GEN');
+      });
+
+      expect(result.current.draft?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
   });
 
   describe('wipeAll', () => {
@@ -351,6 +485,24 @@ describe('useDraftProject', () => {
       expect(result.current.draftVersion).toBe(versionBefore + 1);
       expect(lastSavedDraft().dirty).toBe(false);
     });
+
+    it('clears any custom segment boundaries as part of the clean baseline', async () => {
+      mockGetDraftResolves(
+        makeDraft({
+          analysis: analysisWithToken('tok-wipe-all'),
+          dirty: true,
+          segmentation: { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] },
+        }),
+      );
+      const { result } = await renderLoaded();
+
+      act(() => {
+        result.current.wipeAll();
+      });
+
+      expect(result.current.draft?.segmentation).toBeUndefined();
+      expect(lastSavedDraft().segmentation).toBeUndefined();
+    });
   });
 
   describe('markSynced', () => {
@@ -365,7 +517,7 @@ describe('useDraftProject', () => {
       const versionBefore = result.current.draftVersion;
 
       act(() => {
-        result.current.markSynced(synced);
+        result.current.markSynced(synced, undefined);
       });
 
       expect(result.current.dirty).toBe(false);
@@ -388,10 +540,54 @@ describe('useDraftProject', () => {
 
       // Syncing against the now-stale snapshot must not clear the unsaved-changes flag.
       act(() => {
-        result.current.markSynced(savedSnapshot);
+        result.current.markSynced(savedSnapshot, undefined);
       });
 
       expect(result.current.dirty).toBe(true);
+    });
+
+    it('leaves the draft dirty when a segmentation edit landed since the saved snapshot', async () => {
+      const { result } = await renderLoaded();
+      // Dirty the draft with the analysis a Save would capture and persist.
+      const savedAnalysis = analysisWithToken('tok-saved');
+      act(() => {
+        result.current.autosaveAnalysis(savedAnalysis);
+      });
+      // A boundary edit lands during the save round-trip. It carries the analysis over by
+      // reference, so only the segmentation identity distinguishes the ref from the snapshot.
+      act(() => {
+        result.current.autosaveSegmentation({ removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] });
+      });
+      expect(result.current.dirty).toBe(true);
+
+      // The snapshot was taken before the boundary edit (default segmentation), so syncing against
+      // it must not clear the unsaved-changes flag over the un-persisted boundary change.
+      act(() => {
+        result.current.markSynced(savedAnalysis, undefined);
+      });
+
+      expect(result.current.dirty).toBe(true);
+    });
+
+    it('clears dirty when synced with the matching segmentation reference', async () => {
+      const { result } = await renderLoaded();
+      const delta = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+      act(() => {
+        result.current.autosaveSegmentation(delta);
+      });
+      expect(result.current.dirty).toBe(true);
+      const snapshot = result.current.getDraftSnapshot();
+      if (!snapshot) throw new Error('expected the draft to be loaded');
+
+      // Save persisted exactly what the ref holds, so the sync clears the unsaved-changes flag.
+      act(() => {
+        result.current.markSynced(snapshot.analysis, snapshot.segmentation);
+      });
+
+      expect(result.current.dirty).toBe(false);
+      const saved = lastSavedDraft();
+      expect(saved.dirty).toBe(false);
+      expect(saved.segmentation).toEqual(delta);
     });
   });
 

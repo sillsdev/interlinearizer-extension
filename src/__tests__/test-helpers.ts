@@ -86,6 +86,10 @@ export function makePhraseStripContext(
     showMorphology: false,
     activeSegmentId: undefined,
     crossSegmentLinkTooltip: '',
+    boundaryMergeLabel: '',
+    boundaryMergeAltHint: '',
+    boundarySplitLabel: '',
+    glossPlaceholder: '',
     skipLinkTransition: false,
     ...overrides,
   };
@@ -143,6 +147,7 @@ export const GEN_1_1_BOOK: Book = {
           charEnd: 2,
         },
       ],
+      verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
     },
   ],
 };

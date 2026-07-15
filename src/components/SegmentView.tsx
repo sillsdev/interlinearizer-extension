@@ -1,6 +1,7 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { ScriptureRef, Segment, Token } from 'interlinearizer';
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, MouseEvent, SetStateAction } from 'react';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
@@ -13,12 +14,18 @@ import {
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
 import type { RenderUnit } from '../types/token-layout';
+import { isWordToken } from '../types/type-guards';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { resolvedOrEmpty } from '../utils/localized-strings';
+import { resolveSplitAnchor } from '../utils/split-anchor';
+import { slotVerseLabel, verseStartToken } from '../utils/verse-superscripts';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { useAltHeldValue } from './AltHeldContext';
 import MemoizedArcOverlay from './ArcOverlay';
 import SegmentFreeTranslationInput from './SegmentFreeTranslationInput';
 import { PhraseStripProvider } from './PhraseStripContext';
-import { PhraseStrip, type StripItem } from './PhraseStripParts';
+import { PhraseStrip, VerseSuperscript, type StripItem } from './PhraseStripParts';
+import { useSegmentation } from './SegmentationStore';
 
 /**
  * The two display modes for {@link SegmentView}.
@@ -32,13 +39,173 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
 
 /**
  * Localized string keys this view needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders. A fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render, which (with one SegmentView per verse) escalates
- * into an infinite update loop that freezes the WebView.
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, escalating into an infinite update loop.
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
+  '%interlinearizer_boundaryControl_split%',
+  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
+
+/**
+ * One piece of the baseline-text render: a verbatim text run, an inline verse superscript, or a
+ * splittable gap. Concatenating every piece's `text` (superscripts contribute none) reproduces the
+ * segment's `baselineText` byte-for-byte.
+ */
+type BaselinePiece =
+  | {
+      kind: 'text';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** A verbatim slice of `baselineText`. */
+      text: string;
+    }
+  | {
+      kind: 'gap';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** The verbatim inter-token gap slice of `baselineText`. */
+      text: string;
+      /** The split anchor ref an Alt+click here dispatches. */
+      splitRef: string;
+    }
+  | {
+      kind: 'superscript';
+      /** Stable React key derived from this piece's char offset. */
+      key: string;
+      /** The verse label to render as a superscript at this position. */
+      label: string;
+    };
+
+/**
+ * Builds the ordered baseline-text render pieces for a segment. Partitions `baselineText` at every
+ * token boundary, verse-start offset, and split-gap end so each slice can be rendered as its own
+ * span; the partition is exhaustive, so concatenating the slices reproduces `baselineText` exactly
+ * (no whitespace or punctuation is dropped). A verse superscript is emitted at each verse-start
+ * offset, and the gap slice ending immediately before a split anchor is marked splittable.
+ *
+ * @param segment - The segment whose baseline text is being laid out.
+ * @param verseStartLabelByOffset - Char offset → verse superscript label.
+ * @param splitGapByOffset - Anchor char offset → split anchor ref; the gap slice ending at that
+ *   offset becomes the splittable gap.
+ * @returns The ordered baseline pieces.
+ */
+function buildBaselinePieces(
+  segment: Segment,
+  verseStartLabelByOffset: ReadonlyMap<number, string>,
+  splitGapByOffset: ReadonlyMap<number, string>,
+): BaselinePiece[] {
+  const { baselineText, tokens } = segment;
+  // Every offset at which the text must be cut into its own span: string ends, token edges, verse
+  // starts, and split-anchor starts. Sorted and de-duplicated so the walk visits each once.
+  const cuts = new Set<number>([0, baselineText.length]);
+  tokens.forEach((t) => {
+    cuts.add(t.charStart);
+    cuts.add(t.charEnd);
+  });
+  verseStartLabelByOffset.forEach((_label, offset) => cuts.add(offset));
+  splitGapByOffset.forEach((_ref, offset) => cuts.add(offset));
+  const sortedCuts = [...cuts].sort((a, b) => a - b);
+
+  const pieces: BaselinePiece[] = [];
+  for (let i = 0; i < sortedCuts.length; i += 1) {
+    const start = sortedCuts[i];
+    const label = verseStartLabelByOffset.get(start);
+    if (label !== undefined) pieces.push({ kind: 'superscript', key: `sup-${start}`, label });
+    const end = sortedCuts[i + 1];
+    if (end === undefined) break;
+    const text = baselineText.slice(start, end);
+    const splitRef = splitGapByOffset.get(end);
+    const key = `piece-${start}`;
+    if (splitRef !== undefined) pieces.push({ kind: 'gap', key, text, splitRef });
+    else pieces.push({ kind: 'text', key, text });
+  }
+  return pieces;
+}
+
+/**
+ * The segment's left gutter cell: a fixed-width column showing the segment's verse-range label
+ * (e.g. `5`, `2–3`, `29–2:1`), top-aligned so the number sits level with the first content row.
+ * Purely presentational — clicks fall through to the card's own background-select — so it carries
+ * no interactive role and is not a tab stop. It is `aria-hidden` because the verse numbers already
+ * appear in the running text's reference markup, so announcing the gutter too would duplicate
+ * them.
+ *
+ * @param props - Component props.
+ * @param props.label - The verse-range label to render, or `undefined` to render an empty gutter
+ *   (reserving the column width so the content stays aligned across cards).
+ * @returns The fixed-width gutter cell.
+ */
+function SegmentGutter({ label }: { label: string | undefined }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="tw:w-8 tw:shrink-0 tw:select-none tw:pt-0.5 tw:text-right tw:text-xs tw:font-semibold tw:leading-none tw:text-muted-foreground"
+      data-testid="segment-gutter-label"
+    >
+      {label}
+    </span>
+  );
+}
+
+/** Props for {@link BaselineSplitGap}. */
+type BaselineSplitGapProps = Readonly<{
+  /** The verbatim inter-token gap text; rendered as the span's content so widths never reflow. */
+  text: string;
+  /** The split anchor ref an Alt+click here dispatches. */
+  splitRef: string;
+  /** Localized tooltip for the split affordance. */
+  splitLabel: string;
+  /** Dispatches the split; receives the click event (to gate on Alt) and the anchor ref. */
+  onSplit: (event: MouseEvent, splitRef: string) => void;
+}>;
+
+/**
+ * Renders one splittable baseline-text gap. Reads the Alt-held state itself so an Alt press/release
+ * re-renders only these leaves rather than every mounted `SegmentView`. While Alt is not held the
+ * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
+ * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
+ * lands.
+ *
+ * @param props - Component props.
+ * @param props.text - The verbatim gap text.
+ * @param props.splitRef - The split anchor ref an Alt+click dispatches.
+ * @param props.splitLabel - Localized tooltip for the split affordance.
+ * @param props.onSplit - Dispatches the split, gated on the Alt key inside the handler.
+ * @returns The gap span — plain text at rest, an Alt-clickable marker while Alt is held.
+ */
+function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
+  const altHeld = useAltHeldValue();
+  if (!altHeld) return text;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {/* Keyboard split is out of scope, so this is a pointer-only affordance (matching the
+            segment container's own click handler); the a11y lint rules are disabled here. */}
+        {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+        <span
+          className="tw:group/split tw:relative tw:cursor-pointer tw:rounded tw:bg-accent/30 tw:hover:bg-accent/60"
+          data-testid="baseline-split-gap"
+          onClick={(event) => onSplit(event, splitRef)}
+        >
+          {text}
+          <span
+            aria-hidden="true"
+            className="tw:pointer-events-none tw:absolute tw:inset-y-0 tw:left-1/2 tw:w-px tw:-translate-x-1/2 tw:bg-muted-foreground tw:opacity-40 tw:transition-all tw:group-hover/split:bg-foreground tw:group-hover/split:opacity-100"
+            data-testid="baseline-split-caret"
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{splitLabel}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** Memoized {@link BaselineSplitGap}; stable props so Alt churn re-renders only the toggled leaves. */
+const MemoizedBaselineSplitGap = memo(BaselineSplitGap);
 
 /** Props for {@link SegmentView}. */
 type SegmentViewProps = Readonly<{
@@ -60,6 +227,20 @@ type SegmentViewProps = Readonly<{
   onSelect: (ref: ScriptureRef, tokenRef?: string) => void;
   /** The segment to render. */
   segment: Segment;
+  /**
+   * Render label for each of the segment's `verseStarts`, parallel by index — the inline
+   * verse-superscript string, chapter-qualified (`chapter:number`) by the list at a chapter
+   * transition and bare otherwise. Omitted (or a missing entry) falls back to the verbatim
+   * `verseStarts[i].number`, since only the list has the cross-segment context to qualify.
+   */
+  verseStartLabels?: readonly string[];
+  /**
+   * The segment's verse-range label shown in its left gutter column (e.g. `5`, `2–3`, `29–2:1`),
+   * computed by the list from the whole book's segmentation. Rendered only when
+   * `viewOptions.showVerseGutter` is on, as a mutually-exclusive alternative to the inline verse
+   * superscripts. Omitted when the list has no label for this segment (the gutter renders empty).
+   */
+  gutterLabel?: string;
   /** Current phrase-interaction mode; controls token click behavior and disabled state. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed to phrase boxes so they can transition modes. */
@@ -78,9 +259,8 @@ type SegmentViewProps = Readonly<{
   /** Word token ref → token lookup for the whole book; used to resolve focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
-   * Bundled display toggles; `chapterLabelInVerse` sets the verse label and `showFreeTranslation`
-   * gates the free-translation input, while the rest pass through to
-   * {@link PhraseStripContextValue}.
+   * Bundled display toggles; `showFreeTranslation` gates the free-translation input, while the rest
+   * pass through to {@link PhraseStripContextValue}.
    */
   viewOptions: ViewOptions;
 }>;
@@ -100,6 +280,11 @@ type SegmentViewProps = Readonly<{
  *   the segment's first word token; in `token-chip` mode only word tokens trigger this callback
  *   with the clicked token. `tokenRef` is omitted only when the segment has no word token.
  * @param props.segment - The segment to render
+ * @param props.verseStartLabels - Per-verse-start inline superscript labels (parallel to
+ *   `segment.verseStarts`), chapter-qualified by the list where a verse start opens a new chapter;
+ *   falls back to the verbatim verse number when absent.
+ * @param props.gutterLabel - The segment's verse-range label shown in its left gutter column when
+ *   `viewOptions.showVerseGutter` is on.
  * @param props.phraseMode - Current phrase-interaction mode
  * @param props.setPhraseMode - Setter for `phraseMode`
  * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
@@ -110,10 +295,10 @@ type SegmentViewProps = Readonly<{
  * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
  *   sort phrase tokens across segment boundaries.
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.viewOptions - Bundled display toggles; `chapterLabelInVerse` sets the verse label
- *   and `showFreeTranslation` gates the free-translation input, while the rest pass through to the
- *   phrase strip context.
- * @returns A div containing a verse label and the segment content (baseline text or token chips)
+ * @param props.viewOptions - Bundled display toggles; `showFreeTranslation` gates the
+ *   free-translation input, while the rest pass through to the phrase strip context.
+ * @returns A div containing the segment content (baseline text or token chips) with either inline
+ *   verse superscripts or a left verse-range gutter, depending on `viewOptions.showVerseGutter`.
  */
 export function SegmentView({
   displayMode,
@@ -122,6 +307,8 @@ export function SegmentView({
   isActive,
   onSelect,
   segment,
+  verseStartLabels,
+  gutterLabel,
   phraseMode,
   setPhraseMode,
   hoveredPhraseId,
@@ -134,14 +321,16 @@ export function SegmentView({
   const {
     hideInactiveLinkButtons,
     simplifyPhrases,
-    chapterLabelInVerse,
     showMorphology,
     showFreeTranslation,
+    showVerseGutter,
   } = viewOptions;
   const { book, chapter, verse } = segment.startRef;
   const ref: ScriptureRef = useMemo(() => ({ book, chapter, verse }), [book, chapter, verse]);
 
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+
+  const { dispatch, formerBoundaries, straddledBoundaryRefs } = useSegmentation();
 
   const phraseLinkByRef = usePhraseLinkMap();
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -168,18 +357,112 @@ export function SegmentView({
     [segment.tokens, phraseLinkByRef],
   );
 
-  // The inactive border is transparent rather than absent so activating a segment only recolors
-  // it: adding/removing a real border would change the segment's height by 2px, shifting every
-  // segment below it — a visible jump in the list whenever the active verse moves on a click.
+  // Both states carry a real border so activating a segment only recolors it — never adds or removes
+  // one, which would change the segment's height by 2px and shift every segment below it. The
+  // inactive border is a faint (`border-border/40`) always-visible card outline; activating
+  // brightens it to the full `border-border`.
   const sharedClassName = isActive
     ? 'tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted/50 tw:p-2'
-    : 'tw:w-full tw:rounded tw:border tw:border-transparent tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
+    : 'tw:w-full tw:rounded tw:border tw:border-border/40 tw:p-2 tw:transition-colors tw:hover:bg-muted/30';
 
-  // When chapter info is folded into the verse label, every verse reads `chapter:verse`; otherwise
-  // it stays a bare verse number (the chapter is carried by SegmentListView's inline header).
-  const verseLabelText = chapterLabelInVerse ? `${chapter}:${verse}` : `${verse}`;
+  /**
+   * Resolved inline superscript label for each of the segment's verse starts: the list-supplied
+   * `verseStartLabels` entry (chapter-qualified where a verse start opens a new chapter) or, absent
+   * that, the verbatim verse number carried on the verse start itself.
+   */
+  const resolvedVerseStartLabels = useMemo(
+    () => segment.verseStarts.map((vs, i) => verseStartLabels?.[i] ?? vs.number),
+    [segment.verseStarts, verseStartLabels],
+  );
 
-  const segmentHeader = <span className="tw:section-label tw:mb-2 tw:block">{verseLabelText}</span>;
+  /**
+   * Verse-start char offset → resolved superscript label, so the baseline-text walk can emit a
+   * superscript wherever a verse begins. Continuation entries (a mid-verse split's later piece,
+   * whose verse truly started in a previous segment) are skipped: their number already showed at
+   * the real start, so repeating it here would duplicate it. Empty when the verse gutter is on,
+   * since the gutter then carries the verse information instead of these inline superscripts.
+   */
+  const verseStartLabelByOffset = useMemo(() => {
+    const map = new Map<number, string>();
+    if (showVerseGutter) return map;
+    segment.verseStarts.forEach((vs, i) => {
+      if (!vs.isContinuation) map.set(vs.charStart, resolvedVerseStartLabels[i]);
+    });
+    return map;
+  }, [segment.verseStarts, resolvedVerseStartLabels, showVerseGutter]);
+
+  /**
+   * Split anchor by the char offset of the gap that precedes it, for baseline-text mode: for each
+   * eligible word-word pair the split anchor's leading gap (the inter-token region just before the
+   * anchor token) becomes a splittable gap. A pair is eligible only in `view` mode and only when
+   * its word boundary is not a mid-phrase (straddled) boundary — the same rules the token-chip
+   * marker uses. A split at a former boundary dispatches the original removed default start (which
+   * may be leading punctuation) so the delta can normalize back to the default segmentation;
+   * otherwise the anchor comes from the punctuation-travel rule. The gap is keyed by the offset of
+   * the token the split actually lands before (the dispatched ref's own token), so the highlighted
+   * caret sits exactly where the boundary will fall — including a former boundary whose
+   * leading-punctuation ref is a few characters left of the word anchor. The `altHeld` gate is
+   * applied at render time, not here, so this map stays stable across Alt presses.
+   */
+  const splitGapByOffset = useMemo(() => {
+    const map = new Map<number, string>();
+    if (phraseMode.kind !== 'view') return map;
+    const { tokens, baselineText } = segment;
+    const tokenByRef = new Map(tokens.map((t) => [t.ref, t]));
+    let prevWord: Token | undefined;
+    let pendingPunct: Token[] = [];
+    tokens.forEach((token) => {
+      if (!isWordToken(token)) {
+        pendingPunct.push(token);
+        return;
+      }
+      if (prevWord !== undefined && !straddledBoundaryRefs.has(token.ref)) {
+        const anchor = resolveSplitAnchor(prevWord, token, pendingPunct, baselineText);
+        const splitRef = formerBoundaries.get(token.ref) ?? anchor;
+        // Key the gap by the token the split lands before — the dispatched ref's own token — so the
+        // caret aligns with the actual cut. For a former boundary that ref can be leading punctuation
+        // sitting a few characters left of the punctuation-travel anchor.
+        const splitToken = tokenByRef.get(splitRef);
+        /* v8 ignore next -- the split ref always names a token in this segment */
+        if (splitToken !== undefined) {
+          map.set(splitToken.charStart, splitRef);
+        }
+      }
+      prevWord = token;
+      pendingPunct = [];
+    });
+    return map;
+  }, [segment, phraseMode.kind, straddledBoundaryRefs, formerBoundaries]);
+
+  /**
+   * The ordered baseline-text render pieces: plain-text runs, inline verse superscripts, and
+   * splittable gaps. Slices are taken verbatim from `baselineText` (token surfaces, inter-token
+   * gaps, and any leading/trailing text a token does not cover), so concatenating every piece's
+   * text reproduces `baselineText` byte-for-byte — the only visible additions are the verse
+   * superscripts. A gap whose starting offset is a split anchor carries its `splitRef` so an
+   * Alt+click there can dispatch the split.
+   */
+  const baselinePieces = useMemo<BaselinePiece[]>(
+    () => buildBaselinePieces(segment, verseStartLabelByOffset, splitGapByOffset),
+    [segment, verseStartLabelByOffset, splitGapByOffset],
+  );
+
+  /**
+   * Splits the segment at the given anchor when the click carries the Alt modifier; a plain click
+   * falls through to {@link handleBaselineClick} (which selects the segment). Keeps the gesture
+   * Alt-only so it never fights the plain-click select/focus behavior.
+   *
+   * @param event - The click event on the split gap.
+   * @param splitRef - The resolved split anchor ref to dispatch.
+   */
+  const handleBaselineGapClick = useCallback(
+    (event: MouseEvent, splitRef: string) => {
+      if (!event.altKey) return;
+      event.stopPropagation();
+      dispatch.split(splitRef);
+    },
+    [dispatch],
+  );
 
   /**
    * `false` until just after the first paint, then `true`. Gates the link-slot fade transition: the
@@ -259,33 +542,57 @@ export function SegmentView({
   }, [renderUnits, focusedTokenRef]);
 
   /**
-   * Normalized strip items handed to the shared {@link PhraseStrip} body. Both slot neighbors are in
-   * this segment by construction (one segment per render), so both slot segment ids are
-   * `segment.id`.
+   * Verse-start token ref → resolved verse label. The verse-start token is the first token at or
+   * after a verse start's offset ({@link verseStartToken}); keying by ref lets the strip builder
+   * mark the slot that begins each verse — the slot before the verse's first group, or (for a verse
+   * opening on leading punctuation) the slot that carries that punctuation — so {@link PhraseSlot}
+   * can render the verse number below the link icon. Continuation entries (a mid-verse split's
+   * later piece) contribute no label: the verse's number already showed at its real start. Empty
+   * when the verse gutter is on, since the gutter then carries the verse information instead of
+   * these inline slot labels.
+   */
+  const verseStartLabelByTokenRef = useMemo(() => {
+    const map = new Map<string, string>();
+    if (showVerseGutter) return map;
+    segment.verseStarts.forEach((vs, i) => {
+      if (vs.isContinuation) return;
+      const startToken = verseStartToken(segment, vs);
+      if (startToken) map.set(startToken.ref, resolvedVerseStartLabels[i]);
+    });
+    return map;
+  }, [segment, resolvedVerseStartLabels, showVerseGutter]);
+
+  /**
+   * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
+   * verse label when a verse begins at it (its following group's first token, or one of its own gap
+   * punctuation tokens, is a verse start); the shared {@link PhraseSlot} renders that number below
+   * the link icon so both strips mark verse boundaries identically. Both slot neighbors are in this
+   * segment by construction (one segment per render), so both slot segment ids are `segment.id`.
    */
   const stripItems = useMemo<StripItem[]>(
     () =>
       renderUnits.map((unit) => {
-        if (unit.kind === 'slot') {
-          const { prevGroup, nextGroup } = unit.slot;
-          const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
+        if (unit.kind === 'group') {
           return {
-            kind: 'slot',
-            key,
-            slot: unit.slot,
-            prevSegmentId: segment.id,
-            nextSegmentId: segment.id,
-            focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
+            kind: 'group',
+            key: unit.group.tokens[0].ref,
+            group: unit.group,
+            isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
           };
         }
+        const { prevGroup, nextGroup } = unit.slot;
+        const key = `slot-${prevGroup?.tokens[prevGroup.tokens.length - 1]?.ref ?? 'start'}-${nextGroup?.tokens[0]?.ref ?? 'end'}`;
         return {
-          kind: 'group',
-          key: unit.group.tokens[0].ref,
-          group: unit.group,
-          isFocused: unit.group.tokens.some((t) => t.ref === focusedTokenRef),
+          kind: 'slot',
+          key,
+          slot: unit.slot,
+          prevSegmentId: segment.id,
+          nextSegmentId: segment.id,
+          focusedSideIsPrev: focusedSideIsPrevByUnit.get(unit),
+          verseLabel: slotVerseLabel(unit.slot, verseStartLabelByTokenRef),
         };
       }),
-    [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef],
+    [renderUnits, segment.id, focusedSideIsPrevByUnit, focusedTokenRef, verseStartLabelByTokenRef],
   );
 
   const editPhraseTokens = useEditPhraseTokens(phraseMode);
@@ -311,6 +618,10 @@ export function SegmentView({
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
+    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+    boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
+    glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,
   });
@@ -331,20 +642,15 @@ export function SegmentView({
    * Brings this segment's first phrase into focus and updates the active verse when the click lands
    * on segment background or structural wrappers rather than a genuinely interactive element. The
    * token row and arc container fill most of the segment, so a strict `target === currentTarget`
-   * check would only catch the thin padding ring; instead we ignore the click only when it
-   * originated inside an interactive element (token button, gloss input, etc.) or anywhere inside a
-   * phrase box, each of which handles its own selection. The `label` and `[data-phrase-box]` cases
-   * matter for clicks that land on a token chip's surrounding `<label>` or its surface-text span
-   * rather than directly on the gloss input: those targets are not in the interactive-tag list, but
-   * the browser still forwards the click to the chip's input (firing its own phrase focus), so the
-   * background handler must not also fire and override that focus with the segment's first phrase —
-   * which was most visible when clicking an out-of-segment phrase fragment. The `[data-link-slot]`
-   * case is the inter-phrase link slot: when its link button is visible the button absorbs the
-   * click, but when `hideInactiveLinkButtons` hides the button in place the slot becomes an empty
-   * clickable gap between phrases. Treating it as background was the bug where clicking near a
-   * phrase in an inactive segment (buttons hidden) snapped focus to the segment's first phrase;
-   * ignoring it leaves the click a no-op, matching the buttons-visible behavior. Everything else —
-   * padding, arc gutters, empty wrap space — focuses the first phrase.
+   * check would only catch the thin padding ring; instead we ignore the click when it originated
+   * inside an interactive element or anywhere inside a phrase box, each of which handles its own
+   * selection. The `label` and `[data-phrase-box]` cases cover clicks on a token chip's surrounding
+   * `<label>` or surface-text span: the browser forwards those to the chip's input (firing its own
+   * phrase focus), so the background handler must not override that focus. The `[data-link-slot]`
+   * case is the inter-phrase link slot, which becomes an empty clickable gap when
+   * `hideInactiveLinkButtons` hides its button in place; ignoring it keeps the click a no-op,
+   * matching the buttons-visible behavior. Everything else — padding, arc gutters, empty wrap space
+   * — focuses the first phrase.
    *
    * @param event - The click event on the segment container.
    */
@@ -408,25 +714,112 @@ export function SegmentView({
   ]);
 
   if (displayMode === 'baseline-text') {
-    // Intentional: baseline-text mode renders a clickable div, not a button, so the
-    // free-translation input can sit inside the same box (an input may not be nested in a button).
-    // The free-translation input is the only interactive child and handles its own focus, so the
-    // container only needs a click handler; a redundant key handler / role / tabIndex would add a
-    // non-functional tab stop, so the relevant a11y rules are disabled here (matching token-chip
-    // mode below).
+    // Baseline-text mode renders a clickable div, not a button, so the free-translation input can
+    // sit inside the same box (an input may not be nested in a button). That input is the only
+    // interactive child and handles its own focus, so the container only needs a click handler; a
+    // redundant key handler / role / tabIndex would add a non-functional tab stop, so the a11y
+    // rules are disabled here.
     return (
       // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
       <div
         aria-current={isActive ? 'true' : undefined}
-        className={`${sharedClassName} tw:text-left`}
+        className={`${sharedClassName} tw:flex tw:flex-row tw:gap-2 tw:text-left`}
         data-segment-id={segment.id}
         data-testid="segment-container"
         onClick={handleBaselineClick}
       >
-        {segmentHeader}
-        <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
-          {segment.baselineText}
-        </span>
+        {showVerseGutter && <SegmentGutter label={gutterLabel} />}
+        <div className="tw:min-w-0 tw:flex-1">
+          <span className="tw:block tw:font-mono tw:text-sm tw:text-foreground">
+            {baselinePieces.map((piece) => {
+              if (piece.kind === 'superscript') {
+                return <VerseSuperscript key={piece.key} label={piece.label} />;
+              }
+              // A splittable gap renders as an Alt-clickable marker while Alt is held, otherwise as
+              // its plain text. Unlike the token-chip / continuous strip's between-box slots, an
+              // icon dropped into a monospace inter-word space would collide with the letters, so
+              // the marker is a tint plus a slim vertical caret rather than a `Split` glyph.
+              if (piece.kind === 'gap') {
+                return (
+                  <MemoizedBaselineSplitGap
+                    key={piece.key}
+                    text={piece.text}
+                    splitRef={piece.splitRef}
+                    splitLabel={localizedStrings['%interlinearizer_boundaryControl_split%']}
+                    onSplit={handleBaselineGapClick}
+                  />
+                );
+              }
+              return <Fragment key={piece.key}>{piece.text}</Fragment>;
+            })}
+          </span>
+          {showFreeTranslation && (
+            <SegmentFreeTranslationInput
+              segmentId={segment.id}
+              surfaceText={segment.baselineText}
+              onFocus={handleFreeTranslationFocus}
+            />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Token-chip mode renders a div, not a button: the word tokens (via PhraseBox gloss inputs) are
+  // the interactive elements, and the background click below only focuses the first phrase, which
+  // keyboard users reach through those token elements directly. A redundant key handler / role /
+  // tabIndex would add a non-functional tab stop, so the a11y rules are disabled here.
+  return (
+    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+    <div
+      aria-current={isActive ? 'true' : undefined}
+      className={`${sharedClassName} tw:flex tw:flex-row tw:gap-2`}
+      data-segment-id={segment.id}
+      data-testid="segment-container"
+      onClick={handleBackgroundClick}
+    >
+      {showVerseGutter && <SegmentGutter label={gutterLabel} />}
+      <div className="tw:min-w-0 tw:flex-1">
+        <div className="tw:arc-container" ref={arcContainerRef}>
+          <MemoizedArcOverlay
+            arcPaths={arcPaths}
+            phraseMode={phraseMode}
+            hoveredPhraseId={hoveredPhraseId}
+            focusedPhraseId={focus.focusedPhraseId}
+            candidatePhraseIds={candidatePhraseIds}
+            phraseLinkById={phraseLinkById}
+            tokenDocOrder={tokenDocOrder}
+            onArcSplit={handleArcSplit}
+            onSplitHoverChange={handleSplitHoverChange}
+            onHoverPhrase={onHoverPhrase}
+            simplifyPhrases={simplifyPhrases}
+          />
+          <PhraseStripProvider value={stripContext}>
+            <span
+              className="tw:token-row tw:pointer-events-none"
+              style={{
+                paddingTop: `${tokenRowTopPadding}px`,
+                paddingLeft: `${stripLeftPadding}px`,
+                paddingRight: `${stripRightPadding}px`,
+                rowGap: `${stripRowGap}px`,
+              }}
+              onMouseLeave={clearAllHoverState}
+            >
+              <PhraseStrip
+                items={stripItems}
+                phraseMode={phraseMode}
+                focus={focus}
+                hoveredPhraseId={hoveredPhraseId}
+                hoveredGroupKey={hoveredGroupKey}
+                candidateTokenRefs={candidateTokenRefs}
+                splitFreeTokenRefs={splitFreeTokenRefs}
+                onHoverPhrase={onHoverPhrase}
+                setHoveredGroupKey={setHoveredGroupKey}
+                onFocusPhrase={handleTokenClick}
+              />
+            </span>
+          </PhraseStripProvider>
+        </div>
         {showFreeTranslation && (
           <SegmentFreeTranslationInput
             segmentId={segment.id}
@@ -435,71 +828,6 @@ export function SegmentView({
           />
         )}
       </div>
-    );
-  }
-
-  // Intentional: token-chip mode renders a div, not a button. In this mode individual word tokens
-  // (via PhraseBox gloss inputs) are the interactive elements; the background click below only
-  // focuses the first phrase, which keyboard users reach through those token elements directly. A
-  // redundant key handler / role / tabIndex on the container would add a non-functional tab stop, so
-  // the click-events-have-key-events and no-static-element-interactions rules are disabled here.
-  return (
-    // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
-    <div
-      aria-current={isActive ? 'true' : undefined}
-      className={sharedClassName}
-      data-segment-id={segment.id}
-      data-testid="segment-container"
-      onClick={handleBackgroundClick}
-    >
-      {segmentHeader}
-      <div className="tw:arc-container" ref={arcContainerRef}>
-        <MemoizedArcOverlay
-          arcPaths={arcPaths}
-          phraseMode={phraseMode}
-          hoveredPhraseId={hoveredPhraseId}
-          focusedPhraseId={focus.focusedPhraseId}
-          candidatePhraseIds={candidatePhraseIds}
-          phraseLinkById={phraseLinkById}
-          tokenDocOrder={tokenDocOrder}
-          onArcSplit={handleArcSplit}
-          onSplitHoverChange={handleSplitHoverChange}
-          onHoverPhrase={onHoverPhrase}
-          simplifyPhrases={simplifyPhrases}
-        />
-        <PhraseStripProvider value={stripContext}>
-          <span
-            className="tw:token-row tw:pointer-events-none"
-            style={{
-              paddingTop: `${tokenRowTopPadding}px`,
-              paddingLeft: `${stripLeftPadding}px`,
-              paddingRight: `${stripRightPadding}px`,
-              rowGap: `${stripRowGap}px`,
-            }}
-            onMouseLeave={clearAllHoverState}
-          >
-            <PhraseStrip
-              items={stripItems}
-              phraseMode={phraseMode}
-              focus={focus}
-              hoveredPhraseId={hoveredPhraseId}
-              hoveredGroupKey={hoveredGroupKey}
-              candidateTokenRefs={candidateTokenRefs}
-              splitFreeTokenRefs={splitFreeTokenRefs}
-              onHoverPhrase={onHoverPhrase}
-              setHoveredGroupKey={setHoveredGroupKey}
-              onFocusPhrase={handleTokenClick}
-            />
-          </span>
-        </PhraseStripProvider>
-      </div>
-      {showFreeTranslation && (
-        <SegmentFreeTranslationInput
-          segmentId={segment.id}
-          surfaceText={segment.baselineText}
-          onFocus={handleFreeTranslationFocus}
-        />
-      )}
     </div>
   );
 }

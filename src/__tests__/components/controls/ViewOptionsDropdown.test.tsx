@@ -25,12 +25,12 @@ const DEFAULT_PROPS = {
   onHideInactiveLinkButtonsChange: jest.fn(),
   simplifyPhrases: false,
   onSimplifyPhrasesChange: jest.fn(),
-  chapterLabelInVerse: false,
-  onChapterLabelInVerseChange: jest.fn(),
   showMorphology: false,
   onShowMorphologyChange: jest.fn(),
   showFreeTranslation: false,
   onShowFreeTranslationChange: jest.fn(),
+  showVerseGutter: false,
+  onShowVerseGutterChange: jest.fn(),
   showSuggestions: false,
   onShowSuggestionsChange: jest.fn(),
 };
@@ -78,8 +78,7 @@ describe('ViewOptionsDropdown', () => {
     render(<ViewOptionsDropdown {...DEFAULT_PROPS} />);
     await userEvent.click(screen.getByTestId('view-options-button'));
 
-    // The mock returns each key as its own label value, so every toggle's
-    // localization key must surface as visible text — one assertion per toggle.
+    // The mock returns each key as its own label, so each toggle's key surfaces as visible text.
     expect(screen.getByText('%interlinearizer_viewOption_continuousScroll%')).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_showMorphology%')).toBeInTheDocument();
     expect(
@@ -89,9 +88,7 @@ describe('ViewOptionsDropdown', () => {
       screen.getByText('%interlinearizer_viewOption_hideInactiveLinkButtons%'),
     ).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_simplifyPhrases%')).toBeInTheDocument();
-    expect(
-      screen.getByText('%interlinearizer_viewOption_chapterLabelInVerse%'),
-    ).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_viewOption_showVerseGutter%')).toBeInTheDocument();
     expect(screen.getByText('%interlinearizer_viewOption_showSuggestions%')).toBeInTheDocument();
   });
 
@@ -207,6 +204,31 @@ describe('ViewOptionsDropdown', () => {
     });
   });
 
+  describe('show verse gutter toggle', () => {
+    it('reflects the checked value', async () => {
+      render(<ViewOptionsDropdown {...DEFAULT_PROPS} showVerseGutter />);
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      expect(screen.getByRole('checkbox', { name: /verseGutter/i })).toBeChecked();
+    });
+
+    it('calls onShowVerseGutterChange when toggled', async () => {
+      const onShowVerseGutterChange = jest.fn();
+      render(
+        <ViewOptionsDropdown
+          {...DEFAULT_PROPS}
+          showVerseGutter={false}
+          onShowVerseGutterChange={onShowVerseGutterChange}
+        />,
+      );
+      await userEvent.click(screen.getByTestId('view-options-button'));
+
+      await userEvent.click(screen.getByRole('checkbox', { name: /verseGutter/i }));
+
+      expect(onShowVerseGutterChange).toHaveBeenCalledWith(true);
+    });
+  });
+
   describe('hide inactive link buttons toggle', () => {
     it('reflects the checked value', async () => {
       render(<ViewOptionsDropdown {...DEFAULT_PROPS} hideInactiveLinkButtons />);
@@ -254,31 +276,6 @@ describe('ViewOptionsDropdown', () => {
       await userEvent.click(screen.getByRole('checkbox', { name: /simplifyPhrases/i }));
 
       expect(onSimplifyPhrasesChange).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('chapter label in verse toggle', () => {
-    it('reflects the checked value', async () => {
-      render(<ViewOptionsDropdown {...DEFAULT_PROPS} chapterLabelInVerse />);
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      expect(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i })).toBeChecked();
-    });
-
-    it('calls onChapterLabelInVerseChange when toggled', async () => {
-      const onChapterLabelInVerseChange = jest.fn();
-      render(
-        <ViewOptionsDropdown
-          {...DEFAULT_PROPS}
-          chapterLabelInVerse={false}
-          onChapterLabelInVerseChange={onChapterLabelInVerseChange}
-        />,
-      );
-      await userEvent.click(screen.getByTestId('view-options-button'));
-
-      await userEvent.click(screen.getByRole('checkbox', { name: /chapterLabelInVerse/i }));
-
-      expect(onChapterLabelInVerseChange).toHaveBeenCalledWith(true);
     });
   });
 

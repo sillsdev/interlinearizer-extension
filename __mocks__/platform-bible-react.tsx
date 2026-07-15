@@ -3,7 +3,7 @@
  * without extra transform configuration. This stub provides the subset used by the extension.
  */
 
-import { forwardRef, useEffect, useRef } from 'react';
+import { Children, cloneElement, forwardRef, isValidElement, useEffect, useRef } from 'react';
 import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
 
 export interface MenuItemContainingCommand {
@@ -522,4 +522,73 @@ export function Label({
       {children}
     </label>
   );
+}
+
+/**
+ * Marker component identifying the tooltip's hover text within a {@link Tooltip}. The real component
+ * renders a portaled popover on hover; this stub carries no markup of its own — {@link Tooltip}
+ * reads its text children and projects them onto the trigger (see there) so the tooltip text is
+ * assertable on the trigger element without simulating hover.
+ *
+ * @param props - Component props.
+ * @param props.children - The tooltip text.
+ * @returns `null`; the text is surfaced by {@link Tooltip}, not rendered here.
+ */
+export function TooltipContent({ children: _children }: Readonly<{ children?: ReactNode }>): null {
+  return null;
+}
+
+/**
+ * Stub tooltip trigger. With `asChild` (the only mode the extension uses) the real component merges
+ * its trigger onto the single child element rather than rendering a wrapper; this stub renders the
+ * child unchanged and lets {@link Tooltip} clone it to attach the tooltip text. `asChild` is assumed
+ * throughout, so no non-`asChild` fallback is modeled.
+ *
+ * @param props - Component props.
+ * @param props.children - The element the tooltip is anchored to.
+ * @returns The child unchanged.
+ */
+export function TooltipTrigger({
+  children,
+}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactElement {
+  return <>{children}</>;
+}
+
+/**
+ * Stub tooltip root. The real component shows {@link TooltipContent} in a portaled popover on hover;
+ * because native and Radix tooltips are both invisible in jsdom, this stub instead reads the
+ * `TooltipContent` text from its children and clones the `TooltipTrigger`'s child element with that
+ * text applied as a `title` attribute. This keeps the tooltip text assertable on the trigger
+ * element (mirroring where hover text lived before the migration) without simulating hover, while
+ * the real component supplies the modifier-key-immune tooltip in production.
+ *
+ * @param props - Component props.
+ * @param props.children - A {@link TooltipTrigger} and a {@link TooltipContent}, in either order.
+ * @returns The trigger's child element cloned with the tooltip text as its `title`.
+ */
+export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): ReactNode {
+  let tooltipText: ReactNode;
+  let triggerChild: ReactNode;
+  Children.forEach(children, (child) => {
+    if (!isValidElement(child)) return;
+    if (child.type === TooltipContent) tooltipText = child.props.children;
+    if (child.type === TooltipTrigger) triggerChild = child.props.children;
+  });
+  if (!isValidElement(triggerChild)) return <>{children}</>;
+  const title = typeof tooltipText === 'string' ? tooltipText : undefined;
+  return cloneElement(triggerChild, { title });
+}
+
+/**
+ * Stub tooltip provider that shares hover-delay config across nested tooltips. The stub renders its
+ * children unchanged; the delay has no effect in tests.
+ *
+ * @param props - Component props.
+ * @param props.children - The subtree whose tooltips share this provider.
+ * @returns The children unchanged.
+ */
+export function TooltipProvider({
+  children,
+}: Readonly<{ children?: ReactNode; delayDuration?: number }>): ReactElement {
+  return <>{children}</>;
 }

@@ -16,6 +16,7 @@ import {
   useMorphemeDeleteDispatch,
   useMorphemeGlossDispatch,
   useMorphemes,
+  usePhraseLinkByIdGetter,
   usePhraseLinkByIdMap,
   usePhraseLinkForToken,
   usePhraseLinkMap,
@@ -417,8 +418,7 @@ describe('useGlossDispatch', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
 
-    // tok-1 reads the new 'b'; tok-2 keeps the original 'a' because the reducer forked the
-    // shared payload before editing.
+    // tok-1 reads the new 'b'; tok-2 keeps 'a' because editing forked the shared payload.
     expect(screen.getByTestId('gloss')).toHaveTextContent('b');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses).toHaveLength(2);
@@ -684,6 +684,45 @@ describe('usePhraseLinkByIdMap', () => {
   });
 });
 
+/**
+ * Renders a component that reads the phrase-link map through `usePhraseLinkByIdGetter` at render
+ * time and displays its size, used to assert the getter resolves current store state.
+ *
+ * @returns JSX element suitable for passing to `render`.
+ */
+function PhraseLinkByIdGetterReader() {
+  const getPhraseLinkById = usePhraseLinkByIdGetter();
+  return <span data-testid="getter-map-size">{getPhraseLinkById().size}</span>;
+}
+
+/**
+ * Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws.
+ *
+ * @returns Nothing — only mounted to trigger the throw.
+ */
+function PhraseLinkByIdGetterUser() {
+  usePhraseLinkByIdGetter();
+  return undefined;
+}
+
+describe('usePhraseLinkByIdGetter', () => {
+  it('returns a getter resolving the current phrase-link-by-id map', () => {
+    render(
+      <AnalysisStoreProvider initialAnalysis={PHRASE_ANALYSIS} analysisLanguage="und">
+        <PhraseLinkByIdGetterReader />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('getter-map-size')).toHaveTextContent('1');
+  });
+
+  it('throws when called outside an AnalysisStoreProvider', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    expect(() => render(<PhraseLinkByIdGetterUser />)).toThrow(
+      'usePhraseLinkByIdGetter must be used inside an AnalysisStoreProvider',
+    );
+  });
+});
+
 describe('usePhraseDispatch', () => {
   it('createPhrase adds a new phrase and calls onSave', async () => {
     const onSave = jest.fn();
@@ -755,8 +794,7 @@ describe('usePhraseDispatch', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'merge' }));
 
-    // A single dispatch means a single save — the intermediate state where tokens belonged to two
-    // phrases is never observed.
+    // A single dispatch means a single save — the intermediate two-phrase state is never observed.
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.phraseAnalysisLinks[0].tokens.map((t) => t.tokenRef)).toStrictEqual([
@@ -1566,6 +1604,7 @@ describe('useReportGlossEditing', () => {
  *
  * @param props.tokenRef - Token ref to resolve.
  * @param props.surfaceText - The token's surface text.
+ * @param props.enabled - Whether the hook should derive; `false` short-circuits to `undefined`.
  * @param props.sink - Array each render appends its resolved value to (for render-count
  *   assertions).
  * @returns JSX element suitable for passing to `render`.
@@ -1573,13 +1612,15 @@ describe('useReportGlossEditing', () => {
 function ResolvedReader({
   tokenRef,
   surfaceText,
+  enabled = true,
   sink,
 }: Readonly<{
   tokenRef: string;
   surfaceText: string;
+  enabled?: boolean;
   sink?: (ResolvedTokenAnalysis | undefined)[];
 }>) {
-  const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText);
+  const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText, enabled);
   sink?.push(resolved);
   return <span data-testid="resolved">{resolved?.status ?? 'none'}</span>;
 }
@@ -1676,6 +1717,19 @@ describe('useResolvedTokenAnalysis', () => {
     expect(screen.getByTestId('resolved')).toHaveTextContent('none');
   });
 
+  it('short-circuits to undefined without deriving when disabled', () => {
+    // With enabled=false the hook must not resolve even a token that would otherwise be approved.
+    render(
+      <AnalysisStoreProvider
+        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
+        analysisLanguage="und"
+      >
+        <ResolvedReader tokenRef="tok-1" surfaceText="logos" enabled={false} />
+      </AnalysisStoreProvider>,
+    );
+    expect(screen.getByTestId('resolved')).toHaveTextContent('none');
+  });
+
   it('does not re-render a suggested token when an unrelated token is glossed', async () => {
     const sink: (ResolvedTokenAnalysis | undefined)[] = [];
     render(
@@ -1689,8 +1743,8 @@ describe('useResolvedTokenAnalysis', () => {
     );
     const before = sink.length;
 
-    // Glossing 'cat' rebuilds the pool but leaves the 'logos' suggestion untouched; the custom
-    // equalityFn keeps the selected value referentially stable so the reader never re-renders.
+    // Glossing 'cat' rebuilds the pool but leaves the 'logos' suggestion referentially stable (via
+    // the custom equalityFn), so the reader never re-renders.
     await userEvent.click(screen.getByRole('button', { name: 'write' }));
 
     expect(sink.length).toBe(before);

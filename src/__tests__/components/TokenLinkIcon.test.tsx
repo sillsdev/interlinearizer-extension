@@ -381,11 +381,8 @@ describe('TokenLinkIcon', () => {
   });
 
   it('absorbs bridging free token when neighbor is a different fragment of the focused phrase', async () => {
-    // Setup: prevToken=tok-b (free, bridging), nextToken=tok-c (in phrase p1 fragment 2).
-    // focusedSideIsPrev=true means focus is prev-ward (tok-a's side is prev).
-    // neighborLink = nextPhraseLink (focus is prev → neighbor is next side).
-    // When neighborLink.analysisId === focusedPhraseLink.analysisId, the bridging free token
-    // (prevToken = tok-b) is absorbed into the phrase.
+    // prevToken=tok-b is a free token bridging two fragments of phrase p1 (tok-a, tok-c). When the
+    // neighbor and focused phrase are the same phrase, the bridging token is absorbed into it.
     const focusedPhrase = makePhraseLink('p1', ['tok-a', 'tok-c']);
     renderIcon(
       <TokenLinkIcon
@@ -404,7 +401,6 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.click(screen.getByTestId('token-link-btn'));
-    // bridgingToken is prevToken (tok-b) when focusedSideIsPrev=true
     expect(mockUpdatePhrase).toHaveBeenCalledWith(
       'p1',
       expect.arrayContaining([{ tokenRef: 'tok-b', surfaceText: 'tok-b' }]),
@@ -452,7 +448,6 @@ describe('TokenLinkIcon', () => {
   });
 
   it('uses the false branch of focusedSideIsPrev ternaries when focus is end-ward', async () => {
-    // focusedSideIsPrev=false: neighbor is prevToken/prevPhraseLink, bridging is nextToken
     const focusedPhrase = makePhraseLink('p1', ['tok-b']);
     renderIcon(
       <TokenLinkIcon
@@ -501,13 +496,11 @@ describe('TokenLinkIcon', () => {
       },
     );
     await userEvent.hover(screen.getByTestId('token-link-btn'));
-    // All tokens of the neighbor phrase plus the focused free token
     expect(onHoverCandidateTokens).toHaveBeenCalledWith(['tok-a', 'tok-b', 'tok-c']);
   });
 
   it('does not call onHoverSplitFreeTokens when splitFreeRefs is empty (both halves ≥ 2 tokens)', async () => {
-    // 4-token phrase: prevToken=tok-b, so split is after tok-b.
-    // before=[tok-a, tok-b] (length 2), after=[tok-c, tok-d] (length 2) — no free tokens.
+    // Splitting a 4-token phrase after tok-b yields two 2-token halves, so neither half is freed.
     const onHoverSplitFreeTokens = jest.fn();
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b', 'tok-c', 'tok-d']);
     renderIcon(
@@ -530,5 +523,58 @@ describe('TokenLinkIcon', () => {
     );
     await userEvent.hover(screen.getByTestId('token-unlink-btn'));
     expect(onHoverSplitFreeTokens).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Cross-segment slot — a phrase may not span a segment boundary, so the link is inert
+  // ---------------------------------------------------------------------------
+
+  describe('cross-segment slot', () => {
+    /**
+     * Renders a `TokenLinkIcon` for a slot straddling a segment boundary (neighbors in different
+     * segments, so `isSameSegmentAsFocus` is false).
+     *
+     * @param focusedSideIsPrev - Which side holds focus.
+     * @returns The render result.
+     */
+    function renderCrossSegment(focusedSideIsPrev: boolean) {
+      return render(
+        <PhraseStripProvider value={makePhraseStripContext({ crossSegmentLinkTooltip: 'nope' })}>
+          <TokenLinkIcon
+            {...requiredProps()}
+            slotFocus={slotFocus({
+              focusedSideIsPrev,
+              isSameSegmentAsFocus: false,
+              focusedFreeToken: makeWordToken(focusedSideIsPrev ? 'tok-a' : 'tok-b'),
+            })}
+          />
+        </PhraseStripProvider>,
+      );
+    }
+
+    it('disables the link with the cross-segment tooltip when focus is the previous segment', () => {
+      renderCrossSegment(true);
+      const button = screen.getByTestId('token-link-btn');
+      expect(button).toBeDisabled();
+      // A disabled button can't be the hover trigger, so the tooltip rides the wrapper span (the
+      // mock projects TooltipContent's text onto it); the button itself carries no native title.
+      expect(button).not.toHaveAttribute('title');
+      expect(button.parentElement).toHaveAttribute('title', 'nope');
+    });
+
+    it('disables the link with the cross-segment tooltip when focus is the next segment', () => {
+      renderCrossSegment(false);
+      const button = screen.getByTestId('token-link-btn');
+      expect(button).toBeDisabled();
+      expect(button).not.toHaveAttribute('title');
+      expect(button.parentElement).toHaveAttribute('title', 'nope');
+    });
+
+    it('creates no phrase when the disabled cross-segment link is clicked', async () => {
+      renderCrossSegment(true);
+      await userEvent.click(screen.getByTestId('token-link-btn'));
+      expect(mockCreatePhrase).not.toHaveBeenCalled();
+      expect(mockMergePhrases).not.toHaveBeenCalled();
+    });
   });
 });

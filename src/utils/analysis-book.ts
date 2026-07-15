@@ -1,5 +1,5 @@
 /** @file Pure helpers for filtering a `TextAnalysis` by the book a record belongs to. */
-import type { TextAnalysis } from 'interlinearizer';
+import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 
 /**
  * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
@@ -48,4 +48,27 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
     phraseAnalyses: analysis.phraseAnalyses.filter((a) => survivingPhraseAnalysisIds.has(a.id)),
     phraseAnalysisLinks,
   };
+}
+
+/**
+ * Returns a copy of `delta` with every boundary anchor belonging to `bookCode` removed, so wiping a
+ * book also drops its custom segment boundaries (the anchors are book-prefixed token refs, keyed
+ * the same way as analysis records). Returns `undefined` when nothing for any other book remains,
+ * so a wiped-then-emptied delta collapses to the default segmentation rather than persisting empty
+ * arrays.
+ *
+ * @param delta - The current boundary delta, or `undefined` for the default segmentation.
+ * @param bookCode - The 3-letter book code (e.g. `"GEN"`) whose anchors to remove.
+ * @returns A new `SegmentationDelta` without the book's anchors, or `undefined` when the result is
+ *   the default segmentation (or the input already was).
+ */
+export function removeBookFromSegmentation(
+  delta: SegmentationDelta | undefined,
+  bookCode: string,
+): SegmentationDelta | undefined {
+  if (!delta) return undefined;
+  const removedVerseStarts = delta.removedVerseStarts.filter((ref) => bookOfRef(ref) !== bookCode);
+  const addedStarts = delta.addedStarts.filter((ref) => bookOfRef(ref) !== bookCode);
+  if (removedVerseStarts.length === 0 && addedStarts.length === 0) return undefined;
+  return { removedVerseStarts, addedStarts };
 }

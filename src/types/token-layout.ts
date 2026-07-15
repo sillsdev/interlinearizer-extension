@@ -24,10 +24,9 @@ export type FocusContext = {
 };
 
 /**
- * The complete bundle of focus-derived inputs `TokenLinkIcon` needs for a single between-group
- * slot. Combines the slot-specific direction/segment flags with the two focus-context fields the
- * icon reads directly (`focusedPhraseLink` / `focusedFreeToken`), so the icon takes one focus
- * object instead of four separate props.
+ * The focus-derived inputs `TokenLinkIcon` needs for a single between-group slot: the slot-specific
+ * direction/segment flags plus the two focus-context fields the icon reads directly
+ * (`focusedPhraseLink` / `focusedFreeToken`), bundled so the icon takes one focus object.
  */
 export type SlotFocusInfo = {
   /**
@@ -37,8 +36,8 @@ export type SlotFocusInfo = {
    */
   focusedSideIsPrev: boolean | undefined;
   /**
-   * `true` when both slot neighbors are in the same segment as the focused token. Phrases cannot
-   * span segments, so the link button is disabled when this is `false`.
+   * `true` when both slot neighbors are in the same segment as the focused token. The link button
+   * is active only when linking joins tokens within one segment.
    */
   isSameSegmentAsFocus: boolean;
   /** The phrase containing the focused token, or `undefined` when the focused token is free. */

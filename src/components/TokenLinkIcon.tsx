@@ -1,6 +1,7 @@
 /** @file Inline link / unlink icon rendered between adjacent word token groups. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
-import { Link2, Link2Off } from 'lucide-react';
+import { Link2, Unlink2 } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo, useCallback } from 'react';
 import { usePhraseDispatch } from './AnalysisStore';
 import { usePhraseStripContext } from './PhraseStripContext';
@@ -34,12 +35,16 @@ type TokenLinkIconProps = Readonly<{
 /**
  * Renders a small icon between two adjacent word token groups.
  *
- * When both sides belong to the same phrase, renders `Link2Off` (unlink): clicking splits the
- * phrase at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused).
+ * When both sides belong to the same phrase, renders `Unlink2` (unlink): clicking splits the phrase
+ * at this boundary. Visible only when `isPhraseRevealed` (phrase hovered or focused). `Unlink2`
+ * rather than `Link2Off` so its chain aligns vertically with `Link2`'s, keeping the two buttons'
+ * visual centers level when they appear in adjacent gap slots.
  *
  * Otherwise renders `Link2` (link): clicking joins the non-focused-side neighbor to the focused
- * side. The icon is active whenever `focusedSideIsPrev` is defined and the resulting join is valid.
- * Both icon types are suppressed (return `undefined`) when either side lacks a word token.
+ * side. The icon is active only when `focusedSideIsPrev` is defined and both neighbors are in the
+ * focused segment; a slot straddling a segment boundary is inert, since a phrase may not span two
+ * segments. Both icon types are suppressed (return `undefined`) when either side lacks a word
+ * token.
  *
  * **Link semantics** (`focusedSideIsPrev` determines direction; only active when both neighbors are
  * in the same segment as focus):
@@ -255,17 +260,19 @@ export function TokenLinkIcon({
         onMouseLeave={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseLeave : undefined}
         type="button"
       >
-        <Link2Off className="tw:h-3 tw:w-3" />
+        <Unlink2 className="tw:h-3 tw:w-3" />
       </button>
     );
   }
 
-  // Link icon: active in view mode when focus is set and both neighbors are in the same segment.
+  // Link icon: active in view mode when focus is set and both neighbors are in the focused segment.
+  // A slot straddling a segment boundary is never active — a phrase may not span two segments.
   const isActive =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && isSameSegmentAsFocus;
   const linkDisabled = isUnlinkMode || isEditMode || !isActive;
-  // Show a tooltip only when inactive because the slot is outside the focused segment (not when
-  // disabled for other reasons like unlink/edit mode where the reason is already visible in the UI).
+  // Show a tooltip only when inactive because the slot straddles a segment boundary (not when
+  // disabled for other reasons like unlink/edit mode, where the reason is already visible in the
+  // UI).
   const crossSegmentDisabled =
     phraseMode.kind === 'view' && focusedSideIsPrev !== undefined && !isSameSegmentAsFocus;
   const linkTitle = crossSegmentDisabled ? crossSegmentLinkTooltip : undefined;
@@ -309,14 +316,13 @@ export function TokenLinkIcon({
     if (candidateTokenRefs) onHoverCandidateTokens(undefined);
   };
 
-  return (
+  const linkButton = (
     <button
       aria-label="Link tokens"
       className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       tabIndex={-1}
-      title={linkTitle}
       onClick={isActive ? handleLinkClick : undefined}
       onMouseEnter={isActive ? handleLinkMouseEnter : undefined}
       onMouseLeave={isActive ? handleLinkMouseLeave : undefined}
@@ -324,6 +330,17 @@ export function TokenLinkIcon({
     >
       <Link2 className="tw:h-3 tw:w-3" />
     </button>
+  );
+
+  // Only the cross-segment-disabled case carries a tooltip.
+  if (linkTitle === undefined) return linkButton;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="tw:inline-flex">{linkButton}</span>
+      </TooltipTrigger>
+      <TooltipContent>{linkTitle}</TooltipContent>
+    </Tooltip>
   );
 }
 

@@ -23,13 +23,6 @@ declare module 'papi-shared-types' {
      */
     'interlinearizer.simplifyPhrases': boolean;
     /**
-     * Controls how chapter boundaries are marked in the segment list. When false (the default), a
-     * chapter shows an inline header above the first verse of each new chapter and the verse label
-     * stays a bare verse number. When true, the inline header is omitted and the first verse of
-     * each chapter is labeled `chapter:verse` instead of a bare verse number.
-     */
-    'interlinearizer.chapterLabelInVerse': boolean;
-    /**
      * When true, each word token displays its morpheme breakdown and per-morpheme glosses beneath
      * the token-level gloss input.
      */
@@ -39,6 +32,11 @@ declare module 'papi-shared-types' {
      * mode) or its baseline text (continuous-scroll mode).
      */
     'interlinearizer.showFreeTranslation': boolean;
+    /**
+     * When true, each segment shows its verse range in a left gutter column instead of the inline
+     * verse superscripts. The two are mutually exclusive display styles.
+     */
+    'interlinearizer.showVerseGutter': boolean;
   }
 
   /**
@@ -162,11 +160,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.getProject': (interlinearProjectId: string) => Promise<string | undefined>;
 
     /**
-     * Persists an updated `TextAnalysis` for an interlinearizer project. Called from the WebView
-     * after each gloss write so that analysis changes survive tab restores and project switches.
+     * Persists an updated `TextAnalysis` (and optionally custom segment boundaries) for an
+     * interlinearizer project. Called from the WebView on Save so analysis and boundary changes
+     * survive tab restores and project switches.
      *
      * @param interlinearProjectId UUID of the interlinearizer project to update.
      * @param analysisJson JSON-stringified `TextAnalysis` to persist.
+     * @param segmentationJson Optional JSON-stringified `SegmentationDelta` to persist, or the
+     *   string `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
+     *   existing boundaries unchanged.
      * @returns Promise that resolves to void once the analysis has been written to storage.
      * @throws If JSON parsing or storage fails. Error is logged and an error notification is sent
      *   before rethrowing so callers do not need to send a second notification.
@@ -174,6 +176,7 @@ declare module 'papi-shared-types' {
     'interlinearizer.saveAnalysis': (
       interlinearProjectId: string,
       analysisJson: string,
+      segmentationJson?: string,
     ) => Promise<void>;
 
     /**
@@ -533,6 +536,49 @@ declare module 'interlinearizer' {
      * `TextAnalysis.tokenAnalyses`).
      */
     tokens: Token[];
+
+    /**
+     * Where each source verse begins within `baselineText`, in document order, for rendering inline
+     * verse-number superscripts. One entry per verse the segment contains, each `charStart`
+     * pointing at that verse's first character. A split segment's continuation piece carries one
+     * entry at `charStart: 0` flagged `isContinuation`.
+     */
+    verseStarts: VerseStart[];
+  }
+
+  /**
+   * The start of one source verse within a {@link Segment}'s `baselineText`, used to render the
+   * inline verse-number superscript at that position.
+   */
+  export interface VerseStart {
+    /**
+     * Zero-based character offset of this verse's first character within the owning
+     * `Segment.baselineText`.
+     */
+    charStart: number;
+
+    /**
+     * Verbatim verse-label string to render as the superscript (e.g. `"1"`, or a range like
+     * `"3-4"`), taken from the USJ verse marker's `number` attribute (sid-derived when absent;
+     * `"0"` for a verse-0 superscription). Chapter qualification (`chapter:` prefix at a chapter
+     * transition) is applied by the renderer, not stored here.
+     */
+    number: string;
+
+    /**
+     * 1-based chapter this verse belongs to. Carried explicitly so the renderer can decide chapter
+     * qualification without parsing the ref of the token at `charStart`, which may not exist (empty
+     * verse) or may be the wrong token (verse baseline begins with whitespace).
+     */
+    chapter: number;
+
+    /**
+     * `true` when this verse begins in a previous segment and merely continues into this one — the
+     * leading verse start of a split's continuation piece. Such an entry keeps the segment
+     * "containing" the verse for navigation and highlight but renders no superscript (the number
+     * already showed at the true start). Absent (falsy) for a genuine verse start.
+     */
+    isContinuation?: boolean;
   }
 
   /**
@@ -1095,7 +1141,47 @@ declare module 'interlinearizer' {
   }
 
   // ---------------------------------------------------------------------------
-  // §6 InterlinearProject — persisted project envelope
+  // §6 SegmentationDelta — user-defined segment boundaries
+  // ---------------------------------------------------------------------------
+
+  /**
+   * A user's custom segment boundaries, stored as a delta from the default one-segment-per-verse
+   * segmentation rather than as explicit segment definitions.
+   *
+   * A segment is a maximal contiguous run of the book's document-order token stream between "start"
+   * tokens; by default the start tokens are each verse's first token. This delta records where the
+   * user's boundaries differ:
+   *
+   * - A verse's first token in `removedVerseStarts` no longer starts a segment, so that verse is
+   *   **merged** into the preceding segment.
+   * - A mid-verse token in `addedStarts` starts a new segment, **splitting** its verse.
+   *
+   * Anchoring to token refs (stable opaque ids) lets the model degrade gracefully when the baseline
+   * drifts: an anchor whose token no longer exists is ignored on load, leaving other boundaries
+   * intact. Because a segment is always a contiguous run between start tokens, discontiguous
+   * segments are unrepresentable by construction.
+   *
+   * Absent (`undefined`) or the empty delta ⇒ the default verse segmentation.
+   */
+  export interface SegmentationDelta {
+    /**
+     * Refs of a verse's first token that should **not** start a segment, merging that verse into
+     * the preceding segment. This is the verse's leading token of **any** type (a verse beginning
+     * with punctuation contributes that punctuation ref), matching how default starts are derived.
+     * A ref whose token no longer exists is ignored on load.
+     */
+    removedVerseStarts: string[];
+
+    /**
+     * Mid-verse word-token refs that should start a new segment, splitting the verse before this
+     * token. Always word tokens (leading punctuation stays with the run it follows). A ref whose
+     * token no longer exists is ignored on load.
+     */
+    addedStarts: string[];
+  }
+
+  // ---------------------------------------------------------------------------
+  // §7 InterlinearProject — persisted project envelope
   // ---------------------------------------------------------------------------
 
   /**
@@ -1166,6 +1252,13 @@ declare module 'interlinearizer' {
      * aligns source and target tokens.
      */
     links?: AlignmentLink[];
+
+    /**
+     * User-defined segment boundaries as a delta from the default verse segmentation. Absent
+     * (`undefined`) ⇒ the default one-segment-per-verse segmentation. See
+     * {@link SegmentationDelta}.
+     */
+    segmentation?: SegmentationDelta;
   }
 
   /**
@@ -1218,10 +1311,17 @@ declare module 'interlinearizer' {
      * project.
      */
     dirty: boolean;
+
+    /**
+     * User-defined segment boundaries being edited, as a delta from the default verse segmentation.
+     * Absent (`undefined`) ⇒ the default one-segment-per-verse segmentation. Carried to the active
+     * project on Save. See {@link SegmentationDelta}.
+     */
+    segmentation?: SegmentationDelta;
   }
 
   // ---------------------------------------------------------------------------
-  // §7 ActiveProject — runtime pairing of project envelope and text layers
+  // §8 ActiveProject — runtime pairing of project envelope and text layers
   // ---------------------------------------------------------------------------
 
   /**

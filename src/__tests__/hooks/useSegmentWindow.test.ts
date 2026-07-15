@@ -23,17 +23,18 @@ declare global {
  *
  * @param chapter - Chapter number for the segment's refs.
  * @param verse - Verse number for the segment's refs.
+ * @param book - Book code for the segment's refs; defaults to `GEN`.
  * @returns A minimal {@link Segment}.
  */
-function makeSegment(chapter: number, verse: number): Segment {
+function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
   return {
-    id: `GEN ${chapter}:${verse}`,
-    startRef: { book: 'GEN', chapter, verse },
-    endRef: { book: 'GEN', chapter, verse },
+    id: `${book} ${chapter}:${verse}`,
+    startRef: { book, chapter, verse },
+    endRef: { book, chapter, verse },
     baselineText: 'word',
     tokens: [
       {
-        ref: `GEN ${chapter}:${verse}:0`,
+        ref: `${book} ${chapter}:${verse}:0`,
         surfaceText: 'word',
         writingSystem: 'en',
         type: 'word',
@@ -41,6 +42,7 @@ function makeSegment(chapter: number, verse: number): Segment {
         charEnd: 4,
       },
     ],
+    verseStarts: [{ charStart: 0, number: String(verse), chapter }],
   };
 }
 
@@ -50,13 +52,14 @@ function makeSegment(chapter: number, verse: number): Segment {
  *
  * @param chapter1Count - Number of verses in chapter 1.
  * @param chapter2Count - Number of verses in chapter 2.
+ * @param book - Book code for the book and its segments; defaults to `GEN`.
  * @returns A {@link Book} with the combined flat segment list.
  */
-function makeBook(chapter1Count: number, chapter2Count: number): Book {
+function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): Book {
   const segments: Segment[] = [];
-  for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v));
-  for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v));
-  return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+  for (let v = 1; v <= chapter1Count; v += 1) segments.push(makeSegment(1, v, book));
+  for (let v = 1; v <= chapter2Count; v += 1) segments.push(makeSegment(2, v, book));
+  return { id: book, bookRef: book, textVersion: 'v1', segments };
 }
 
 /**
@@ -75,9 +78,8 @@ function renderSegmentWindow(
 ) {
   const container = document.createElement('div');
   document.body.appendChild(container);
-  // Mirrors the context's internal-nav classification: a test calls `markInternal(ref)` to mimic an
-  // internally-originated navigation (a segment/strip click) before a rerender; the hook's
-  // `consumeInternalNav` matches+clears it, exactly as the real context does.
+  // Mirrors the context's internal-nav classification: `markInternal(ref)` stamps a nav as internal
+  // before a rerender, and `consumeInternalNav` matches and clears it as the real context does.
   const pendingInternal = new Set<string>();
   const markInternal = (ref: SerializedVerseRef) => pendingInternal.add(verseKey(ref));
   const consumeInternalNav = (ref: SerializedVerseRef) => {
@@ -86,19 +88,25 @@ function renderSegmentWindow(
     pendingInternal.delete(key);
     return true;
   };
-  // Records each gated continuous-scroll value the hook reports at a recenter midpoint, so a test can
-  // assert the strip-visibility flip lands with (not after) the window rebuild.
+  // Records each gated continuous-scroll value the hook reports at a recenter midpoint.
   const displayContinuousScrollReports: boolean[] = [];
   const onDisplayContinuousScrollChange = (v: boolean) => displayContinuousScrollReports.push(v);
   const hook = renderHook<
     ReturnType<typeof useSegmentWindow>,
-    { b: Book; ref: SerializedVerseRef; focus?: string | undefined; cont?: boolean }
+    {
+      b: Book;
+      ref: SerializedVerseRef;
+      focus?: string | undefined;
+      cont?: boolean;
+      segVersion?: number;
+    }
   >(
-    ({ b, ref, focus, cont }) => {
+    ({ b, ref, focus, cont, segVersion }) => {
       const scrollContainerRef = useRef<HTMLElement | undefined>(container);
       return useSegmentWindow({
         book: b,
         scrRef: ref,
+        segmentationVersion: segVersion ?? 0,
         focusedTokenRef: focus,
         continuousScroll: cont ?? false,
         scrollContainerRef,
@@ -144,11 +152,8 @@ function mountSentinels(
 }
 
 /**
- * Installs a stub `ResizeObserver` that records the most recently created callback (and the
- * elements it observes) and returns a `fire` helper (invokes it inside `act`) plus a `restore` to
- * put the original observer back. Shared by every test that drives the scroll-compensation /
- * re-snap observer by hand, so the stub class is declared once at module scope rather than
- * re-declared in each test.
+ * Installs a stub `ResizeObserver` that records the most recently created callback and the elements
+ * it observes, for tests that drive the scroll-compensation / re-snap observer by hand.
  *
  * @returns `fire` to invoke the recorded observer callback, `observedTargets` to read the elements
  *   the most recent observer watches, and `restore` to reinstate the original.
@@ -293,6 +298,35 @@ describe('useSegmentWindow', () => {
     expect(ids).toContain('GEN 2:1');
   });
 
+  it('anchors on the segment whose verse range contains the reference', () => {
+    // Verse 10 is split and its second half merged with verses 11–12; navigating to verse 11
+    // must center the window on that containing segment, not fall back to the chapter start.
+    const segments = [
+      ...Array.from({ length: 9 }, (_, i) => makeSegment(1, i + 1)),
+      { ...makeSegment(1, 10), id: 'GEN 1:10a' },
+      {
+        ...makeSegment(1, 10),
+        id: 'GEN 1:10b-12',
+        endRef: { book: 'GEN', chapter: 1, verse: 12 },
+        // A merged segment carries one verse start per absorbed verse — 10 (its split second half),
+        // 11, and 12 — so containment resolves the interior verse 11 to it.
+        verseStarts: [10, 11, 12].map((verse) => ({
+          charStart: 0,
+          number: String(verse),
+          chapter: 1,
+        })),
+      },
+      ...Array.from({ length: 8 }, (_, i) => makeSegment(1, i + 13)),
+    ];
+    const book: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
+    const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 1, verseNum: 11 });
+
+    // The merged segment sits at flat index 10, so the centered window runs [2, 19).
+    const ids = result.current.windowSegments.map((s) => s.id);
+    expect(ids).toContain('GEN 1:10b-12');
+    expect(ids[0]).toBe('GEN 1:3');
+  });
+
   it('falls back to the first segment of the chapter when no exact verse matches', () => {
     const book = makeBook(10, 10);
     const { result } = renderSegmentWindow(book, { book: 'GEN', chapterNum: 2, verseNum: 999 });
@@ -361,8 +395,8 @@ describe('useSegmentWindow', () => {
 
     const firstBefore = result.current.windowSegments[0].id;
     // Mount the window's segment roots so the extend can anchor on the old first segment. The
-    // prepend pushes that anchor down by 300px (100 → 400); the correction must add exactly that
-    // delta to scrollTop so the visible content holds still.
+    // prepend pushes that anchor down 300px (100 → 400); the correction adds that delta to scrollTop
+    // so the visible content holds still.
     const els = mountSegmentEls(
       container,
       result.current.windowSegments.map((s) => s.id),
@@ -578,10 +612,9 @@ describe('useSegmentWindow', () => {
     expect(result.current.windowSegments.map((s) => s.id)).toContain('GEN 1:50');
   });
 
-  it('fades and recenters when the segments identity changes at the same anchor index', () => {
-    // A book swap (or a re-tokenized book) hands the hook a new `segments` array whose anchor can
-    // resolve to the same index as before; the identity check must still detect the change and
-    // recenter rather than leaving the window on stale segment objects.
+  it('fades and recenters when a book swap changes the segments identity at the same anchor index', () => {
+    // A book swap can resolve its anchor to the same index as before; the identity check must still
+    // detect the change and recenter rather than leaving the window on stale segment objects.
     const book = makeBook(10, 0);
     const { result, rerender } = renderSegmentWindow(book, {
       book: 'GEN',
@@ -590,11 +623,176 @@ describe('useSegmentWindow', () => {
     });
     expect(result.current.isFaded).toBe(false);
 
-    act(() => rerender({ b: makeBook(10, 0), ref: { book: 'GEN', chapterNum: 1, verseNum: 1 } }));
+    act(() =>
+      rerender({ b: makeBook(10, 0, 'EXO'), ref: { book: 'EXO', chapterNum: 1, verseNum: 1 } }),
+    );
 
     expect(result.current.isFaded).toBe(true);
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
     expect(result.current.isFaded).toBe(false);
+  });
+
+  it('redraws in place without fading on a boundary edit (segments change with a version bump)', () => {
+    // A boundary edit (merge/split) hands a new `segments` identity with a `segmentationVersion`
+    // bump. The new slice already rendered in the same commit, so fading would flash and snap away
+    // content the user is looking at — the window must leave the redraw alone.
+    const book = makeBook(10, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    const editedBook = makeBook(9, 0);
+
+    act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
+
+    expect(result.current.isFaded).toBe(false);
+    // The window slices the edited book's segments immediately, with no midpoint swap to wait for.
+    expect(result.current.windowSegments[0]).toBe(editedBook.segments[0]);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+  });
+
+  it('does not fade on a boundary edit even when the anchor verse changes', () => {
+    // A merge that absorbs the active verse's start (GEN 1:2 into GEN 1:1) re-resolves the scrRef to
+    // the surviving segment's verse in the same commit. The verse changed, but the version bump
+    // marks this a boundary edit, not a navigation, so no fade.
+    const book = makeBook(10, 0);
+    const { result, rerender } = renderSegmentWindow(book, {
+      book: 'GEN',
+      chapterNum: 1,
+      verseNum: 2,
+    });
+    const editedBook = makeBook(9, 0);
+
+    act(() =>
+      rerender({ b: editedBook, ref: { book: 'GEN', chapterNum: 1, verseNum: 1 }, segVersion: 1 }),
+    );
+
+    expect(result.current.isFaded).toBe(false);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+  });
+
+  it('syncs the display refs immediately on a boundary edit that changes the anchor verse', () => {
+    // The redraw stands without a recenter midpoint, so the display refs would otherwise be
+    // stranded on the pre-edit verse/token; the boundary-edit branch must sync them in place.
+    const book = makeBook(10, 0);
+    const { result, rerender } = renderSegmentWindow(
+      book,
+      { book: 'GEN', chapterNum: 1, verseNum: 2 },
+      'tok-old',
+    );
+    const editedBook = makeBook(9, 0);
+
+    act(() =>
+      rerender({
+        b: editedBook,
+        ref: { book: 'GEN', chapterNum: 1, verseNum: 1 },
+        focus: 'tok-new',
+        segVersion: 1,
+      }),
+    );
+
+    expect(result.current.displayScrRef.verseNum).toBe(1);
+    expect(result.current.displayFocusedTokenRef).toBe('tok-new');
+  });
+
+  it('shifts the window range to keep the visible content framed when a merge above it removes a segment', () => {
+    // The window holds absolute indices, so a merge above `range.start` (which shifts every later
+    // segment down one) would otherwise leave the slice starting one segment too late — dropping the
+    // top-visible segment. Anchored at verse 20 the initial window is [11, 28); the top segment is
+    // verse 12. A merge of verses 5+6 removes one segment above the window, so verse 12 moves to
+    // index 10 and the range must shift to [10, 27) to keep it framed.
+    const book = makeBook(30, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+
+    // Merge verses 5 and 6 into one segment covering both; every later verse shifts down one index.
+    const mergedTail = [
+      ...Array.from({ length: 4 }, (_, i) => makeSegment(1, i + 1)),
+      {
+        ...makeSegment(1, 5),
+        id: 'GEN 1:5-6',
+        endRef: { book: 'GEN', chapter: 1, verse: 6 },
+        verseStarts: [5, 6].map((verse) => ({ charStart: 0, number: String(verse), chapter: 1 })),
+      },
+      ...Array.from({ length: 24 }, (_, i) => makeSegment(1, i + 7)),
+    ];
+    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: mergedTail };
+
+    act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
+
+    expect(result.current.isFaded).toBe(false);
+    // Verse 12 is still the top-visible segment, not dropped off the top of the window.
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+  });
+
+  it('shifts the window range to keep the visible content framed when a split above it adds a segment', () => {
+    // The mirror case: a split above `range.start` shifts every later segment up one, so a stale
+    // range would start one segment too early and push the bottom-visible segment out. Anchored at
+    // verse 20 the window top is verse 12; splitting verse 5 into two segments must shift the range
+    // up one so verse 12 stays the top-visible segment.
+    const book = makeBook(30, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+
+    // Split verse 5 into two segments; every later verse shifts up one index.
+    const splitTail = [
+      ...Array.from({ length: 4 }, (_, i) => makeSegment(1, i + 1)),
+      { ...makeSegment(1, 5), id: 'GEN 1:5a' },
+      { ...makeSegment(1, 5), id: 'GEN 1:5b' },
+      ...Array.from({ length: 25 }, (_, i) => makeSegment(1, i + 6)),
+    ];
+    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: splitTail };
+
+    act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
+
+    expect(result.current.isFaded).toBe(false);
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+  });
+
+  it('leaves the window range unchanged on a boundary edit at or below the window that does not move the anchor', () => {
+    // An edit entirely below the anchor leaves its index unchanged, so the anchor delta is 0 and the
+    // range must not shift — the top-visible segment stays put with no gratuitous re-slice.
+    const book = makeBook(30, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+
+    // Merge verses 28 and 29, both below the anchor at verse 20; earlier indices are untouched.
+    const mergedTail = [
+      ...Array.from({ length: 27 }, (_, i) => makeSegment(1, i + 1)),
+      {
+        ...makeSegment(1, 28),
+        id: 'GEN 1:28-29',
+        endRef: { book: 'GEN', chapter: 1, verse: 29 },
+        verseStarts: [28, 29].map((verse) => ({ charStart: 0, number: String(verse), chapter: 1 })),
+      },
+      makeSegment(1, 30),
+    ];
+    const editedBook: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: mergedTail };
+
+    act(() => rerender({ b: editedBook, ref: scrRef, segVersion: 1 }));
+
+    expect(result.current.isFaded).toBe(false);
+    expect(result.current.windowSegments[0].id).toBe('GEN 1:12');
+  });
+
+  it('fades and recenters when the segments change without a version bump at the same anchor verse', () => {
+    // A re-tokenization hands a new `segments` identity with the same `segmentationVersion` at the
+    // same anchor verse. The mounted index range no longer matches the content, so this recenters
+    // with the fade like any external change.
+    const book = makeBook(10, 0);
+    const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const { result, rerender } = renderSegmentWindow(book, scrRef);
+    const retokenizedBook = makeBook(10, 0);
+
+    act(() => rerender({ b: retokenizedBook, ref: scrRef }));
+
+    expect(result.current.isFaded).toBe(true);
+    act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
+    expect(result.current.isFaded).toBe(false);
+    expect(result.current.windowSegments[0]).toBe(retokenizedBook.segments[0]);
   });
 
   it('lags displayScrRef through the fade so the highlight moves only with the window swap', () => {
@@ -625,9 +823,8 @@ describe('useSegmentWindow', () => {
       undefined,
     );
 
-    // Toggle continuous scroll on while triggering a recenter (external nav). The report must NOT fire
-    // during the fade-out — only when the window rebuilds at the midpoint, so the parent's strip
-    // mounts in the same commit.
+    // Toggle continuous scroll on while triggering a recenter. The report must not fire during the
+    // fade-out, only when the window rebuilds at the midpoint.
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 }, cont: true }));
     expect(displayContinuousScrollReports).toEqual([]);
 
@@ -792,9 +989,8 @@ describe('useSegmentWindow', () => {
     act(() => jest.advanceTimersByTime(16));
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
 
-    // No further resizes fire (jsdom doesn't lay out), so the event-driven snap stays quiet — unlike
-    // the old per-frame loop it does not keep snapping on idle frames. The quiet timer then reports
-    // settled and the deadline elapses with no extra snaps.
+    // No further resizes fire (jsdom doesn't lay out), so the event-driven snap stays quiet on idle
+    // frames; the quiet timer reports settled and the deadline elapses with no extra snaps.
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS * 2));
     expect(scrollIntoView).toHaveBeenCalledTimes(2);
   });
@@ -855,8 +1051,8 @@ describe('useSegmentWindow', () => {
   });
 
   it('snaps the active verse to the top on a fresh mount whose anchor sits mid-book', () => {
-    // A cross-book remount mounts this hook fresh with the new book centered on a mid-book anchor.
-    // Without a mount snap the verse renders mid-window, below the fold, at scrollTop 0.
+    // On a fresh mid-book mount, without a mount snap the anchor verse renders mid-window, below the
+    // fold, at scrollTop 0.
     const book = makeBook(60, 0);
     const scrollIntoView = jest.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
@@ -864,8 +1060,8 @@ describe('useSegmentWindow', () => {
 
     mountActiveSegment(container);
 
-    // The mount-snap loop runs on this fresh mid-book mount (skipped when the anchor is at the book
-    // start), pulling the active verse to the top behind the loader curtain.
+    // The mount-snap loop runs on a mid-book mount (skipped when the anchor is at the book start),
+    // pulling the active verse to the top behind the loader curtain.
     act(() => jest.advanceTimersByTime(16));
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'auto', block: 'start' });
   });
@@ -940,9 +1136,8 @@ describe('useSegmentWindow', () => {
       container.appendChild(wrapper);
       act(() => result.current.contentRef(wrapper));
 
-      // A layout that resizes faster than the quiet window keeps relaying re-snaps, so the quiet
-      // timer never fires. The deadline backstop reports settled exactly once so the curtain is never
-      // stranded. Fire a resize on every quiet interval right up to the deadline.
+      // Firing a resize on every quiet interval keeps the quiet timer from ever settling, so the
+      // deadline backstop is what must report settled exactly once. Fire right up to the deadline.
       const ticks = Math.ceil(RECENTER_FADE_MS / 50) + 2;
       for (let i = 0; i < ticks; i += 1) {
         fire();
@@ -995,9 +1190,8 @@ describe('useSegmentWindow', () => {
     const observerBefore = global.ioInstances[0];
 
     // An IntersectionObserver only fires on transitions, so a sentinel that never leaves the arming
-    // margin (compact baseline-text segments) would otherwise extend once and stall scrolling. Each
-    // extend must re-subscribe a fresh observer, whose initial delivery re-evaluates the sentinel
-    // and keeps the window filling.
+    // margin would extend once and stall. Each extend re-subscribes a fresh observer whose initial
+    // delivery re-evaluates the sentinel and keeps the window filling.
     act(() => global.triggerIntersection(bottom, true));
     expect(result.current.windowSegments).toHaveLength(15);
     expect(global.ioInstances).toHaveLength(1);
@@ -1237,8 +1431,8 @@ describe('useSegmentWindow', () => {
       const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      // Growth above the viewport pushes the anchor segment down 30px; the correction scrolls down
-      // by the same amount so the visible content never moves.
+      // Growth above the viewport pushes the anchor down 30px; the correction scrolls down the same
+      // amount so the visible content never moves.
       stubRect(els[0], 40, 80);
       fire();
 
@@ -1269,10 +1463,9 @@ describe('useSegmentWindow', () => {
       const { container, els, fire } = renderSettledWindow();
       container.scrollTop = 100;
 
-      // The user scrolls down 60px: every segment moves up by that amount on screen and the seeded
-      // anchor scrolls out of the viewport. The scroll listener re-baselines onto the next visible
-      // segment, so the following resize wave reads a zero delta — without it, the stale anchor
-      // offset would re-apply the 60px as a phantom "correction".
+      // The user scrolls down 60px, pushing the seeded anchor out of the viewport. The scroll
+      // listener re-baselines onto the next visible segment so the following resize wave reads a zero
+      // delta rather than re-applying the 60px as a phantom correction.
       container.scrollTop = 160;
       stubRect(els[0], -50, -10);
       stubRect(els[1], -10, 30);
@@ -1315,9 +1508,8 @@ describe('useSegmentWindow', () => {
 
     it('re-baselines after an extend so the next resize does not re-apply the extend shift', () => {
       const { fire } = installBlockResizeObserver();
-      // Anchor mid-book so the window starts past the book start, leaving earlier segments to
-      // prepend. The mid-book mount snap settles below, clearing recenterInFlight — otherwise the
-      // compensation observer stands down for the whole test.
+      // Anchor mid-book so earlier segments remain to prepend. The mid-book mount snap settles below,
+      // clearing recenterInFlight — otherwise the compensation observer stands down for the test.
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',
@@ -1348,9 +1540,8 @@ describe('useSegmentWindow', () => {
       });
       expect(container.scrollTop).toBe(200);
 
-      // The resize wave the prepend triggers must read the re-baselined anchor offset, not the
-      // stale pre-extend one — re-applying the 100px delta would land scrollTop at 300, the random
-      // jump.
+      // The resize wave the prepend triggers must read the re-baselined anchor offset; re-applying
+      // the stale pre-extend 100px delta would jump scrollTop to 300.
       fire();
       expect(container.scrollTop).toBe(200);
     });
@@ -1376,9 +1567,9 @@ describe('useSegmentWindow', () => {
       act(() => result.current.contentRef(wrapper));
       container.scrollTop = 100;
 
-      // Start an external recenter; while it is in flight the observer relays each resize to the
-      // re-snap handler (which pins the verse via scrollIntoView) rather than compensating, so it
-      // never moves scrollTop directly — the two corrections can't fight.
+      // While a recenter is in flight the observer relays each resize to the re-snap handler (which
+      // pins the verse via scrollIntoView) rather than moving scrollTop directly, so the two
+      // corrections can't fight.
       act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
       stubRect(els[0], 50, 90);
       fire();

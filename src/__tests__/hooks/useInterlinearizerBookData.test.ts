@@ -21,9 +21,9 @@ const TEST_RAW_BOOK: RawBook = {
   writingSystem: 'en',
   contentHash: 'test-hash',
   verses: [
-    { sid: 'GEN 1:1', text: 'In the beginning.' },
-    { sid: 'GEN 1:2', text: 'And the earth.' },
-    { sid: 'GEN 2:1', text: 'The second day.' },
+    { sid: 'GEN 1:1', number: '1', text: 'In the beginning.' },
+    { sid: 'GEN 1:2', number: '2', text: 'And the earth.' },
+    { sid: 'GEN 2:1', number: '1', text: 'The second day.' },
   ],
 };
 
@@ -48,6 +48,7 @@ const TEST_BOOK: Book = {
           charEnd: 2,
         },
       ],
+      verseStarts: [{ charStart: 0, number: String(1), chapter: 1 }],
     },
     {
       id: 'GEN 1:2',
@@ -64,6 +65,7 @@ const TEST_BOOK: Book = {
           charEnd: 3,
         },
       ],
+      verseStarts: [{ charStart: 0, number: String(2), chapter: 1 }],
     },
     {
       id: 'GEN 2:1',
@@ -80,6 +82,7 @@ const TEST_BOOK: Book = {
           charEnd: 3,
         },
       ],
+      verseStarts: [{ charStart: 0, number: String(1), chapter: 2 }],
     },
   ],
 };
@@ -109,8 +112,7 @@ describe('useInterlinearizerBookData', () => {
   beforeEach(() => {
     jest.mocked(logger.error).mockImplementation(() => {});
     setupDefaultProjectDataMock();
-    // Configures useProjectSetting to return the writing system code 'en' so the hook uses a valid
-    // BCP 47 tag rather than falling back to 'und'.
+    // A valid writing-system tag so the hook doesn't fall back to 'und'.
     mockUseProjectSettings('en');
   });
 

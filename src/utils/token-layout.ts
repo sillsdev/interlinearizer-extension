@@ -69,10 +69,11 @@ export function resolveSlotFocus(
   focus: FocusContext,
   focusedSideIsPrev: boolean | undefined,
 ): SlotFocusInfo {
+  const { focusedSegmentId } = focus;
   const isSameSegmentAsFocus =
-    focus.focusedSegmentId !== undefined &&
-    prevSegmentId === focus.focusedSegmentId &&
-    nextSegmentId === focus.focusedSegmentId;
+    focusedSegmentId !== undefined &&
+    prevSegmentId === focusedSegmentId &&
+    nextSegmentId === focusedSegmentId;
   return {
     focusedSideIsPrev,
     isSameSegmentAsFocus,

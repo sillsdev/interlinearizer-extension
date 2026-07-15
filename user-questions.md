@@ -247,3 +247,49 @@ to A/B the "screen fills with suggestions" concern):
    blur?
 
 Remove the demo toggle (and these affordances' tuning) once the treatment is decided.
+
+## User-defined segment boundaries
+
+Segments were previously fixed to verses (rebuilt from USJ on every load). Users can now define
+their own segment boundaries, with no dedicated edit mode:
+
+- The gap between two token groups shows a **merge** control when the gap is a segment boundary
+  (combine the two adjacent segments — this appears in the continuous strip, where adjacent
+  segments share a row). Merge controls are always visible; a **split** marker (start a new segment
+  at the next token) appears only while Alt is held, and a split is committed by Alt-clicking the
+  gap.
+- In the segment list, an always-visible **merge** button sits between adjacent segment rows.
+- Linking a phrase across a verse boundary pulls the adjacent segment's free **edge** token into
+  the focused segment (only the immediate adjacent-edge link buttons are active for this).
+
+Boundaries are stored as a delta from the default verse segmentation on the draft and carried to
+the project on Save. The only structural rule is contiguity: a segment is a contiguous run of the
+book's tokens, so discontiguous segments are unrepresentable and only whole contiguous chunks can
+move between adjacent segments.
+
+Decisions made during development that we'd like reviewed:
+
+1. **Merged-segment separator.** When two verses are merged into one segment, their baseline texts
+   are joined with a single space. This is reasonable for whitespace-delimited scripts but wrong for
+   scriptio continua (Chinese, Thai, …) and for cases where the USFM implied a different break.
+   Should the separator be configurable per project/writing system, or derived from the source?
+
+2. **Free translation when merging.** A segment's free translation is keyed by segment id. An
+   untouched or merged segment keeps the **leading** verse's id (so its free translation survives);
+   the **absorbed** verse's free translation is retained in storage but hidden while merged, and
+   reappears if the segments are split back apart. Splitting keeps the first half's free translation
+   and starts later halves blank. Is "hide-and-restore" the desired behavior, or should merging
+   prompt the user to keep/discard the absorbed verse's translation?
+
+3. **Chapter superscriptions are ordinary segments.** A chapter heading (a `d` descriptive title,
+   e.g. a Psalm superscription) is extracted as a synthetic **verse 0** segment that sits in
+   document order between the previous chapter's last verse and the new chapter's verse 1. Verse 0
+   participates in boundary editing like any other segment: it can be merged into the previous
+   chapter's last verse, absorb the verse after it, or be split. This means a user can deliberately
+   (or accidentally) fold a Psalm title into verse text; the edit is always reversible by splitting
+   the heading back out. Two questions:
+   - Is "heading merges like any verse" acceptable, or should merging a superscription warn or be
+     prevented? (An earlier build treated verse 0 as a hard wall that no edit could touch; that
+     protection was removed in favor of uniform, predictable behavior.)
+   - When a heading is merged into a neighbor, its free translation follows the hide-and-restore
+     behavior of item 2 — confirm that parallels hold for headings too.

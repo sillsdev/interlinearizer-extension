@@ -181,6 +181,18 @@
   @apply tw:border-foreground/55 tw:bg-muted/25;
 }
 
+@utility phrase-candidate {
+  /*
+   * An operation preview (hovered link icon or boundary merge/split control): the tokens that would
+   * join into one phrase/segment or break off into a new segment. Deliberately stronger than
+   * phrase-hovered — a full-strength ring-colored border doubled by a ring shadow — so the preview
+   * is unmistakable and reads differently from an ordinary phrase hover.
+   */
+  --phrase-stroke: var(--ring);
+  --phrase-stroke-opacity: 1;
+  @apply tw:border-ring tw:bg-muted/50 tw:ring-1 tw:ring-ring;
+}
+
 @utility phrase-dimmed {
   --phrase-stroke: var(--border);
   --phrase-stroke-opacity: 1;

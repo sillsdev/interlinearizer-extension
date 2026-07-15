@@ -13,7 +13,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { resolvedOrEmpty } from '../utils/localized-strings';
 import { glossedSuggestionEntries } from '../utils/suggestion-engine';
 import {
   useAnalysisLanguage,
@@ -34,7 +33,6 @@ import SuggestionDropdown from './SuggestionDropdown';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_defineMorphemes%',
-  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -60,6 +58,9 @@ const STRING_KEYS = [
  *   hovered split/unlink button were clicked; previewed with a destructive border on the chip.
  * @param props.showMorphology - When true, morpheme breakdown and per-morpheme glosses are shown
  *   below the surface text.
+ * @param props.glossPlaceholder - Placeholder for the gloss input, resolved once per strip and
+ *   passed down (see `PhraseStripContextValue.glossPlaceholder`). Passed as a prop rather than read
+ *   from context so the chip's memoization keeps shielding it from unrelated context churn.
  * @returns A styled label containing the surface text, optionally morpheme rows, and a gloss input.
  */
 export function TokenChip({
@@ -69,6 +70,7 @@ export function TokenChip({
   onRemove,
   isSplitFree = false,
   showMorphology = false,
+  glossPlaceholder = '',
 }: Readonly<{
   token: Token & { type: 'word' };
   onFocus: () => void;
@@ -76,6 +78,7 @@ export function TokenChip({
   onRemove?: () => void;
   isSplitFree?: boolean;
   showMorphology?: boolean;
+  glossPlaceholder?: string;
 }>) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const committedGloss = useGloss(token.ref);
@@ -90,10 +93,8 @@ export function TokenChip({
   const approveAnalysis = useApproveAnalysisDispatch();
   const [draft, setDraft] = useState(committedGloss);
   // While the user has emptied an approved token's gloss, the deletion only commits on blur, so the
-  // store still reports the token as approved. Without this, the dropdown would offer only that
-  // approved payload's alternatives (e.g. the minority homograph) until blur, then snap to the
-  // pool's best pick once the empty value commits. Preview that post-commit suggestion now — derived
-  // as if this token's approval were already gone — so the row and ghost placeholder stay consistent
+  // store still reports the token as approved. Preview the post-commit suggestion now — derived as
+  // if this token's approval were already gone — so the row and ghost placeholder stay consistent
   // across the blur. Gated to the one token being cleared so no other chip does the extra lookup.
   const clearingApprovedGloss =
     showSuggestions && !disabled && resolved?.status === 'approved' && draft === '';
@@ -108,10 +109,10 @@ export function TokenChip({
   const glossInputRef = useRef<HTMLInputElement | undefined>(undefined);
   // The suggestion combobox: an `activeIndex` of -1 means no row is highlighted, so a bare Enter
   // commits the top suggestion. Focusing (clicking) the gloss opens the dropdown whenever the token
-  // has suggestions — clicking the gloss is the primary way in — and typing closes it again (it
-  // reopens when the field is emptied or via ArrowDown). The "+" button is shown only for a token
-  // with more than one suggestion, both as a marker that alternatives exist and as a re-summon
-  // affordance over typed text; `inputFocused` / `chipHovered` gate its visibility.
+  // has suggestions, and typing closes it again (it reopens when the field is emptied or via
+  // ArrowDown). The "+" button is shown only for a token with more than one suggestion, as both a
+  // marker that alternatives exist and a re-summon affordance over typed text; `inputFocused` /
+  // `chipHovered` gate its visibility.
   const listboxId = useId();
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -136,11 +137,10 @@ export function TokenChip({
   // Surface uncommitted typing to the unsaved indicator before the gloss commits on blur.
   useReportGlossEditing(!disabled && draft !== committedGloss);
 
-  // The popover tree unmounts with the morpheme row when showMorphology turns off, but this state
-  // lives on the chip and would survive — silently reopening the popover when morphology is shown
-  // again. Clearing it on hide also closes the popover. We also close it when the chip becomes
-  // disabled: the popover content renders on `popoverOpen` alone (it isn't gated on `disabled`), so
-  // a chip whose popover is open while it transitions to disabled would otherwise stay editable.
+  // Clear popover-open state when the morpheme row unmounts (showMorphology off), since it lives on
+  // the chip and would otherwise survive to silently reopen the popover when morphology returns.
+  // Also close it when the chip becomes disabled: the popover content renders on `popoverOpen`
+  // alone (not gated on `disabled`), so an open popover would otherwise stay editable.
   useEffect(() => {
     if (!showMorphology || disabled) setPopoverOpen(false);
   }, [showMorphology, disabled]);
@@ -153,24 +153,20 @@ export function TokenChip({
    * @param e - The gloss input's mouse-down event.
    */
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
-    // Prevent the browser's built-in focus-and-scroll so only the React-controlled
-    // smooth scrollIntoView fires. We re-focus manually with preventScroll instead.
     e.preventDefault();
     e.currentTarget.focus({ preventScroll: true });
   };
 
   /**
-   * Intercepts mouse-down on the chip's label (the surface text and padding) so the label's native
-   * activation — which forwards focus to the gloss input with the browser's default
-   * scroll-into-view — can never scroll the list under the click. Focuses the input directly with
-   * `preventScroll` instead; the native forwarding then finds it already focused and does nothing.
-   * The input is looked up by id rather than `querySelector('input')` because the morpheme gloss
-   * inputs precede it inside the label when morphology is shown. A mouse-down on any input is left
-   * to that input's own handling ({@link handleMouseDown} for the gloss input, which bubbles here
-   * after already handling it); a mouse-down on the first morpheme form cell or the unanalyzed
-   * "define" trigger (both real `button`s) is left to that button's own click handler. The
-   * remaining morpheme form cells are `span`s that stop their own mousedown from bubbling here
-   * instead (see {@link MorphemeBox}).
+   * Intercepts mouse-down on the chip's label so the label's native focus-forwarding (with the
+   * browser's default scroll-into-view) can never scroll the list under the click. Focuses the
+   * input directly with `preventScroll` instead; the native forwarding then finds it already
+   * focused and does nothing. The input is looked up by id, not `querySelector('input')`, because
+   * the morpheme gloss inputs precede it inside the label when morphology is shown. A mouse-down on
+   * any input is left to that input's own handling ({@link handleMouseDown} for the gloss input); a
+   * mouse-down on the first morpheme form cell or the unanalyzed "define" trigger (both `button`s)
+   * is left to that button's own click handler. The remaining morpheme form cells are `span`s that
+   * stop their own mousedown from bubbling here (see {@link MorphemeBox}).
    *
    * @param e - The label's mouse-down event.
    */
@@ -197,10 +193,9 @@ export function TokenChip({
   // Pool entries for the suggestion dropdown: for a suggested token, the top pick (blue "accept")
   // plus candidates (grey "promote"); for an approved token, the pool alternatives only (the
   // already-approved payload excluded) — or, while that approved gloss is being cleared, the
-  // post-deletion preview from `suggestionSource`. Blank-in-active-language entries are dropped
-  // rather than shown as empty rows. Memoized on the (reference-stable) source read and active
-  // language so typing a non-empty gloss — which only changes local draft state — never re-runs the
-  // flatten/filter; clearing the field swaps `suggestionSource` and recomputes once.
+  // post-deletion preview from `suggestionSource`. Blank-in-active-language entries are dropped.
+  // Memoized on the (reference-stable) source read and active language so typing a non-empty gloss
+  // never re-runs the flatten/filter; clearing the field swaps `suggestionSource` and recomputes.
   const glossedRanked = useMemo(
     () => glossedSuggestionEntries(suggestionSource, analysisLanguage),
     [suggestionSource, analysisLanguage],
@@ -274,10 +269,9 @@ export function TokenChip({
         closeSuggestions();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        // activeIndex -1 (nothing highlighted) falls back to the top row. The list is normally
-        // non-empty while open, but glossedRanked can empty out after open (a row approved away),
-        // leaving suggestionsOpen stale while the dropdown is unmounted — guard so Enter closes
-        // rather than dereferencing an absent pick.
+        // activeIndex -1 (nothing highlighted) falls back to the top row. glossedRanked can empty
+        // out after open (a row approved away), leaving suggestionsOpen stale while the dropdown is
+        // unmounted — guard so Enter closes rather than dereferencing an absent pick.
         const pick = glossedRanked[activeIndex] ?? glossedRanked[0];
         if (pick) selectSuggestion(pick.id);
         /* v8 ignore next -- defensive: the empty-pick race above is not reachable from the call sites */ else
@@ -350,15 +344,13 @@ export function TokenChip({
   const dropdownShown = suggestionsOpen && hasSuggestions;
 
   // Whether the "+" button is faded in. Its layout slot (the input's reserved end-padding) is
-  // always present, so this governs only opacity/interactivity — the chip never reflows as it
-  // appears.
+  // always present, so this governs only opacity/interactivity, never layout.
   const addVisible = inputFocused || chipHovered;
 
-  // The X button is positioned outside the <label>, and the label is bound to the gloss input with
-  // an explicit htmlFor, so clicking the chip body always focuses the gloss input. Without the
-  // explicit binding, the label's implicit control would be its first labelable descendant — the X
-  // button, or the morpheme trigger button when showMorphology is on — and clicking anywhere on
-  // the chip (label-association behavior) would activate that button instead.
+  // The label is bound to the gloss input with an explicit htmlFor so clicking the chip body always
+  // focuses the gloss input. Without it, the label's implicit control would be its first labelable
+  // descendant — the X button, or the morpheme trigger button when showMorphology is on — and
+  // clicking the chip would activate that button instead.
   return (
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
@@ -391,14 +383,13 @@ export function TokenChip({
           // The morpheme row is the popover anchor; the panel itself is portaled to document.body
           // by PopoverContent, so it escapes both the clipping of ancestor scroll viewports (e.g.
           // the continuous view's token strip) and the `token-row` stacking contexts that would
-          // otherwise paint later segment rows over it. The popover is modal so interactions
-          // outside the panel are blocked while it is open. The popover component is mounted only
-          // while open so its draft state re-initializes from the current forms on every open.
+          // otherwise paint later segment rows over it. Modal, so interactions outside the panel are
+          // blocked while open. Mounted only while open so its draft state re-initializes from the
+          // current forms on every open.
           //
           // `onOpenChange` is intentionally omitted: this consumer owns every dismissal path
-          // (onEscapeKeyDown, onInteractOutside, explicit button clicks), so Radix's internal close
-          // requests aren't needed. Don't wire onOpenChange without also removing those, or closes
-          // would double-fire.
+          // (onEscapeKeyDown, onInteractOutside, explicit button clicks). Don't wire onOpenChange
+          // without also removing those, or closes would double-fire.
           <Popover modal open={popoverOpen}>
             {hasMorphemes ? (
               <MorphemeBox
@@ -441,14 +432,12 @@ export function TokenChip({
             )}
           </Popover>
         )}
-        {/* The gloss input acts as the combobox; the "+" button is a mouse affordance to summon the
-            dropdown over already-typed text, shown only for a token with more than one suggestion
-            and rendered as a trailing in-field decoration that only fades into view on focus/hover.
-            The input reserves symmetric end-padding (sized to clear the button) on EVERY chip —
-            whether or not this token has a suggestion, and whether or not the feature is on — so the
-            gloss text stays centered, the chip never reflows as the button appears, and widths never
-            differ between tokens that do and don't have suggestions. The button stays out of the tab
-            order so tabbing across the interlinear row hits one stop per token — the input. */}
+        {/* The gloss input acts as the combobox; the "+" button is a trailing in-field decoration
+            that summons the dropdown over typed text, shown only for a token with more than one
+            suggestion and fading in on focus/hover. The input reserves symmetric end-padding (sized
+            to clear the button) on EVERY chip regardless of suggestions or feature state, so the
+            gloss text stays centered, the chip never reflows as the button appears, and widths stay
+            uniform. The button stays out of the tab order so tabbing hits one stop per token. */}
         <span className="tw:relative tw:mt-0.5 tw:inline-flex tw:items-center">
           <input
             ref={setGlossInputRef}
@@ -461,25 +450,20 @@ export function TokenChip({
             aria-controls={dropdownShown ? listboxId : undefined}
             aria-expanded={hasSuggestions ? dropdownShown : undefined}
             aria-label={`Gloss for ${token.surfaceText}`}
-            // When the empty input is showing a suggested gloss as its placeholder, color that ghost
-            // text via the same `gloss-suggested` utility the dropdown's accept row uses (one source
-            // of truth for the suggested blue) and italicize it, at full opacity, so it reads
-            // clearly as a suggestion rather than a faint generic hint.
+            // When the empty input shows a suggested gloss as its placeholder, color that ghost text
+            // via the same `gloss-suggested` utility the dropdown's accept row uses (one source of
+            // truth for the suggested blue) and italicize it at full opacity, so it reads as a
+            // suggestion rather than a faint generic hint.
             className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}
             id={glossInputId}
-            placeholder={
-              showSuggestedPlaceholder
-                ? suggestedGloss
-                : resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])
-            }
+            placeholder={showSuggestedPlaceholder ? suggestedGloss : glossPlaceholder}
             role={hasSuggestions ? 'combobox' : undefined}
             // Inline padding overrides the `gloss-input` utility's default px to reserve room for the
-            // trailing "+" button symmetrically (keeping the gloss text centered) without a separate
-            // spacer element. The utility's top margin moves to the wrapping span (which now carries
-            // the gap above the input) and is zeroed here so the span's box matches the input
-            // exactly — letting the absolutely-positioned button center on the input rather than on a
-            // box inflated at the top by the margin.
+            // trailing "+" button symmetrically (keeping the gloss text centered) without a spacer
+            // element. The top margin is zeroed here and moved to the wrapping span so the span's box
+            // matches the input exactly, letting the absolutely-positioned button center on the input
+            // rather than on a box inflated at the top by the margin.
             style={{
               fieldSizing: 'content',
               marginTop: 0,

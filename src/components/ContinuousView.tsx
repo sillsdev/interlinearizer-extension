@@ -9,6 +9,8 @@ import { PhraseStripProvider } from './PhraseStripContext';
 import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import type { LinkSlot, TokenGroup } from '../types/token-layout';
 import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { resolvedOrEmpty } from '../utils/localized-strings';
+import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
 import {
@@ -45,6 +47,15 @@ function clampIndex(index: number, len: number): number {
 const SCROLL_SETTLE_FALLBACK_MS = 600;
 
 /**
+ * Hard cap (ms) on how long {@link holdCentered} keeps re-centering the focused phrase after an
+ * instant jump. The hold normally ends a short quiet period after the strip's last content reflow
+ * (glosses, morpheme rows, and arcs settling asynchronously push the focus sideways for a while);
+ * this cap bounds the total so a strip that never fully stabilizes cannot spin the rAF loop
+ * indefinitely. Sized to comfortably outlast the observed settle on slow hardware.
+ */
+const HOLD_CENTERED_MAX_MS = 2_000;
+
+/**
  * Number of phrase slots rendered on each side of the focused phrase. Chosen large enough that no
  * realistic viewport can ever render all tokens simultaneously.
  */
@@ -58,6 +69,10 @@ const PHRASE_WINDOW_HALF = 100;
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_boundaryControl_merge%',
+  '%interlinearizer_boundaryControl_mergeAltHint%',
+  '%interlinearizer_boundaryControl_split%',
+  '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
 /** A between-group slot render item annotated with the absolute group indices on either side. */
@@ -108,10 +123,7 @@ type ContinuousViewProps = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /** Word token ref → token lookup; used to resolve the focused token from `focusedTokenRef`. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
-  /**
-   * Bundled display toggles. The strip reads all but `chapterLabelInVerse`, which does not apply to
-   * the continuous strip.
-   */
+  /** Bundled display toggles forwarded to the strip. */
   viewOptions: ViewOptions;
 }>;
 
@@ -138,8 +150,7 @@ type ContinuousViewProps = Readonly<{
  * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
  *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
- * @param props.viewOptions - Bundled display toggles; the strip reads all but
- *   `chapterLabelInVerse`.
+ * @param props.viewOptions - Bundled display toggles forwarded to the strip.
  * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
@@ -161,6 +172,18 @@ export default function ContinuousView({
 
   const allTokens: Token[] = useMemo(
     () => book.segments.flatMap((seg) => seg.tokens),
+    [book.segments],
+  );
+
+  /**
+   * Verse-start token ref → verse label, over the whole book. Shares
+   * {@link buildVerseStartLabelsByTokenRef} with the segment list so chapter qualification and the
+   * verse-start token resolution match exactly. The strip builder marks the slot that begins each
+   * verse with its label, and {@link PhraseSlot} renders it below the link icon — this is what gives
+   * the continuous strip its inline verse numbers (it had none before).
+   */
+  const verseStartLabelByTokenRef = useMemo(
+    () => buildVerseStartLabelsByTokenRef(book.segments),
     [book.segments],
   );
 
@@ -280,6 +303,10 @@ export default function ContinuousView({
   /** DOM ref array indexed by group index; used to scroll the focused phrase box into view. */
   const phraseRefs = useRef<(HTMLSpanElement | null)[]>([]);
 
+  /** Ref to the token-strip row; the content row and mouse-leave target. */
+  // eslint-disable-next-line no-null/no-null
+  const stripRowRef = useRef<HTMLDivElement | null>(null);
+
   /**
    * Scrolls the phrase group at `groupIndex` to horizontal center of the strip. Every centering
    * call site shares the `block: 'nearest', inline: 'center'` options and differs only in
@@ -298,9 +325,77 @@ export default function ContinuousView({
     });
   }, []);
 
-  /** Ref to the token-strip row; the content row and mouse-leave target. */
-  // eslint-disable-next-line no-null/no-null
-  const stripRowRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * Holds the group at `groupIndex` centered while the strip settles after an instant jump or the
+   * committed-active-segment flip. Re-centers every animation frame — and, crucially, keeps holding
+   * until the strip content has stopped reflowing rather than for a fixed clock: the window mounts
+   * dozens of groups whose glosses, morpheme rows, and arcs finish laying out asynchronously over
+   * many frames, and each such reflow of the content left of the focus shifts the focused box
+   * sideways. A fixed {@link LINK_SLOT_TRANSITION_MS} hold expires before that settle completes,
+   * leaving the focus (and its arcs) stranded off-center; observing the content row and
+   * re-centering on each size change keeps the hold alive across a late reflow and re-centers once
+   * it lands.
+   *
+   * The observer's lifetime is deliberately decoupled from the re-center loop's. The loop is a
+   * quiet-period tick: it re-centers every frame, then stops once no reflow has fired for
+   * {@link LINK_SLOT_TRANSITION_MS} (so it isn't spinning rAF forever while the strip is idle). But
+   * the dominant reflow — the gloss-placeholder string resolving and the arc-settle passes widening
+   * content to the left of the focus — routinely lands 300-500ms after mount, i.e. AFTER that quiet
+   * window has already lapsed. If the observer were torn down when the loop stopped (as it once
+   * was), that late reflow would go unobserved and the focus would be stranded ~1100px off-center —
+   * the exact intermittent "not centered on first load" bug. So the observer stays connected for
+   * the full {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't
+   * hold the observer forever), and any reflow within it restarts the tick loop to re-center.
+   *
+   * @param groupIndex - Index of the group to keep centered.
+   * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
+   *   it from the owning effect's cleanup.
+   */
+  const holdCentered = useCallback(
+    (groupIndex: number) => {
+      // Quiet deadline for the tick loop only; extended on each reflow. Seeded one quiet period out
+      // so a reflow-free jump still holds briefly.
+      let quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+      let rafId = 0;
+      let stopped = false;
+      const tick = () => {
+        centerGroup(groupIndex, 'auto');
+        if (performance.now() < quietDeadline) {
+          rafId = requestAnimationFrame(tick);
+        } else {
+          // Idle: stop ticking but leave the observer connected so a late reflow can restart us.
+          stopped = true;
+        }
+      };
+      const observer = new ResizeObserver(() => {
+        // A resize of the content row means the strip is still settling; push the quiet deadline out
+        // and restart the loop if it had gone idle, so the re-center tracks the new layout instead of
+        // leaving the focus stranded off-center.
+        quietDeadline = performance.now() + LINK_SLOT_TRANSITION_MS;
+        if (stopped) {
+          stopped = false;
+          cancelAnimationFrame(rafId);
+          rafId = requestAnimationFrame(tick);
+        }
+      });
+      const row = stripRowRef.current;
+      if (row) observer.observe(row);
+      rafId = requestAnimationFrame(tick);
+      // Hard cap: disconnect the observer and stop ticking after the max hold, independent of the
+      // quiet loop, so a never-settling strip can't hold resources forever.
+      const hardStopTimer = setTimeout(() => {
+        cancelAnimationFrame(rafId);
+        observer.disconnect();
+        stopped = true;
+      }, HOLD_CENTERED_MAX_MS);
+      return () => {
+        clearTimeout(hardStopTimer);
+        cancelAnimationFrame(rafId);
+        observer.disconnect();
+      };
+    },
+    [centerGroup],
+  );
 
   /**
    * Ref to the fixed-width clipping viewport that wraps the content row. Because the inner row is
@@ -337,6 +432,42 @@ export default function ContinuousView({
   const commitPendingActiveSegment = useCallback(() => {
     setCommittedActiveSegmentId(targetActiveSegmentIdRef.current);
   }, [targetActiveSegmentIdRef]);
+
+  /**
+   * `focusedTokenRef` last seen by the segmentation-reconcile effect below, so it can distinguish
+   * "the focused token's segment id changed because the segmentation changed" (commit immediately)
+   * from "focus moved" (the focus-change machinery owns the commit timing).
+   */
+  const prevFocusForSegmentationRef = useRef(focusedTokenRef);
+
+  /**
+   * `true` while an internal-nav smooth scroll is animating and its deferred active-segment commit
+   * is still pending on `scrollend` (or the fallback timeout). The segmentation-reconcile effect
+   * reads this to avoid committing early mid-glide — the pending `onSettled` commits against the
+   * live `targetActiveSegmentIdRef`, which already reflects the re-segmentation, so the correct
+   * segment lands once the scroll finishes instead of snapping the glide short.
+   */
+  const scrollSettlePendingRef = useRef(false);
+
+  // Reconcile the committed active segment when a segmentation edit (merge/split) changes the
+  // focused token's segment id without moving focus. Token refs survive re-segmentation, so no
+  // focus-change effect fires for such an edit; without this the committed id would keep naming a
+  // segment that no longer exists, deactivating every link button until the next navigation. Only
+  // fires while focus is unchanged — a focus move commits through its own paths (deferred to the
+  // scroll settle for internal nav, behind the fade for external jumps), which this must not
+  // preempt. A real commit also flips the active-segment recenter effect below, re-pinning the
+  // focused group against the edit's relayout.
+  useEffect(() => {
+    const focusUnchanged = prevFocusForSegmentationRef.current === focusedTokenRef;
+    prevFocusForSegmentationRef.current = focusedTokenRef;
+    if (!focusUnchanged) return;
+    // Defer to the in-flight scroll's `onSettled` when an internal-nav glide is still animating:
+    // committing here would flip `committedActiveSegmentId` and fire the instant recenter below,
+    // truncating the smooth scroll into a jump. `onSettled` commits the same (already-updated)
+    // target once the glide finishes, so the reconcile still happens — just without the snap.
+    if (scrollSettlePendingRef.current) return;
+    commitPendingActiveSegment();
+  }, [tokenSegmentMap, focusedTokenRef, commitPendingActiveSegment]);
 
   /** Ref mirror of `onFocusedTokenRefChange` so callbacks never need it as a dep. */
   const onFocusedTokenRefChangeRef = useLatestRef(onFocusedTokenRefChange);
@@ -514,10 +645,14 @@ export default function ContinuousView({
       // the relayout runs exactly once.
       const scrollers = [scrollViewportRef.current, stripRowRef.current];
       let fallbackTimeout: ReturnType<typeof setTimeout>;
+      // Mark the settle pending so the segmentation-reconcile effect defers its commit to `onSettled`
+      // instead of snapping the glide short if a boundary edit lands mid-scroll.
+      scrollSettlePendingRef.current = true;
       /** Commits the pending active segment and tears down both the timeout and scroll listeners. */
       const onSettled = () => {
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        scrollSettlePendingRef.current = false;
         commitPendingActiveSegment();
       };
       fallbackTimeout = setTimeout(onSettled, SCROLL_SETTLE_FALLBACK_MS);
@@ -526,6 +661,7 @@ export default function ContinuousView({
         cancelAnimationFrame(navRafId);
         clearTimeout(fallbackTimeout);
         scrollers.forEach((el) => el?.removeEventListener('scrollend', onSettled));
+        scrollSettlePendingRef.current = false;
       };
     }
 
@@ -537,36 +673,39 @@ export default function ContinuousView({
       // The snapped-slot paint has happened; re-enable the transition for later in-view toggles.
       setSkipSlotTransitionForJump(false);
     });
+    // Hold the group centered through the reveal. The window slide mounts/unmounts groups whose
+    // arcs and morpheme rows finish laying out asynchronously over the next frames, shifting the
+    // strip after the instant snap above. The committed-active-segment layout effect re-centers
+    // against that drift, but only when the segment id actually flips — a jump landing in the
+    // already-active segment (a token click in the active verse) gets no correction there and was
+    // revealed off-center. Hold on the shared clock so every instant jump stays pinned regardless
+    // of whether the active segment changed.
+    const cancelHold = holdCentered(focusPhraseIndex);
     return () => {
       cancelAnimationFrame(rafId);
+      cancelHold();
       setIsVisible(true);
     };
-  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup]);
+  }, [focusPhraseIndex, commitPendingActiveSegment, centerGroup, holdCentered]);
 
   // Keep the focused group pinned dead-center after the deferred active-segment flip. When
   // `committedActiveSegmentId` flips (after an internal-nav scroll settles), inactive link icons
   // fade in/out over `LINK_SLOT_TRANSITION_MS`. Because they are hidden via `opacity: 0` their
   // layout space is preserved, so boxes do not shift — but any residual sub-pixel drift from the
-  // preceding smooth scroll is corrected by re-centering once before paint. The rAF loop holds the
-  // group centered for the full fade duration as a conservative guard against any future layout
-  // changes that could re-introduce drift. The first run is skipped because the initial center is
-  // established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop so the very
-  // first re-center lands before paint (no initial flash), then `rAF` carries it through the fade.
+  // preceding smooth scroll is corrected by re-centering once before paint. The shared hold loop
+  // keeps the group centered for the full fade duration as a conservative guard against any future
+  // layout changes that could re-introduce drift. The first run is skipped because the initial
+  // center is established by the scroll effect's instant jump. A `useLayoutEffect` seeds the loop
+  // with a synchronous re-center so the very first correction lands before paint (no initial
+  // flash), then the hold's `rAF` carries it through the fade.
   const skipActiveSegmentRecenterRef = useRef(true);
   useLayoutEffect(() => {
     if (skipActiveSegmentRecenterRef.current) {
       skipActiveSegmentRecenterRef.current = false;
       return undefined;
     }
-    /** Re-centers the focused group; called synchronously now and each `rAF` until the deadline. */
-    const recenter = () => centerGroup(focusPhraseIndex, 'auto');
-    recenter();
-    const deadline = performance.now() + LINK_SLOT_TRANSITION_MS;
-    let rafId = requestAnimationFrame(function recenterFrame() {
-      recenter();
-      if (performance.now() < deadline) rafId = requestAnimationFrame(recenterFrame);
-    });
-    return () => cancelAnimationFrame(rafId);
+    centerGroup(focusPhraseIndex, 'auto');
+    return holdCentered(focusPhraseIndex);
     // Only the active-segment flip should trigger this re-anchor; focusPhraseIndex has its own scroll
     // effect. Reading it here is a snapshot, not a trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -657,6 +796,10 @@ export default function ContinuousView({
     activeSegmentId: committedActiveSegmentId,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
+    boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
+    boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
+    glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !isVisible || skipSlotTransitionForJump,
     showMorphology,
   });
@@ -793,6 +936,7 @@ export default function ContinuousView({
             prevSegmentId,
             nextSegmentId,
             focusedSideIsPrev: focusedSideIsPrevByItem.get(item),
+            verseLabel: slotVerseLabel(item.slot, verseStartLabelByTokenRef),
           };
         }
         const { group, groupIndex } = item;
@@ -809,7 +953,14 @@ export default function ContinuousView({
           },
         };
       }),
-    [renderItems, phraseGroups, tokenSegmentMap, focusedSideIsPrevByItem, displayFocusedTokenRef],
+    [
+      renderItems,
+      phraseGroups,
+      tokenSegmentMap,
+      focusedSideIsPrevByItem,
+      displayFocusedTokenRef,
+      verseStartLabelByTokenRef,
+    ],
   );
 
   return (

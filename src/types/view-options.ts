@@ -9,14 +9,14 @@ export type ViewOptions = Readonly<{
   hideInactiveLinkButtons: boolean;
   /** When true, phrase-level controls are hidden on every phrase except the focused one. */
   simplifyPhrases: boolean;
-  /**
-   * When true, every verse is labeled `chapter:verse` and no inline chapter header is shown; when
-   * false, an inline chapter header precedes the first verse of each chapter and verse labels stay
-   * bare verse numbers.
-   */
-  chapterLabelInVerse: boolean;
   /** When true, morpheme rows and per-morpheme glosses are shown beneath each word token. */
   showMorphology: boolean;
   /** When true, a free-translation input is shown beneath each segment's tokens or baseline text. */
   showFreeTranslation: boolean;
+  /**
+   * When true, each segment shows its verse range in a left gutter column and suppresses the inline
+   * verse superscripts; when false, the inline superscripts show and the gutter is hidden. The two
+   * are mutually exclusive display styles for the same verse information.
+   */
+  showVerseGutter: boolean;
 }>;

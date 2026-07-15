@@ -1,9 +1,15 @@
 /** @file Hook owning the always-present, auto-saved draft buffer for one source project. */
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, InterlinearProject, TextAnalysis } from 'interlinearizer';
+import type {
+  DraftProject,
+  InterlinearProject,
+  SegmentationDelta,
+  TextAnalysis,
+} from 'interlinearizer';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { emptyAnalysis, emptyDraft } from '../types/empty-factories';
-import { removeBookFromAnalysis } from '../utils/analysis-book';
+import { removeBookFromAnalysis, removeBookFromSegmentation } from '../utils/analysis-book';
+import { isDefaultSegmentation } from '../utils/segmentation';
 
 /** Milliseconds to wait after the last keystroke before flushing an autosave write. */
 const AUTOSAVE_DEBOUNCE_MS = 300;
@@ -11,7 +17,7 @@ const AUTOSAVE_DEBOUNCE_MS = 300;
 /** The subset of an {@link InterlinearProject} needed to open it into the draft as a working copy. */
 export type OpenableProject = Pick<
   InterlinearProject,
-  'analysis' | 'analysisLanguages' | 'targetProjectId'
+  'analysis' | 'analysisLanguages' | 'targetProjectId' | 'segmentation'
 >;
 
 /** Configuration for starting a fresh, empty draft via {@link UseDraftProjectResult.newDraft}. */
@@ -40,6 +46,15 @@ export type UseDraftProjectResult = {
    */
   draftVersion: number;
   /**
+   * Monotonic counter bumped on every change to the draft's segment-boundary delta (per-edit
+   * auto-saves included). Unlike {@link UseDraftProjectResult.draftVersion} it is deliberately kept
+   * out of the editor's remount key: the resegmented book is derived from `draft.segmentation`,
+   * which lives in a ref, so a boundary edit needs a re-render to recompute the book — but must not
+   * remount the editor (that would drop analysis-edit, scroll, and focus state). Consumers thread
+   * this into the memo that resegments the book so the new boundaries take effect in place.
+   */
+  segmentationVersion: number;
+  /**
    * Whether the draft has diverged from its active project since the last Save / Save As / Open /
    * New. Drives the discard confirmation and the tab's unsaved-changes indicator.
    */
@@ -59,6 +74,13 @@ export type UseDraftProjectResult = {
    * @param analysis - The updated analysis from the store.
    */
   autosaveAnalysis: (analysis: TextAnalysis) => void;
+  /**
+   * Persists an edited segment-boundary delta into the draft and marks it dirty. Pass `undefined`
+   * (or a default/empty delta) to clear custom boundaries back to the default verse segmentation.
+   *
+   * @param segmentation - The updated boundary delta, or `undefined` for the default segmentation.
+   */
+  autosaveSegmentation: (segmentation: SegmentationDelta | undefined) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
@@ -88,14 +110,19 @@ export type UseDraftProjectResult = {
   wipeAll: () => void;
   /**
    * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
-   * draft has not changed since the snapshot that was persisted. Pass the exact analysis that was
-   * written; if a later auto-save replaced it (an edit made during the save round-trip), the draft
-   * is left dirty so the unsaved-changes indicator and the next Save reflect that un-persisted edit
-   * rather than being cleared against a now-stale snapshot.
+   * draft has not changed since the snapshot that was persisted. Pass the exact analysis and
+   * boundary delta that were written; if a later auto-save replaced either (an edit made during the
+   * save round-trip), the draft is left dirty so the unsaved-changes indicator and the next Save
+   * reflect that un-persisted edit rather than being cleared against a now-stale snapshot.
    *
    * @param savedAnalysis - The `TextAnalysis` reference that was actually persisted to the project.
+   * @param savedSegmentation - The `SegmentationDelta` reference that was persisted alongside it
+   *   (`undefined` when the draft had the default segmentation).
    */
-  markSynced: (savedAnalysis: TextAnalysis) => void;
+  markSynced: (
+    savedAnalysis: TextAnalysis,
+    savedSegmentation: SegmentationDelta | undefined,
+  ) => void;
 };
 
 /**
@@ -104,9 +131,8 @@ export type UseDraftProjectResult = {
  * draft wholesale (New / Open / Wipe).
  *
  * The full draft lives in a ref — the synchronous source of truth for persistence and Save — while
- * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders. As a
- * result per-edit auto-saves never re-render the loader unless the dirty flag actually flips,
- * matching the prior behavior where editing did not re-render the loader.
+ * a small amount of state (`isDraftLoading`, `draftVersion`, `dirty`) drives re-renders, so
+ * per-edit auto-saves never re-render the loader unless the dirty flag actually flips.
  *
  * @param sourceProjectId - The Platform.Bible source project whose draft to manage.
  * @param platformLanguage - BCP 47 tag used to seed `analysisLanguages` for a brand-new source.
@@ -119,6 +145,7 @@ export default function useDraftProject(
   const draftRef = useRef<DraftProject | undefined>(undefined);
   const [isDraftLoading, setIsDraftLoading] = useState(true);
   const [draftVersion, setDraftVersion] = useState(0);
+  const [segmentationVersion, setSegmentationVersion] = useState(0);
   const [dirty, setDirty] = useState(false);
 
   // Read the latest platform language via a ref so the load effect (keyed on sourceProjectId)
@@ -135,12 +162,10 @@ export default function useDraftProject(
    * Persists `draft` to storage, fire-and-forget. The backend surfaces an error notification on
    * failure; here we only log so a rejected write never throws into a render or event handler.
    *
-   * Note: the draft is the **only** persistence path — there is no secondary write on blur or
-   * unmount that would retry a failed autosave. If storage is unavailable during editing, the
-   * backend sends one error notification per failed write; if that notification itself fails (the
-   * `.catch(() => {})` in `main.ts`), edits made in that window are silently lost on the next page
-   * refresh. The tab title's `●` marker stays lit because `dirty` is set optimistically before the
-   * write, not in response to its outcome.
+   * This is the only persistence path — there is no retry on blur or unmount. If storage is
+   * unavailable during editing the backend sends one error notification per failed write; should
+   * that notification itself fail, edits in that window are silently lost on the next refresh. The
+   * `dirty` flag is set optimistically before the write, not in response to its outcome.
    *
    * @param draft - The draft envelope to write.
    */
@@ -219,13 +244,22 @@ export default function useDraftProject(
     [persist],
   );
 
-  const autosaveAnalysis = useCallback(
-    (analysis: TextAnalysis) => {
+  /**
+   * Shared per-edit auto-save pipeline: derives the next draft from the current one via `mutate`,
+   * swaps it into the ref, debounces the persistence write, and marks the draft dirty. No version
+   * bump (no remount) and `setDirty(true)` is a no-op when already dirty, so editing does not
+   * re-render.
+   *
+   * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet.
+   */
+  const autosaveDraft = useCallback(
+    (mutate: (current: DraftProject) => DraftProject): boolean => {
       const { current } = draftRef;
       /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
-      if (!current) return;
+      if (!current) return false;
 
-      const next: DraftProject = { ...current, analysis, dirty: true };
+      const next = mutate(current);
       draftRef.current = next;
       // Debounce writes so rapid keystrokes don't queue unbounded commands to the backend.
       if (autosaveTimeoutRef.current !== undefined) clearTimeout(autosaveTimeoutRef.current);
@@ -233,10 +267,41 @@ export default function useDraftProject(
         autosaveTimeoutRef.current = undefined;
         persist(next);
       }, AUTOSAVE_DEBOUNCE_MS);
-      // No version bump (no remount) and a no-op when already dirty, so editing does not re-render.
       setDirty(true);
+      return true;
     },
     [persist],
+  );
+
+  const autosaveAnalysis = useCallback(
+    (analysis: TextAnalysis) => {
+      autosaveDraft((current) => ({ ...current, analysis, dirty: true }));
+    },
+    [autosaveDraft],
+  );
+
+  const autosaveSegmentation = useCallback(
+    (segmentation: SegmentationDelta | undefined) => {
+      // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
+      // `undefined`: clear the field rather than persisting a redundant custom object. Shares
+      // `isDefaultSegmentation` with the loader's dispatch so the empty-delta rule lives in one place.
+      const hasCustomBoundaries = !isDefaultSegmentation(segmentation);
+      const applied = autosaveDraft((current) => {
+        const next: DraftProject = { ...current, dirty: true };
+        // Store custom boundaries when present; clear the field for the default segmentation so the
+        // persisted draft stays minimal.
+        if (hasCustomBoundaries && segmentation !== undefined) next.segmentation = segmentation;
+        else delete next.segmentation;
+        return next;
+      });
+      /* v8 ignore next -- auto-save only fires from the mounted editor, which exists only post-load */
+      if (!applied) return;
+      // The resegmented book is derived from `draftRef.current.segmentation`, which lives in a ref;
+      // `setDirty(true)` bails out of the re-render when the draft was already dirty, so bump a
+      // dedicated version to force the loader to re-read the boundaries and recompute the book.
+      setSegmentationVersion((v) => v + 1);
+    },
+    [autosaveDraft],
   );
 
   const loadFromProject = useCallback(
@@ -245,6 +310,7 @@ export default function useDraftProject(
         sourceProjectId,
         analysisLanguages: project.analysisLanguages,
         ...(project.targetProjectId !== undefined && { targetProjectId: project.targetProjectId }),
+        ...(project.segmentation !== undefined && { segmentation: project.segmentation }),
         analysis: project.analysis,
         dirty: false,
       });
@@ -274,11 +340,18 @@ export default function useDraftProject(
       /* v8 ignore next -- wipe is only reachable from the mounted editor */
       if (!current) return;
 
-      applyReplacement({
+      // Drop the book's custom segment boundaries alongside its analysis: the anchors are working
+      // state keyed by book, so keeping them would re-apply the wiped book's merges/splits on
+      // reload. Clear the field when nothing remains for any other book.
+      const segmentation = removeBookFromSegmentation(current.segmentation, bookCode);
+      const next: DraftProject = {
         ...current,
         analysis: removeBookFromAnalysis(current.analysis, bookCode),
         dirty: true,
-      });
+      };
+      if (segmentation !== undefined) next.segmentation = segmentation;
+      else delete next.segmentation;
+      applyReplacement(next);
     },
     [applyReplacement],
   );
@@ -288,24 +361,27 @@ export default function useDraftProject(
     /* v8 ignore next -- wipe is only reachable from the mounted editor */
     if (!current) return;
 
-    // Wiping the whole draft is treated as a clean baseline rather than an unsaved edit: it clears
-    // the unsaved-changes indicator (dirty: false) so the user is not nagged to save an empty
-    // draft. The active project is intentionally left untouched, so a subsequent Save still targets
-    // it. Per-book wipe stays dirty, since it is a partial edit the user will usually want to save.
-    applyReplacement({ ...current, analysis: emptyAnalysis(), dirty: false });
+    // Wiping the whole draft is treated as a clean baseline (dirty: false) so the user is not nagged
+    // to save an empty draft. The active project is left untouched, so a subsequent Save still
+    // targets it. Custom segment boundaries are working state, so a whole-draft wipe clears them too.
+    // (Per-book wipe stays dirty, as it is a partial edit the user will usually want to save.)
+    const next: DraftProject = { ...current, analysis: emptyAnalysis(), dirty: false };
+    delete next.segmentation;
+    applyReplacement(next);
   }, [applyReplacement]);
 
   const markSynced = useCallback(
-    (savedAnalysis: TextAnalysis) => {
+    (savedAnalysis: TextAnalysis, savedSegmentation: SegmentationDelta | undefined) => {
       const { current } = draftRef;
       /* v8 ignore next -- save is only reachable from the mounted editor */
       if (!current) return;
 
-      // If an edit landed during the save round-trip, autosaveAnalysis has already swapped a newer
-      // analysis (a fresh object) into the ref and marked the draft dirty. Leave it dirty so the
-      // unsaved indicator and the next Save reflect that un-persisted edit, rather than clearing it
-      // against the now-stale snapshot we just wrote.
-      if (current.analysis !== savedAnalysis) return;
+      // If an edit landed during the save round-trip, the auto-save has already swapped a newer
+      // analysis or boundary delta (a fresh object) into the ref and marked the draft dirty. Leave
+      // it dirty so the next Save reflects that un-persisted edit rather than clearing against the
+      // stale snapshot. Both fields are compared: a boundary edit carries `analysis` over by
+      // reference, so checking analysis alone would wrongly clear dirty over a segmentation change.
+      if (current.analysis !== savedAnalysis || current.segmentation !== savedSegmentation) return;
 
       // Cancel any pending debounced autosave before persisting the clean state so a stale
       // {dirty: true} timer cannot fire after this and overwrite the {dirty: false} record.
@@ -325,9 +401,11 @@ export default function useDraftProject(
     isDraftLoading,
     draft: draftRef.current,
     draftVersion,
+    segmentationVersion,
     dirty,
     getDraftSnapshot,
     autosaveAnalysis,
+    autosaveSegmentation,
     loadFromProject,
     newDraft,
     wipeBook,

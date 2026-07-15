@@ -1,5 +1,4 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { memo, useCallback, useEffect, useState } from 'react';
@@ -15,19 +14,14 @@ import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
 import { sortByDocOrder } from '../utils/phrase-arc';
-import { resolvedOrEmpty } from '../utils/localized-strings';
 import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
 /**
- * Localized string keys this module needs. Hoisted to module scope so the reference passed to
- * `useLocalizedStrings` is stable across renders (a fresh array literal each render makes the PAPI
- * hook re-fetch and re-set state every render).
- */
-const STRING_KEYS = ['%interlinearizer_glossInput_placeholder%'] as const satisfies `%${string}%`[];
-
-/**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
- * Separated into its own component so hooks are always called unconditionally.
+ * Separated into its own component so hooks are always called unconditionally. The placeholder
+ * comes from strip context (fetched once per strip) rather than a per-instance
+ * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
+ * first frame.
  *
  * @param props - Component props
  * @param props.phraseId - ID of the `PhraseAnalysis` to read/write.
@@ -43,7 +37,7 @@ function PhraseGlossInput({
 }: Readonly<{ phraseId: string; disabled?: boolean; onFocus?: () => void }>) {
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
-  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
+  const { glossPlaceholder } = usePhraseStripContext();
   const [draft, setDraft] = useState(committed);
 
   useEffect(() => {
@@ -59,7 +53,7 @@ function PhraseGlossInput({
       className="tw:mt-0.5 tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
-      placeholder={resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%'])}
+      placeholder={glossPlaceholder}
       style={{ fieldSizing: 'content' }}
       type="text"
       value={draft}
@@ -104,6 +98,13 @@ type PhraseBoxProps = Readonly<{
    * the view. All fragments of that phrase receive the highlighted style simultaneously.
    */
   isHighlighted?: boolean;
+  /**
+   * When `true`, this box's tokens are part of a hovered operation preview — a link icon or a
+   * boundary merge/split control whose candidate tokens would join into one phrase/segment or break
+   * off into a new segment. Renders the strong `phrase-candidate` outline, visually distinct from
+   * (and taking precedence over) the ordinary hover and focus styles.
+   */
+  isCandidate?: boolean;
   /**
    * Token refs that would become free (solo) if the currently hovered split/unlink button were
    * clicked. Each matching chip renders with a destructive border as a preview; when every token in
@@ -152,6 +153,8 @@ type PhraseBoxProps = Readonly<{
  *   sets for hovered fragment only)
  * @param props.isHighlighted - When true, all fragments of the hovered/focused phrase receive the
  *   highlighted border style simultaneously
+ * @param props.isCandidate - When true, this box's tokens are part of a hovered operation preview
+ *   (link or boundary merge/split) and render the strong candidate outline
  * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
  *   matching chip renders with a destructive border as a preview
  * @param props.punctuationBetween - Punctuation tokens between adjacent word tokens, in document
@@ -161,6 +164,7 @@ type PhraseBoxProps = Readonly<{
 export function PhraseBox({
   isFocused = false,
   isHighlighted = false,
+  isCandidate = false,
   splitFreeTokenRefs,
   punctuationBetween,
   groupKey,
@@ -179,11 +183,12 @@ export function PhraseBox({
     tokenDocOrder,
     simplifyPhrases,
     showMorphology,
+    glossPlaceholder,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
-  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) so the layout
-  // gap they occupy is preserved. The remove-token ✕ is omitted from onRemove instead (it only
-  // appears as a prop-driven overlay, so omitting it has no layout impact).
+  // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) to preserve the
+  // layout gap they occupy; the remove-token ✕ is omitted from onRemove instead (it's a prop-driven
+  // overlay, so omitting it has no layout impact).
   const controlsSuppressed = simplifyPhrases && !isFocused;
   const { updatePhrase, deletePhrase } = usePhraseDispatch();
 
@@ -196,18 +201,15 @@ export function PhraseBox({
   const handleFocus = useCallback(() => onFocusPhrase(groupKey), [groupKey, onFocusPhrase]);
 
   /**
-   * Focuses the box's first gloss input when any non-interactive part of the box is clicked — the
-   * bordered container, the token-row wrapper spans, the padding, or the gloss area around the
-   * input. Each token chip's own input/button handles its own focus, so clicks that land directly
-   * on one of those are left alone (the `closest` check); everything else is treated as "click the
-   * phrase" and forwards focus to the first gloss input, which fires its `onFocus` →
-   * {@link onFocusPhrase} and so highlights this phrase. This is what makes clicking the body of a
-   * phrase box (not just a chip) select it; without it, such clicks fell through to the segment
-   * background handler, which focused the segment's first phrase instead. Focus is forwarded with
-   * `preventScroll` — the user clicked something already on screen, so the browser's default
-   * scroll-focused-element-into-view would realign the segment list for no reason (the input may
+   * Focuses the box's first gloss input when any non-interactive part of the box is clicked (the
+   * container, wrapper spans, padding, or gloss area), so clicking the phrase body — not just a
+   * chip — selects it. Each token chip's own input/button handles its own focus, so clicks landing
+   * directly on one are left alone (the `closest` check); everything else forwards focus to the
+   * first gloss input, whose `onFocus` → {@link onFocusPhrase} highlights this phrase. Focus is
+   * forwarded with `preventScroll` because the clicked element is already on screen, so the
+   * browser's default scroll-into-view would realign the segment list for no reason (the input may
    * sit on another wrapped row of the phrase, partially out of view). Morpheme gloss inputs are
-   * excluded from the lookup — when morphology is shown they precede the token gloss input in DOM
+   * excluded from the lookup: when morphology is shown they precede the token gloss input in DOM
    * order, and only the token gloss input fires the `onFocus` → {@link onFocusPhrase} chain.
    *
    * @param e - The container's click event.
@@ -316,23 +318,24 @@ export function PhraseBox({
 
   const isRealPhrase = phraseLink !== undefined;
 
-  // The pop-out (✕) guard below must compare against the phrase's first/last token in *document*
-  // order, not stored order. The stored token list is kept sorted by all current write paths, but
-  // we sort defensively here (matching `splitPhraseAtBoundary`) so legacy/unsorted data still places
-  // the ✕ on the visually-first/last tokens rather than wherever they happen to sit in storage.
+  // The pop-out (✕) guard below compares against the phrase's first/last token in *document* order,
+  // not stored order. Sorted defensively here (matching `splitPhraseAtBoundary`) so unsorted data
+  // still places the ✕ on the visually-first/last tokens rather than wherever they sit in storage.
   const orderedPhraseRefs = phraseLink
     ? sortByDocOrder(phraseLink.tokens, tokenDocOrder).map((t) => t.tokenRef)
     : [];
 
   // The whole box previews as becoming free only when it is a lone single-token fragment that would
-  // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box always reddens the
-  // affected chips individually below, even when every token would be freed (a 2-token phrase
-  // splits into two free tokens, but each is shown on its own chip rather than as a box).
+  // be freed (e.g. a one-token run of a discontiguous phrase). A multi-token box reddens the
+  // affected chips individually below, even when every token would be freed.
   const isBoxSplitFree = tokens.length === 1 && (splitFreeTokenRefs?.has(tokens[0].ref) ?? false);
 
   if (phraseMode.kind === 'view') {
     const viewBorderClass = (() => {
       if (isBoxSplitFree) return 'tw:phrase-destructive';
+      // Candidate previews outrank focus/hover: while a preview is hovered, showing what the
+      // operation affects matters more than showing what is focused.
+      if (isCandidate) return 'tw:phrase-candidate';
       if (isFocused) return 'tw:phrase-focused';
       if (isHighlighted) return 'tw:phrase-hovered';
       return 'tw:phrase-dimmed';
@@ -383,9 +386,33 @@ export function PhraseBox({
             {tokens.map((token, i) => (
               <span key={token.ref} className="tw:phrase-token-row">
                 {i > 0 && (
-                  <span className="tw:inline-flex tw:flex-col tw:items-center">
+                  // Intra-phrasal (inter-token) gap column, stacked to match the inter-phrasal
+                  // PhraseSlot column so the unlink icon and gap punctuation land at the same
+                  // vertical offset whether the gap is inside a phrase box or between two: a
+                  // fixed-height punctuation row first (so a gap carrying punctuation is exactly as
+                  // tall as an empty one), then the unlink icon below it.
+                  //
+                  // The nudge is `mt-px` (1px), not the slot's `mt-1` (4px): the slot sits outside
+                  // the box and clears its top border + `py-0.5` padding to reach the surface-text
+                  // baseline, but this column already sits inside the box, below that 3px, so it
+                  // needs only the remaining 1px.
+                  <span className="tw:mt-px tw:inline-flex tw:flex-col tw:items-center">
+                    <span className="tw:inline-flex tw:h-5 tw:flex-row tw:items-start tw:justify-center">
+                      {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
+                        <span className="tw:inline-flex tw:flex-row tw:items-start">
+                          {punctuationBetween[i - 1].map((p) => (
+                            <InertTokenChip key={p.ref} token={p} />
+                          ))}
+                        </span>
+                      )}
+                    </span>
                     {isRealPhrase && (
                       <span
+                        // `inline-flex` (matching the slot's icon wrapper) so the span hugs the icon
+                        // at its exact 16px height; a bare inline span picks up line-box leading,
+                        // adding dead space that pushes the unlink button below its inter-phrase
+                        // counterpart.
+                        className="tw:inline-flex"
                         aria-hidden={controlsSuppressed || undefined}
                         style={{
                           opacity: controlsSuppressed ? 0 : 1,
@@ -402,16 +429,10 @@ export function PhraseBox({
                         />
                       </span>
                     )}
-                    {punctuationBetween?.[i - 1] && punctuationBetween[i - 1].length > 0 && (
-                      <span className="tw:inline-flex tw:flex-row tw:items-center">
-                        {punctuationBetween[i - 1].map((p) => (
-                          <InertTokenChip key={p.ref} token={p} />
-                        ))}
-                      </span>
-                    )}
                   </span>
                 )}
                 <MemoizedTokenChip
+                  glossPlaceholder={glossPlaceholder}
                   isSplitFree={!isBoxSplitFree && (splitFreeTokenRefs?.has(token.ref) ?? false)}
                   onFocus={handleFocus}
                   onRemove={
@@ -465,6 +486,7 @@ export function PhraseBox({
                 )}
                 <MemoizedTokenChip
                   disabled
+                  glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -533,6 +555,7 @@ export function PhraseBox({
               >
                 <MemoizedTokenChip
                   disabled
+                  glossPlaceholder={glossPlaceholder}
                   onFocus={handleFocus}
                   showMorphology={showMorphology}
                   token={token}
@@ -590,6 +613,7 @@ export function PhraseBox({
               punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
             <MemoizedTokenChip
               disabled
+              glossPlaceholder={glossPlaceholder}
               onFocus={handleFocus}
               showMorphology={showMorphology}
               token={token}

@@ -5,6 +5,12 @@ export interface RawVerse {
   /** SID from the USJ verse marker, e.g. `"GEN 1:1"`. Parsed into `Segment.startRef` / `endRef`. */
   sid: string;
   /**
+   * Verbatim verse-label string from the USJ verse marker's `number` attribute (e.g. `"1"`, or a
+   * range like `"3-4"`), rendered as the inline verse superscript. When the marker carries no
+   * `number` it falls back to the verse portion of the `sid`; synthetic verse-0 scopes use `"0"`.
+   */
+  number: string;
+  /**
    * Accumulated plain-text content of the verse. Note and footnote content is excluded. Becomes
    * `Segment.baselineText`; token `charStart` / `charEnd` are expressed relative to this string.
    */
@@ -112,7 +118,7 @@ interface TraversalState {
   /** Verse SIDs seen so far; used to reject duplicates. */
   seenVerseIds: Set<string>;
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
-  currentVerse: { sid: string; text: string } | undefined;
+  currentVerse: { sid: string; number: string; text: string } | undefined;
   /**
    * `true` when `currentVerse` is the synthetic verse-0 scope opened at a chapter boundary (see
    * {@link handleChapterNode}). A synthetic verse-0 is emitted only when it accumulates text, so
@@ -130,10 +136,9 @@ interface TraversalState {
  * rather than pushed when it accumulated no text, so chapters without a superscription emit no
  * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
  *
- * Every emitted verse's SID is recorded in `seenVerseIds`. Real verse markers are already recorded
- * when opened (see {@link handleVerseNode}), so this matters for synthetic verse-0 scopes: it lets a
- * later explicit verse marker with the same SID be rejected as a duplicate rather than silently
- * emitting two verses with the same ID.
+ * Every emitted verse's SID is recorded in `seenVerseIds`. Real markers are already recorded when
+ * opened (see {@link handleVerseNode}); recording synthetic verse-0 scopes here lets a later
+ * explicit marker with the same SID be rejected as a duplicate.
  *
  * @param state - Shared traversal state updated in place.
  */
@@ -176,14 +181,28 @@ function handleBookNode(node: UsjNode, state: TraversalState): void {
 function handleChapterNode(node: UsjNode, state: TraversalState): void {
   closeCurrentVerse(state);
   if (node.number) {
-    state.currentVerse = { sid: `${state.bookCode} ${node.number}:0`, text: '' };
+    state.currentVerse = { sid: `${state.bookCode} ${node.number}:0`, number: '0', text: '' };
     state.currentVerseIsSynthetic = true;
   }
   if (node.content) traverse(node.content, state);
 }
 
 /**
- * Closes the previous open verse (if any) and opens a new one for a `verse` node.
+ * Derives the verse-label fallback from a verse SID: the text after the last colon (e.g. `"7"` from
+ * `"GEN 1:7"`, `"1a"` from `"GEN 1:1a"`). Used as the rendered verse number when a `verse` marker
+ * omits its `number` attribute.
+ *
+ * @param sid - Verse SID string (e.g. `"GEN 1:7"`).
+ * @returns The verse portion after the final colon; the whole `sid` when it contains no colon.
+ */
+function verseNumberFromSid(sid: string): string {
+  return sid.slice(sid.lastIndexOf(':') + 1);
+}
+
+/**
+ * Closes the previous open verse (if any) and opens a new one for a `verse` node. The rendered
+ * verse number is the marker's verbatim `number` attribute, or the sid-derived verse portion when
+ * the marker omits it.
  *
  * @param node - The `verse` USJ node; must carry a `sid` attribute (e.g. `"GEN 1:1"`).
  * @param state - Shared traversal state updated in place.
@@ -196,7 +215,11 @@ function handleVerseNode(node: UsjNode, state: TraversalState): void {
   if (state.seenVerseIds.has(node.sid))
     throw new SyntaxError(`Invalid USJ: duplicate verse SID "${node.sid}"`);
   state.seenVerseIds.add(node.sid);
-  state.currentVerse = { sid: node.sid, text: '' };
+  state.currentVerse = {
+    sid: node.sid,
+    number: node.number ?? verseNumberFromSid(node.sid),
+    text: '',
+  };
   if (node.content) traverse(node.content, state);
 }
 
@@ -297,7 +320,9 @@ function fnv1a32(s: string): string {
  *
  * Each `verse` marker in the USJ document becomes one {@link RawVerse}. Text strings within the
  * verse scope are accumulated into `RawVerse.text`; `note` nodes are skipped entirely. Verse
- * markers with no following text produce an empty `RawVerse` (`text: ""`).
+ * markers with no following text produce an empty `RawVerse` (`text: ""`). `RawVerse.number` is the
+ * marker's verbatim `number` attribute (falling back to the sid's verse portion when absent);
+ * synthetic verse-0 scopes carry `"0"`.
  *
  * Content preceding a chapter's first `verse` marker — chiefly a `d` descriptive title (Psalm
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,

@@ -56,13 +56,24 @@ export function Link2(props: Readonly<{ size?: number; className?: string }>): R
 }
 
 /**
- * Stub for the Link2Off (unlink) icon used by the between-token unlink and arc-split buttons.
+ * Stub for the Link2Off (unlink) icon used by the arc-split button.
  *
  * @param props - SVG props forwarded from the component.
  * @returns A ReactElement SVG element used as an unlink icon stub in tests.
  */
 export function Link2Off(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="link2off-icon" {...props} />;
+}
+
+/**
+ * Stub for the Unlink2 icon used by the between-token unlink button; a broken-chain glyph whose
+ * chain sits at the same vertical position as Link2 so their button centers line up.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as an unlink icon stub in tests.
+ */
+export function Unlink2(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="unlink2-icon" {...props} />;
 }
 
 /**
@@ -83,4 +94,26 @@ export function Settings(props: Readonly<{ size?: number; className?: string }>)
  */
 export function Plus(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="plus-icon" {...props} />;
+}
+/**
+ * Stub for the Merge icon used by both merge controls (the row-gap merge in the segment list and the
+ * cross-segment merge in the continuous strip). A single Y-join glyph, deliberately a different
+ * shape from the split marker's arrows-apart glyph.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a merge icon stub in tests.
+ */
+export function Merge(props: Readonly<{ className?: string }>): ReactElement {
+  return <svg data-testid="merge-icon" {...props} />;
+}
+
+/**
+ * Stub for the Split icon used by the Alt-gated split markers (token-chip and baseline-text). One
+ * stroke diverging into two — the mirror of the `Merge` glyph's join.
+ *
+ * @param props - SVG props forwarded from the component.
+ * @returns A ReactElement SVG element used as a split-marker icon stub in tests.
+ */
+export function Split(props: Readonly<{ size?: number; className?: string }>): ReactElement {
+  return <svg data-testid="split-icon" {...props} />;
 }

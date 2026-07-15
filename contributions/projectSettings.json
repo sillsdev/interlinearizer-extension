@@ -17,11 +17,6 @@
         "description": "%interlinearizer_projectSettings_simplifyPhrasesDescription%",
         "default": false
       },
-      "interlinearizer.chapterLabelInVerse": {
-        "label": "%interlinearizer_projectSettings_chapterLabelInVerse%",
-        "description": "%interlinearizer_projectSettings_chapterLabelInVerseDescription%",
-        "default": false
-      },
       "interlinearizer.showMorphology": {
         "label": "%interlinearizer_projectSettings_showMorphology%",
         "description": "%interlinearizer_projectSettings_showMorphologyDescription%",
@@ -30,6 +25,11 @@
       "interlinearizer.showFreeTranslation": {
         "label": "%interlinearizer_projectSettings_showFreeTranslation%",
         "description": "%interlinearizer_projectSettings_showFreeTranslationDescription%",
+        "default": false
+      },
+      "interlinearizer.showVerseGutter": {
+        "label": "%interlinearizer_projectSettings_showVerseGutter%",
+        "description": "%interlinearizer_projectSettings_showVerseGutterDescription%",
         "default": false
       }
     }

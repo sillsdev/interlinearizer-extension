@@ -2,11 +2,9 @@
  * @file Render-scoped context shared by the two phrase strips (`SegmentView` and `ContinuousView`).
  *
  *   Holds the values that are identical for every phrase group and link slot within a single strip
- *   render: the edit-mode context and the hover-preview callbacks. These were previously threaded
- *   as individual props through `PhraseGroup`/`PhraseSlot` purely to reach the leaf components
- *   (`PhraseBox`, `TokenLinkIcon`) that actually use them. Delivering them via context lets the
- *   structural intermediaries stop declaring and forwarding props they never touch, so each
- *   remaining prop on `PhraseGroup`/`PhraseSlot` describes something genuinely per-group/per-slot.
+ *   render: the edit-mode context and the hover-preview callbacks. Delivering them via context
+ *   keeps the structural intermediaries (`PhraseGroup`/`PhraseSlot`) from forwarding props they
+ *   never touch, so each remaining prop on them describes something genuinely per-group/per-slot.
  *
  *   Per-instance values (focus, highlight, arc offset, slot geometry) are intentionally **not** here
  *   — they vary per item and belong at the call site as props.
@@ -35,12 +33,13 @@ export type PhraseStripContextValue = Readonly<{
   tokenDocOrder: ReadonlyMap<string, number>;
   /**
    * Called with a phraseId (or `undefined`) when a phrase or a link/unlink candidate is hovered, so
-   * the parent can highlight the relevant phrase box and arcs. Merges what used to be two separate
-   * callbacks (`onHoverPhrase` / `onHoverCandidatePhrase`) — both strips always passed the same
-   * function for them.
+   * the parent can highlight the relevant phrase box and arcs.
    */
   onHoverPhrase: (phraseId: string | undefined) => void;
-  /** Called with the candidate token refs (or `undefined`) when a link icon is hovered. */
+  /**
+   * Called with the candidate token refs (or `undefined`) when a link icon or a boundary
+   * merge/split control is hovered; the affected groups render the strong candidate preview style.
+   */
   onHoverCandidateTokens: (refs: readonly string[] | undefined) => void;
   /** Called with the would-be-free token refs (or `undefined`) when a split/unlink icon is hovered. */
   onHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;
@@ -67,6 +66,25 @@ export type PhraseStripContextValue = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
+  /**
+   * Label and concise tooltip for the merge boundary button, fetched once per strip rather than per
+   * slot (every between-group slot renders its own boundary control). Same rationale as
+   * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per
+   * slot.
+   */
+  boundaryMergeLabel: string;
+  /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
+  boundaryMergeAltHint: string;
+  /** Label and tooltip for the Alt-gated split marker. */
+  boundarySplitLabel: string;
+  /**
+   * Placeholder text for every gloss input (token- and phrase-level), fetched once per strip rather
+   * than per chip. Gloss inputs are `field-sizing: content`, so their width depends on the
+   * placeholder; fetching per chip would let each mount render narrow until its async string
+   * resolves, shifting the strip and mis-measuring arcs. Empty string until the strip's own fetch
+   * resolves (one strip-wide reflow at most, behind the initial fade).
+   */
+  glossPlaceholder: string;
   /**
    * When `true`, the sliding-door transition on link-slot wrappers is suppressed (duration set to
    * 0ms). Set during external navigation and initial mount so the layout snaps to its final state

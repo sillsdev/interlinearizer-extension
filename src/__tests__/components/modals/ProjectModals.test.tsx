@@ -39,6 +39,16 @@ const MOCK_FULL_PROJECT_WITH_TARGET = {
   analysis: emptyAnalysis(),
 };
 
+/** A custom boundary delta used to exercise the segmentation branches of open and Save As. */
+const MOCK_SEGMENTATION = { removedVerseStarts: ['GEN 1:2:0'], addedStarts: [] };
+
+/** The same project carrying stored segment boundaries, for the openProject segmentation branch. */
+const MOCK_FULL_PROJECT_WITH_SEGMENTATION = {
+  ...MOCK_PROJECT,
+  analysis: emptyAnalysis(),
+  segmentation: MOCK_SEGMENTATION,
+};
+
 /** Draft snapshot returned by the default `getDraftSnapshot`. */
 const MOCK_DRAFT: DraftProject = {
   sourceProjectId: 'source-proj',
@@ -47,6 +57,12 @@ const MOCK_DRAFT: DraftProject = {
   dirty: true,
   suggestedName: 'Suggested Name',
   suggestedDescription: 'Suggested Desc',
+};
+
+/** The same draft carrying a custom boundary delta, for the Save As segmentation branches. */
+const MOCK_DRAFT_WITH_SEGMENTATION: DraftProject = {
+  ...MOCK_DRAFT,
+  segmentation: MOCK_SEGMENTATION,
 };
 
 jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
@@ -387,6 +403,39 @@ describe('ProjectModals', () => {
       );
     });
 
+    it('passes a stored segmentation delta into the draft when the project has one', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(JSON.stringify(MOCK_FULL_PROJECT_WITH_SEGMENTATION));
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() =>
+        expect(loadFromProject).toHaveBeenCalledWith({
+          analysisLanguages: ['en'],
+          segmentation: MOCK_SEGMENTATION,
+          analysis: emptyAnalysis(),
+        }),
+      );
+    });
+
+    it('notifies and does not load when the stored segmentation is malformed', async () => {
+      jest
+        .mocked(papi.commands.sendCommand)
+        .mockResolvedValueOnce(
+          JSON.stringify({ ...MOCK_PROJECT, analysis: emptyAnalysis(), segmentation: { bad: 1 } }),
+        );
+      const loadFromProject = jest.fn();
+      render(<ProjectModals {...buildProps({ modal: 'select', loadFromProject })} />);
+
+      await userEvent.click(screen.getByTestId('select-select'));
+
+      await waitFor(() => expect(papi.notifications.send).toHaveBeenCalledTimes(1));
+      expect(loadFromProject).not.toHaveBeenCalled();
+    });
+
     it('notifies and does not load when getProject returns a non-project shape', async () => {
       jest
         .mocked(papi.commands.sendCommand)
@@ -716,13 +765,46 @@ describe('ProjectModals', () => {
           'NewDesc',
         ),
       );
+      // The draft has no custom boundaries, so the boundary argument is the "null" clear sentinel.
       expect(papi.commands.sendCommand).toHaveBeenCalledWith(
         'interlinearizer.saveAnalysis',
         'proj-1',
         JSON.stringify(emptyAnalysis()),
+        'null',
       );
       expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('sends the draft segmentation delta when saving as a new project', async () => {
+      jest.mocked(papi.commands.sendCommand).mockResolvedValueOnce(JSON.stringify(MOCK_PROJECT));
+      const markSynced = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            markSynced,
+            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-new'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveAnalysis',
+          'proj-1',
+          JSON.stringify(emptyAnalysis()),
+          JSON.stringify(MOCK_SEGMENTATION),
+        ),
+      );
+      // markSynced receives the exact persisted references so its identity guard can match.
+      expect(markSynced).toHaveBeenCalledWith(
+        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
+        MOCK_SEGMENTATION,
+      );
     });
 
     it('notifies and does not mark synced when create returns a non-project shape', async () => {
@@ -754,15 +836,47 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
+      // The draft has no custom boundaries, so "null" clears any the target had stored.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.saveAnalysis',
           'proj-1',
           JSON.stringify(emptyAnalysis()),
+          'null',
         ),
       );
       expect(markSynced).toHaveBeenCalledTimes(1);
+      expect(markSynced).toHaveBeenCalledWith(MOCK_DRAFT.analysis, undefined);
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('sends the draft segmentation delta when overwriting an existing project', async () => {
+      const markSynced = jest.fn();
+      render(
+        <ProjectModals
+          {...buildProps({
+            modal: 'saveAs',
+            markSynced,
+            getDraftSnapshot: () => MOCK_DRAFT_WITH_SEGMENTATION,
+          })}
+        />,
+      );
+
+      await userEvent.click(screen.getByTestId('saveas-overwrite'));
+
+      await waitFor(() =>
+        expect(papi.commands.sendCommand).toHaveBeenCalledWith(
+          'interlinearizer.saveAnalysis',
+          'proj-1',
+          JSON.stringify(emptyAnalysis()),
+          JSON.stringify(MOCK_SEGMENTATION),
+        ),
+      );
+      // markSynced receives the exact persisted references so its identity guard can match.
+      expect(markSynced).toHaveBeenCalledWith(
+        MOCK_DRAFT_WITH_SEGMENTATION.analysis,
+        MOCK_SEGMENTATION,
+      );
     });
 
     it('reconciles the overwritten project metadata with the draft config', async () => {
@@ -781,8 +895,8 @@ describe('ProjectModals', () => {
 
       await userEvent.click(screen.getByTestId('saveas-overwrite'));
 
-      // The project keeps its own name ('My Project') / description (undefined) but adopts the
-      // draft's analysis languages and alignment target so its metadata matches the stored glosses.
+      // The project keeps its own name/description but adopts the draft's analysis languages and
+      // alignment target.
       await waitFor(() =>
         expect(papi.commands.sendCommand).toHaveBeenCalledWith(
           'interlinearizer.updateProjectMetadata',
@@ -853,8 +967,7 @@ describe('ProjectModals', () => {
         />,
       );
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The saved edits ({ name: 'Updated', analysisLanguages: ['fr'] }) are merged onto the active
-      // project, so a regression that drops the update branch is caught here.
+      // The saved edits ({ name: 'Updated', analysisLanguages: ['fr'] }) merge onto the active project.
       expect(setActiveProject).toHaveBeenCalledWith({
         ...MOCK_PROJECT,
         name: 'Updated',
@@ -891,8 +1004,7 @@ describe('ProjectModals', () => {
       );
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // The id guard skips the update because the saved project (proj-2)
-      // is not the active one (proj-1); dropping that guard would call setActiveProject and fail.
+      // The id guard skips the update because the saved project (proj-2) is not the active one (proj-1).
       expect(setActiveProject).not.toHaveBeenCalled();
       // Opened via the select modal's info icon, so closing returns to the select modal.
       expect(setModal).toHaveBeenCalledWith('select');
@@ -909,8 +1021,7 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-save'));
-      // With no active project, the `activeProject &&` guard short-circuits;
-      // dropping that guard would dereference/update the active project and call setActiveProject.
+      // With no active project, the `activeProject &&` guard short-circuits.
       expect(setActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
@@ -930,7 +1041,6 @@ describe('ProjectModals', () => {
       );
       // Delete targets MOCK_PROJECT.id, which is the active project, so reset must fire.
       await userEvent.click(screen.getByTestId('metadata-delete'));
-      // A regression that drops the reset is caught here.
       expect(resetActiveProject).toHaveBeenCalledTimes(1);
       expect(setModal).toHaveBeenCalledWith('none');
     });
@@ -963,7 +1073,7 @@ describe('ProjectModals', () => {
       setModal.mockClear();
       // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
       await userEvent.click(screen.getByTestId('metadata-delete-2'));
-      // The id guard prevents the reset; removing it would reset proj-1.
+      // The id guard prevents the reset since proj-2 is not the active proj-1.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });
@@ -979,8 +1089,7 @@ describe('ProjectModals', () => {
       rerender(<ProjectModals {...buildProps({ modal: 'metadata', setModal, useWebViewState })} />);
       setModal.mockClear();
       await userEvent.click(screen.getByTestId('metadata-delete'));
-      // With no active project, the `activeProject?.id === deletedId` guard
-      // is false, so no reset fires; a regression that always resets would call resetActiveProject.
+      // With no active project, the `activeProject?.id === deletedId` guard is false, so no reset fires.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });

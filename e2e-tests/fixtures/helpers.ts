@@ -20,19 +20,16 @@ const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
 export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
- * Fail-fast readiness budget (ms) that {@link waitForAppAndInterlinearizerReady} applies for a CDP
- * feature test's per-test wait (its `{ cdp: true }` profile). The shared instance is proven-settled
- * by global setup before any feature test runs, so a per-test readiness wait that runs long means
- * the instance died mid-run — which no per-test retry can revive. A short cap (vs. the 120 s
- * cold-start default) fails a dead shared instance fast instead of burning the full cold-start
- * budget on every retry.
+ * Fail-fast readiness budget (ms) for a CDP feature test's per-test wait (the `{ cdp: true }`
+ * profile). The shared instance is already settled by global setup, so a long per-test wait means
+ * it died mid-run — a short cap fails fast instead of burning the full cold-start budget.
  */
 const CDP_FEATURE_READY_TIMEOUT = 30_000;
 
 /**
- * File the smoke launcher streams the app's main-process stdout/stderr to. Kept in `e2e-tests/` (a
- * directory Playwright does not clear, and one the CI artifact upload includes) so a cold-start
- * stall's main-process log survives a failed run. Overwritten on each launch.
+ * File the smoke launcher streams the app's main-process stdout/stderr to. Kept in `e2e-tests/`
+ * (which Playwright doesn't clear and CI uploads as an artifact) so a failed run's log survives.
+ * Overwritten on each launch.
  */
 const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
 
@@ -43,15 +40,13 @@ const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
 const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
 
 /**
- * `rpc.discover` method names that flip present when paranext-core's settings, menu-data, and theme
- * service hosts finish registering their provider network objects — the upstream signal that gates
- * a resolved dock (see {@link waitForServiceHostsRegistered}).
+ * `rpc.discover` method names that appear once paranext-core's settings, menu-data, and theme
+ * service hosts register their provider network objects — the signal that gates a resolved dock
+ * (see {@link waitForServiceHostsRegistered}).
  *
- * These are each object's bare EXISTENCE handler (`object:{id}`, no method suffix), not a named
- * method like `.set`/`.getCurrentTheme`: the existence handler registers first when any network
- * object comes up, so it is the "this object is on the network" signal and can't be invalidated by
- * a provider method being renamed. These strings mirror upstream's serialization; if paranext-core
- * changes how it names provider objects, update them to match.
+ * These are each object's bare EXISTENCE handler (`object:{id}`, no method suffix), which registers
+ * first when a network object comes up, so it can't be invalidated by a provider method being
+ * renamed. Mirrors upstream's serialization; update if paranext-core renames its provider objects.
  */
 const SERVICE_HOST_OBJECT_METHODS = [
   'object:platform.settingsServiceDataProvider-data',
@@ -62,14 +57,12 @@ const SERVICE_HOST_OBJECT_METHODS = [
 /**
  * Renderer page error that means this cold start is doomed, not merely slow: the theme host's
  * initial theme data never settled, so the dock's webview tabs stay stuck at "Unknown" for the rest
- * of the run. Once it fires no amount of further waiting recovers the launch — only a fresh launch
- * (a smoke retry, or a re-run of CDP setup) does.
+ * of the run. Only a fresh launch (a smoke retry, or a re-run of CDP setup) recovers it.
  *
- * This fires AFTER the theme provider's network object has registered (the host registers the
- * provider, then separately awaits its data), so the positive {@link waitForServiceHostsRegistered}
- * gate can pass while the renderer is still headed for this timeout — which is why the tab-title
- * wait fast-fails on this error instead of waiting out its budget. The pattern matches an upstream
- * paranext-core message; if that message changes, this stops catching the doomed start.
+ * This fires AFTER the theme provider's network object has registered, so
+ * {@link waitForServiceHostsRegistered} can pass while the renderer is still headed for this timeout
+ * — hence the tab-title wait fast-fails on it. Matches an upstream paranext-core message; if that
+ * message changes, this stops catching the doomed start.
  */
 const FATAL_STARTUP_PAGE_ERROR =
   /Timeout reached when waiting for .*allThemeFamiliesById to settle/i;
@@ -175,10 +168,10 @@ export async function launchElectronWithExtension(
     ...restEnv,
     NODE_ENV: 'development',
     DEV_NOISY: process.env.DEV_NOISY ?? 'false',
-    // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI Linux
-    // DevTools docks inside the window and squeezes the app viewport enough that dock panels
-    // collapse and modals get clipped, so clicks land on neighboring iframes. ELECTRON_IS_DEV=0
-    // disables the auto-open without changing other NODE_ENV-driven behavior (dev-server URL, etc.).
+    // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI Linux that
+    // docks inside the window and squeezes the viewport so dock panels collapse and clicks land on
+    // neighboring iframes. ELECTRON_IS_DEV=0 disables the auto-open without changing other
+    // NODE_ENV-driven behavior (dev-server URL, etc.).
     ELECTRON_IS_DEV: '0',
     ...opts.envOverrides,
   };
@@ -201,9 +194,8 @@ export async function launchElectronWithExtension(
         '--window-size',
         '1280x960',
         // Force the X11 backend on Linux: in a Wayland session with DISPLAY redirected to xvfb
-        // (local headless runs), Electron otherwise picks the Wayland backend from the session
-        // environment and segfaults when the compositor socket is unreachable. On CI runners
-        // (X11-only) this is a no-op.
+        // (local headless runs), Electron otherwise picks Wayland and segfaults when the compositor
+        // socket is unreachable. No-op on CI runners (X11-only).
         ...(process.platform === 'linux' ? ['--ozone-platform=x11'] : []),
       ],
       cwd: coreDir,
@@ -216,23 +208,18 @@ export async function launchElectronWithExtension(
     throw error;
   }
 
-  // Stream the launched app's main-process stdout/stderr to a log file, so a cold-start stall (dock
-  // tabs stuck at "Unknown" and never resolving — a platform-side race we can only tolerate, not
-  // fix) leaves main-process evidence to diagnose from; the renderer console is empty in that case.
-  // Best-effort: any write error is swallowed so logging never fails a launch.
+  // Stream the app's main-process stdout/stderr to a log file so a cold-start stall (dock tabs stuck
+  // at "Unknown") leaves evidence to diagnose from; the renderer console is empty in that case.
   const appLog = fs.createWriteStream(SMOKE_APP_LOG_FILE, { flags: 'w' });
   appLog.on('error', () => {
     /* Logging is best-effort; never let a log write failure break the launch. */
   });
   const appProcess = electronApp.process();
   // { end: false } on BOTH pipes: two sources share one destination, so the default end-on-source-end
-  // would have whichever stream (stdout/stderr) closes first call appLog.end(), dropping the other
-  // stream's later output and throwing "write after end". We own appLog's lifecycle instead — closing
-  // it when the app exits (below) or when we flush it before dumping on a failed launch.
+  // would have whichever stream closes first call appLog.end(), dropping the other's later output and
+  // throwing "write after end". We own appLog's lifecycle instead (closed on app exit, below).
   appProcess.stdout?.pipe(appLog, { end: false });
   appProcess.stderr?.pipe(appLog, { end: false });
-  // Close the log once the app process is gone: with { end: false } the pipes never close it, so tie
-  // its lifetime to the app to avoid leaking the descriptor on a healthy launch.
   electronApp.once('close', () => {
     appLog.end();
   });
@@ -242,10 +229,8 @@ export async function launchElectronWithExtension(
     await waitForWebSocketReady(DEFAULT_WEBSOCKET_PORT, PROCESS_READY_TIMEOUT);
   } catch (error) {
     console.error('WebSocket readiness check failed after Electron launch:', error);
-    // Flush buffered pipe output to disk before the synchronous read in dumpSmokeAppLog: the app is
-    // still alive here (killed just below), so we cannot wait for the source streams to end — ending
-    // appLog ourselves flushes what has been written so the dump captures the failure's evidence
-    // instead of an empty file.
+    // Flush buffered pipe output to disk before dumpSmokeAppLog reads it back: the app is still
+    // alive (killed below), so ending appLog ourselves is what forces the flush.
     await flushAppLog(appLog);
     dumpSmokeAppLog();
     const proc = electronApp.process();
@@ -265,13 +250,9 @@ export async function launchElectronWithExtension(
 }
 
 /**
- * Flush and close the smoke app-log write stream, resolving once its buffered data has reached
- * disk. The launcher pipes the app's stdout/stderr into this stream with `{ end: false }` (so
- * neither source closes it), which means those writes may still be buffered when a failed launch
- * wants to read the file back; ending the stream here forces the flush and this awaits the
- * resulting `finish` (or `error`) so a following synchronous read sees the captured output rather
- * than an empty file. Best-effort: a stream error resolves rather than rejects, so a logging
- * failure never breaks launch.
+ * Flush and close the smoke app-log write stream, resolving once its buffered data has reached disk
+ * so a following read of the file sees the captured output rather than an empty buffer.
+ * Best-effort: a stream error resolves rather than rejects.
  *
  * @param appLog The write stream created for {@link SMOKE_APP_LOG_FILE}.
  * @returns Resolves once the stream has flushed and closed (or errored).
@@ -485,18 +466,14 @@ export async function waitForPapiMethodRegistered(
  * polling `rpc.discover` for each host's data-provider existence handler
  * ({@link SERVICE_HOST_OBJECT_METHODS}).
  *
- * This is the upstream readiness signal for a resolved dock. On a cold start the renderer paints
- * its webview tabs titled "Unknown" (and its panels blank) until the metadata these hosts serve
- * arrives. Gating here — before {@link waitForDockTabTitlesResolved} — absorbs that cold-start race
- * into the readiness wait instead of letting it surface downstream as an opaque tab-title timeout:
- * waiting on the hosts directly means the tab-title wait only ever runs once the data behind those
- * titles actually exists. On a healthy startup the hosts are already up, so this resolves
- * immediately and costs nothing; the poll uses the same `rpc.discover` mechanism as every other
- * readiness check here.
+ * This is the upstream readiness signal for a resolved dock: on a cold start the renderer paints
+ * its webview tabs "Unknown" (and panels blank) until these hosts serve their metadata. Gating here
+ * — before {@link waitForDockTabTitlesResolved} — means the tab-title wait only runs once the data
+ * behind those titles exists, rather than surfacing the race as an opaque downstream timeout. On a
+ * healthy startup the hosts are already up, so this resolves immediately.
  *
  * The three waits run concurrently and share the one `timeout` budget (the hosts register in
- * parallel — settings and menu-data in the extension host, theme in the renderer — so serializing
- * would triple the worst-case wait for no benefit).
+ * parallel, so serializing would triple the worst-case wait for no benefit).
  *
  * @param timeout Maximum time in milliseconds to wait for all three hosts. Floored to a small
  *   positive value so an already-thin remaining budget still gets one real poll.
@@ -518,14 +495,12 @@ interface DockTabTitlesOptions {
    * How to judge the dock is ready:
    *
    * - `true` (cold-start): EVERY dock tab must have a resolved (non-"Unknown") title. Correct for a
-   *   fresh per-worker instance (smoke tests, CDP global setup): a cold instance whose tabs are all
-   *   still "Unknown" is genuinely broken, and there are no unrelated tabs to interfere.
+   *   fresh per-worker instance (smoke tests, CDP global setup), where all-"Unknown" tabs mean a
+   *   genuinely broken instance and there are no unrelated tabs to interfere.
    * - `false` (shared/warm): the dock is mounted and AT LEAST ONE tab has a resolved title. Correct
-   *   for the shared CDP feature instance, which global setup already settled before any test ran.
-   *   Re-asserting the strict "no tab anywhere is Unknown" invariant per test is both redundant and
-   *   fragile there: a single stray/leftover panel (e.g. one briefly re-titled by a close/reopen
-   *   cycle) would fail the gate for EVERY subsequent test against that one shared instance, and no
-   *   per-test retry can recover it (a cascade the Windows CDP tier is prone to).
+   *   for the shared CDP feature instance, already settled by global setup. The strict check is
+   *   fragile there: one stray/leftover "Unknown" panel would fail the gate for every subsequent
+   *   test against the shared instance, and no per-test retry can recover it.
    */
   strict: boolean;
 }
@@ -535,17 +510,14 @@ interface DockTabTitlesOptions {
  * {@link FATAL_STARTUP_PAGE_ERROR} while `fn` is in flight, the returned promise rejects immediately
  * with a fast, correctly-labeled failure instead of `fn` running out its full readiness budget.
  *
- * This wraps the WHOLE readiness sequence (service-host wait AND dock-tab wait), not just one
- * stage: the fatal theme-settle error can surface during either, and it never self-recovers, so a
- * doomed cold start must abort the moment the error fires no matter which stage is running. Keeping
- * the listener armed across both stages is why this is a wrapper rather than logic inside a single
- * wait.
+ * It wraps the WHOLE readiness sequence (service-host wait AND dock-tab wait) because the fatal
+ * theme-settle error can surface during either and never self-recovers.
  *
- * The listener is registered only when `enabled` (a warm shared instance leaves it off — a stale
- * error from a long-past cold start must not abort an otherwise-healthy wait), and always removed
- * in `finally` so it can't leak across tests on the shared CDP page. A sentinel distinguishes
+ * The listener is registered only when `enabled` (a warm shared instance leaves it off, so a stale
+ * error from a long-past cold start can't abort an otherwise-healthy wait), and always removed in
+ * `finally` so it can't leak across tests on the shared CDP page. A sentinel distinguishes
  * "tripwire fired" from an ordinary `fn` rejection, so only a genuine fatal error is remapped to
- * the fast failure; any other rejection from `fn` propagates unchanged.
+ * the fast failure.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param enabled Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
@@ -571,16 +543,14 @@ export async function withFatalStartupTripwire<T>(
     };
     page.on('pageerror', onFatalPageError);
   });
-  // Without an opted-in tripwire nothing ever rejects this promise; swallow the unused rejection
-  // path so a stray rejection (there is none) could never surface as an unhandled rejection.
+  // Swallow the never-taken rejection path so it can't surface as an unhandled rejection.
   fatalErrorTripped.catch(() => {});
 
   try {
     return await Promise.race([fn(), fatalErrorTripped]);
   } catch (error) {
     // The tripwire won the race: this cold start is doomed (theme data never settled), so report it
-    // as its own fast failure. A smoke retry or a re-run of CDP setup relaunches the app, which is
-    // the only thing that recovers this.
+    // as its own fast failure. Only a fresh launch recovers it.
     if (fatalError.message !== undefined) {
       throw new Error(
         `Platform.Bible startup failed: the renderer reported a fatal startup error, so its dock ` +
@@ -595,28 +565,21 @@ export async function withFatalStartupTripwire<T>(
 
 /**
  * Wait until the dock layout is mounted with resolved tab titles (none stuck at "Unknown"). On a
- * cold start the dock mounts with webview tabs titled "Unknown" (and blank panels) until project
- * metadata resolves; every tab-title-based locator in this suite silently times out against that
- * state. Waiting it out here turns those opaque per-test locator timeouts into either a pass (slow
- * healthy startup) or one clear early failure.
+ * cold start the dock mounts with tabs titled "Unknown" (and blank panels) until project metadata
+ * resolves, and every tab-title-based locator in this suite silently times out against that state;
+ * waiting it out here turns those opaque per-test timeouts into a pass or one clear early failure.
  *
- * The strictness of "resolved" depends on {@link DockTabTitlesOptions.strict} — see that field for
- * why the shared CDP instance must not use the strict all-tabs check.
- *
- * A torn-down renderer (page/context/browser closed out from under us, where `waitForFunction`
- * reports "Target page … has been closed") is surfaced as its own error rather than mislabeled
- * "tabs still Unknown", so the real cause is not buried.
- *
- * A doomed cold start (the renderer's theme data never settling — see
- * {@link FATAL_STARTUP_PAGE_ERROR}) is aborted early by {@link withFatalStartupTripwire}, which
- * callers wrap around the whole readiness sequence; this wait does not arm that tripwire itself.
+ * The strictness of "resolved" depends on {@link DockTabTitlesOptions.strict}. A torn-down renderer
+ * (page/context/browser closed) is surfaced as its own error rather than mislabeled "tabs still
+ * Unknown". A doomed cold start (see {@link FATAL_STARTUP_PAGE_ERROR}) is aborted early by
+ * {@link withFatalStartupTripwire}, which callers wrap around the whole readiness sequence; this
+ * wait does not arm that tripwire itself.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param timeout Maximum time in milliseconds to wait before throwing. Must be positive: a
- *   non-positive value means the caller's readiness budget is already exhausted, and is failed fast
- *   rather than forwarded — Playwright treats `waitForFunction({ timeout: 0 })` as "no timeout" (an
- *   unbounded wait), so a `0` here would silently turn an exhausted budget into a hang on the exact
- *   "Unknown"-tab stall this helper exists to bound.
+ * @param timeout Maximum time in milliseconds to wait before throwing. Must be positive: Playwright
+ *   treats `waitForFunction({ timeout: 0 })` as an unbounded wait, so a non-positive value (an
+ *   already-exhausted budget) is failed fast rather than forwarded, to avoid hanging on the exact
+ *   "Unknown"-tab stall this helper bounds.
  * @param options Readiness options; see {@link DockTabTitlesOptions}.
  * @returns Resolves once the dock is ready per the chosen `strict` mode.
  * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
@@ -629,9 +592,8 @@ export async function waitForDockTabTitlesResolved(
   options: DockTabTitlesOptions,
 ): Promise<void> {
   const { strict } = options;
-  // A non-positive budget must not reach page.waitForFunction: { timeout: 0 } disables Playwright's
-  // timeout entirely (an unbounded wait), so an already-exhausted budget would hang instead of
-  // failing. Fail fast with a clear message instead.
+  // { timeout: 0 } disables Playwright's timeout (unbounded wait), so an already-exhausted budget
+  // would hang instead of failing. Fail fast instead.
   if (timeout <= 0) {
     throw new Error(
       `Dock tab titles could not be waited for: the readiness budget was exhausted before this ` +
@@ -645,8 +607,7 @@ export async function waitForDockTabTitlesResolved(
         const tabs = Array.from(document.querySelectorAll('.dock-tab'));
         if (tabs.length === 0) return false;
         const isResolved = (tab: Element) => !(tab.textContent ?? '').includes('Unknown');
-        // Strict: no tab anywhere may be "Unknown". Lenient: at least one tab has resolved, which
-        // is enough to know the app is up and rendering real tabs on an already-settled instance.
+        // Strict: no tab may be "Unknown". Lenient: at least one has resolved.
         return isStrict ? tabs.every(isResolved) : tabs.some(isResolved);
       },
       strict,
@@ -654,9 +615,8 @@ export async function waitForDockTabTitlesResolved(
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    // A closed page is a torn-down renderer, not a project-metadata stall — report it as such so it
-    // isn't chased as the "Unknown tabs" startup race (which it superficially resembles because the
-    // waitForFunction times out either way).
+    // A closed page is a torn-down renderer, not a project-metadata stall — report it as such so
+    // it isn't chased as the "Unknown tabs" startup race it superficially resembles.
     if (/target (page|context|browser) .*closed/i.test(message)) {
       throw new Error(
         `The renderer page was closed while waiting for the dock to become ready (after up to ` +
@@ -694,12 +654,10 @@ interface AppReadyOptions {
  * theme service hosts register, the dock tab titles resolve, and `platform.about` is registered
  * (dialog service has finished initializing).
  *
- * The service-host wait is what makes the tab-title wait meaningful rather than a downstream guess:
- * the tabs stay titled "Unknown" precisely until those hosts serve their metadata, so waiting on
- * the hosts first (see {@link waitForServiceHostsRegistered}) means the tab-title poll only runs
- * once the data behind the titles exists — turning the cold-start "Unknown for the full timeout"
- * stall from an opaque per-test tab-title timeout into an early, correctly-attributed wait on the
- * actual cause. On a healthy startup the hosts are already up, so this stage resolves immediately.
+ * Gating on the service hosts first (see {@link waitForServiceHostsRegistered}) is what makes the
+ * tab-title wait meaningful: the tabs stay "Unknown" until those hosts serve their metadata, so the
+ * tab-title poll only runs once the data behind the titles exists. On a healthy startup the hosts
+ * are already up.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param options Readiness options; see {@link AppReadyOptions}.
@@ -715,25 +673,16 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
     state: 'attached',
     timeout,
   });
-  // Floor each leftover budget to 1000ms, never 0 or a hair above it: a preceding stage can resolve
-  // at the very last millisecond (or wall-clock drift can push elapsed past `timeout`), leaving a
-  // non-positive remainder. Passing 0 to waitForDockTabTitlesResolved would trip its budget-
-  // exhausted guard on that benign near-miss; a single-digit remainder would clear that guard but
-  // then expire during the CDP round-trip its forwarded page.waitForFunction needs to evaluate the
-  // predicate even once, failing "tabs still Unknown" on a healthy app. 1000ms lets each stage still
-  // run one real poll. The CDP global setup applies the same Math.max(1_000, …) floor for this call.
+  // Floor each leftover budget to 1000ms: a preceding stage can resolve at the last millisecond,
+  // leaving a non-positive or single-digit remainder that would trip waitForDockTabTitlesResolved's
+  // exhausted-budget guard, or expire during its forwarded page.waitForFunction round-trip and fail
+  // "tabs still Unknown" on a healthy app. 1000ms lets each stage run one real poll.
   const budgetLeft = () => Math.max(1_000, timeout - (Date.now() - start));
-  // Arm the fatal-startup tripwire around BOTH the service-host wait and the tab-title wait: the
-  // fatal theme-settle error can surface during either stage (the hosts and the theme settle
-  // concurrently), so a doomed cold start must abort the moment it fires no matter which stage is
-  // running. The tripwire mirrors `strict`: a strict wait is a fresh cold-start instance (smoke),
-  // where a fatal error means THIS launch is doomed and a retry's fresh launch is the fix. The
-  // lenient shared-instance path (CDP features) leaves it off — there a stale error from a long-past
-  // cold start must not abort an otherwise-healthy per-test wait.
+  // Arm the fatal-startup tripwire around both waits (the fatal theme-settle error can surface in
+  // either). It mirrors `strict`: a strict cold start (smoke) arms it, since a fatal error dooms
+  // THIS launch; the lenient shared-instance path leaves it off so a stale error can't abort a
+  // healthy per-test wait.
   await withFatalStartupTripwire(page, strict, async () => {
-    // Gate on the upstream service hosts BEFORE the tab-title wait: the tabs can only resolve once
-    // these hosts serve their metadata, so waiting on them first means a slow cold start is spent on
-    // the real cause rather than surfacing as an opaque "tabs still Unknown" timeout downstream.
     await waitForServiceHostsRegistered(budgetLeft());
     await waitForDockTabTitlesResolved(page, budgetLeft(), { strict });
   });
@@ -762,36 +711,34 @@ export async function waitForInterlinearizerReady(
 }
 
 /**
- * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu. Prerequisite stage
- * shared by all e2e tests that require the Interlinearizer to be open.
+ * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
+ * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
+ * Interlinearizer to be open.
  *
- * The startup dock layout varies, so the editor is located resiliently rather than assumed:
+ * Loading the project into a Scripture Editor is the load-bearing step: it resolves a BCV
+ * navigation target (so `navigateToScriptureRef`'s toolbar control is enabled) and lets the ≡ menu
+ * open the Interlinearizer directly instead of popping a project-picker dialog. The startup dock
+ * layout varies, so this reaches that loaded state resiliently rather than assuming it:
  *
- * - A truly-fresh core profile opens the default multi-tab layout, which already includes a
- *   "Scripture Editor" tab (no project loaded).
- * - A profile whose layout collapsed to a single tab opens only the "Home" tab (no editor).
+ * - A fresh core profile opens the default multi-tab layout with an empty "Scripture Editor" tab (no
+ *   project loaded) and NO Home dock tab — the project is opened from Home (toolbar Home button,
+ *   which is always present).
  * - A warm CDP instance already has the editor open on a project (tab titled e.g. "WEB (Editable)").
  *
  * Steps:
  *
- * 1. Wait for the layout to settle to a known state: either a Scripture Editor tab or the Home tab is
- *    present. (A bare `count()` races the async dock render — a fresh profile reports zero tabs for
- *    a beat before the layout mounts.)
- * 2. If no editor tab is present, open `projectName` from Home (Home tab → project row → "Open"),
- *    mirroring paranext-core's own `openFromEditorHamburger` helper.
- * 3. Focus the Scripture Editor tab. Its title (and its iframe's title) is the project short name with
- *    an editability suffix once a project is loaded (e.g. "WEB (Editable)"), and "Scripture Editor"
- *    only when no project is loaded — both are accepted.
- * 4. Enter the Scripture Editor iframe and click the ≡ ("Project") menu button.
+ * 1. Wait for an editor tab to be present (the dock renders async).
+ * 2. If no editor tab is titled by the project, open `projectName` from Home (Home button → project
+ *    row → "Open"), wait for the editor tab to retitle, then close the Home tab (it opens focused,
+ *    overlaying the editor).
+ * 3. Focus the project's Scripture Editor tab.
+ * 4. Enter the editor iframe and click the ≡ ("Project") menu button.
  * 5. Click "Open Interlinearizer for this Project".
- * 6. If the "Open Interlinearizer" project-picker dialog appears (it only does when the editor has no
- *    project loaded), click the named project. When the editor already has a project, the command
- *    opens the Interlinearizer for it directly with no dialog.
- * 7. Wait for the "Interlinearizer" dock tab and click it to focus it.
+ * 6. Wait for the "Interlinearizer" dock tab and click it.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param projectName Name of the project to open and select in the project-picker (default:
- *   `"WEB"`).
+ * @param projectName Name of the project to load into the editor and open the Interlinearizer for
+ *   (default: `"WEB"`).
  * @returns Resolves when the Interlinearizer tab is focused and visible.
  * @throws If any step does not complete within its timeout.
  */
@@ -803,68 +750,75 @@ export async function openInterlinearizerFromScriptureEditor(
   // "WEB (Editable)"), and "Scripture Editor" only when no project is loaded. Escape projectName so
   // a short name with regex metacharacters can't corrupt the pattern.
   const escapedProjectName = escapeStringRegexp(projectName);
-  const editorTab = page
+  // An editor tab already showing this project — the only editor state that resolves a navigation
+  // target AND lets the ≡ menu open the Interlinearizer directly. A bare "Scripture Editor" tab with
+  // no project loaded does neither.
+  const loadedEditorTab = page
+    .locator('.dock-tab', { hasText: new RegExp(`^${escapedProjectName}\\b`) })
+    .first();
+  const anyEditorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
-  const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
+  // The toolbar's "Home..." button (a ghost icon button wrapping lucide's HomeIcon). It opens Home
+  // regardless of dock layout — the default multi-tab layout has no Home dock tab. The svg is
+  // `aria-hidden`, so target the enclosing button by the icon class rather than by role/name.
+  const homeButton = page.locator('button:has(svg.lucide-house)').first();
 
-  // Wait for the dock layout to actually mount before deciding which path to take — a fresh profile
-  // briefly reports zero tabs, and a non-waiting `count()` would misread that as "no editor".
-  // `.first()` on the whole `.or()`: when both the editor and Home tabs are present the union
-  // resolves to two elements, which would trip strict mode on this visibility assertion.
-  await expect(editorTab.or(homeTab).first()).toBeVisible({ timeout: 45_000 });
+  // Wait for the dock layout to mount before branching — a fresh profile briefly reports zero tabs,
+  // which a non-waiting `count()` would misread as "no editor".
+  await expect(anyEditorTab).toBeVisible({ timeout: 45_000 });
 
-  // If the layout came up without a Scripture Editor (single-tab Home layout), open the project
-  // from Home so the editor (and its ≡ menu) exists before we try to focus it.
-  if ((await editorTab.count()) === 0) {
-    await homeTab.click();
+  // Ensure the project is loaded into a Scripture Editor, not merely that some editor tab exists:
+  // without a project-bearing editor, BCV navigation has no target (nav control stays disabled) and
+  // the ≡ menu's "Open Interlinearizer" pops a project-picker dialog. Opening the project from Home
+  // loads it into the editor. Skipped when a project-titled editor tab is already present (warm CDP
+  // instance).
+  if ((await loadedEditorTab.count()) === 0) {
+    await homeButton.click();
     const homeFrame = page.frameLocator('iframe[title="Home"]');
     await homeFrame.locator(`tr:has-text("${projectName}") button:has-text("Open")`).click();
+    // Wait for the project to load (tab retitles to the project short name) before continuing.
+    await expect(loadedEditorTab).toBeVisible({ timeout: 30_000 });
+
+    // Close the Home tab. It opens as a floating dock tab focused on top of the editor column, and
+    // its iframe intercepts pointer events, so the ≡-menu click below would land on Home. Dispatch
+    // the close (not a real click, so an off-viewport tab on small CI viewports still closes), then
+    // wait for the tab to leave the DOM.
+    const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
+    await homeTab
+      .locator('.dock-tab-close-btn')
+      .dispatchEvent('click')
+      .catch(() => {
+        /* Home may not have opened as a closable tab in some layouts; the visibility wait below is
+           the real gate. */
+      });
+    await expect(page.locator('.dock-tab', { hasText: 'Home' })).toHaveCount(0, {
+      timeout: 10_000,
+    });
   }
 
-  await expect(editorTab).toBeVisible({ timeout: 15_000 });
-  await editorTab.click();
+  await loadedEditorTab.click();
 
-  // The Scripture Editor renders its own toolbar inside its iframe. Click the ≡ ("Project") button.
-  const editorFrame = page
-    .locator(`iframe[title*="Scripture Editor" i], iframe[title^="${projectName}"]`)
-    .first()
-    .contentFrame();
+  // Click the ≡ ("Project") button in the editor's own toolbar. The project is loaded, so the iframe
+  // title is the project short name (not "Scripture Editor").
+  const editorFrame = page.locator(`iframe[title^="${projectName}"]`).first().contentFrame();
   await editorFrame.locator("button[aria-label='Project']").first().click();
 
-  // Click the "Open Interlinearizer for this Project" item contributed by this extension.
+  // Click "Open Interlinearizer for this Project". With a project loaded, this opens the
+  // Interlinearizer directly (no papi.dialogs.selectProject, so no picker dialog).
   await editorFrame
     .getByRole('menuitem', { name: /Open Interlinearizer for this Project/i })
     .first()
     .click();
 
-  // When the editor has no project selected, the command calls papi.dialogs.selectProject, which
-  // opens a floating "Open Interlinearizer" dock tab with the project list. When the editor
-  // already has a project (a warm instance), the Interlinearizer tab opens directly instead.
-  //
-  // `.first()` throughout: on the shared CDP instance a prior test (or a prior call in this one)
-  // can leave the picker's floating dock tab mounted, so `.select-project-dialog` may match more
-  // than one element. Scoping to `.first()` keeps every read here — the union visibility wait AND
-  // the isVisible() branch — out of strict-mode violation, so a leaked picker can't crash this
-  // test before closeSelectProjectPickers has a chance to clean it up. See closeSelectProjectPickers.
-  const selectProjectDialog = page.locator('.select-project-dialog').first();
-  const interlinearizerTab = interlinearizerTabLocator(page);
-  await expect(selectProjectDialog.or(interlinearizerTab).first()).toBeVisible({ timeout: 15_000 });
-  if (await selectProjectDialog.isVisible()) {
-    const projectNameRegex = new RegExp(`^${escapedProjectName}$`, 'i');
-    await selectProjectDialog.getByRole('button', { name: projectNameRegex }).click();
-  }
-
   // Wait for the Interlinearizer tab to appear and focus it.
+  const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
   await interlinearizerTab.click();
 
-  // Close the "Open Interlinearizer" picker tab we just opened. Selecting a project opens the
-  // Interlinearizer but leaves the picker's floating dock tab mounted; on the shared CDP instance,
-  // where the DOM is never reset between tests, one leaks per open and they accumulate until a bare
-  // `.select-project-dialog` read trips strict mode across the whole suite. Closing it here stops
-  // the leak at its source. Bounded and best-effort: the picker only appears on the cold path, and
-  // a failure to close it is self-healed by closeSelectProjectPickers before the next test runs.
+  // Close any leftover project-picker dock tab. This flow no longer opens one, but on the shared CDP
+  // instance a prior test that hit the picker path can leave one mounted, and leaked pickers
+  // accumulate (the DOM is never reset) until a `.select-project-dialog` read trips strict mode.
   await closeSelectProjectPickers(page);
 }
 
@@ -874,15 +828,12 @@ export async function openInterlinearizerFromScriptureEditor(
  * containing a `.select-project-dialog` panel); selecting a project from it opens the
  * Interlinearizer but does not dispose the picker itself.
  *
- * On the shared CDP instance the renderer DOM is never reset between tests, so each leaked picker
- * persists and a bare `.select-project-dialog` locator resolves to N elements — which trips
- * Playwright strict mode on the very next `isVisible()`/`click()` and reddens every downstream
- * test. This closes them via each tab's `.dock-tab-close-btn` (dispatched, mirroring
- * {@link closeInterlinearizerTab}, so an off-viewport tab on small CI viewports still closes).
+ * On the shared CDP instance the DOM is never reset between tests, so leaked pickers persist and a
+ * `.select-project-dialog` locator resolves to N elements — tripping strict mode on the next
+ * `isVisible()`/`click()`. This closes them via each tab's `.dock-tab-close-btn` (dispatched,
+ * mirroring {@link closeInterlinearizerTab}, so an off-viewport tab still closes).
  *
- * Best-effort and non-throwing: a picker that refuses to close must not fail the caller, because
- * the picker is incidental cleanup, not the behavior under test. It is bounded so a tab that won't
- * close can't spin forever.
+ * Best-effort, non-throwing, and bounded: a picker that refuses to close must not fail the caller.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves once no picker tab remains, or after the bounded attempts are exhausted (a
@@ -891,8 +842,7 @@ export async function openInterlinearizerFromScriptureEditor(
 export async function closeSelectProjectPickers(page: Page): Promise<void> {
   const pickerTab = page.locator('.dock-tab', { hasText: 'Open Interlinearizer' });
 
-  // Bounded so a picker that refuses to close can't spin forever. The realistic worst case is a
-  // handful of leaked pickers from earlier crashed tests plus the one this call opened.
+  // Bounded; the realistic worst case is a handful of leaked pickers from earlier crashed tests.
   for (let attempt = 0; attempt < 6; attempt += 1) {
     // eslint-disable-next-line no-await-in-loop
     const remaining = await pickerTab.count();
@@ -905,8 +855,8 @@ export async function closeSelectProjectPickers(page: Page): Promise<void> {
       .catch(() => {
         /* The tab may have closed between the count() and the dispatch; the next loop re-checks. */
       });
-    // Wait for this close to land (count drops) before the next iteration, so we don't race the
-    // dock's async tab removal and re-dispatch against the same, still-present tab.
+    // Wait for the count to drop before the next iteration, so we don't re-dispatch against the
+    // same still-present tab while the dock removes it async.
     // eslint-disable-next-line no-await-in-loop
     await expect(pickerTab)
       .toHaveCount(remaining - 1, { timeout: 5_000 })
@@ -924,10 +874,8 @@ export async function closeSelectProjectPickers(page: Page): Promise<void> {
  * @returns A `FrameLocator` scoped to the Interlinearizer WebView iframe.
  */
 export function getInterlinearizerFrame(page: Page): FrameLocator {
-  // Anchor on titles that START with "Interlinearizer" so this never matches the project-picker
-  // dialog ("Open Interlinearizer"), whose title also contains the word. The real WebView title is
-  // "Interlinearizer" (optionally suffixed with the unsaved-changes marker), so a prefix match keeps
-  // the dirty-state title while excluding the "Open …" picker.
+  // Prefix match so this excludes the project-picker dialog ("Open Interlinearizer") while still
+  // matching the WebView's own title with its optional unsaved-changes suffix.
   return page.frameLocator('iframe[title^="Interlinearizer" i]');
 }
 
@@ -950,21 +898,15 @@ function interlinearizerTabLocator(page: Page): Locator {
 interface AppAndInterlinearizerReadyOptions {
   /**
    * Select the readiness profile for the shared CDP feature instance instead of a fresh cold start.
-   * Defaults to `false` (cold start), correct for the fresh per-worker smoke instance, which uses
-   * the strict all-tabs-resolved gate and the generous cold-start budget.
+   * Defaults to `false` (cold start), correct for the fresh per-worker smoke instance.
    *
-   * Pass `true` for a feature test running against the one shared, already-settled CDP instance. It
-   * expands to two coupled behaviors that always travel together on that tier:
+   * Pass `true` for a feature test running against the shared, already-settled CDP instance. It
+   * couples two behaviors:
    *
-   * - The lenient dock-tab gate (dock mounted, at least one tab resolved) rather than the strict
-   *   every-tab-resolved gate, so one stray/leftover "Unknown" panel can't fail this (and every
-   *   downstream) test — the shared instance's DOM is never reset, and no per-test retry can undo a
-   *   cascade. See {@link DockTabTitlesOptions.strict}.
-   * - A short {@link CDP_FEATURE_READY_TIMEOUT} budget rather than the cold-start default. The shared
-   *   instance was proven-settled by global setup, so a per-test readiness wait that runs long
-   *   means the instance died mid-run, not that startup is slow — and no per-test retry revives a
-   *   dead shared instance, so failing fast beats burning the full cold-start budget on every
-   *   retry.
+   * - The lenient dock-tab gate (see {@link DockTabTitlesOptions.strict}), so one stray "Unknown"
+   *   panel can't fail this and every downstream test on the never-reset shared instance.
+   * - A short {@link CDP_FEATURE_READY_TIMEOUT} budget. The instance is already settled, so a long
+   *   wait means it died mid-run — fail fast rather than burn the full cold-start budget.
    */
   cdp?: boolean;
 }
@@ -984,16 +926,14 @@ export async function waitForAppAndInterlinearizerReady(
   page: Page,
   options: AppAndInterlinearizerReadyOptions = {},
 ): Promise<void> {
-  // The shared-CDP profile couples a lenient gate with a short fail-fast budget; a cold start uses
-  // the strict gate and the generous cold-start default (an undefined timeout).
   const { strict, timeout } = options.cdp
     ? { strict: false, timeout: CDP_FEATURE_READY_TIMEOUT }
     : { strict: true, timeout: undefined };
   const start = Date.now();
   await waitForAppReady(page, { strict, timeout });
-  // Cap the extension-registration wait by whatever budget remains, so an explicit short `timeout`
-  // bounds the combined wait. With no explicit budget (smoke), fall back to this helper's own
-  // generous default rather than starving it.
+  // Cap the extension wait by whatever budget remains so an explicit short `timeout` bounds the
+  // combined wait; with no explicit budget (smoke), fall back to waitForInterlinearizerReady's own
+  // default.
   const remaining = timeout === undefined ? undefined : timeout - (Date.now() - start);
   await waitForInterlinearizerReady(remaining);
 }
@@ -1003,36 +943,27 @@ export async function waitForAppAndInterlinearizerReady(
  * full-viewport `tw:modal-overlay` (fixed inset-0 z-50, see src/components/modals/ModalShell.tsx)
  * can't intercept every click in the run that follows.
  *
- * This is the shared-instance recovery step. The CDP fixture connects to one long-lived
- * Platform.Bible instance and never resets its DOM between tests, so a test that dies with a modal
- * open (e.g. a `wipeDraft` whose click timed out) leaves that overlay covering the iframe — which
- * then blocks the NEXT test before it can even open a menu. Running this at the start of the
- * open-Interlinearizer precondition converts that cascade (one real failure reddening every
- * downstream test) into a single self-healed hiccup, and is what makes a CDP retry actually land on
- * a clean instance instead of re-running against the poisoned overlay.
+ * This is the shared-instance recovery step: the CDP fixture never resets its DOM between tests, so
+ * a test that dies with a modal open leaves that overlay blocking the next test. Running this at
+ * the start of the open-Interlinearizer precondition self-heals it, which is also what lets a CDP
+ * retry land on a clean instance.
  *
  * Each project modal's only reliable dismiss affordance is its Cancel/secondary button — the
- * dialogs are rendered as a plain `<dialog open>` (not via `showModal()`), so native Escape does
- * not fire their onCancel. Modals can chain (a discard-draft confirm can sit behind another), so
- * cancel in a bounded loop until no overlay remains.
+ * dialogs are a plain `<dialog open>` (not `showModal()`), so native Escape doesn't fire their
+ * onCancel. Modals can chain, so cancel in a bounded loop until no overlay remains.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves once no modal overlay remains in the iframe (a no-op on the common clean path).
  */
 export async function dismissLeftoverModals(page: Page): Promise<void> {
   const frame = getInterlinearizerFrame(page);
-  // Every project modal is a `<dialog>` rendered by ModalShell inside a `tw:modal-overlay`, and
-  // that `<dialog>` element is the only one in the iframe — so `frame.locator('dialog')` (the same
-  // handle every other modal helper uses) both detects an open modal and scopes the Cancel lookup,
-  // with no separate overlay selector needed. The overlay is the invisible click-blocker, but the
-  // dialog it wraps is visible exactly when the overlay is.
+  // The `<dialog>` ModalShell renders is the only one in the iframe, so this both detects an open
+  // modal and scopes the Cancel lookup — no separate overlay selector needed.
   const dialog = frame.locator('dialog').first();
 
-  // Bounded so a modal that refuses to close can't spin forever; a couple of chained confirmations
-  // is the realistic worst case.
+  // Bounded; a couple of chained confirmations is the realistic worst case.
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    // Non-retrying visibility read: on the clean path (no leftover modal) this must fall through
-    // immediately rather than wait out a timeout on every single test.
+    // Non-retrying read so the clean path (no leftover modal) falls through immediately.
     // eslint-disable-next-line no-await-in-loop
     if (!(await dialog.isVisible())) return;
 
@@ -1066,14 +997,11 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
  * with WEB — see e2e-tests/README.md); otherwise the tab is opened fresh via the Scripture Editor
  * menu flow. Resolves only once the extension's toolbar has rendered inside the iframe.
  *
- * As the first shared precondition every feature test runs, this also self-heals two kinds of
- * leftover state a prior failed test can leave on the shared CDP instance: any modal left mounted
- * in the iframe (via {@link dismissLeftoverModals}, whose overlay would otherwise intercept this
- * test's clicks) and any "Open Interlinearizer" project-picker dock tab left open (via
- * {@link closeSelectProjectPickers}, whose accumulation would otherwise trip strict mode on the
- * `.select-project-dialog` locator). A test that dies mid-open — e.g. the renderer is torn down
- * before it can close its picker — is exactly how one picker leaks and then reddens every
- * downstream test, so clearing it here is what keeps that single crash from cascading.
+ * As the first shared precondition every feature test runs, this also self-heals leftover state a
+ * prior failed test can leave on the shared CDP instance: any modal left mounted in the iframe (via
+ * {@link dismissLeftoverModals}, whose overlay would intercept clicks) and any project-picker dock
+ * tab left open (via {@link closeSelectProjectPickers}, whose accumulation would trip strict mode on
+ * the `.select-project-dialog` locator).
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns Resolves when the Interlinearizer tab is focused and its toolbar is interactive.
@@ -1083,15 +1011,12 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
 export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> {
   const interlinearizerTab = interlinearizerTabLocator(page);
 
-  // Settle the dock layout before the non-retrying isVisible() branch below. The readiness helpers
-  // only poll rpc.discover, not the DOM, so without this a not-yet-painted Interlinearizer tab (or
-  // one just closed by a prior test) would read as "absent" and send us needlessly down the full
-  // open-from-editor flow. Wait until either the Interlinearizer tab or some editor/Home anchor tab
-  // is mounted, so isVisible() reflects a settled layout. When BOTH are present (the common case:
-  // an Interlinearizer tab alongside the WEB/editor tab), the union resolves to two elements, so
-  // `.first()` on the whole `.or()` keeps the visibility assertion out of strict-mode violation —
-  // per-operand `.first()` does not collapse the union to a single match.
-  const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|Home|WEB/ }).first();
+  // Settle the dock layout before the non-retrying isVisible() branch below: the readiness helpers
+  // only poll rpc.discover, not the DOM, so a not-yet-painted Interlinearizer tab would read as
+  // "absent" and send us needlessly down the full open-from-editor flow. `.first()` on the whole
+  // `.or()` keeps the assertion out of strict mode when both tabs are present (per-operand `.first()`
+  // does not collapse the union).
+  const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|WEB/ }).first();
   await expect(interlinearizerTab.or(anchorTab).first()).toBeVisible({ timeout: 30_000 });
 
   if (await interlinearizerTab.isVisible()) {
@@ -1104,12 +1029,9 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
     timeout: 30_000,
   });
 
-  // Self-heal the shared instance before this test starts driving the UI: clear any modal a prior
-  // failed test left mounted (its overlay would intercept the clicks below) and any project-picker
-  // dock tab a prior test left open (its accumulation would trip strict mode on the
-  // `.select-project-dialog` locator). The picker cleanup covers the warm path too, where
-  // openInterlinearizerFromScriptureEditor never runs and so never gets a chance to close a picker
-  // leaked by an earlier crash.
+  // Self-heal the shared instance before driving the UI: clear any leftover modal (its overlay would
+  // intercept the clicks below) and any leftover project-picker tab. The picker cleanup covers the
+  // warm path too, where openInterlinearizerFromScriptureEditor never runs.
   await dismissLeftoverModals(page);
   await closeSelectProjectPickers(page);
 }
@@ -1120,44 +1042,43 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * submits it. Requires a fully-qualified reference (book, chapter, and verse — e.g. `"GEN 1:1"`);
  * partial references are ambiguous and are not auto-submitted by the control.
  *
- * The platform toolbar's book-chapter control only drives navigation when there is a resolved
- * navigation-target web view — in simple (non-power) interface mode that is always the MAIN
- * Scripture editor, never a focused secondary tab like the Interlinearizer (this is paranext-core's
- * navigation-target logic). The self-launched CDP instance comes up in simple mode with no project
- * loaded into the main editor, so the control stays `disabled` and can navigate nothing. A plain
- * `trigger.click()` there never fails — Playwright retries the click for the whole test timeout
- * waiting for the button to become enabled, which is what hung every feature test for 6 minutes. So
- * this waits a BOUNDED time for the control to become actionable and, if it never does, skips
- * navigation instead of hanging: the Interlinearizer opens at its default reference (GEN 1:1) and
- * the callers assert against specific verse tokens with their own visibility waits, so a skipped
- * no-op navigation to a reference already on screen still lets the test proceed (and a
- * genuinely-needed navigation that could not happen surfaces as a fast, clear assertion failure
- * downstream rather than an opaque timeout here).
+ * The toolbar's book-chapter control is only ENABLED when BCV navigation has a resolved target web
+ * view. In the default simple mode that target is the first open Scripture editor with a project,
+ * NOT the focused Interlinearizer tab — so the control needs an open, project-bearing Scripture
+ * editor to be drivable at all. That precondition holds because callers run this after
+ * `ensureInterlinearizerOpenOnWeb`, which loads the WEB project into a Scripture Editor.
+ *
+ * The control can be momentarily disabled right after startup, before the target resolves, so this
+ * waits a BOUNDED time for it to enable before clicking; a plain click on a still-disabled button
+ * would let Playwright retry for the whole test timeout instead. If it never enables, the target
+ * was never resolved (editor closed, or its project failed to load), so this THROWS rather than
+ * silently navigating against the wrong verse.
  *
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param reference Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @returns Resolves once the reference has been submitted, or once navigation has been skipped
- *   because the toolbar control is not drivable in the current interface mode.
- * @throws If the control is enabled but its popover does not open or close within the timeouts.
+ * @returns Resolves once the reference has been submitted.
+ * @throws If the control never becomes enabled within the wait (no navigation target resolved), or
+ *   if it is enabled but its popover does not open or close within the timeouts.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
   const trigger = page.locator('button[aria-label="book-chapter-trigger"]').first();
 
-  // Bounded wait for the control to become enabled. In simple mode with no main-editor project it
-  // never enables, so cap the wait and skip rather than let the later click() burn the test timeout.
-  // `expect(...).toBeEnabled` polls with a real timeout (unlike `Locator.isEnabled`, which reads
-  // once); swallow its rejection into a boolean so the disabled case is a skip, not a throw.
+  // Bounded wait for the control to become enabled, covering the brief post-launch window before the
+  // navigation target resolves. `toBeEnabled` polls (unlike `isEnabled`, which reads once); swallow
+  // its rejection into a boolean so a persistently-disabled control becomes the clear throw below
+  // rather than an opaque click-retry timeout.
   const enabled = await expect(trigger)
     .toBeEnabled({ timeout: 10_000 })
     .then(() => true)
     .catch(() => false);
   if (!enabled) {
-    console.log(
-      `navigateToScriptureRef: skipping navigation to "${reference}" — the platform book-chapter ` +
-        'control is disabled (simple interface mode with no navigable target). The view stays at ' +
-        'its current/default reference.',
+    throw new Error(
+      `navigateToScriptureRef: the platform book-chapter control never became enabled, so ` +
+        `"${reference}" could not be navigated to. This means BCV navigation has no resolved ` +
+        'target: in the default simple interface mode the target is the first open Scripture editor ' +
+        'with a project, so the WEB Scripture Editor is likely closed or its project failed to load. ' +
+        'Ensure it is open (openInterlinearizerFromScriptureEditor) before navigating.',
     );
-    return;
   }
 
   await trigger.click();
@@ -1294,13 +1215,10 @@ export async function ensureE2eProjectActive(
   let frame = await openSelectProjectModal(page);
   let dialog = frame.locator('dialog');
 
-  // Locate the E2E entry by its project-name element with an EXACT text match, then walk up to the
-  // enclosing entry button. Matching the whole button's accessible name doesn't work: the modal
-  // renders the name, an optional "Active" badge, and the analysis languages as adjacent inline
-  // <span>s with no separating whitespace, so the accessible name reads "E2E Test Projecten" —
-  // there is no space after the name to anchor on. An exact-text match on the name element also
-  // avoids matching a different project whose name merely starts with E2E_PROJECT_NAME (e.g. "E2E
-  // Test Project 2"). Keep in sync with SelectInterlinearProjectModal's entry markup.
+  // Match the E2E entry by its project-name element with EXACT text, not the button's accessible
+  // name: the modal renders name, an optional "Active" badge, and the languages as adjacent <span>s
+  // with no separating whitespace (reading e.g. "E2E Test Projecten"). Exact text also avoids
+  // matching a project whose name merely starts with E2E_PROJECT_NAME (e.g. "E2E Test Project 2").
   const activeEntry = dialog.locator('button[aria-current="true"]');
   const activeIsE2e =
     (await activeEntry.count()) > 0 &&
@@ -1363,11 +1281,10 @@ export async function wipeDraft(page: Page): Promise<void> {
   const wipeDialogTitle = frame.locator('#wipe-modal-title');
   await expect(wipeDialogTitle).toBeVisible({ timeout: 5_000 });
   const scopeAll = frame.getByTestId('wipe-scope-all');
-  // `force`: the radio reads visible+enabled+stable, but on a slow/software-rendered CI display the
-  // just-opened modal overlay hasn't won the hit-test yet, so a normal click is intercepted by the
-  // iframe's own `#root` for a few frames and then times out (the original gloss-roundtrip CI
-  // failure). We've already asserted this modal is open and are targeting an element inside it by a
-  // unique test id, so skipping the (spuriously-failing) hit-test check is safe here.
+  // `force`: on a slow/software-rendered CI display the just-opened modal overlay hasn't won the
+  // hit-test yet, so a normal click is intercepted by the iframe's `#root` for a few frames and
+  // times out. We've asserted the modal is open and target an element inside it by a unique test id,
+  // so skipping the hit-test check is safe.
   await expect(scopeAll).toBeEnabled({ timeout: 5_000 });
   await scopeAll.check({ force: true });
   await frame.getByTestId('wipe-confirm').click({ force: true });
@@ -1385,10 +1302,9 @@ export async function wipeDraft(page: Page): Promise<void> {
 export async function closeInterlinearizerTab(page: Page): Promise<void> {
   const interlinearizerTab = interlinearizerTabLocator(page);
   await expect(interlinearizerTab).toBeVisible({ timeout: 15_000 });
-  // Dispatch the click rather than hover()+click(): the close button is only laid out on hover, and
-  // on small CI viewports the tab can overflow the tab strip and sit outside the viewport, where a
-  // real click (even with force) fails. dispatchEvent doesn't require the element to be in-viewport.
-  // Mirrors paranext-core's own dock-tab close helpers.
+  // Dispatch rather than hover()+click(): the close button is only laid out on hover, and on small
+  // CI viewports the tab can overflow the strip and sit off-viewport, where a real click fails.
+  // dispatchEvent doesn't require the element to be in-viewport. Mirrors paranext-core's own helpers.
   await interlinearizerTab.locator('.dock-tab-close-btn').dispatchEvent('click');
   await expect(interlinearizerTab).not.toBeVisible({ timeout: 10_000 });
 }

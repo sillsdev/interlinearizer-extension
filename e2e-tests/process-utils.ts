@@ -4,24 +4,18 @@ import { execFileSync } from 'child_process';
 /**
  * Forcibly kill a process and all of its descendants, cross-platform.
  *
- * Both the renderer dev server (`npm run start:renderer`, spawned via a shell) and the
- * self-launched Electron app spawn a tree of child processes (webpack workers;
- * main/renderer/GPU/utility). Killing only the top PID leaves the children running, which for the
- * dev server means orphaned webpack workers and for Electron means a held PAPI WebSocket port that
- * poisons the next run's fast-fail port check.
+ * Both the renderer dev server and the self-launched Electron app spawn a tree of child processes.
+ * Killing only the top PID leaves the children running — orphaned webpack workers, or a held PAPI
+ * WebSocket port that poisons the next run's fast-fail port check.
  *
- * - On Windows there is no process group and `process.kill(-pid)` is meaningless, so shell out to
- *   `taskkill /T /F`, which terminates the process and its entire descendant tree. `taskkill`
- *   always force-kills (no graceful-signal equivalent), so `signal` is ignored on this branch.
- * - Elsewhere the target was spawned `detached`, so it is its own process-group leader: signal the
- *   negative PID to signal the whole group in one call, falling back to the bare PID if the group
- *   is already gone.
+ * - On Windows there is no process group, so shell out to `taskkill /T /F`, which terminates the
+ *   whole descendant tree. `taskkill` always force-kills, so `signal` is ignored on this branch.
+ * - Elsewhere the target was spawned `detached` (its own process-group leader): signal the negative
+ *   PID to hit the whole group, falling back to the bare PID if the group is already gone.
  *
- * @param pid PID of the detached process to kill. Non-positive values are rejected: `0` would
- *   target the caller's own process group (`process.kill(-0)` === `process.kill(0)`) and a negative
- *   value would signal an arbitrary unrelated PID, so both are treated as "nothing to kill".
- * @param signal POSIX signal to send when not on Windows (ignored on Windows, which always
- *   force-kills). Defaults to `'SIGTERM'`.
+ * @param pid PID of the detached process to kill. Non-positive values are rejected (see the guard).
+ * @param signal POSIX signal to send when not on Windows (ignored on Windows). Defaults to
+ *   `'SIGTERM'`.
  * @returns `true` if a kill was issued, `false` if the PID was invalid or the process was already
  *   gone.
  */

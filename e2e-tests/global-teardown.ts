@@ -11,15 +11,13 @@ import { killProcessTree } from './process-utils';
  * same read-PID-file → validate → kill → remove-marker shape and differ only in signal and
  * logging.
  *
- * A missing PID file is a no-op (the process was never recorded); a file whose contents don't parse
- * as an integer is warned about and skipped rather than used to kill an arbitrary PID. The PID file
- * is always removed when present, so a killed-or-not run never leaves a stale marker behind.
+ * A missing PID file is a no-op; a file whose contents don't parse as an integer is warned about
+ * and skipped rather than used to kill an arbitrary PID. The PID file is always removed when
+ * present, so no run leaves a stale marker behind.
  *
  * @param pidFile Absolute path to the file holding the target process's PID.
- * @param signal Kill signal to send (`'SIGTERM'` for a cooperative stop, `'SIGKILL'` when the
- *   target may ignore SIGTERM and must be gone before its resources are reclaimed).
- * @param label Human-readable name of the process, used in the "Stopping <label> (PID: …)" log
- *   line.
+ * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
+ * @param label Human-readable name of the process, used in the "Stopping <label>" log line.
  * @returns `true` if a valid PID was found and {@link killProcessTree} reported the kill succeeded;
  *   `false` if the PID file was absent or its contents were not a valid integer.
  */

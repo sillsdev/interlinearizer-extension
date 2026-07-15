@@ -13,12 +13,10 @@ test.describe('Draft persistence', () => {
   test('a glossed draft survives closing and reopening the interlinearizer', async ({
     mainPage,
   }) => {
-    // Two full open cycles (plus first-use project creation and book loading on a cold instance)
-    // legitimately exceed the default 120 s budget.
+    // Two full open cycles (plus first-use project creation and book loading) exceed the 120 s
+    // default. test.slow() triples the overall test timeout, not the readiness wait below.
     test.slow();
     // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
-    // (test.slow() above triples only the overall test timeout for the two open-cycles below, not
-    // this startup readiness check, which keeps its own short budget.)
     await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
     await ensureInterlinearizerOpenOnWeb(mainPage);
     await ensureE2eProjectActive(mainPage);
@@ -36,11 +34,9 @@ test.describe('Draft persistence', () => {
     await glossInput.press('Tab');
     await expect(glossInput).toHaveValue(gloss);
 
-    // The draft auto-saves on a 300 ms debounce after the last keystroke, and there is no UI
-    // signal that the storage write has landed (the tab's dirty marker tracks draft-vs-saved-
-    // project, not draft-vs-storage). This fixed wait deliberately covers the debounce so the
-    // test exercises the debounced-save path; the unmount-flush (close immediately after
-    // typing) path is intentionally out of scope here.
+    // The draft auto-saves on a 300 ms debounce, with no UI signal that the storage write has landed
+    // (the tab's dirty marker tracks draft-vs-project, not draft-vs-storage). This fixed wait covers
+    // the debounce so the test exercises the debounced-save path (not the unmount-flush path).
     await mainPage.waitForTimeout(1_000);
 
     await closeInterlinearizerTab(mainPage);

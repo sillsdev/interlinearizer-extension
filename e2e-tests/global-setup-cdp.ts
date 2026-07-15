@@ -31,10 +31,9 @@ export const CDP_PID_FILE = path.join(__dirname, '.cdp-app.pid');
 export const CDP_USER_DATA_FILE = path.join(__dirname, '.cdp-app.user-data-dir');
 
 /**
- * File the launched app's stdout/stderr is streamed to. Kept alongside the other `.cdp-*` marker
- * files in `e2e-tests/` — a location Playwright does not clear (unlike `outputDir`) — and added to
- * the CI artifact upload so it survives a failed run. Without this the app is spawned `stdio:
- * 'ignore'` and a startup crash surfaces only as an opaque WebSocket-port timeout with no cause.
+ * File the launched app's stdout/stderr is streamed to. Kept alongside the other `.cdp-*` markers
+ * in `e2e-tests/` (which Playwright doesn't clear) and uploaded as a CI artifact, so a startup
+ * crash leaves a diagnosable log instead of only an opaque WebSocket-port timeout.
  */
 export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
 
@@ -42,11 +41,10 @@ export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
 
 /**
- * How long to wait after the ports are up for the renderer to actually settle (dock tabs present
- * with resolved titles) before failing setup. Port readiness alone is not enough: a Windows CI
- * instance has come up with PAPI responding but every dock tab stuck at "Unknown" and blank panels
- * for the whole run, which made all five feature tests burn their own timeouts against one broken
- * shared instance. Failing setup here instead surfaces one clear error plus the app's startup log.
+ * How long to wait after the ports are up for the renderer to settle (dock tabs present with
+ * resolved titles) before failing setup. Port readiness alone isn't enough: an instance can come up
+ * with PAPI responding but every dock tab stuck at "Unknown" for the whole run. Failing setup here
+ * surfaces one clear error rather than letting every feature test burn its own timeout.
  */
 const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
 
@@ -80,20 +78,17 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalSetupCdp(_config: FullConfig): Promise<void> {
   // A warm instance already owns the CDP port (a developer's `npm run start:cdp`). Reuse it: don't
-  // launch a second app (it would collide on the WebSocket singleton and exit) and don't record a
-  // PID, so teardown leaves the developer's instance running.
+  // launch a second app (it would collide on the WebSocket singleton) and don't record a PID, so
+  // teardown leaves the developer's instance running.
   if (await isPortInUse(CDP_PORT)) {
     console.log(
       `CDP port ${CDP_PORT} already in use — reusing the already-running Platform.Bible instance ` +
         '(not launching or tearing down an app).',
     );
-    // Clear any stale ownership markers left on disk by a PRIOR launched run whose teardown never
-    // completed (a crash or a `kill -9` of the test runner). This reuse path launches nothing and
-    // records nothing, but globalTeardownCdp infers "this run launched an app" purely from these
-    // files' existence — so a leftover .cdp-app.pid would make teardown SIGKILL a PID it never
-    // started (which the OS may have recycled onto an unrelated process) and rm a user-data dir it
-    // doesn't own. Removing them here keeps teardown a true no-op, honoring "leaves the developer's
-    // instance running." e2e-tests/ is never auto-cleared, so nothing else sweeps them.
+    // Clear stale ownership markers from a prior launched run whose teardown never completed.
+    // globalTeardownCdp infers "this run launched an app" from these files' existence, so a leftover
+    // .cdp-app.pid would make it SIGKILL a PID (possibly recycled) and rm a dir it doesn't own.
+    // Removing them keeps teardown a true no-op on this reuse path.
     clearStaleOwnershipMarkers();
     return;
   }
@@ -127,9 +122,8 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
   const appLogFd = fs.openSync(CDP_APP_LOG_FILE, 'w');
 
-  // Detached: unlike the smoke fixture's Playwright-owned `_electron.launch()`, the CDP fixture
-  // connects to this process over CDP, so Playwright must not own its lifecycle. Teardown kills the
-  // whole process tree by the recorded PID.
+  // Detached: the CDP fixture connects to this process over CDP, so Playwright must not own its
+  // lifecycle. Teardown kills the whole tree by the recorded PID.
   const appProcess = spawn(
     electronExecutable,
     [
@@ -138,16 +132,14 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       '--extensions',
       extensionDist,
       `--remote-debugging-port=${CDP_PORT}`,
-      // Deterministic window size instead of the 1024x728 electron-window-state default —
-      // paranext-core supports this argument for automation. Matches the CI xvfb screen (1280x960)
-      // so the dock panels have room and modals are not clipped.
+      // Deterministic window size matching the CI xvfb screen (1280x960) so dock panels have room
+      // and modals aren't clipped. paranext-core supports this arg for automation.
       '--window-size',
       '1280x960',
-      // --no-sandbox: GitHub-hosted Linux runners don't ship a root-owned setuid chrome-sandbox
-      // binary, so Electron's SUID sandbox helper aborts on launch. --ozone-platform=x11: in a
-      // Wayland session with DISPLAY redirected to xvfb (local headless runs), Electron otherwise
-      // picks the Wayland backend from the session environment and segfaults when the compositor
-      // socket is unreachable; on CI runners (X11-only) it is a no-op.
+      // --no-sandbox: GitHub-hosted Linux runners lack a setuid chrome-sandbox binary, so Electron's
+      // SUID sandbox helper aborts on launch. --ozone-platform=x11: in a Wayland session with
+      // DISPLAY redirected to xvfb (local headless runs), Electron otherwise picks Wayland and
+      // segfaults when the compositor socket is unreachable; no-op on CI runners (X11-only).
       ...(process.platform === 'linux' ? ['--no-sandbox', '--ozone-platform=x11'] : []),
     ],
     {
@@ -156,12 +148,10 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
         ...restEnv,
         NODE_ENV: 'development',
         DEV_NOISY: process.env.DEV_NOISY ?? 'false',
-        // With NODE_ENV=development, paranext-core's electron-debug auto-opens DevTools on every
-        // window. On CI Linux DevTools docks INSIDE the window, squeezing the app viewport to
-        // ~469px — dock panels collapse and modals get clipped at panel edges, so clicks land on
-        // neighboring iframes (the gloss-roundtrip/Save-As CI failures). electron-is-dev honors
-        // ELECTRON_IS_DEV=0, which disables electron-debug without affecting NODE_ENV-driven
-        // behavior (dev-server URL, etc.).
+        // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI Linux
+        // that docks inside the window and squeezes the viewport so dock panels collapse and clicks
+        // land on neighboring iframes. ELECTRON_IS_DEV=0 disables the auto-open without changing
+        // other NODE_ENV-driven behavior (dev-server URL, etc.).
         ELECTRON_IS_DEV: '0',
       },
       stdio: ['ignore', appLogFd, appLogFd],
@@ -175,11 +165,9 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
 
   /**
-   * Rejects the moment {@link appProcess} exits, so a startup crash (e.g. a sandbox
-   * misconfiguration) fails setup immediately instead of only surfacing after the full
-   * {@link APP_READY_TIMEOUT} port-wait below elapses. Raced against BOTH port waits and the
-   * renderer-settle wait: a crash after an earlier stage completes must fail just as fast and with
-   * the same informative message, not silently swallow the exit and time out on a later wait.
+   * Rejects the moment {@link appProcess} exits, so a startup crash fails setup immediately instead
+   * of surfacing only after the full {@link APP_READY_TIMEOUT} port-wait elapses. Raced against both
+   * port waits and the renderer-settle wait, since a crash can come after any of them completes.
    */
   const earlyExit = new Promise<never>((_resolve, reject) => {
     appProcess.once('exit', (code, signal) => {
@@ -191,24 +179,20 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
       );
     });
   });
-  // Setup returns with the app still running, so once the port/settle waits are done nothing
-  // awaits earlyExit anymore — mark it handled so the eventual teardown kill (which fires the same
-  // 'exit' event) can't surface as an unhandled rejection.
+  // Setup returns with the app running, so nothing awaits earlyExit after the waits below — mark it
+  // handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
+  // rejection.
   earlyExit.catch(() => {});
   try {
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
     console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
-    // Race the same earlyExit sentinel here too: without it, a crash after the WebSocket port is up
-    // would be swallowed and this wait would run out the full APP_READY_TIMEOUT with a generic
-    // "port not available" error instead of the "process exited early" cause below.
     await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
     console.log('Ports are up. Waiting for the renderer to settle (dock tabs with real titles)...');
     await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
   } catch (error) {
-    // The app never came up (or came up broken). Echo its captured output so the failure cause is
-    // in the CI log itself, not just buried in the uploaded artifact, then re-throw the original
-    // error.
+    // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
+    // log itself, not only the uploaded artifact.
     dumpAppLog();
     throw error;
   }
@@ -254,26 +238,19 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
     if (!page) {
       throw new Error(`No renderer page appeared over CDP within ${timeout}ms`);
     }
-    // Floor each leftover budget to 1000ms, never a hair above 0: the preceding stage can finish at
-    // (or, once waitForServiceHostsRegistered applies its own Math.max(1_000, …) floor, past) the
-    // deadline, leaving a non-positive or single-digit remainder. waitForDockTabTitlesResolved
-    // forwards its budget straight to page.waitForFunction, whose predicate is evaluated over a CDP
-    // round-trip — a ~1ms budget expires during that round-trip and fails with a misleading "tabs
-    // still Unknown" error even on a healthy app, whereas 1000ms leaves room for one real poll.
-    // Matches the budgetLeft floor in waitForAppReady, which forwards to the same call.
+    // Floor each leftover budget to 1000ms (see the matching floor in waitForAppReady): a ~1ms
+    // remainder would expire during waitForDockTabTitlesResolved's CDP round-trip and fail "tabs
+    // still Unknown" on a healthy app.
     const budgetLeft = () => Math.max(1_000, deadline - Date.now());
-    // Arm the fatal-startup tripwire around BOTH readiness stages, mirroring waitForAppReady: this
-    // is the freshly-launched cold-start instance, so a fatal theme-settle error means the launch is
-    // doomed — fail setup fast (and dump the app log) rather than wait out the full budget. The error
-    // can surface during either stage, so the tripwire must stay armed across both.
+    // Arm the fatal-startup tripwire around both stages, mirroring waitForAppReady: this is the
+    // freshly-launched cold-start instance, so a fatal theme-settle error dooms the launch — fail
+    // setup fast rather than wait out the full budget.
     await withFatalStartupTripwire(page, true, async () => {
-      // Gate on the upstream service hosts before the dock-tab wait, mirroring waitForAppReady: the
-      // freshly-launched instance's tabs stay "Unknown" until the settings/menu-data/theme hosts
-      // serve their metadata, and this is the exact path a Windows CDP cold start stalled on. Polls
-      // the same rpc.discover WebSocket the tab-title wait's siblings use, so it needs no CDP page.
+      // Gate on the upstream service hosts before the dock-tab wait: the tabs stay "Unknown" until
+      // the settings/menu-data/theme hosts serve their metadata (the path a Windows CDP cold start
+      // stalled on). Polls the same rpc.discover WebSocket, so it needs no CDP page.
       await waitForServiceHostsRegistered(budgetLeft());
-      // Strict cold-start gate: this is the freshly-launched instance's first settle, so every dock
-      // tab must resolve. The per-test feature gate is lenient (shared instance already settled).
+      // Strict cold-start gate: the instance's first settle, so every dock tab must resolve.
       await waitForDockTabTitlesResolved(page, budgetLeft(), {
         strict: true,
       });
@@ -286,11 +263,9 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
 
 /**
  * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present.
- * Called from the warm-instance reuse path, where this run launches no app and so owns none of the
- * resources those markers describe. {@link globalTeardownCdp} treats a present marker as "this run
- * launched an app it must kill/clean," so a stale marker from a prior launched run whose teardown
- * never completed would make teardown act on foreign resources — clearing them here prevents that.
- * Best-effort: each removal is guarded so a missing or unreadable marker never fails setup.
+ * Called from the warm-instance reuse path, where this run owns none of the resources those markers
+ * describe, so a stale marker from a prior launched run would make {@link globalTeardownCdp} act on
+ * foreign resources. Best-effort: each removal is guarded.
  *
  * @returns Nothing.
  */

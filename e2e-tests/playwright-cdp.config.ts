@@ -16,15 +16,13 @@ export default defineConfig({
   testIgnore: ['**/smoke/**', '**/_example/**'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  // Retry in CI like the smoke tier. On the shared, never-reset CDP instance a retry only helps
-  // because each test self-heals leftover modals at its start (ensureInterlinearizerOpenOnWeb →
-  // dismissLeftoverModals), so the retry lands on a clean instance instead of re-running against
-  // the overlay the timed-out attempt left mounted.
+  // Retries help on the never-reset shared instance only because each test self-heals leftover
+  // modals at its start (ensureInterlinearizerOpenOnWeb → dismissLeftoverModals), so a retry lands
+  // on a clean instance.
   retries: process.env.CI ? 2 : 1,
   workers: 1,
-  // Tier-specific report/output folders so a combined `npm run test:e2e` run keeps both tiers'
-  // reports side by side instead of the cdp run overwriting the smoke run's. `open: 'never'` keeps
-  // a run from auto-launching a browser in CI.
+  // Tier-specific report folder so a combined `npm run test:e2e` run doesn't overwrite the smoke
+  // tier's report. `open: 'never'` keeps CI from auto-launching a browser.
   reporter: [['html', { outputFolder: 'playwright-report/cdp', open: 'never' }], ['list']],
   timeout: 120_000,
   expect: { timeout: 10_000 },

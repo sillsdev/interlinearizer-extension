@@ -34,9 +34,7 @@ function filterConsoleErrors(errors: string[]): string[] {
 
 test.describe('Example: Open Interlinearizer via menu', () => {
   test('should open the interlinearizer WebView via menu', async ({ mainPage }) => {
-    // Feature tests run against the shared CDP instance, already settled by global setup. Pass
-    // `{ cdp: true }` for the shared-instance readiness profile (lenient gate + short fail-fast
-    // budget) — see the `cdp` option's docs in fixtures/helpers.ts for the full rationale.
+    // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
     await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     // Step 1: Click the top-level menu that contains the interlinearizer entry
@@ -53,9 +51,7 @@ test.describe('Example: Open Interlinearizer via menu', () => {
   });
 
   test('should render without critical console errors', async ({ mainPage }) => {
-    // Feature tests run against the shared CDP instance, already settled by global setup. Pass
-    // `{ cdp: true }` for the shared-instance readiness profile (lenient gate + short fail-fast
-    // budget) — see the `cdp` option's docs in fixtures/helpers.ts for the full rationale.
+    // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
     await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
 
     const consoleErrors: string[] = [];

@@ -14,14 +14,16 @@ export type InterlinearProjectSummary = Pick<
 >;
 
 /**
- * Projects a summary-shaped value down to exactly the {@link InterlinearProjectSummary} fields,
- * dropping any extra properties. Command responses that return a full `InterlinearProject` (with
- * its potentially large `analysis`, plus `links` / `segmentation`) are structurally assignable to
- * `InterlinearProjectSummary`, so caching one verbatim would persist the whole envelope in WebView
- * state. This copies only the summary fields so the cached active project stays lean.
+ * Rebuilds a new object holding only the {@link InterlinearProjectSummary} fields. The parameter is
+ * statically typed as `InterlinearProjectSummary`, but structural typing lets a full
+ * `InterlinearProject` (with its potentially large `analysis`, plus `links` / `segmentation`)
+ * satisfy that type, so at runtime the argument may still carry those extra properties. Caching
+ * such a value verbatim would persist the whole envelope in WebView state; copying only the summary
+ * fields keeps the cached active project lean.
  *
- * @param summary - A value already narrowed to `InterlinearProjectSummary` (e.g. via
- *   `isInterlinearProjectSummary`); it may still carry extra runtime properties.
+ * @param summary - A value typed as `InterlinearProjectSummary` (e.g. narrowed via
+ *   `isInterlinearProjectSummary`) that may carry extra runtime properties from a wider
+ *   `InterlinearProject`.
  * @returns A new object containing only the summary fields, with `targetProjectId` / `name` /
  *   `description` present only when they are set on the input.
  */

@@ -1708,7 +1708,7 @@ describe('InterlinearizerLoader', () => {
       );
     });
 
-    it('leaves the cached activeProject untouched when saveAnalysis reports the project is gone', async () => {
+    it('leaves the cache untouched and the draft dirty when saveAnalysis reports the project is gone', async () => {
       const seeded: MockProject = { ...STUB_ACTIVE_PROJECT, updatedAt: '2026-01-01T00:00:00Z' };
       // saveAnalysis resolves to `undefined` (the project no longer exists), so the loader has no
       // response body to parse and the cache is left as-is.
@@ -1717,19 +1717,27 @@ describe('InterlinearizerLoader', () => {
           ? undefined
           : JSON.stringify(emptyDraft(testProjectId)),
       );
-      await act(async () =>
-        renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) }),
-      );
+      let result: ReturnType<typeof renderLoader> | undefined;
+      await act(async () => {
+        result = renderLoader({ useWebViewState: makeWebViewState({ activeProject: seeded }) });
+      });
+      const updateWebViewDefinition = result?.updateWebViewDefinition;
 
+      // Dirty the draft so the unsaved marker appears, then attempt the doomed Save.
       act(() => {
         capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
       });
+      expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
+
+      updateWebViewDefinition?.mockClear();
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-active-project-updated',
         '2026-01-01T00:00:00Z',
       );
+      // Nothing was persisted, so the draft must stay dirty: the marker is never cleared.
+      expect(updateWebViewDefinition).not.toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
 
     it('marks the draft synced after a successful Save, clearing the tab unsaved marker', async () => {

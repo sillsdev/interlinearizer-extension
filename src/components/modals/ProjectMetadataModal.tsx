@@ -54,11 +54,6 @@ type ProjectMetadataModalProps = Readonly<{
     name?: string;
     description?: string;
     analysisLanguages: string[];
-    /**
-     * The server-refreshed modification timestamp, when the backend returned it. Threaded through
-     * so the caller's cached `activeProject` reflects the new Modified time immediately rather than
-     * keeping the pre-save value.
-     */
     updatedAt?: string;
   }) => void;
   /** Optional callback invoked with the deleted project ID after deletion. */
@@ -132,19 +127,19 @@ export function ProjectMetadataModal({
             targetProjectId,
           );
           if (!updatedProjectJson) return;
-          // The command returns the saved project JSON with a refreshed `updatedAt`; parse it out so
-          // the caller's cached copy shows the new Modified time. Falls back to omitting it if the
-          // payload is unexpectedly shaped rather than surfacing a parse error to the user.
+          // Parse the refreshed `updatedAt` out of the returned project so the caller's cached copy
+          // shows the new Modified time; omit it defensively if the payload is unexpectedly shaped.
           const parsed: unknown = JSON.parse(updatedProjectJson);
-          const refreshedUpdatedAt =
+          const rawUpdatedAt =
             parsed && typeof parsed === 'object' && 'updatedAt' in parsed
               ? parsed.updatedAt
               : undefined;
+          const refreshedUpdatedAt = typeof rawUpdatedAt === 'string' ? rawUpdatedAt : undefined;
           onProjectSaved?.({
             name: newName,
             description: newDescription,
             analysisLanguages: parsedLanguages,
-            ...(typeof refreshedUpdatedAt === 'string' && { updatedAt: refreshedUpdatedAt }),
+            ...(refreshedUpdatedAt !== undefined && { updatedAt: refreshedUpdatedAt }),
           });
           onClose();
         } catch (e) {

@@ -117,10 +117,8 @@ export function SelectInterlinearProjectModal({
           'Interlinearizer: skipped malformed project entries',
           parsed.length - valid.length,
         );
-      // Most-recently-modified first so the project the user is likeliest to reopen sits at the top
-      // and the modified date reads as a meaningful distinguisher between otherwise-identical
-      // unnamed projects. Ordered by parsed epoch time so it stays locale-independent (no
-      // `localeCompare`/collator involvement).
+      // Most-recently-modified first so the project the user is likeliest to reopen sits at the top,
+      // and the modified date distinguishes otherwise-identical unnamed projects.
       const sorted = [...valid].sort((a, b) =>
         compareUpdatedAtDescending(a.updatedAt, b.updatedAt),
       );

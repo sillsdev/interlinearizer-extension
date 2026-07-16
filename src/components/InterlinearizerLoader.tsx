@@ -424,19 +424,22 @@ function InterlinearizerLoaderInner({
         // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
         JSON.stringify(snapshot.segmentation ?? null),
       );
-      // The command returns the saved project with a refreshed `updatedAt` (bumped by analysis and
-      // by segment-boundary changes alike). Fold it into the cached active project so the picker
-      // sort and the metadata modal's Modified time stay current without a reload. Extract just
-      // `updatedAt` defensively; leave the cache untouched if the payload is unexpectedly shaped.
-      const parsed: unknown = savedJson ? JSON.parse(savedJson) : undefined;
-      const refreshedUpdatedAt =
-        parsed && typeof parsed === 'object' && 'updatedAt' in parsed
-          ? parsed.updatedAt
-          : undefined;
-      if (typeof refreshedUpdatedAt === 'string') {
-        setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
+      // A successful save returns the saved project JSON; `undefined` means the project no longer
+      // exists, so nothing was persisted — leave the draft dirty rather than marking it clean.
+      if (savedJson) {
+        // Fold the response's refreshed `updatedAt` into the cached active project so the picker
+        // sort and the metadata modal's Modified time stay current without a reload; extract it
+        // defensively so an unexpectedly shaped payload leaves the cache untouched.
+        const parsed: unknown = JSON.parse(savedJson);
+        const refreshedUpdatedAt =
+          parsed && typeof parsed === 'object' && 'updatedAt' in parsed
+            ? parsed.updatedAt
+            : undefined;
+        if (typeof refreshedUpdatedAt === 'string') {
+          setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
+        }
+        markSynced(snapshot.analysis, snapshot.segmentation);
       }
-      markSynced(snapshot.analysis, snapshot.segmentation);
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
     } finally {

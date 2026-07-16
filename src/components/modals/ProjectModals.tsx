@@ -276,8 +276,6 @@ export default function ProjectModals({
         );
         const parsed: unknown = JSON.parse(createdJson);
         if (isInterlinearProjectSummary(parsed)) {
-          // `createProject` returns a full `InterlinearProject`; project it so its `analysis` is not
-          // cached into WebView state (see `toProjectSummary`).
           created = toProjectSummary(parsed);
         } else {
           await papi.notifications

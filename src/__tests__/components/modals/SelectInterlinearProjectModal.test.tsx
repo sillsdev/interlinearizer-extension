@@ -131,6 +131,25 @@ describe('SelectInterlinearProjectModal', () => {
     expect(screen.getByText('Unnamed')).toBeInTheDocument();
   });
 
+  it('sorts a project with a corrupted modified time last instead of dropping it', async () => {
+    // updatedAt is a non-date string: it passes the summary type guard (which only checks for a
+    // string) but Date.parse returns NaN, so the comparator must normalize it to 0 and sort it
+    // after the valid project rather than producing an undefined ordering.
+    const corrupted: InterlinearProjectSummary = {
+      ...STUB_PROJECT,
+      id: 'proj-uuid-corrupt',
+      name: 'Corrupted date',
+      updatedAt: 'not-a-real-date',
+    };
+    mockSendCommand.mockResolvedValue(JSON.stringify([corrupted, STUB_PROJECT_2]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+
+    const rows = screen.getAllByRole('button', { name: /french glosses|corrupted date/i });
+    expect(rows[0]).toHaveAccessibleName(/french glosses/i);
+    expect(rows[1]).toHaveAccessibleName(/corrupted date/i);
+  });
+
   it('shows the modified date in each row', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     render(<SelectInterlinearProjectModal {...defaultProps} />);

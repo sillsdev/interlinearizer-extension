@@ -20,6 +20,20 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 ];
 
 /**
+ * Parses an ISO 8601 timestamp to epoch milliseconds, treating an unparseable string as `0`. The
+ * summary type guard only checks that `updatedAt` is a string, so a corrupted value could otherwise
+ * yield `NaN` and make the sort comparator's result undefined; normalizing to `0` keeps ordering
+ * deterministic (corrupted entries sort last).
+ *
+ * @param value - The timestamp string to parse.
+ * @returns The parsed epoch milliseconds, or `0` when `value` is not a valid date.
+ */
+function parseUpdatedAt(value: string): number {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+/**
  * Compares two ISO 8601 timestamps for a descending (newest-first) sort by their parsed epoch
  * milliseconds, so ordering is locale-independent (unlike `localeCompare`, whose result can vary by
  * collator).
@@ -30,7 +44,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  *   when the two timestamps are equal.
  */
 function compareUpdatedAtDescending(a: string, b: string): number {
-  return Date.parse(b) - Date.parse(a);
+  return parseUpdatedAt(b) - parseUpdatedAt(a);
 }
 
 /**
@@ -119,10 +133,8 @@ export function SelectInterlinearProjectModal({
         );
       // Most-recently-modified first so the project the user is likeliest to reopen sits at the top,
       // and the modified date distinguishes otherwise-identical unnamed projects.
-      const sorted = [...valid].sort((a, b) =>
-        compareUpdatedAtDescending(a.updatedAt, b.updatedAt),
-      );
-      setProjects(sorted);
+      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
+      setProjects(valid);
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);
       await papi.notifications

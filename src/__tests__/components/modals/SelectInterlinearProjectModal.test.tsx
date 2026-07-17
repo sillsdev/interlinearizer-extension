@@ -104,9 +104,11 @@ describe('SelectInterlinearProjectModal', () => {
     await waitFor(() => expect(screen.getByText('en')).toBeInTheDocument());
   });
 
-  it('orders projects most-recently-modified first', async () => {
+  it("orders projects most-recently-modified first and shows each row's modified date", async () => {
     // STUB_PROJECT is older (Jan 15) than STUB_PROJECT_2 (Feb 1); returned oldest-first so the
-    // component must reorder to put the newer project on top.
+    // component must reorder to put the newer project on top. The sort edge cases (equal and
+    // corrupted timestamps) and the date format itself are covered directly in
+    // project-summary-format.test.ts; here we only confirm the modal wires the helpers in.
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
@@ -114,48 +116,13 @@ describe('SelectInterlinearProjectModal', () => {
     const rows = screen.getAllByRole('button', { name: /french glosses|unnamed/i });
     expect(rows[0]).toHaveAccessibleName(/french glosses/i);
     expect(rows[1]).toHaveAccessibleName(/unnamed/i);
-  });
 
-  it('keeps both projects listed when their modified times are equal', async () => {
-    // Two distinct projects sharing an identical updatedAt exercise the sort comparator's
-    // equal-timestamp branch; both must still render.
-    const sameTimeAsStub: InterlinearProjectSummary = {
-      ...STUB_PROJECT_2,
-      id: 'proj-uuid-3',
-      updatedAt: STUB_PROJECT.updatedAt,
-    };
-    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, sameTimeAsStub]));
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
-
-    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
-    expect(screen.getByText('Unnamed')).toBeInTheDocument();
-  });
-
-  it('sorts a project with a corrupted modified time last instead of dropping it', async () => {
-    // updatedAt is a non-date string: it passes the summary type guard (which only checks for a
-    // string) but Date.parse returns NaN, so the comparator must normalize it to 0 and sort it
-    // after the valid project rather than producing an undefined ordering.
-    const corrupted: InterlinearProjectSummary = {
-      ...STUB_PROJECT,
-      id: 'proj-uuid-corrupt',
-      name: 'Corrupted date',
-      updatedAt: 'not-a-real-date',
-    };
-    mockSendCommand.mockResolvedValue(JSON.stringify([corrupted, STUB_PROJECT_2]));
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
-    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
-
-    const rows = screen.getAllByRole('button', { name: /french glosses|corrupted date/i });
-    expect(rows[0]).toHaveAccessibleName(/french glosses/i);
-    expect(rows[1]).toHaveAccessibleName(/corrupted date/i);
-  });
-
-  it('shows the modified date in each row', async () => {
-    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
-    render(<SelectInterlinearProjectModal {...defaultProps} />);
-
-    const expectedDate = new Date(STUB_PROJECT.updatedAt).toLocaleString();
-    await waitFor(() => expect(screen.getByText(`Modified ${expectedDate}`)).toBeInTheDocument());
+    expect(
+      screen.getByText(`Modified ${new Date(STUB_PROJECT.updatedAt).toLocaleString()}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(`Modified ${new Date(STUB_PROJECT_2.updatedAt).toLocaleString()}`),
+    ).toBeInTheDocument();
   });
 
   it('calls onSelect with the project when a project row is clicked', async () => {

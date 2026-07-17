@@ -27,6 +27,8 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%': 'Keep project',
   '%interlinearizer_modal_saveAs_cancel%': 'Cancel',
   '%interlinearizer_modal_select_name_unnamed%': 'Unnamed',
+  '%interlinearizer_modal_select_active_badge%': 'Active',
+  '%interlinearizer_modal_select_modified_prefix%': 'Modified',
 };
 
 const STUB_PROJECT: InterlinearProjectSummary = {
@@ -112,6 +114,48 @@ describe('SaveAsProjectModal', () => {
     await waitFor(() =>
       expect(screen.getByText('No existing projects for this source.')).toBeInTheDocument(),
     );
+  });
+
+  it('shows the analysis writing system code and modified date in each overwrite row', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    expect(screen.getByText('en')).toBeInTheDocument();
+    const expectedDate = new Date(STUB_PROJECT.updatedAt).toLocaleString();
+    expect(screen.getByText(`Modified ${expectedDate}`)).toBeInTheDocument();
+  });
+
+  it('badges the overwrite target that matches activeProjectId', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} activeProjectId={STUB_PROJECT_2.id} />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    // The badge sits on the active project's row, not the other one.
+    const frenchRow = screen.getByText('French glosses').closest('li');
+    if (!frenchRow) throw new Error('expected the French glosses row to be present');
+    expect(within(frenchRow).getByText('Active')).toBeInTheDocument();
+  });
+
+  it('shows no active badge when no overwrite target matches activeProjectId', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} activeProjectId="not-in-list" />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    expect(screen.queryByText('Active')).not.toBeInTheDocument();
+  });
+
+  it('orders overwrite targets most-recently-modified first', async () => {
+    // STUB_PROJECT is older (Jan 15) than STUB_PROJECT_2 (Feb 1); returned oldest-first so the modal
+    // must reorder to put the newer project on top, matching the Select modal.
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
+    render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]).getByText('French glosses')).toBeInTheDocument();
+    expect(within(rows[1]).getByText('Unnamed')).toBeInTheDocument();
   });
 
   it('shows the inline overwrite confirm and calls onOverwrite with the chosen project', async () => {

@@ -6,11 +6,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi from '@papi/frontend';
 import type { DraftProject } from 'interlinearizer';
-import { makeWebViewState } from '../../test-helpers';
 import type { ModalState } from '../../../components/modals/ProjectModals';
 import ProjectModals from '../../../components/modals/ProjectModals';
-import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
 import { emptyAnalysis } from '../../../types/empty-factories';
+import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
+import { makeWebViewState } from '../../test-helpers';
 
 /** Minimal project summary used in tests. */
 const MOCK_PROJECT: InterlinearProjectSummary = {
@@ -145,17 +145,23 @@ jest.mock('../../../components/modals/CreateProjectModal', () => ({
 jest.mock('../../../components/modals/SaveAsProjectModal', () => ({
   __esModule: true,
   SaveAsProjectModal: ({
+    activeProjectId,
     defaultName,
     onSaveNew,
     onOverwrite,
     onClose,
   }: {
+    activeProjectId?: string;
     defaultName?: string;
     onSaveNew: (name?: string, description?: string) => void;
     onOverwrite: (p: InterlinearProjectSummary) => void;
     onClose: () => void;
   }) => (
-    <div data-testid="saveas-modal" data-default-name={defaultName}>
+    <div
+      data-active-project-id={activeProjectId}
+      data-default-name={defaultName}
+      data-testid="saveas-modal"
+    >
       <button
         type="button"
         data-testid="saveas-new"
@@ -348,6 +354,14 @@ describe('ProjectModals', () => {
       const modal = screen.getByTestId('saveas-modal');
       expect(modal).toBeInTheDocument();
       expect(modal).toHaveAttribute('data-default-name', 'Suggested Name');
+    });
+
+    it('forwards the active project id to the save-as modal so it can badge that overwrite target', () => {
+      render(<ProjectModals {...buildProps({ modal: 'saveAs', activeProject: MOCK_PROJECT })} />);
+      expect(screen.getByTestId('saveas-modal')).toHaveAttribute(
+        'data-active-project-id',
+        'proj-1',
+      );
     });
 
     it('renders the metadata modal when modal is metadata and activeProject is set', () => {

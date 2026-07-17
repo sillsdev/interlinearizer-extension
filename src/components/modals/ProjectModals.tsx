@@ -4,10 +4,8 @@ import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlineari
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
-import {
-  toProjectSummary,
-  type InterlinearProjectSummary,
-} from '../../types/interlinear-project-summary';
+import { toProjectSummary } from '../../types/interlinear-project-summary';
+import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import {
   isInterlinearProjectSummary,
   isSegmentationDelta,
@@ -555,6 +553,7 @@ export default function ProjectModals({
       {modal === 'saveAs' && (
         <SaveAsProjectModal
           sourceProjectId={projectId}
+          activeProjectId={activeProject?.id}
           defaultName={draftSnapshot?.suggestedName}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}

@@ -186,6 +186,7 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
   return {
     id,
     createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
     sourceProjectId: 'src-project',
     analysisLanguages: ['en'],
     analysis: emptyAnalysis(),

@@ -20,6 +20,7 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_metadata_analysis_language_label%': 'Analysis Language',
   '%interlinearizer_modal_metadata_language_placeholder%': 'e.g. en',
   '%interlinearizer_modal_metadata_created_label%': 'Created',
+  '%interlinearizer_modal_metadata_modified_label%': 'Modified',
   '%interlinearizer_modal_metadata_source_label%': 'Source Project',
   '%interlinearizer_modal_metadata_save%': 'Save',
   '%interlinearizer_modal_metadata_close%': 'Close',
@@ -35,6 +36,7 @@ const testProps = {
   sourceProjectId: 'src-project-id',
   analysisLanguages: ['en'],
   createdAt: '2026-01-15T10:30:00.000Z',
+  updatedAt: '2026-01-20T14:00:00.000Z',
   onClose: jest.fn(),
   onProjectSaved: jest.fn(),
   onProjectDeleted: jest.fn(),
@@ -70,6 +72,12 @@ describe('ProjectMetadataModal', () => {
   it('displays the analysis writing system in an editable input', () => {
     render(<ProjectMetadataModal {...testProps} />);
     expect(screen.getByLabelText(/analysis language/i)).toHaveValue('en');
+  });
+
+  it('displays the locale-formatted modified date', () => {
+    render(<ProjectMetadataModal {...testProps} />);
+    const expectedDate = new Date(testProps.updatedAt).toLocaleString();
+    expect(screen.getByText(expectedDate)).toBeInTheDocument();
   });
 
   it('calls onClose when the Close button is clicked', async () => {
@@ -144,6 +152,33 @@ describe('ProjectMetadataModal', () => {
         analysisLanguages: ['fr'],
       }),
     );
+  });
+
+  it('threads the server-refreshed updatedAt from the returned project into onProjectSaved', async () => {
+    mockSendCommand.mockResolvedValue(
+      JSON.stringify({ id: 'il-project-uuid', updatedAt: '2026-06-15T09:00:00.000Z' }),
+    );
+    const onProjectSaved = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() =>
+      expect(onProjectSaved).toHaveBeenCalledWith(
+        expect.objectContaining({ updatedAt: '2026-06-15T09:00:00.000Z' }),
+      ),
+    );
+  });
+
+  it('omits updatedAt from onProjectSaved when the returned project has none', async () => {
+    // The default mock returns '{}', so no updatedAt is present to thread through.
+    const onProjectSaved = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onProjectSaved={onProjectSaved} />);
+
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(onProjectSaved).toHaveBeenCalled());
+    expect(onProjectSaved.mock.calls[0][0]).not.toHaveProperty('updatedAt');
   });
 
   it('calls onClose after a successful save', async () => {

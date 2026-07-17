@@ -5,7 +5,9 @@ import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary } from '../../types/type-guards';
+import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
+import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
 /** Localized string keys used by {@link SelectInterlinearProjectModal}. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
@@ -16,6 +18,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_name_unnamed%',
   '%interlinearizer_modal_select_info_button_label%',
   '%interlinearizer_modal_select_active_badge%',
+  '%interlinearizer_modal_select_modified_prefix%',
 ];
 
 /**
@@ -89,6 +92,9 @@ export function SelectInterlinearProjectModal({
           'Interlinearizer: skipped malformed project entries',
           parsed.length - valid.length,
         );
+      // Most-recently-modified first so the project the user is likeliest to reopen sits at the top,
+      // and the modified date distinguishes otherwise-identical unnamed projects.
+      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
       setProjects(valid);
     } catch (e) {
       logger.error('Interlinearizer: failed to load projects for source', e);
@@ -126,25 +132,25 @@ export function SelectInterlinearProjectModal({
                 <button
                   type="button"
                   aria-current={isActive ? 'true' : undefined}
-                  className={`tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
+                  className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
                     isActive
                       ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
                       : 'tw:border-border tw:bg-muted/40 tw:hover:bg-muted/70'
                   }`}
                   onClick={() => onSelect(project)}
                 >
-                  <span className="tw:font-medium tw:text-foreground tw:truncate">
-                    {project.name ??
-                      localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
-                  </span>
-                  {isActive && (
-                    <span className="tw:shrink-0 tw:rounded tw:bg-primary tw:px-1.5 tw:py-0.5 tw:text-xs tw:font-medium tw:text-primary-foreground">
-                      {localizedStrings['%interlinearizer_modal_select_active_badge%']}
-                    </span>
-                  )}
-                  <span className="tw:font-mono tw:text-xs tw:text-muted-foreground tw:shrink-0 tw:ms-auto">
-                    {project.analysisLanguages.join(', ')}
-                  </span>
+                  <ProjectSummaryDetails
+                    activeBadgeLabel={
+                      localizedStrings['%interlinearizer_modal_select_active_badge%']
+                    }
+                    className="tw:flex-1"
+                    isActive={isActive}
+                    modifiedPrefix={
+                      localizedStrings['%interlinearizer_modal_select_modified_prefix%']
+                    }
+                    project={project}
+                    unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                  />
                 </button>
                 <Button
                   variant="ghost"

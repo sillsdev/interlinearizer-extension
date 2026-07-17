@@ -132,7 +132,7 @@ function InterlinearizerLoaderInner({
    * key; this component reads the value to decide which menu items to show and which analysis
    * language to use.
    */
-  const [activeProject] = useWebViewState<InterlinearProjectSummary | undefined>(
+  const [activeProject, setActiveProject] = useWebViewState<InterlinearProjectSummary | undefined>(
     'activeProject',
     undefined,
   );
@@ -415,7 +415,7 @@ function InterlinearizerLoaderInner({
       return;
     }
     try {
-      await papi.commands.sendCommand(
+      const savedJson = await papi.commands.sendCommand(
         'interlinearizer.saveAnalysis',
         activeProject.id,
         JSON.stringify(snapshot.analysis),
@@ -424,13 +424,28 @@ function InterlinearizerLoaderInner({
         // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
         JSON.stringify(snapshot.segmentation ?? null),
       );
-      markSynced(snapshot.analysis, snapshot.segmentation);
+      // A successful save returns the saved project JSON; `undefined` means the project no longer
+      // exists, so nothing was persisted — leave the draft dirty rather than marking it clean.
+      if (savedJson) {
+        // Fold the response's refreshed `updatedAt` into the cached active project so the picker
+        // sort and the metadata modal's Modified time stay current without a reload; extract it
+        // defensively so an unexpectedly shaped payload leaves the cache untouched.
+        const parsed: unknown = JSON.parse(savedJson);
+        const refreshedUpdatedAt =
+          parsed && typeof parsed === 'object' && 'updatedAt' in parsed
+            ? parsed.updatedAt
+            : undefined;
+        if (typeof refreshedUpdatedAt === 'string') {
+          setActiveProject({ ...activeProject, updatedAt: refreshedUpdatedAt });
+        }
+        markSynced(snapshot.analysis, snapshot.segmentation);
+      }
     } catch (e) {
       logger.error('Interlinearizer: failed to save draft to project', e);
     } finally {
       isSavingRef.current = false;
     }
-  }, [activeProject, getDraftSnapshot, markSynced, setModal]);
+  }, [activeProject, getDraftSnapshot, markSynced, setActiveProject, setModal]);
 
   /**
    * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses

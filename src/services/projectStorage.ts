@@ -141,7 +141,8 @@ async function readIds(token: ExecutionToken): Promise<string[]> {
 
 /**
  * Creates a new interlinearizer project with empty analysis data and writes it to extension
- * storage. Appends the project ID to the stored index.
+ * storage. Appends the project ID to the stored index. `createdAt` and `updatedAt` are set to the
+ * same creation timestamp.
  *
  * @param token - The execution token for storage access.
  * @param sourceProjectId - The Platform.Bible project ID of the source text.
@@ -166,9 +167,11 @@ export async function createProject(
   description?: string,
 ): Promise<InterlinearProject> {
   const id = crypto.randomUUID();
+  const now = new Date().toISOString();
   const project: InterlinearProject = {
     id,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
+    updatedAt: now,
     ...(name !== undefined && { name }),
     ...(description !== undefined && { description }),
     sourceProjectId,
@@ -262,7 +265,7 @@ export async function getProjectsForSource(
 
 /**
  * Replaces the analysis of an existing interlinearizer project, and optionally its custom segment
- * boundaries, in one atomic write.
+ * boundaries, in one atomic write. Refreshes `updatedAt` to the current time.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
@@ -283,7 +286,11 @@ export async function updateAnalysis(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
-    const updated: InterlinearProject = { ...project, analysis };
+    const updated: InterlinearProject = {
+      ...project,
+      analysis,
+      updatedAt: new Date().toISOString(),
+    };
     // eslint-disable-next-line no-null/no-null -- null is the explicit "clear stored boundaries" sentinel
     if (segmentation === null) delete updated.segmentation;
     else if (segmentation !== undefined) updated.segmentation = segmentation;
@@ -293,7 +300,8 @@ export async function updateAnalysis(
 }
 
 /**
- * Updates the metadata of an existing interlinearizer project.
+ * Updates the metadata of an existing interlinearizer project. Refreshes `updatedAt` to the current
+ * time.
  *
  * @param token - The execution token for storage access.
  * @param id - The interlinearizer project UUID to update.
@@ -319,7 +327,7 @@ export async function updateProjectMetadata(
   return enqueueProjectOp(id, async () => {
     const project = await getProject(token, id);
     if (!project) return undefined;
-    const updated: InterlinearProject = { ...project };
+    const updated: InterlinearProject = { ...project, updatedAt: new Date().toISOString() };
     if (name === undefined) {
       delete updated.name;
     } else {

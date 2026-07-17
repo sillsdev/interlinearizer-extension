@@ -4,6 +4,7 @@ import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlineari
 import { useCallback, useState } from 'react';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
+import { toProjectSummary } from '../../types/interlinear-project-summary';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import {
   isInterlinearProjectSummary,
@@ -152,12 +153,18 @@ export default function ProjectModals({
 
   /**
    * Called when the metadata modal saves changes. Updates `activeProject` state when the edited
-   * project is the currently active one.
+   * project is the currently active one, carrying through the server-refreshed `updatedAt` so the
+   * cached Modified time (shown in the picker and on modal reopen) stays current.
    *
-   * @param updated - The updated name, description, and analysisLanguages.
+   * @param updated - The updated name, description, analysisLanguages, and refreshed `updatedAt`.
    */
   const handleMetadataProjectSaved = useCallback(
-    (updated: { name?: string; description?: string; analysisLanguages: string[] }) => {
+    (updated: {
+      name?: string;
+      description?: string;
+      analysisLanguages: string[];
+      updatedAt?: string;
+    }) => {
       if (activeProject && resolvedMetadataProject?.id === activeProject.id) {
         setActiveProject({ ...activeProject, ...updated });
       }
@@ -267,7 +274,7 @@ export default function ProjectModals({
         );
         const parsed: unknown = JSON.parse(createdJson);
         if (isInterlinearProjectSummary(parsed)) {
-          created = parsed;
+          created = toProjectSummary(parsed);
         } else {
           await papi.notifications
             .send({ message: '%interlinearizer_error_create_project_failed%', severity: 'error' })
@@ -399,7 +406,7 @@ export default function ProjectModals({
           return;
         }
 
-        await papi.commands.sendCommand(
+        const savedJson = await papi.commands.sendCommand(
           'interlinearizer.saveAnalysis',
           created.id,
           JSON.stringify(snapshot.analysis),
@@ -408,7 +415,12 @@ export default function ProjectModals({
           // eslint-disable-next-line no-null/no-null -- "null" is the JSON sentinel that clears boundaries
           JSON.stringify(snapshot.segmentation ?? null),
         );
-        setActiveProject(created);
+        // `saveAnalysis` bumps `updatedAt` past the creation time it was born with, so prefer the
+        // project it returns; fall back to the freshly created object if the payload is malformed.
+        const parsedSaved: unknown = savedJson ? JSON.parse(savedJson) : undefined;
+        setActiveProject(
+          toProjectSummary(isInterlinearProjectSummary(parsedSaved) ? parsedSaved : created),
+        );
         markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {
@@ -448,7 +460,7 @@ export default function ProjectModals({
         // metadata stays consistent with the glosses just written (mirroring how Save As → New
         // carries the draft's config into the created project). The project's name and description
         // are intentionally preserved — overwriting keeps the target's identity.
-        await papi.commands.sendCommand(
+        const updatedJson = await papi.commands.sendCommand(
           'interlinearizer.updateProjectMetadata',
           project.id,
           project.name,
@@ -456,13 +468,21 @@ export default function ProjectModals({
           snapshot.analysisLanguages,
           snapshot.targetProjectId,
         );
-        setActiveProject({
-          ...project,
-          analysisLanguages: snapshot.analysisLanguages,
-          // Assign explicitly (rather than a conditional spread) so a target binding on the
-          // overwritten project is cleared when the draft has none, matching what was persisted.
-          targetProjectId: snapshot.targetProjectId,
-        });
+        // Prefer the server-returned project (it carries the refreshed `updatedAt`) as the new
+        // active project; fall back to the pre-save object with the draft's config if the payload is
+        // missing or malformed so the Save still completes.
+        const parsedUpdated: unknown = updatedJson ? JSON.parse(updatedJson) : undefined;
+        setActiveProject(
+          isInterlinearProjectSummary(parsedUpdated)
+            ? toProjectSummary(parsedUpdated)
+            : {
+                ...project,
+                analysisLanguages: snapshot.analysisLanguages,
+                // Assign explicitly (rather than a conditional spread) so a target binding on the
+                // overwritten project is cleared when the draft has none, matching what was persisted.
+                targetProjectId: snapshot.targetProjectId,
+              },
+        );
         markSynced(snapshot.analysis, snapshot.segmentation);
         setModal('none');
       } catch (e) {
@@ -533,6 +553,7 @@ export default function ProjectModals({
       {modal === 'saveAs' && (
         <SaveAsProjectModal
           sourceProjectId={projectId}
+          activeProjectId={activeProject?.id}
           defaultName={draftSnapshot?.suggestedName}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}
@@ -550,6 +571,7 @@ export default function ProjectModals({
           targetProjectId={resolvedMetadataProject.targetProjectId}
           analysisLanguages={resolvedMetadataProject.analysisLanguages}
           createdAt={resolvedMetadataProject.createdAt}
+          updatedAt={resolvedMetadataProject.updatedAt}
           onClose={handleMetadataClose}
           onProjectSaved={handleMetadataProjectSaved}
           onProjectDeleted={handleMetadataProjectDeleted}

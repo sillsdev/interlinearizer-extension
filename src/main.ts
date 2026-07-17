@@ -268,7 +268,9 @@ async function getInterlinearProject(interlinearProjectId: string): Promise<stri
  * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
  * @param segmentationJson - Optional JSON-stringified `SegmentationDelta` to persist, or `"null"`
  *   to clear stored boundaries. Omit to leave the project's existing boundaries unchanged.
- * @returns A promise that resolves when the analysis has been written to storage.
+ * @returns The saved `InterlinearProject` (carrying the refreshed `updatedAt`) as a JSON string, or
+ *   `undefined` if no project with the given ID exists. Returned so the WebView can refresh its
+ *   cached Modified time without a second read.
  * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
  *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
  *   second notification.
@@ -277,7 +279,7 @@ async function saveInterlinearAnalysis(
   interlinearProjectId: string,
   analysisJson: string,
   segmentationJson?: string,
-): Promise<void> {
+): Promise<string | undefined> {
   try {
     const analysis = JSON.parse(analysisJson);
     if (!isTextAnalysis(analysis)) {
@@ -299,12 +301,13 @@ async function saveInterlinearAnalysis(
         );
       }
     }
-    await projectStorage.updateAnalysis(
+    const updated = await projectStorage.updateAnalysis(
       executionToken,
       interlinearProjectId,
       analysis,
       segmentation,
     );
+    return updated ? JSON.stringify(updated) : undefined;
   } catch (e) {
     logger.error('Interlinearizer: failed to save analysis', e);
     await papi.notifications
@@ -580,7 +583,12 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
             schema: { type: 'string' },
           },
         ],
-        result: { name: 'return value', summary: 'void', schema: { type: 'null' } },
+        result: {
+          name: 'return value',
+          summary:
+            'JSON-stringified InterlinearProject with the refreshed updatedAt, or undefined if not found',
+          schema: { type: 'string' },
+        },
       },
     },
   );

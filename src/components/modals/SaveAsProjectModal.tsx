@@ -2,10 +2,12 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
 import { isInterlinearProjectSummary } from '../../types/type-guards';
-import useSubmitGuard from '../../hooks/useSubmitGuard';
+import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
+import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
 /** Localized string keys used by {@link SaveAsProjectModal}. */
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
@@ -24,6 +26,8 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_overwrite_confirm_cancel%',
   '%interlinearizer_modal_saveAs_cancel%',
   '%interlinearizer_modal_select_name_unnamed%',
+  '%interlinearizer_modal_select_active_badge%',
+  '%interlinearizer_modal_select_modified_prefix%',
 ];
 
 /**
@@ -35,6 +39,9 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * @param props - Component props
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets.
+ * @param props.activeProjectId - ID of the project currently open as the active Save target, if
+ *   any; the matching overwrite target is badged so the user can tell which project the draft is
+ *   currently working against.
  * @param props.defaultName - Name prefilled into the new-project field (the draft's suggested
  *   name).
  * @param props.defaultDescription - Description prefilled into the new-project field.
@@ -47,6 +54,7 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  */
 export function SaveAsProjectModal({
   sourceProjectId,
+  activeProjectId,
   defaultName,
   defaultDescription,
   onSaveNew,
@@ -54,6 +62,7 @@ export function SaveAsProjectModal({
   onClose,
 }: Readonly<{
   sourceProjectId: string;
+  activeProjectId?: string;
   defaultName?: string;
   defaultDescription?: string;
   onSaveNew: (name?: string, description?: string) => void | Promise<void>;
@@ -100,7 +109,11 @@ export function SaveAsProjectModal({
       /* v8 ignore next 2 -- backend always returns a JSON array; defensive guard */
       if (!Array.isArray(parsed))
         throw new TypeError('getProjectsForSource did not return an array');
-      setProjects(parsed.filter(isInterlinearProjectSummary));
+      const valid = parsed.filter(isInterlinearProjectSummary);
+      // Most-recently-modified first, matching the Select modal so the overwrite target the user is
+      // likeliest to want sits at the top and the modified date distinguishes unnamed projects.
+      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
+      setProjects(valid);
     } catch (e) {
       // Ignore a failure from a load that a newer one has superseded (mirrors the success-path stale
       // guard above) so a stale rejection cannot fire a spurious error notification.
@@ -203,13 +216,24 @@ export function SaveAsProjectModal({
               <li key={project.id} className="tw:flex tw:flex-col tw:gap-2">
                 <div className="tw:flex tw:items-center tw:gap-2">
                   <span
-                    className={`tw:flex-1 tw:flex tw:items-center tw:gap-2 tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
+                    className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-sm tw:min-w-0 ${
                       isConfirming
                         ? 'tw:border-destructive tw:bg-destructive/10'
                         : 'tw:border-border tw:bg-muted/40'
                     }`}
                   >
-                    <span className="tw:font-medium tw:truncate">{projectName}</span>
+                    <ProjectSummaryDetails
+                      project={project}
+                      isActive={project.id === activeProjectId}
+                      unnamedLabel={localizedStrings['%interlinearizer_modal_select_name_unnamed%']}
+                      activeBadgeLabel={
+                        localizedStrings['%interlinearizer_modal_select_active_badge%']
+                      }
+                      modifiedPrefix={
+                        localizedStrings['%interlinearizer_modal_select_modified_prefix%']
+                      }
+                      className="tw:flex-1"
+                    />
                   </span>
                   <Button
                     variant="secondary"

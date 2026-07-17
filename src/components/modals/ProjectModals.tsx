@@ -1,7 +1,7 @@
 import type { UseWebViewStateHook } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import { useCallback, useState } from 'react';
+import type { DraftProject, SegmentationDelta, TextAnalysis } from 'interlinearizer';
 import type { NewDraftConfig, OpenableProject } from '../../hooks/useDraftProject';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import {
@@ -555,6 +555,7 @@ export default function ProjectModals({
       {modal === 'saveAs' && (
         <SaveAsProjectModal
           sourceProjectId={projectId}
+          activeProjectId={activeProject?.id}
           defaultName={draftSnapshot?.suggestedName}
           defaultDescription={draftSnapshot?.suggestedDescription}
           onSaveNew={handleSaveAsNew}

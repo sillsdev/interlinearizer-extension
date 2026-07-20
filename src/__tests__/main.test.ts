@@ -223,6 +223,7 @@ describe('main', () => {
     __mockOnDidOpenWebView.mockReturnValue(jest.fn());
     __mockOnDidCloseWebView.mockReturnValue(jest.fn());
     __mockNotificationsSend.mockResolvedValue('mock-notification-id');
+    jest.mocked(projectStorage.sweepPendingCleanup).mockResolvedValue(0);
   });
 
   describe('activate', () => {
@@ -232,6 +233,33 @@ describe('main', () => {
 
       const raw: unknown = jest.mocked(__mockRegisterWebViewProvider).mock.calls[0]?.[1];
       expect(isWebViewProvider(raw)).toBe(true);
+    });
+
+    it('runs the pending-cleanup sweep with the execution token', async () => {
+      const context = createTestActivationContext();
+
+      await activate(context);
+
+      expect(jest.mocked(projectStorage.sweepPendingCleanup)).toHaveBeenCalledWith(
+        context.executionToken,
+      );
+    });
+
+    it('logs but does not fail activation when the pending-cleanup sweep rejects', async () => {
+      jest
+        .mocked(projectStorage.sweepPendingCleanup)
+        .mockRejectedValue(new Error('sweep exploded'));
+      const context = createTestActivationContext();
+
+      await expect(activate(context)).resolves.toBeUndefined();
+
+      // The rejection resolves on a later microtask than activate()'s synchronous body, so let the
+      // fire-and-forget catch handler run before asserting it logged.
+      await Promise.resolve();
+      expect(__mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('pending-cleanup sweep failed'),
+        expect.any(Error),
+      );
     });
 
     it('registers the interlinearizer.openForWebView command with a callable handler', async () => {

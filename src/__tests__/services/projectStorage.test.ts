@@ -860,6 +860,18 @@ describe('projectStorage', () => {
       await expect(listProjects(token)).rejects.toThrow(SyntaxError);
     });
 
+    it('throws a corruption error when the projectIds index is not an array', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify({ not: 'an array' }));
+
+      await expect(listProjects(token)).rejects.toThrow(/index is corrupt/);
+    });
+
+    it('throws a corruption error when the projectIds index holds non-strings', async () => {
+      __mockReadUserData.mockResolvedValue(JSON.stringify([1, 2, 3]));
+
+      await expect(listProjects(token)).rejects.toThrow(/index is corrupt/);
+    });
+
     it('skips a project whose storage value is corrupt JSON and logs the error', async () => {
       __mockReadUserData
         .mockResolvedValueOnce(JSON.stringify(['abc']))

@@ -182,9 +182,20 @@ function isNotFound(e: unknown): boolean {
 }
 
 /**
- * Reads and JSON-parses the string-array stored at `key`, treating a never-written key as an empty
- * array. Shared by {@link readIds} and {@link readPendingCleanup}. Does not validate the parsed
- * shape; callers that must tolerate corruption layer their own validation on top.
+ * Type guard for a JSON-parsed value that must be an array of strings — the shape of both the
+ * `projectIds` index and the `pendingCleanup` set.
+ *
+ * @param value - The parsed value to test.
+ * @returns Whether `value` is an array whose every element is a string.
+ */
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((id) => typeof id === 'string');
+}
+
+/**
+ * Reads and JSON-parses the value stored at `key`, treating a never-written key as an empty array.
+ * Shared by {@link readIds} and {@link readPendingCleanup}. Returns the raw parsed value as `unknown`
+ * and does not validate that it is an array of strings; each caller validates the shape itself.
  *
  * @param token - The execution token for storage access.
  * @param key - The storage key to read.
@@ -193,7 +204,7 @@ function isNotFound(e: unknown): boolean {
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
  *   I/O error).
  */
-async function readJsonArray(token: ExecutionToken, key: string): Promise<string[]> {
+async function readJsonArray(token: ExecutionToken, key: string): Promise<unknown> {
   try {
     return JSON.parse(await papi.storage.readUserData(token, key));
   } catch (e) {
@@ -203,17 +214,29 @@ async function readJsonArray(token: ExecutionToken, key: string): Promise<string
 }
 
 /**
- * Reads the stored list of project IDs.
+ * Reads the stored list of project IDs. Unlike the pending-cleanup set, a corrupt index is never
+ * silently reset to an empty array — that would drop every project's id at once and orphan all
+ * their records — so a stored value that is not an array of strings throws a clear corruption error
+ * rather than being coerced into subtle downstream failures (e.g. spreading a string into
+ * characters in {@link createProject}, or calling `.filter` on a non-array in
+ * {@link deleteProject}).
  *
  * @param token - The execution token for storage access.
  * @returns The stored project ID array, or an empty array if `projectIds` has never been written
  *   (ENOENT).
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the parsed `projectIds` value is not an array of strings (a corrupt index).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
  *   I/O error).
  */
-function readIds(token: ExecutionToken): Promise<string[]> {
-  return readJsonArray(token, PROJECT_IDS_KEY);
+async function readIds(token: ExecutionToken): Promise<string[]> {
+  const parsed = await readJsonArray(token, PROJECT_IDS_KEY);
+  if (!isStringArray(parsed)) {
+    throw new Error(
+      `Interlinearizer: '${PROJECT_IDS_KEY}' index is corrupt (expected an array of strings)`,
+    );
+  }
+  return parsed;
 }
 
 /**
@@ -253,7 +276,7 @@ async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanup
     }
     throw e;
   }
-  if (!Array.isArray(parsed) || !parsed.every((id) => typeof id === 'string')) {
+  if (!isStringArray(parsed)) {
     logger.warn(
       'Interlinearizer: pending-cleanup set is not an array of strings; resetting to empty',
     );
@@ -317,6 +340,12 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
       if (corrupt) await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([]));
       return 0;
     }
+    // Read the index directly rather than through enqueueIndexOp: this snapshot is consulted only
+    // to protect live projects from deletion, and both directions of a stale read are safe. A read
+    // that misses a just-created project is harmless (a live project's id is never in the
+    // pending-cleanup work set), and a read that still shows a since-deleted project only makes the
+    // sweep conservatively skip a deletion. A stale snapshot can never make the sweep delete a
+    // record it should keep, so serializing this read would add contention for no benefit.
     const indexed = new Set(await readIds(token));
     // For each id, decide whether to keep it in the set and whether its record was cleaned.
     const outcomes = await Promise.all(

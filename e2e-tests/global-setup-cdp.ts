@@ -310,8 +310,6 @@ function clearStaleOwnershipMarkers(): void {
  * @returns Nothing.
  */
 function seedFirstRunComplete(): void {
-  // A leftover backup means a prior launched run seeded but never restored; recover its original
-  // first so we don't back up (and later "restore" to) an already-seeded file.
   restoreSeededSettings();
 
   let existing: Record<string, unknown> = {};

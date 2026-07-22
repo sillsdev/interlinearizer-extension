@@ -58,9 +58,6 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
     }
   }
 
-  // Restore the dev-appdata settings this run seeded (see seedFirstRunComplete), now that the app is
-  // dead so its shutdown writes can't clobber the restored file. No-op if nothing was seeded (e.g.
-  // the warm-instance reuse path).
   restoreSeededSettings();
 
   // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.

@@ -109,10 +109,6 @@
   @apply tw:text-destructive;
 }
 
-@utility icon-button {
-  @apply tw:shrink-0 tw:rounded tw:p-1 tw:text-foreground tw:disabled:opacity-30 tw:hover:bg-muted/50;
-}
-
 @utility link-slot {
   @apply tw:inline-flex tw:flex-col tw:items-center;
 }
@@ -127,14 +123,6 @@
 
 @utility modal-error-box {
   @apply tw:rounded tw:border tw:border-destructive/40 tw:bg-destructive/5;
-}
-
-@utility modal-form-input {
-  @apply tw:w-full tw:rounded tw:border tw:border-border tw:bg-muted tw:text-foreground tw:px-3 tw:py-1.5 tw:text-sm;
-}
-
-@utility modal-form-label {
-  @apply tw:block tw:text-sm tw:mb-1;
 }
 
 @utility modal-metadata-input {
@@ -207,18 +195,6 @@
 
 @utility phrase-token-row {
   @apply tw:inline-flex tw:items-start tw:gap-1;
-}
-
-@utility pill-btn-destructive {
-  @apply tw:rounded tw:border tw:border-destructive tw:bg-destructive tw:px-2 tw:py-0.5 tw:text-destructive-foreground tw:hover:opacity-90;
-}
-
-@utility pill-btn-primary {
-  @apply tw:rounded tw:border tw:border-ring tw:bg-ring tw:px-2 tw:py-0.5 tw:text-background tw:hover:opacity-90;
-}
-
-@utility pill-btn-secondary {
-  @apply tw:rounded tw:border tw:border-border tw:bg-muted tw:px-2 tw:py-0.5 tw:text-foreground tw:hover:bg-muted/80;
 }
 
 @utility section-label {

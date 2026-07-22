@@ -1,4 +1,5 @@
 /** @file Confirmation controls shown in the confirm bar for unlinking (deleting) a phrase. */
+import { Button } from 'platform-bible-react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseDispatch } from '../AnalysisStore';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -42,22 +43,24 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
   return (
     <div className="tw:confirm-controls" data-testid="unlink-confirm">
       <span>Unlink this phrase?</span>
-      <button
-        className="tw:pill-btn-destructive"
+      <Button
+        variant="destructive"
+        size="sm"
         data-testid="unlink-confirm-yes"
         onClick={handleConfirm}
         type="button"
       >
         Unlink
-      </button>
-      <button
-        className="tw:pill-btn-secondary"
+      </Button>
+      <Button
+        variant="secondary"
+        size="sm"
         data-testid="unlink-confirm-cancel"
         onClick={handleCancel}
         type="button"
       >
         Cancel
-      </button>
+      </Button>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import type { Book, Token } from 'interlinearizer';
+import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
@@ -966,16 +967,17 @@ export default function ContinuousView({
   return (
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
       {/* Previous navigation arrow */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label="Previous token"
-        className="tw:icon-button"
         disabled={atStart}
         tabIndex={-1}
         onClick={stepPrev}
         type="button"
       >
         <span aria-hidden="true">{isRtl ? '\u2192' : '\u2190'}</span>
-      </button>
+      </Button>
 
       {/* Scrollable token strip */}
       <div
@@ -1050,16 +1052,17 @@ export default function ContinuousView({
       </div>
 
       {/* Next navigation arrow */}
-      <button
+      <Button
+        variant="ghost"
+        size="icon-sm"
         aria-label="Next token"
-        className="tw:icon-button"
         disabled={atEnd}
         tabIndex={-1}
         onClick={stepNext}
         type="button"
       >
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
-      </button>
+      </Button>
     </div>
   );
 }

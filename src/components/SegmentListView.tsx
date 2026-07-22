@@ -2,7 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Canon, type SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token } from 'interlinearizer';
 import { LocateFixed, Merge } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
@@ -64,9 +64,14 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
       />
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          {/* Full-area hit strip: the layout classes (absolute inset-0, h-auto, no padding) override
+              the Button size box so it fills the gap, and hover:bg-transparent suppresses the ghost
+              variant's hover band — this control deliberately never paints over the rail (see the
+              handle's group-hover styling below). */}
+          <Button
+            variant="ghost"
             aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
-            className="tw:absolute tw:inset-0 tw:flex tw:items-center tw:justify-center tw:rounded"
+            className="tw:absolute tw:inset-0 tw:flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0 tw:hover:bg-transparent"
             data-testid="segment-merge-btn"
             tabIndex={-1}
             type="button"
@@ -79,7 +84,7 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
             <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
               <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
             </span>
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent>
           {altHeld
@@ -373,15 +378,16 @@ export default function SegmentListView({
           <span className="tw:text-sm tw:font-semibold tw:text-foreground">
             {pinnedChapter !== undefined ? `${bookName} ${pinnedChapter}` : ''}
           </span>
-          <button
+          <Button
+            variant="ghost"
+            size="icon-sm"
             aria-label="Scroll to active verse"
-            className="tw:rounded tw:p-1 tw:text-foreground tw:hover:bg-muted/50"
             tabIndex={-1}
             onClick={recenterOnActive}
             type="button"
           >
             <LocateFixed className="tw:h-4 tw:w-4" />
-          </button>
+          </Button>
         </div>
       )}
 

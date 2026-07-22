@@ -5,7 +5,7 @@
  *   lives separately in {@link ./MorphemeBox}.
  */
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { PopoverContent } from 'platform-bible-react';
+import { Button, PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 
@@ -195,8 +195,10 @@ export function MorphemeBreakdownPopover({
       />
       <div className="tw:flex tw:justify-end tw:gap-1.5">
         {onDelete && (
-          <button
-            className="tw:me-auto tw:rounded tw:border tw:border-destructive tw:px-3 tw:py-0.5 tw:text-xs tw:text-destructive tw:hover:bg-destructive/10"
+          <Button
+            variant="outline"
+            size="sm"
+            className="tw:me-auto tw:text-destructive"
             type="button"
             onClick={() => {
               onDelete();
@@ -204,23 +206,14 @@ export function MorphemeBreakdownPopover({
             }}
           >
             {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
-          </button>
+          </Button>
         )}
-        <button
-          className="tw:rounded tw:border tw:border-border tw:px-3 tw:py-0.5 tw:text-xs tw:text-muted-foreground tw:hover:bg-accent"
-          type="button"
-          onClick={onClose}
-        >
+        <Button variant="outline" size="sm" type="button" onClick={onClose}>
           {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
-        </button>
-        <button
-          className="tw:rounded tw:bg-primary tw:px-3 tw:py-0.5 tw:text-xs tw:text-primary-foreground tw:hover:bg-primary/90 tw:disabled:opacity-50 tw:disabled:pointer-events-none"
-          disabled={isMeaningless}
-          type="button"
-          onClick={handleSave}
-        >
+        </Button>
+        <Button size="sm" disabled={isMeaningless} type="button" onClick={handleSave}>
           {localizedStrings['%interlinearizer_morphemeEditor_done%']}
-        </button>
+        </Button>
       </div>
     </PopoverContent>
   );

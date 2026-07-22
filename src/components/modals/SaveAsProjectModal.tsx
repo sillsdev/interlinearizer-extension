@@ -1,6 +1,6 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button } from 'platform-bible-react';
+import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
@@ -170,22 +170,22 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
       </h3>
-      <label className="tw:modal-form-label" htmlFor="save-as-name">
+      <Label htmlFor="save-as-name">
         {localizedStrings['%interlinearizer_modal_create_name_label%']}
-      </label>
-      <input
+      </Label>
+      <Input
         id="save-as-name"
-        className="tw:modal-form-input tw:mb-3"
+        className="tw:mb-3 tw:w-full"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
       />
-      <label className="tw:modal-form-label" htmlFor="save-as-description">
+      <Label htmlFor="save-as-description">
         {localizedStrings['%interlinearizer_modal_create_description_label%']}
-      </label>
-      <textarea
+      </Label>
+      <Textarea
         id="save-as-description"
-        className="tw:modal-form-input tw:mb-3 tw:resize-none"
+        className="tw:mb-3 tw:resize-none"
         rows={2}
         value={description}
         onChange={(e) => setDescription(e.target.value)}

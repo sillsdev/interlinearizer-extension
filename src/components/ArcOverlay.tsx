@@ -1,5 +1,6 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
+import { Button } from 'platform-bible-react';
 import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
@@ -321,10 +322,11 @@ export function ArcOverlay({
             );
             const willCreateFreeTokens = arcSplitFreeRefs !== undefined;
             return (
-              <button
+              <Button
                 key={`split-arc-${phraseId}-${d}`}
+                variant="ghost"
                 aria-label="Split phrase here"
-                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
                 style={{ left: midX, top: midY }}
                 tabIndex={-1}
@@ -353,7 +355,7 @@ export function ArcOverlay({
                 }}
               >
                 <Link2Off className="tw:h-2.5 tw:w-2.5" />
-              </button>
+              </Button>
             );
           })}
     </>

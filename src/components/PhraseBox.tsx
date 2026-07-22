@@ -1,6 +1,7 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
+import { Button } from 'platform-bible-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
 import {
@@ -349,26 +350,30 @@ export function PhraseBox({
             className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:phrase-hovered tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
           >
-            <button
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Edit phrase"
-              className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
+              className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
               data-testid="edit-phrase-btn"
               tabIndex={-1}
               onClick={handleEditClick}
               type="button"
             >
               ✎
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
               aria-label="Unlink phrase"
-              className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-destructive"
+              className="tw:text-muted-foreground tw:hover:text-destructive"
               data-testid="unlink-phrase-btn"
               tabIndex={-1}
               onClick={handleUnlinkClick}
               type="button"
             >
               <Trash2 className="tw:h-3 tw:w-3" />
-            </button>
+            </Button>
           </span>
         )}
         <div

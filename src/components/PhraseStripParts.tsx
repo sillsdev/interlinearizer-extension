@@ -1,7 +1,7 @@
 /** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
 import type { Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
 import MemoizedPhraseBox from './PhraseBox';
@@ -47,16 +47,17 @@ function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonPr
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
+        <Button
+          variant="ghost"
           aria-label={label}
-          className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
+          className="tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
           data-testid={testId}
           tabIndex={-1}
           type="button"
           onClick={action}
         >
           {icon}
-        </button>
+        </Button>
       </TooltipTrigger>
       <TooltipContent>{title}</TooltipContent>
     </Tooltip>

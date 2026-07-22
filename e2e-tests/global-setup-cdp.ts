@@ -6,6 +6,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  DEV_APPDATA_SETTINGS_PATH,
   waitForDockTabTitlesResolved,
   waitForServiceHostsRegistered,
   withFatalStartupTripwire,
@@ -36,6 +37,15 @@ export const CDP_USER_DATA_FILE = path.join(__dirname, '.cdp-app.user-data-dir')
  * crash leaves a diagnosable log instead of only an opaque WebSocket-port timeout.
  */
 export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
+
+/**
+ * File the pre-launch dev-appdata settings backup is written to (kept alongside the other `.cdp-*`
+ * markers) so teardown can restore the developer's original settings after the run.
+ */
+const CDP_SETTINGS_BACKUP_FILE = path.join(__dirname, '.cdp-settings-backup');
+
+/** Marker stored in {@link CDP_SETTINGS_BACKUP_FILE} when no settings file existed before seeding. */
+const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
 
 /** How long to wait for the launched app's WebSocket / CDP port before failing setup. */
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
@@ -117,6 +127,12 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Launching Platform.Bible (CDP) from: ${coreDir}`);
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
+
+  // Seed platform.firstRunComplete before launch so paranext-core's first-run wizard overlay does
+  // not gate the app (same seeding the smoke tier does in fixtures/app.fixture.ts). The overlay is a
+  // full-screen modal Dialog that intercepts pointer events, which would block every feature test.
+  // Backed up and restored by globalTeardownCdp after the launched app is killed.
+  seedFirstRunComplete();
 
   // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
   // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
@@ -262,14 +278,18 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
 }
 
 /**
- * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present.
- * Called from the warm-instance reuse path, where this run owns none of the resources those markers
- * describe, so a stale marker from a prior launched run would make {@link globalTeardownCdp} act on
- * foreign resources. Best-effort: each removal is guarded.
+ * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present and
+ * restore any settings a prior launched run seeded. Called from the warm-instance reuse path, where
+ * this run owns none of the resources those markers describe, so a stale marker from a prior
+ * launched run would make {@link globalTeardownCdp} act on foreign resources (and a stale settings
+ * seed would linger in the developer's dev-appdata). Best-effort: each removal is guarded.
  *
  * @returns Nothing.
  */
 function clearStaleOwnershipMarkers(): void {
+  // Undo any seed a prior launched run left behind before it crashed, so the developer's warm
+  // instance isn't reused with lingering test settings on disk.
+  restoreSeededSettings();
   [CDP_PID_FILE, CDP_USER_DATA_FILE].forEach((markerFile) => {
     try {
       fs.rmSync(markerFile, { force: true });
@@ -277,6 +297,64 @@ function clearStaleOwnershipMarkers(): void {
       console.warn(`Could not remove stale CDP marker ${markerFile}: ${error}`);
     }
   });
+}
+
+/**
+ * Back up paranext-core's dev-appdata settings file and seed `platform.firstRunComplete: true` into
+ * it before launching the app, so the first-run wizard overlay does not gate the launched instance
+ * (the same seeding the smoke tier does in fixtures/app.fixture.ts). The original file is saved to
+ * {@link CDP_SETTINGS_BACKUP_FILE} for {@link restoreSeededSettings} to put back in teardown.
+ * Recovers from a leftover backup first (a prior run that crashed before restoring) so the true
+ * original — not an already-seeded file — is what gets backed up.
+ *
+ * @returns Nothing.
+ */
+function seedFirstRunComplete(): void {
+  // A leftover backup means a prior launched run seeded but never restored; recover its original
+  // first so we don't back up (and later "restore" to) an already-seeded file.
+  restoreSeededSettings();
+
+  let existing: Record<string, unknown> = {};
+  if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
+    const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
+    fs.writeFileSync(CDP_SETTINGS_BACKUP_FILE, original);
+    try {
+      const parsed: unknown = JSON.parse(original);
+      // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
+      // file falls back to just the override.
+      if (parsed && typeof parsed === 'object') existing = { ...parsed };
+    } catch {
+      // Corrupt file — overwrite with just the override.
+    }
+  } else {
+    // Record absence so teardown deletes the file this run creates rather than leaving it behind.
+    fs.writeFileSync(CDP_SETTINGS_BACKUP_FILE, SETTINGS_ABSENT_SENTINEL);
+  }
+  fs.mkdirSync(path.dirname(DEV_APPDATA_SETTINGS_PATH), { recursive: true });
+  fs.writeFileSync(
+    DEV_APPDATA_SETTINGS_PATH,
+    JSON.stringify({ ...existing, 'platform.firstRunComplete': true }),
+  );
+}
+
+/**
+ * Undo {@link seedFirstRunComplete}: restore the dev-appdata settings file from
+ * {@link CDP_SETTINGS_BACKUP_FILE} (or delete it if the backup marks that no settings file existed
+ * before seeding), then remove the backup marker. A no-op when no backup exists. Best-effort:
+ * guarded so a settings-restore failure never aborts teardown.
+ *
+ * @returns Nothing.
+ */
+export function restoreSeededSettings(): void {
+  if (!fs.existsSync(CDP_SETTINGS_BACKUP_FILE)) return;
+  try {
+    const backup = fs.readFileSync(CDP_SETTINGS_BACKUP_FILE, 'utf-8');
+    if (backup === SETTINGS_ABSENT_SENTINEL) fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
+    else fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, backup);
+    fs.rmSync(CDP_SETTINGS_BACKUP_FILE, { force: true });
+  } catch (error) {
+    console.warn(`Could not restore dev-appdata settings after CDP run: ${error}`);
+  }
 }
 
 /**

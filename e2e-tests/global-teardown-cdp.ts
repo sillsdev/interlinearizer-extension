@@ -1,7 +1,7 @@
 // Teardown for the self-launching CDP (feature-test) config.
 import type { FullConfig } from '@playwright/test';
 import fs from 'fs';
-import { CDP_PID_FILE, CDP_USER_DATA_FILE } from './global-setup-cdp';
+import { CDP_PID_FILE, CDP_USER_DATA_FILE, restoreSeededSettings } from './global-setup-cdp';
 import globalTeardown, { killProcessFromPidFile } from './global-teardown';
 
 /**
@@ -57,6 +57,11 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
       console.warn(`Could not remove CDP user-data marker ${CDP_USER_DATA_FILE}: ${e}`);
     }
   }
+
+  // Restore the dev-appdata settings this run seeded (see seedFirstRunComplete), now that the app is
+  // dead so its shutdown writes can't clobber the restored file. No-op if nothing was seeded (e.g.
+  // the warm-instance reuse path).
+  restoreSeededSettings();
 
   // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.
   await globalTeardown(config);

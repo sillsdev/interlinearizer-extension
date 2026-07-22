@@ -139,6 +139,53 @@ async function waitForWebSocketReady(port: number, timeout: number): Promise<voi
 }
 
 /**
+ * Path to paranext-core's shared dev-appdata settings file. In development mode Platform.Bible
+ * reads this file at startup to restore settings, so writing it before launching Electron is how
+ * E2E tests pre-configure settings (e.g. suppressing the first-run wizard). Resolved relative to
+ * the sibling `paranext-core` checkout the app is launched from.
+ */
+export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
+  __dirname,
+  '../../../paranext-core/dev-appdata/data/settings.json',
+);
+
+/**
+ * Merge the given key-value pairs into paranext-core's dev-appdata settings file before launching
+ * the app, preserving any existing settings. Must be called BEFORE launching Electron so the app
+ * reads the overrides at startup.
+ *
+ * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ *   }`).
+ * @returns A restore function that rewrites the file to its exact pre-call contents (or deletes it
+ *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
+ *   not permanently replaced by test values.
+ */
+export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
+  const settingsDir = path.dirname(DEV_APPDATA_SETTINGS_PATH);
+  let originalContents: string | undefined;
+  let existing: Record<string, unknown> = {};
+  if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
+    originalContents = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
+    try {
+      const parsed: unknown = JSON.parse(originalContents);
+      // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
+      // file falls back to just the overrides.
+      if (parsed && typeof parsed === 'object') existing = { ...parsed };
+    } catch {
+      // Corrupt file — start fresh with only the overrides.
+    }
+  }
+  fs.mkdirSync(settingsDir, { recursive: true });
+  fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, JSON.stringify({ ...existing, ...overrides }));
+
+  return () => {
+    if (originalContents !== undefined)
+      fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, originalContents);
+    else fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
+  };
+}
+
+/**
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
  * `--extensions`.
  *

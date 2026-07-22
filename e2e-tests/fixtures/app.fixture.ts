@@ -8,6 +8,7 @@ import {
 } from '@playwright/test';
 import {
   launchElectronWithExtension,
+  preConfigureSettings,
   teardownElectronApp,
   ElectronAppContext,
   PROCESS_READY_TIMEOUT,
@@ -36,12 +37,20 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
   electronApp: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
+      // Seed platform.firstRunComplete before launch so paranext-core's first-run wizard overlay
+      // does not gate the app on a fresh profile. The wizard is a full-screen modal Dialog that
+      // aria-hides the rest of the app and intercepts pointer events (blocking the toolbar/menu
+      // clicks these smoke tests drive), so tests must start past it. Restored after the app closes.
+      const restoreSettings = preConfigureSettings({ 'platform.firstRunComplete': true });
       const ctx: ElectronAppContext = await launchElectronWithExtension();
 
       await use(ctx.electronApp);
 
       console.log('[teardown] Worker-scoped app teardown starting...');
       await teardownElectronApp(ctx);
+      // Restore only after the app has fully closed so its shutdown writes cannot clobber the
+      // restored contents.
+      restoreSettings();
       console.log('[teardown] Worker-scoped app teardown complete — worker will exit now');
     },
     { scope: 'worker' },

@@ -150,6 +150,22 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
 );
 
 /**
+ * Settings overrides seeded before every e2e launch, both tiers (see {@link backupAndSeedSettings}
+ * callers in fixtures/app.fixture.ts and global-setup-cdp.ts). Suppresses the first-run wizard
+ * overlay and forces Power interface mode.
+ *
+ * Power mode is a stand-in, not a permanent choice: paranext-core's Simple mode (the default)
+ * currently hides the Home/Editor columns' tab bars entirely (headless) and its Resources column
+ * ships default tabs a bare e2e profile can never resolve real titles for, which breaks both
+ * `.dock-tab` clicks and the strict cold-start readiness gate. Forcing Power mode sidesteps both
+ * until this suite adds real Simple-mode support.
+ */
+export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
+  'platform.firstRunComplete': true,
+  'platform.interfaceMode': 'power',
+};
+
+/**
  * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
  * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers rather than one file per
  * tier: there is only one `settings.json` to protect, and a single shared backup means a stale
@@ -807,9 +823,10 @@ export async function waitForInterlinearizerReady(
  * open the Interlinearizer directly instead of popping a project-picker dialog. The startup dock
  * layout varies, so this reaches that loaded state resiliently rather than assuming it:
  *
- * - A fresh core profile opens the default multi-tab layout with an empty "Scripture Editor" tab (no
- *   project loaded) and NO Home dock tab — the project is opened from Home (toolbar Home button,
- *   which is always present).
+ * - A fresh core profile has been seen opening either with an empty "Scripture Editor" tab and no
+ *   Home dock tab (older paranext-core), or directly to an already-open Home tab (current default)
+ *   — in both cases the project is opened via Home (the toolbar Home button, always present,
+ *   focuses the existing Home tab if one is already open rather than duplicating it).
  * - A warm CDP instance already has the editor open on a project (tab titled e.g. "WEB (Editable)").
  *
  * Steps:
@@ -846,14 +863,19 @@ export async function openInterlinearizerFromScriptureEditor(
   const anyEditorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
-  // The toolbar's "Home..." button (a ghost icon button wrapping lucide's HomeIcon). It opens Home
-  // regardless of dock layout — the default multi-tab layout has no Home dock tab. The svg is
-  // `aria-hidden`, so target the enclosing button by the icon class rather than by role/name.
+  // The Home dock tab, when one is already open (current default: a fresh profile opens directly to
+  // Home rather than an empty "Scripture Editor" tab — see the wait below).
+  const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
+  // The toolbar's "Home..." button (a ghost icon button wrapping lucide's HomeIcon). Opens Home when
+  // it is not already open as its own tab (see the branch below). The svg is `aria-hidden`, so target
+  // the enclosing button by the icon class rather than by role/name.
   const homeButton = page.locator('button:has(svg.lucide-house)').first();
 
   // Wait for the dock layout to mount before branching — a fresh profile briefly reports zero tabs,
-  // which a non-waiting `count()` would misread as "no editor".
-  await expect(anyEditorTab).toBeVisible({ timeout: 45_000 });
+  // which a non-waiting `count()` would misread as "no editor". Accept either an editor tab OR an
+  // already-open Home tab as evidence of a mounted dock: which one a fresh profile starts with has
+  // changed between paranext-core versions, and this helper works against either starting layout.
+  await expect(anyEditorTab.or(homeTab).first()).toBeVisible({ timeout: 45_000 });
 
   // Ensure the project is loaded into a Scripture Editor, not merely that some editor tab exists:
   // without a project-bearing editor, BCV navigation has no target (nav control stays disabled) and
@@ -861,7 +883,14 @@ export async function openInterlinearizerFromScriptureEditor(
   // loads it into the editor. Skipped when a project-titled editor tab is already present (warm CDP
   // instance).
   if ((await loadedEditorTab.count()) === 0) {
-    await homeButton.click();
+    // Home may already be open as its own dock tab (current default) rather than needing the toolbar
+    // button to open it (older default, still true for CDP's warm-but-project-less instance) — only
+    // click the button when Home isn't already open, rather than relying on a redundant click being a
+    // harmless no-op.
+    if ((await homeTab.count()) === 0) {
+      await homeButton.click();
+      await expect(homeTab).toBeVisible({ timeout: 10_000 });
+    }
     const homeFrame = page.frameLocator('iframe[title="Home"]');
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
     // so a shorter project name can't select a row for a differently-named project that merely
@@ -877,7 +906,6 @@ export async function openInterlinearizerFromScriptureEditor(
     // its iframe intercepts pointer events, so the ≡-menu click below would land on Home. Dispatch
     // the close (not a real click, so an off-viewport tab on small CI viewports still closes), then
     // wait for the tab to leave the DOM.
-    const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
     await homeTab
       .locator('.dock-tab-close-btn')
       .dispatchEvent('click')
@@ -1111,9 +1139,13 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
   // Settle the dock layout before the non-retrying isVisible() branch below: the readiness helpers
   // only poll rpc.discover, not the DOM, so a not-yet-painted Interlinearizer tab would read as
   // "absent" and send us needlessly down the full open-from-editor flow. `.first()` on the whole
-  // `.or()` keeps the assertion out of strict mode when both tabs are present (per-operand `.first()`
-  // does not collapse the union).
-  const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|WEB/ }).first();
+  // `.or()` keeps the assertion out of strict mode when multiple tabs are present (per-operand
+  // `.first()` does not collapse the union). A fresh/shared instance may land on an already-open Home
+  // tab rather than a Scripture Editor/WEB tab — accept that too, since the fallback branch below
+  // (openInterlinearizerFromScriptureEditor) already knows how to open the project from Home.
+  const anchorTab = page
+    .locator('.dock-tab', { hasText: /^(Scripture Editor|WEB|Home)\b/ })
+    .first();
   await expect(interlinearizerTab.or(anchorTab).first()).toBeVisible({ timeout: 30_000 });
 
   if (await interlinearizerTab.isVisible()) {

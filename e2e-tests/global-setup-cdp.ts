@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import {
   backupAndSeedSettings,
+  E2E_SETTINGS_OVERRIDES,
   restoreBackedUpSettings,
   waitForDockTabTitlesResolved,
   waitForServiceHostsRegistered,
@@ -314,16 +315,15 @@ function clearStaleOwnershipMarkers(): void {
 }
 
 /**
- * Seed `platform.firstRunComplete: true` into paranext-core's dev-appdata settings before launching
- * the app, so the first-run wizard overlay does not gate the launched instance (the same seeding
- * the smoke tier does in fixtures/app.fixture.ts). Backs up the original file to disk for
- * {@link restoreSeededSettings} to put back in teardown, self-healing a leftover backup from a prior
- * crashed run of either tier first — see {@link backupAndSeedSettings}.
+ * Seed {@link E2E_SETTINGS_OVERRIDES} into paranext-core's dev-appdata settings before launching the
+ * app (the same seeding the smoke tier does in fixtures/app.fixture.ts). Backs up the original file
+ * to disk for {@link restoreSeededSettings} to put back in teardown, self-healing a leftover backup
+ * from a prior crashed run of either tier first — see {@link backupAndSeedSettings}.
  *
  * @returns Nothing.
  */
 function seedFirstRunComplete(): void {
-  backupAndSeedSettings({ 'platform.firstRunComplete': true });
+  backupAndSeedSettings(E2E_SETTINGS_OVERRIDES);
 }
 
 /**

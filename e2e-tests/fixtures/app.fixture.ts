@@ -7,6 +7,7 @@ import {
   TestInfo,
 } from '@playwright/test';
 import {
+  E2E_SETTINGS_OVERRIDES,
   launchElectronWithExtension,
   preConfigureSettings,
   PROCESS_READY_TIMEOUT,
@@ -37,7 +38,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
       console.log('[startup] Configuring settings for worker-scoped app launch...');
-      const restoreSettings = preConfigureSettings({ 'platform.firstRunComplete': true });
+      const restoreSettings = preConfigureSettings(E2E_SETTINGS_OVERRIDES);
       try {
         const ctx = await launchElectronWithExtension();
         try {

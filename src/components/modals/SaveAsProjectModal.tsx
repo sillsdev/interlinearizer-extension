@@ -170,7 +170,7 @@ export function SaveAsProjectModal({
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}
       </h3>
-      <Label htmlFor="save-as-name">
+      <Label className="tw:mb-1" htmlFor="save-as-name">
         {localizedStrings['%interlinearizer_modal_create_name_label%']}
       </Label>
       <Input
@@ -180,7 +180,7 @@ export function SaveAsProjectModal({
         onChange={(e) => setName(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
       />
-      <Label htmlFor="save-as-description">
+      <Label className="tw:mb-1" htmlFor="save-as-description">
         {localizedStrings['%interlinearizer_modal_create_description_label%']}
       </Label>
       <Textarea

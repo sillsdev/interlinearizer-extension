@@ -87,7 +87,7 @@ export function CreateProjectModal({
       title={localizedStrings['%interlinearizer_modal_create_title%']}
       width="tw:w-96"
     >
-      <Label htmlFor="project-name">
+      <Label className="tw:mb-1" htmlFor="project-name">
         {localizedStrings['%interlinearizer_modal_create_name_label%']}
       </Label>
       <Input
@@ -97,7 +97,7 @@ export function CreateProjectModal({
         onChange={(e) => setName(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
       />
-      <Label htmlFor="project-description">
+      <Label className="tw:mb-1" htmlFor="project-description">
         {localizedStrings['%interlinearizer_modal_create_description_label%']}
       </Label>
       <Textarea
@@ -108,7 +108,7 @@ export function CreateProjectModal({
         onChange={(e) => setDescription(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
       />
-      <Label htmlFor="analysis-language">
+      <Label className="tw:mb-1" htmlFor="analysis-language">
         {localizedStrings['%interlinearizer_modal_create_language_label%']}
       </Label>
       <Input

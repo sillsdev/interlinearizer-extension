@@ -3,6 +3,7 @@ import type { FullConfig } from '@playwright/test';
 import { execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { DEV_SERVER_PID_FILE } from './global-setup';
 import { killProcessTree } from './process-utils';
 
 /** Return value of {@link killProcessFromPidFile}. */
@@ -74,12 +75,10 @@ export function killProcessFromPidFile(
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalTeardown(_config: FullConfig): Promise<void> {
-  const extensionRoot = path.resolve(__dirname, '..');
   const coreDir = path.resolve(__dirname, '../../paranext-core');
 
   // Kill the renderer dev server if we started it
-  const pidFile = path.join(extensionRoot, 'e2e-tests', '.dev-server.pid');
-  killProcessFromPidFile(pidFile, 'SIGTERM', 'renderer dev server');
+  killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
 
   // Run the core stop script to ensure all Electron processes are terminated
   console.log('Running cleanup: npm run stop (in paranext-core)');

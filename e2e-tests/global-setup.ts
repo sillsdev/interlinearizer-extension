@@ -10,6 +10,13 @@ export const WEBSOCKET_PORT = 8876;
 export const RENDERER_PORT = 1212;
 
 /**
+ * File the renderer dev server's PID is written to, for {@link globalTeardown} to kill it — and for
+ * a CDP setup failure path to kill it too, since Playwright skips `globalTeardown` when
+ * `globalSetup` throws.
+ */
+export const DEV_SERVER_PID_FILE = path.join(__dirname, '.dev-server.pid');
+
+/**
  * Check if a port is already in use.
  *
  * @param port Port number to probe.
@@ -214,9 +221,8 @@ export async function bootstrapRendererDevServer(): Promise<void> {
 
     devServer.unref();
 
-    const pidFile = path.join(extensionRoot, 'e2e-tests/.dev-server.pid');
     if (devServer.pid) {
-      fs.writeFileSync(pidFile, String(devServer.pid));
+      fs.writeFileSync(DEV_SERVER_PID_FILE, String(devServer.pid));
     }
 
     console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);

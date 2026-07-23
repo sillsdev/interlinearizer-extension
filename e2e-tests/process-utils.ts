@@ -67,12 +67,17 @@ export async function waitForProcessExit(
   exitSignal: Promise<void>,
   timeoutMs: number,
 ): Promise<void> {
-  await Promise.race([
-    exitSignal,
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, timeoutMs);
-    }),
-  ]);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      exitSignal,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**

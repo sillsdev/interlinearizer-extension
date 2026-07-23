@@ -15,10 +15,12 @@ import {
 } from './fixtures/helpers';
 import {
   bootstrapRendererDevServer,
+  DEV_SERVER_PID_FILE,
   isPortInUse,
   waitForPort,
   WEBSOCKET_PORT,
 } from './global-setup';
+import { killProcessFromPidFile } from './global-teardown';
 import { killProcessTree, removeDirWithRetry, waitForProcessExit } from './process-utils';
 
 /**
@@ -122,11 +124,13 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
 
-  // Seed platform.firstRunComplete before launch so paranext-core's first-run wizard overlay does
-  // not gate the app (same seeding the smoke tier does in fixtures/app.fixture.ts). The overlay is a
-  // full-screen modal Dialog that intercepts pointer events, which would block every feature test.
-  // Backed up and restored by globalTeardownCdp after the launched app is killed.
-  seedFirstRunComplete();
+  // Seed E2E_SETTINGS_OVERRIDES before launch — platform.firstRunComplete so paranext-core's
+  // first-run wizard overlay does not gate the app (a full-screen modal Dialog that intercepts
+  // pointer events, which would block every feature test), and platform.interfaceMode so the run
+  // gets the visible, clickable dock-tab layout the suite is written against (same seeding the
+  // smoke tier does in fixtures/app.fixture.ts). Backed up and restored by globalTeardownCdp after
+  // the launched app is killed.
+  seedE2ESettingsOverrides();
 
   // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
   // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
@@ -225,6 +229,10 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     restoreSeededSettings();
     fs.rmSync(CDP_PID_FILE, { force: true });
     fs.rmSync(CDP_USER_DATA_FILE, { force: true });
+    // bootstrapRendererDevServer() above may have started this; Playwright skips globalTeardown on a
+    // thrown globalSetup, so without this it would otherwise leak until the next run's
+    // bootstrapRendererDevServer detects the port in use and reuses it.
+    killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
     throw error;
   }
   console.log('Platform.Bible (CDP) is ready.');
@@ -322,12 +330,12 @@ function clearStaleOwnershipMarkers(): void {
  *
  * @returns Nothing.
  */
-function seedFirstRunComplete(): void {
+function seedE2ESettingsOverrides(): void {
   backupAndSeedSettings(E2E_SETTINGS_OVERRIDES);
 }
 
 /**
- * Undo {@link seedFirstRunComplete} by restoring the dev-appdata settings file from its on-disk
+ * Undo {@link seedE2ESettingsOverrides} by restoring the dev-appdata settings file from its on-disk
  * backup. A no-op when no backup exists. Best-effort: guarded so a settings-restore failure never
  * aborts teardown.
  *

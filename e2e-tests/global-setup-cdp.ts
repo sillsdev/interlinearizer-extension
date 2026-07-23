@@ -18,7 +18,7 @@ import {
   waitForPort,
   WEBSOCKET_PORT,
 } from './global-setup';
-import { killProcessTree } from './process-utils';
+import { killProcessTree, removeDirWithRetry, waitForProcessExit } from './process-utils';
 
 /**
  * Chromium remote-debugging port the self-launched Electron instance exposes and the CDP fixture
@@ -39,12 +39,6 @@ export const CDP_USER_DATA_FILE = path.join(__dirname, '.cdp-app.user-data-dir')
  * crash leaves a diagnosable log instead of only an opaque WebSocket-port timeout.
  */
 export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
-
-/**
- * File the pre-launch dev-appdata settings backup is written to (kept alongside the other `.cdp-*`
- * markers) so teardown can restore the developer's original settings after the run.
- */
-const CDP_SETTINGS_BACKUP_FILE = path.join(__dirname, '.cdp-settings-backup');
 
 /** How long to wait for the launched app's WebSocket / CDP port before failing setup. */
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
@@ -198,6 +192,14 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   // handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
   // rejection.
   earlyExit.catch(() => {});
+
+  // Resolves (rather than rejects, unlike earlyExit) once the launched process has actually exited.
+  // Used by the failure-path cleanup below to bound the wait for a just-issued SIGKILL to take effect
+  // before touching files the process may still hold open.
+  const exited = new Promise<void>((resolve) => {
+    appProcess.once('exit', () => resolve());
+  });
+
   try {
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
@@ -210,12 +212,16 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     // log itself, not only the uploaded artifact.
     dumpAppLog();
     // Playwright does not run globalTeardown when globalSetup throws, so clean up immediately rather
-    // than leaving the seeded settings and the launched process for the next run's self-heal:
-    // restore the developer's settings, kill the whole launched process tree, and remove the
-    // resources this run owns.
+    // than leaving the seeded settings and the launched process for the next run's self-heal. Mirrors
+    // globalTeardownCdp's safe ordering (kill first, restore settings last): the still-running app
+    // owns dev-appdata/settings.json, so restoring before it is actually dead risks it flushing the
+    // seeded value back over the just-restored original, with no backup left to recover from.
+    const killed = appProcess.pid ? killProcessTree(appProcess.pid, 'SIGKILL') : false;
+    if (killed) {
+      await waitForProcessExit(exited, 1_000);
+    }
+    await removeDirWithRetry(userDataDir, 'CDP user-data dir');
     restoreSeededSettings();
-    if (appProcess.pid) killProcessTree(appProcess.pid, 'SIGKILL');
-    fs.rmSync(userDataDir, { recursive: true, force: true });
     fs.rmSync(CDP_PID_FILE, { force: true });
     fs.rmSync(CDP_USER_DATA_FILE, { force: true });
     throw error;
@@ -310,26 +316,25 @@ function clearStaleOwnershipMarkers(): void {
 /**
  * Seed `platform.firstRunComplete: true` into paranext-core's dev-appdata settings before launching
  * the app, so the first-run wizard overlay does not gate the launched instance (the same seeding
- * the smoke tier does in fixtures/app.fixture.ts). Backs up the original file to
- * {@link CDP_SETTINGS_BACKUP_FILE} on disk for {@link restoreSeededSettings} to put back in teardown,
- * and self-heals a leftover backup from a prior crashed run first — see
- * {@link backupAndSeedSettings}.
+ * the smoke tier does in fixtures/app.fixture.ts). Backs up the original file to disk for
+ * {@link restoreSeededSettings} to put back in teardown, self-healing a leftover backup from a prior
+ * crashed run of either tier first — see {@link backupAndSeedSettings}.
  *
  * @returns Nothing.
  */
 function seedFirstRunComplete(): void {
-  backupAndSeedSettings(CDP_SETTINGS_BACKUP_FILE, { 'platform.firstRunComplete': true });
+  backupAndSeedSettings({ 'platform.firstRunComplete': true });
 }
 
 /**
- * Undo {@link seedFirstRunComplete} by restoring the dev-appdata settings file backed up at
- * {@link CDP_SETTINGS_BACKUP_FILE}. A no-op when no backup exists. Best-effort: guarded so a
- * settings-restore failure never aborts teardown.
+ * Undo {@link seedFirstRunComplete} by restoring the dev-appdata settings file from its on-disk
+ * backup. A no-op when no backup exists. Best-effort: guarded so a settings-restore failure never
+ * aborts teardown.
  *
  * @returns Nothing.
  */
 export function restoreSeededSettings(): void {
-  restoreBackedUpSettings(CDP_SETTINGS_BACKUP_FILE);
+  restoreBackedUpSettings();
 }
 
 /**

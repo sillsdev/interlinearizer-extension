@@ -5,6 +5,20 @@ import path from 'path';
 import fs from 'fs';
 import { killProcessTree } from './process-utils';
 
+/** Return value of {@link killProcessFromPidFile}. */
+export interface KillFromPidFileResult {
+  /** Whether a valid PID was found and {@link killProcessTree} reported the kill succeeded. */
+  killed: boolean;
+  /**
+   * The PID that was targeted, if the file held a valid one — regardless of whether the kill itself
+   * succeeded. Callers that need to poll for the process actually exiting (e.g.
+   * {@link globalTeardownCdp}, which has no live process handle to listen on) need this even when
+   * `killed` is `false` (e.g. `killProcessTree` returning `false` because the process was already
+   * gone).
+   */
+  pid?: number;
+}
+
 /**
  * Kill a process recorded in a PID file (whole tree), then remove the PID file. Shared by this
  * teardown's dev-server kill and {@link globalTeardownCdp}'s launched-app kill, which follow the
@@ -19,34 +33,32 @@ import { killProcessTree } from './process-utils';
  * @param pidFile Absolute path to the file holding the target process's PID.
  * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
  * @param label Human-readable name of the process, used in the "Stopping <label>" log line.
- * @returns `true` if a valid PID was found and {@link killProcessTree} reported the kill succeeded;
- *   `false` if the PID file was absent, its contents were not a valid integer, or a filesystem
- *   error occurred.
+ * @returns See {@link KillFromPidFileResult}.
  */
 export function killProcessFromPidFile(
   pidFile: string,
   signal: 'SIGTERM' | 'SIGKILL',
   label: string,
-): boolean {
+): KillFromPidFileResult {
   // Teardown runs once after every worker; a filesystem error here (the PID file deleted by a
   // concurrent run between reads, or locked) must not abort the remaining cleanup (the core stop
   // script) and leak Electron processes. Wrap the whole read → validate → kill → unlink sequence so
   // any such error is logged and swallowed, continuing to return false.
   try {
-    if (!fs.existsSync(pidFile)) return false;
+    if (!fs.existsSync(pidFile)) return { killed: false };
     const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
     if (Number.isNaN(pid)) {
       console.warn(`Invalid PID in ${pidFile}, skipping ${label} kill`);
       fs.unlinkSync(pidFile);
-      return false;
+      return { killed: false };
     }
     console.log(`Stopping ${label} (PID: ${pid})...`);
     const killed = killProcessTree(pid, signal);
     fs.unlinkSync(pidFile);
-    return killed;
+    return { killed, pid };
   } catch (e) {
     console.warn(`Failed to kill ${label} from ${pidFile}: ${e}`);
-    return false;
+    return { killed: false };
   }
 }
 

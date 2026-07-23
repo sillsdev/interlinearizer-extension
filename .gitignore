@@ -39,5 +39,6 @@ temp-build
 # Playwright output
 e2e-tests/.cdp-*
 e2e-tests/.dev-*
+e2e-tests/.e2e-settings-backup
 e2e-tests/playwright-report
 e2e-tests/test-results

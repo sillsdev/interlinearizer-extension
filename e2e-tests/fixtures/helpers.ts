@@ -13,7 +13,7 @@ import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { killProcessTree } from '../process-utils';
+import { killProcessTree, removeDirWithRetry, waitForProcessExit } from '../process-utils';
 
 const DEFAULT_WEBSOCKET_PORT = 8876;
 const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
@@ -150,41 +150,38 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
 );
 
 /**
- * File the smoke tier's pre-launch dev-appdata settings backup is written to (kept alongside
- * {@link SMOKE_APP_LOG_FILE} in `e2e-tests/`), so a hard-killed worker process (CI timeout SIGKILL,
- * Ctrl+C) leaves a recoverable on-disk backup instead of losing the developer's original settings
- * with the process — mirrors the CDP tier's `.cdp-settings-backup`.
+ * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
+ * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers rather than one file per
+ * tier: there is only one `settings.json` to protect, and a single shared backup means a stale
+ * backup left by, say, a hard-killed CDP run is what the smoke tier's own self-heal (see
+ * {@link backupAndSeedSettings}) recovers too — instead of the smoke tier mistaking the CDP tier's
+ * already-seeded settings for the developer's true original.
  */
-const SMOKE_SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.smoke-settings-backup');
+const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
 
-/** Marker stored in a settings backup file when no settings file existed before seeding. */
+/** Marker stored in {@link SETTINGS_BACKUP_FILE} when no settings file existed before seeding. */
 const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
 
 /**
- * Back up paranext-core's dev-appdata settings file to `backupFilePath` (recording
+ * Back up paranext-core's dev-appdata settings file to {@link SETTINGS_BACKUP_FILE} (recording
  * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
  * called BEFORE launching Electron so the app reads the overrides at startup.
  *
- * Self-heals a stale backup left by a prior hard-killed run (restoring it first), so the backup
- * always captures the true original settings, never an already-seeded file.
+ * Self-heals a stale backup left by a prior hard-killed run of EITHER tier (restoring it first), so
+ * the backup always captures the true original settings, never an already-seeded file.
  *
- * @param backupFilePath Path the pre-seed contents are backed up to, for
- *   {@link restoreBackedUpSettings} to restore later.
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
  * @returns Nothing.
  */
-export function backupAndSeedSettings(
-  backupFilePath: string,
-  overrides: Record<string, unknown>,
-): void {
-  restoreBackedUpSettings(backupFilePath);
+export function backupAndSeedSettings(overrides: Record<string, unknown>): void {
+  restoreBackedUpSettings();
 
   const settingsDir = path.dirname(DEV_APPDATA_SETTINGS_PATH);
   let existing: Record<string, unknown> = {};
   if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
     const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
-    fs.writeFileSync(backupFilePath, original);
+    fs.writeFileSync(SETTINGS_BACKUP_FILE, original);
     try {
       const parsed: unknown = JSON.parse(original);
       // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
@@ -196,39 +193,38 @@ export function backupAndSeedSettings(
   } else {
     // Record absence so restoreBackedUpSettings deletes the file this seed creates rather than
     // leaving it behind.
-    fs.writeFileSync(backupFilePath, SETTINGS_ABSENT_SENTINEL);
+    fs.writeFileSync(SETTINGS_BACKUP_FILE, SETTINGS_ABSENT_SENTINEL);
   }
   fs.mkdirSync(settingsDir, { recursive: true });
   fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, JSON.stringify({ ...existing, ...overrides }));
 }
 
 /**
- * Undo {@link backupAndSeedSettings}: restore the dev-appdata settings file from `backupFilePath`
- * (or delete it if the backup marks that no settings file existed before seeding), then remove the
- * backup marker. A no-op when no backup exists at that path. Best-effort: guarded so a
- * settings-restore failure never throws.
+ * Undo {@link backupAndSeedSettings}: restore the dev-appdata settings file from
+ * {@link SETTINGS_BACKUP_FILE} (or delete it if the backup marks that no settings file existed
+ * before seeding), then remove the backup marker. A no-op when no backup exists. Best-effort:
+ * guarded so a settings-restore failure never throws.
  *
- * @param backupFilePath Path previously passed to {@link backupAndSeedSettings}.
  * @returns Nothing.
  */
-export function restoreBackedUpSettings(backupFilePath: string): void {
-  if (!fs.existsSync(backupFilePath)) return;
+export function restoreBackedUpSettings(): void {
+  if (!fs.existsSync(SETTINGS_BACKUP_FILE)) return;
   try {
-    const backup = fs.readFileSync(backupFilePath, 'utf-8');
+    const backup = fs.readFileSync(SETTINGS_BACKUP_FILE, 'utf-8');
     if (backup === SETTINGS_ABSENT_SENTINEL) fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
     else fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, backup);
-    fs.rmSync(backupFilePath, { force: true });
+    fs.rmSync(SETTINGS_BACKUP_FILE, { force: true });
   } catch (error) {
-    console.warn(`Could not restore dev-appdata settings from ${backupFilePath}: ${error}`);
+    console.warn(`Could not restore dev-appdata settings from ${SETTINGS_BACKUP_FILE}: ${error}`);
   }
 }
 
 /**
  * Pre-configure paranext-core's dev-appdata settings before launching the smoke tier's per-worker
- * Electron instance (e.g. suppressing the first-run wizard), backing up the original to
- * {@link SMOKE_SETTINGS_BACKUP_FILE} on disk rather than only in memory — so a hard-killed worker
- * process (CI timeout SIGKILL, Ctrl+C) leaves a recoverable backup instead of losing the
- * developer's original settings with the process.
+ * Electron instance (e.g. suppressing the first-run wizard), backing up the original to disk (see
+ * {@link backupAndSeedSettings}) rather than only in memory — so a hard-killed worker process (CI
+ * timeout SIGKILL, Ctrl+C) leaves a recoverable backup instead of losing the developer's original
+ * settings with the process.
  *
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
@@ -237,8 +233,8 @@ export function restoreBackedUpSettings(backupFilePath: string): void {
  *   not permanently replaced by test values.
  */
 export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
-  backupAndSeedSettings(SMOKE_SETTINGS_BACKUP_FILE, overrides);
-  return () => restoreBackedUpSettings(SMOKE_SETTINGS_BACKUP_FILE);
+  backupAndSeedSettings(overrides);
+  return restoreBackedUpSettings;
 }
 
 /**
@@ -417,29 +413,12 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
     console.log('[teardown] Sending SIGKILL to process group...');
     if (electronProcess.pid) killProcessTree(electronProcess.pid, 'SIGKILL');
     console.log('[teardown] Waiting for appClosed after SIGKILL (up to 3s)...');
-    await Promise.race([
-      appClosed,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 3_000);
-      }),
-    ]);
+    await waitForProcessExit(appClosed, 3_000);
     console.log('[teardown] Done waiting after SIGKILL');
   }
 
   console.log('[teardown] Cleaning up user data dir...');
-  try {
-    fs.rmSync(userDataDir, { recursive: true, force: true });
-  } catch {
-    console.warn('[teardown] First rmSync attempt failed — retrying in 3s...');
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 3_000);
-    });
-    try {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    } catch (e) {
-      console.warn(`[teardown] Could not remove ${userDataDir}: ${e}`);
-    }
-  }
+  await removeDirWithRetry(userDataDir, 'user data dir');
   console.log('[teardown] Complete');
 }
 

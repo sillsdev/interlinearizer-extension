@@ -6,7 +6,8 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
-  DEV_APPDATA_SETTINGS_PATH,
+  backupAndSeedSettings,
+  restoreBackedUpSettings,
   waitForDockTabTitlesResolved,
   waitForServiceHostsRegistered,
   withFatalStartupTripwire,
@@ -17,6 +18,7 @@ import {
   waitForPort,
   WEBSOCKET_PORT,
 } from './global-setup';
+import { killProcessTree } from './process-utils';
 
 /**
  * Chromium remote-debugging port the self-launched Electron instance exposes and the CDP fixture
@@ -43,9 +45,6 @@ export const CDP_APP_LOG_FILE = path.join(__dirname, '.cdp-app-startup.log');
  * markers) so teardown can restore the developer's original settings after the run.
  */
 const CDP_SETTINGS_BACKUP_FILE = path.join(__dirname, '.cdp-settings-backup');
-
-/** Marker stored in {@link CDP_SETTINGS_BACKUP_FILE} when no settings file existed before seeding. */
-const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
 
 /** How long to wait for the launched app's WebSocket / CDP port before failing setup. */
 const APP_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
@@ -210,6 +209,15 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
     // log itself, not only the uploaded artifact.
     dumpAppLog();
+    // Playwright does not run globalTeardown when globalSetup throws, so clean up immediately rather
+    // than leaving the seeded settings and the launched process for the next run's self-heal:
+    // restore the developer's settings, kill the whole launched process tree, and remove the
+    // resources this run owns.
+    restoreSeededSettings();
+    if (appProcess.pid) killProcessTree(appProcess.pid, 'SIGKILL');
+    fs.rmSync(userDataDir, { recursive: true, force: true });
+    fs.rmSync(CDP_PID_FILE, { force: true });
+    fs.rmSync(CDP_USER_DATA_FILE, { force: true });
     throw error;
   }
   console.log('Platform.Bible (CDP) is ready.');
@@ -300,59 +308,28 @@ function clearStaleOwnershipMarkers(): void {
 }
 
 /**
- * Back up paranext-core's dev-appdata settings file and seed `platform.firstRunComplete: true` into
- * it before launching the app, so the first-run wizard overlay does not gate the launched instance
- * (the same seeding the smoke tier does in fixtures/app.fixture.ts). The original file is saved to
- * {@link CDP_SETTINGS_BACKUP_FILE} for {@link restoreSeededSettings} to put back in teardown.
- * Recovers from a leftover backup first (a prior run that crashed before restoring) so the true
- * original — not an already-seeded file — is what gets backed up.
+ * Seed `platform.firstRunComplete: true` into paranext-core's dev-appdata settings before launching
+ * the app, so the first-run wizard overlay does not gate the launched instance (the same seeding
+ * the smoke tier does in fixtures/app.fixture.ts). Backs up the original file to
+ * {@link CDP_SETTINGS_BACKUP_FILE} on disk for {@link restoreSeededSettings} to put back in teardown,
+ * and self-heals a leftover backup from a prior crashed run first — see
+ * {@link backupAndSeedSettings}.
  *
  * @returns Nothing.
  */
 function seedFirstRunComplete(): void {
-  restoreSeededSettings();
-
-  let existing: Record<string, unknown> = {};
-  if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
-    const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
-    fs.writeFileSync(CDP_SETTINGS_BACKUP_FILE, original);
-    try {
-      const parsed: unknown = JSON.parse(original);
-      // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
-      // file falls back to just the override.
-      if (parsed && typeof parsed === 'object') existing = { ...parsed };
-    } catch {
-      // Corrupt file — overwrite with just the override.
-    }
-  } else {
-    // Record absence so teardown deletes the file this run creates rather than leaving it behind.
-    fs.writeFileSync(CDP_SETTINGS_BACKUP_FILE, SETTINGS_ABSENT_SENTINEL);
-  }
-  fs.mkdirSync(path.dirname(DEV_APPDATA_SETTINGS_PATH), { recursive: true });
-  fs.writeFileSync(
-    DEV_APPDATA_SETTINGS_PATH,
-    JSON.stringify({ ...existing, 'platform.firstRunComplete': true }),
-  );
+  backupAndSeedSettings(CDP_SETTINGS_BACKUP_FILE, { 'platform.firstRunComplete': true });
 }
 
 /**
- * Undo {@link seedFirstRunComplete}: restore the dev-appdata settings file from
- * {@link CDP_SETTINGS_BACKUP_FILE} (or delete it if the backup marks that no settings file existed
- * before seeding), then remove the backup marker. A no-op when no backup exists. Best-effort:
- * guarded so a settings-restore failure never aborts teardown.
+ * Undo {@link seedFirstRunComplete} by restoring the dev-appdata settings file backed up at
+ * {@link CDP_SETTINGS_BACKUP_FILE}. A no-op when no backup exists. Best-effort: guarded so a
+ * settings-restore failure never aborts teardown.
  *
  * @returns Nothing.
  */
 export function restoreSeededSettings(): void {
-  if (!fs.existsSync(CDP_SETTINGS_BACKUP_FILE)) return;
-  try {
-    const backup = fs.readFileSync(CDP_SETTINGS_BACKUP_FILE, 'utf-8');
-    if (backup === SETTINGS_ABSENT_SENTINEL) fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
-    else fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, backup);
-    fs.rmSync(CDP_SETTINGS_BACKUP_FILE, { force: true });
-  } catch (error) {
-    console.warn(`Could not restore dev-appdata settings after CDP run: ${error}`);
-  }
+  restoreBackedUpSettings(CDP_SETTINGS_BACKUP_FILE);
 }
 
 /**

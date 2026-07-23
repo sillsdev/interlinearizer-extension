@@ -150,39 +150,95 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
 );
 
 /**
- * Merge the given key-value pairs into paranext-core's dev-appdata settings file before launching
- * the app, preserving any existing settings. Must be called BEFORE launching Electron so the app
- * reads the overrides at startup.
+ * File the smoke tier's pre-launch dev-appdata settings backup is written to (kept alongside
+ * {@link SMOKE_APP_LOG_FILE} in `e2e-tests/`), so a hard-killed worker process (CI timeout SIGKILL,
+ * Ctrl+C) leaves a recoverable on-disk backup instead of losing the developer's original settings
+ * with the process — mirrors the CDP tier's `.cdp-settings-backup`.
+ */
+const SMOKE_SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.smoke-settings-backup');
+
+/** Marker stored in a settings backup file when no settings file existed before seeding. */
+const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
+
+/**
+ * Back up paranext-core's dev-appdata settings file to `backupFilePath` (recording
+ * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
+ * called BEFORE launching Electron so the app reads the overrides at startup.
  *
+ * Self-heals a stale backup left by a prior hard-killed run (restoring it first), so the backup
+ * always captures the true original settings, never an already-seeded file.
+ *
+ * @param backupFilePath Path the pre-seed contents are backed up to, for
+ *   {@link restoreBackedUpSettings} to restore later.
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
- * @returns A restore function that rewrites the file to its exact pre-call contents (or deletes it
- *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
- *   not permanently replaced by test values.
+ * @returns Nothing.
  */
-export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
+export function backupAndSeedSettings(
+  backupFilePath: string,
+  overrides: Record<string, unknown>,
+): void {
+  restoreBackedUpSettings(backupFilePath);
+
   const settingsDir = path.dirname(DEV_APPDATA_SETTINGS_PATH);
-  let originalContents: string | undefined;
   let existing: Record<string, unknown> = {};
   if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
-    originalContents = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
+    const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
+    fs.writeFileSync(backupFilePath, original);
     try {
-      const parsed: unknown = JSON.parse(originalContents);
+      const parsed: unknown = JSON.parse(original);
       // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
       // file falls back to just the overrides.
       if (parsed && typeof parsed === 'object') existing = { ...parsed };
     } catch {
-      // Corrupt file — start fresh with only the overrides.
+      // Corrupt file — overwrite with just the overrides.
     }
+  } else {
+    // Record absence so restoreBackedUpSettings deletes the file this seed creates rather than
+    // leaving it behind.
+    fs.writeFileSync(backupFilePath, SETTINGS_ABSENT_SENTINEL);
   }
   fs.mkdirSync(settingsDir, { recursive: true });
   fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, JSON.stringify({ ...existing, ...overrides }));
+}
 
-  return () => {
-    if (originalContents !== undefined)
-      fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, originalContents);
-    else fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
-  };
+/**
+ * Undo {@link backupAndSeedSettings}: restore the dev-appdata settings file from `backupFilePath`
+ * (or delete it if the backup marks that no settings file existed before seeding), then remove the
+ * backup marker. A no-op when no backup exists at that path. Best-effort: guarded so a
+ * settings-restore failure never throws.
+ *
+ * @param backupFilePath Path previously passed to {@link backupAndSeedSettings}.
+ * @returns Nothing.
+ */
+export function restoreBackedUpSettings(backupFilePath: string): void {
+  if (!fs.existsSync(backupFilePath)) return;
+  try {
+    const backup = fs.readFileSync(backupFilePath, 'utf-8');
+    if (backup === SETTINGS_ABSENT_SENTINEL) fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
+    else fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, backup);
+    fs.rmSync(backupFilePath, { force: true });
+  } catch (error) {
+    console.warn(`Could not restore dev-appdata settings from ${backupFilePath}: ${error}`);
+  }
+}
+
+/**
+ * Pre-configure paranext-core's dev-appdata settings before launching the smoke tier's per-worker
+ * Electron instance (e.g. suppressing the first-run wizard), backing up the original to
+ * {@link SMOKE_SETTINGS_BACKUP_FILE} on disk rather than only in memory — so a hard-killed worker
+ * process (CI timeout SIGKILL, Ctrl+C) leaves a recoverable backup instead of losing the
+ * developer's original settings with the process.
+ *
+ * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ *   }`).
+ * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
+ *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
+ *   not permanently replaced by test values.
+ */
+export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
+  backupAndSeedSettings(SMOKE_SETTINGS_BACKUP_FILE, overrides);
+  return () => restoreBackedUpSettings(SMOKE_SETTINGS_BACKUP_FILE);
 }
 
 /**

@@ -1,8 +1,8 @@
 /** @file Confirmation controls shown in the confirm bar for unlinking (deleting) a phrase. */
 import { Button } from 'platform-bible-react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseDispatch } from '../AnalysisStore';
 import type { PhraseMode } from '../../types/phrase-mode';
+import { usePhraseDispatch } from '../AnalysisStore';
 
 /** Props for {@link UnlinkPhraseConfirm}. */
 type UnlinkPhraseConfirmProps = Readonly<{
@@ -44,20 +44,20 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
     <div className="tw:confirm-controls" data-testid="unlink-confirm">
       <span>Unlink this phrase?</span>
       <Button
-        variant="destructive"
-        size="sm"
         data-testid="unlink-confirm-yes"
         onClick={handleConfirm}
+        size="sm"
         type="button"
+        variant="destructive"
       >
         Unlink
       </Button>
       <Button
-        variant="secondary"
-        size="sm"
         data-testid="unlink-confirm-cancel"
         onClick={handleCancel}
+        size="sm"
         type="button"
+        variant="secondary"
       >
         Cancel
       </Button>

@@ -3,17 +3,17 @@ import type { Book, Token } from 'interlinearizer';
 import { Button } from 'platform-bible-react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
-import type { PhraseMode } from '../types/phrase-mode';
-import type { ViewOptions } from '../types/view-options';
-import { PhraseStripProvider } from './PhraseStripContext';
-import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
-import type { LinkSlot, TokenGroup } from '../types/token-layout';
-import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
-import { resolvedOrEmpty } from '../utils/localized-strings';
-import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
 import { useArcPaths } from '../hooks/useArcPaths';
 import { usePhraseHoverState } from '../hooks/usePhraseHoverState';
+import type { PhraseMode } from '../types/phrase-mode';
+import type { LinkSlot, TokenGroup } from '../types/token-layout';
+import type { ViewOptions } from '../types/view-options';
+import { resolvedOrEmpty } from '../utils/localized-strings';
+import { buildRenderUnits, groupTokens, resolveFocusContext } from '../utils/token-layout';
+import { buildVerseStartLabelsByTokenRef, slotVerseLabel } from '../utils/verse-superscripts';
+import { usePhraseLinkByIdMap, usePhraseLinkMap } from './AnalysisStore';
+import { PhraseStripProvider } from './PhraseStripContext';
+import { PhraseStrip, LINK_SLOT_TRANSITION_MS, type StripItem } from './PhraseStripParts';
 import {
   useArcSplitHandler,
   useCandidatePhraseIds,
@@ -968,13 +968,13 @@ export default function ContinuousView({
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
       {/* Previous navigation arrow */}
       <Button
-        variant="ghost"
-        size="icon-sm"
         aria-label="Previous token"
         disabled={atStart}
-        tabIndex={-1}
         onClick={stepPrev}
+        size="icon-sm"
+        tabIndex={-1}
         type="button"
+        variant="ghost"
       >
         <span aria-hidden="true">{isRtl ? '\u2192' : '\u2190'}</span>
       </Button>
@@ -1053,13 +1053,13 @@ export default function ContinuousView({
 
       {/* Next navigation arrow */}
       <Button
-        variant="ghost"
-        size="icon-sm"
         aria-label="Next token"
         disabled={atEnd}
-        tabIndex={-1}
         onClick={stepNext}
+        size="icon-sm"
+        tabIndex={-1}
         type="button"
+        variant="ghost"
       >
         <span aria-hidden="true">{isRtl ? '\u2190' : '\u2192'}</span>
       </Button>

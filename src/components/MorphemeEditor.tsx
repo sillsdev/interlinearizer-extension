@@ -196,22 +196,22 @@ export function MorphemeBreakdownPopover({
       <div className="tw:flex tw:justify-end tw:gap-1.5">
         {onDelete && (
           <Button
-            variant="outline"
-            size="sm"
             className="tw:me-auto tw:text-destructive"
-            type="button"
             onClick={() => {
               onDelete();
               onClose();
             }}
+            size="sm"
+            type="button"
+            variant="outline"
           >
             {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
           </Button>
         )}
-        <Button variant="outline" size="sm" type="button" onClick={onClose}>
+        <Button onClick={onClose} size="sm" type="button" variant="outline">
           {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
         </Button>
-        <Button size="sm" disabled={isMeaningless} type="button" onClick={handleSave}>
+        <Button disabled={isMeaningless} onClick={handleSave} size="sm" type="button">
           {localizedStrings['%interlinearizer_morphemeEditor_done%']}
         </Button>
       </div>

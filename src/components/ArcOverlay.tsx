@@ -324,13 +324,13 @@ export function ArcOverlay({
             return (
               <Button
                 key={`split-arc-${phraseId}-${d}`}
-                variant="ghost"
                 aria-label="Split phrase here"
                 className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
                 style={{ left: midX, top: midY }}
                 tabIndex={-1}
                 type="button"
+                variant="ghost"
                 onClick={() => {
                   // Clear the split-hover state synchronously with the click. The button is removed
                   // from the DOM by the resulting re-render, so no mouseLeave fires — without this

@@ -5,15 +5,15 @@ import { LocateFixed, Merge } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
+import useSegmentWindow from '../hooks/useSegmentWindow';
 import type { PhraseMode } from '../types/phrase-mode';
 import type { ViewOptions } from '../types/view-options';
+import { buildSegmentLabels } from '../utils/segment-labels';
+import { segmentContainsVerse } from '../utils/verse-ref';
+import { buildVerseStartLabels } from '../utils/verse-superscripts';
 import { useAltHeldValue } from './AltHeldContext';
 import { useSegmentation } from './SegmentationStore';
 import MemoizedSegmentView from './SegmentView';
-import useSegmentWindow from '../hooks/useSegmentWindow';
-import { buildVerseStartLabels } from '../utils/verse-superscripts';
-import { buildSegmentLabels } from '../utils/segment-labels';
-import { segmentContainsVerse } from '../utils/verse-ref';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
 /** Localized labels for the between-rows merge control; hoisted so the array reference is stable. */
@@ -69,13 +69,13 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
               variant's hover band — this control deliberately never paints over the rail (see the
               handle's group-hover styling below). */}
           <Button
-            variant="ghost"
             aria-label={localizedStrings['%interlinearizer_boundaryControl_merge%']}
             className="tw:absolute tw:inset-0 tw:flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0 tw:hover:bg-transparent"
             data-testid="segment-merge-btn"
+            onClick={() => dispatch.merge(secondSegmentStartRef)}
             tabIndex={-1}
             type="button"
-            onClick={() => dispatch.merge(secondSegmentStartRef)}
+            variant="ghost"
           >
             {/* A solid rounded "handle" riding the rail: a real theme surface (`bg-muted`) so it
                 reads coherently over the line, brightening to the accent on hover. Rotated 90° so
@@ -379,12 +379,12 @@ export default function SegmentListView({
             {pinnedChapter !== undefined ? `${bookName} ${pinnedChapter}` : ''}
           </span>
           <Button
-            variant="ghost"
-            size="icon-sm"
             aria-label="Scroll to active verse"
-            tabIndex={-1}
             onClick={recenterOnActive}
+            tabIndex={-1}
+            size="icon-sm"
             type="button"
+            variant="ghost"
           >
             <LocateFixed className="tw:h-4 tw:w-4" />
           </Button>

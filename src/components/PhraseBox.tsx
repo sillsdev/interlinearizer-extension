@@ -4,6 +4,8 @@ import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { sortByDocOrder } from '../utils/phrase-arc';
+import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
   usePhraseDispatch,
   usePhraseGloss,
@@ -14,8 +16,6 @@ import {
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import { sortByDocOrder } from '../utils/phrase-arc';
-import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -351,26 +351,26 @@ export function PhraseBox({
             data-phrase-controls="true"
           >
             <Button
-              variant="ghost"
-              size="icon-xs"
               aria-label="Edit phrase"
               className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
               data-testid="edit-phrase-btn"
-              tabIndex={-1}
               onClick={handleEditClick}
+              size="icon-xs"
+              tabIndex={-1}
               type="button"
+              variant="ghost"
             >
               ✎
             </Button>
             <Button
-              variant="ghost"
-              size="icon-xs"
               aria-label="Unlink phrase"
               className="tw:text-muted-foreground tw:hover:text-destructive"
               data-testid="unlink-phrase-btn"
-              tabIndex={-1}
               onClick={handleUnlinkClick}
+              size="icon-xs"
+              tabIndex={-1}
               type="button"
+              variant="ghost"
             >
               <Trash2 className="tw:h-3 tw:w-3" />
             </Button>

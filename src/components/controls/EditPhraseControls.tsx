@@ -1,8 +1,8 @@
 /** @file Done/Cancel controls shown in the confirm bar while editing a phrase. */
 import { Button } from 'platform-bible-react';
 import type { Dispatch, SetStateAction } from 'react';
-import { usePhraseLinkByIdMap } from '../AnalysisStore';
 import type { PhraseMode } from '../../types/phrase-mode';
+import { usePhraseLinkByIdMap } from '../AnalysisStore';
 
 /** Props for {@link EditPhraseControls}. */
 type EditPhraseControlsProps = Readonly<{
@@ -36,20 +36,20 @@ export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPh
     <div className="tw:confirm-controls" data-testid="edit-phrase-controls">
       <span>Editing Phrase</span>
       <Button
-        size="sm"
         data-testid="done-edit-btn"
         disabled={liveTokenCount < 2}
         onClick={() => setPhraseMode({ kind: 'view' })}
+        size="sm"
         type="button"
       >
         Done
       </Button>
       <Button
-        variant="secondary"
-        size="sm"
         data-testid="cancel-phrase-btn"
         onClick={() => setPhraseMode({ ...phraseMode, revert: true })}
+        size="sm"
         type="button"
+        variant="secondary"
       >
         Cancel
       </Button>

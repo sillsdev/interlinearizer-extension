@@ -355,11 +355,11 @@ export function TokenChip({
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
         <Button
-          variant="ghost"
           aria-label={`Remove ${token.surfaceText} from phrase`}
           className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
           tabIndex={-1}
           type="button"
+          variant="ghost"
           onClick={(e) => {
             e.preventDefault();
             onRemove();
@@ -404,13 +404,13 @@ export function TokenChip({
             ) : (
               <PopoverAnchor asChild>
                 <Button
-                  variant="ghost"
                   aria-label={localizedStrings[
                     '%interlinearizer_tokenChip_defineMorphemes%'
                   ].replace('{token}', () => token.surfaceText)}
                   className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
+                  variant="ghost"
                   onClick={(e) => {
                     e.preventDefault();
                     if (!disabled) setPopoverOpen(true);
@@ -491,7 +491,6 @@ export function TokenChip({
           />
           {hasMultipleSuggestions && (
             <Button
-              variant="ghost"
               aria-controls={dropdownShown ? listboxId : undefined}
               aria-expanded={dropdownShown}
               aria-hidden={!addVisible}
@@ -503,6 +502,7 @@ export function TokenChip({
               data-testid="suggestion-add"
               tabIndex={-1}
               type="button"
+              variant="ghost"
               onClick={handleAddClick}
               // Suppress the mouse-down focus shift so clicking the button never blurs the input.
               onMouseDown={(e) => e.preventDefault()}

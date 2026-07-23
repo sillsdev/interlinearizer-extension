@@ -4,16 +4,16 @@ import { Merge, Split } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo } from 'react';
 import type { MouseEvent, ReactNode } from 'react';
-import MemoizedPhraseBox from './PhraseBox';
-import { useAltHeldValue } from './AltHeldContext';
 import type { PhraseMode } from '../types/phrase-mode';
+import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
+import { resolveSplitAnchor } from '../utils/split-anchor';
+import { resolveSlotFocus } from '../utils/token-layout';
+import { useAltHeldValue } from './AltHeldContext';
+import MemoizedPhraseBox from './PhraseBox';
 import { usePhraseStripContext } from './PhraseStripContext';
 import { useSegmentation } from './SegmentationStore';
 import { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import type { FocusContext, LinkSlot, TokenGroup } from '../types/token-layout';
-import { resolveSlotFocus } from '../utils/token-layout';
-import { resolveSplitAnchor } from '../utils/split-anchor';
 
 /** Props for {@link BoundaryButton}. */
 type BoundaryButtonProps = Readonly<{
@@ -48,13 +48,13 @@ function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonPr
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="ghost"
           aria-label={label}
           className="tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:text-muted-foreground tw:hover:bg-accent tw:hover:text-accent-foreground"
           data-testid={testId}
+          onClick={action}
           tabIndex={-1}
           type="button"
-          onClick={action}
+          variant="ghost"
         >
           {icon}
         </Button>

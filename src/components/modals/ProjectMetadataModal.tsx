@@ -3,8 +3,8 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Trash2 } from 'lucide-react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
-import { parseLanguageTags } from '../../utils/language-tags';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
+import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */

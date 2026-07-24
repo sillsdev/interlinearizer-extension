@@ -11,11 +11,9 @@ export interface KillFromPidFileResult {
   /** Whether a valid PID was found and {@link killProcessTree} reported the kill succeeded. */
   killed: boolean;
   /**
-   * The PID that was targeted, if the file held a valid one — regardless of whether the kill itself
-   * succeeded. Callers that need to poll for the process actually exiting (e.g.
-   * {@link globalTeardownCdp}, which has no live process handle to listen on) need this even when
-   * `killed` is `false` (e.g. `killProcessTree` returning `false` because the process was already
-   * gone).
+   * The PID that was targeted, if the file held a valid one — regardless of kill success (a failed
+   * kill means it was already gone). {@link globalTeardownCdp}, the only consumer, reads it only
+   * when `killed` is also true, to poll for the actual process exit (no live handle to listen on).
    */
   pid?: number;
 }

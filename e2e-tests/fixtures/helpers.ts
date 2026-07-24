@@ -890,6 +890,10 @@ export async function openInterlinearizerFromScriptureEditor(
     if ((await homeTab.count()) === 0) {
       await homeButton.click();
       await expect(homeTab).toBeVisible({ timeout: 10_000 });
+    } else {
+      // Home is already open as a tab. Dispatch a click (not a real click, so an off-viewport tab on
+      // small CI viewports still closes) to guarantee focus before driving its iframe.
+      await homeTab.dispatchEvent('click');
     }
     const homeFrame = page.frameLocator('iframe[title="Home"]');
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),

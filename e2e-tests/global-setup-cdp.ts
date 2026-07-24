@@ -9,6 +9,7 @@ import {
   backupAndSeedSettings,
   E2E_SETTINGS_OVERRIDES,
   restoreBackedUpSettings,
+  waitForAtLeastOneProjectMetadata,
   waitForDockTabTitlesResolved,
   waitForInterlinearizerReady,
   waitForServiceHostsRegistered,
@@ -296,6 +297,8 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
       // Also gate on the interlinearizer extension having finished activating. Else, the first
       // feature test's short per-test budget covers activation it was never sized for.
       await waitForInterlinearizerReady(budgetLeft());
+      // Also gate on the bundled WEB project having finished installing.
+      await waitForAtLeastOneProjectMetadata(budgetLeft());
     });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.

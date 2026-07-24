@@ -42,6 +42,13 @@ const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
 const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
 
 /**
+ * Serialized PAPI request for `ProjectLookupService.getMetadataForAllProjects` (see
+ * `network-object.service.ts` `getNetworkObjectRequestType`). Mirrors paranext-core's helpers.
+ */
+const PROJECT_LOOKUP_GET_ALL_PROJECTS_METHOD =
+  'object:ProjectLookupService.getMetadataForAllProjects';
+
+/**
  * `rpc.discover` method names that appear once paranext-core's settings, menu-data, and theme
  * service hosts register their provider network objects — the signal that gates a resolved dock
  * (see {@link waitForServiceHostsRegistered}).
@@ -810,6 +817,41 @@ export async function waitForInterlinearizerReady(
 }
 
 /**
+ * Poll until `ProjectLookupService.getMetadataForAllProjects` returns at least one project.
+ *
+ * The bundled sample WEB project installs into the project root asynchronously, independently of
+ * dock/extension readiness — this closes that race explicitly instead of relying on a locator's own
+ * actionability timeout.
+ *
+ * @param timeoutMs Maximum time in milliseconds to poll before throwing.
+ * @returns Resolves once at least one project is registered.
+ * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
+ */
+export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const remaining = timeoutMs - (Date.now() - start);
+    try {
+      const result = await sendPapiRequestOnce<unknown[]>(
+        PROJECT_LOOKUP_GET_ALL_PROJECTS_METHOD,
+        [],
+        DEFAULT_WEBSOCKET_PORT,
+        Math.min(10_000, Math.max(1_000, remaining)),
+      );
+      if (Array.isArray(result) && result.length > 0) return;
+    } catch {
+      /* Project lookup network object not registered yet; next poll. */
+    }
+    const sleepMs = Math.min(RPC_DISCOVER_POLL_INTERVAL_MS, timeoutMs - (Date.now() - start));
+    if (sleepMs <= 0) break;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, sleepMs);
+    });
+  }
+  throw new Error(`No project metadata registered within ${timeoutMs}ms`);
+}
+
+/**
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
  * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
  * Interlinearizer to be open.
@@ -892,6 +934,9 @@ export async function openInterlinearizerFromScriptureEditor(
       await homeTab.dispatchEvent('click');
     }
     const homeFrame = page.frameLocator('iframe[title="Home"]');
+    // The project row can still be installing even though the dock is ready; wait for it
+    // explicitly so a lost race fails clearly here, not as an opaque timeout on the click below.
+    await waitForAtLeastOneProjectMetadata();
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
     // so a shorter project name can't select a row for a differently-named project that merely
     // contains it. The name is JSON-encoded before interpolation so a `"` in it can't break out of

@@ -10,6 +10,7 @@ import {
   E2E_SETTINGS_OVERRIDES,
   restoreBackedUpSettings,
   waitForDockTabTitlesResolved,
+  waitForInterlinearizerReady,
   waitForServiceHostsRegistered,
   withFatalStartupTripwire,
 } from './fixtures/helpers';
@@ -210,7 +211,10 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
     console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
     await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
-    console.log('Ports are up. Waiting for the renderer to settle (dock tabs with real titles)...');
+    console.log(
+      'Ports are up. Waiting for the renderer to settle (dock tabs with real titles) and the ' +
+        'interlinearizer extension to activate...',
+    );
     await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
   } catch (error) {
     // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
@@ -240,17 +244,20 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
 
 /**
  * Connect to the launched app over CDP and wait for its renderer to settle: the renderer page
- * exists and the dock tabs have real titles (none stuck at "Unknown"). This is the earliest point
- * at which the tab-title-based locators the feature tests rely on can work, so gating setup on it
- * converts a broken shared instance into one fast, diagnosable setup failure instead of a cascade
- * of per-test timeouts.
+ * exists, the dock tabs have real titles (none stuck at "Unknown"), and the interlinearizer
+ * extension has finished activating (registered `interlinearizer.openForWebView`). This is the
+ * earliest point at which the tab-title-based locators AND the interlinearizer-opening flow that
+ * the feature tests rely on can work.
  *
  * The Playwright connection is closed before returning either way — it only disconnects; the app
  * keeps running for the test fixtures to connect to.
  *
- * @param timeout Maximum time in milliseconds to wait for the renderer page and settled tabs.
- * @returns Resolves when the renderer page shows at least one dock tab and no "Unknown" titles.
- * @throws {Error} If no renderer page appears or tab titles do not resolve within `timeout`.
+ * @param timeout Maximum time in milliseconds to wait for the renderer page, settled tabs, and the
+ *   extension's activation.
+ * @returns Resolves when the renderer page shows at least one dock tab with no "Unknown" titles and
+ *   the interlinearizer extension has registered its open-webview command.
+ * @throws {Error} If no renderer page appears, tab titles do not resolve, or the extension does not
+ *   activate within `timeout`.
  */
 async function waitForRendererSettled(timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
@@ -293,6 +300,9 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
       await waitForDockTabTitlesResolved(page, budgetLeft(), {
         strict: true,
       });
+      // Also gate on the interlinearizer extension having finished activating. Else, the first
+      // feature test's short per-test budget covers activation it was never sized for.
+      await waitForInterlinearizerReady(budgetLeft());
     });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.

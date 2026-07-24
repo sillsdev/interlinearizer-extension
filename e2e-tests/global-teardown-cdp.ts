@@ -25,10 +25,9 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
     'self-launched Platform.Bible (CDP) app',
   );
 
-  // Remove the isolated user-data dir created for this run. Give the just-killed Electron a moment
-  // to actually exit and release the SingletonLock before removing (bounded poll — teardown only has
-  // a bare PID, not a live process handle, so it can't listen for 'exit' the way setup does), then
-  // retry once on failure — the smoke teardown removes its dir the same defensive way.
+  // Remove the isolated user-data dir created for this run. Give the just-killed Electron a moment to
+  // actually exit and release the SingletonLock before removing — polling for exit rather than
+  // listening for it, since teardown only has a bare PID, not a live process handle.
   if (fs.existsSync(CDP_USER_DATA_FILE)) {
     const userDataDir = fs.readFileSync(CDP_USER_DATA_FILE, 'utf-8').trim();
     if (userDataDir) {

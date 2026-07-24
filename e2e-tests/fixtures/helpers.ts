@@ -154,11 +154,9 @@ export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
  * callers in fixtures/app.fixture.ts and global-setup-cdp.ts). Suppresses the first-run wizard
  * overlay and forces Power interface mode.
  *
- * Power mode is a stand-in, not a permanent choice: paranext-core's Simple mode (the default)
- * currently hides the Home/Editor columns' tab bars entirely (headless) and its Resources column
- * ships default tabs a bare e2e profile can never resolve real titles for, which breaks both
- * `.dock-tab` clicks and the strict cold-start readiness gate. Forcing Power mode sidesteps both
- * until this suite adds real Simple-mode support.
+ * Forcing Power mode is a stopgap, not the end goal: paranext-core's Simple mode (the default)
+ * hides the dock tab bars this suite's `.dock-tab` locators and cold-start readiness gate depend
+ * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
  */
 export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
   'platform.firstRunComplete': true,
@@ -167,11 +165,9 @@ export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
 
 /**
  * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
- * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers rather than one file per
- * tier: there is only one `settings.json` to protect, and a single shared backup means a stale
- * backup left by, say, a hard-killed CDP run is what the smoke tier's own self-heal (see
- * {@link backupAndSeedSettings}) recovers too — instead of the smoke tier mistaking the CDP tier's
- * already-seeded settings for the developer's true original.
+ * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers, not one file per tier:
+ * there is only one `settings.json` to protect, so a stale backup left by either tier's crashed run
+ * can be recovered by the other tier's own self-heal (see {@link backupAndSeedSettings}).
  */
 const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
 

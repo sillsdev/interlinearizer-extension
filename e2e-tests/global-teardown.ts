@@ -10,11 +10,7 @@ import { killProcessTree } from './process-utils';
 export interface KillFromPidFileResult {
   /** Whether a valid PID was found and {@link killProcessTree} reported the kill succeeded. */
   killed: boolean;
-  /**
-   * The PID that was targeted, if the file held a valid one — regardless of kill success (a failed
-   * kill means it was already gone). {@link globalTeardownCdp}, the only consumer, reads it only
-   * when `killed` is also true, to poll for the actual process exit (no live handle to listen on).
-   */
+  /** The PID that was targeted, if the file held a valid one — set regardless of kill success. */
   pid?: number;
 }
 

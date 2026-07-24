@@ -125,12 +125,8 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
 
-  // Seed E2E_SETTINGS_OVERRIDES before launch — platform.firstRunComplete so paranext-core's
-  // first-run wizard overlay does not gate the app (a full-screen modal Dialog that intercepts
-  // pointer events, which would block every feature test), and platform.interfaceMode so the run
-  // gets the visible, clickable dock-tab layout the suite is written against (same seeding the
-  // smoke tier does in fixtures/app.fixture.ts). Backed up and restored by globalTeardownCdp after
-  // the launched app is killed.
+  // Seed E2E_SETTINGS_OVERRIDES before launch and back up settings (restored by globalTeardownCdp
+  // after the launched app is killed).
   seedE2ESettingsOverrides();
 
   // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
@@ -199,9 +195,8 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   // rejection.
   earlyExit.catch(() => {});
 
-  // Resolves (rather than rejects, unlike earlyExit) once the launched process has actually exited.
-  // Used by the failure-path cleanup below to bound the wait for a just-issued SIGKILL to take effect
-  // before touching files the process may still hold open.
+  // Resolves once the process exits (unlike earlyExit, which rejects). Allows the failure-path
+  // cleanup to bound its wait for a just-issued SIGKILL to take effect.
   const exited = new Promise<void>((resolve) => {
     appProcess.once('exit', () => resolve());
   });
@@ -220,22 +215,20 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
     // log itself, not only the uploaded artifact.
     dumpAppLog();
-    // Playwright does not run globalTeardown when globalSetup throws, so clean up immediately rather
-    // than leaving the seeded settings and the launched process for the next run's self-heal. Mirrors
-    // globalTeardownCdp's safe ordering (kill first, restore settings last): the still-running app
-    // owns dev-appdata/settings.json, so restoring before it is actually dead risks it flushing the
-    // seeded value back over the just-restored original, with no backup left to recover from.
+    // Playwright does not run globalTeardown when globalSetup throws, so clean up everything this
+    // setup owns right here instead of leaking it to the next run.
     const killed = appProcess.pid ? killProcessTree(appProcess.pid, 'SIGKILL') : false;
     if (killed) {
       await waitForProcessExit(exited, 1_000);
     }
     await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+    // Restore settings after waiting for the kill above to take effect. The still-running app owns
+    // dev-appdata/settings.json, so restoring before it's dead risks flushing the seeded value back
+    // over the just-restored original, with no backup left to recover from.
     restoreSeededSettings();
     fs.rmSync(CDP_PID_FILE, { force: true });
     fs.rmSync(CDP_USER_DATA_FILE, { force: true });
-    // bootstrapRendererDevServer() above may have started this; Playwright skips globalTeardown on a
-    // thrown globalSetup, so without this it would otherwise leak until the next run's
-    // bootstrapRendererDevServer detects the port in use and reuses it.
+    // Also stop the renderer dev server that bootstrapRendererDevServer() may have started.
     killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
     throw error;
   }
@@ -333,10 +326,8 @@ function clearStaleOwnershipMarkers(): void {
 }
 
 /**
- * Seed {@link E2E_SETTINGS_OVERRIDES} into paranext-core's dev-appdata settings before launching the
- * app (the same seeding the smoke tier does in fixtures/app.fixture.ts). Backs up the original file
- * to disk for {@link restoreSeededSettings} to put back in teardown, self-healing a leftover backup
- * from a prior crashed run of either tier first — see {@link backupAndSeedSettings}.
+ * Seed {@link E2E_SETTINGS_OVERRIDES} before launching the app. Thin wrapper around
+ * {@link backupAndSeedSettings} — see its doc for the backup/self-heal behavior.
  *
  * @returns Nothing.
  */
@@ -345,9 +336,8 @@ function seedE2ESettingsOverrides(): void {
 }
 
 /**
- * Undo {@link seedE2ESettingsOverrides} by restoring the dev-appdata settings file from its on-disk
- * backup. A no-op when no backup exists. Best-effort: guarded so a settings-restore failure never
- * aborts teardown.
+ * Undo {@link seedE2ESettingsOverrides}. Thin wrapper around {@link restoreBackedUpSettings} — see
+ * its doc for the restore/self-heal behavior.
  *
  * @returns Nothing.
  */

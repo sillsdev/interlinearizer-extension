@@ -50,14 +50,11 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM')
 }
 
 /**
- * Race `exitSignal` — a promise that resolves once a LIVE process handle reports its 'exit' event —
- * against `timeoutMs`. For a caller that just sent a kill signal to a process it holds a handle for
- * (an Electron app, a spawned child), this bounds the wait for the process to actually die before
- * touching files it may still hold open (e.g. its user-data dir), without blindly sleeping the full
- * timeout when the process dies sooner.
+ * Bound the wait for a killed process to actually exit without blindly sleeping the full timeout
+ * when it dies sooner. Use before touching files the process may still hold open (e.g. its
+ * user-data dir). Races `exitSignal` (a live process handle's exit event) against `timeoutMs`.
  *
- * For a caller that only has a bare PID (e.g. read from a marker file written by a different
- * process invocation, with no handle to listen on), use {@link waitForPidExit} instead.
+ * For a caller with only a bare PID and no handle to listen on, use {@link waitForPidExit} instead.
  *
  * @param exitSignal Promise that resolves when the process has exited.
  * @param timeoutMs Maximum time in milliseconds to wait before giving up.
@@ -81,16 +78,14 @@ export async function waitForProcessExit(
 }
 
 /**
- * Poll for a PID to stop existing. For a caller with only a bare PID and no live process handle to
- * listen on (see {@link waitForProcessExit} for that case) — e.g. teardown, which reads the PID back
- * from a marker file a separate setup invocation wrote. Signal `0` tests existence without
- * affecting the process; Node (including on Windows) throws once the PID no longer exists.
+ * Poll for a PID to stop existing. This is the {@link waitForProcessExit} equivalent for a caller
+ * with only a bare PID and no live process handle to listen on (e.g. teardown, which reads the PID
+ * back from a marker file a separate setup invocation wrote).
  *
  * @param pid PID to poll.
  * @param timeoutMs Maximum time in milliseconds to wait before giving up.
  * @param pollIntervalMs Milliseconds between existence checks. Defaults to 100.
- * @returns Resolves once the PID no longer exists, or once `timeoutMs` elapses — whichever is
- *   first.
+ * @returns Resolves once the PID no longer exists or `timeoutMs` elapses — whichever is first.
  */
 export async function waitForPidExit(
   pid: number,
@@ -100,6 +95,7 @@ export async function waitForPidExit(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
+      // Signal 0 is a no-op existence probe — Node throws once the PID no longer exists.
       process.kill(pid, 0);
     } catch {
       return;

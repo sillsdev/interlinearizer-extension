@@ -44,6 +44,8 @@ const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
 /**
  * Serialized PAPI request for `ProjectLookupService.getMetadataForAllProjects` (see
  * `network-object.service.ts` `getNetworkObjectRequestType`). Mirrors paranext-core's helpers.
+ * Unlike {@link SERVICE_HOST_OBJECT_METHODS}, this is coupled to both the object id and the method
+ * name; if paranext-core renames either, this stops matching and times out.
  */
 const PROJECT_LOOKUP_GET_ALL_PROJECTS_METHOD =
   'object:ProjectLookupService.getMetadataForAllProjects';

@@ -6,16 +6,24 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import {
+  backupAndSeedSettings,
+  E2E_SETTINGS_OVERRIDES,
+  restoreBackedUpSettings,
+  waitForAtLeastOneProjectMetadata,
   waitForDockTabTitlesResolved,
+  waitForInterlinearizerReady,
   waitForServiceHostsRegistered,
   withFatalStartupTripwire,
 } from './fixtures/helpers';
 import {
   bootstrapRendererDevServer,
+  DEV_SERVER_PID_FILE,
   isPortInUse,
   waitForPort,
   WEBSOCKET_PORT,
 } from './global-setup';
+import { killProcessFromPidFile } from './global-teardown';
+import { killProcessTree, removeDirWithRetry, waitForProcessExit } from './process-utils';
 
 /**
  * Chromium remote-debugging port the self-launched Electron instance exposes and the CDP fixture
@@ -118,6 +126,10 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
 
+  // Seed E2E_SETTINGS_OVERRIDES before launch and back up settings (restored by globalTeardownCdp
+  // after the launched app is killed).
+  seedE2ESettingsOverrides();
+
   // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
   // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
   const appLogFd = fs.openSync(CDP_APP_LOG_FILE, 'w');
@@ -183,17 +195,42 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   // handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
   // rejection.
   earlyExit.catch(() => {});
+
+  // Resolves once the process exits (unlike earlyExit, which rejects). Allows the failure-path
+  // cleanup to bound its wait for a just-issued SIGKILL to take effect.
+  const exited = new Promise<void>((resolve) => {
+    appProcess.once('exit', () => resolve());
+  });
+
   try {
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
     console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
     await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
-    console.log('Ports are up. Waiting for the renderer to settle (dock tabs with real titles)...');
+    console.log(
+      'Ports are up. Waiting for the renderer to settle (dock tabs with real titles) and the ' +
+        'interlinearizer extension to activate...',
+    );
     await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
   } catch (error) {
     // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
     // log itself, not only the uploaded artifact.
     dumpAppLog();
+    // Playwright does not run globalTeardown when globalSetup throws, so clean up everything this
+    // setup owns right here instead of leaking it to the next run.
+    const killed = appProcess.pid ? killProcessTree(appProcess.pid, 'SIGKILL') : false;
+    if (killed) {
+      await waitForProcessExit(exited, 1_000);
+    }
+    await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+    // Restore settings after waiting for the kill above to take effect. The still-running app owns
+    // dev-appdata/settings.json, so restoring before it's dead risks flushing the seeded value back
+    // over the just-restored original, with no backup left to recover from.
+    restoreSeededSettings();
+    fs.rmSync(CDP_PID_FILE, { force: true });
+    fs.rmSync(CDP_USER_DATA_FILE, { force: true });
+    // Also stop the renderer dev server that bootstrapRendererDevServer() may have started.
+    killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
     throw error;
   }
   console.log('Platform.Bible (CDP) is ready.');
@@ -201,17 +238,20 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
 
 /**
  * Connect to the launched app over CDP and wait for its renderer to settle: the renderer page
- * exists and the dock tabs have real titles (none stuck at "Unknown"). This is the earliest point
- * at which the tab-title-based locators the feature tests rely on can work, so gating setup on it
- * converts a broken shared instance into one fast, diagnosable setup failure instead of a cascade
- * of per-test timeouts.
+ * exists, the dock tabs have real titles (none stuck at "Unknown"), and the interlinearizer
+ * extension has finished activating (registered `interlinearizer.openForWebView`). This is the
+ * earliest point at which the tab-title-based locators AND the interlinearizer-opening flow that
+ * the feature tests rely on can work.
  *
  * The Playwright connection is closed before returning either way — it only disconnects; the app
  * keeps running for the test fixtures to connect to.
  *
- * @param timeout Maximum time in milliseconds to wait for the renderer page and settled tabs.
- * @returns Resolves when the renderer page shows at least one dock tab and no "Unknown" titles.
- * @throws {Error} If no renderer page appears or tab titles do not resolve within `timeout`.
+ * @param timeout Maximum time in milliseconds to wait for the renderer page, settled tabs, and the
+ *   extension's activation.
+ * @returns Resolves when the renderer page shows at least one dock tab with no "Unknown" titles and
+ *   the interlinearizer extension has registered its open-webview command.
+ * @throws {Error} If no renderer page appears, tab titles do not resolve, or the extension does not
+ *   activate within `timeout`.
  */
 async function waitForRendererSettled(timeout: number): Promise<void> {
   const deadline = Date.now() + timeout;
@@ -254,6 +294,11 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
       await waitForDockTabTitlesResolved(page, budgetLeft(), {
         strict: true,
       });
+      // Also gate on the interlinearizer extension having finished activating. Else, the first
+      // feature test's short per-test budget covers activation it was never sized for.
+      await waitForInterlinearizerReady(budgetLeft());
+      // Also gate on the bundled WEB project having finished installing.
+      await waitForAtLeastOneProjectMetadata(budgetLeft());
     });
   } finally {
     // Disconnect only — connectOverCDP close() does not terminate the app.
@@ -262,14 +307,18 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
 }
 
 /**
- * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present.
- * Called from the warm-instance reuse path, where this run owns none of the resources those markers
- * describe, so a stale marker from a prior launched run would make {@link globalTeardownCdp} act on
- * foreign resources. Best-effort: each removal is guarded.
+ * Remove the ownership marker files ({@link CDP_PID_FILE}, {@link CDP_USER_DATA_FILE}) if present and
+ * restore any settings a prior launched run seeded. Called from the warm-instance reuse path, where
+ * this run owns none of the resources those markers describe, so a stale marker from a prior
+ * launched run would make {@link globalTeardownCdp} act on foreign resources (and a stale settings
+ * seed would linger in the developer's dev-appdata). Best-effort: each removal is guarded.
  *
  * @returns Nothing.
  */
 function clearStaleOwnershipMarkers(): void {
+  // Undo any seed a prior launched run left behind before it crashed, so the developer's warm
+  // instance isn't reused with lingering test settings on disk.
+  restoreSeededSettings();
   [CDP_PID_FILE, CDP_USER_DATA_FILE].forEach((markerFile) => {
     try {
       fs.rmSync(markerFile, { force: true });
@@ -277,6 +326,26 @@ function clearStaleOwnershipMarkers(): void {
       console.warn(`Could not remove stale CDP marker ${markerFile}: ${error}`);
     }
   });
+}
+
+/**
+ * Seed {@link E2E_SETTINGS_OVERRIDES} before launching the app. Thin wrapper around
+ * {@link backupAndSeedSettings} — see its doc for the backup/self-heal behavior.
+ *
+ * @returns Nothing.
+ */
+function seedE2ESettingsOverrides(): void {
+  backupAndSeedSettings(E2E_SETTINGS_OVERRIDES);
+}
+
+/**
+ * Undo {@link seedE2ESettingsOverrides}. Thin wrapper around {@link restoreBackedUpSettings} — see
+ * its doc for the restore/self-heal behavior.
+ *
+ * @returns Nothing.
+ */
+export function restoreSeededSettings(): void {
+  restoreBackedUpSettings();
 }
 
 /**

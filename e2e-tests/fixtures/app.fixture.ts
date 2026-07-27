@@ -1,16 +1,17 @@
 // Adapted from paranext-core/e2e-tests/fixtures/app.fixture.ts
 import {
   test as base,
+  ConsoleMessage,
   ElectronApplication,
   Page,
   TestInfo,
-  ConsoleMessage,
 } from '@playwright/test';
 import {
+  E2E_SETTINGS_OVERRIDES,
   launchElectronWithExtension,
-  teardownElectronApp,
-  ElectronAppContext,
+  preConfigureSettings,
   PROCESS_READY_TIMEOUT,
+  teardownElectronApp,
 } from './helpers';
 
 export { expect } from '@playwright/test';
@@ -36,13 +37,21 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
   electronApp: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use) => {
-      const ctx: ElectronAppContext = await launchElectronWithExtension();
-
-      await use(ctx.electronApp);
-
-      console.log('[teardown] Worker-scoped app teardown starting...');
-      await teardownElectronApp(ctx);
-      console.log('[teardown] Worker-scoped app teardown complete — worker will exit now');
+      console.log('[startup] Configuring settings for worker-scoped app launch...');
+      const restoreSettings = preConfigureSettings(E2E_SETTINGS_OVERRIDES);
+      try {
+        const ctx = await launchElectronWithExtension();
+        try {
+          await use(ctx.electronApp);
+        } finally {
+          console.log('[teardown] Worker-scoped app teardown starting...');
+          await teardownElectronApp(ctx);
+          console.log('[teardown] Worker-scoped app teardown complete');
+        }
+      } finally {
+        restoreSettings();
+        console.log('[teardown] Original settings restored — worker will exit now');
+      }
     },
     { scope: 'worker' },
   ],

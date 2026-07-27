@@ -13,7 +13,7 @@ import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { killProcessTree } from '../process-utils';
+import { killProcessTree, removeDirWithRetry, waitForProcessExit } from '../process-utils';
 
 const DEFAULT_WEBSOCKET_PORT = 8876;
 const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
@@ -40,6 +40,15 @@ const SMOKE_APP_LOG_FILE = path.join(__dirname, '..', '.smoke-app-startup.log');
  * (`command` + `:` + `platform.about`).
  */
 const PLATFORM_ABOUT_COMMAND = 'command:platform.about';
+
+/**
+ * Serialized PAPI request for `ProjectLookupService.getMetadataForAllProjects` (see
+ * `network-object.service.ts` `getNetworkObjectRequestType`). Mirrors paranext-core's helpers.
+ * Unlike {@link SERVICE_HOST_OBJECT_METHODS}, this is coupled to both the object id and the method
+ * name; if paranext-core renames either, this stops matching and times out.
+ */
+const PROJECT_LOOKUP_GET_ALL_PROJECTS_METHOD =
+  'object:ProjectLookupService.getMetadataForAllProjects';
 
 /**
  * `rpc.discover` method names that appear once paranext-core's settings, menu-data, and theme
@@ -136,6 +145,117 @@ async function waitForWebSocketReady(port: number, timeout: number): Promise<voi
     }
   }
   throw new Error(`WebSocket server not ready on port ${port} after ${timeout}ms`);
+}
+
+/**
+ * Path to paranext-core's shared dev-appdata settings file. In development mode Platform.Bible
+ * reads this file at startup to restore settings, so writing it before launching Electron is how
+ * E2E tests pre-configure settings (e.g. suppressing the first-run wizard). Resolved relative to
+ * the sibling `paranext-core` checkout the app is launched from.
+ */
+export const DEV_APPDATA_SETTINGS_PATH = path.resolve(
+  __dirname,
+  '../../../paranext-core/dev-appdata/data/settings.json',
+);
+
+/**
+ * Settings overrides seeded before every e2e launch, both tiers (see {@link backupAndSeedSettings}
+ * callers in fixtures/app.fixture.ts and global-setup-cdp.ts). Suppresses the first-run wizard
+ * overlay and forces Power interface mode.
+ *
+ * Forcing Power mode is a stopgap, not the end goal: paranext-core's Simple mode (the default)
+ * hides the dock tab bars this suite's `.dock-tab` locators and cold-start readiness gate depend
+ * on. The suite should eventually cover both modes rather than forcing Power mode for every test.
+ */
+export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
+  'platform.firstRunComplete': true,
+  'platform.interfaceMode': 'power',
+};
+
+/**
+ * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
+ * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers, not one file per tier:
+ * there is only one `settings.json` to protect, so a stale backup left by either tier's crashed run
+ * can be recovered by the other tier's own self-heal (see {@link backupAndSeedSettings}).
+ */
+const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
+
+/** Marker stored in {@link SETTINGS_BACKUP_FILE} when no settings file existed before seeding. */
+const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
+
+/**
+ * Back up paranext-core's dev-appdata settings file to {@link SETTINGS_BACKUP_FILE} (recording
+ * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
+ * called BEFORE launching Electron so the app reads the overrides at startup.
+ *
+ * Self-heals a stale backup left by a prior hard-killed run of EITHER tier (restoring it first), so
+ * the backup always captures the true original settings, never an already-seeded file.
+ *
+ * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ *   }`).
+ * @returns Nothing.
+ */
+export function backupAndSeedSettings(overrides: Record<string, unknown>): void {
+  restoreBackedUpSettings();
+
+  const settingsDir = path.dirname(DEV_APPDATA_SETTINGS_PATH);
+  let existing: Record<string, unknown> = {};
+  if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
+    const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
+    fs.writeFileSync(SETTINGS_BACKUP_FILE, original);
+    try {
+      const parsed: unknown = JSON.parse(original);
+      // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
+      // file falls back to just the overrides.
+      if (parsed && typeof parsed === 'object') existing = { ...parsed };
+    } catch {
+      // Corrupt file — overwrite with just the overrides.
+    }
+  } else {
+    // Record absence so restoreBackedUpSettings deletes the file this seed creates rather than
+    // leaving it behind.
+    fs.writeFileSync(SETTINGS_BACKUP_FILE, SETTINGS_ABSENT_SENTINEL);
+  }
+  fs.mkdirSync(settingsDir, { recursive: true });
+  fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, JSON.stringify({ ...existing, ...overrides }));
+}
+
+/**
+ * Undo {@link backupAndSeedSettings}: restore the dev-appdata settings file from
+ * {@link SETTINGS_BACKUP_FILE} (or delete it if the backup marks that no settings file existed
+ * before seeding), then remove the backup marker. A no-op when no backup exists. Best-effort:
+ * guarded so a settings-restore failure never throws.
+ *
+ * @returns Nothing.
+ */
+export function restoreBackedUpSettings(): void {
+  if (!fs.existsSync(SETTINGS_BACKUP_FILE)) return;
+  try {
+    const backup = fs.readFileSync(SETTINGS_BACKUP_FILE, 'utf-8');
+    if (backup === SETTINGS_ABSENT_SENTINEL) fs.rmSync(DEV_APPDATA_SETTINGS_PATH, { force: true });
+    else fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, backup);
+    fs.rmSync(SETTINGS_BACKUP_FILE, { force: true });
+  } catch (error) {
+    console.warn(`Could not restore dev-appdata settings from ${SETTINGS_BACKUP_FILE}: ${error}`);
+  }
+}
+
+/**
+ * Pre-configure paranext-core's dev-appdata settings before launching the smoke tier's per-worker
+ * Electron instance (e.g. suppressing the first-run wizard), backing up the original to disk (see
+ * {@link backupAndSeedSettings}) rather than only in memory — so a hard-killed worker process (CI
+ * timeout SIGKILL, Ctrl+C) leaves a recoverable backup instead of losing the developer's original
+ * settings with the process.
+ *
+ * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ *   }`).
+ * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
+ *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
+ *   not permanently replaced by test values.
+ */
+export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
+  backupAndSeedSettings(overrides);
+  return restoreBackedUpSettings;
 }
 
 /**
@@ -314,29 +434,12 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
     console.log('[teardown] Sending SIGKILL to process group...');
     if (electronProcess.pid) killProcessTree(electronProcess.pid, 'SIGKILL');
     console.log('[teardown] Waiting for appClosed after SIGKILL (up to 3s)...');
-    await Promise.race([
-      appClosed,
-      new Promise<void>((resolve) => {
-        setTimeout(resolve, 3_000);
-      }),
-    ]);
+    await waitForProcessExit(appClosed, 3_000);
     console.log('[teardown] Done waiting after SIGKILL');
   }
 
   console.log('[teardown] Cleaning up user data dir...');
-  try {
-    fs.rmSync(userDataDir, { recursive: true, force: true });
-  } catch {
-    console.warn('[teardown] First rmSync attempt failed — retrying in 3s...');
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 3_000);
-    });
-    try {
-      fs.rmSync(userDataDir, { recursive: true, force: true });
-    } catch (e) {
-      console.warn(`[teardown] Could not remove ${userDataDir}: ${e}`);
-    }
-  }
+  await removeDirWithRetry(userDataDir, 'user data dir');
   console.log('[teardown] Complete');
 }
 
@@ -716,6 +819,41 @@ export async function waitForInterlinearizerReady(
 }
 
 /**
+ * Poll until `ProjectLookupService.getMetadataForAllProjects` returns at least one project.
+ *
+ * The bundled sample WEB project installs into the project root asynchronously, independently of
+ * dock/extension readiness — this closes that race explicitly instead of relying on a locator's own
+ * actionability timeout.
+ *
+ * @param timeoutMs Maximum time in milliseconds to poll before throwing.
+ * @returns Resolves once at least one project is registered.
+ * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
+ */
+export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const remaining = timeoutMs - (Date.now() - start);
+    try {
+      const result = await sendPapiRequestOnce<unknown[]>(
+        PROJECT_LOOKUP_GET_ALL_PROJECTS_METHOD,
+        [],
+        DEFAULT_WEBSOCKET_PORT,
+        Math.min(10_000, Math.max(1_000, remaining)),
+      );
+      if (Array.isArray(result) && result.length > 0) return;
+    } catch {
+      /* Project lookup network object not registered yet; next poll. */
+    }
+    const sleepMs = Math.min(RPC_DISCOVER_POLL_INTERVAL_MS, timeoutMs - (Date.now() - start));
+    if (sleepMs <= 0) break;
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, sleepMs);
+    });
+  }
+  throw new Error(`No project metadata registered within ${timeoutMs}ms`);
+}
+
+/**
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
  * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
  * Interlinearizer to be open.
@@ -725,9 +863,10 @@ export async function waitForInterlinearizerReady(
  * open the Interlinearizer directly instead of popping a project-picker dialog. The startup dock
  * layout varies, so this reaches that loaded state resiliently rather than assuming it:
  *
- * - A fresh core profile opens the default multi-tab layout with an empty "Scripture Editor" tab (no
- *   project loaded) and NO Home dock tab — the project is opened from Home (toolbar Home button,
- *   which is always present).
+ * - A fresh core profile has been seen opening either with an empty "Scripture Editor" tab and no
+ *   Home dock tab (older paranext-core), or directly to an already-open Home tab (current default)
+ *   — in both cases the project is opened via Home (the toolbar Home button, always present,
+ *   focuses the existing Home tab if one is already open rather than duplicating it).
  * - A warm CDP instance already has the editor open on a project (tab titled e.g. "WEB (Editable)").
  *
  * Steps:
@@ -764,14 +903,19 @@ export async function openInterlinearizerFromScriptureEditor(
   const anyEditorTab = page
     .locator('.dock-tab', { hasText: new RegExp(`^(Scripture Editor|${escapedProjectName})\\b`) })
     .first();
-  // The toolbar's "Home..." button (a ghost icon button wrapping lucide's HomeIcon). It opens Home
-  // regardless of dock layout — the default multi-tab layout has no Home dock tab. The svg is
-  // `aria-hidden`, so target the enclosing button by the icon class rather than by role/name.
+  // The Home dock tab, when one is already open (current default: a fresh profile opens directly to
+  // Home rather than an empty "Scripture Editor" tab — see the wait below).
+  const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
+  // The toolbar's "Home..." button (a ghost icon button wrapping lucide's HomeIcon). Opens Home when
+  // it is not already open as its own tab (see the branch below). The svg is `aria-hidden`, so target
+  // the enclosing button by the icon class rather than by role/name.
   const homeButton = page.locator('button:has(svg.lucide-house)').first();
 
   // Wait for the dock layout to mount before branching — a fresh profile briefly reports zero tabs,
-  // which a non-waiting `count()` would misread as "no editor".
-  await expect(anyEditorTab).toBeVisible({ timeout: 45_000 });
+  // which a non-waiting `count()` would misread as "no editor". Accept either an editor tab OR an
+  // already-open Home tab as evidence of a mounted dock: which one a fresh profile starts with has
+  // changed between paranext-core versions, and this helper works against either starting layout.
+  await expect(anyEditorTab.or(homeTab).first()).toBeVisible({ timeout: 45_000 });
 
   // Ensure the project is loaded into a Scripture Editor, not merely that some editor tab exists:
   // without a project-bearing editor, BCV navigation has no target (nav control stays disabled) and
@@ -779,8 +923,22 @@ export async function openInterlinearizerFromScriptureEditor(
   // loads it into the editor. Skipped when a project-titled editor tab is already present (warm CDP
   // instance).
   if ((await loadedEditorTab.count()) === 0) {
-    await homeButton.click();
+    // Home may already be open as its own dock tab (current default) rather than needing the toolbar
+    // button to open it (older default, still true for CDP's warm-but-project-less instance) — only
+    // click the button when Home isn't already open, rather than relying on a redundant click being a
+    // harmless no-op.
+    if ((await homeTab.count()) === 0) {
+      await homeButton.click();
+      await expect(homeTab).toBeVisible({ timeout: 10_000 });
+    } else {
+      // Home is already open as a tab. Dispatch a click (not a real click, so an off-viewport tab on
+      // small CI viewports still closes) to guarantee focus before driving its iframe.
+      await homeTab.dispatchEvent('click');
+    }
     const homeFrame = page.frameLocator('iframe[title="Home"]');
+    // The project row can still be installing even though the dock is ready; wait for it
+    // explicitly so a lost race fails clearly here, not as an opaque timeout on the click below.
+    await waitForAtLeastOneProjectMetadata();
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
     // so a shorter project name can't select a row for a differently-named project that merely
     // contains it. The name is JSON-encoded before interpolation so a `"` in it can't break out of
@@ -795,7 +953,6 @@ export async function openInterlinearizerFromScriptureEditor(
     // its iframe intercepts pointer events, so the ≡-menu click below would land on Home. Dispatch
     // the close (not a real click, so an off-viewport tab on small CI viewports still closes), then
     // wait for the tab to leave the DOM.
-    const homeTab = page.locator('.dock-tab', { hasText: 'Home' }).first();
     await homeTab
       .locator('.dock-tab-close-btn')
       .dispatchEvent('click')
@@ -1029,9 +1186,13 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
   // Settle the dock layout before the non-retrying isVisible() branch below: the readiness helpers
   // only poll rpc.discover, not the DOM, so a not-yet-painted Interlinearizer tab would read as
   // "absent" and send us needlessly down the full open-from-editor flow. `.first()` on the whole
-  // `.or()` keeps the assertion out of strict mode when both tabs are present (per-operand `.first()`
-  // does not collapse the union).
-  const anchorTab = page.locator('.dock-tab', { hasText: /Scripture Editor|WEB/ }).first();
+  // `.or()` keeps the assertion out of strict mode when multiple tabs are present (per-operand
+  // `.first()` does not collapse the union). A fresh/shared instance may land on an already-open Home
+  // tab rather than a Scripture Editor/WEB tab — accept that too, since the fallback branch below
+  // (openInterlinearizerFromScriptureEditor) already knows how to open the project from Home.
+  const anchorTab = page
+    .locator('.dock-tab', { hasText: /^(Scripture Editor|WEB|Home)\b/ })
+    .first();
   await expect(interlinearizerTab.or(anchorTab).first()).toBeVisible({ timeout: 30_000 });
 
   if (await interlinearizerTab.isVisible()) {

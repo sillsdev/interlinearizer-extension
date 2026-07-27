@@ -1,5 +1,6 @@
 // Cross-platform process-tree termination, shared by global-teardown.ts and global-teardown-cdp.ts.
 import { execFileSync } from 'child_process';
+import fs from 'fs';
 
 /**
  * Forcibly kill a process and all of its descendants, cross-platform.
@@ -44,6 +45,95 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM')
     } catch {
       // Already stopped
       return false;
+    }
+  }
+}
+
+/**
+ * Bound the wait for a killed process to actually exit without blindly sleeping the full timeout
+ * when it dies sooner. Use before touching files the process may still hold open (e.g. its
+ * user-data dir). Races `exitSignal` (a live process handle's exit event) against `timeoutMs`.
+ *
+ * For a caller with only a bare PID and no handle to listen on, use {@link waitForPidExit} instead.
+ *
+ * @param exitSignal Promise that resolves when the process has exited.
+ * @param timeoutMs Maximum time in milliseconds to wait before giving up.
+ * @returns Resolves once `exitSignal` settles, or once `timeoutMs` elapses — whichever is first.
+ */
+export async function waitForProcessExit(
+  exitSignal: Promise<void>,
+  timeoutMs: number,
+): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      exitSignal,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Poll for a PID to stop existing. This is the {@link waitForProcessExit} equivalent for a caller
+ * with only a bare PID and no live process handle to listen on (e.g. teardown, which reads the PID
+ * back from a marker file a separate setup invocation wrote).
+ *
+ * @param pid PID to poll.
+ * @param timeoutMs Maximum time in milliseconds to wait before giving up.
+ * @param pollIntervalMs Milliseconds between existence checks. Defaults to 100.
+ * @returns Resolves once the PID no longer exists or `timeoutMs` elapses — whichever is first.
+ */
+export async function waitForPidExit(
+  pid: number,
+  timeoutMs: number,
+  pollIntervalMs = 100,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      // Signal 0 is a no-op existence probe — Node throws once the PID no longer exists.
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, pollIntervalMs);
+    });
+  }
+}
+
+/**
+ * Remove a directory tree, retrying once after a delay if the first attempt fails — e.g. a
+ * just-killed process (Electron's SingletonLock, a Windows file handle) has not yet released it.
+ * Best-effort and non-throwing: a persistent failure is logged, never thrown, so callers can rely
+ * on this never aborting their own cleanup sequence.
+ *
+ * @param dir Directory to remove.
+ * @param label Human-readable name for the directory, used in the warning log if removal ultimately
+ *   fails (e.g. `'user data dir'`, `'CDP user-data dir'`).
+ * @param retryDelayMs Milliseconds to wait before the retry attempt. Defaults to 3000.
+ * @returns Resolves once removal succeeds or the retry attempt is exhausted.
+ */
+export async function removeDirWithRetry(
+  dir: string,
+  label: string,
+  retryDelayMs = 3_000,
+): Promise<void> {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, retryDelayMs);
+    });
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (error) {
+      console.warn(`Could not remove ${label} ${dir}: ${error}`);
     }
   }
 }

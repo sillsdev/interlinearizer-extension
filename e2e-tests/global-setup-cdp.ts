@@ -114,12 +114,15 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
 
   // Isolated user-data dir so the singleton lock can't collide with a developer's own instance and
   // the run leaves the real profile untouched. If recording the ownership marker fails, remove the
-  // dir we just created rather than leaking an unreferenced temp dir teardown can never find.
+  // dir we just created rather than leaking an unreferenced temp dir teardown can never find, and
+  // stop the dev server the bootstrap above just started — this is past bootstrapRendererDevServer's
+  // own cleanup but before the try/catch below, so nothing else would.
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paranext-e2e-cdp-'));
   try {
     fs.writeFileSync(CDP_USER_DATA_FILE, userDataDir);
   } catch (error) {
     await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+    killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
     throw error;
   }
 

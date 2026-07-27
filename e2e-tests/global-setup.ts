@@ -5,6 +5,7 @@ import http from 'http';
 import net from 'net';
 import path from 'path';
 import fs from 'fs';
+import { killProcessTree } from './process-utils';
 
 export const WEBSOCKET_PORT = 8876;
 export const RENDERER_PORT = 1212;
@@ -149,9 +150,15 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
  * (recording its PID for teardown). Shared by both the smoke {@link globalSetup} (whose fixture then
  * launches Electron) and the CDP setup (which launches Electron itself with remote debugging).
  *
+ * Self-cleaning on failure: if a dev server started here never becomes ready, it is killed before
+ * the error propagates (see {@link killSpawnedDevServer}), so neither caller leaks it. Callers
+ * therefore need no dev-server cleanup of their own for a bootstrap failure.
+ *
  * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use (a running Platform.Bible would conflict).
  * @throws {Error} If the extension dist is missing.
+ * @throws {Error} If a dev server started here does not open port 1212 within 60s, or (outside CI)
+ *   fails the HTTP compilation probe within 120s.
  */
 export async function bootstrapRendererDevServer(): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..');
@@ -225,26 +232,67 @@ export async function bootstrapRendererDevServer(): Promise<void> {
       fs.writeFileSync(DEV_SERVER_PID_FILE, String(devServer.pid));
     }
 
-    console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
-    await waitForPort(RENDERER_PORT, 60_000);
-    console.log(
-      `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
-    );
-    // webpack-dev-middleware holds requests open until initial compilation finishes. Probe a
-    // renderer URL to opportunistically wait for compilation, but do not hard-fail CI on this
-    // probe because CI runners can be noisy and late-compiling; the fixture has a longer CI-ready
-    // timeout and will keep waiting for the renderer window to recover.
+    // From here on this run owns a spawned, detached dev server. Playwright skips globalTeardown
+    // when globalSetup throws, so a readiness failure below must kill it on the spot or it survives
+    // the failed run, holds port 1212, and silently serves a stale bundle to every later run.
+    // Scoped to this branch only: the already-running branch above didn't start the server, so this
+    // run must leave it alone.
     try {
-      await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/`, 120_000);
-    } catch (error) {
-      if (!process.env.CI) throw error;
-      const message =
-        error instanceof Error ? error.message : 'Unknown renderer readiness probe failure';
-      console.warn(
-        `Renderer HTTP readiness probe timed out in CI: ${message}. Continuing with port-only readiness.`,
+      console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
+      await waitForPort(RENDERER_PORT, 60_000);
+      console.log(
+        `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
       );
+      // webpack-dev-middleware holds requests open until initial compilation finishes. Probe a
+      // renderer URL to opportunistically wait for compilation, but do not hard-fail CI on this
+      // probe because CI runners can be noisy and late-compiling; the fixture has a longer CI-ready
+      // timeout and will keep waiting for the renderer window to recover.
+      try {
+        await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/`, 120_000);
+      } catch (error) {
+        if (!process.env.CI) throw error;
+        const message =
+          error instanceof Error ? error.message : 'Unknown renderer readiness probe failure';
+        console.warn(
+          `Renderer HTTP readiness probe timed out in CI: ${message}. Continuing with port-only readiness.`,
+        );
+      }
+    } catch (error) {
+      killSpawnedDevServer(devServer.pid);
+      throw error;
     }
     console.log('Renderer dev server is ready.');
+  }
+}
+
+/**
+ * Kill a dev server this run spawned but never got ready, and clear its PID marker. Used only on
+ * {@link bootstrapRendererDevServer}'s failure path, where the caller's own cleanup cannot reach:
+ * the CDP setup's `cleanUpFailedLaunch` runs only for failures after the bootstrap returns, and
+ * Playwright skips `globalTeardown` entirely when `globalSetup` throws.
+ *
+ * Deliberately does not reuse `killProcessFromPidFile` from global-teardown.ts: importing it here
+ * would make setup and teardown mutually dependent (teardown already imports
+ * {@link DEV_SERVER_PID_FILE} from this module). The PID is in hand anyway, so the read-back that
+ * helper exists to do is unnecessary.
+ *
+ * Best-effort: every step swallows its own error, since this runs while an exception is already
+ * propagating and must not replace the real failure with a cleanup one.
+ *
+ * @param pid PID of the spawned dev server; `undefined` if the spawn never reported one, in which
+ *   case there is nothing to kill and no marker was written.
+ * @returns Nothing.
+ */
+function killSpawnedDevServer(pid: number | undefined): void {
+  if (!pid) return;
+  console.log(`Renderer dev server failed to become ready — stopping it (PID: ${pid})...`);
+  killProcessTree(pid, 'SIGTERM');
+  try {
+    fs.rmSync(DEV_SERVER_PID_FILE, { force: true });
+  } catch (error) {
+    console.warn(
+      `Could not remove renderer dev server PID marker ${DEV_SERVER_PID_FILE}: ${error}`,
+    );
   }
 }
 

@@ -249,10 +249,10 @@ export function ScrollGroupSelector({
 }
 
 /**
- * Throws if a `Button`-descendant SVG loses its size to `buttonVariants`: an `h-*`/`w-*` className
- * without `size-`, or a numeric `size` prop without a `size-` className. Production silently
- * overrides both (AGENTS.md § Components); jsdom can't reproduce the visual regression, so this
- * fails loudly instead of letting it pass as a green test.
+ * Throws if a `Button`-descendant SVG loses its size to `buttonVariants`: an `h-*` or `w-*`
+ * className without `size-`, or a numeric `size` prop without a `size-` className. Production
+ * silently overrides all of these (AGENTS.md § Components); jsdom can't reproduce the visual
+ * regression, so this fails loudly instead of letting it pass as a green test.
  *
  * @param node - A `Button` child (or subtree) to check.
  */
@@ -270,8 +270,7 @@ function assertNoOversizedIconClassName(node: ReactNode): void {
   const hasSizeClass = typeof className === 'string' && /\bsize-/.test(className);
   if (
     typeof className === 'string' &&
-    /\btw:h-\S+/.test(className) &&
-    /\btw:w-\S+/.test(className) &&
+    (/\btw:h-\S+/.test(className) || /\btw:w-\S+/.test(className)) &&
     !hasSizeClass
   ) {
     throw new Error(

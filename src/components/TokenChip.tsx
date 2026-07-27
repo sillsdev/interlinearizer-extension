@@ -21,6 +21,7 @@ import {
   useGlossDispatch,
   useMorphemeBreakdownDispatch,
   useMorphemeDeleteDispatch,
+  useMorphemeResetLosesGlosses,
   useMorphemes,
   useReportGlossEditing,
   useResolvedTokenAnalysis,
@@ -87,6 +88,7 @@ export function TokenChip({
   const analysisLanguage = useAnalysisLanguage();
   const dispatchMorphemeBreakdown = useMorphemeBreakdownDispatch();
   const dispatchMorphemeDelete = useMorphemeDeleteDispatch();
+  const resetLosesGlosses = useMorphemeResetLosesGlosses(token.ref);
   const showSuggestions = useShowSuggestions();
   // Only resolve the pool when suggestions are actually shown; off, this does no per-token lookup.
   const resolved = useResolvedTokenAnalysis(token.ref, token.surfaceText, showSuggestions);
@@ -426,8 +428,9 @@ export function TokenChip({
                 initialValue={
                   hasMorphemes ? morphemes.map((m) => m.form).join(' ') : token.surfaceText
                 }
+                needsResetConfirm={resetLosesGlosses}
                 onClose={() => setPopoverOpen(false)}
-                onDelete={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
+                onReset={hasMorphemes ? () => dispatchMorphemeDelete(token.ref) : undefined}
                 onSave={handleMorphemeSave}
                 surfaceText={token.surfaceText}
               />

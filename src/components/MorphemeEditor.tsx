@@ -14,17 +14,41 @@ const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_delete%',
   '%interlinearizer_morphemeEditor_cancel%',
   '%interlinearizer_morphemeEditor_done%',
+  '%interlinearizer_morphemeEditor_emptyHint%',
+  '%interlinearizer_morphemeEditor_confirmResetPrompt%',
+  '%interlinearizer_morphemeEditor_confirmResetAction%',
 ] as const satisfies `%${string}%`[];
 
 /**
  * Inline popover for defining or editing a token's morpheme breakdown. The user types
  * space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter, Done, or by
  * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
- * Escape dismiss without saving. An unedited draft is never re-saved over an existing breakdown —
- * Enter, Done, and outside clicks all dismiss instead, because re-saving identical forms would only
- * rewrite identical data. A breakdown that is empty or just the whole word as a single morpheme
- * carries no real segmentation, so it is never saved either: the Done button is disabled for it and
- * the Enter / outside-click paths dismiss without writing.
+ * Escape dismiss without saving.
+ *
+ * Committing resolves to one of three outcomes:
+ *
+ * - **Empty** — nothing to interpret, so Done is disabled (with a hint explaining the expected
+ *   format) and the Enter / outside-click paths do nothing.
+ * - **Unchanged over an existing breakdown** — the commit dismisses rather than rewriting identical
+ *   data. Done stays enabled: it means "I'm finished here", and a primary button that is dead on
+ *   every open would be unwelcoming, since the panel always opens pre-filled. With no breakdown yet
+ *   (`onReset` absent) an unedited draft still saves, because a pre-filled segmentation the user
+ *   accepts as-is is new information rather than a rewrite.
+ * - **Just the whole word again** — asking for a single morpheme equal to the surface text _is_ a
+ *   request for the unsegmented state, so it resets the breakdown rather than saving a segmentation
+ *   that carries no information. Only reachable as a real action when a breakdown exists; without
+ *   one the pre-fill already is the surface text, so this coincides with unchanged.
+ *
+ * A single morpheme that _differs_ from the surface text is a legitimate analysis (normalizing an
+ * inflected surface to its underlying form) and saves normally — morphemes carry no offsets and are
+ * not required to reconstruct the surface text.
+ *
+ * Both routes to a reset — the reset button and typing the bare surface form — funnel through
+ * {@link requestReset}, which swaps the panel into a confirmation when `needsResetConfirm` says the
+ * reset would destroy glosses this token solely owns. The confirmation replaces the panel's own
+ * content rather than opening a second surface: the panel is portaled to `document.body`, so it
+ * floats over the token chip and cannot reflow it, and nesting a modal inside this already-modal
+ * popover would stack two focus traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
@@ -36,35 +60,42 @@ const POPOVER_STRING_KEYS = [
  *   spaces, or the full surface text when no breakdown exists yet).
  * @param props.onSave - Called with the raw input string when the user commits.
  * @param props.onClose - Called to dismiss the popover.
- * @param props.onDelete - When provided, a Delete button is shown that calls this to remove the
+ * @param props.onReset - When provided, a Reset button is shown that calls this to remove the
  *   token's existing morpheme breakdown, then dismisses the popover. Callers should omit it when
- *   the token has no breakdown to delete; its presence is also how the popover knows a breakdown
- *   already exists when deciding whether an unedited commit should save.
- * @param props.surfaceText - The token's surface text, used to reject a "breakdown" that is just
- *   the whole word as a single morpheme (no real segmentation).
+ *   the token has no breakdown to reset; its presence is also how the popover knows a breakdown
+ *   already exists when deciding whether a commit should save, dismiss, or reset.
+ * @param props.needsResetConfirm - Whether a reset would irreversibly discard morpheme glosses no
+ *   other token still holds, in which case both reset routes confirm first. Ignored when `onReset`
+ *   is absent, since there is then no breakdown to lose.
+ * @param props.surfaceText - The token's surface text, used to recognize a "breakdown" that is just
+ *   the whole word as a single morpheme (a request to reset).
  * @param props.glossInputId - Id of the token's gloss input; used to locate the chip on close so
  *   focus lands on its first morpheme gloss field (falling back to the gloss input itself), rather
  *   than on the non-tabbable morpheme trigger.
- * @returns A popover panel with a text input and Cancel/Done buttons.
+ * @returns A popover panel with a text input and Reset/Cancel/Done buttons, or the reset
+ *   confirmation in place of them.
  */
 export function MorphemeBreakdownPopover({
   initialValue,
   onSave,
   onClose,
-  onDelete,
+  onReset,
+  needsResetConfirm = false,
   surfaceText,
   glossInputId,
 }: Readonly<{
   initialValue: string;
   onSave: (value: string) => void;
   onClose: () => void;
-  onDelete?: () => void;
+  onReset?: () => void;
+  needsResetConfirm?: boolean;
   surfaceText: string;
   glossInputId: string;
 }>) {
   const [localizedStrings] = useLocalizedStrings(POPOVER_STRING_KEYS);
   const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
+  const [confirmingReset, setConfirmingReset] = useState(false);
   // eslint-disable-next-line no-null/no-null
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -89,21 +120,45 @@ export function MorphemeBreakdownPopover({
   // comparing normalized text avoids a no-op persistence round-trip.
   const isUnedited = normalize(draft) === normalize(initialValue);
 
-  // A breakdown carries no real segmentation when it is empty or is just the whole word as a single
-  // morpheme equal to the surface text; in both cases there is nothing worth persisting.
+  // An empty draft has no interpretation at all, so it blocks the commit outright rather than
+  // resolving to a save, a dismissal, or a reset.
   const normalized = normalize(draft);
   const forms = normalized === '' ? [] : normalized.split(' ');
-  const isMeaningless =
-    forms.length === 0 || (forms.length === 1 && forms[0] === normalize(surfaceText));
+  const isEmpty = forms.length === 0;
+
+  // A single morpheme equal to the whole word records no segmentation, so it is never saved: with
+  // an existing breakdown it is a request for the unsegmented state (a reset), and without one
+  // there is nothing to remove, so committing it merely dismisses.
+  const isWholeWord = forms.length === 1 && forms[0] === normalize(surfaceText);
+  const isResetRequest = !!onReset && isWholeWord;
 
   /**
-   * Commits the current draft and closes the popover. Skips the save when the breakdown is
-   * meaningless (empty, or the whole word as one morpheme), or when the token already has a
-   * breakdown (`onDelete` provided) and the text was not edited — re-saving identical forms would
-   * only rewrite identical data.
+   * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
+   * would discard glosses no other token holds. Shared by the reset button and the commit path so
+   * the two can never disagree about when a reset is confirmed.
+   */
+  const requestReset = () => {
+    if (needsResetConfirm) {
+      setConfirmingReset(true);
+      return;
+    }
+    onReset?.();
+    onClose();
+  };
+
+  /**
+   * Resolves the current draft: an empty draft does nothing, a request for the whole word resets
+   * the breakdown, an unedited draft over an existing breakdown dismisses without rewriting
+   * identical data, and anything else saves. Closes the popover except when a reset is waiting on
+   * its confirmation.
    */
   const handleSave = () => {
-    if (isMeaningless || (onDelete && isUnedited)) {
+    if (isEmpty) return;
+    if (isResetRequest) {
+      requestReset();
+      return;
+    }
+    if (isWholeWord || (onReset && isUnedited)) {
       onClose();
       return;
     }
@@ -126,11 +181,13 @@ export function MorphemeBreakdownPopover({
   /**
    * Commits the draft when the user interacts outside the popover, except when the text was not
    * edited — then the interaction acts like Cancel, because an accidental outside click is not a
-   * deliberate commit. An edited-but-meaningless draft is also dismissed without saving by
-   * {@link handleSave}.
+   * deliberate commit. An empty draft is likewise dismissed without writing by {@link handleSave}.
+   * While the reset confirmation is showing, an outside click dismisses it without resetting: the
+   * confirmation exists precisely because the loss is irreversible, so it must not be answered by a
+   * stray click.
    */
   const handleInteractOutside = () => {
-    if (isUnedited) {
+    if (confirmingReset || isUnedited) {
       onClose();
       return;
     }
@@ -181,40 +238,75 @@ export function MorphemeBreakdownPopover({
       onMouseDown={stopMouseEvents}
       onOpenAutoFocus={(e) => e.preventDefault()}
     >
-      <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
-        {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}
-      </label>
-      <input
-        ref={inputRef}
-        className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
-        id={inputId}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={handleKeyDown}
-        type="text"
-      />
-      <div className="tw:flex tw:justify-end tw:gap-1.5">
-        {onDelete && (
-          <Button
-            className="tw:me-auto tw:text-destructive"
-            onClick={() => {
-              onDelete();
-              onClose();
-            }}
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
-          </Button>
-        )}
-        <Button onClick={onClose} size="sm" type="button" variant="outline">
-          {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
-        </Button>
-        <Button disabled={isMeaningless} onClick={handleSave} size="sm" type="button">
-          {localizedStrings['%interlinearizer_morphemeEditor_done%']}
-        </Button>
-      </div>
+      {confirmingReset ? (
+        <>
+          <p className="tw:text-xs tw:text-muted-foreground" data-testid="morpheme-reset-confirm">
+            {localizedStrings['%interlinearizer_morphemeEditor_confirmResetPrompt%']}
+          </p>
+          <div className="tw:flex tw:justify-end tw:gap-1.5">
+            <Button
+              onClick={() => setConfirmingReset(false)}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
+            </Button>
+            <Button
+              className="tw:text-destructive"
+              data-testid="morpheme-reset-confirm-action"
+              onClick={() => {
+                onReset?.();
+                onClose();
+              }}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              {localizedStrings['%interlinearizer_morphemeEditor_confirmResetAction%']}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
+            {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}
+          </label>
+          <input
+            ref={inputRef}
+            className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
+            id={inputId}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={handleKeyDown}
+            type="text"
+          />
+          {isEmpty && (
+            <p className="tw:text-xs tw:text-muted-foreground" data-testid="morpheme-empty-hint">
+              {localizedStrings['%interlinearizer_morphemeEditor_emptyHint%']}
+            </p>
+          )}
+          <div className="tw:flex tw:justify-end tw:gap-1.5">
+            {onReset && (
+              <Button
+                className="tw:me-auto tw:text-destructive"
+                onClick={requestReset}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
+              </Button>
+            )}
+            <Button onClick={onClose} size="sm" type="button" variant="outline">
+              {localizedStrings['%interlinearizer_morphemeEditor_cancel%']}
+            </Button>
+            <Button disabled={isEmpty} onClick={handleSave} size="sm" type="button">
+              {localizedStrings['%interlinearizer_morphemeEditor_done%']}
+            </Button>
+          </div>
+        </>
+      )}
     </PopoverContent>
   );
 }

@@ -19,6 +19,7 @@ import {
   mergePhrases,
   selectApprovedGloss,
   selectApprovedMorphemes,
+  selectMorphemeResetLosesGlosses,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
   selectPhraseLinks,
@@ -2087,5 +2088,53 @@ describe('approveAnalysisForToken', () => {
     expect(links).toHaveLength(1);
     expect(links[0].analysisId).toBe('ta-1');
     expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+  });
+});
+
+describe('selectMorphemeResetLosesGlosses', () => {
+  /**
+   * Writes a two-morpheme breakdown for `tokenRef` and returns the id of its first morpheme, so
+   * tests can gloss a morpheme whose id the reducer generated.
+   *
+   * @param store - The analysis store to dispatch into.
+   * @param tokenRef - The `Token.ref` to break down.
+   * @returns The first morpheme's generated id.
+   */
+  function breakDown(store: ReturnType<typeof createAnalysisStore>, tokenRef: string): string {
+    store.dispatch(writeMorphemes(tokenRef, 'cats', ['cat', '-s'], 'en'));
+    return selectApprovedMorphemes(store.getState().analysis, tokenRef)[0].id;
+  }
+
+  it('reports no loss when the token has no approved analysis', () => {
+    const store = createAnalysisStore();
+    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(false);
+  });
+
+  it('reports no loss when the breakdown carries no morpheme glosses', () => {
+    // Bare segmentation is cheap to retype, so removing it needs no confirmation.
+    const store = createAnalysisStore();
+    breakDown(store, 'tok-1');
+    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(false);
+  });
+
+  it('reports a loss when a glossed breakdown is linked only by this token', () => {
+    const store = createAnalysisStore();
+    const morphemeId = breakDown(store, 'tok-1');
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId, value: 'feline' }));
+    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-1')).toBe(true);
+  });
+
+  it('reports no loss when a glossed breakdown is shared with another token', () => {
+    // deleteMorphemes forks a shared payload rather than emptying it, so the co-linked token keeps
+    // the glosses and nothing is lost project-wide.
+    const store = createAnalysisStore();
+    const morphemeId = breakDown(store, 'tok-1');
+    store.dispatch(writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId, value: 'feline' }));
+    const state = store.getState().analysis;
+    const [{ analysisId }] = state.analysis.tokenAnalysisLinks.filter(
+      (l) => l.token.tokenRef === 'tok-1',
+    );
+    store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
+    expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-2')).toBe(false);
   });
 });

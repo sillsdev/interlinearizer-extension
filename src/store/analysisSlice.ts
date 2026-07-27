@@ -1119,6 +1119,33 @@ export function selectSuggestionAfterClearing(
   return suggestion ? { status: 'suggested', ...suggestion } : undefined;
 }
 
+/**
+ * Reports whether removing `tokenRef`'s morpheme breakdown would destroy gloss data no other token
+ * still holds — the condition under which the morpheme editor confirms before resetting. True only
+ * when at least one morpheme carries a gloss AND this token is the sole approved link to its
+ * payload. A payload shared with other tokens is forked rather than emptied by `deleteMorphemes`,
+ * so the co-linked tokens keep their morphemes and nothing is lost project-wide; a breakdown with
+ * no glosses is bare segmentation that is cheap to retype. Sharing is read through
+ * {@link selectApprovedTokenCountByAnalysisId} — the same approved-link count the reducer's
+ * `isPayloadSharedByOtherLinks` tests — so the two can never disagree about what "shared" means.
+ *
+ * @param state - The analysis slice state.
+ * @param tokenRef - The `Token.ref` whose breakdown would be removed.
+ * @returns `true` when the reset would irrecoverably discard glosses belonging to this token alone.
+ */
+export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: string): boolean {
+  const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
+  if (approvedId === undefined) return false;
+  const analysis = selectAnalysisById(state).get(approvedId);
+  const hasGlossedMorpheme = analysis?.morphemes?.some((m) => m.gloss !== undefined) ?? false;
+  if (!hasGlossedMorpheme) return false;
+  // A payload referenced by more than one approved link is forked rather than emptied, so only a
+  // sole link loses anything.
+  /* v8 ignore next -- approvedId comes from the map the counts are built from, so it is always present */
+  const approvedTokenCount = selectApprovedTokenCountByAnalysisId(state).get(approvedId) ?? 0;
+  return approvedTokenCount <= 1;
+}
+
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
 
 /**

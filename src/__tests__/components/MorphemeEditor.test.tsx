@@ -12,9 +12,12 @@ jest.mock('../../components/AnalysisStore');
 
 const LOCALIZED = {
   '%interlinearizer_morphemeEditor_splitLabel%': 'Split into morphemes',
-  '%interlinearizer_morphemeEditor_delete%': 'Delete',
+  '%interlinearizer_morphemeEditor_delete%': 'Reset',
   '%interlinearizer_morphemeEditor_cancel%': 'Cancel',
   '%interlinearizer_morphemeEditor_done%': 'Done',
+  '%interlinearizer_morphemeEditor_emptyHint%': 'Enter morpheme forms separated by spaces',
+  '%interlinearizer_morphemeEditor_confirmResetPrompt%': 'Discard this breakdown and its glosses?',
+  '%interlinearizer_morphemeEditor_confirmResetAction%': 'Reset',
   '%interlinearizer_morphemeGloss_label%': 'Gloss for morpheme {form}',
 };
 
@@ -85,7 +88,7 @@ describe('MorphemeBreakdownPopover', () => {
       initialValue: 'un- believe',
       onSave,
       onClose,
-      onDelete: jest.fn(),
+      onReset: jest.fn(),
       surfaceText: 'unbelieve',
     });
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
@@ -98,7 +101,7 @@ describe('MorphemeBreakdownPopover', () => {
     renderPopover({
       initialValue: 'un- believe',
       onSave,
-      onDelete: jest.fn(),
+      onReset: jest.fn(),
       surfaceText: 'unbelieve',
     });
     await userEvent.type(screen.getByRole('textbox'), ' -r');
@@ -156,8 +159,8 @@ describe('MorphemeBreakdownPopover', () => {
     const onSave = jest.fn();
     // Start from a real word and edit it down to whitespace so the draft differs from initialValue
     // (isUnedited is false). This forces handleInteractOutside past the unedited guard into
-    // handleSave, where the isMeaningless check is what rejects the empty breakdown — the behavior
-    // this test names. If isMeaningless were removed, handleSave would call onSave and this fails.
+    // handleSave, where the isEmpty check is what rejects the empty breakdown — the behavior this
+    // test names. If isEmpty were removed, handleSave would call onSave and this fails.
     renderPopover({ initialValue: 'word', onSave, surfaceText: 'whole' });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), '   ');
@@ -223,38 +226,85 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('disables Done for a breakdown that is just the whole word as one morpheme', () => {
+  it('keeps Done enabled for an unedited draft', () => {
+    // Done means "I'm finished here", not "commit": the panel always opens pre-filled, so
+    // disabling it while unedited would leave a dead primary button on every open.
     renderPopover({ initialValue: 'word', surfaceText: 'word' });
-    expect(screen.getByRole('button', { name: 'Done' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeEnabled();
   });
 
-  it('does not save a breakdown that is just the whole word as one morpheme on Enter', async () => {
+  it('saves a single morpheme that differs from the surface text', async () => {
+    // A one-form breakdown is a legitimate analysis when it normalizes the surface to an
+    // underlying form; only a form equal to the surface text means "no segmentation".
     const onSave = jest.fn();
-    renderPopover({ initialValue: 'word', onSave, surfaceText: 'word' });
+    renderPopover({ initialValue: 'running', onSave, onReset: jest.fn(), surfaceText: 'running' });
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), 'run');
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onSave).toHaveBeenCalledWith('run');
+  });
+
+  it('resets when the draft is edited down to the bare surface form', async () => {
+    const onReset = jest.fn();
+    const onSave = jest.fn();
+    const onClose = jest.fn();
+    renderPopover({
+      initialValue: 'un- believe -able',
+      onSave,
+      onClose,
+      onReset,
+      surfaceText: 'unbelievable',
+    });
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), 'unbelievable');
+    await userEvent.keyboard('{Enter}');
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not reset an unedited whole-word draft on a token with no breakdown', async () => {
+    // Without a breakdown the pre-fill already is the surface text, so committing is a no-op
+    // dismissal rather than a request to remove something.
+    const onSave = jest.fn();
+    const onClose = jest.fn();
+    renderPopover({ initialValue: 'word', onSave, onClose, surfaceText: 'word' });
     await userEvent.keyboard('{Enter}');
     expect(onSave).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('does not render a Delete button when onDelete is not provided', () => {
+  it('does not render a Reset button when onReset is not provided', () => {
     renderPopover();
-    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument();
   });
 
-  it('calls onDelete and onClose without saving when Delete is clicked', async () => {
-    const onDelete = jest.fn();
+  it('calls onReset and onClose without saving when Reset is clicked', async () => {
+    const onReset = jest.fn();
     const onSave = jest.fn();
     const onClose = jest.fn();
     renderPopover({
       initialValue: 'un- believe',
       onSave,
       onClose,
-      onDelete,
+      onReset,
       surfaceText: 'unbelieve',
     });
-    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    expect(onDelete).toHaveBeenCalledTimes(1);
+    await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+    expect(onReset).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('shows the format hint when the draft is empty', async () => {
+    renderPopover({ initialValue: 'word' });
+    await userEvent.clear(screen.getByRole('textbox'));
+    expect(screen.getByTestId('morpheme-empty-hint')).toBeInTheDocument();
+  });
+
+  it('does not show the format hint when the draft is non-empty', () => {
+    renderPopover({ initialValue: 'word' });
+    expect(screen.queryByTestId('morpheme-empty-hint')).not.toBeInTheDocument();
   });
 
   it('renders inside the popover content panel', () => {
@@ -283,6 +333,92 @@ describe('MorphemeBreakdownPopover', () => {
     );
     await userEvent.click(screen.getByTestId('popover-close'));
     expect(screen.getByRole('textbox', { name: 'morpheme gloss' })).toHaveFocus();
+  });
+
+  describe('reset confirmation', () => {
+    /**
+     * Renders the popover on a glossed, solely-linked breakdown — the state in which a reset is
+     * irreversible, so both reset routes confirm first.
+     *
+     * @param props - Overrides merged over the confirming defaults.
+     * @returns The render result.
+     */
+    function renderConfirming(
+      props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {},
+    ) {
+      return renderPopover({
+        initialValue: 'un- believe -able',
+        needsResetConfirm: true,
+        onReset: jest.fn(),
+        surfaceText: 'unbelievable',
+        ...props,
+      });
+    }
+
+    it('asks before resetting when the Reset button is clicked', async () => {
+      const onReset = jest.fn();
+      const onClose = jest.fn();
+      renderConfirming({ onReset, onClose });
+      await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(screen.getByTestId('morpheme-reset-confirm')).toBeInTheDocument();
+      expect(onReset).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('asks before resetting when the draft is edited down to the bare surface form', async () => {
+      const onReset = jest.fn();
+      renderConfirming({ onReset });
+      await userEvent.clear(screen.getByRole('textbox'));
+      await userEvent.type(screen.getByRole('textbox'), 'unbelievable');
+      await userEvent.keyboard('{Enter}');
+      expect(screen.getByTestId('morpheme-reset-confirm')).toBeInTheDocument();
+      expect(onReset).not.toHaveBeenCalled();
+    });
+
+    it('resets and closes when the confirmation is accepted', async () => {
+      const onReset = jest.fn();
+      const onClose = jest.fn();
+      renderConfirming({ onReset, onClose });
+      await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      await userEvent.click(screen.getByTestId('morpheme-reset-confirm-action'));
+      expect(onReset).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns to the editor without resetting when the confirmation is canceled', async () => {
+      const onReset = jest.fn();
+      const onClose = jest.fn();
+      renderConfirming({ onReset, onClose });
+      await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(onReset).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('textbox')).toHaveValue('un- believe -able');
+    });
+
+    it('dismisses without resetting when interacting outside the confirmation', async () => {
+      // The confirmation exists because the loss is irreversible, so a stray outside click must
+      // not answer it — even though an outside click on an edited draft normally commits.
+      const onReset = jest.fn();
+      const onSave = jest.fn();
+      const onClose = jest.fn();
+      renderConfirming({ onReset, onSave, onClose });
+      await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      await userEvent.click(screen.getByTestId('popover-outside'));
+      expect(onReset).not.toHaveBeenCalled();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('resets without asking when the breakdown has no glosses to lose', async () => {
+      const onReset = jest.fn();
+      const onClose = jest.fn();
+      renderConfirming({ needsResetConfirm: false, onReset, onClose });
+      await userEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(screen.queryByTestId('morpheme-reset-confirm')).not.toBeInTheDocument();
+      expect(onReset).toHaveBeenCalledTimes(1);
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('falls back to the token gloss input on close when the chip has no morpheme gloss field', async () => {

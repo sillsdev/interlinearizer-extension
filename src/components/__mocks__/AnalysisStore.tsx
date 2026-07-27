@@ -130,6 +130,16 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 }
 
 /**
+ * Reports that a morpheme reset never loses glosses in mock context, so the editor takes its
+ * unconfirmed path by default. Tests covering the confirm step mock this module member directly.
+ *
+ * @returns `false`.
+ */
+export function useMorphemeResetLosesGlosses(): boolean {
+  return false;
+}
+
+/**
  * Returns a no-op dispatch for writing morpheme glosses in mock context.
  *
  * @returns A no-op function matching the real signature.

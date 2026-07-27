@@ -113,9 +113,15 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   const electronExecutable = coreRequire('electron') as string;
 
   // Isolated user-data dir so the singleton lock can't collide with a developer's own instance and
-  // the run leaves the real profile untouched.
+  // the run leaves the real profile untouched. If recording the ownership marker fails, remove the
+  // dir we just created rather than leaking an unreferenced temp dir teardown can never find.
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paranext-e2e-cdp-'));
-  fs.writeFileSync(CDP_USER_DATA_FILE, userDataDir);
+  try {
+    fs.writeFileSync(CDP_USER_DATA_FILE, userDataDir);
+  } catch (error) {
+    await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+    throw error;
+  }
 
   // VSCode/Claude Code set ELECTRON_RUN_AS_NODE=1, which forces the Electron binary to run as plain
   // Node.js. Omit it so the Electron child launches a real GUI process.
@@ -126,83 +132,97 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   console.log(`Loading extension from: ${extensionDist}`);
   console.log(`Remote debugging on port ${CDP_PORT}`);
 
-  // Seed E2E_SETTINGS_OVERRIDES before launch and back up settings (restored by globalTeardownCdp
-  // after the launched app is killed).
-  seedE2ESettingsOverrides();
-
-  // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
-  // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
-  const appLogFd = fs.openSync(CDP_APP_LOG_FILE, 'w');
-
-  // Detached: the CDP fixture connects to this process over CDP, so Playwright must not own its
-  // lifecycle. Teardown kills the whole tree by the recorded PID.
-  const appProcess = spawn(
-    electronExecutable,
-    [
-      `--user-data-dir=${userDataDir}`,
-      coreDir,
-      '--extensions',
-      extensionDist,
-      `--remote-debugging-port=${CDP_PORT}`,
-      // Deterministic window size matching the CI xvfb screen (1280x960) so dock panels have room
-      // and modals aren't clipped. paranext-core supports this arg for automation.
-      '--window-size',
-      '1280x960',
-      // --no-sandbox: GitHub-hosted Linux runners lack a setuid chrome-sandbox binary, so Electron's
-      // SUID sandbox helper aborts on launch. --ozone-platform=x11: in a Wayland session with
-      // DISPLAY redirected to xvfb (local headless runs), Electron otherwise picks Wayland and
-      // segfaults when the compositor socket is unreachable; no-op on CI runners (X11-only).
-      ...(process.platform === 'linux' ? ['--no-sandbox', '--ozone-platform=x11'] : []),
-    ],
-    {
-      cwd: coreDir,
-      env: {
-        ...restEnv,
-        NODE_ENV: 'development',
-        DEV_NOISY: process.env.DEV_NOISY ?? 'false',
-        // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI Linux
-        // that docks inside the window and squeezes the viewport so dock panels collapse and clicks
-        // land on neighboring iframes. ELECTRON_IS_DEV=0 disables the auto-open without changing
-        // other NODE_ENV-driven behavior (dev-server URL, etc.).
-        ELECTRON_IS_DEV: '0',
-      },
-      stdio: ['ignore', appLogFd, appLogFd],
-      detached: true,
-    },
-  );
-  appProcess.unref();
-  // The child has inherited the fd; close our copy so the file is flushed and released on exit.
-  fs.closeSync(appLogFd);
-
-  if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
-
-  /**
-   * Rejects the moment {@link appProcess} exits, so a startup crash fails setup immediately instead
-   * of surfacing only after the full {@link APP_READY_TIMEOUT} port-wait elapses. Raced against both
-   * port waits and the renderer-settle wait, since a crash can come after any of them completes.
-   */
-  const earlyExit = new Promise<never>((_resolve, reject) => {
-    appProcess.once('exit', (code, signal) => {
-      reject(
-        new Error(
-          `Launched Platform.Bible (CDP) process exited early (code=${code}, signal=${signal}) ` +
-            'during startup, before it became ready.',
-        ),
-      );
-    });
-  });
-  // Setup returns with the app running, so nothing awaits earlyExit after the waits below — mark it
-  // handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
-  // rejection.
-  earlyExit.catch(() => {});
-
-  // Resolves once the process exits (unlike earlyExit, which rejects). Allows the failure-path
-  // cleanup to bound its wait for a just-issued SIGKILL to take effect.
-  const exited = new Promise<void>((resolve) => {
-    appProcess.once('exit', () => resolve());
-  });
-
+  // Everything from the settings seed onward acquires state this setup owns (seeded settings, the
+  // log fd, the launched process, the PID marker). Playwright does not run globalTeardown when
+  // globalSetup throws, so a failure anywhere in here must clean up on the spot rather than leak to
+  // the next run — hence the single try/catch spanning both the launch and the readiness waits,
+  // rather than one starting only at the waits.
+  let appProcess: ReturnType<typeof spawn> | undefined;
+  let exited: Promise<void> | undefined;
   try {
+    // Seed E2E_SETTINGS_OVERRIDES before launch and back up settings (restored by globalTeardownCdp
+    // after the launched app is killed).
+    seedE2ESettingsOverrides();
+
+    // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
+    // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
+    const appLogFd = fs.openSync(CDP_APP_LOG_FILE, 'w');
+
+    // Detached: the CDP fixture connects to this process over CDP, so Playwright must not own its
+    // lifecycle. Teardown kills the whole tree by the recorded PID.
+    try {
+      appProcess = spawn(
+        electronExecutable,
+        [
+          `--user-data-dir=${userDataDir}`,
+          coreDir,
+          '--extensions',
+          extensionDist,
+          `--remote-debugging-port=${CDP_PORT}`,
+          // Deterministic window size matching the CI xvfb screen (1280x960) so dock panels have
+          // room and modals aren't clipped. paranext-core supports this arg for automation.
+          '--window-size',
+          '1280x960',
+          // --no-sandbox: GitHub-hosted Linux runners lack a setuid chrome-sandbox binary, so
+          // Electron's SUID sandbox helper aborts on launch. --ozone-platform=x11: in a Wayland
+          // session with DISPLAY redirected to xvfb (local headless runs), Electron otherwise picks
+          // Wayland and segfaults when the compositor socket is unreachable; no-op on CI runners
+          // (X11-only).
+          ...(process.platform === 'linux' ? ['--no-sandbox', '--ozone-platform=x11'] : []),
+        ],
+        {
+          cwd: coreDir,
+          env: {
+            ...restEnv,
+            NODE_ENV: 'development',
+            DEV_NOISY: process.env.DEV_NOISY ?? 'false',
+            // With NODE_ENV=development, paranext-core auto-opens DevTools on every window; on CI
+            // Linux that docks inside the window and squeezes the viewport so dock panels collapse
+            // and clicks land on neighboring iframes. ELECTRON_IS_DEV=0 disables the auto-open
+            // without changing other NODE_ENV-driven behavior (dev-server URL, etc.).
+            ELECTRON_IS_DEV: '0',
+          },
+          stdio: ['ignore', appLogFd, appLogFd],
+          detached: true,
+        },
+      );
+    } finally {
+      // Close our copy of the fd whether or not the spawn succeeded: on success the child has
+      // inherited it (so the file is flushed and released when the child exits), and on failure
+      // there is no child to inherit it and leaving it open would leak the descriptor.
+      fs.closeSync(appLogFd);
+    }
+    appProcess.unref();
+
+    if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
+
+    /**
+     * Rejects the moment {@link appProcess} exits, so a startup crash fails setup immediately
+     * instead of surfacing only after the full {@link APP_READY_TIMEOUT} port-wait elapses. Raced
+     * against both port waits and the renderer-settle wait, since a crash can come after any of
+     * them completes.
+     */
+    const earlyExit = new Promise<never>((_resolve, reject) => {
+      appProcess?.once('exit', (code, signal) => {
+        reject(
+          new Error(
+            `Launched Platform.Bible (CDP) process exited early (code=${code}, signal=${signal}) ` +
+              'during startup, before it became ready.',
+          ),
+        );
+      });
+    });
+    // Setup returns with the app running, so nothing awaits earlyExit after the waits below — mark
+    // it handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
+    // rejection.
+    earlyExit.catch(() => {});
+
+    // Resolves once the process exits (unlike earlyExit, which rejects). Allows the failure-path
+    // cleanup to bound its wait for a just-issued SIGKILL to take effect.
+    exited = new Promise<void>((resolve) => {
+      appProcess?.once('exit', () => resolve());
+    });
+
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
     console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
@@ -213,27 +233,50 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     );
     await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
   } catch (error) {
-    // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
-    // log itself, not only the uploaded artifact.
-    dumpAppLog();
-    // Playwright does not run globalTeardown when globalSetup throws, so clean up everything this
-    // setup owns right here instead of leaking it to the next run.
-    const killed = appProcess.pid ? killProcessTree(appProcess.pid, 'SIGKILL') : false;
-    if (killed) {
-      await waitForProcessExit(exited, 1_000);
-    }
-    await removeDirWithRetry(userDataDir, 'CDP user-data dir');
-    // Restore settings after waiting for the kill above to take effect. The still-running app owns
-    // dev-appdata/settings.json, so restoring before it's dead risks flushing the seeded value back
-    // over the just-restored original, with no backup left to recover from.
-    restoreSeededSettings();
-    fs.rmSync(CDP_PID_FILE, { force: true });
-    fs.rmSync(CDP_USER_DATA_FILE, { force: true });
-    // Also stop the renderer dev server that bootstrapRendererDevServer() may have started.
-    killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
+    await cleanUpFailedLaunch(userDataDir, appProcess?.pid, exited);
     throw error;
   }
   console.log('Platform.Bible (CDP) is ready.');
+}
+
+/**
+ * Undo everything {@link globalSetupCdp} acquired, after its launch failed. Playwright skips
+ * globalTeardown when globalSetup throws, so this is the only chance to release the seeded
+ * settings, the launched process, its user-data dir, the ownership markers, and the renderer dev
+ * server before the failure propagates — otherwise each leaks into the next run.
+ *
+ * Callable at any point after the settings seed, including before a process was spawned: an absent
+ * `pid` simply skips the kill. Every step is individually best-effort (the kill, the dir removal,
+ * and the settings restore all swallow their own errors), so one failure cannot strand the rest.
+ *
+ * @param userDataDir Isolated user-data dir created for the launch, removed here.
+ * @param pid PID of the launched app if it was spawned; `undefined` if the failure preceded the
+ *   spawn or the process never reported a PID.
+ * @param exited Promise resolving when the launched process exits, used to bound the post-SIGKILL
+ *   wait; `undefined` when no process was spawned.
+ * @returns Resolves once every cleanup step has been attempted.
+ */
+async function cleanUpFailedLaunch(
+  userDataDir: string,
+  pid: number | undefined,
+  exited: Promise<void> | undefined,
+): Promise<void> {
+  // The app never came up (or came up broken). Echo its captured output so the cause is in the CI
+  // log itself, not only the uploaded artifact.
+  dumpAppLog();
+  const killed = pid ? killProcessTree(pid, 'SIGKILL') : false;
+  if (killed && exited) {
+    await waitForProcessExit(exited, 1_000);
+  }
+  await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+  // Restore settings after waiting for the kill above to take effect. The still-running app owns
+  // dev-appdata/settings.json, so restoring before it's dead risks flushing the seeded value back
+  // over the just-restored original, with no backup left to recover from.
+  restoreSeededSettings();
+  fs.rmSync(CDP_PID_FILE, { force: true });
+  fs.rmSync(CDP_USER_DATA_FILE, { force: true });
+  // Also stop the renderer dev server that bootstrapRendererDevServer() may have started.
+  killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
 }
 
 /**

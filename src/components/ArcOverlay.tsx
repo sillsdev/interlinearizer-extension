@@ -1,5 +1,6 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 import { Link2Off } from 'lucide-react';
+import { Button } from 'platform-bible-react';
 import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
@@ -321,14 +322,15 @@ export function ArcOverlay({
             );
             const willCreateFreeTokens = arcSplitFreeRefs !== undefined;
             return (
-              <button
+              <Button
                 key={`split-arc-${phraseId}-${d}`}
                 aria-label="Split phrase here"
-                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
+                className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
                 style={{ left: midX, top: midY }}
                 tabIndex={-1}
                 type="button"
+                variant="ghost"
                 onClick={() => {
                   // Clear the split-hover state synchronously with the click. The button is removed
                   // from the DOM by the resulting re-render, so no mouseLeave fires — without this
@@ -352,8 +354,8 @@ export function ArcOverlay({
                   else handleReshapeHoverLeave();
                 }}
               >
-                <Link2Off className="tw:h-2.5 tw:w-2.5" />
-              </button>
+                <Link2Off className="tw:size-2.5" />
+              </Button>
             );
           })}
     </>

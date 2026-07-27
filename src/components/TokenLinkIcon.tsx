@@ -1,12 +1,12 @@
 /** @file Inline link / unlink icon rendered between adjacent word token groups. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Unlink2 } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
+import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
 import { memo, useCallback } from 'react';
-import { usePhraseDispatch } from './AnalysisStore';
-import { usePhraseStripContext } from './PhraseStripContext';
 import type { SlotFocusInfo } from '../types/token-layout';
 import { computeSplitFreeRefs, sortByDocOrder, splitPhraseAtBoundary } from '../utils/phrase-arc';
+import { usePhraseDispatch } from './AnalysisStore';
+import { usePhraseStripContext } from './PhraseStripContext';
 
 /** Props for {@link TokenLinkIcon}. */
 type TokenLinkIconProps = Readonly<{
@@ -248,9 +248,9 @@ export function TokenLinkIcon({
     };
 
     return (
-      <button
+      <Button
         aria-label="Unlink tokens"
-        className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:pointer-events-none tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/50 tw:opacity-100'}`}
+        className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 tw:transition-opacity tw:hover:text-destructive tw:focus:opacity-100 tw:disabled:opacity-30 ${isPhraseRevealed ? 'tw:text-muted-foreground tw:opacity-100' : 'tw:text-muted-foreground/50 tw:opacity-100'}`}
         data-testid="token-unlink-btn"
         disabled={unlinkDisabled}
         tabIndex={-1}
@@ -259,9 +259,10 @@ export function TokenLinkIcon({
         onMouseEnter={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseEnter : undefined}
         onMouseLeave={(candidatePhraseId ?? splitFreeRefs) ? handleUnlinkMouseLeave : undefined}
         type="button"
+        variant="ghost"
       >
-        <Unlink2 className="tw:h-3 tw:w-3" />
-      </button>
+        <Unlink2 className="tw:size-3" />
+      </Button>
     );
   }
 
@@ -317,9 +318,9 @@ export function TokenLinkIcon({
   };
 
   const linkButton = (
-    <button
+    <Button
       aria-label="Link tokens"
-      className={`tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
+      className={`tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:p-0.5 ${isActive ? 'tw:text-foreground/60 tw:hover:text-foreground' : 'tw:text-foreground/20 tw:cursor-default'}`}
       data-testid="token-link-btn"
       disabled={linkDisabled}
       tabIndex={-1}
@@ -327,9 +328,10 @@ export function TokenLinkIcon({
       onMouseEnter={isActive ? handleLinkMouseEnter : undefined}
       onMouseLeave={isActive ? handleLinkMouseLeave : undefined}
       type="button"
+      variant="ghost"
     >
-      <Link2 className="tw:h-3 tw:w-3" />
-    </button>
+      <Link2 className="tw:size-3" />
+    </Button>
   );
 
   // Only the cross-segment-disabled case carries a tooltip.

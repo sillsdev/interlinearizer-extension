@@ -182,7 +182,7 @@ export default function ViewOptionsDropdown({
         variant="ghost"
         onClick={() => setOpen((v) => !v)}
       >
-        <Settings className="tw:h-4 tw:w-4" />
+        <Settings className="tw:size-4" />
       </Button>
 
       {open &&

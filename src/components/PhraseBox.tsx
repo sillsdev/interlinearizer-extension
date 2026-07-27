@@ -1,8 +1,11 @@
 /** @file Shared phrase-box wrapper used around word tokens. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
+import { Button } from 'platform-bible-react';
 import { memo, useCallback, useEffect, useState } from 'react';
 import type { KeyboardEvent, MouseEvent as ReactMouseEvent } from 'react';
+import { sortByDocOrder } from '../utils/phrase-arc';
+import { NO_SLOT_FOCUS } from '../utils/token-layout';
 import {
   usePhraseDispatch,
   usePhraseGloss,
@@ -13,8 +16,6 @@ import {
 import { usePhraseStripContext } from './PhraseStripContext';
 import MemoizedTokenChip, { InertTokenChip } from './TokenChip';
 import MemoizedTokenLinkIcon from './TokenLinkIcon';
-import { sortByDocOrder } from '../utils/phrase-arc';
-import { NO_SLOT_FOCUS } from '../utils/token-layout';
 
 /**
  * Inline gloss input for a phrase. Reads and writes the phrase-level gloss from the analysis store.
@@ -349,26 +350,30 @@ export function PhraseBox({
             className="tw:absolute tw:top-0 tw:z-1 tw:left-1/2 tw:-translate-x-1/2 tw:-translate-y-full tw:inline-flex tw:gap-0.5 tw:rounded tw:border tw:phrase-hovered tw:bg-background tw:px-0.5 tw:py-px"
             data-phrase-controls="true"
           >
-            <button
+            <Button
               aria-label="Edit phrase"
-              className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
+              className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
               data-testid="edit-phrase-btn"
-              tabIndex={-1}
               onClick={handleEditClick}
+              size="icon-xs"
+              tabIndex={-1}
               type="button"
+              variant="ghost"
             >
               ✎
-            </button>
-            <button
+            </Button>
+            <Button
               aria-label="Unlink phrase"
-              className="tw:rounded tw:px-0.5 tw:py-px tw:text-xs tw:text-muted-foreground tw:hover:text-destructive"
+              className="tw:text-muted-foreground tw:hover:text-destructive"
               data-testid="unlink-phrase-btn"
-              tabIndex={-1}
               onClick={handleUnlinkClick}
+              size="icon-xs"
+              tabIndex={-1}
               type="button"
+              variant="ghost"
             >
-              <Trash2 className="tw:h-3 tw:w-3" />
-            </button>
+              <Trash2 className="tw:size-3" />
+            </Button>
           </span>
         )}
         <div

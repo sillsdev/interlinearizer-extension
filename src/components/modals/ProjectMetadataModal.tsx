@@ -1,10 +1,10 @@
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Trash2 } from 'lucide-react';
-import { Button } from 'platform-bible-react';
+import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { useCallback, useMemo, useState } from 'react';
-import { parseLanguageTags } from '../../utils/language-tags';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
+import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 
 /** Localized string keys used by {@link ProjectMetadataModal}. */
@@ -191,10 +191,10 @@ export function ProjectMetadataModal({
       {/* Editable fields */}
       <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
         <div className="tw:flex tw:flex-col tw:gap-1">
-          <label className="tw:section-label" htmlFor="metadata-edit-name">
+          <Label className="tw:section-label" htmlFor="metadata-edit-name">
             {localizedStrings['%interlinearizer_modal_metadata_name_label%']}
-          </label>
-          <input
+          </Label>
+          <Input
             id="metadata-edit-name"
             className="tw:modal-metadata-input"
             value={editName}
@@ -204,10 +204,10 @@ export function ProjectMetadataModal({
         </div>
 
         <div className="tw:flex tw:flex-col tw:gap-1">
-          <label className="tw:section-label" htmlFor="metadata-edit-description">
+          <Label className="tw:section-label" htmlFor="metadata-edit-description">
             {localizedStrings['%interlinearizer_modal_metadata_description_label%']}
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id="metadata-edit-description"
             className="tw:modal-metadata-input tw:resize-none"
             rows={2}
@@ -220,10 +220,10 @@ export function ProjectMetadataModal({
         </div>
 
         <div className="tw:flex tw:flex-col tw:gap-1">
-          <label className="tw:section-label" htmlFor="metadata-edit-language">
+          <Label className="tw:section-label" htmlFor="metadata-edit-language">
             {localizedStrings['%interlinearizer_modal_metadata_analysis_language_label%']}
-          </label>
-          <input
+          </Label>
+          <Input
             id="metadata-edit-language"
             className="tw:modal-metadata-input tw:font-mono"
             value={editLanguages}
@@ -285,7 +285,7 @@ export function ProjectMetadataModal({
             onClick={() => setConfirmingDelete(true)}
             disabled={isSubmitting}
           >
-            <Trash2 size={13} className="tw:mr-1" />
+            <Trash2 className="tw:mr-1 tw:size-[13px]" />
             {localizedStrings['%interlinearizer_modal_metadata_delete%']}
           </Button>
           <div className="tw:flex tw:gap-2">

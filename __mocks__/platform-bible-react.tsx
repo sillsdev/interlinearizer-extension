@@ -4,7 +4,14 @@
  */
 
 import { Children, cloneElement, forwardRef, isValidElement, useEffect, useRef } from 'react';
-import type { MouseEventHandler, ReactElement, ReactNode } from 'react';
+import type {
+  ChangeEventHandler,
+  CSSProperties,
+  KeyboardEventHandler,
+  MouseEventHandler,
+  ReactElement,
+  ReactNode,
+} from 'react';
 
 export interface MenuItemContainingCommand {
   label: `%${string}%`;
@@ -242,21 +249,72 @@ export function ScrollGroupSelector({
 }
 
 /**
- * Stub button that passes through `children`, `onClick`, `type`, `className`, `disabled`,
- * `aria-label`, `aria-expanded`, `aria-haspopup`, `data-testid`, and `ref` to a native `<button>`
- * element; `variant` and `size` are accepted but ignored.
+ * Throws if a `Button`-descendant SVG loses its size to `buttonVariants`: an `h-*` or `w-*`
+ * className without `size-`, or a numeric `size` prop without a `size-` className. Production
+ * silently overrides all of these (AGENTS.md § Components); jsdom can't reproduce the visual
+ * regression, so this fails loudly instead of letting it pass as a green test.
+ *
+ * @param node - A `Button` child (or subtree) to check.
+ */
+function assertNoOversizedIconClassName(node: ReactNode): void {
+  if (Array.isArray(node)) {
+    node.forEach(assertNoOversizedIconClassName);
+    return;
+  }
+  if (!isValidElement(node)) return;
+  const { className, size, children } = node.props as {
+    className?: unknown;
+    size?: unknown;
+    children?: ReactNode;
+  };
+  const hasSizeClass = typeof className === 'string' && /\bsize-/.test(className);
+  if (
+    typeof className === 'string' &&
+    (/\btw:h-\S+/.test(className) || /\btw:w-\S+/.test(className)) &&
+    !hasSizeClass
+  ) {
+    throw new Error(
+      `Icon className "${className}" uses tw:h-*/tw:w-* instead of tw:size-* inside a Button — ` +
+        'the platform Button forces child SVG size unless the class contains "size-" (see AGENTS.md § Components).',
+    );
+  }
+  if (typeof size === 'number' && !hasSizeClass) {
+    throw new Error(
+      `Icon has a numeric size={${size}} prop instead of a tw:size-* className inside a Button — ` +
+        'the platform Button forces child SVG size unless the class contains "size-" (see AGENTS.md § Components).',
+    );
+  }
+  if (children) assertNoOversizedIconClassName(children);
+}
+
+/**
+ * Stub button that passes the attributes the extension relies on through to a native `<button>`
+ * element; `variant` and `size` are accepted but ignored for rendering (jsdom does not apply
+ * styling, so tests assert on behavior/testid/role, not the visual variant). Children still go
+ * through {@link assertNoOversizedIconClassName}, which throws on the one sizing regression this
+ * stub can catch regardless of variant/size. The mouse/keyboard handlers and `tabIndex`/`style` are
+ * forwarded so migrated icon buttons keep their hover-preview and focus-skipping behavior under test.
  *
  * @param props - Component props.
  * @param props.children - Button content.
  * @param props.onClick - Click handler.
+ * @param props.onMouseEnter - Pointer-enter handler (icon buttons use it to preview hover state).
+ * @param props.onMouseLeave - Pointer-leave handler (clears the previewed hover state).
+ * @param props.onMouseDown - Pointer-down handler (e.g. to preventDefault and keep input focus).
  * @param props.type - HTML button type attribute.
  * @param props.className - CSS class names.
+ * @param props.style - Inline styles (icon buttons use it for absolute positioning).
+ * @param props.title - Native tooltip text; the {@link Tooltip} stub clones its trigger child with
+ *   this prop, so a `Button` used as a `TooltipTrigger asChild` child must forward it.
  * @param props.disabled - Whether the button is disabled.
+ * @param props.tabIndex - Tab order; icon buttons set `-1` to skip them in keyboard navigation.
  * @param props.variant - Ignored styling variant.
  * @param props.size - Ignored size variant.
  * @param props['aria-label'] - Accessible label.
  * @param props['aria-expanded'] - Expanded state for popup triggers.
  * @param props['aria-haspopup'] - Haspopup attribute.
+ * @param props['aria-controls'] - ID of the element the button controls (e.g. a listbox popup).
+ * @param props['aria-hidden'] - Hides the button from the accessibility tree when it is inert.
  * @param props['data-testid'] - Test identifier.
  * @param ref - Forwarded ref to the underlying button element.
  * @returns A native `<button>` element with standard attributes forwarded.
@@ -265,47 +323,188 @@ export const Button = forwardRef<
   HTMLButtonElement,
   Readonly<{
     children?: ReactNode;
-    onClick?: () => void;
+    onClick?: MouseEventHandler<HTMLButtonElement>;
+    onMouseEnter?: MouseEventHandler<HTMLButtonElement>;
+    onMouseLeave?: MouseEventHandler<HTMLButtonElement>;
+    onMouseDown?: MouseEventHandler<HTMLButtonElement>;
     type?: 'button' | 'submit' | 'reset';
     className?: string;
+    style?: CSSProperties;
+    title?: string;
     disabled?: boolean;
+    tabIndex?: number;
     variant?: 'default' | 'secondary' | 'destructive' | 'ghost' | 'outline' | 'link';
-    size?: 'default' | 'sm' | 'lg' | 'icon';
+    size?: 'default' | 'sm' | 'lg' | 'icon' | 'xs' | 'icon-sm' | 'icon-xs' | 'icon-lg';
     'aria-label'?: string;
     'aria-expanded'?: boolean;
     'aria-haspopup'?: boolean | 'true' | 'false' | 'menu' | 'listbox' | 'tree' | 'grid' | 'dialog';
+    'aria-controls'?: string;
+    'aria-hidden'?: boolean;
     'data-testid'?: string;
   }>
 >(function ButtonImpl(
   {
     children,
     onClick,
+    onMouseEnter,
+    onMouseLeave,
+    onMouseDown,
     type,
     className,
+    style,
+    title,
     disabled,
+    tabIndex,
     variant: _variant,
     size: _size,
     'aria-label': ariaLabel,
     'aria-expanded': ariaExpanded,
     'aria-haspopup': ariaHaspopup,
+    'aria-controls': ariaControls,
+    'aria-hidden': ariaHidden,
     'data-testid': testId,
   },
   ref,
 ) {
+  assertNoOversizedIconClassName(children);
   return (
     <button
       ref={ref}
       type={type ?? 'button'}
       onClick={onClick}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onMouseDown={onMouseDown}
       className={className}
+      style={style}
+      title={title}
+      tabIndex={tabIndex}
       aria-label={ariaLabel}
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHaspopup}
+      aria-controls={ariaControls}
+      aria-hidden={ariaHidden}
       data-testid={testId}
       disabled={disabled}
     >
       {children}
     </button>
+  );
+});
+
+/**
+ * Stub input rendered as a native `<input>`, forwarding the attributes the extension's migrated
+ * form fields and inline editors rely on so tests can read and drive them by id, testid, role, or
+ * value.
+ *
+ * @param props - Component props.
+ * @param props.id - HTML `id` attribute (labels bind to it via `htmlFor`).
+ * @param props.type - Input type; defaults to `text`.
+ * @param props.value - Controlled value.
+ * @param props.placeholder - Placeholder text.
+ * @param props.className - CSS class names.
+ * @param props.style - Inline styles.
+ * @param props.disabled - Whether the input is disabled.
+ * @param props.onChange - Change handler.
+ * @param props.onKeyDown - Key-down handler (inline editors commit/cancel on Enter/Escape).
+ * @param props['aria-label'] - Accessible label.
+ * @param props['data-testid'] - Test identifier.
+ * @param ref - Forwarded ref to the underlying input element.
+ * @returns A native `<input>` element with the forwarded attributes.
+ */
+export const Input = forwardRef<
+  HTMLInputElement,
+  Readonly<{
+    id?: string;
+    type?: string;
+    value?: string;
+    placeholder?: string;
+    className?: string;
+    style?: CSSProperties;
+    disabled?: boolean;
+    onChange?: ChangeEventHandler<HTMLInputElement>;
+    onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+    'aria-label'?: string;
+    'data-testid'?: string;
+  }>
+>(function InputImpl(
+  {
+    id,
+    type,
+    value,
+    placeholder,
+    className,
+    style,
+    disabled,
+    onChange,
+    onKeyDown,
+    'aria-label': ariaLabel,
+    'data-testid': testId,
+  },
+  ref,
+) {
+  return (
+    <input
+      ref={ref}
+      id={id}
+      type={type ?? 'text'}
+      value={value}
+      placeholder={placeholder}
+      className={className}
+      style={style}
+      disabled={disabled}
+      onChange={onChange}
+      onKeyDown={onKeyDown}
+      aria-label={ariaLabel}
+      data-testid={testId}
+    />
+  );
+});
+
+/**
+ * Stub textarea rendered as a native `<textarea>`, forwarding the attributes the extension's
+ * migrated multi-line form fields rely on.
+ *
+ * @param props - Component props.
+ * @param props.id - HTML `id` attribute (labels bind to it via `htmlFor`).
+ * @param props.value - Controlled value.
+ * @param props.placeholder - Placeholder text.
+ * @param props.className - CSS class names.
+ * @param props.rows - Visible row count.
+ * @param props.disabled - Whether the textarea is disabled.
+ * @param props.onChange - Change handler.
+ * @param props['data-testid'] - Test identifier.
+ * @param ref - Forwarded ref to the underlying textarea element.
+ * @returns A native `<textarea>` element with the forwarded attributes.
+ */
+export const Textarea = forwardRef<
+  HTMLTextAreaElement,
+  Readonly<{
+    id?: string;
+    value?: string;
+    placeholder?: string;
+    className?: string;
+    rows?: number;
+    disabled?: boolean;
+    onChange?: ChangeEventHandler<HTMLTextAreaElement>;
+    'data-testid'?: string;
+  }>
+>(function TextareaImpl(
+  { id, value, placeholder, className, rows, disabled, onChange, 'data-testid': testId },
+  ref,
+) {
+  return (
+    <textarea
+      ref={ref}
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      className={className}
+      rows={rows}
+      disabled={disabled}
+      onChange={onChange}
+      data-testid={testId}
+    />
   );
 });
 

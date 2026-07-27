@@ -1,7 +1,7 @@
 import type { Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Plus, X } from 'lucide-react';
-import { Popover, PopoverAnchor } from 'platform-bible-react';
+import { Button, Popover, PopoverAnchor } from 'platform-bible-react';
 import {
   type KeyboardEvent,
   memo,
@@ -354,11 +354,12 @@ export function TokenChip({
   return (
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
-        <button
+        <Button
           aria-label={`Remove ${token.surfaceText} from phrase`}
-          className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
+          className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
           tabIndex={-1}
           type="button"
+          variant="ghost"
           onClick={(e) => {
             e.preventDefault();
             onRemove();
@@ -366,8 +367,8 @@ export function TokenChip({
           onMouseEnter={() => setIsRemoveHovered(true)}
           onMouseLeave={() => setIsRemoveHovered(false)}
         >
-          <X className="tw:h-2.5 tw:w-2.5" />
-        </button>
+          <X className="tw:size-2.5" />
+        </Button>
       )}
       <label
         className={`tw:inline-flex tw:flex-col tw:items-center tw:rounded tw:border tw:bg-muted tw:px-0.5 tw:py-0.5${isRemoveHovered || isSplitFree ? ' tw:border-destructive' : ' tw:border-border'}${disabled ? ' tw:pointer-events-none' : ''}`}
@@ -402,20 +403,21 @@ export function TokenChip({
               />
             ) : (
               <PopoverAnchor asChild>
-                <button
+                <Button
                   aria-label={localizedStrings[
                     '%interlinearizer_tokenChip_defineMorphemes%'
                   ].replace('{token}', () => token.surfaceText)}
-                  className={`tw:flex tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
+                  className={`tw:flex tw:h-auto tw:flex-row tw:items-center tw:rounded tw:px-0.5 tw:py-0 tw:font-mono tw:text-xs tw:italic tw:text-muted-foreground/50 tw:transition-colors${disabled ? '' : ' tw:cursor-pointer tw:hover:bg-accent'}`}
                   tabIndex={-1}
                   type="button"
+                  variant="ghost"
                   onClick={(e) => {
                     e.preventDefault();
                     if (!disabled) setPopoverOpen(true);
                   }}
                 >
                   <span className="tw:whitespace-nowrap">{token.surfaceText}</span>
-                </button>
+                </Button>
               </PopoverAnchor>
             )}
             {popoverOpen && (
@@ -488,7 +490,7 @@ export function TokenChip({
             type="text"
           />
           {hasMultipleSuggestions && (
-            <button
+            <Button
               aria-controls={dropdownShown ? listboxId : undefined}
               aria-expanded={dropdownShown}
               aria-hidden={!addVisible}
@@ -496,16 +498,17 @@ export function TokenChip({
               // Absolutely positioned inside the input's reserved end-padding so it never affects
               // layout; we toggle only opacity, fading the button in on focus/hover. When hidden it
               // is also made non-interactive so an invisible button can't swallow clicks.
-              className={`tw:absolute tw:right-0.5 tw:top-1/2 tw:flex tw:h-2.5 tw:w-2.5 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
+              className={`tw:absolute tw:right-0.5 tw:top-1/2 tw:flex tw:h-2.5 tw:w-2.5 tw:-translate-y-1/2 tw:items-center tw:justify-center tw:rounded tw:p-0 tw:text-muted-foreground tw:cursor-pointer tw:transition-opacity tw:hover:bg-accent${addVisible ? '' : ' tw:pointer-events-none tw:opacity-0'}`}
               data-testid="suggestion-add"
               tabIndex={-1}
               type="button"
+              variant="ghost"
               onClick={handleAddClick}
               // Suppress the mouse-down focus shift so clicking the button never blurs the input.
               onMouseDown={(e) => e.preventDefault()}
             >
-              <Plus className="tw:h-2.5 tw:w-2.5" />
-            </button>
+              <Plus className="tw:size-2.5" />
+            </Button>
           )}
         </span>
         {dropdownShown && (

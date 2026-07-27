@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button } from 'platform-bible-react';
+import { Button, Input, Label, Textarea } from 'platform-bible-react';
 import { useState, useCallback } from 'react';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
@@ -87,33 +87,33 @@ export function CreateProjectModal({
       title={localizedStrings['%interlinearizer_modal_create_title%']}
       width="tw:w-96"
     >
-      <label className="tw:modal-form-label" htmlFor="project-name">
+      <Label className="tw:mb-1" htmlFor="project-name">
         {localizedStrings['%interlinearizer_modal_create_name_label%']}
-      </label>
-      <input
+      </Label>
+      <Input
         id="project-name"
-        className="tw:modal-form-input tw:mb-3"
+        className="tw:mb-3 tw:w-full"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_name_placeholder%']}
       />
-      <label className="tw:modal-form-label" htmlFor="project-description">
+      <Label className="tw:mb-1" htmlFor="project-description">
         {localizedStrings['%interlinearizer_modal_create_description_label%']}
-      </label>
-      <textarea
+      </Label>
+      <Textarea
         id="project-description"
-        className="tw:modal-form-input tw:mb-3 tw:resize-none"
+        className="tw:mb-3 tw:resize-none"
         rows={2}
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_description_placeholder%']}
       />
-      <label className="tw:modal-form-label" htmlFor="analysis-language">
+      <Label className="tw:mb-1" htmlFor="analysis-language">
         {localizedStrings['%interlinearizer_modal_create_language_label%']}
-      </label>
-      <input
+      </Label>
+      <Input
         id="analysis-language"
-        className="tw:modal-form-input tw:mb-4"
+        className="tw:mb-4 tw:w-full"
         value={analysisLanguages}
         onChange={(e) => setAnalysisLanguages(e.target.value)}
         placeholder={localizedStrings['%interlinearizer_modal_create_language_placeholder%']}

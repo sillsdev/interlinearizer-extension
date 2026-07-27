@@ -3,7 +3,17 @@
  * without extra transform configuration. This stub provides the subset used by the extension.
  */
 
-import { Children, cloneElement, forwardRef, isValidElement, useEffect, useRef } from 'react';
+import {
+  Children,
+  cloneElement,
+  createContext,
+  forwardRef,
+  isValidElement,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import type {
   ChangeEventHandler,
   CSSProperties,
@@ -572,6 +582,88 @@ export function Switch({
       id={id}
       onChange={(e) => onCheckedChange?.(e.target.checked)}
       type="checkbox"
+    />
+  );
+}
+
+/**
+ * Context carrying the {@link RadioGroup}'s selected value and change handler down to each
+ * {@link RadioGroupItem}, mirroring how the real Radix-based component coordinates its items.
+ */
+const RadioGroupContext = createContext<{
+  onValueChange?: (value: string) => void;
+  value?: string;
+}>({});
+
+/**
+ * Stub radio group rendered as a `<div role="radiogroup">` that shares its selected value and change
+ * handler with its {@link RadioGroupItem} children via context. The real component is built on Radix
+ * primitives; this stub reproduces just the controlled selection behavior tests drive.
+ *
+ * @param props - Component props.
+ * @param props.children - The {@link RadioGroupItem}s (and any surrounding markup).
+ * @param props.className - CSS class names.
+ * @param props.onValueChange - Called with an item's value when it becomes selected.
+ * @param props.value - Currently selected item value.
+ * @returns A `<div role="radiogroup">` providing selection context to its items.
+ */
+export function RadioGroup({
+  children,
+  className,
+  onValueChange,
+  value,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  onValueChange?: (value: string) => void;
+  value?: string;
+}>): ReactElement {
+  const contextValue = useMemo(() => ({ onValueChange, value }), [onValueChange, value]);
+  return (
+    <div className={className} role="radiogroup">
+      <RadioGroupContext.Provider value={contextValue}>{children}</RadioGroupContext.Provider>
+    </div>
+  );
+}
+
+/**
+ * Stub radio item rendered as a native `<input type="radio">` so `toBeChecked`, `toBeDisabled`, and
+ * click/`check` interactions work in tests. It reads the enclosing {@link RadioGroup}'s value from
+ * context, marking itself checked when they match and reporting its own value on change. (The real
+ * component renders a `<button role="radio">`; a native radio is close enough for these tests and
+ * plays nicely with jest-dom's checked/disabled matchers.)
+ *
+ * @param props - Component props.
+ * @param props.className - CSS class names.
+ * @param props['data-testid'] - Test identifier.
+ * @param props.disabled - Whether the item is disabled.
+ * @param props.id - HTML `id` attribute (a {@link Label}'s `htmlFor` binds to it).
+ * @param props.value - This item's value, compared against the group value to derive `checked`.
+ * @returns A native `<input type="radio">` wired to the group's selection state.
+ */
+export function RadioGroupItem({
+  className,
+  'data-testid': testId,
+  disabled,
+  id,
+  value,
+}: Readonly<{
+  className?: string;
+  'data-testid'?: string;
+  disabled?: boolean;
+  id?: string;
+  value: string;
+}>): ReactElement {
+  const { onValueChange, value: groupValue } = useContext(RadioGroupContext);
+  return (
+    <input
+      checked={groupValue === value}
+      className={className}
+      data-testid={testId}
+      disabled={disabled}
+      id={id}
+      onChange={() => onValueChange?.(value)}
+      type="radio"
     />
   );
 }

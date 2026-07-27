@@ -204,6 +204,13 @@ export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
  * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers, not one file per tier:
  * there is only one `settings.json` to protect, so a stale backup left by either tier's crashed run
  * can be recovered by the other tier's own self-heal (see {@link backupAndSeedSettings}).
+ *
+ * Sharing one file is safe only because seed/restore cycles never overlap: both Playwright configs
+ * set `workers: 1` and `fullyParallel: false`, and the tiers run sequentially. Two concurrent
+ * cycles would interleave — one restoring `settings.json` to the original while the other's app
+ * reads it at startup (dropping the overrides), and the backup could capture an already-seeded
+ * file. If either tier ever gains workers or the two are run at once, give each tier its own backup
+ * file.
  */
 const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
 
@@ -279,9 +286,21 @@ export function restoreBackedUpSettings(): void {
  * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
  *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
  *   not permanently replaced by test values.
+ * @throws Whatever {@link backupAndSeedSettings} throws (a filesystem error while backing up,
+ *   creating the settings directory, or writing the seeded file). The caller never receives a
+ *   restore function in that case, so this rolls the partial seed back itself before rethrowing —
+ *   otherwise a mid-seed failure would strand the developer's settings in a seeded state.
  */
 export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
-  backupAndSeedSettings(overrides);
+  try {
+    backupAndSeedSettings(overrides);
+  } catch (error) {
+    // Best-effort and non-throwing (see restoreBackedUpSettings), so this cannot mask `error`. If
+    // the backup file was written before the failure, this restores from it; if the failure came
+    // before that, there is nothing to undo and it is a no-op.
+    restoreBackedUpSettings();
+    throw error;
+  }
   return restoreBackedUpSettings;
 }
 
@@ -1257,9 +1276,9 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * partial references are ambiguous and are not auto-submitted by the control.
  *
  * The toolbar's book-chapter control is only ENABLED when BCV navigation has a resolved target web
- * view. In the default simple mode that target is the first open Scripture editor with a project,
- * NOT the focused Interlinearizer tab — so the control needs an open, project-bearing Scripture
- * editor to be drivable at all. That precondition holds because callers run this after
+ * view. That target is the first open Scripture editor with a project, NOT the focused
+ * Interlinearizer tab — so the control needs an open, project-bearing Scripture editor to be
+ * drivable at all. That precondition holds because callers run this after
  * `ensureInterlinearizerOpenOnWeb`, which loads the WEB project into a Scripture Editor.
  *
  * The control can be momentarily disabled right after startup, before the target resolves, so this
@@ -1289,9 +1308,9 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
     throw new Error(
       `navigateToScriptureRef: the platform book-chapter control never became enabled, so ` +
         `"${reference}" could not be navigated to. This means BCV navigation has no resolved ` +
-        'target: in the default simple interface mode the target is the first open Scripture editor ' +
-        'with a project, so the WEB Scripture Editor is likely closed or its project failed to load. ' +
-        'Ensure it is open (openInterlinearizerFromScriptureEditor) before navigating.',
+        'target: the target is the first open Scripture editor with a project, so the WEB Scripture ' +
+        'Editor is likely closed or its project failed to load. Ensure it is open ' +
+        '(openInterlinearizerFromScriptureEditor) before navigating.',
     );
   }
 

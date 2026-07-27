@@ -15,6 +15,24 @@ export interface KillFromPidFileResult {
 }
 
 /**
+ * Remove a PID marker file, swallowing any filesystem error. Separate from the kill it accompanies
+ * so a marker-removal failure cannot be mistaken for a kill failure (see the call sites in
+ * {@link killProcessFromPidFile}). A leftover marker is harmless — the next run re-reads it and
+ * finds a dead PID — so warning and continuing beats aborting teardown.
+ *
+ * @param pidFile Absolute path to the PID marker file to remove.
+ * @param label Human-readable name of the process the marker belongs to, used in the warning log.
+ * @returns Nothing.
+ */
+function removePidFile(pidFile: string, label: string): void {
+  try {
+    fs.unlinkSync(pidFile);
+  } catch (e) {
+    console.warn(`Could not remove ${label} PID marker ${pidFile}: ${e}`);
+  }
+}
+
+/**
  * Kill a process recorded in a PID file (whole tree), then remove the PID file. Shared by this
  * teardown's dev-server kill and {@link globalTeardownCdp}'s launched-app kill, which follow the
  * same read-PID-file → validate → kill → remove-marker shape and differ only in signal and
@@ -23,7 +41,9 @@ export interface KillFromPidFileResult {
  * A missing PID file is a no-op; a file whose contents don't parse as an integer is warned about
  * and skipped rather than used to kill an arbitrary PID. The PID file is always removed when
  * present, so no run leaves a stale marker behind. A filesystem error (concurrent deletion, a
- * locked file) is warned about and swallowed so teardown continues rather than aborting.
+ * locked file) is warned about and swallowed so teardown continues rather than aborting — with the
+ * marker removal guarded separately (see {@link removePidFile}) so it cannot downgrade a successful
+ * kill to `killed: false`.
  *
  * @param pidFile Absolute path to the file holding the target process's PID.
  * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
@@ -44,12 +64,16 @@ export function killProcessFromPidFile(
     const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').trim(), 10);
     if (Number.isNaN(pid)) {
       console.warn(`Invalid PID in ${pidFile}, skipping ${label} kill`);
-      fs.unlinkSync(pidFile);
+      removePidFile(pidFile, label);
       return { killed: false };
     }
     console.log(`Stopping ${label} (PID: ${pid})...`);
     const killed = killProcessTree(pid, signal);
-    fs.unlinkSync(pidFile);
+    // Remove the marker independently of the kill result: an fs error here says nothing about
+    // whether the kill succeeded, and callers act on `killed`/`pid` (globalTeardownCdp waits for the
+    // PID to exit before removing the app's user-data dir). Folding this into the outer catch would
+    // report a successful kill as `killed: false` and skip that wait, hitting a live SingletonLock.
+    removePidFile(pidFile, label);
     return { killed, pid };
   } catch (e) {
     console.warn(`Failed to kill ${label} from ${pidFile}: ${e}`);

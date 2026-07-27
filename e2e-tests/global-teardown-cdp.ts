@@ -28,26 +28,30 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
   // Remove the isolated user-data dir created for this run. Give the just-killed Electron a moment to
   // actually exit and release the SingletonLock before removing — polling for exit rather than
   // listening for it, since teardown only has a bare PID, not a live process handle.
-  if (fs.existsSync(CDP_USER_DATA_FILE)) {
-    const userDataDir = fs.readFileSync(CDP_USER_DATA_FILE, 'utf-8').trim();
-    if (userDataDir) {
-      if (appKilled && appPid !== undefined) {
-        await waitForPidExit(appPid, 1_000);
+  //
+  // The whole user-data cleanup is best-effort: every step is guarded, and the settings restore plus
+  // the shared teardown run from `finally` regardless. Skipping them would leak the renderer dev
+  // server and lingering Electron processes, and leave the developer's seeded settings on disk —
+  // far worse than a leftover temp dir or marker file.
+  try {
+    if (fs.existsSync(CDP_USER_DATA_FILE)) {
+      const userDataDir = fs.readFileSync(CDP_USER_DATA_FILE, 'utf-8').trim();
+      if (userDataDir) {
+        if (appKilled && appPid !== undefined) {
+          await waitForPidExit(appPid, 1_000);
+        }
+        await removeDirWithRetry(userDataDir, 'CDP user-data dir');
       }
-      await removeDirWithRetry(userDataDir, 'CDP user-data dir');
-    }
-    // Guard the marker removal: an fs error here (locked file on Windows, or the file deleted by a
-    // concurrent run between the existsSync above and this unlink) must not abort teardown before
-    // the shared cleanup below — that would leak the renderer dev server and lingering Electron.
-    try {
       fs.unlinkSync(CDP_USER_DATA_FILE);
-    } catch (e) {
-      console.warn(`Could not remove CDP user-data marker ${CDP_USER_DATA_FILE}: ${e}`);
     }
+  } catch (e) {
+    // An fs error here — a locked file on Windows, or the marker deleted by a concurrent run
+    // between the existsSync and the read/unlink — is logged and swallowed.
+    console.warn(`Could not clean up CDP user-data marker ${CDP_USER_DATA_FILE}: ${e}`);
+  } finally {
+    restoreSeededSettings();
+
+    // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.
+    await globalTeardown(config);
   }
-
-  restoreSeededSettings();
-
-  // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.
-  await globalTeardown(config);
 }

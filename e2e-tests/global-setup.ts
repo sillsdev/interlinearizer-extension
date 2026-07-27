@@ -228,16 +228,18 @@ export async function bootstrapRendererDevServer(): Promise<void> {
 
     devServer.unref();
 
-    if (devServer.pid) {
-      fs.writeFileSync(DEV_SERVER_PID_FILE, String(devServer.pid));
-    }
-
     // From here on this run owns a spawned, detached dev server. Playwright skips globalTeardown
-    // when globalSetup throws, so a readiness failure below must kill it on the spot or it survives
-    // the failed run, holds port 1212, and silently serves a stale bundle to every later run.
+    // when globalSetup throws, so a failure below must kill it on the spot or it survives the
+    // failed run, holds port 1212, and silently serves a stale bundle to every later run. The
+    // PID-marker write is inside this try for the same reason: a synchronous writeFileSync failure
+    // would otherwise leak the running server with no marker for any later teardown to find it by.
     // Scoped to this branch only: the already-running branch above didn't start the server, so this
     // run must leave it alone.
     try {
+      if (devServer.pid) {
+        fs.writeFileSync(DEV_SERVER_PID_FILE, String(devServer.pid));
+      }
+
       console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
       await waitForPort(RENDERER_PORT, 60_000);
       console.log(

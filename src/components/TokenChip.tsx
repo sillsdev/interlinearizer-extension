@@ -367,7 +367,7 @@ export function TokenChip({
           onMouseEnter={() => setIsRemoveHovered(true)}
           onMouseLeave={() => setIsRemoveHovered(false)}
         >
-          <X className="tw:h-2.5 tw:w-2.5" />
+          <X className="tw:size-2.5" />
         </Button>
       )}
       <label
@@ -507,7 +507,7 @@ export function TokenChip({
               // Suppress the mouse-down focus shift so clicking the button never blurs the input.
               onMouseDown={(e) => e.preventDefault()}
             >
-              <Plus className="tw:h-2.5 tw:w-2.5" />
+              <Plus className="tw:size-2.5" />
             </Button>
           )}
         </span>

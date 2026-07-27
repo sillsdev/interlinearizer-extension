@@ -249,11 +249,40 @@ export function ScrollGroupSelector({
 }
 
 /**
+ * Throws if a `Button`-descendant SVG uses `h-*`/`w-*` without `size-` — `buttonVariants` silently
+ * overrides that sizing in production (AGENTS.md § Components). jsdom can't reproduce the visual
+ * regression, so this fails loudly instead of letting it pass as a green test.
+ *
+ * @param node - A `Button` child (or subtree) to check.
+ */
+function assertNoOversizedIconClassName(node: ReactNode): void {
+  if (Array.isArray(node)) {
+    node.forEach(assertNoOversizedIconClassName);
+    return;
+  }
+  if (!isValidElement(node)) return;
+  const { className, children } = node.props as { className?: unknown; children?: ReactNode };
+  if (
+    typeof className === 'string' &&
+    /\btw:h-\S+/.test(className) &&
+    /\btw:w-\S+/.test(className) &&
+    !/\bsize-/.test(className)
+  ) {
+    throw new Error(
+      `Icon className "${className}" uses tw:h-*/tw:w-* instead of tw:size-* inside a Button — ` +
+        'the platform Button forces child SVG size unless the class contains "size-" (see AGENTS.md § Components).',
+    );
+  }
+  if (children) assertNoOversizedIconClassName(children);
+}
+
+/**
  * Stub button that passes the attributes the extension relies on through to a native `<button>`
- * element; `variant` and `size` are accepted but ignored (jsdom does not apply styling, so tests
- * assert on behavior/testid/role, not the visual variant). The mouse/keyboard handlers and
- * `tabIndex`/`style` are forwarded so migrated icon buttons keep their hover-preview and
- * focus-skipping behavior under test.
+ * element; `variant` and `size` are accepted but ignored for rendering (jsdom does not apply
+ * styling, so tests assert on behavior/testid/role, not the visual variant). Children still go
+ * through {@link assertNoOversizedIconClassName}, which throws on the one sizing regression this
+ * stub can catch regardless of variant/size. The mouse/keyboard handlers and `tabIndex`/`style` are
+ * forwarded so migrated icon buttons keep their hover-preview and focus-skipping behavior under test.
  *
  * @param props - Component props.
  * @param props.children - Button content.
@@ -326,6 +355,7 @@ export const Button = forwardRef<
   },
   ref,
 ) {
+  assertNoOversizedIconClassName(children);
   return (
     <button
       ref={ref}

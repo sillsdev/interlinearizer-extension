@@ -71,6 +71,8 @@ The WebView root component is assigned to `globalThis.webViewComponent` (not exp
 
 Prefer Platform.Bible's `platform-bible-react` components (`Button`, `Input`, `Textarea`, `Label`, `Switch`, `RadioGroup`, `Popover`, `Tooltip`, etc.) over hand-rolled raw HTML (`<button>`, `<input>`, `<textarea>`, `<label>`, custom dropdowns) wherever an equivalent exists — this keeps the UI visually and behaviorally consistent with the host app and gives us theming and accessibility for free. Reserve raw elements for cases where the platform component can't preserve behavior the extension depends on (e.g. `field-sizing: content` gloss inputs); when you do, add a comment explaining why. When a raw element is replaced by a platform component in tests, extend `__mocks__/platform-bible-react.tsx` to stub the newly-used component.
 
+Size icons inside a `Button` with `size-*` (e.g. `tw:size-3`), never `h-*`/`w-*` — `buttonVariants` forces any child SVG lacking a `size-` class to `size-4`, silently overriding `h-*`/`w-*`.
+
 ### Styling
 
 All UI uses Tailwind CSS (via `src/tailwind.css`). Every Tailwind class is prefixed `tw:` to avoid collisions with Platform.Bible's own styles (configured in `tailwind.config.ts`). For modifier variants the prefix comes first: `tw:hover:px-3`, not `hover:tw-px-3`.

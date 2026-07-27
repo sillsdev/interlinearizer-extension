@@ -354,7 +354,7 @@ export function ArcOverlay({
                   else handleReshapeHoverLeave();
                 }}
               >
-                <Link2Off className="tw:h-2.5 tw:w-2.5" />
+                <Link2Off className="tw:size-2.5" />
               </Button>
             );
           })}

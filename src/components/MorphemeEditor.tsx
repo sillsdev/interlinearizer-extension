@@ -5,7 +5,7 @@
  *   lives separately in {@link ./MorphemeBox}.
  */
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button, PopoverContent } from 'platform-bible-react';
+import { Button, Input, Label, PopoverContent } from 'platform-bible-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 
@@ -270,12 +270,12 @@ export function MorphemeBreakdownPopover({
         </>
       ) : (
         <>
-          <label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
+          <Label className="tw:text-xs tw:text-muted-foreground" htmlFor={inputId}>
             {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}
-          </label>
-          <input
+          </Label>
+          <Input
             ref={inputRef}
-            className="tw:w-full tw:rounded tw:border tw:border-input tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:font-mono"
+            className="tw:w-full tw:font-mono"
             id={inputId}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}

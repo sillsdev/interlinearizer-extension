@@ -181,13 +181,14 @@ export function MorphemeBreakdownPopover({
   /**
    * Commits the draft when the user interacts outside the popover, except when the text was not
    * edited — then the interaction acts like Cancel, because an accidental outside click is not a
-   * deliberate commit. An empty draft is likewise dismissed without writing by {@link handleSave}.
-   * While the reset confirmation is showing, an outside click dismisses it without resetting: the
-   * confirmation exists precisely because the loss is irreversible, so it must not be answered by a
-   * stray click.
+   * deliberate commit. An empty draft is likewise dismissed without writing: {@link handleSave}
+   * refuses to interpret it and would otherwise leave the panel open, but an outside click on a
+   * modal popover must always dismiss. While the reset confirmation is showing, an outside click
+   * dismisses it without resetting: the confirmation exists precisely because the loss is
+   * irreversible, so it must not be answered by a stray click.
    */
   const handleInteractOutside = () => {
-    if (confirmingReset || isUnedited) {
+    if (confirmingReset || isUnedited || isEmpty) {
       onClose();
       return;
     }

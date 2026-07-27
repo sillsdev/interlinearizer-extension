@@ -168,6 +168,17 @@ describe('MorphemeBreakdownPopover', () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
+  it('dismisses on outside interaction when the input is only whitespace', async () => {
+    // An outside click on a modal popover must always dismiss it. handleSave refuses to interpret
+    // an empty draft and returns without closing, so handleInteractOutside has to close directly.
+    const onClose = jest.fn();
+    renderPopover({ initialValue: 'word', onClose, surfaceText: 'whole' });
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), '   ');
+    await userEvent.click(screen.getByTestId('popover-outside'));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('does not dismiss when clicking inside the popover panel', async () => {
     const onClose = jest.fn();
     renderPopover({ onClose });

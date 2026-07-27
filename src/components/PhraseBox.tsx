@@ -372,7 +372,7 @@ export function PhraseBox({
               type="button"
               variant="ghost"
             >
-              <Trash2 className="tw:h-3 tw:w-3" />
+              <Trash2 className="tw:size-3" />
             </Button>
           </span>
         )}

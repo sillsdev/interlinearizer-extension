@@ -261,7 +261,7 @@ export function TokenLinkIcon({
         type="button"
         variant="ghost"
       >
-        <Unlink2 className="tw:h-3 tw:w-3" />
+        <Unlink2 className="tw:size-3" />
       </Button>
     );
   }
@@ -330,7 +330,7 @@ export function TokenLinkIcon({
       type="button"
       variant="ghost"
     >
-      <Link2 className="tw:h-3 tw:w-3" />
+      <Link2 className="tw:size-3" />
     </Button>
   );
 

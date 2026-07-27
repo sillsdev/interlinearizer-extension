@@ -82,7 +82,7 @@ function MergeRowButton({ segment }: MergeRowButtonProps) {
                 the Y-join points along this view's vertical merge axis (the lower row folds up into
                 the one above), unlike the horizontal continuous-strip merge. */}
             <span className="tw:inline-flex tw:items-center tw:justify-center tw:rounded tw:bg-muted tw:p-1 tw:text-muted-foreground tw:group-hover/merge:bg-accent tw:group-hover/merge:text-accent-foreground">
-              <Merge className="tw:h-3 tw:w-3 tw:rotate-90" />
+              <Merge className="tw:size-3 tw:rotate-90" />
             </span>
           </Button>
         </TooltipTrigger>
@@ -386,7 +386,7 @@ export default function SegmentListView({
             type="button"
             variant="ghost"
           >
-            <LocateFixed className="tw:h-4 tw:w-4" />
+            <LocateFixed className="tw:size-4" />
           </Button>
         </div>
       )}

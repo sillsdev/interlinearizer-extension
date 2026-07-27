@@ -163,7 +163,7 @@ function BoundaryControl({
           label={boundaryMergeLabel}
           title={altHeld ? boundaryMergeLabel : boundaryMergeAltHint}
           testId="boundary-merge-btn"
-          icon={<Merge className="tw:h-3 tw:w-3" />}
+          icon={<Merge className="tw:size-3" />}
           action={() => dispatch.merge(secondStart)}
         />
       </span>

@@ -1,5 +1,5 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button } from 'platform-bible-react';
+import { Button, Label, RadioGroup, RadioGroupItem } from 'platform-bible-react';
 import { useState } from 'react';
 import { ModalShell } from './ModalShell';
 
@@ -60,40 +60,40 @@ export function WipeModal({
         {localizedStrings['%interlinearizer_wipe_modal_prompt%']}
       </p>
 
-      <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">
-        <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
-          <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
-            <input
-              type="radio"
-              name="wipe-scope"
-              checked={scope === 'book'}
-              disabled={!hasActiveBook}
-              onChange={() => setScope('book')}
+      <RadioGroup
+        className="tw:mb-4 tw:gap-3"
+        onValueChange={(value) => setScope(value === 'book' ? 'book' : 'all')}
+        value={scope}
+      >
+        <div className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
+          <div className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
+            <RadioGroupItem
               data-testid="wipe-scope-book"
+              disabled={!hasActiveBook}
+              id="wipe-scope-book"
+              value="book"
             />
-            {localizedStrings['%interlinearizer_wipe_modal_scope_book%']}
-          </span>
+            <Label htmlFor="wipe-scope-book">
+              {localizedStrings['%interlinearizer_wipe_modal_scope_book%']}
+            </Label>
+          </div>
           <span className="tw:ps-6 tw:text-muted-foreground">
             {localizedStrings['%interlinearizer_wipe_modal_scope_book_description%']}
           </span>
-        </label>
+        </div>
 
-        <label className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
-          <span className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
-            <input
-              type="radio"
-              name="wipe-scope"
-              checked={scope === 'all'}
-              onChange={() => setScope('all')}
-              data-testid="wipe-scope-all"
-            />
-            {localizedStrings['%interlinearizer_wipe_modal_scope_all%']}
-          </span>
+        <div className="tw:flex tw:flex-col tw:gap-0.5 tw:text-sm">
+          <div className="tw:flex tw:gap-2 tw:items-center tw:font-medium">
+            <RadioGroupItem data-testid="wipe-scope-all" id="wipe-scope-all" value="all" />
+            <Label htmlFor="wipe-scope-all">
+              {localizedStrings['%interlinearizer_wipe_modal_scope_all%']}
+            </Label>
+          </div>
           <span className="tw:ps-6 tw:text-muted-foreground">
             {localizedStrings['%interlinearizer_wipe_modal_scope_all_description%']}
           </span>
-        </label>
-      </div>
+        </div>
+      </RadioGroup>
 
       <div className="tw:modal-actions">
         <Button variant="secondary" onClick={onCancel}>

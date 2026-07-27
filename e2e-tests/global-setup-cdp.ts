@@ -197,6 +197,14 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     }
     appProcess.unref();
 
+    // Resolves once the process exits (unlike earlyExit below, which rejects). Allows the
+    // failure-path cleanup to bound its wait for a just-issued SIGKILL to take effect. Registered
+    // before the PID-marker write so a write failure still reaches cleanUpFailedLaunch with a usable
+    // exit signal rather than making it skip the post-kill wait.
+    exited = new Promise<void>((resolve) => {
+      appProcess?.once('exit', () => resolve());
+    });
+
     if (appProcess.pid) fs.writeFileSync(CDP_PID_FILE, String(appProcess.pid));
 
     /**
@@ -219,12 +227,6 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     // it handled so the eventual teardown kill (same 'exit' event) can't surface as an unhandled
     // rejection.
     earlyExit.catch(() => {});
-
-    // Resolves once the process exits (unlike earlyExit, which rejects). Allows the failure-path
-    // cleanup to bound its wait for a just-issued SIGKILL to take effect.
-    exited = new Promise<void>((resolve) => {
-      appProcess?.once('exit', () => resolve());
-    });
 
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
     await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);

@@ -16,6 +16,10 @@ import { removeDirWithRetry, waitForPidExit } from './process-utils';
  *   has completed.
  */
 export default async function globalTeardownCdp(config: FullConfig): Promise<void> {
+  // Snapshot before killProcessFromPidFile unlinks CDP_PID_FILE. `||` not `&&`: a run that crashed
+  // between globalSetupCdp's two marker writes still owns a seed with only one marker present.
+  const launchedApp = fs.existsSync(CDP_PID_FILE) || fs.existsSync(CDP_USER_DATA_FILE);
+
   // Kill the app we launched (whole process tree) before the shared teardown's generic sweep.
   // SIGKILL (not SIGTERM): Electron can ignore SIGTERM, and we need it fully dead before removing
   // its user-data dir below.
@@ -46,7 +50,9 @@ export default async function globalTeardownCdp(config: FullConfig): Promise<voi
     }
   }
 
-  restoreSeededSettings();
+  // Gated like the resources above: the shared backup file (helpers.ts) could otherwise belong to a
+  // still-in-flight smoke run, not this one.
+  if (launchedApp) restoreSeededSettings();
 
   // Delegate to the shared teardown to stop the renderer dev server and sweep lingering processes.
   await globalTeardown(config);

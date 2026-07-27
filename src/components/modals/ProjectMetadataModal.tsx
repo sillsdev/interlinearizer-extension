@@ -285,7 +285,7 @@ export function ProjectMetadataModal({
             onClick={() => setConfirmingDelete(true)}
             disabled={isSubmitting}
           >
-            <Trash2 size={13} className="tw:mr-1" />
+            <Trash2 className="tw:mr-1 tw:size-[13px]" />
             {localizedStrings['%interlinearizer_modal_metadata_delete%']}
           </Button>
           <div className="tw:flex tw:gap-2">

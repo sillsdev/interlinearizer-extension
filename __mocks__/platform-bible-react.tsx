@@ -249,9 +249,10 @@ export function ScrollGroupSelector({
 }
 
 /**
- * Throws if a `Button`-descendant SVG uses `h-*`/`w-*` without `size-` — `buttonVariants` silently
- * overrides that sizing in production (AGENTS.md § Components). jsdom can't reproduce the visual
- * regression, so this fails loudly instead of letting it pass as a green test.
+ * Throws if a `Button`-descendant SVG loses its size to `buttonVariants`: an `h-*`/`w-*` className
+ * without `size-`, or a numeric `size` prop without a `size-` className. Production silently
+ * overrides both (AGENTS.md § Components); jsdom can't reproduce the visual regression, so this
+ * fails loudly instead of letting it pass as a green test.
  *
  * @param node - A `Button` child (or subtree) to check.
  */
@@ -261,15 +262,26 @@ function assertNoOversizedIconClassName(node: ReactNode): void {
     return;
   }
   if (!isValidElement(node)) return;
-  const { className, children } = node.props as { className?: unknown; children?: ReactNode };
+  const { className, size, children } = node.props as {
+    className?: unknown;
+    size?: unknown;
+    children?: ReactNode;
+  };
+  const hasSizeClass = typeof className === 'string' && /\bsize-/.test(className);
   if (
     typeof className === 'string' &&
     /\btw:h-\S+/.test(className) &&
     /\btw:w-\S+/.test(className) &&
-    !/\bsize-/.test(className)
+    !hasSizeClass
   ) {
     throw new Error(
       `Icon className "${className}" uses tw:h-*/tw:w-* instead of tw:size-* inside a Button — ` +
+        'the platform Button forces child SVG size unless the class contains "size-" (see AGENTS.md § Components).',
+    );
+  }
+  if (typeof size === 'number' && !hasSizeClass) {
+    throw new Error(
+      `Icon has a numeric size={${size}} prop instead of a tw:size-* className inside a Button — ` +
         'the platform Button forces child SVG size unless the class contains "size-" (see AGENTS.md § Components).',
     );
   }

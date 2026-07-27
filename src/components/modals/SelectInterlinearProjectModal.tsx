@@ -159,7 +159,7 @@ export function SelectInterlinearProjectModal({
                   className="tw:shrink-0"
                   onClick={() => onViewInfo(project)}
                 >
-                  <Info size={15} />
+                  <Info className="tw:size-[15px]" />
                 </Button>
               </li>
             );

@@ -1416,11 +1416,24 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * submits it. Requires a fully-qualified reference (book, chapter, and verse — e.g. `"GEN 1:1"`);
  * partial references are ambiguous and are not auto-submitted by the control.
  *
- * The toolbar's book-chapter control is only ENABLED when BCV navigation has a resolved target web
- * view. That target is the first open Scripture editor with a project, NOT the focused
- * Interlinearizer tab — so the control needs an open, project-bearing Scripture editor to be
- * drivable at all. That precondition holds because callers run this after
- * `ensureInterlinearizerOpenOnWeb`, which loads the WEB project into a Scripture Editor.
+ * Drives the TOP TOOLBAR's book-chapter control specifically. In Power mode — which
+ * {@link E2E_SETTINGS_OVERRIDES} forces for every launch — it is not the only one on the page:
+ * paranext-core also renders a PER-TAB `BookChapterControl` in each web view's own tab toolbar, and
+ * every instance carries the same `aria-label="book-chapter-trigger"`. So the trigger is scoped to
+ * the toolbar's `toolbar-reserved-space-wrapper` root rather than selected page-wide; a bare
+ * `.first()` would depend on the toolbar happening to render before the dock layout in document
+ * order, and would silently drive some tab's control if paranext-core ever reordered them.
+ *
+ * The scoping also matters for the enabled-wait below, because the two kinds of control differ:
+ * only the toolbar's is passed a `disabled` prop (bound to whether BCV navigation has a resolved
+ * target web view). The per-tab controls receive no such prop and are therefore ALWAYS enabled, so
+ * waiting on one of those would make the wait vacuous — it would pass even with no navigation
+ * target resolved.
+ *
+ * That target is the first open Scripture editor with a project, NOT the focused Interlinearizer
+ * tab — so the toolbar control needs an open, project-bearing Scripture editor to be drivable at
+ * all. That precondition holds because callers run this after `ensureInterlinearizerOpenOnWeb`,
+ * which loads the WEB project into a Scripture Editor.
  *
  * The control can be momentarily disabled right after startup, before the target resolves, so this
  * waits a BOUNDED time for it to enable before clicking; a plain click on a still-disabled button
@@ -1435,7 +1448,13 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *   if it is enabled but its popover does not open or close within the timeouts.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
-  const trigger = page.locator('button[aria-label="book-chapter-trigger"]').first();
+  // Scope to the top toolbar's own root: in Power mode each open web view tab renders its own
+  // identically-labeled (and always-enabled) BookChapterControl, so a page-wide lookup would be
+  // ambiguous. `.first()` stays as a strict-mode guard within that single scope.
+  const trigger = page
+    .getByTestId('toolbar-reserved-space-wrapper')
+    .locator('button[aria-label="book-chapter-trigger"]')
+    .first();
 
   // Bounded wait for the control to become enabled, covering the brief post-launch window before the
   // navigation target resolves. `toBeEnabled` polls (unlike `isEnabled`, which reads once); swallow
@@ -1447,7 +1466,7 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
     .catch(() => false);
   if (!enabled) {
     throw new Error(
-      `navigateToScriptureRef: the platform book-chapter control never became enabled, so ` +
+      `navigateToScriptureRef: the top toolbar's book-chapter control never became enabled, so ` +
         `"${reference}" could not be navigated to. This means BCV navigation has no resolved ` +
         'target: the target is the first open Scripture editor with a project, so the WEB Scripture ' +
         'Editor is likely closed or its project failed to load. Ensure it is open ' +

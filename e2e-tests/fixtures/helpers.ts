@@ -228,6 +228,11 @@ const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
  * @returns Nothing.
+ * @throws A filesystem error while backing up the original settings, creating the settings
+ *   directory, or writing the seeded file. The seed may be partially applied when it throws, so a
+ *   caller that has to leave the developer's settings untouched must roll it back with
+ *   {@link restoreBackedUpSettings} (see {@link preConfigureSettings}). A corrupt settings file is
+ *   not an error — it is overwritten with just the overrides.
  */
 export function backupAndSeedSettings(overrides: Record<string, unknown>): void {
   restoreBackedUpSettings();

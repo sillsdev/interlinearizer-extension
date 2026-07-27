@@ -12,6 +12,7 @@ import {
   preConfigureSettings,
   PROCESS_READY_TIMEOUT,
   teardownElectronApp,
+  describePageError,
 } from './helpers';
 
 export { expect } from '@playwright/test';
@@ -65,7 +66,7 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
      *
      * @param err The error thrown in the page context.
      */
-    const onPageError = (err: Error) => console.error(`Page error: ${err.message}`);
+    const onPageError = (err: Error) => console.error(`Page error: ${describePageError(err)}`);
 
     /**
      * Log console error messages from the page to the process console.

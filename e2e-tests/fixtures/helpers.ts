@@ -79,6 +79,33 @@ const FATAL_STARTUP_PAGE_ERROR =
   /Timeout reached when waiting for .*allThemeFamiliesById to settle/i;
 
 /**
+ * Build a detailed description of a renderer page error for logging and pattern matching.
+ * Playwright surfaces uncaught page errors as `Error` objects, but when the page throws a non-Error
+ * value (e.g. a plain object) `.message` collapses to something useless like "Object" — hiding the
+ * real cause from both the CI log and {@link FATAL_STARTUP_PAGE_ERROR}, which is why a doomed cold
+ * start can burn its whole readiness budget instead of fast-failing. This combines the message, the
+ * stack (which often carries the true text for wrapped throwables), and a JSON dump of any
+ * own-enumerable properties so the real error survives to the log and to the tripwire regex.
+ *
+ * @param err The error surfaced by Playwright's `pageerror` event.
+ * @returns A newline-joined description containing every distinct detail recoverable from `err`.
+ */
+export function describePageError(err: Error): string {
+  const parts: string[] = [];
+  if (err.message) parts.push(err.message);
+  if (err.stack) parts.push(err.stack);
+  try {
+    // A real Error serializes to "{}" — its message and stack are non-enumerable — so only a wrapped
+    // non-Error throwable yields properties worth keeping; skip the empty/null cases.
+    const json = JSON.stringify(err);
+    if (json && json !== '{}' && json !== 'null') parts.push(json);
+  } catch {
+    // Circular/non-serializable value — the message and stack above are our best description.
+  }
+  return parts.join('\n');
+}
+
+/**
  * Keep in sync with GET_METHODS from @shared/data/rpc.model. Required to be 'rpc.discover' by the
  * OpenRPC specification.
  */
@@ -621,6 +648,13 @@ interface DockTabTitlesOptions {
  * It wraps the WHOLE readiness sequence (service-host wait AND dock-tab wait) because the fatal
  * theme-settle error can surface during either and never self-recovers.
  *
+ * Deliberately NOT a tripwire signal: the unhandled `PlatformError` rejections paranext-core emits
+ * during boot (e.g. the `platform.getOSPlatform` -32601 not-found race). Tripping on those was
+ * tried and reverted — launches that emit them frequently still come up healthy, and because that
+ * boot race recurs on fresh launches, treating them as fatal fast-failed every retry of a
+ * recoverable start and turned flaky-but-green runs into hard failures. Do not promote a startup
+ * signal to fatal unless launches that emit it have been observed to NEVER recover.
+ *
  * The listener is registered only when `enabled` (a warm shared instance leaves it off, so a stale
  * error from a long-past cold start can't abort an otherwise-healthy wait), and always removed in
  * `finally` so it can't leak across tests on the shared CDP page. A sentinel distinguishes
@@ -645,9 +679,13 @@ export async function withFatalStartupTripwire<T>(
   const fatalErrorTripped = new Promise<never>((_resolve, reject) => {
     if (!enabled) return;
     onFatalPageError = (err: Error) => {
-      if (!FATAL_STARTUP_PAGE_ERROR.test(err.message)) return;
-      fatalError.message = err.message;
-      reject(new Error(err.message));
+      // Match against the full description, not just `err.message`: a non-Error throwable can carry
+      // the theme-settle text in its stack while its `.message` is a useless "Object", which would
+      // otherwise slip past the tripwire and cost this launch its whole readiness budget.
+      const described = describePageError(err);
+      if (!FATAL_STARTUP_PAGE_ERROR.test(described)) return;
+      fatalError.message = described;
+      reject(new Error(described));
     };
     page.on('pageerror', onFatalPageError);
   });

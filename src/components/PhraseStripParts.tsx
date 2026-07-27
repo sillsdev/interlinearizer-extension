@@ -100,10 +100,10 @@ type BoundaryControlProps = Readonly<{
  *   segment at the resolved punctuation-travel anchor). `Split` and `Merge` are a mirrored lucide
  *   pair, so the two operations read as one system yet stay distinct at icon size.
  *
- * Returns `undefined` (leaving the row blank) for slots where no edit applies: leading/trailing
- * slots (a leading slot sits on an existing segment start, where a split would be a no-op),
- * intra-segment slots while Alt is up, and intra-segment slots where the split is suppressed by the
- * not-mid-phrase UI guard.
+ * Returns `undefined` only where no boundary edit can ever apply: leading/trailing slots and while
+ * a phrase mode is active. An intra-segment slot always renders its reserved-height wrapper — even
+ * without a visible marker — so the strip doesn't reflow when Alt or the not-mid-phrase guard
+ * toggles.
  *
  * The not-mid-phrase rule: no split marker renders at a boundary that would cut a phrase (including
  * the gap between two fragments of a discontiguous phrase), and an Alt+click there is a silent
@@ -120,7 +120,8 @@ type BoundaryControlProps = Readonly<{
  * @param props.prevToken - Last word token before the slot.
  * @param props.nextToken - First word token after the slot (the word boundary).
  * @param props.punctuation - Gap punctuation between the two words, in document order.
- * @returns The merge button or the split marker, or `undefined` when no edit applies at this slot.
+ * @returns The merge button, split marker, empty wrapper, or `undefined` when no boundary slot
+ *   exists here.
  */
 function BoundaryControl({
   prevSegmentId,
@@ -172,28 +173,31 @@ function BoundaryControl({
 
   // Split stays Alt-gated: the marker only appears while Alt is held. The not-mid-phrase UI guard
   // additionally suppresses it at a boundary that would cut a phrase (the absent marker is the
-  // explanation; an Alt+click there is a silent no-op).
+  // explanation; an Alt+click there is a silent no-op). The wrapper itself always renders, so Alt
+  // toggling doesn't unmount/remount the row and grow the strip unevenly (rows with a live boundary
+  // never move, since the merge button's wrapper reserves that height permanently).
   const splittable = altHeld && !straddledBoundaryRefs.has(nextTokenRef);
-  if (!splittable) return undefined;
 
   return (
     <span className="tw:inline-flex tw:min-h-4 tw:items-center">
-      <SplitMarker
-        label={boundarySplitLabel}
-        // A split on a former boundary dispatches the original removed default start (which may be a
-        // leading punctuation token no word-anchored slot could name), so the restore cancels the
-        // removal exactly and the delta can normalize back to the default segmentation. Otherwise
-        // the anchor comes from the punctuation-travel rule so leading-quote punctuation lands on
-        // the following segment.
-        onSplit={() => {
-          /* v8 ignore next -- an intra-segment split slot always resolves its segment's baseline */
-          const baselineText = segmentById.get(nextSegmentId)?.baselineText ?? '';
-          const splitRef =
-            formerBoundaries.get(nextTokenRef) ??
-            resolveSplitAnchor(prevToken, nextToken, punctuation, baselineText);
-          dispatch.split(splitRef);
-        }}
-      />
+      {splittable && (
+        <SplitMarker
+          label={boundarySplitLabel}
+          // A split on a former boundary dispatches the original removed default start (which may be a
+          // leading punctuation token no word-anchored slot could name), so the restore cancels the
+          // removal exactly and the delta can normalize back to the default segmentation. Otherwise
+          // the anchor comes from the punctuation-travel rule so leading-quote punctuation lands on
+          // the following segment.
+          onSplit={() => {
+            /* v8 ignore next -- an intra-segment split slot always resolves its segment's baseline */
+            const baselineText = segmentById.get(nextSegmentId)?.baselineText ?? '';
+            const splitRef =
+              formerBoundaries.get(nextTokenRef) ??
+              resolveSplitAnchor(prevToken, nextToken, punctuation, baselineText);
+            dispatch.split(splitRef);
+          }}
+        />
+      )}
     </span>
   );
 }

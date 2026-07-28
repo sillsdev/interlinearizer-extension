@@ -825,11 +825,18 @@ export async function waitForInterlinearizerReady(
  * dock/extension readiness — this closes that race explicitly instead of relying on a locator's own
  * actionability timeout.
  *
+ * The default is sized from CI, not guessed. Core logs `No projects found. Setting up sample WEB
+ * project` and then installs; a cold Windows runner has been seen still going past 60s, which
+ * failed the attempt even though nothing was wrong. The install persists in the project root (only
+ * the user-data dir is per-launch), so it is a one-time cost per machine that the next attempt
+ * inherits — which is exactly why those runs went red then green on retry. Waiting it out on the
+ * first attempt costs nothing on a warm machine and saves a retry on a cold one.
+ *
  * @param timeoutMs Maximum time in milliseconds to poll before throwing.
  * @returns Resolves once at least one project is registered.
  * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
  */
-export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Promise<void> {
+export async function waitForAtLeastOneProjectMetadata(timeoutMs = 150_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const remaining = timeoutMs - (Date.now() - start);
@@ -851,6 +858,114 @@ export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Prom
     });
   }
   throw new Error(`No project metadata registered within ${timeoutMs}ms`);
+}
+
+/**
+ * How long to wait for the Home WebView to render a project row before treating the tab as one that
+ * lost paranext-core's startup race. Deliberately short: callers confirm project metadata is
+ * registered first, so a healthy Home has its table up within about a second and this only absorbs
+ * render latency. Kept tight because it is spent on EVERY run, including healthy ones, inside a
+ * test budget that {@link waitForAtLeastOneProjectMetadata} may already have half-consumed.
+ */
+const HOME_CONTENT_PROBE_MS = 5_000;
+
+/**
+ * How long to wait for project rows after reopening Home. Must exceed the 20s that core's
+ * `getWebViewProvider` itself waits for the provider network object, since the reopen's retrieval
+ * starts that wait over. Spent only on the recovery path, never on a healthy run.
+ */
+const HOME_REOPEN_TIMEOUT_MS = 30_000;
+
+/**
+ * How long to wait for the closed Home tab to leave the DOM before reopening. Short because the
+ * only thing being awaited is rc-dock removing a node; core's auto-reopen may also beat it, which
+ * the caller treats as success rather than failure.
+ */
+const HOME_CLOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Ensure the Home WebView actually rendered its project table, reopening it if it did not.
+ *
+ * Paranext-core's default dock layout restores a Home WebView eagerly. That restore path waits a
+ * fixed 20s for `platformGetResources.home-webViewProvider`, fires the content retrieval exactly
+ * once, and only logs on failure — so when extension-host activation overruns that window the tab
+ * stays mounted around an empty iframe for the rest of the run. Focusing it does not re-fire the
+ * retrieval, and the toolbar's Home command passes `existingId: '?'`, which resolves by looking up
+ * any live tab of that webViewType — so it just refocuses the dead tab too.
+ *
+ * Closing the tab is what forces a fresh `openWebView`, and there are two separate openers that
+ * must not both fire. Core reopens Home itself when the closed tab was the last DOCKED one,
+ * deciding this synchronously at close time and calling `openWebView` with no `existingId` (so it
+ * always mints a new tab, and cannot be deduplicated after the fact). Otherwise nothing reopens
+ * Home and the toolbar button has to. Because core's decision is made from the pre-close layout,
+ * this reads the tab count BEFORE closing and picks one opener deterministically rather than racing
+ * them.
+ *
+ * Callers must confirm at least one project is registered (see
+ * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
+ * rather than projects that have not finished installing.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param homeTab Locator for the Home dock tab.
+ * @param homeButton Locator for the toolbar's Home button.
+ * @returns Resolves once the Home WebView shows at least one project row.
+ * @throws {Error} If Home still shows no project row after being reopened.
+ */
+async function ensureHomeWebViewLoaded(
+  page: Page,
+  homeTab: Locator,
+  homeButton: Locator,
+): Promise<void> {
+  // Any row carrying a button proves the table rendered; the caller matches its own project by name.
+  const anyProjectRow = () =>
+    page.locator('iframe[title="Home"]').first().contentFrame().locator('tr:has(button)').first();
+
+  const rendered = await anyProjectRow()
+    .waitFor({ state: 'visible', timeout: HOME_CONTENT_PROBE_MS })
+    .then(() => true)
+    .catch(() => false);
+  if (rendered) return;
+
+  console.warn('Home WebView rendered no project rows — reopening it to rerun content retrieval.');
+  // Read the tab count BEFORE closing: it decides which of two mutually exclusive reopen paths
+  // applies, and racing them would leave two Home tabs (see the branch comments below).
+  const homeWasOnlyTab = (await page.locator('.dock-tab').count()) === 1;
+  await homeTab
+    .locator('.dock-tab-close-btn')
+    .dispatchEvent('click')
+    .catch(() => {
+      /* Not closable in this layout; the content assertion below is the real gate. */
+    });
+  // Core's auto-reopen can land before this observes zero tabs, which is a success, not a failure —
+  // hence the catch. Only drive the toolbar button when Home genuinely went away.
+  const closed = await expect(page.locator('.dock-tab', { hasText: 'Home' }))
+    .toHaveCount(0, { timeout: HOME_CLOSE_TIMEOUT_MS })
+    .then(() => true)
+    .catch(() => false);
+  if (closed) {
+    if (homeWasOnlyTab) {
+      // Core reopens Home itself when the closed tab was the last one, via an `openWebView` that
+      // passes NO `existingId`. Clicking the toolbar button into that window would create a second
+      // Home — `openHome`'s `existingId` de-dup has nothing to focus yet — and the caller closes
+      // only the first Home tab, so its `toHaveCount(0)` gate would then hang. Wait for core's
+      // reopen instead, falling back to the button only if it never lands.
+      const reopened = await homeTab
+        .waitFor({ state: 'visible', timeout: HOME_CLOSE_TIMEOUT_MS })
+        .then(() => true)
+        .catch(() => false);
+      if (!reopened) await homeButton.click();
+    } else {
+      // Other tabs remain, so core's last-tab auto-reopen does not fire — nothing to race.
+      await homeButton.click();
+    }
+  }
+
+  // Load-bearing beyond just gating the caller: `anyProjectRow` resolves `.first()` on the same
+  // `iframe[title="Home"]` selector the caller then clicks "Open" in, so asserting here is what
+  // guarantees the FIRST Home iframe is the populated one. Should a duplicate Home ever survive the
+  // branch above with the blank one first in the DOM, this fails loudly rather than letting the
+  // caller click into an empty frame. Keep the two locators in sync.
+  await expect(anyProjectRow()).toBeVisible({ timeout: HOME_REOPEN_TIMEOUT_MS });
 }
 
 /**
@@ -935,10 +1050,16 @@ export async function openInterlinearizerFromScriptureEditor(
       // small CI viewports still closes) to guarantee focus before driving its iframe.
       await homeTab.dispatchEvent('click');
     }
-    const homeFrame = page.frameLocator('iframe[title="Home"]');
+    // `.first().contentFrame()` rather than `frameLocator`, matching the editor lookup below: a
+    // duplicate Home (core's last-tab auto-reopen and the toolbar command are separate openers) would
+    // make the strict `frameLocator` form fail with a strict-mode violation naming neither Home nor
+    // duplication, instead of the real problem.
+    const homeFrame = page.locator('iframe[title="Home"]').first().contentFrame();
     // The project row can still be installing even though the dock is ready; wait for it
     // explicitly so a lost race fails clearly here, not as an opaque timeout on the click below.
     await waitForAtLeastOneProjectMetadata();
+    // Projects exist now, so an empty Home table means the restored WebView never got its content.
+    await ensureHomeWebViewLoaded(page, homeTab, homeButton);
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
     // so a shorter project name can't select a row for a differently-named project that merely
     // contains it. The name is JSON-encoded before interpolation so a `"` in it can't break out of
@@ -953,16 +1074,31 @@ export async function openInterlinearizerFromScriptureEditor(
     // its iframe intercepts pointer events, so the ≡-menu click below would land on Home. Dispatch
     // the close (not a real click, so an off-viewport tab on small CI viewports still closes), then
     // wait for the tab to leave the DOM.
-    await homeTab
-      .locator('.dock-tab-close-btn')
-      .dispatchEvent('click')
-      .catch(() => {
-        /* Home may not have opened as a closable tab in some layouts; the visibility wait below is
-           the real gate. */
-      });
-    await expect(page.locator('.dock-tab', { hasText: 'Home' })).toHaveCount(0, {
-      timeout: 10_000,
-    });
+    // Close EVERY Home tab, not just the first: core's last-tab auto-reopen and the toolbar Home
+    // command are independent openers, so a recovery can leave two. Closing one and asserting zero
+    // would then hang for the full timeout and report a count mismatch rather than the duplication.
+    // Bounded, mirroring closeSelectProjectPickers.
+    const allHomeTabs = page.locator('.dock-tab', { hasText: 'Home' });
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const remaining = await allHomeTabs.count();
+      if (remaining === 0) break;
+      // eslint-disable-next-line no-await-in-loop
+      await allHomeTabs
+        .first()
+        .locator('.dock-tab-close-btn')
+        .dispatchEvent('click')
+        .catch(() => {
+          /* Home may not have opened as a closable tab in some layouts; the gate below is real. */
+        });
+      // eslint-disable-next-line no-await-in-loop
+      await expect(allHomeTabs)
+        .toHaveCount(remaining - 1, { timeout: 10_000 })
+        .catch(() => {
+          /* Slow removal; the next iteration re-reads the count. */
+        });
+    }
+    await expect(allHomeTabs).toHaveCount(0, { timeout: 10_000 });
   }
 
   await loadedEditorTab.click();

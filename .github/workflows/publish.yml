@@ -53,6 +53,16 @@ jobs:
           repository: paranext/paranext-core
           persist-credentials: false
 
+      # No `ref` is pinned above, so this resolves to whatever the default branch HEAD is at run
+      # time — it has been seen moving within hours. Recording it matters most here: without it a
+      # published artifact carries no record of which core revision it was built against.
+      - name: Record paranext-core revision
+        working-directory: paranext-core
+        shell: bash
+        run: |
+          echo "### paranext-core \`$(git rev-parse --short HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+          git log -1 --format='%H%n%ad%n%s' --date=iso | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Read package.json
         id: package_json
         uses: zoexx/github-action-json-file-properties@d02f28167f05bf70cd75352b11c25a4e8c39bf38 # 1.0.6

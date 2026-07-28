@@ -20,6 +20,11 @@ export default defineConfig({
   // modals at its start (ensureInterlinearizerOpenOnWeb → dismissLeftoverModals), so a retry lands
   // on a clean instance.
   retries: process.env.CI ? 2 : 1,
+  // Every test in this tier drives the one shared instance, so an instance that comes up unusable
+  // fails all of them — at a full `timeout` plus both retries each, which has burned 45 minutes of
+  // CI for a single wedged startup. Stop after the first test exhausts its retries: when the
+  // instance is the problem, the remaining tests only reconfirm it.
+  maxFailures: process.env.CI ? 1 : 0,
   workers: 1,
   // Tier-specific report folder so a combined `npm run test:e2e` run doesn't overwrite the smoke
   // tier's report. `open: 'never'` keeps CI from auto-launching a browser.

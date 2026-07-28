@@ -854,6 +854,87 @@ export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Prom
 }
 
 /**
+ * How long to wait for the Home WebView to render a project row before treating the tab as one that
+ * lost paranext-core's startup race. Deliberately short: callers confirm project metadata is
+ * registered first, so a healthy Home has its table up within about a second and this only absorbs
+ * render latency. Kept tight because it is spent on EVERY run, including healthy ones, inside a
+ * test budget that {@link waitForAtLeastOneProjectMetadata} may already have half-consumed.
+ */
+const HOME_CONTENT_PROBE_MS = 5_000;
+
+/**
+ * How long to wait for project rows after reopening Home. Must exceed the 20s that core's
+ * `getWebViewProvider` itself waits for the provider network object, since the reopen's retrieval
+ * starts that wait over. Spent only on the recovery path, never on a healthy run.
+ */
+const HOME_REOPEN_TIMEOUT_MS = 30_000;
+
+/**
+ * How long to wait for the closed Home tab to leave the DOM before reopening. Short because the
+ * only thing being awaited is rc-dock removing a node; core's auto-reopen may also beat it, which
+ * the caller treats as success rather than failure.
+ */
+const HOME_CLOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Ensure the Home WebView actually rendered its project table, reopening it if it did not.
+ *
+ * Paranext-core's default dock layout restores a Home WebView eagerly. That restore path waits a
+ * fixed 20s for `platformGetResources.home-webViewProvider`, fires the content retrieval exactly
+ * once, and only logs on failure — so when extension-host activation overruns the window (a ~2s
+ * miss has been observed on CI runners) the tab stays mounted around an empty iframe for the rest
+ * of the run. Focusing it does not re-fire the retrieval, and the toolbar's Home command passes an
+ * `existingId`, so that only focuses the dead tab too.
+ *
+ * Closing the tab is what forces a fresh `openWebView`: core reopens Home itself when the closed
+ * tab was the last one, and otherwise the toolbar button has no existing Home left to focus and
+ * creates a new one. Either way the retrieval reruns against a provider that is registered by
+ * then.
+ *
+ * Callers must confirm at least one project is registered (see
+ * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
+ * rather than projects that have not finished installing.
+ *
+ * @param page The Playwright `Page` for the Platform.Bible renderer window.
+ * @param homeTab Locator for the Home dock tab.
+ * @param homeButton Locator for the toolbar's Home button.
+ * @returns Resolves once the Home WebView shows at least one project row.
+ * @throws {Error} If Home still shows no project row after being reopened.
+ */
+async function ensureHomeWebViewLoaded(
+  page: Page,
+  homeTab: Locator,
+  homeButton: Locator,
+): Promise<void> {
+  // Any row carrying a button proves the table rendered; the caller matches its own project by name.
+  const anyProjectRow = () =>
+    page.frameLocator('iframe[title="Home"]').locator('tr:has(button)').first();
+
+  const rendered = await anyProjectRow()
+    .waitFor({ state: 'visible', timeout: HOME_CONTENT_PROBE_MS })
+    .then(() => true)
+    .catch(() => false);
+  if (rendered) return;
+
+  console.warn('Home WebView rendered no project rows — reopening it to rerun content retrieval.');
+  await homeTab
+    .locator('.dock-tab-close-btn')
+    .dispatchEvent('click')
+    .catch(() => {
+      /* Not closable in this layout; the content assertion below is the real gate. */
+    });
+  // Core's auto-reopen can land before this observes zero tabs, which is a success, not a failure —
+  // hence the catch. Only drive the toolbar button when Home genuinely went away and stayed away.
+  const closed = await expect(page.locator('.dock-tab', { hasText: 'Home' }))
+    .toHaveCount(0, { timeout: HOME_CLOSE_TIMEOUT_MS })
+    .then(() => true)
+    .catch(() => false);
+  if (closed && (await homeTab.count()) === 0) await homeButton.click();
+
+  await expect(anyProjectRow()).toBeVisible({ timeout: HOME_REOPEN_TIMEOUT_MS });
+}
+
+/**
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
  * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
  * Interlinearizer to be open.
@@ -939,6 +1020,8 @@ export async function openInterlinearizerFromScriptureEditor(
     // The project row can still be installing even though the dock is ready; wait for it
     // explicitly so a lost race fails clearly here, not as an opaque timeout on the click below.
     await waitForAtLeastOneProjectMetadata();
+    // Projects exist now, so an empty Home table means the restored WebView never got its content.
+    await ensureHomeWebViewLoaded(page, homeTab, homeButton);
     // Match the project's own row by its EXACT name (`:text-is()`), not a substring (`:has-text()`),
     // so a shorter project name can't select a row for a differently-named project that merely
     // contains it. The name is JSON-encoded before interpolation so a `"` in it can't break out of

@@ -1,9 +1,3 @@
-/**
- * @file The punctuation-travel rule that decides which token a segment split is anchored before,
- *   for a gap between two adjacent words. `resegmentBook` cuts immediately before whatever anchor
- *   it is given, so which side of a split punctuation lands on is entirely a matter of anchor
- *   choice.
- */
 import type { Token } from 'interlinearizer';
 
 /**
@@ -31,15 +25,8 @@ const OPENING_MARKS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Reports whether the two adjacent tokens `before` and `after` touch — i.e. the literal baseline
- * substring between them (`baselineText.slice(before.charEnd, after.charStart)`) is empty or
- * contains no whitespace. Pure adjacency, script-agnostic: the caller never scans the token text,
- * only the gap between tokens.
- *
- * @param before - The earlier token in document order.
- * @param after - The later token in document order.
- * @param baselineText - The owning segment's baseline text.
- * @returns `true` when there is no whitespace between the two tokens.
+ * Reports whether two adjacent tokens touch, meaning no whitespace separates them. Pure adjacency
+ * and script-agnostic: only the gap between the tokens is examined, never the token text itself.
  */
 function touches(before: Token, after: Token, baselineText: string): boolean {
   const gap = baselineText.slice(before.charEnd, after.charStart);
@@ -47,18 +34,15 @@ function touches(before: Token, after: Token, baselineText: string): boolean {
 }
 
 /**
- * Reports whether the punctuation at index `i` in `run` is part of an unbroken (whitespace-free)
- * chain of tokens reaching the run's word at `boundary`, scanning in `step` direction. Because a
- * cluster of adjacent marks with no internal whitespace travels as a unit, a mark reaches the
- * following word when every gap from it forward to `wordNext` is whitespace-free, and the preceding
- * word symmetrically. The word endpoints of `run` are always `boundary` when the chain arrives.
+ * Reports whether the punctuation at index `i` is joined to the word at `boundary` by an unbroken,
+ * whitespace-free chain of tokens. A cluster of adjacent marks with no internal whitespace travels
+ * as a unit, so a mark counts as reaching a word when every gap along the way is whitespace-free.
  *
  * @param run - The full token run for the gap: `[wordPrev, ...punctuation, wordNext]`.
  * @param i - Index of the punctuation token to test.
- * @param step - `+1` to scan toward `wordNext`, `-1` to scan toward `wordPrev`.
+ * @param step - `+1` to scan toward the following word, `-1` toward the preceding one.
  * @param boundary - Index of the word the chain must reach (`run.length - 1` forward, `0` back).
  * @param baselineText - The owning segment's baseline text; inter-token gaps are read from it.
- * @returns `true` when an unbroken whitespace-free chain connects the token to that word.
  */
 function reachesWord(
   run: Token[],
@@ -89,7 +73,6 @@ function reachesWord(
  * @param run - The full token run for the gap: `[wordPrev, ...punctuation, wordNext]`.
  * @param i - Index of the punctuation token within `run` (strictly between the two words).
  * @param baselineText - The owning segment's baseline text; inter-token gaps are read from it.
- * @returns `true` when the punctuation binds to the following word, `false` when to the preceding.
  */
 function bindsFollowing(run: Token[], i: number, baselineText: string): boolean {
   if (reachesWord(run, i, 1, run.length - 1, baselineText)) return true;
@@ -99,17 +82,15 @@ function bindsFollowing(run: Token[], i: number, baselineText: string): boolean 
 }
 
 /**
- * Computes the anchor token ref for a segment split at the word-word gap between `prevToken` and
- * `nextToken`. Walks the punctuation tokens between them and returns the ref of the first token (in
- * document order) that binds to the **following** segment; when no punctuation binds following, the
- * anchor is `nextToken` itself.
+ * Computes the token ref a segment split at a word-word gap should be anchored before, applying the
+ * punctuation-travel rule. Re-segmentation cuts immediately before whatever anchor it is given, so
+ * which side of a split the gap's punctuation lands on is entirely a matter of this choice.
  *
  * @param prevToken - The word token immediately before the gap.
- * @param nextToken - The word token immediately after the gap (the default anchor).
+ * @param nextToken - The word token immediately after the gap, and the anchor used when no
+ *   punctuation binds following.
  * @param punctuation - The punctuation tokens sitting in the gap, in document order.
- * @param baselineText - The owning segment's baseline text; whitespace between tokens is read from
- *   it via the literal gap substring between adjacent tokens.
- * @returns The ref of the token the boundary should be placed before.
+ * @param baselineText - The owning segment's baseline text; inter-token gaps are read from it.
  */
 export function resolveSplitAnchor(
   prevToken: Token,

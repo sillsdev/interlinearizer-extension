@@ -1,29 +1,10 @@
-/**
- * @file Pure helper deriving inline verse-superscript labels for a (re)segmented book.
- *
- *   Verse numbers render as inline superscripts sourced verbatim from the USJ verse marker (carried
- *   on `Segment.verseStarts`). This module decides, over the whole book in document order, which
- *   verse starts open a new chapter — those get a `chapter:number` qualifier; all others render
- *   their bare verbatim number. (The pinned "Book N" chapter header is a separate scroll-driven
- *   overlay in the list, not derived here.)
- *
- *   The chapter of a verse start is read from `VerseStart.chapter`, not from a token, so the
- *   qualifier triggers off "chapter exceeds every chapter seen so far" regardless of where segment
- *   boundaries fall — correct even for an empty verse or one whose baseline begins with
- *   whitespace.
- */
 import type { Segment, Token, VerseStart } from 'interlinearizer';
 import type { LinkSlot } from '../types/token-layout';
 
 /**
- * Finds the token that renders a verse start — the first token whose `charStart` is at or after the
- * verse start's offset. Not an exact match: a verse whose baseline begins with whitespace has its
- * first token a few characters in, which a strict `===` would miss. Returns `undefined` for an
- * empty verse, which has no token to carry the superscript.
- *
- * @param segment - The segment the verse start belongs to.
- * @param vs - The verse start whose leading token is wanted.
- * @returns The first token at or after the verse start's offset, or `undefined` when none exists.
+ * Finds the token that renders a verse start. Deliberately not an exact offset match: a verse whose
+ * baseline begins with whitespace has its first token a few characters in. An empty verse has no
+ * token to carry the superscript and yields `undefined`.
  */
 export function verseStartToken(segment: Segment, vs: VerseStart): Token | undefined {
   return segment.tokens.find((t) => t.charStart >= vs.charStart);
@@ -31,13 +12,13 @@ export function verseStartToken(segment: Segment, vs: VerseStart): Token | undef
 
 /**
  * Builds each segment's inline verse-superscript labels over the whole book in document order,
- * chapter-qualifying the label of every verse start that opens a new chapter.
+ * keyed by segment id and parallel by index to that segment's verse starts. A verse start opening a
+ * new chapter is qualified as `chapter:number`; every other keeps its bare verbatim number.
  *
- * A verse start opens a new chapter when its `chapter` exceeds the highest chapter seen so far; its
- * label becomes `chapter:number`. Every other verse start keeps its bare verbatim number.
- *
- * @param segments - The book's segments in document order.
- * @returns Map from segment id to the parallel-by-index labels for that segment's `verseStarts`.
+ * Chapter is read from the verse start itself rather than from a token, so qualification stays
+ * correct regardless of where segment boundaries fall — including for an empty verse or one whose
+ * baseline opens with whitespace. The pinned chapter header is a separate scroll-driven overlay,
+ * not derived here.
  */
 export function buildVerseStartLabels(segments: readonly Segment[]): Map<string, string[]> {
   const labelsBySegmentId = new Map<string, string[]>();
@@ -56,22 +37,15 @@ export function buildVerseStartLabels(segments: readonly Segment[]): Map<string,
 }
 
 /**
- * Resolves the inline verse label for a between-group slot: the label of the verse that begins as
- * the slot is crossed. A verse begins at a slot when its start token renders next through it — one
- * of the slot's own gap-punctuation tokens (for a verse opening on leading punctuation), or any
- * token of the following group. All group tokens are candidates, not just the first: a phrase
- * spanning an internal verse boundary of a merged segment fuses its tokens into one group, so the
- * verse-start word can sit mid-group. Shared by both strips so they mark verse boundaries on the
- * same slot.
+ * Resolves the inline verse label for a between-group slot — the verse that begins as the slot is
+ * crossed — or `undefined` when no verse begins there. Shared by both strips so they mark verse
+ * boundaries on the same slot.
  *
- * A group fusing across _two_ internal verse boundaries shows only the first verse's number (a slot
- * carries one label); a second buried verse start would need an in-box superscript this model
- * lacks.
- *
- * @param slot - The between-group slot to test.
- * @param verseStartLabelByTokenRef - Verse-start token ref → label, from
- *   {@link buildVerseStartLabelsByTokenRef}.
- * @returns The verse label to render at this slot, or `undefined` when no verse begins here.
+ * Every token of the following group is a candidate, not just the first: a phrase spanning an
+ * internal verse boundary of a merged segment fuses its tokens into one group, so the verse-start
+ * word can sit mid-group. A group fusing across _two_ internal verse boundaries shows only the
+ * first verse's number, since a slot carries one label; a second buried verse start would need an
+ * in-box superscript this model lacks.
  */
 export function slotVerseLabel(
   slot: LinkSlot,
@@ -92,16 +66,12 @@ export function slotVerseLabel(
 }
 
 /**
- * Builds a whole-book lookup from the ref of each verse-start token to its inline superscript label
- * (chapter-qualified where a verse start opens a new chapter). Computed once over `book.segments`
- * and shared by both strips so the continuous view and the segment list mark verse boundaries
- * identically and neither re-walks the book to key labels by token ref.
+ * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label.
+ * Computed once and shared by both strips, so the continuous view and the segment list mark verse
+ * boundaries identically and neither re-walks the book to key labels by token ref.
  *
- * Empty verses contribute no entry (they have no token to carry the number); the label array is
- * still walked so chapter qualification stays correct across them.
- *
- * @param segments - The book's segments in document order.
- * @returns Map from a verse-start token's ref to its resolved label.
+ * Empty verses contribute no entry, having no token to carry the number, but are still walked so
+ * chapter qualification stays correct across them.
  */
 export function buildVerseStartLabelsByTokenRef(segments: readonly Segment[]): Map<string, string> {
   const labelsBySegmentId = buildVerseStartLabels(segments);

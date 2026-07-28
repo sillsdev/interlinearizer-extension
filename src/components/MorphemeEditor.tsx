@@ -1,9 +1,3 @@
-/**
- * @file The morpheme breakdown editor rendered inside {@link TokenChip} when the morphology toggle
- *   is active. {@link MorphemeBreakdownPopover} lets the user define or re-split a token's morpheme
- *   forms. The inline _display_ of the breakdown (the boxed grid of forms and their gloss fields)
- *   lives separately in {@link ./MorphemeBox}.
- */
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, PopoverContent } from 'platform-bible-react';
 import { useId, useRef, useState } from 'react';
@@ -20,10 +14,13 @@ const POPOVER_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Inline popover for defining or editing a token's morpheme breakdown. The user types
- * space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter, Done, or by
- * clicking outside the popover (matching the commit-on-blur behavior of gloss inputs). Cancel and
- * Escape dismiss without saving.
+ * Inline popover for defining or re-splitting a token's morpheme breakdown, shown inside the token
+ * chip when the morphology toggle is active. This is the _editor_ only; the inline display of a
+ * breakdown — the boxed grid of forms and their gloss fields — lives separately.
+ *
+ * The user types space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter,
+ * Done, or by clicking outside the popover (matching the commit-on-blur behavior of gloss inputs).
+ * Cancel and Escape dismiss without saving.
  *
  * Committing resolves to one of three outcomes:
  *
@@ -110,7 +107,6 @@ export function MorphemeBreakdownPopover({
    * Collapses leading/trailing and repeated internal whitespace to a single space.
    *
    * @param s - The string to normalize.
-   * @returns The string with surrounding whitespace trimmed and internal runs collapsed.
    */
   const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
 

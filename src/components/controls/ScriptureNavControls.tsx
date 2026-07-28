@@ -33,7 +33,6 @@ type ScriptureNavControlsProps = Pick<BookChapterControlProps, 'scrRef' | 'handl
  * @param props.handleSubmit - Called when the user submits a new reference.
  * @param props.scrollGroupId - The currently active scroll-group ID (`undefined` = unlinked).
  * @param props.onChangeScrollGroupId - Called when the user picks a different scroll group.
- * @returns A flex row containing the book/chapter control and scroll-group selector.
  */
 export default function ScriptureNavControls({
   scrRef,

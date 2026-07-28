@@ -1,4 +1,3 @@
-/** @file Dropdown menu for view-mode toggles in the toolbar. */
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Label, Switch } from 'platform-bible-react';
 import { Settings } from 'lucide-react';
@@ -22,7 +21,6 @@ const STRING_KEYS = [
  * @param props.checked - Current toggle value.
  * @param props.label - Visible label text for the toggle.
  * @param props.onCheckedChange - Called when the user flips the switch.
- * @returns A flex row containing a switch and its label.
  */
 function ViewToggle({
   checked,
@@ -108,7 +106,6 @@ type ViewOptionsDropdownProps = Readonly<{
  * @param props.onShowVerseGutterChange - Show-verse-gutter change callback.
  * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
  * @param props.onShowSuggestionsChange - Show-suggestions change callback.
- * @returns A gear button that opens a dropdown panel of view toggles.
  */
 export default function ViewOptionsDropdown({
   continuousScroll,

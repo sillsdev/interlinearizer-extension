@@ -18,7 +18,6 @@ import { formatModified } from '../../utils/project-summary-format';
  * @param props.modifiedPrefix - Localized `"Modified"` label preceding the formatted date.
  * @param props.project - The project summary to describe.
  * @param props.unnamedLabel - Localized fallback label rendered when the project has no name.
- * @returns The detail block.
  */
 export function ProjectSummaryDetails({
   activeBadgeLabel,

@@ -152,7 +152,6 @@ type ContinuousViewProps = Readonly<{
  *   merges
  * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
  * @param props.viewOptions - Bundled display toggles forwarded to the strip.
- * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
   book,

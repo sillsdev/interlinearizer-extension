@@ -63,7 +63,6 @@ const STRING_KEYS = [
  * @param props.glossPlaceholder - Placeholder for the gloss input, resolved once per strip and
  *   passed down (see `PhraseStripContextValue.glossPlaceholder`). Passed as a prop rather than read
  *   from context so the chip's memoization keeps shielding it from unrelated context churn.
- * @returns A styled label containing the surface text, optionally morpheme rows, and a gloss input.
  */
 export function TokenChip({
   token,
@@ -234,7 +233,6 @@ export function TokenChip({
    * assistive tech follows the keyboard-highlighted row.
    *
    * @param index - The row's index in {@link glossedRanked}.
-   * @returns The option element id.
    */
   const optionId = useCallback((index: number) => `${listboxId}-opt-${index}`, [listboxId]);
 
@@ -552,7 +550,6 @@ export function TokenChip({
  *
  * @param props - Component props
  * @param props.token - The non-word token to render.
- * @returns A muted inline span.
  */
 export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
   return (

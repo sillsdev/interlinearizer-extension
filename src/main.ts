@@ -35,7 +35,6 @@ const mainWebViewProvider: IWebViewProvider = {
    *
    * @param savedWebView - Platform-provided definition (webViewType, etc.).
    * @param openWebViewOptions - Options passed by the caller; may include a projectId to link.
-   * @returns WebView definition with title, content, and styles.
    * @throws {TypeError} When savedWebView.webViewType is not the Interlinearizer type.
    */
   async getWebView(
@@ -132,7 +131,6 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  *   alignment projects. Omit for analysis-only projects.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns JSON-stringified `InterlinearProject` for the new project.
  * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
  *   so the frontend `catch` block can suppress it without sending a second notification.
  */
@@ -325,7 +323,6 @@ async function saveInterlinearAnalysis(
  * draft when none has been written. The WebView loads this on mount to seed the editor.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
- * @returns JSON-stringified `DraftProject`.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
  *   before rethrowing.
@@ -376,7 +373,6 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  * "select existing" when the user opens the project menu.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
  *   project records are logged and skipped, not thrown.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
@@ -865,8 +861,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 /**
  * Extension teardown. Called by the platform when the extension is unloaded. Registrations added
  * during activate are disposed by the platform.
- *
- * @returns True to indicate successful deactivation; the platform may use this for logging.
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();

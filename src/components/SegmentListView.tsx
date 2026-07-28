@@ -184,7 +184,6 @@ type SegmentListViewProps = Readonly<{
  * @param props.tokenSegmentMap - Token ref → segment id lookup.
  * @param props.tokenDocOrder - Word token ref → flat book-level index.
  * @param props.wordTokenByRef - Word token ref → token lookup for the whole book.
- * @returns The scrollable segment list with its fade wrapper, sentinels, and locate button.
  */
 export default function SegmentListView({
   book,

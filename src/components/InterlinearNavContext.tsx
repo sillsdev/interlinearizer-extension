@@ -68,7 +68,6 @@ function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean 
  * 1.
  *
  * @param ref - The scripture reference to key.
- * @returns A `book:chapter:verse` string uniquely identifying the verse.
  */
 export function verseKey(ref: SerializedVerseRef): string {
   return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
@@ -139,7 +138,6 @@ export interface InterlinearNav {
    * misclassify a later external navigation to the un-echoed verse.
    *
    * @param ref - The reference whose pending classification to consume.
-   * @returns `true` if the navigation to `ref` was internal (skip the fade), else `false`.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
   /** The currently active scroll-group ID (`undefined` = unlinked). */
@@ -185,7 +183,6 @@ const InterlinearNavContext = createContext<InterlinearNav | undefined>(undefine
  * @param props.useWebViewScrollGroupScrRef - The PAPI hook exposing the shared scroll-group
  *   reference and its setter; injected by the host (not imported) so it can be stubbed in tests.
  * @param props.children - The subtree that consumes navigation through {@link useInterlinearNav}.
- * @returns The provider wrapping `children`.
  */
 export function InterlinearNavProvider({
   useWebViewScrollGroupScrRef,
@@ -380,7 +377,6 @@ export function InterlinearNavProvider({
 /**
  * Reads the {@link InterlinearNav} surface from the nearest {@link InterlinearNavProvider}.
  *
- * @returns The navigation surface.
  * @throws {Error} When called outside an {@link InterlinearNavProvider}.
  */
 export function useInterlinearNav(): InterlinearNav {

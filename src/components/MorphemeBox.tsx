@@ -1,11 +1,3 @@
-/**
- * @file Inline display of an analyzed token's morpheme breakdown, rendered inside {@link TokenChip}
- *   when the morphology toggle is active and the token has a breakdown. {@link MorphemeBox} boxes
- *   the breakdown and lays it out as a grid so each morpheme form aligns vertically with its gloss
- *   field (and, in future, its lexicon link); {@link MorphemeGlossInput} provides a per-morpheme
- *   gloss field that fills its grid column. The breakdown _editor_ (the popover where forms are
- *   entered) lives separately in {@link ./MorphemeEditor}.
- */
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverAnchor } from 'platform-bible-react';
@@ -21,11 +13,14 @@ const MORPHEME_BOX_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Renders an analyzed token's morpheme breakdown as a boxed grid: each grid column is one morpheme,
- * with its form on the top row directly above its gloss field on the bottom row, so a morpheme and
- * its gloss always share a column (a future lexicon link slots into a third row with the same
- * column alignment). The box appears only for tokens that have a breakdown; an unanalyzed token's
- * "define breakdown" affordance lives in {@link TokenChip} instead.
+ * Inline _display_ of an analyzed token's morpheme breakdown, shown inside the token chip when the
+ * morphology toggle is active. The popover where forms are actually entered lives separately.
+ *
+ * The breakdown renders as a boxed grid: each grid column is one morpheme, with its form on the top
+ * row directly above its gloss field on the bottom row, so a morpheme and its gloss always share a
+ * column (a future lexicon link slots into a third row with the same column alignment). The box
+ * appears only for tokens that have a breakdown; an unanalyzed token's "define breakdown"
+ * affordance lives in {@link TokenChip} instead.
  *
  * The whole forms row is a single accessible "edit breakdown" control rather than one labeled
  * button per morpheme: every form cell opens the same whole-breakdown editor, so per-cell labels
@@ -50,7 +45,6 @@ const MORPHEME_BOX_STRING_KEYS = [
  * @param props.onGlossFocus - Called when any morpheme gloss input receives focus, so the chip can
  *   report the token as focused; these fields are gloss fields of the same token as the chip's own
  *   gloss input, so focusing one must move the view's focus just as focusing that input does.
- * @returns A boxed grid of morpheme forms and their gloss fields, wrapped in a popover anchor.
  */
 export function MorphemeBox({
   token,
@@ -173,7 +167,6 @@ export function MorphemeBox({
  * @param props.column - 1-based grid column the input occupies (shared with the morpheme's form).
  * @param props.onFocus - Called when the input receives focus, so the containing chip can report
  *   its token as focused.
- * @returns A cell-filling text input for the morpheme gloss, placed in the gloss row.
  */
 export function MorphemeGlossInput({
   morpheme,

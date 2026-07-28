@@ -1,4 +1,3 @@
-/** @file Segment-level free-translation input rendered by the segment view. */
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { useEffect, useState } from 'react';
 import {
@@ -28,7 +27,6 @@ const STRING_KEYS = [
  *   record so it can detect drift if the baseline changes later.
  * @param props.onFocus - Called when the input receives focus; used by `SegmentView` to make the
  *   segment active.
- * @returns A full-width text input.
  */
 export default function SegmentFreeTranslationInput({
   segmentId,

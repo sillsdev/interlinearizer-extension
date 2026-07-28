@@ -1,14 +1,8 @@
-/**
- * @file Types describing the intermediate data structures produced when laying out tokens for
- *   rendering. These are pure structural types with no runtime behavior; the functions that build
- *   and consume them live in `utils/token-layout.ts`.
- */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 
 /**
- * Resolved focus state shared by SegmentView and ContinuousView so both views derive their
- * highlight / link-icon rules from the same source. Built once per render from the parent's
- * `focusedTokenRef`.
+ * Resolved focus state shared by the segment and continuous views so both derive their highlight
+ * and link-icon rules from one source. Built once per render.
  */
 export type FocusContext = {
   /** The focused word token itself, or `undefined` when nothing is focused. */
@@ -24,15 +18,14 @@ export type FocusContext = {
 };
 
 /**
- * The focus-derived inputs `TokenLinkIcon` needs for a single between-group slot: the slot-specific
- * direction/segment flags plus the two focus-context fields the icon reads directly
- * (`focusedPhraseLink` / `focusedFreeToken`), bundled so the icon takes one focus object.
+ * The focus-derived inputs a single between-group link slot needs: its own direction and segment
+ * flags plus the two {@link FocusContext} fields the link icon reads, bundled so the icon takes one
+ * focus object.
  */
 export type SlotFocusInfo = {
   /**
    * `true` when the focused group is start-ward of this slot, `false` when end-ward, `undefined`
-   * when nothing is focused. Caller must compute this from its own ordering (`focusedGroupSeen`
-   * cursor for SegmentView; flat index comparison for ContinuousView).
+   * when nothing is focused. Callers compute this from their own ordering of groups.
    */
   focusedSideIsPrev: boolean | undefined;
   /**
@@ -48,14 +41,13 @@ export type SlotFocusInfo = {
 
 /** A grouped render unit: one or more adjacent tokens that share the same phrase (or no phrase). */
 export type TokenGroup = {
-  /** The tokens to render together in one `PhraseBox`. */
+  /** The tokens to render together as a single phrase box. */
   tokens: (Token & { type: 'word' })[];
   /** The phrase link shared by all tokens in this group, or `undefined` for ungrouped solo tokens. */
   phraseLink: PhraseAnalysisLink | undefined;
   /**
-   * The index of the first token in this group within the flat token array it was built from. Used
-   * to slice the flat token list to the group's range (e.g. for the punctuation that renders
-   * between groups); not passed to `PhraseBox`.
+   * The index of the first token in this group within the flat token array it was built from, so
+   * callers can slice that array back to the group's range.
    */
   firstIndex: number;
   /**

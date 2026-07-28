@@ -1,4 +1,3 @@
-/** @file Unit tests for components/InterlinearNavContext.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -13,12 +12,7 @@ import {
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import { makeScrollGroupHook, type ScrollGroupTuple } from '../test-helpers';
 
-/**
- * Renders {@link useInterlinearNav} inside a provider wired to the given scroll-group hook.
- *
- * @param hook - The `useWebViewScrollGroupScrRef` stub the provider should call.
- * @returns The render-hook result whose `current` is the nav surface.
- */
+/** Renders {@link useInterlinearNav} inside a provider wired to the given scroll-group hook. */
 function renderNav(hook: () => ScrollGroupTuple) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <InterlinearNavProvider useWebViewScrollGroupScrRef={hook}>{children}</InterlinearNavProvider>
@@ -30,10 +24,6 @@ function renderNav(hook: () => ScrollGroupTuple) {
  * Renders the nav hook with a scroll-group stub whose reference can be restaged between rerenders,
  * so a cross-book navigation can be simulated. A fresh object identity is required on each change
  * so the provider adopts it as a new `scrRef`.
- *
- * @param initial - The reference reported on the first render.
- * @returns The render-hook result plus a `setRef` to stage the next reference (call inside `act`,
- *   then `rerender`).
  */
 function renderNavMutable(initial: SerializedVerseRef) {
   let current = initial;

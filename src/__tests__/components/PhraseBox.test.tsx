@@ -1,4 +1,3 @@
-/** @file Unit tests for PhraseBox component. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -29,13 +28,7 @@ const mockUsePhraseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  /**
-   * Pass-through AnalysisStoreProvider stub.
-   *
-   * @param props - Component props.
-   * @param props.children - Children to render.
-   * @returns Children unchanged.
-   */
+  /** Pass-through AnalysisStoreProvider stub. */
   AnalysisStoreProvider({ children }: Readonly<{ children: import('react').ReactNode }>) {
     return children;
   },
@@ -54,17 +47,6 @@ jest.mock('../../components/TokenChip', () => {
    * Minimal TokenChip stub that renders the token's surface text, a controlled gloss input, and an
    * optional remove button. Lets PhraseBox tests verify gloss-forwarding, focus callbacks, and
    * token-removal interactions without pulling in the real TokenChip implementation.
-   *
-   * @param props - Component props.
-   * @param props.onFocus - Called when the gloss input receives focus.
-   * @param props.token - The word token to render.
-   * @param props.isSplitFree - When true, marks the chip as a would-be-free token.
-   * @param props.onRemove - Called when the remove button is clicked; omitted for edge tokens.
-   * @param props.showMorphology - Exposed as a data attribute so tests can verify every PhraseBox
-   *   render path forwards the strip-wide morphology toggle. When true, also renders a
-   *   `data-morpheme-gloss` input before the main gloss input, mirroring the real chip's DOM order
-   *   so focus-routing tests exercise the morpheme-exclusion selector.
-   * @returns A span containing the surface text, a gloss input, and an optional remove button.
    */
   function MockTokenChip({
     onFocus,
@@ -108,13 +90,7 @@ jest.mock('../../components/TokenChip', () => {
       </span>
     );
   }
-  /**
-   * Minimal InertTokenChip stub rendering the token's surface text.
-   *
-   * @param props - Component props.
-   * @param props.token - The non-word token to render.
-   * @returns A span containing the surface text.
-   */
+  /** Minimal InertTokenChip stub rendering the token's surface text. */
   function MockInertTokenChip({ token }: Readonly<{ token: Token }>) {
     return <span data-testid={`inert-${token.ref}`}>{token.surfaceText}</span>;
   }
@@ -123,13 +99,7 @@ jest.mock('../../components/TokenChip', () => {
 
 jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
-  /**
-   * Minimal UnlinkPhraseConfirm stub that renders confirm/cancel buttons.
-   *
-   * @param props - Component props.
-   * @param props.setPhraseMode - Called to exit confirm-unlink mode.
-   * @returns A stub div with confirm and cancel buttons.
-   */
+  /** Minimal UnlinkPhraseConfirm stub that renders confirm/cancel buttons. */
   default: ({
     setPhraseMode,
   }: Readonly<{ phraseId: string; setPhraseMode: (m: unknown) => void }>) => (
@@ -207,8 +177,6 @@ type PhraseBoxTestProps = {
 /**
  * Minimal required props for PhraseBox. Spread into render calls so tests only need to override
  * what they actually care about.
- *
- * @returns An object containing all required PhraseBox props set to no-op stubs.
  */
 function requiredProps(): PhraseBoxTestProps {
   return {
@@ -224,10 +192,6 @@ function requiredProps(): PhraseBoxTestProps {
  * Renders a `PhraseBox` wrapped in both the analysis store and strip-context providers. Strip-wide
  * state (phrase mode, edit context, hover callbacks) now comes from `PhraseStripContext`, so tests
  * pass those as `context` overrides rather than as props.
- *
- * @param ui - The `PhraseBox` element to render.
- * @param context - Partial strip-context overrides (phraseMode, edit context, hover callbacks).
- * @returns The Testing Library render result.
  */
 function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(

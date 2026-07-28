@@ -1,4 +1,3 @@
-/** @file Unit tests for components/MorphemeEditor.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -28,10 +27,6 @@ beforeEach(() => {
 /**
  * Renders {@link MorphemeBreakdownPopover} with the two structural props (`surfaceText`,
  * `glossInputId`) defaulted so each test only supplies what it asserts on.
- *
- * @param props - Overrides merged over the defaults; callers pass their own `onSave`/`onClose`
- *   spies.
- * @returns The render result.
  */
 function renderPopover(props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {}) {
   return render(
@@ -379,9 +374,6 @@ describe('MorphemeBreakdownPopover', () => {
     /**
      * Renders the popover on a glossed, solely-linked breakdown — the state in which a reset is
      * irreversible, so both reset routes confirm first.
-     *
-     * @param props - Overrides merged over the confirming defaults.
-     * @returns The render result.
      */
     function renderConfirming(
       props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {},

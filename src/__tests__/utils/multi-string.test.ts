@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/multi-string.ts. */
 /// <reference types="jest" />
 
 import { isEmptyMultiString } from '../../utils/multi-string';

@@ -1,4 +1,3 @@
-/** @file Unit tests for components/ArcOverlay.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -12,13 +11,7 @@ import { makePhraseLink } from '../test-helpers';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a minimal `ArcPath` fixture.
- *
- * @param phraseId - Phrase id for the arc.
- * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
- * @returns An `ArcPath` with placeholder geometry.
- */
+/** Builds a minimal `ArcPath` fixture. */
 function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {
   // `d` is derived from splitAfterTokenRef so distinct split points yield distinct
   // path data — matching real arcs, where the React key `${phraseId}-${d}` stays unique.

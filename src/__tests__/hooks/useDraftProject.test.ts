@@ -1,4 +1,3 @@
-/** @file Unit tests for useDraftProject hook. */
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
@@ -13,12 +12,7 @@ const PLATFORM_LANGUAGE = 'en';
 /** Handle to the mocked PAPI sendCommand so tests can assert on / override its calls. */
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
-/**
- * Builds a `DraftProject` for seeding the `getDraft` mock, overriding any fields needed by a test.
- *
- * @param overrides - Partial fields to merge over the baseline draft.
- * @returns A fresh `DraftProject` with the overrides applied.
- */
+/** Builds a `DraftProject` for seeding the `getDraft` mock, overriding any fields needed by a test. */
 function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
   return {
     sourceProjectId: SOURCE_PROJECT_ID,
@@ -32,9 +26,6 @@ function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
 /**
  * Builds a `TextAnalysis` carrying a single token analysis so tests can prove a specific analysis
  * object round-trips through the draft.
- *
- * @param id - Identifier for the lone token analysis, used to distinguish instances.
- * @returns A `TextAnalysis` containing one token analysis with the given id.
  */
 function analysisWithToken(id: string): TextAnalysis {
   return {
@@ -49,8 +40,6 @@ function analysisWithToken(id: string): TextAnalysis {
 /**
  * Points the `getDraft` command at a resolved JSON draft while leaving `saveDraft` resolving void.
  * All other commands resolve undefined so an unexpected call never rejects.
- *
- * @param draft - The draft the `getDraft` command should return (JSON-serialized).
  */
 function mockGetDraftResolves(draft: DraftProject): void {
   mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
@@ -62,8 +51,6 @@ function mockGetDraftResolves(draft: DraftProject): void {
 /**
  * Renders the hook and waits for the initial `getDraft` load to settle so `draft` is populated and
  * `isDraftLoading` is false before a test exercises a callback.
- *
- * @returns The renderHook result handle, post-load.
  */
 async function renderLoaded() {
   const view = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, PLATFORM_LANGUAGE));
@@ -74,7 +61,6 @@ async function renderLoaded() {
 /**
  * Returns the JSON payload of the most recent `saveDraft` call, parsed back into a `DraftProject`.
  *
- * @returns The persisted draft from the latest `saveDraft` invocation.
  * @throws If no `saveDraft` call has been made, or its second argument was not a string.
  */
 function lastSavedDraft(): DraftProject {

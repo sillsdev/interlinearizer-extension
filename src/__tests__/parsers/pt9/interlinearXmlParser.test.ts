@@ -1,4 +1,3 @@
-/** @file Unit tests for {@link InterlinearXmlParser}. */
 /// <reference types="jest" />
 
 import * as fs from 'node:fs';

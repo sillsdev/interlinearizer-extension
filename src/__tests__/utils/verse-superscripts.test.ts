@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/verse-superscripts.ts. */
 /// <reference types="jest" />
 
 import type { Book, Token } from 'interlinearizer';
@@ -10,9 +9,6 @@ import { buildVerseStartLabels, slotVerseLabel } from '../../utils/verse-supersc
 /**
  * Builds a verse-tokenized book from the given verses. Each verse's rendered `number` defaults to
  * the verse portion of its sid.
- *
- * @param verses - Verse SID + text pairs (optional number).
- * @returns The tokenized book.
  */
 function makeBook(verses: { sid: string; text: string; number?: string }[]): Book {
   return tokenizeBook({
@@ -27,13 +23,7 @@ function makeBook(verses: { sid: string; text: string; number?: string }[]): Boo
   });
 }
 
-/**
- * Reads the superscript labels for a segment by id, failing the test when absent.
- *
- * @param book - The book to label.
- * @param segmentId - Segment id to look up.
- * @returns The segment's parallel-by-index verse-start labels.
- */
+/** Reads the superscript labels for a segment by id, failing the test when absent. */
 function labelsFor(book: Book, segmentId: string): string[] {
   const labels = buildVerseStartLabels(book.segments).get(segmentId);
   if (!labels) throw new Error(`no labels for ${segmentId}`);
@@ -101,22 +91,12 @@ describe('buildVerseStartLabels', () => {
 });
 
 describe('slotVerseLabel', () => {
-  /**
-   * Builds a minimal word token fixture with only the fields `slotVerseLabel` reads.
-   *
-   * @param ref - The token ref.
-   * @returns A word token carrying that ref.
-   */
+  /** Builds a minimal word token fixture with only the fields `slotVerseLabel` reads. */
   function wordToken(ref: string): Token & { type: 'word' } {
     return { ref, surfaceText: ref, type: 'word', writingSystem: 'en', charStart: 0, charEnd: 1 };
   }
 
-  /**
-   * Builds a token group from the given word tokens.
-   *
-   * @param tokens - The group's word tokens, in order.
-   * @returns A token group with no phrase link and empty punctuation-between.
-   */
+  /** Builds a token group from the given word tokens. */
   function group(tokens: (Token & { type: 'word' })[]): TokenGroup {
     return {
       tokens,
@@ -126,13 +106,7 @@ describe('slotVerseLabel', () => {
     };
   }
 
-  /**
-   * Builds a between-group slot with the given next group and gap punctuation.
-   *
-   * @param nextGroup - The group following the slot, or `undefined`.
-   * @param punctuation - The slot's gap punctuation tokens.
-   * @returns A link slot.
-   */
+  /** Builds a between-group slot with the given next group and gap punctuation. */
   function slot(nextGroup: TokenGroup | undefined, punctuation: Token[] = []): LinkSlot {
     return { prevGroup: undefined, nextGroup, punctuation };
   }

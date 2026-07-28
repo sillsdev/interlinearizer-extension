@@ -1,4 +1,3 @@
-/** @file Unit tests for components/ViewOptionsDropdown.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

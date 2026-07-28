@@ -1,4 +1,3 @@
-/** @file Manual mock for AnalysisStore — reactive useState-based stub so AnalysisStore.tsx stays out of test scope. */
 
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -20,9 +19,6 @@ const MockCtx = createContext<MockCtxValue>({
 /**
  * Test-only provider that seeds glosses from `initialAnalysis` and keeps them in local state,
  * forwarding updates to `onGlossChange` without depending on the real AnalysisStore.
- *
- * @param props - Same surface props as the real `AnalysisStoreProvider`.
- * @returns A React element wrapping `children` in the mock context.
  */
 export function AnalysisStoreProvider({
   children,
@@ -66,9 +62,6 @@ export function AnalysisStoreProvider({
 
 /**
  * Returns the committed gloss for a token, or an empty string if none is set.
- *
- * @param tokenRef - The token reference key.
- * @returns The current gloss string from mock context.
  */
 export function useGloss(tokenRef: string) {
   return useContext(MockCtx).glosses[tokenRef] ?? '';
@@ -76,8 +69,6 @@ export function useGloss(tokenRef: string) {
 
 /**
  * Returns the dispatch function that updates a token's gloss in mock context.
- *
- * @returns The mock dispatch function.
  */
 export function useGlossDispatch() {
   return useContext(MockCtx).dispatch;
@@ -88,9 +79,6 @@ const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
 
 /**
  * Returns the morpheme breakdown for a token. Always returns an empty array in mock context.
- *
- * @param _tokenRef - The token reference key (unused in mock).
- * @returns An empty readonly morpheme array.
  */
 export function useMorphemes(_tokenRef: string): readonly MorphemeAnalysis[] {
   return EMPTY_MORPHEMES;
@@ -108,8 +96,6 @@ export function useAnalysisLanguage(): string {
 
 /**
  * Returns a no-op dispatch for writing morpheme breakdowns in mock context.
- *
- * @returns A no-op function matching the real signature.
  */
 export function useMorphemeBreakdownDispatch(): (
   tokenRef: string,
@@ -122,8 +108,6 @@ export function useMorphemeBreakdownDispatch(): (
 
 /**
  * Returns a no-op dispatch for deleting morpheme breakdowns in mock context.
- *
- * @returns A no-op function matching the real signature.
  */
 export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
   return () => {};
@@ -132,8 +116,6 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
 /**
  * Reports that a morpheme reset never loses glosses in mock context, so the editor takes its
  * unconfirmed path by default. Tests covering the confirm step mock this module member directly.
- *
- * @returns `false`.
  */
 export function useMorphemeResetLosesGlosses(): boolean {
   return false;
@@ -141,8 +123,6 @@ export function useMorphemeResetLosesGlosses(): boolean {
 
 /**
  * Returns a no-op dispatch for writing morpheme glosses in mock context.
- *
- * @returns A no-op function matching the real signature.
  */
 export function useMorphemeGlossDispatch(): (
   tokenRef: string,
@@ -155,19 +135,12 @@ export function useMorphemeGlossDispatch(): (
 /**
  * No-op stand-in for the real pending-edits reporter. The mock has no provider-level editing
  * accounting, so it simply ignores the flag.
- *
- * @param _isEditing - Whether the input currently holds uncommitted text (unused in mock).
  */
 export function useReportGlossEditing(_isEditing: boolean): void {}
 
 /**
  * Returns the merged token analysis in mock context. The mock pool is empty, so it never derives
  * a suggestion — always `undefined`. Suggestion behavior is covered against the real store.
- *
- * @param _tokenRef - Token ref (unused in mock).
- * @param _surfaceText - Surface text (unused in mock).
- * @param _enabled - Whether to resolve (unused in mock).
- * @returns `undefined`.
  */
 export function useResolvedTokenAnalysis(
   _tokenRef: string,
@@ -180,11 +153,6 @@ export function useResolvedTokenAnalysis(
 /**
  * Returns the cleared-token suggestion preview in mock context. The mock pool is empty, so it never
  * previews a suggestion — always `undefined`. Clearing behavior is covered against the real store.
- *
- * @param _tokenRef - Token ref (unused in mock).
- * @param _surfaceText - Surface text (unused in mock).
- * @param _enabled - Whether to derive (unused in mock).
- * @returns `undefined`.
  */
 export function useSuggestionAfterClearing(
   _tokenRef: string,
@@ -196,8 +164,6 @@ export function useSuggestionAfterClearing(
 
 /**
  * Returns whether suggestions should render in mock context — always `false`.
- *
- * @returns `false`.
  */
 export function useShowSuggestions(): boolean {
   return false;
@@ -205,8 +171,6 @@ export function useShowSuggestions(): boolean {
 
 /**
  * Returns a no-op dispatch for approving an analysis (accept / promote) in mock context.
- *
- * @returns A no-op function matching the real signature.
  */
 export function useApproveAnalysisDispatch(): (
   tokenRef: string,

@@ -1,5 +1,3 @@
-/** @file Shared component-test render helpers. */
-
 import type { ReactNode } from 'react';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { ViewOptions } from '../../types/view-options';

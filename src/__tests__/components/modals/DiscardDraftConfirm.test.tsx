@@ -1,4 +1,3 @@
-/** @file Unit tests for DiscardDraftConfirm. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

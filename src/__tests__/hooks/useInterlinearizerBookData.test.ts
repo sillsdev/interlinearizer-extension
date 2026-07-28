@@ -1,4 +1,3 @@
-/** @file Unit tests for useInterlinearizerBookData hook. */
 /// <reference types="jest" />
 
 import { logger } from '@papi/frontend';
@@ -89,11 +88,7 @@ const TEST_BOOK: Book = {
 
 const GEN_1_1_SRC_REF = { book: 'GEN', chapterNum: 1, verseNum: 1 };
 
-/**
- * Mocks useProjectSetting to return a specified default state.
- *
- * @param defaultState - The value to return as the current setting state.
- */
+/** Mocks useProjectSetting to return a specified default state. */
 function mockUseProjectSettings(defaultState: string | PlatformError | undefined) {
   jest.mocked(useProjectSetting).mockReturnValue([defaultState, jest.fn(), jest.fn(), false]);
 }

@@ -1,4 +1,3 @@
-/** @file Unit tests for components/SegmentationStore.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

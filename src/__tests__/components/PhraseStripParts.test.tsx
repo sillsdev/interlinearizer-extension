@@ -1,4 +1,3 @@
-/** @file Unit tests for components/PhraseStripParts.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -81,13 +80,7 @@ jest.mock('../../components/PhraseBox', () => ({
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a punctuation token fixture.
- *
- * @param ref - Token ref.
- * @param surfaceText - Surface text.
- * @returns A punctuation token.
- */
+/** Creates a punctuation token fixture. */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
 }
@@ -111,9 +104,6 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
 /**
  * Wraps `ui` in a {@link PhraseStripProvider} with default context so components that call
  * {@link usePhraseStripContext} can render without a provider in the tree.
- *
- * @param ui - The element to wrap.
- * @returns The wrapped element.
  */
 function withProvider(ui: ReactElement): ReactElement {
   return <PhraseStripProvider value={makePhraseStripContext()}>{ui}</PhraseStripProvider>;
@@ -366,10 +356,8 @@ describe('PhraseSlot boundary controls', () => {
   /**
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
-   * @param props - Overrides for the slot props (e.g. prev/next segment ids).
    * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
    *   the phrase mode, and whether Alt is held (defaults to held, so the split marker appears).
-   * @returns The dispatch, for asserting on its calls.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
@@ -776,13 +764,7 @@ describe('MemoizedPhraseGroup', () => {
 // ---------------------------------------------------------------------------
 
 describe('PhraseStrip', () => {
-  /**
-   * Builds default `PhraseStrip` props with the given items and overrides.
-   *
-   * @param items - The normalized strip items to render.
-   * @param overrides - Partial prop overrides.
-   * @returns A complete `PhraseStrip` props object.
-   */
+  /** Builds default `PhraseStrip` props with the given items and overrides. */
   function stripProps(
     items: StripItem[],
     overrides: Partial<Parameters<typeof PhraseStrip>[0]> = {},
@@ -802,13 +784,7 @@ describe('PhraseStrip', () => {
     };
   }
 
-  /**
-   * Builds a group strip item for a single phrase link.
-   *
-   * @param link - The phrase link (or `undefined` for a solo token).
-   * @param refs - Token refs in the group.
-   * @returns A group {@link StripItem}.
-   */
+  /** Builds a group strip item for a single phrase link. */
   function groupItem(link: PhraseAnalysisLink | undefined, refs: string[]): StripItem {
     const tokens = refs.map((r) => makeWordToken(r));
     return {

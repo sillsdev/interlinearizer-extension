@@ -1,4 +1,3 @@
-/** @file Unit tests for the shared ProjectSummaryDetails row-detail block. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/verse-ref.ts. */
 /// <reference types="jest" />
 
 import type { SerializedVerseRef } from '@sillsdev/scripture';
@@ -10,9 +9,6 @@ import { firstVerseNumber, segmentContainsVerse } from '../../utils/verse-ref';
  * segment's `verseStarts`, so `covered` enumerates each covered verse as a `[chapter, verse]` pair,
  * mirroring how a merged segment carries one verse start per absorbed verse. `startRef` / `endRef`
  * are taken from the first and last covered verse.
- *
- * @param covered - The verses the segment covers, in document order, as `[chapter, verse]` pairs.
- * @returns The assembled segment.
  */
 function makeSegment(covered: [number, number][]): Segment {
   const [startChapter, startVerse] = covered[0];
@@ -34,10 +30,7 @@ function makeSegment(covered: [number, number][]): Segment {
 /**
  * Builds a `SerializedVerseRef` in the test book.
  *
- * @param chapterNum - The chapter number.
- * @param verseNum - The verse number.
  * @param book - The book id; defaults to the segments' book.
- * @returns The assembled reference.
  */
 function makeRef(chapterNum: number, verseNum: number, book: string = 'GEN'): SerializedVerseRef {
   return { book, chapterNum, verseNum };

@@ -1,15 +1,10 @@
-/** @file Unit tests for components/AltHeldContext.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
 import { render, screen } from '@testing-library/react';
 import { AltHeldProvider, useAltHeldValue } from '../../components/AltHeldContext';
 
-/**
- * Renders the current Alt-held value from context as a testable string.
- *
- * @returns A span containing the current Alt-held value stringified.
- */
+/** Renders the current Alt-held value from context as a testable string. */
 function AltHeldProbe() {
   const altHeld = useAltHeldValue();
   return <span data-testid="probe">{String(altHeld)}</span>;

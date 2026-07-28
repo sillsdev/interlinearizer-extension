@@ -1,4 +1,3 @@
-/** @file Unit tests for the extension entry point (main.ts). */
 /// <reference types="jest" />
 
 import type { OpenWebViewOptions, SavedWebViewDefinition, WebViewDefinition } from '@papi/core';
@@ -30,9 +29,6 @@ interface PapiBackendTestMock {
 /**
  * Type guard for the mocked @papi/backend default export. Allows destructuring mocks without type
  * assertions.
- *
- * @param m - The value to test, typically the default export of the mocked module.
- * @returns `true` if `m` exposes all expected `__mock*` properties.
  */
 function isPapiBackendTestMock(m: unknown): m is PapiBackendTestMock {
   return (
@@ -67,12 +63,7 @@ const {
   __mockLogger,
 } = papiBackendMock;
 
-/**
- * Type guard that narrows an unknown value to a callable function.
- *
- * @param f - The value to test.
- * @returns True if f is a function.
- */
+/** Type guard that narrows an unknown value to a callable function. */
 function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
   return typeof f === 'function';
 }
@@ -85,12 +76,7 @@ type WebViewProvider = {
   ): Promise<WebViewDefinition | undefined>;
 };
 
-/**
- * Type guard that narrows an unknown value to a {@link WebViewProvider}.
- *
- * @param x - The value to test.
- * @returns `true` if `x` has a callable `getWebView` method.
- */
+/** Type guard that narrows an unknown value to a {@link WebViewProvider}. */
 function isWebViewProvider(x: unknown): x is WebViewProvider {
   return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
 }
@@ -102,12 +88,7 @@ function getRegisteredProvider(): WebViewProvider {
   return raw;
 }
 
-/**
- * Finds the handler registered for `commandName` in the most recent `activate()` call.
- *
- * @param commandName - The fully-qualified command name to look up.
- * @returns The registered handler function, or `undefined` if none was registered for that name.
- */
+/** Finds the handler registered for `commandName` in the most recent `activate()` call. */
 function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
   const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
   const rawHandler: unknown = call?.[1];
@@ -118,8 +99,6 @@ function findRegisteredHandler(commandName: string): ((...args: unknown[]) => un
  * Activates the extension with a fresh test context and returns the handler registered for
  * `commandName`, cast to `T`.
  *
- * @param commandName - The fully-qualified command name to look up.
- * @returns The handler registered during `activate()`, cast to `T`.
  * @throws If the handler was not registered during `activate()`.
  */
 async function activateAndGetHandler<T>(commandName: string): Promise<T> {
@@ -187,7 +166,6 @@ const getSaveDraftHandler = () =>
 /**
  * Retrieves the callback passed to onDidOpenWebView during the most recent activate() call.
  *
- * @returns A typed wrapper around the captured callback.
  * @throws If no callback was registered (i.e. activate was not called first).
  */
 function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {
@@ -199,7 +177,6 @@ function getOpenWebViewCallback(): (event: { webView: SavedWebViewDefinition }) 
 /**
  * Retrieves the callback passed to onDidCloseWebView during the most recent activate() call.
  *
- * @returns A typed wrapper around the captured callback.
  * @throws If no callback was registered (i.e. activate was not called first).
  */
 function getCloseWebViewCallback(): (event: { webView: SavedWebViewDefinition }) => void {

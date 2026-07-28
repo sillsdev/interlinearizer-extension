@@ -1,4 +1,3 @@
-/** @file Unit tests for components/TokenLinkIcon.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -40,9 +39,6 @@ jest.mock('../../components/AnalysisStore', () => ({
  * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
  * link-icon tests, which then layer on `focusedSideIsPrev` / `focusedPhraseLink` /
  * `focusedFreeToken` as needed.
- *
- * @param overrides - Fields to override on the default bundle.
- * @returns A `SlotFocusInfo`.
  */
 function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
   return {
@@ -69,10 +65,6 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
 /**
  * Renders a `TokenLinkIcon` inside a `PhraseStripProvider`. The phrase mode, document-order lookup,
  * and hover callbacks now come from strip context rather than props.
- *
- * @param ui - The `TokenLinkIcon` element to render.
- * @param context - Partial strip-context overrides (phraseMode, tokenDocOrder, hover callbacks).
- * @returns The Testing Library render result.
  */
 function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
@@ -533,9 +525,6 @@ describe('TokenLinkIcon', () => {
     /**
      * Renders a `TokenLinkIcon` for a slot straddling a segment boundary (neighbors in different
      * segments, so `isSameSegmentAsFocus` is false).
-     *
-     * @param focusedSideIsPrev - Which side holds focus.
-     * @returns The render result.
      */
     function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(

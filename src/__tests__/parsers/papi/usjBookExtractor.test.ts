@@ -1,4 +1,3 @@
-/** @file Unit tests for {@link extractBookFromUsj}. */
 /// <reference types="jest" />
 
 import { extractBookFromUsj, type UsjDocument } from 'parsers/papi/usjBookExtractor';

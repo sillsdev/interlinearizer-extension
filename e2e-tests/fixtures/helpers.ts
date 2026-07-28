@@ -888,15 +888,18 @@ const HOME_CLOSE_TIMEOUT_MS = 5_000;
  *
  * Paranext-core's default dock layout restores a Home WebView eagerly. That restore path waits a
  * fixed 20s for `platformGetResources.home-webViewProvider`, fires the content retrieval exactly
- * once, and only logs on failure — so when extension-host activation overruns the window (a ~2s
- * miss has been observed on CI runners) the tab stays mounted around an empty iframe for the rest
- * of the run. Focusing it does not re-fire the retrieval, and the toolbar's Home command passes an
- * `existingId`, so that only focuses the dead tab too.
+ * once, and only logs on failure — so when extension-host activation overruns that window the tab
+ * stays mounted around an empty iframe for the rest of the run. Focusing it does not re-fire the
+ * retrieval, and the toolbar's Home command passes `existingId: '?'`, which resolves by looking up
+ * any live tab of that webViewType — so it just refocuses the dead tab too.
  *
- * Closing the tab is what forces a fresh `openWebView`: core reopens Home itself when the closed
- * tab was the last one, and otherwise the toolbar button has no existing Home left to focus and
- * creates a new one. Either way the retrieval reruns against a provider that is registered by
- * then.
+ * Closing the tab is what forces a fresh `openWebView`, and there are two separate openers that
+ * must not both fire. Core reopens Home itself when the closed tab was the last DOCKED one,
+ * deciding this synchronously at close time and calling `openWebView` with no `existingId` (so it
+ * always mints a new tab, and cannot be deduplicated after the fact). Otherwise nothing reopens
+ * Home and the toolbar button has to. Because core's decision is made from the pre-close layout,
+ * this reads the tab count BEFORE closing and picks one opener deterministically rather than racing
+ * them.
  *
  * Callers must confirm at least one project is registered (see
  * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
@@ -915,7 +918,7 @@ async function ensureHomeWebViewLoaded(
 ): Promise<void> {
   // Any row carrying a button proves the table rendered; the caller matches its own project by name.
   const anyProjectRow = () =>
-    page.frameLocator('iframe[title="Home"]').locator('tr:has(button)').first();
+    page.locator('iframe[title="Home"]').first().contentFrame().locator('tr:has(button)').first();
 
   const rendered = await anyProjectRow()
     .waitFor({ state: 'visible', timeout: HOME_CONTENT_PROBE_MS })
@@ -924,6 +927,9 @@ async function ensureHomeWebViewLoaded(
   if (rendered) return;
 
   console.warn('Home WebView rendered no project rows — reopening it to rerun content retrieval.');
+  // Read the tab count BEFORE closing: it decides which of two mutually exclusive reopen paths
+  // applies, and racing them would leave two Home tabs (see the branch comments below).
+  const homeWasOnlyTab = (await page.locator('.dock-tab').count()) === 1;
   await homeTab
     .locator('.dock-tab-close-btn')
     .dispatchEvent('click')
@@ -931,12 +937,28 @@ async function ensureHomeWebViewLoaded(
       /* Not closable in this layout; the content assertion below is the real gate. */
     });
   // Core's auto-reopen can land before this observes zero tabs, which is a success, not a failure —
-  // hence the catch. Only drive the toolbar button when Home genuinely went away and stayed away.
+  // hence the catch. Only drive the toolbar button when Home genuinely went away.
   const closed = await expect(page.locator('.dock-tab', { hasText: 'Home' }))
     .toHaveCount(0, { timeout: HOME_CLOSE_TIMEOUT_MS })
     .then(() => true)
     .catch(() => false);
-  if (closed && (await homeTab.count()) === 0) await homeButton.click();
+  if (closed) {
+    if (homeWasOnlyTab) {
+      // Core reopens Home itself when the closed tab was the last one, via an `openWebView` that
+      // passes NO `existingId`. Clicking the toolbar button into that window would create a second
+      // Home — `openHome`'s `existingId` de-dup has nothing to focus yet — and the caller closes
+      // only the first Home tab, so its `toHaveCount(0)` gate would then hang. Wait for core's
+      // reopen instead, falling back to the button only if it never lands.
+      const reopened = await homeTab
+        .waitFor({ state: 'visible', timeout: HOME_CLOSE_TIMEOUT_MS })
+        .then(() => true)
+        .catch(() => false);
+      if (!reopened) await homeButton.click();
+    } else {
+      // Other tabs remain, so core's last-tab auto-reopen does not fire — nothing to race.
+      await homeButton.click();
+    }
+  }
 
   await expect(anyProjectRow()).toBeVisible({ timeout: HOME_REOPEN_TIMEOUT_MS });
 }
@@ -1023,7 +1045,11 @@ export async function openInterlinearizerFromScriptureEditor(
       // small CI viewports still closes) to guarantee focus before driving its iframe.
       await homeTab.dispatchEvent('click');
     }
-    const homeFrame = page.frameLocator('iframe[title="Home"]');
+    // `.first().contentFrame()` rather than `frameLocator`, matching the editor lookup below: a
+    // duplicate Home (core's last-tab auto-reopen and the toolbar command are separate openers) would
+    // make the strict `frameLocator` form fail with a strict-mode violation naming neither Home nor
+    // duplication, instead of the real problem.
+    const homeFrame = page.locator('iframe[title="Home"]').first().contentFrame();
     // The project row can still be installing even though the dock is ready; wait for it
     // explicitly so a lost race fails clearly here, not as an opaque timeout on the click below.
     await waitForAtLeastOneProjectMetadata();
@@ -1043,16 +1069,31 @@ export async function openInterlinearizerFromScriptureEditor(
     // its iframe intercepts pointer events, so the ≡-menu click below would land on Home. Dispatch
     // the close (not a real click, so an off-viewport tab on small CI viewports still closes), then
     // wait for the tab to leave the DOM.
-    await homeTab
-      .locator('.dock-tab-close-btn')
-      .dispatchEvent('click')
-      .catch(() => {
-        /* Home may not have opened as a closable tab in some layouts; the visibility wait below is
-           the real gate. */
-      });
-    await expect(page.locator('.dock-tab', { hasText: 'Home' })).toHaveCount(0, {
-      timeout: 10_000,
-    });
+    // Close EVERY Home tab, not just the first: core's last-tab auto-reopen and the toolbar Home
+    // command are independent openers, so a recovery can leave two. Closing one and asserting zero
+    // would then hang for the full timeout and report a count mismatch rather than the duplication.
+    // Bounded, mirroring closeSelectProjectPickers.
+    const allHomeTabs = page.locator('.dock-tab', { hasText: 'Home' });
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const remaining = await allHomeTabs.count();
+      if (remaining === 0) break;
+      // eslint-disable-next-line no-await-in-loop
+      await allHomeTabs
+        .first()
+        .locator('.dock-tab-close-btn')
+        .dispatchEvent('click')
+        .catch(() => {
+          /* Home may not have opened as a closable tab in some layouts; the gate below is real. */
+        });
+      // eslint-disable-next-line no-await-in-loop
+      await expect(allHomeTabs)
+        .toHaveCount(remaining - 1, { timeout: 10_000 })
+        .catch(() => {
+          /* Slow removal; the next iteration re-reads the count. */
+        });
+    }
+    await expect(allHomeTabs).toHaveCount(0, { timeout: 10_000 });
   }
 
   await loadedEditorTab.click();

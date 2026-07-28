@@ -9,7 +9,7 @@
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverAnchor } from 'platform-bible-react';
-import { useEffect, useState } from 'react';
+import { type MouseEvent, useEffect, useState } from 'react';
 import { useMorphemeGlossDispatch, useReportGlossEditing } from './AnalysisStore';
 
 const MORPHEME_GLOSS_STRING_KEYS = [
@@ -92,7 +92,11 @@ export function MorphemeBox({
         {morphemes.map((m, i) => {
           const formClassName = `tw:flex tw:items-center tw:justify-center tw:whitespace-nowrap tw:rounded tw:px-0.5 tw:font-mono tw:text-xs tw:text-muted-foreground tw:transition-colors${disabled ? '' : ' tw:cursor-pointer'}${isFormsHovered && !disabled ? ' tw:bg-accent' : ''}`;
           const formStyle = { gridColumn: i + 1, gridRow: 1 };
-          const handleClick = () => {
+          // preventDefault stops the ancestor <label> (see TokenChip) from forwarding the click to
+          // the gloss input; that focus would land outside the just-opened modal editor and dismiss
+          // it. The label skips the real first-cell button, but the span cells need it explicit.
+          const handleClick = (e: MouseEvent) => {
+            e.preventDefault();
             if (!disabled) onEditBreakdown();
           };
 
@@ -105,10 +109,7 @@ export function MorphemeBox({
                 style={formStyle}
                 tabIndex={-1}
                 type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleClick();
-                }}
+                onClick={handleClick}
               >
                 {m.form}
               </button>

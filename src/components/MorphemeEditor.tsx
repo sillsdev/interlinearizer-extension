@@ -11,7 +11,7 @@ import type { KeyboardEvent, MouseEvent } from 'react';
 
 const POPOVER_STRING_KEYS = [
   '%interlinearizer_morphemeEditor_splitLabel%',
-  '%interlinearizer_morphemeEditor_delete%',
+  '%interlinearizer_morphemeEditor_reset%',
   '%interlinearizer_morphemeEditor_cancel%',
   '%interlinearizer_morphemeEditor_done%',
   '%interlinearizer_morphemeEditor_emptyHint%',
@@ -296,7 +296,7 @@ export function MorphemeBreakdownPopover({
                 type="button"
                 variant="outline"
               >
-                {localizedStrings['%interlinearizer_morphemeEditor_delete%']}
+                {localizedStrings['%interlinearizer_morphemeEditor_reset%']}
               </Button>
             )}
             <Button onClick={onClose} size="sm" type="button" variant="outline">

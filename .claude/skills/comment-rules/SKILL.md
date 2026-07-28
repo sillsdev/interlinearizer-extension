@@ -20,9 +20,17 @@ Required vs optional:
 
 Module-level comments are worthwhile only when the module is a consumed API surface. Do not add file-header banners.
 
-## Params and returns
+These rules do not apply to unnamed inline callbacks passed directly to framework APIs (e.g. `describe()`, `test()`) - the test-title string serves as the documentation.
 
-Omit `@param` and `@returns` unless they add information the signature and type do not already convey - units, nullability meaning, ownership, side effects, or constraints. Never write `@param name - the name`.
+## Params, returns, and throws
+
+Omit `@param` and `@returns` unless they add information the signature and type do not already convey - units, nullability meaning, ownership, side effects, or constraints. Never write `@param name - the name`. An exception: if any single method parameter deserves a comment, document all the parameters of that method.
+
+Include `@throws` for every error condition the caller must handle; omit it when the function never throws.
+
+## Type declarations
+
+Interfaces, type aliases, and enums follow the same doc-comment rules. Document each field or member whose purpose is not self-evident from its name and type, individually rather than in the type-level summary.
 
 ## References to other code
 

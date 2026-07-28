@@ -1,26 +1,24 @@
 /**
- * @file Pure suggestion-engine core: builds the analysis pool, ranks competing payloads, and
- *   derives per-token suggestions. Everything here is a pure function over plain data so the engine
- *   is trivially testable; the memoized Redux selectors that feed it live in
- *   `store/analysisSlice`.
+ * Pure suggestion-engine core: builds the analysis pool, ranks competing payloads, and derives
+ * per-token suggestions. Everything here is a pure function over plain data, so the engine is
+ * trivially testable; the memoized selectors that feed it live in the store.
  *
- *   Suggestions and candidates are never persisted — they are derived on read; only the approved
- *   human decisions are stored. The pool is the set of approved analyses in the current draft.
+ * Suggestions and candidates are never persisted — they are derived on read, and only approved
+ * human decisions are stored. The pool is the set of approved analyses in the current draft.
  */
 
 import type { AssignmentStatus, TokenAnalysis } from 'interlinearizer';
 import { normalizeSurfaceForm } from './analysis-identity';
 
 /**
- * Shared empty candidate list returned for every non-homograph match (the common case), so
- * {@link deriveTokenSuggestion} never allocates a throwaway `[]` per call. Read-only and never
- * mutated by any consumer.
+ * Shared empty candidate list returned for every non-homograph match, so the common case never
+ * allocates a throwaway array. Read-only and never mutated by any consumer.
  */
 const NO_CANDIDATES: readonly TokenAnalysis[] = [];
 
 /** One distinct approved payload in the pool together with how many tokens currently approve it. */
 export interface PoolEntry {
-  /** The shared approved `TokenAnalysis` payload. */
+  /** The shared approved payload. */
   analysis: TokenAnalysis;
   /** Number of tokens whose approved link points at this payload — its approval frequency. */
   frequency: number;
@@ -28,40 +26,39 @@ export interface PoolEntry {
 
 /**
  * The analysis pool indexed for matching: normalized surface form → the distinct approved payloads
- * sharing that form, each bucket pre-ranked best-first ({@link comparePoolEntries}) so its head is
- * the suggested pick. A single-element list is the common case; multiple entries mean a homograph
- * (competing analyses of the same surface form). Buckets are read-only — they are ranked once at
- * build time and never re-sorted per token.
+ * sharing that form. Each bucket is pre-ranked best-first at build time and never re-sorted per
+ * token, so its head is the suggested pick. A single-element bucket is the common case; multiple
+ * entries mean a homograph.
  */
 export type PoolIndex = ReadonlyMap<string, readonly PoolEntry[]>;
 
-/** The engine's derived proposal for one un-approved token (never persisted — derived on read). */
+/** The engine's derived proposal for one un-approved token. Never persisted. */
 export interface TokenSuggestion {
-  /** The top-ranked matching payload — the engine's single best pick (the `suggested` analysis). */
+  /** The top-ranked matching payload — the engine's single best pick. */
   suggested: TokenAnalysis;
   /**
-   * The remaining matching payloads, in rank order — the `candidate` alternatives a reviewer can
-   * promote instead of the suggestion. Empty unless the surface form is a homograph. Read-only so
-   * the single shared empty array returned for the common non-homograph case is never mutated.
+   * The remaining matching payloads, in rank order — the alternatives a reviewer can promote
+   * instead. Empty unless the surface form is a homograph. Read-only, because the non-homograph
+   * case returns one shared empty array.
    */
   candidates: readonly TokenAnalysis[];
 }
 
 /**
  * The merged per-token read the renderer consumes: the token's approved decision when one exists,
- * otherwise the engine's derived suggestion. The selector that produces this returns `undefined`
- * (not modeled here) when the token has neither — an unanalyzed token with no pool match.
+ * otherwise the engine's derived suggestion. The selector producing this yields `undefined`, not
+ * modeled here, when the token has neither — an unanalyzed token with no pool match.
  */
 export type ResolvedTokenAnalysis =
   | {
-      /** The token has a human-confirmed analysis; `analysis` is canonical for rendering. */
+      /** The token has a human-confirmed analysis, canonical for rendering. */
       status: 'approved';
       /** The approved payload. */
       analysis: TokenAnalysis;
       /**
-       * Pool alternatives for this surface form, when any exist, so the suggestion dropdown can
-       * offer re-promotion even after the token is approved. `undefined` when the pool has no match
-       * for this surface form (the token was manually glossed with no pool peers).
+       * Pool alternatives for this surface form, so the suggestion dropdown can offer re-promotion
+       * even after the token is approved. `undefined` when the pool has no match — the token was
+       * manually glossed with no pool peers.
        */
       poolSuggestion?: TokenSuggestion;
     }
@@ -71,15 +68,9 @@ export type ResolvedTokenAnalysis =
     } & TokenSuggestion);
 
 /**
- * Orders two competing pool entries best-first: the more-approved entry sorts before the less, and
- * a frequency tie is broken by the lower `analysis.id`. The id tiebreak is deterministic and
- * content-independent, so the elected suggestion never flickers between equally-frequent homographs
- * as unrelated edits reorder the pool. Used by {@link buildPoolIndex} to pre-rank each bucket once
- * at build time so per-token derives never re-sort.
- *
- * @param a - First pool entry.
- * @param b - Second pool entry.
- * @returns A negative number when `a` ranks first, positive when `b` ranks first.
+ * Orders two competing pool entries best-first, breaking a frequency tie by the lower analysis id.
+ * That tiebreak is deterministic and content-independent, so the elected suggestion never flickers
+ * between equally-frequent homographs as unrelated edits reorder the pool.
  */
 function comparePoolEntries(a: PoolEntry, b: PoolEntry): number {
   if (a.frequency !== b.frequency) return b.frequency - a.frequency;
@@ -87,23 +78,17 @@ function comparePoolEntries(a: PoolEntry, b: PoolEntry): number {
 }
 
 /**
- * Groups the approved analyses into the {@link PoolIndex} used for matching: each distinct payload
- * is filed under the normalized form of its `surfaceText` ({@link normalizeSurfaceForm}), carrying
- * its approval frequency. Because the write path dedupes identical analyses and
- * `appendApprovedAnalysis` only shares a payload across tokens with the same normalized surface
- * form, every token under one key truly competes for the same word — so two entries under one key
- * are genuine homographs, never accidental near-duplicates.
+ * Groups the approved analyses into the {@link PoolIndex} used for matching, filing each distinct
+ * payload under the normalized form of its surface text along with its approval frequency.
  *
- * Keying on the normalized surface form alone (not also the writing system) is correct for v1: the
- * pool is a single source project whose word tokens share one writing system, and NFC keeps
- * different scripts on distinct code points — so equal normalized forms already imply the same
+ * Because the write path dedupes identical analyses and only shares a payload across tokens with
+ * the same normalized surface form, every token under one key truly competes for the same word — so
+ * two entries under one key are genuine homographs, never accidental near-duplicates.
+ *
+ * Keying on the normalized surface form alone, rather than also the writing system, is correct for
+ * v1: the pool is a single source project whose word tokens share one writing system, and NFC keeps
+ * different scripts on distinct code points, so equal normalized forms already imply the same
  * writing system.
- *
- * @param analysisById - Map from `TokenAnalysis.id` to its payload (every approved id resolves
- *   here).
- * @param approvedCountByAnalysisId - Map from each approved `TokenAnalysis.id` to its approval
- *   frequency; its keys are exactly the distinct approved payloads.
- * @returns The pool indexed by normalized surface form.
  */
 export function buildPoolIndex(
   analysisById: ReadonlyMap<string, TokenAnalysis>,
@@ -126,25 +111,15 @@ export function buildPoolIndex(
 }
 
 /**
- * Derives the suggestion for one token from the pool by matching on its normalized surface form
- * ({@link normalizeSurfaceForm}). When the form matches, the matched bucket is already ranked
- * best-first ({@link buildPoolIndex}), so its head is the `suggested` analysis and the rest are the
- * ranked `candidate`s; when it does not match, there is no suggestion. The caller is responsible
- * for only asking about tokens that have no approved analysis (an approved token reads its
- * decision, not a suggestion).
+ * Derives one token's suggestion from the pool by matching on its normalized surface form, or
+ * `undefined` when nothing matches. Callers are responsible for only asking about tokens that have
+ * no approved analysis, since an approved token reads its decision rather than a suggestion.
  *
- * Pass `excludeAnalysisId` to preview the suggestion a token would resolve to if its own approval
- * were removed (used the instant an approved gloss is cleared, before the empty value commits):
- * that payload's frequency is decremented — dropping it from the bucket entirely when this was its
- * last approval — and the remainder re-ranked, so the preview matches the pool the committed
- * deletion will produce rather than the approved payload's mere alternatives.
- *
- * @param poolIndex - The pool indexed by normalized surface form.
- * @param surfaceText - The token's raw surface text.
- * @param excludeAnalysisId - When given, the id of an approved payload to discount by one approval
- *   before ranking, previewing the pool as if this token were unapproved.
- * @returns The token's suggestion, or `undefined` when no pooled analysis matches (or none remains
- *   once the excluded payload is discounted).
+ * @param excludeAnalysisId - An approved payload to discount by one approval before ranking,
+ *   previewing the suggestion this token would fall back to if its own approval were removed. Used
+ *   the instant an approved gloss is cleared, before the empty value commits, so the preview
+ *   matches the pool the committed deletion will produce rather than the approved payload's mere
+ *   alternatives.
  */
 export function deriveTokenSuggestion(
   poolIndex: PoolIndex,
@@ -184,37 +159,30 @@ export function deriveTokenSuggestion(
 export interface GlossedSuggestionEntry {
   /** The matching payload's id — the approve/promote target and the React key. */
   id: string;
-  /** The payload's gloss in the active analysis language; never blank (blank entries are dropped). */
+  /** The payload's gloss in the active analysis language; never blank. */
   gloss: string;
   /**
-   * How the row is offered: `'suggested'` for the engine's pick on an un-approved token (blue,
-   * "accept"), or `'candidate'` for every promotable alternative (grey, "promote"). Carried on the
-   * entry — rather than re-derived from row position by the renderer — so dropping a blank-in-
-   * language pick can never leave a candidate masquerading as the accept row.
+   * How the row is offered: `'suggested'` for the engine's pick on an un-approved token (the
+   * "accept" row), or `'candidate'` for a promotable alternative. Carried on the entry rather than
+   * re-derived from row position, so dropping a blank-in-language pick can never leave a candidate
+   * masquerading as the accept row.
    */
   status: Extract<AssignmentStatus, 'suggested' | 'candidate'>;
 }
 
 /**
  * Flattens the merged per-token read into the entries the gloss UI renders, in rank order, keeping
- * only those that carry a non-blank gloss in `analysisLanguage`. Centralizes the
- * suggestion-presentation policy in one place: which matches are renderable, how a blank-in-active-
- * language pick falls through to the next-ranked one rather than showing an empty button, the
- * already-approved payload's exclusion from its own promote list, and — critically — each row's
- * assignment status, so every surface ranks, colors, and labels suggestions identically instead of
- * re-deriving any of it from the raw {@link TokenSuggestion} or from row position.
+ * only those with a non-blank gloss in the active language.
  *
- * For an un-approved (`'suggested'`) token the highest-ranked renderable match is offered as
- * `'suggested'` (the blue "accept" row) and the rest as `'candidate'` (grey "promote"). The status
- * is assigned _after_ dropping blank-in-language picks, so when the engine's top pick has no gloss
- * in the active language the next-ranked glossed match correctly becomes the accept row rather than
- * the whole suggestion vanishing. For an already-approved token every pool peer is a `'candidate'`
- * (promote) — the approved payload itself is excluded, and there is no accept row, so even the top
- * row reads as a promotion rather than masquerading as an "accept the suggestion" row.
+ * This is the single home of suggestion-presentation policy — which matches are renderable, how a
+ * blank-in-active-language pick falls through, the approved payload's exclusion from its own
+ * promote list, and each row's assignment status — so every surface ranks, colors, and labels
+ * suggestions identically instead of re-deriving any of it from row position.
  *
- * @param resolved - The token's merged approved/suggested read, or `undefined` when it has neither.
- * @param analysisLanguage - BCP 47 tag whose gloss to read from each matching payload.
- * @returns The glossed entries in rank order; empty when there is nothing renderable.
+ * Status is assigned _after_ blank picks are dropped. So when the engine's top pick has no gloss in
+ * the active language, the next-ranked glossed match becomes the accept row rather than the whole
+ * suggestion vanishing. An already-approved token has no accept row at all: every pool peer is a
+ * promotion, so even the top row reads as one.
  */
 export function glossedSuggestionEntries(
   resolved: ResolvedTokenAnalysis | undefined,
@@ -246,20 +214,16 @@ export function glossedSuggestionEntries(
 }
 
 /**
- * Equality predicate for two {@link ResolvedTokenAnalysis} results, for use as a `useSelector`
+ * Equality predicate for two {@link ResolvedTokenAnalysis} results, for use as a selector's
  * `equalityFn` so a per-token subscription stays referentially stable across unrelated store
- * changes. {@link selectResolvedTokenAnalysis} (in `store/analysisSlice`) freshly allocates its
- * wrapper object — and the suggested branch a fresh `candidates` array — on every call, so the
- * default `Object.is` comparison would re-render every visible suggested token on any store change.
- * This compares by the meaningful identity instead: the `analysis` / `suggested` payloads and each
- * `candidate` are reference-stable store objects (the pool only re-files the same payloads), so
- * comparing them by reference is both correct and cheap — equal whenever the rendered suggestion is
- * unchanged, even when an incidental edit elsewhere rebuilt the pool index around the same
- * payloads.
+ * changes.
  *
- * @param a - The previous resolved analysis (or `undefined` when the token had neither).
- * @param b - The next resolved analysis (or `undefined`).
- * @returns `true` when the two describe the same approved decision or suggestion.
+ * The selector freshly allocates its wrapper object — and, on the suggested branch, a fresh
+ * candidates array — on every call, so a default `Object.is` comparison would re-render every
+ * visible suggested token on any store change. Comparing the payloads by reference instead is both
+ * correct and cheap, because the pool only ever re-files the same reference-stable store objects:
+ * the result is equal whenever the rendered suggestion is unchanged, even when an incidental edit
+ * elsewhere rebuilt the pool index around those same payloads.
  */
 export function resolvedTokenAnalysisEqual(
   a: ResolvedTokenAnalysis | undefined,

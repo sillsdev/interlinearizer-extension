@@ -11,19 +11,14 @@ type BooleanProjectSettingKey = {
 const TIMEOUT_MS = 15_000;
 
 /**
- * Manages a boolean project setting with optimistic UI updates.
+ * Manages a boolean project setting with optimistic UI updates, falling back to the given default
+ * until the setting has been persisted for the first time.
  *
  * The local value is updated immediately on change and stays locked for {@link TIMEOUT_MS} to allow
  * the stored setting to finish updating without causing a visible bounce. If the platform confirms
  * the new value before the timeout, the lock is released; if the platform never responds (or
  * responds after the timeout), the lock clears and subsequent platform updates flow through
  * normally.
- *
- * @param projectId - PAPI project ID
- * @param settingKey - A valid key for a boolean setting
- * @param defaultValue - Default value used when the setting has not been persisted yet
- * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
- *   stable change handler; `value` — the current display value
  */
 export default function useOptimisticBooleanSetting(
   projectId: string,

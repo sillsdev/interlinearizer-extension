@@ -98,8 +98,6 @@ export interface UseSegmentWindowArgs {
    * Routing this through a callback in the timeout — rather than the parent reacting to a
    * hook-returned value via an effect, which would land a commit later — keeps the two in one
    * commit, so the strip is present when the snap settles.
-   *
-   * @param displayContinuousScroll - The continuous-scroll mode to render from now on.
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
@@ -159,10 +157,6 @@ export interface UseSegmentWindowResult {
  * verse absorbed into a multi-verse segment — or the later portions of a split verse — resolves to
  * the segment that actually contains it rather than only to exact segment starts. Falls back to the
  * first segment of the same book+chapter, then to `0`, so there is always a valid anchor.
- *
- * @param segments - The book's flat segment list.
- * @param scrRef - The scripture reference whose owning segment to locate.
- * @returns The index of the anchor segment, clamped to a valid position (or `0` when empty).
  */
 function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
   const containing = segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
@@ -173,13 +167,7 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
   return chapter === -1 ? 0 : chapter;
 }
 
-/**
- * Builds the initial/recentered window range surrounding `anchorIndex`, clamped to `[0, total)`.
- *
- * @param anchorIndex - Index of the segment to center on.
- * @param total - Total number of segments in the book.
- * @returns The half-open window range to mount.
- */
+/** Builds the half-open window range centered on an anchor segment, clamped to the book. */
 function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
   const start = Math.max(0, anchorIndex - INITIAL_HALF_WINDOW);
   const end = Math.min(total, anchorIndex + INITIAL_HALF_WINDOW + 1);
@@ -201,17 +189,6 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  * the mounted window, so the fade and the strip's fade can never disagree. Internal navigation (a
  * segment/token click here, or strip arrow nav echoed back) skips the fade entirely: the target is
  * already on screen.
- *
- * @param args - Hook arguments.
- * @param args.book - The tokenized book whose `segments` are windowed.
- * @param args.scrRef - Current scripture reference; its verse is the recenter anchor.
- * @param args.segmentationVersion - Monotonic boundary-edit counter; classifies segments-identity
- *   changes as boundary edits (no fade) vs. re-tokenizations (recenter with fade).
- * @param args.scrollContainerRef - Ref to the scrollable list container.
- * @param args.consumeInternalNav - Returns whether the navigation to a given verse was internal
- *   (and clears the marker); used to suppress the fade for navigation that came from within the
- *   views.
- * @returns The mounted segment slice, fade state, and the sentinel/content ref callbacks.
  */
 export default function useSegmentWindow({
   book,

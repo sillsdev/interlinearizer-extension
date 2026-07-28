@@ -36,13 +36,6 @@ export interface UseInterlinearizerBookDataResult {
  * scripture picker firing two signals in quick succession): when the serialized content is
  * identical to the previous result, the prior reference is preserved so consumers avoid redundant
  * tokenization and recenter churn.
- *
- * @param args - Hook arguments.
- * @param args.projectId - PAPI project ID whose USJ book data should be loaded.
- * @param args.scrRef - Current scripture reference; only `book` is used (chapter/verse are fixed to
- *   1).
- * @returns The tokenized book (reference-stable across duplicate USJ results), loading state, and
- *   any errors encountered.
  */
 export default function useInterlinearizerBookData({
   projectId,
@@ -76,10 +69,7 @@ export default function useInterlinearizerBookData({
     return rawBookResult;
   }, [rawBookResult]);
 
-  /**
-   * Writing-system tag used for tokenization and error logging; falls back to `'und'` when the
-   * project setting is unavailable or empty.
-   */
+  // Falls back to `'und'` when the project setting is unavailable or empty.
   const writingSystemTag = isPlatformError(writingSystem) ? 'und' : writingSystem || 'und';
 
   const [book, tokenizeError] = useMemo((): [

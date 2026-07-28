@@ -36,11 +36,8 @@ export interface BookIndexes {
 /**
  * Builds the book-wide lookup indexes the interlinear views share, in a single pass over
  * `book.segments`. The indexes always travel together through the view prop plumbing, so deriving
- * them in one memo keeps them in lockstep (one traversal, one identity change per book change)
+ * them in one memo keeps them in lockstep — one traversal, one identity change per book change —
  * instead of separate memos each walking the segment list.
- *
- * @param book - The tokenized book to index.
- * @returns The lookup indexes; stable identities until `book.segments` changes.
  */
 export default function useBookIndexes(book: Book): BookIndexes {
   return useMemo(() => {

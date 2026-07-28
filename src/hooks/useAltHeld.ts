@@ -9,8 +9,6 @@ import { useEffect, useRef, useState } from 'react';
  * `window` `blur` and `document` `visibilitychange` to hidden — which is the common "stuck Alt"
  * failure mode after Alt+Tab out of the iframe. A `keyup` reading `altKey === false` likewise
  * clears it.
- *
- * @returns `true` while Alt is held, `false` otherwise.
  */
 export function useAltHeld(): boolean {
   const [altHeld, setAltHeld] = useState(false);
@@ -21,26 +19,14 @@ export function useAltHeld(): boolean {
   const altHeldRef = useRef(false);
 
   useEffect(() => {
-    /**
-     * Sets the held state to `next` only when it differs from the current value, so the repeated
-     * `keydown` events fired while Alt is held do not trigger a re-render each frame.
-     *
-     * @param next - The desired held state.
-     */
     const set = (next: boolean) => {
       if (altHeldRef.current === next) return;
       altHeldRef.current = next;
       setAltHeld(next);
     };
 
-    /**
-     * Updates the held state from a keyboard event's `altKey` flag.
-     *
-     * @param event - The keyboard event whose `altKey` is read.
-     */
     const onKey = (event: KeyboardEvent) => set(event.altKey);
 
-    /** Clears the held state when focus leaves or the document is hidden. */
     const clear = () => set(false);
 
     window.addEventListener('keydown', onKey);

@@ -27,7 +27,13 @@ export default defineConfig({
   // out via waitForAtLeastOneProjectMetadata. A CI Windows runner has been observed still installing
   // past 60s, and the test itself then needs ~40s, so 120_000 left no room and turned a slow-but-fine
   // first launch into a red attempt.
-  timeout: 240_000,
+  //
+  // Must clear the worst reachable chain in openInterlinearizerFromScriptureEditor, or a pathological
+  // cold start reports an opaque "Test timeout" instead of the specific error whichever wait actually
+  // lost: dock mount 45s + project metadata 150s + Home probe 5s + Home close 5s + Home reopen 30s +
+  // loaded-editor 30s ≈ 265s. Note the metadata wait only short-circuits when it EXHAUSTS — resolving
+  // at 149s still leaves every later wait in play. Revisit this if any of those budgets change.
+  timeout: 300_000,
   expect: {
     timeout: 10_000,
   },

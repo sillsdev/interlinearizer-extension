@@ -960,6 +960,11 @@ async function ensureHomeWebViewLoaded(
     }
   }
 
+  // Load-bearing beyond just gating the caller: `anyProjectRow` resolves `.first()` on the same
+  // `iframe[title="Home"]` selector the caller then clicks "Open" in, so asserting here is what
+  // guarantees the FIRST Home iframe is the populated one. Should a duplicate Home ever survive the
+  // branch above with the blank one first in the DOM, this fails loudly rather than letting the
+  // caller click into an empty frame. Keep the two locators in sync.
   await expect(anyProjectRow()).toBeVisible({ timeout: HOME_REOPEN_TIMEOUT_MS });
 }
 

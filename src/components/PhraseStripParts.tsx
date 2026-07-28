@@ -1,4 +1,3 @@
-/** @file Shared render parts for the two phrase strips (SegmentView and ContinuousView). */
 import type { Token } from 'interlinearizer';
 import { Merge, Split } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';
@@ -41,7 +40,6 @@ type BoundaryButtonProps = Readonly<{
  * @param props.testId - `data-testid` for the button element.
  * @param props.icon - The icon rendered inside the button.
  * @param props.action - The boundary edit to run on click.
- * @returns The styled boundary button.
  */
 function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonProps) {
   return (
@@ -220,7 +218,6 @@ type SplitMarkerProps = Readonly<{
  * @param props - Component props.
  * @param props.label - Accessible label and tooltip.
  * @param props.onSplit - Runs the split; called only for a genuine Alt+click.
- * @returns The split-marker span.
  */
 function SplitMarker({ label, onSplit }: SplitMarkerProps) {
   return (
@@ -479,7 +476,6 @@ type PhraseGroupProps = Readonly<{
  * @param props.setHoveredGroupKey - Called with groupKey on pointer enter/leave
  * @param props.onFocusPhrase - Called with groupKey when this group's gloss input gains focus
  * @param props.groupRef - Optional DOM-ref callback for the wrapper span
- * @returns A wrapper span containing the phrase box.
  */
 export const MemoizedPhraseGroup = memo(function PhraseGroup({
   group,
@@ -548,7 +544,6 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
  * @param props - Component props.
  * @param props.label - The verse label to display (verbatim number, or `chapter:number` at a
  *   chapter transition).
- * @returns A superscript element carrying the verse label.
  */
 export function VerseSuperscript({ label }: Readonly<{ label: string }>) {
   return (
@@ -646,7 +641,6 @@ type PhraseStripProps = Readonly<{
  * @param props.onHoverPhrase - Phrase-box enter/leave callback
  * @param props.setHoveredGroupKey - Hovered-group-key setter
  * @param props.onFocusPhrase - Gloss-input focus callback, by group key
- * @returns The strip's ordered slot and group elements.
  */
 export function PhraseStrip({
   items,

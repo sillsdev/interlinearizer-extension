@@ -66,7 +66,6 @@ type ProjectMetadataModalProps = Readonly<{
  * date, and source project. Includes an inline delete-with-confirmation flow.
  *
  * @param props - Component props (see {@link ProjectMetadataModalProps}).
- * @returns The modal overlay with editable metadata fields and action buttons.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -309,7 +308,6 @@ export function ProjectMetadataModal({
  * @param props.label - Localized field label shown as `<dt>`.
  * @param props.value - Value string shown as `<dd>`.
  * @param props.mono - When true, renders the value in a monospace font.
- * @returns A `<dt>`/`<dd>` pair.
  */
 function MetadataRow({
   label,

@@ -1,14 +1,3 @@
-/**
- * @file Render-scoped context shared by the two phrase strips (`SegmentView` and `ContinuousView`).
- *
- *   Holds the values that are identical for every phrase group and link slot within a single strip
- *   render: the edit-mode context and the hover-preview callbacks. Delivering them via context
- *   keeps the structural intermediaries (`PhraseGroup`/`PhraseSlot`) from forwarding props they
- *   never touch, so each remaining prop on them describes something genuinely per-group/per-slot.
- *
- *   Per-instance values (focus, highlight, arc offset, slot geometry) are intentionally **not** here
- *   — they vary per item and belong at the call site as props.
- */
 import { createContext, useContext } from 'react';
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { PhraseAnalysisLink } from 'interlinearizer';
@@ -17,6 +6,13 @@ import type { PhraseMode } from '../types/phrase-mode';
 /**
  * The stable, strip-wide context shared by every phrase group and link slot in one render. Both
  * strips build one value per render and wrap their token row in a {@link PhraseStripProvider}.
+ *
+ * It holds the values identical across a whole strip render — the edit-mode context and the
+ * hover-preview callbacks — so the structural intermediaries never forward props they don't touch,
+ * and each prop that remains on them describes something genuinely per-group or per-slot.
+ *
+ * Per-instance values such as focus, highlight, arc offset, and slot geometry are deliberately
+ * **not** here: they vary per item and belong at the call site as props.
  */
 export type PhraseStripContextValue = Readonly<{
   /** Current phrase-interaction mode; controls rendering and click behavior in all leaves. */
@@ -116,7 +112,6 @@ type PhraseStripProviderProps = Readonly<{
  * @param props - Component props.
  * @param props.value - The strip-wide context value.
  * @param props.children - The strip's token row.
- * @returns The children wrapped in the context provider.
  */
 export function PhraseStripProvider({ value, children }: PhraseStripProviderProps) {
   return <PhraseStripContext.Provider value={value}>{children}</PhraseStripContext.Provider>;
@@ -125,7 +120,6 @@ export function PhraseStripProvider({ value, children }: PhraseStripProviderProp
 /**
  * Reads the strip-wide phrase context. Must be called from inside a {@link PhraseStripProvider}.
  *
- * @returns The current {@link PhraseStripContextValue}.
  * @throws If called outside a {@link PhraseStripProvider}.
  */
 export function usePhraseStripContext(): PhraseStripContextValue {

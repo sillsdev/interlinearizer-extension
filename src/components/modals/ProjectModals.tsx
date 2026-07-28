@@ -192,7 +192,6 @@ export default function ProjectModals({
    * and notifies on failure, leaving the draft untouched.
    *
    * @param project - The project summary the user chose to open.
-   * @returns A promise that resolves once the draft is loaded or the failure has been handled.
    */
   const openProject = useCallback(
     async (project: InterlinearProjectSummary) => {
@@ -251,9 +250,6 @@ export default function ProjectModals({
    * so the catch block only needs to log, matching {@link handleSaveAsNew}.
    *
    * @param config - The configuration collected by the New dialog.
-   * @returns `true` if the project was created and persisted successfully; `false` otherwise.
-   *   Callers are responsible for closing the modal on success and keeping it open on failure so
-   *   the user can retry without re-entering their inputs.
    */
   const createAndPersistProject = useCallback(
     async (config: CreateDraftConfig): Promise<boolean> => {
@@ -314,7 +310,6 @@ export default function ProjectModals({
    * open so the user can retry without re-entering their inputs.
    *
    * @param config - The configuration collected by the New dialog.
-   * @returns A promise that resolves once the creation settles or was ignored as re-entrant.
    */
   const createDraftAndClose = useCallback(
     async (config: CreateDraftConfig) => {
@@ -381,7 +376,6 @@ export default function ProjectModals({
    *
    * @param name - Trimmed project name, or `undefined`.
    * @param description - Trimmed project description, or `undefined`.
-   * @returns A promise that resolves once the save completes or the failure has been handled.
    */
   const handleSaveAsNew = useCallback(
     async (name?: string, description?: string) => {
@@ -438,7 +432,6 @@ export default function ProjectModals({
    * error notification; here we only log.
    *
    * @param project - The existing project to overwrite.
-   * @returns A promise that resolves once the overwrite completes or the failure has been handled.
    */
   const handleOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {

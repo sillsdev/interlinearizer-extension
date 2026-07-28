@@ -1,4 +1,3 @@
-/** @file Shared overlay + dialog + title chrome for the project modal dialogs. */
 import type { ReactNode } from 'react';
 
 /**
@@ -16,7 +15,6 @@ import type { ReactNode } from 'react';
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.
- * @returns The overlay + dialog wrapper around the title and children.
  */
 export function ModalShell({
   titleId,

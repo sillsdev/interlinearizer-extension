@@ -117,7 +117,6 @@ type InterlinearizerProps = Readonly<{
  *   transition modes.
  * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
  *   views.
- * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
   book,
@@ -473,7 +472,6 @@ function InterlinearizerInner({
  *   views.
  * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
  *   suggestion with accept / promote affordances; forwarded to {@link AnalysisStoreProvider}.
- * @returns The full interlinearizer layout with optional continuous strip and segment list
  */
 export default function Interlinearizer({
   initialAnalysis,

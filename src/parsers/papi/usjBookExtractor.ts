@@ -1,5 +1,3 @@
-/** @file Extracts {@link RawBook} from a papi USJ book response. */
-
 /** Plain text of a single verse extracted from a USJ document, ready to be tokenized. */
 export interface RawVerse {
   /** SID from the USJ verse marker, e.g. `"GEN 1:1"`. Parsed into `Segment.startRef` / `endRef`. */

@@ -1,17 +1,15 @@
-/**
- * @file Render-scoped context exposing segment-boundary editing to the deep leaves that trigger it
- *   (the cross-segment link icon and the merge/split boundary controls).
- *
- *   The {@link SegmentationDispatch} closes over the draft's current boundary delta and the original
- *   verse-tokenized book, applying the pure transforms in `utils/segmentation.ts` and auto-saving
- *   the result. Boundary edits flow draft → re-segmentation → new `book.segments`, so consumers
- *   only need to call a dispatch method; they never see the delta itself.
- */
 import type { Segment } from 'interlinearizer';
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
 
-/** The boundary-editing operations available to leaf controls. Each one auto-saves the result. */
+/**
+ * The boundary-editing operations available to the deep leaves that trigger them — the
+ * cross-segment link icon and the merge/split boundary controls. Each one auto-saves its result.
+ *
+ * Each operation closes over the draft's current boundary delta and the original verse-tokenized
+ * book. Edits flow from draft through re-segmentation to a new segment list, so consumers only ever
+ * call a method here and never see the delta itself.
+ */
 export type SegmentationDispatch = Readonly<{
   /**
    * Merges the segment that begins at `secondSegmentStartRef` into the segment before it.
@@ -99,7 +97,6 @@ type SegmentationProviderProps = Readonly<{
  * @param props - Component props.
  * @param props.value - The segmentation context value.
  * @param props.children - The subtree.
- * @returns The children wrapped in the context provider.
  */
 export function SegmentationProvider({ value, children }: SegmentationProviderProps) {
   return <SegmentationContext.Provider value={value}>{children}</SegmentationContext.Provider>;

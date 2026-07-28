@@ -68,7 +68,6 @@ const UNSAVED_TAB_MARKER = ' ●';
  *   by the PAPI host
  * @param props.updateWebViewDefinition - Host-injected callback to update this WebView's
  *   definition; used to toggle the tab's unsaved-changes title marker
- * @returns The nav provider wrapping {@link InterlinearizerLoaderInner}
  */
 export default function InterlinearizerLoader({
   projectId,
@@ -104,8 +103,6 @@ export default function InterlinearizerLoader({
  *   by the PAPI host
  * @param props.updateWebViewDefinition - Host-injected callback used to toggle the tab's
  *   unsaved-changes title marker
- * @returns The toolbar and either an error/loading state or the fully rendered
- *   {@link Interlinearizer}
  */
 function InterlinearizerLoaderInner({
   projectId,
@@ -397,8 +394,6 @@ function InterlinearizerLoaderInner({
    * Saves the current draft to the active project. When no project is active there is nothing to
    * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
    * notification.
-   *
-   * @returns A promise that resolves once the save completes or Save As is opened.
    */
   const handleSave = useCallback(async () => {
     if (!activeProject) {

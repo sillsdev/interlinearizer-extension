@@ -1,4 +1,3 @@
-/** @file Done/Cancel controls shown in the confirm bar while editing a phrase. */
 import { Button } from 'platform-bible-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../../types/phrase-mode';
@@ -25,8 +24,6 @@ type EditPhraseControlsProps = Readonly<{
  * @param props - Component props
  * @param props.phraseMode - The current edit-mode phrase mode value
  * @param props.setPhraseMode - Setter used to commit or revert the edit
- * @returns Done / Cancel buttons laid out inline; the host bar supplies the surrounding container
- *   chrome.
  */
 export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPhraseControlsProps) {
   const phraseLinkById = usePhraseLinkByIdMap();

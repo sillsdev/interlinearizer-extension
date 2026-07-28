@@ -91,7 +91,6 @@ type BaselinePiece =
  * @param verseStartLabelByOffset - Char offset → verse superscript label.
  * @param splitGapByOffset - Anchor char offset → split anchor ref; the gap slice ending at that
  *   offset becomes the splittable gap.
- * @returns The ordered baseline pieces.
  */
 function buildBaselinePieces(
   segment: Segment,
@@ -137,7 +136,6 @@ function buildBaselinePieces(
  * @param props - Component props.
  * @param props.label - The verse-range label to render, or `undefined` to render an empty gutter
  *   (reserving the column width so the content stays aligned across cards).
- * @returns The fixed-width gutter cell.
  */
 function SegmentGutter({ label }: { label: string | undefined }) {
   return (
@@ -175,7 +173,6 @@ type BaselineSplitGapProps = Readonly<{
  * @param props.splitRef - The split anchor ref an Alt+click dispatches.
  * @param props.splitLabel - Localized tooltip for the split affordance.
  * @param props.onSplit - Dispatches the split, gated on the Alt key inside the handler.
- * @returns The gap span — plain text at rest, an Alt-clickable marker while Alt is held.
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
@@ -297,8 +294,6 @@ type SegmentViewProps = Readonly<{
  * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
  * @param props.viewOptions - Bundled display toggles; `showFreeTranslation` gates the
  *   free-translation input, while the rest pass through to the phrase strip context.
- * @returns A div containing the segment content (baseline text or token chips) with either inline
- *   verse superscripts or a left verse-range gutter, depending on `viewOptions.showVerseGutter`.
  */
 export function SegmentView({
   displayMode,

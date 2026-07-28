@@ -1,4 +1,3 @@
-/** @file Inline link / unlink icon rendered between adjacent word token groups. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Link2, Unlink2 } from 'lucide-react';
 import { Button, Tooltip, TooltipContent, TooltipTrigger } from 'platform-bible-react';

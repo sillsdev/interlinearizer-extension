@@ -212,7 +212,6 @@ export function ArcOverlay({
    * hover/focus stroke.
    *
    * @param arc - The arc path to render.
-   * @returns The SVG path element.
    */
   const renderArcPath = ({ phraseId, d, splitAfterTokenRef }: ArcPath) => {
     const effectiveHoveredPhraseId = candidatePhraseIds.has(phraseId) ? phraseId : hoveredPhraseId;
@@ -241,7 +240,6 @@ export function ArcOverlay({
    * Classifies a phrase into one of three emphasis tiers (see {@link EmphasisTier}).
    *
    * @param phraseId - The phrase id to classify.
-   * @returns The emphasis tier.
    */
   const tierOf = (phraseId: string): EmphasisTier => {
     if (phraseId === focusedPhraseId) return 'focused';
@@ -266,7 +264,6 @@ export function ArcOverlay({
    * tier so its red stroke renders above other arcs.
    *
    * @param arc - The arc path to classify.
-   * @returns The emphasis tier the arc should be painted in.
    */
   const effectiveTierOf = (arc: ArcPath): EmphasisTier => {
     if (isSplitHovered(arc.phraseId, arc.splitAfterTokenRef) && splitHoveredArc?.kind === 'free')

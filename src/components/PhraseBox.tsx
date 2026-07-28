@@ -1,4 +1,3 @@
-/** @file Shared phrase-box wrapper used around word tokens. */
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 import { Trash2 } from 'lucide-react';
 import { Button } from 'platform-bible-react';
@@ -29,7 +28,6 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
  * @param props.disabled - When true, the input is read-only.
  * @param props.onFocus - Called when the input receives focus; used to center this phrase in the
  *   strip.
- * @returns An input element sized to its content.
  */
 function PhraseGlossInput({
   phraseId,
@@ -160,7 +158,6 @@ type PhraseBoxProps = Readonly<{
  *   matching chip renders with a destructive border as a preview
  * @param props.punctuationBetween - Punctuation tokens between adjacent word tokens, in document
  *   order; `punctuationBetween[i]` sits between `tokens[i]` and `tokens[i+1]`
- * @returns A bordered inline container
  */
 export function PhraseBox({
   isFocused = false,
@@ -531,7 +528,6 @@ export function PhraseBox({
      * so each token chip is removable via the keyboard as well as by click.
      *
      * @param tokenRef - Ref of the token the returned handler removes.
-     * @returns A keydown event handler for that token's chip.
      */
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {

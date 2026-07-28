@@ -69,14 +69,21 @@ jest.mock('../../components/MorphemeBox', () => ({
    */
   MorphemeBox({
     onEditBreakdown,
+    onGlossFocus,
     disabled,
     popoverOpen,
-  }: Readonly<{ onEditBreakdown: () => void; disabled: boolean; popoverOpen: boolean }>) {
+  }: Readonly<{
+    onEditBreakdown: () => void;
+    onGlossFocus: () => void;
+    disabled: boolean;
+    popoverOpen: boolean;
+  }>) {
     return (
       <div data-morpheme-box-open={popoverOpen} data-testid="morpheme-box">
         <button disabled={disabled} onClick={onEditBreakdown} type="button">
           mock-edit-breakdown
         </button>
+        <input aria-label="mock-morpheme-gloss" onFocus={onGlossFocus} />
       </div>
     );
   },
@@ -439,6 +446,35 @@ describe('TokenChip', () => {
       expect(screen.queryByTestId('morpheme-popover')).not.toBeInTheDocument();
     });
 
+    it('reports the token as focused when the define button opens the popover', async () => {
+      // The trigger is a button, so neither it nor the label's mouse-down handler moves focus into
+      // the chip; without an explicit report the editor would open over a token the view still
+      // treats as unfocused.
+      const handleFocus = jest.fn();
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(handleFocus).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not report focus from the define button when disabled', async () => {
+      const handleFocus = jest.fn();
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology disabled onFocus={handleFocus} />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(handleFocus).not.toHaveBeenCalled();
+    });
+
     it('renders the morpheme box instead of the define button when morphemes exist', () => {
       // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
@@ -483,6 +519,38 @@ describe('TokenChip', () => {
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
+    });
+
+    it('reports the token as focused when the box opens the editor on an analyzed token', async () => {
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      const handleFocus = jest.fn();
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
+      expect(handleFocus).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports the token as focused when a morpheme gloss input is focused', async () => {
+      // The morpheme glosses are gloss fields of this same token, so focusing one must move the
+      // view's focus exactly as focusing the chip's own gloss input does.
+      // AnalysisStore imported at top level
+      jest
+        .spyOn(AnalysisStore, 'useMorphemes')
+        .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
+      const handleFocus = jest.fn();
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology onFocus={handleFocus} />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(screen.getByRole('textbox', { name: 'mock-morpheme-gloss' }));
+      expect(handleFocus).toHaveBeenCalledTimes(1);
     });
 
     it('dispatches morpheme breakdown when saving from the popover', async () => {

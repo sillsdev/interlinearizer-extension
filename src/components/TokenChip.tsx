@@ -51,7 +51,8 @@ const STRING_KEYS = [
  *
  * @param props - Component props
  * @param props.token - The word token to render.
- * @param props.onFocus - Called when the gloss input receives focus.
+ * @param props.onFocus - Called when this token takes focus — its gloss input or one of its
+ *   morpheme gloss inputs receives focus, or its morpheme breakdown editor is opened.
  * @param props.disabled - When true, the gloss input is read-only and non-interactive.
  * @param props.onRemove - When provided, renders a small X button in the top-right corner of the
  *   chip; clicking it calls this callback to remove the token from its phrase.
@@ -176,6 +177,19 @@ export function TokenChip({
     if (e.target instanceof Element && e.target.closest('input, button')) return;
     e.preventDefault();
     document.getElementById(glossInputId)?.focus({ preventScroll: true });
+  };
+
+  /**
+   * Opens the morpheme breakdown editor, first reporting this token as focused. Nothing in the
+   * morpheme row moves focus into the chip otherwise — the trigger is a `button`, which
+   * {@link handleLabelMouseDown} deliberately leaves alone, and the remaining form cells stop their
+   * own mouse-down — so without this the editor would float over a token the rest of the view still
+   * treats as unfocused: the phrase highlight, arcs, and scroll position would stay on whichever
+   * token was focused before, and would only catch up once the user clicked the chip again.
+   */
+  const openMorphemeEditor = () => {
+    onFocus();
+    setPopoverOpen(true);
   };
 
   /**
@@ -391,7 +405,7 @@ export function TokenChip({
           // current forms on every open.
           //
           // `onOpenChange` is intentionally omitted: this consumer owns every dismissal path
-          // (onEscapeKeyDown, onInteractOutside, explicit button clicks). Don't wire onOpenChange
+          // (onEscapeKeyDown, onPointerDownOutside, explicit button clicks). Don't wire onOpenChange
           // without also removing those, or closes would double-fire.
           <Popover modal open={popoverOpen}>
             {hasMorphemes ? (
@@ -399,7 +413,8 @@ export function TokenChip({
                 analysisLanguage={analysisLanguage}
                 disabled={disabled}
                 morphemes={morphemes}
-                onEditBreakdown={() => setPopoverOpen(true)}
+                onEditBreakdown={openMorphemeEditor}
+                onGlossFocus={onFocus}
                 popoverOpen={popoverOpen}
                 token={token}
               />
@@ -415,7 +430,7 @@ export function TokenChip({
                   variant="ghost"
                   onClick={(e) => {
                     e.preventDefault();
-                    if (!disabled) setPopoverOpen(true);
+                    if (!disabled) openMorphemeEditor();
                   }}
                 >
                   <span className="tw:whitespace-nowrap">{token.surfaceText}</span>

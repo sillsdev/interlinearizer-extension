@@ -48,6 +48,7 @@ function renderBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
       disabled={false}
       morphemes={MORPHEMES}
       onEditBreakdown={jest.fn()}
+      onGlossFocus={jest.fn()}
       popoverOpen={false}
       token={WORD_TOKEN}
       {...props}
@@ -150,6 +151,7 @@ describe('MorphemeBox', () => {
           disabled={false}
           morphemes={MORPHEMES}
           onEditBreakdown={jest.fn()}
+          onGlossFocus={jest.fn()}
           popoverOpen={false}
           token={WORD_TOKEN}
         />
@@ -159,11 +161,43 @@ describe('MorphemeBox', () => {
     expect(onAncestorMouseDown).not.toHaveBeenCalled();
   });
 
+  it('keeps a form-cell click from focusing the token gloss input the chip label points at', async () => {
+    // Regression test: the box renders inside TokenChip's <label htmlFor={glossInput}>, whose
+    // activation behavior forwards a click on a plain span to that input. Focus landing there is
+    // outside the editor the same click is opening, and the editor closes on outside interactions —
+    // so the panel would open and vanish on the same click, leaving focus in the chip.
+    render(
+      // Stand-in for TokenChip's label, not real UI.
+      // eslint-disable-next-line jsx-a11y/label-has-associated-control
+      <label htmlFor="token-gloss">
+        <MorphemeBox
+          analysisLanguage="en"
+          disabled={false}
+          morphemes={MORPHEMES}
+          onEditBreakdown={jest.fn()}
+          onGlossFocus={jest.fn()}
+          popoverOpen={false}
+          token={WORD_TOKEN}
+        />
+        <input aria-label="Gloss for hello" id="token-gloss" />
+      </label>,
+    );
+    await userEvent.click(screen.getByText('-lo'));
+    expect(screen.getByRole('textbox', { name: 'Gloss for hello' })).not.toHaveFocus();
+  });
+
   it('does not call onEditBreakdown when disabled', async () => {
     const onEditBreakdown = jest.fn();
     renderBox({ disabled: true, onEditBreakdown });
     await userEvent.click(screen.getByText('hel'));
     expect(onEditBreakdown).not.toHaveBeenCalled();
+  });
+
+  it('calls onGlossFocus when a morpheme gloss input receives focus', async () => {
+    const onGlossFocus = jest.fn();
+    renderBox({ onGlossFocus });
+    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for morpheme -lo' }));
+    expect(onGlossFocus).toHaveBeenCalledTimes(1);
   });
 
   it('disables the gloss inputs when disabled', () => {
@@ -200,6 +234,7 @@ describe('MorphemeGlossInput', () => {
         column={1}
         disabled={false}
         morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={jest.fn()}
         tokenRef="tok-1"
       />,
     );
@@ -213,6 +248,7 @@ describe('MorphemeGlossInput', () => {
         column={1}
         disabled={false}
         morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }}
+        onFocus={jest.fn()}
         tokenRef="tok-1"
       />,
     );
@@ -229,6 +265,7 @@ describe('MorphemeGlossInput', () => {
         column={1}
         disabled={false}
         morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }}
+        onFocus={jest.fn()}
         tokenRef="tok-1"
       />,
     );
@@ -247,12 +284,29 @@ describe('MorphemeGlossInput', () => {
         column={1}
         disabled={false}
         morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={jest.fn()}
         tokenRef="tok-1"
       />,
     );
     await userEvent.type(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' }), 'not');
     await userEvent.tab();
     expect(dispatchMock).toHaveBeenCalledWith('tok-1', 'm-1', 'not');
+  });
+
+  it('reports focus so the containing chip can focus its token', async () => {
+    const onFocus = jest.fn();
+    render(
+      <MorphemeGlossInput
+        analysisLanguage="und"
+        column={1}
+        disabled={false}
+        morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={onFocus}
+        tokenRef="tok-1"
+      />,
+    );
+    await userEvent.click(screen.getByRole('textbox', { name: 'Gloss for morpheme un-' }));
+    expect(onFocus).toHaveBeenCalledTimes(1);
   });
 
   it('does not dispatch when disabled', () => {
@@ -265,6 +319,7 @@ describe('MorphemeGlossInput', () => {
         column={1}
         disabled
         morpheme={{ id: 'm-1', form: 'un-', writingSystem: 'und' }}
+        onFocus={jest.fn()}
         tokenRef="tok-1"
       />,
     );

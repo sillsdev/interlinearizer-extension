@@ -53,12 +53,12 @@ describe('MorphemeBreakdownPopover', () => {
     expect(input).toHaveValue('un- believe -able');
   });
 
-  it('auto-focuses and selects the input on mount', () => {
+  it('auto-focuses and selects the input on open', () => {
     renderPopover({ initialValue: 'word' });
     const input = screen.getByRole('textbox');
     expect(input).toHaveFocus();
-    // The mount effect calls .select(), so the whole value is selected and a fresh keystroke
-    // replaces it. Asserting the selection range catches a regression that drops the .select() call.
+    // The popover's open auto-focus selects the value too, so a fresh keystroke replaces it.
+    // Asserting the selection range catches a regression that suppresses that auto-focus.
     expect(input).toHaveProperty('selectionStart', 0);
     expect(input).toHaveProperty('selectionEnd', 'word'.length);
   });
@@ -140,8 +140,8 @@ describe('MorphemeBreakdownPopover', () => {
     const onSave = jest.fn();
     const onClose = jest.fn();
     renderPopover({ initialValue: 'te -st', onSave, onClose, surfaceText: 'test' });
-    // The platform-bible-react mock exposes a sentinel button that fires onInteractOutside,
-    // simulating a pointer interaction outside the popover.
+    // The platform-bible-react mock exposes a sentinel button that fires onPointerDownOutside,
+    // simulating a pointer press outside the popover.
     await userEvent.click(screen.getByTestId('popover-outside'));
     expect(onSave).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -344,6 +344,35 @@ describe('MorphemeBreakdownPopover', () => {
     );
     await userEvent.click(screen.getByTestId('popover-close'));
     expect(screen.getByRole('textbox', { name: 'morpheme gloss' })).toHaveFocus();
+  });
+
+  it('leaves focus alone when the popover was dismissed by a press outside it', async () => {
+    // A press outside has already put focus where the user aimed it — typically another token they
+    // clicked. Pulling focus back to this chip's first morpheme gloss would yank it out of that
+    // token, so the close-focus redirect is skipped for this dismissal route.
+    render(
+      <>
+        <label>
+          <input aria-label="morpheme gloss" data-morpheme-gloss="true" />
+          <input aria-label="token gloss" id="gloss-1" />
+          <MorphemeBreakdownPopover
+            glossInputId="gloss-1"
+            initialValue="word"
+            onClose={jest.fn()}
+            onSave={jest.fn()}
+            surfaceText="word"
+          />
+        </label>
+        <input aria-label="another token gloss" />
+      </>,
+    );
+    // fireEvent so the sentinels themselves never take focus: what matters is where the outside
+    // press left focus, which is stood in for by focusing the other token's gloss directly.
+    fireEvent.click(screen.getByTestId('popover-outside'));
+    const elsewhere = screen.getByRole('textbox', { name: 'another token gloss' });
+    elsewhere.focus();
+    fireEvent.click(screen.getByTestId('popover-close'));
+    expect(elsewhere).toHaveFocus();
   });
 
   describe('reset confirmation', () => {

@@ -34,7 +34,8 @@ temp-build
 # #endregion
 
 # AI files
-.claude
+.claude/*
+!.claude/skills/
 
 # Playwright output
 e2e-tests/.cdp-*

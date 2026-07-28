@@ -2,12 +2,9 @@ import { configureStore } from '@reduxjs/toolkit';
 import analysisReducer, { type AnalysisState } from './analysisSlice';
 
 /**
- * Creates a Redux store scoped to one `AnalysisStoreProvider` instance. Keeping the store local
- * rather than global means each WebView (or nested provider) has fully isolated state.
- *
- * @param preloadedState - Optional initial state, typically used to seed `initialAnalysis` and
- *   `analysisLanguage` from the provider props.
- * @returns A configured Redux store with the analysis reducer mounted at `state.analysis`.
+ * Creates a Redux store scoped to a single analysis provider instance, optionally seeded from that
+ * provider's props. Keeping the store local rather than global means each WebView, or nested
+ * provider, has fully isolated state.
  */
 export function createAnalysisStore(preloadedState?: { analysis: AnalysisState }) {
   return configureStore({

@@ -1,13 +1,3 @@
-/**
- * @file Re-groups a verse-tokenized {@link Book} into the user's custom segments per a
- *   {@link SegmentationDelta}, without touching the text-layer tokenizer.
- *
- *   {@link tokenizeBook} always produces one `Segment` per verse; this pass runs on its output and
- *   cuts the flat document-order token stream at the delta's effective boundaries. Untouched verses
- *   are reused by reference so analyses keep resolving and React memoization is undisturbed; only
- *   merged or split segments are rebuilt, with `baselineText` and per-token char offsets recomputed
- *   so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still holds.
- */
 import type {
   Book,
   ScriptureRef,
@@ -34,7 +24,6 @@ type SourcedToken = { token: Token; verse: Segment };
  * number (a split's later piece keeps its source verse's number).
  *
  * @param run - The run's tokens in document order, each tagged with its source verse. Non-empty.
- * @returns The rebuilt segment.
  */
 function buildSegment(run: SourcedToken[]): Segment {
   const firstSourced = run[0];
@@ -105,19 +94,19 @@ function buildSegment(run: SourcedToken[]): Segment {
 }
 
 /**
- * Re-groups `book`'s verse segments into the user's custom segments per `delta`.
+ * Re-groups a verse-tokenized {@link Book} into the user's custom segments, without touching the
+ * text-layer tokenizer.
  *
- * Returns `book` unchanged (by reference) for the default segmentation, so the common no-custom-
- * boundaries case incurs no work and no identity churn. Otherwise the flat token stream is cut at
- * the effective boundaries; a run that is exactly one original verse reuses that verse's `Segment`
- * object verbatim, while merged or split runs are rebuilt via {@link buildSegment}. Token-less
- * verses (empty verse markers) pass through as their own segments in document order, so they
- * survive a custom segmentation exactly as they do the default one.
+ * The book is returned unchanged, by reference, for the default segmentation, so the common
+ * no-custom-boundaries case incurs no work and no identity churn. Otherwise the flat document-order
+ * token stream is cut at the delta's effective boundaries. A run that is exactly one original verse
+ * reuses that verse's segment verbatim, so analyses keep resolving and React memoization is
+ * undisturbed; only merged or split runs are rebuilt, with baseline text and char offsets
+ * recomputed so the `baselineText.slice(charStart, charEnd) === surfaceText` invariant still
+ * holds.
  *
- * @param book - The verse-tokenized book from {@link tokenizeBook}.
- * @param delta - The user's boundary delta, or `undefined` for the default verse segmentation.
- * @returns A book with the custom segmentation applied, or `book` itself when `delta` is the
- *   default.
+ * Token-less verses (empty verse markers) pass through as their own segments in document order, so
+ * they survive a custom segmentation exactly as they do the default one.
  */
 export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
   if (isDefaultSegmentation(delta)) return book;

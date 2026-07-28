@@ -1,4 +1,3 @@
-/** @file Unit tests for components/ContinuousView.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -392,12 +391,7 @@ function makeLargeBook(count: number): Book {
 
 const scrollIntoViewMock = jest.fn();
 
-/**
- * Builds the lookup maps that ContinuousView's parent supplies, derived from a Book.
- *
- * @param book - The book to scan.
- * @returns The token-segment-id lookup and word-token-ref lookup.
- */
+/** Builds the lookup maps that ContinuousView's parent supplies, derived from a Book. */
 function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
@@ -424,10 +418,6 @@ function buildLookups(book: Book): {
  * Minimal required props for ContinuousView. Spread into render calls so tests only need to
  * override what they actually care about. The lookup maps are derived from `book` so they always
  * agree with what's rendered.
- *
- * @param book - The book the test will render with.
- * @param overrides - Optional prop overrides.
- * @returns A complete ContinuousView props object.
  */
 function requiredProps(
   book: Book,
@@ -1179,8 +1169,6 @@ describe('ContinuousView scroll behavior', () => {
    * GEN 1:1) so a single Next step crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in
    * GEN 1:1 and shows a link icon only while that segment is active, so it's a clean probe for
    * whether the active-segment relayout has committed.
-   *
-   * @returns A predicate reporting whether that in-segment link icon mounted in the latest render.
    */
   function renderHideInactiveCrossing(): () => boolean {
     const book = makeBook();
@@ -1297,11 +1285,7 @@ describe('ContinuousView scroll behavior', () => {
     const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     const mergedLookups = buildLookups(merged);
     let applyBoundaryEdit: () => void = () => {};
-    /**
-     * Stateful parent that starts on the verse book and swaps to the merged book on demand.
-     *
-     * @returns The rendered `ContinuousView` element.
-     */
+    /** Stateful parent that starts on the verse book and swaps to the merged book on demand. */
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-1');
       const [edited, setEdited] = useState(false);
@@ -1322,11 +1306,7 @@ describe('ContinuousView scroll behavior', () => {
         />
       );
     }
-    /**
-     * Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible.
-     *
-     * @returns `true` when that in-segment link icon is mounted and not hidden.
-     */
+    /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
     const inSegmentIconMounted = () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
@@ -1475,11 +1455,6 @@ describe('ContinuousView segmentation edits', () => {
   /**
    * Reads the inline opacity of the link-slot wrapper between `prevRef` and `nextRef`, the style
    * `PhraseSlot` uses to suppress link buttons outside the active segment.
-   *
-   * @param container - The render container to query.
-   * @param prevRef - Token ref on the start side of the slot.
-   * @param nextRef - Token ref on the end side of the slot.
-   * @returns The wrapper's inline `opacity` value.
    */
   function slotOpacity(container: HTMLElement, prevRef: string, nextRef: string): string {
     const icon = container.querySelector(
@@ -1520,7 +1495,6 @@ describe('ContinuousView split marker', () => {
    * split-gap marker can be exercised in the horizontal strip.
    *
    * @param altHeld - Whether Alt is held (defaults to held, so the marker appears).
-   * @returns The dispatch spy for assertions.
    */
   function renderStrip(altHeld = true) {
     const book = makeBook();

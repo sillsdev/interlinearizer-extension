@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/token-layout.ts. */
 /// <reference types="jest" />
 
 import type { Token } from 'interlinearizer';
@@ -17,24 +16,12 @@ import { makePhraseLink } from '../test-helpers';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a word token fixture.
- *
- * @param ref - Token reference.
- * @param surfaceText - Surface text.
- * @returns A word token.
- */
+/** Creates a word token fixture. */
 function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
 }
 
-/**
- * Creates a punctuation token fixture.
- *
- * @param ref - Token reference.
- * @param surfaceText - Surface text.
- * @returns A punctuation token.
- */
+/** Creates a punctuation token fixture. */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
 }
@@ -97,10 +84,6 @@ describe('resolveSlotFocus', () => {
   /**
    * Builds a focus context with the given segment id and optional phrase/free token; all other
    * fields default to undefined.
-   *
-   * @param focusedSegmentId - Segment id of the focused token, or `undefined`.
-   * @param overrides - Optional `focusedPhraseLink` / `focusedFreeToken` overrides.
-   * @returns A `FocusContext` for `resolveSlotFocus`.
    */
   function focusWithSegment(
     focusedSegmentId: string | undefined,

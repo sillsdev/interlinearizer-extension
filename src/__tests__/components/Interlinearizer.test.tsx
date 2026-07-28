@@ -1,4 +1,3 @@
-/** @file Unit tests for components/Interlinearizer.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -28,17 +27,9 @@ import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
-  /**
-   * Stub for the LocateFixed icon; renders a minimal SVG so icon-presence assertions work.
-   *
-   * @returns An SVG element with `data-testid="locate-fixed-icon"`.
-   */
+  /** Stub for the LocateFixed icon; renders a minimal SVG so icon-presence assertions work. */
   LocateFixed: () => <svg data-testid="locate-fixed-icon" />,
-  /**
-   * Stub for the Merge icon used by the between-rows merge control.
-   *
-   * @returns An SVG element with `data-testid="merge-icon"`.
-   */
+  /** Stub for the Merge icon used by the between-rows merge control. */
   Merge: () => <svg data-testid="merge-icon" />,
 }));
 
@@ -107,44 +98,24 @@ jest.mock('../../components/AnalysisStore', () => ({
   /**
    * Pass-through provider stub that renders children directly, keeping AnalysisStore.tsx out of
    * scope.
-   *
-   * @param props - Component props.
-   * @param props.children - Child nodes to render.
-   * @returns The children unchanged.
    */
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
-  /**
-   * Returns a fixed empty gloss string for any token.
-   *
-   * @returns An empty string.
-   */
+  /** Returns a fixed empty gloss string for any token. */
   useGloss: () => '',
-  /**
-   * Returns a no-op dispatch function.
-   *
-   * @returns A function that accepts any arguments and does nothing.
-   */
+  /** Returns a no-op dispatch function. */
   useGlossDispatch: () => () => {},
-  /**
-   * Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom.
-   *
-   * @returns An empty `Map`.
-   */
+  /** Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom. */
   usePhraseLinkMap: () => new Map(),
   /**
    * Returns the test-owned phrase-link map so straddled-boundary tests can seed phrases the
    * component's `straddledBoundaryRefs` memo sees.
-   *
-   * @returns The current phrase-link-by-id map.
    */
   usePhraseLinkByIdMap: () => mockPhraseLinkById,
   /**
    * Returns a getter over the test-owned phrase-link map so force-break tests can seed straddling
    * phrases.
-   *
-   * @returns A function returning the current map.
    */
   usePhraseLinkByIdGetter: () => () => mockPhraseLinkById,
   usePhraseDispatch: () => ({
@@ -159,9 +130,6 @@ jest.mock('../../components/ContinuousView', () => ({
   /**
    * ContinuousView stub; captures its props and the segmentation context (the wrapped,
    * force-breaking dispatch) so tests can invoke the dispatch directly.
-   *
-   * @param props - The props passed by Interlinearizer.
-   * @returns A minimal div carrying the focused token ref.
    */
   default: function ContinuousViewStub(props: CapturedContinuousViewProps) {
     capturedContinuousViewProps = props;
@@ -174,17 +142,7 @@ jest.mock('../../components/ContinuousView', () => ({
 
 jest.mock('../../components/SegmentView', () => ({
   __esModule: true,
-  /**
-   * Named export stub for SegmentView; captures received props and renders a minimal div.
-   *
-   * @param props - The props passed by Interlinearizer.
-   * @param props.segment - The segment being rendered.
-   * @param props.isActive - Whether this segment is the active verse.
-   * @param props.hoveredPhraseId - PhraseId currently hovered.
-   * @param props.onHoverPhrase - Hover callback.
-   * @param props.rest - Any additional props forwarded from the parent.
-   * @returns A div with `data-testid="segment-view"` and the segment id.
-   */
+  /** Named export stub for SegmentView; captures received props and renders a minimal div. */
   SegmentView: ({
     segment,
     isActive,
@@ -207,17 +165,7 @@ jest.mock('../../components/SegmentView', () => ({
       />
     );
   },
-  /**
-   * Default export stub for SegmentView; captures received props and renders a minimal div.
-   *
-   * @param props - The props passed by Interlinearizer.
-   * @param props.segment - The segment being rendered.
-   * @param props.isActive - Whether this segment is the active verse.
-   * @param props.hoveredPhraseId - PhraseId currently hovered.
-   * @param props.onHoverPhrase - Hover callback.
-   * @param props.rest - Any additional props forwarded from the parent.
-   * @returns A div with `data-testid="segment-view"` and the segment id.
-   */
+  /** Default export stub for SegmentView; captures received props and renders a minimal div. */
   default: function MockSegmentView({
     segment,
     isActive,
@@ -248,11 +196,7 @@ jest.mock('../../components/SegmentView', () => ({
 
 jest.mock('../../components/controls/EditPhraseControls', () => ({
   __esModule: true,
-  /**
-   * Minimal EditPhraseControls stub exposing the done button the toolbar tests assert on.
-   *
-   * @returns A stub div carrying the `done-edit-btn` test id.
-   */
+  /** Minimal EditPhraseControls stub exposing the done button the toolbar tests assert on. */
   default: () => (
     <div data-testid="edit-phrase-controls">
       <button data-testid="done-edit-btn" type="button">
@@ -264,11 +208,7 @@ jest.mock('../../components/controls/EditPhraseControls', () => ({
 
 jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
-  /**
-   * Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on.
-   *
-   * @returns A stub div carrying the `unlink-confirm` test id.
-   */
+  /** Minimal UnlinkPhraseConfirm stub exposing the confirm container the toolbar tests assert on. */
   default: () => <div data-testid="unlink-confirm" />,
 }));
 
@@ -285,9 +225,6 @@ type BookWithOptionalVerseStarts = Omit<Book, 'segments'> & {
  * hand-built fixture segment that lacks one, so the fixtures satisfy the `Segment` shape without
  * every literal repeating the boilerplate. Segments that already carry `verseStarts` (e.g. produced
  * by `resegmentBook`) are left untouched.
- *
- * @param book - The fixture book to normalize; its segments may omit `verseStarts`.
- * @returns The book with every segment carrying at least one verse start.
  */
 function withDefaultVerseStarts(book: BookWithOptionalVerseStarts): Book {
   return {
@@ -312,9 +249,6 @@ const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', seg
  * Builds a GEN book with `count` single-token verses in chapter 1. Used to exercise the segment
  * window's recenter fade, which only triggers when the new active verse is outside the rendered
  * window — impossible with the small fixtures above.
- *
- * @param count - Number of verses to generate.
- * @returns A {@link Book} with `count` chapter-1 segments.
  */
 function makeLargeBook(count: number): Book {
   const segments: Segment[] = [];
@@ -572,11 +506,6 @@ const GEN_SUPERSCRIPTION_BOOK: Book = withDefaultVerseStarts({
  * `useInterlinearNav` call resolves. `Interlinearizer` writes the reference through the context's
  * `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang off the
  * `navigate` spy supplied here.
- *
- * @param ui - The `<Interlinearizer>` element to wrap.
- * @param navigate - Spy wired as the scroll-group hook's setter; receives the reference each
- *   `navigate` call writes. Defaults to a noop.
- * @returns The element wrapped in a nav provider.
  */
 function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () => {}): ReactNode {
   const scrollGroupHook = (): ScrollGroupTuple => [
@@ -597,9 +526,6 @@ function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () =
  * Renders an Interlinearizer component with sensible defaults, allowing individual props to be
  * overridden per test. Wrapped in an {@link InterlinearNavProvider} via {@link withNav}; `navigate`
  * is the spy that captures references the component writes through the context.
- *
- * @param options - Partial props to merge over the defaults.
- * @returns The render result from @testing-library/react.
  */
 function renderInterlinearizer({
   book = GEN_1_1_BOOK,
@@ -1293,9 +1219,6 @@ describe('Interlinearizer', () => {
    * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
    * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
    * Restored automatically by `restoreMocks`.
-   *
-   * @param orderedSegmentIds - Segment ids in document order.
-   * @param topSegmentId - The segment id to place flush against the container top.
    */
   function positionSegmentAtTop(orderedSegmentIds: string[], topSegmentId: string): void {
     const targetIndex = orderedSegmentIds.indexOf(topSegmentId);
@@ -1634,8 +1557,6 @@ describe('Interlinearizer', () => {
      * Stateful wrapper that feeds its own `ref` state as the `scrRef` prop to
      * {@link Interlinearizer}, letting `updateRef` simulate navigate calls from outside the
      * component tree.
-     *
-     * @returns The wrapped Interlinearizer element.
      */
     function Wrapper() {
       const [ref, setRef] = useState<SerializedVerseRef>({
@@ -1725,8 +1646,6 @@ describe('segmentation dispatch force-break', () => {
   /**
    * Builds a raw segmentation-dispatch spy; the wrapped dispatch the views receive must delegate
    * every call to it.
-   *
-   * @returns A dispatch whose methods are jest spies.
    */
   function makeRawDispatch(): SegmentationDispatch {
     return { merge: jest.fn(), split: jest.fn(), move: jest.fn() };
@@ -1735,10 +1654,6 @@ describe('segmentation dispatch force-break', () => {
   /**
    * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
    * context) and returns the wrapped dispatch.
-   *
-   * @param raw - The raw dispatch handed to the component.
-   * @param book - The book fixture to render.
-   * @returns The wrapped dispatch captured from the segmentation context.
    */
   function renderAndCaptureDispatch(raw: SegmentationDispatch, book: Book): SegmentationDispatch {
     renderInterlinearizer({ book, continuousScroll: true, segmentationDispatch: raw });
@@ -1983,10 +1898,6 @@ describe('focus preservation across segmentation edits', () => {
   /**
    * Builds the wrapped `<Interlinearizer>` element used by these tests, so the initial render and
    * the post-edit rerender share identical props apart from the book.
-   *
-   * @param book - The (re)segmented book to render.
-   * @param scrRef - The active scripture reference.
-   * @returns The element wrapped in a nav provider.
    */
   function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
     return withNav(
@@ -2055,9 +1966,6 @@ describe('straddled boundary refs', () => {
    * Renders with continuous scroll on (so the stubbed ContinuousView captures the segmentation
    * context) and returns the straddled-boundary set the component computed. Phrase links must be
    * seeded into `mockPhraseLinkById` before calling.
-   *
-   * @param book - The book fixture to render.
-   * @returns The `straddledBoundaryRefs` set captured from the segmentation context.
    */
   function renderAndCaptureStraddled(book: Book): ReadonlySet<string> {
     renderInterlinearizer({ book, continuousScroll: true });
@@ -2100,10 +2008,6 @@ describe('segmentationVersion pass-through', () => {
   /**
    * Builds the wrapped `<Interlinearizer>` element for the pass-through tests, varying only the
    * book and segmentation version between renders.
-   *
-   * @param book - The (re)segmented book to render.
-   * @param segmentationVersion - The boundary-edit counter forwarded to the segment window.
-   * @returns The element wrapped in a nav provider.
    */
   function versionedEl(book: Book, segmentationVersion: number): ReactNode {
     return withNav(

@@ -1,4 +1,3 @@
-/** @file Unit tests for UnlinkPhraseConfirm component. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

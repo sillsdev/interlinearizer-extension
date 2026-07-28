@@ -1,4 +1,3 @@
-/** @file Unit tests for components/InterlinearizerLoader.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -113,12 +112,6 @@ jest.mock('../../components/modals/WipeModal', () => ({
   /**
    * Minimal WipeModal stand-in exposing per-scope confirm buttons and cancel so tests can drive the
    * loader's wipe handlers without the real dialog's localization or scope-picker UI.
-   *
-   * @param hasActiveBook - Whether a book is loaded; surfaced so tests can assert the loader passes
-   *   it through.
-   * @param onConfirm - Invoked with the chosen scope (`'book'` or `'all'`) when the user confirms.
-   * @param onCancel - Invoked when the user backs out.
-   * @returns A panel with a confirm button per scope plus cancel.
    */
   WipeModal: ({
     hasActiveBook,
@@ -215,17 +208,6 @@ jest.mock('../../components/modals/ProjectModals', () => ({
    * loader now passes (`hasUnsavedWork`, `getDraftSnapshot`, `loadFromProject`, `markSynced`);
    * `hasUnsavedWork` is surfaced as a `data-*` attribute so tests can assert the loader feeds it
    * the combined committed-and-pending unsaved state.
-   *
-   * @param modal - Current modal identifier controlling which stub panel is rendered.
-   * @param setModal - Callback to transition to a different modal state.
-   * @param activeProject - The currently active interlinear project, or undefined when none is
-   *   selected.
-   * @param defaultAnalysisLanguage - BCP 47 tag forwarded as the create modal's default language.
-   * @param hasUnsavedWork - Whether the draft has committed-but-unsaved changes or uncommitted
-   *   in-progress typing; gates the discard confirmation in the real component.
-   * @param useWebViewState - Injected hook used to read and write persisted WebView state; must
-   *   support the `'activeProject'` key.
-   * @returns A JSX element containing the stub modal panels keyed by `modal`.
    */
   default: function StubProjectModals({
     modal,
@@ -360,11 +342,9 @@ jest.mock('../../components/modals/ProjectModals', () => ({
  * group and WebView-state hooks. Centralizing the render keeps every call site supplying the
  * required `updateWebViewDefinition` prop.
  *
- * @param options - Optional overrides.
  * @param options.useWebViewScrollGroupScrRef - Scroll-group hook; defaults to a GEN 1:1 stub.
  * @param options.useWebViewState - WebView-state hook; defaults to a fresh empty store.
  * @param options.projectId - Source project ID; defaults to {@link testProjectId}.
- * @returns The Testing Library render result plus the `updateWebViewDefinition` spy.
  */
 function renderLoader(
   options: {
@@ -385,11 +365,7 @@ function renderLoader(
   return { ...result, updateWebViewDefinition };
 }
 
-/**
- * Configures useInterlinearizerBookData to return the given state.
- *
- * @param overrides - Partial hook result; all fields default to a successful loaded state
- */
+/** Configures useInterlinearizerBookData to return the given state. */
 function mockBookData(
   overrides: Partial<{
     book: Book | undefined;
@@ -415,7 +391,6 @@ function mockBookData(
  * @param value - The current boolean value applied to every setting; defaults to `false`
  * @param onChange - The change handler for every setting; defaults to a distinct jest.fn() per key
  * @param isLoading - Whether the settings are loading; defaults to `false`
- * @returns A map from setting key to that key's `onChange` mock.
  */
 function mockOptimisticSetting(
   value = false,
@@ -1302,11 +1277,7 @@ describe('InterlinearizerLoader', () => {
       ],
     };
 
-    /**
-     * Returns the segmentation delta from the most recent saveDraft call.
-     *
-     * @returns The persisted draft's `segmentation`, or `undefined` when not set / no call.
-     */
+    /** Returns the segmentation delta from the most recent saveDraft call. */
     function lastPersistedSegmentation(): DraftProject['segmentation'] {
       const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');
       const last = calls[calls.length - 1];
@@ -1318,7 +1289,6 @@ describe('InterlinearizerLoader', () => {
      * Returns the segmentation dispatch captured from the rendered interlinearizer, failing the
      * test if none was captured.
      *
-     * @returns The captured `segmentationDispatch`.
      * @throws If the interlinearizer did not render and capture a dispatch.
      */
     function getSegmentationDispatch(): SegmentationDispatch {
@@ -1531,7 +1501,6 @@ describe('InterlinearizerLoader', () => {
      * Renders the loader on {@link BOUNDARY_SHAPES_BOOK} and returns the captured segmentation
      * dispatch so a test can drive boundary edits.
      *
-     * @returns The captured `segmentationDispatch`.
      * @throws If the interlinearizer did not render and capture a dispatch.
      */
     async function renderBoundaryBook(): Promise<SegmentationDispatch> {
@@ -2024,8 +1993,6 @@ describe('InterlinearizerLoader', () => {
     /**
      * Reads the live opacity of the book-fade wrapper the loader renders from the context's fade
      * phase.
-     *
-     * @returns The wrapper's inline `opacity` style value.
      */
     function fadeOpacity(): string {
       return screen.getByTestId('book-fade-wrapper').style.opacity;
@@ -2034,9 +2001,6 @@ describe('InterlinearizerLoader', () => {
     /**
      * Builds a scroll-group hook whose reference can be restaged between rerenders. A fresh object
      * identity is required each change so the provider adopts it as a new `scrRef`.
-     *
-     * @param initial - The reference reported on the first render.
-     * @returns A `[hook, setRef]` pair.
      */
     function makeMutableScrollGroupHook(
       initial: SerializedVerseRef,
@@ -2055,9 +2019,6 @@ describe('InterlinearizerLoader', () => {
      * Renders the loader with a mutable scroll-group hook, returning a `rerenderNow` that rebuilds
      * a fresh element so React re-invokes the component (the stub mutates a closure variable, not
      * state, so an identical element would let React bail out).
-     *
-     * @param initial - The scroll-group reference reported on the first render.
-     * @returns `setRef` to stage the next reference and `rerenderNow` to re-render with it.
      */
     function renderFadeLoader(initial: SerializedVerseRef) {
       const [scrollGroupHook, setRef] = makeMutableScrollGroupHook(initial);

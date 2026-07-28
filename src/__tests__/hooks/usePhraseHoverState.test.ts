@@ -1,4 +1,3 @@
-/** @file Unit tests for the usePhraseHoverState hook. */
 /// <reference types="jest" />
 
 import { act, renderHook } from '@testing-library/react';

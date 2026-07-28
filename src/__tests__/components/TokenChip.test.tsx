@@ -1,4 +1,3 @@
-/** @file Unit tests for components/TokenChip.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -21,12 +20,7 @@ beforeEach(() => {
   jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
 });
 jest.mock('../../components/MorphemeEditor', () => ({
-  /**
-   * Stub popover that renders a save button so tests can trigger onSave.
-   *
-   * @param props - Receives the same props as the real popover.
-   * @returns A test stub element with a save button.
-   */
+  /** Stub popover that renders a save button so tests can trigger onSave. */
   MorphemeBreakdownPopover({
     onSave,
     onClose,
@@ -63,9 +57,6 @@ jest.mock('../../components/MorphemeBox', () => ({
    * Stub box that surfaces its `onEditBreakdown` callback as a button so analyzed-path tests can
    * open the editor, and echoes its `disabled`/`popoverOpen` props for assertions. The box's grid
    * internals (forms, gloss inputs, RTL order, hover, active look) are tested in MorphemeBox.test.
-   *
-   * @param props - Receives the same props as the real box.
-   * @returns A test stub element with an edit-breakdown trigger.
    */
   MorphemeBox({
     onEditBreakdown,
@@ -101,8 +92,6 @@ const WORD_TOKEN = {
 /**
  * Minimal required props for {@link TokenChip}. Spread into render calls so tests only need to
  * override what they actually care about.
- *
- * @returns An object with all required props set to no-op stubs.
  */
 function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void } {
   return {

@@ -1,4 +1,3 @@
-/** @file Unit tests for components/MorphemeBox.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -37,9 +36,6 @@ const MORPHEMES: MorphemeAnalysis[] = [
 /**
  * Renders {@link MorphemeBox} with required props defaulted so each test overrides only what it
  * asserts on.
- *
- * @param props - Overrides merged over the defaults.
- * @returns The render result.
  */
 function renderBox(props: Partial<Parameters<typeof MorphemeBox>[0]> = {}) {
   return render(

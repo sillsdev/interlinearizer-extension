@@ -1,4 +1,3 @@
-/** @file Unit tests for CreateProjectModal (configures a new draft; does not persist a project). */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

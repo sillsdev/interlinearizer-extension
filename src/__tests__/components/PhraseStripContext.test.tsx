@@ -1,4 +1,3 @@
-/** @file Unit tests for components/PhraseStripContext.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -9,8 +8,6 @@ import { makePhraseStripContext } from '../test-helpers';
 /**
  * Test consumer that reads the strip context and renders one of its values so the test can assert
  * the provided value reached the consumer.
- *
- * @returns A span containing the resolved `editPhraseSegmentId`.
  */
 function Consumer() {
   const { editPhraseSegmentId } = usePhraseStripContext();

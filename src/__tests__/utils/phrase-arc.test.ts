@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/phrase-arc.ts */
 /// <reference types="jest" />
 
 import {
@@ -27,12 +26,6 @@ import { makePhraseLink } from '../test-helpers';
 /**
  * Creates a minimal `DOMRect`-like plain object. jsdom's `getBoundingClientRect` returns zeroes by
  * default; we override per-element via `jest.spyOn` in each test that needs real geometry.
- *
- * @param left - Left edge in pixels.
- * @param top - Top edge in pixels.
- * @param width - Width in pixels.
- * @param height - Height in pixels.
- * @returns A plain object shaped like `DOMRect`.
  */
 function rect(left: number, top: number, width: number, height: number): DOMRect {
   return {
@@ -52,11 +45,6 @@ function rect(left: number, top: number, width: number, height: number): DOMRect
  * Recovers a phrase arc's nesting level from its computed path. A run line sits at `rowTop -
  * (ARC_BASE_STEM + level * ARC_LEVEL_STEP)`, so inverting `midY` against the row top yields the
  * level the leveling assigned — the public stand-in for the removed `levelByPhraseId`.
- *
- * @param paths - Computed arc paths from {@link computeAllArcPaths}.
- * @param phraseId - The phrase whose level is wanted.
- * @param rowTop - The visual top of the row the phrase's (upper) run rides above.
- * @returns The recovered nesting level, or `undefined` when the phrase has no path.
  */
 function levelOf(paths: ArcPath[], phraseId: string, rowTop: number): number | undefined {
   const path = paths.find((p) => p.phraseId === phraseId);
@@ -68,9 +56,6 @@ function levelOf(paths: ArcPath[], phraseId: string, rowTop: number): number | u
  * Builds a fake scroll container element with a list of `[data-phrase-box]` children. Each child's
  * `getBoundingClientRect` is stubbed to return the provided rect. The container's own rect is fixed
  * at (0, 0) with no scroll offset.
- *
- * @param boxes - Array of `{ phraseId, rect }` describing each phrase-box child.
- * @returns The container element.
  */
 function buildContainer(boxes: { phraseId: string; r: DOMRect }[]): Element {
   const container = document.createElement('div');
@@ -984,13 +969,6 @@ describe('deconflictSplitButtons', () => {
   /**
    * Builds an `ArcPath` whose button position and run extent are the only fields that matter to
    * {@link deconflictSplitButtons}; `d`/`phraseId`/`splitAfterTokenRef` are placeholders.
-   *
-   * @param midX - Button x center.
-   * @param midY - Button y (channel line).
-   * @param runLeft - Left bound of the arc run.
-   * @param runRight - Right bound of the arc run.
-   * @param phraseId - Phrase id (defaults unique-ish per call site via the caller).
-   * @returns A populated `ArcPath`.
    */
   function path(
     midX: number,

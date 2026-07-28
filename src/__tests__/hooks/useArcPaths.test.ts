@@ -1,4 +1,3 @@
-/** @file Unit tests for hooks/useArcPaths.ts. */
 /// <reference types="jest" />
 
 import { act, renderHook } from '@testing-library/react';
@@ -45,9 +44,6 @@ describe('useArcPaths', () => {
   /**
    * Installs a stubbed `ResizeObserver` with a manual rAF queue. The observer callback defers its
    * measurement to the next animation frame, so `pump` drives rAF by hand to flush it.
-   *
-   * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
-   *   `computeAllArcPaths` calls it triggered.
    */
   const installObserverHarness = (): { pump: () => number } => {
     const rafCallbacks: FrameRequestCallback[] = [];
@@ -82,8 +78,6 @@ describe('useArcPaths', () => {
     /**
      * Fires the ResizeObserver callback and flushes the queued rAF, then reports how many
      * measurement passes (`computeAllArcPaths` calls) that observer tick triggered.
-     *
-     * @returns The number of `computeAllArcPaths` calls made during this pump.
      */
     const pump = (): number => {
       const before = computeAllArcPaths.mock.calls.length;
@@ -323,12 +317,7 @@ describe('useArcPaths', () => {
   });
 
   describe('settle-aware measurement', () => {
-    /**
-     * Builds a minimal measurement result whose signature is distinguished by the arc's `d` string.
-     *
-     * @param d - The SVG path string to embed in the single returned arc.
-     * @returns A `computeAllArcPaths`-shaped result with one arc and zero paddings.
-     */
+    /** Builds a minimal measurement result whose signature is distinguished by the arc's `d` string. */
     const measurementWithPath = (d: string) => ({
       paths: [
         { phraseId: 'p1', d, midX: 5, midY: 0, runLeft: 0, runRight: 10, splitAfterTokenRef: 't' },

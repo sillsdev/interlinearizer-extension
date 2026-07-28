@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/split-anchor.ts (the punctuation-travel split-anchor resolver). */
 /// <reference types="jest" />
 
 import type { Token } from 'interlinearizer';
@@ -13,10 +12,6 @@ import { resolveSplitAnchor } from '../../utils/split-anchor';
  * whitespace between them is taken verbatim from `baselineText` (never a token). The returned run
  * always begins and ends with a word token, matching how {@link resolveSplitAnchor} is called for a
  * word-word gap.
- *
- * @param baselineText - The literal baseline string the tokens are sliced from.
- * @param spans - Ordered `[surfaceText, type]` pairs naming each token's surface text and kind.
- * @returns The tokens in document order, each carrying `ref`, `charStart`, and `charEnd`.
  */
 function tokensFrom(
   baselineText: string,
@@ -44,10 +39,6 @@ function tokensFrom(
  * Resolves the split anchor for a word-word gap described as a literal baseline string plus its
  * token spans. The first span must be the preceding word and the last the following word; the spans
  * in between are the gap punctuation.
- *
- * @param baselineText - The literal baseline string for the gap.
- * @param spans - Ordered `[surfaceText, type]` pairs; first and last must be word tokens.
- * @returns The resolved anchor token ref.
  */
 function anchorFor(
   baselineText: string,

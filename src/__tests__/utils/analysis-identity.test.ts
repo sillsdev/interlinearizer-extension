@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/analysis-identity.ts. */
 /// <reference types="jest" />
 
 import type { TokenAnalysis } from 'interlinearizer';
@@ -20,9 +19,6 @@ describe('normalizeSurfaceForm', () => {
 /**
  * Builds a `TokenAnalysis` with the given fields over a stable id/surface, so each matrix test can
  * vary exactly one field.
- *
- * @param overrides - Partial fields to merge onto the base analysis.
- * @returns A `TokenAnalysis` for use in equality assertions.
  */
 function ta(overrides: Partial<TokenAnalysis>): TokenAnalysis {
   return { id: 'id', surfaceText: 'word', ...overrides };

@@ -1,4 +1,3 @@
-/** @file Unit tests for store/analysisSlice.ts. */
 /// <reference types="jest" />
 
 import type {
@@ -38,12 +37,7 @@ import {
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makePhraseLink } from '../test-helpers';
 
-/**
- * Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`.
- *
- * @param ta - The `TokenAnalysis` the link should reference.
- * @returns A `TokenAnalysisLink` with `status: 'approved'` and `tokenRef: 'tok-1'`.
- */
+/** Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`. */
 function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   return {
     analysisId: ta.id,
@@ -52,12 +46,7 @@ function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   };
 }
 
-/**
- * Builds a minimal `TextAnalysis` with a single approved link for `tok-1`/`ta-1`.
- *
- * @param ta - The `TokenAnalysis` payload to include.
- * @returns A `TextAnalysis` seeded with one approved token analysis link.
- */
+/** Builds a minimal `TextAnalysis` with a single approved link for `tok-1`/`ta-1`. */
 function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
   return {
     ...emptyAnalysis(),
@@ -69,10 +58,6 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
 /**
  * Counts approved links on the same payload as `tokenRef`'s own approved link, used to assert
  * sharing without reaching into the link arrays at each call site.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` whose payload's shared count is wanted.
- * @returns The number of approved links on that token's payload, or 0 when it has no approved link.
  */
 function approvedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
   const { tokenAnalysisLinks } = state.analysis;
@@ -388,12 +373,7 @@ describe('selectApprovedGloss', () => {
 // Phrase reducers
 // ---------------------------------------------------------------------------
 
-/**
- * Builds a `TextAnalysis` seeded with the given approved phrase link.
- *
- * @param link - The `PhraseAnalysisLink` to include.
- * @returns A `TextAnalysis` with the link and its corresponding `PhraseAnalysis`.
- */
+/** Builds a `TextAnalysis` seeded with the given approved phrase link. */
 function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
   return {
     ...emptyAnalysis(),
@@ -764,9 +744,7 @@ describe('selectPhraseGloss', () => {
 /**
  * Builds a `TextAnalysis` seeded with a single approved `SegmentAnalysis` for `seg-1`.
  *
- * @param analysis - The `SegmentAnalysis` payload to include.
  * @param link - Optional override for the link; defaults to an approved link for `seg-1`.
- * @returns A `TextAnalysis` with the segment analysis and its link.
  */
 function makeAnalysisWithSegment(
   analysis: SegmentAnalysis,
@@ -2095,10 +2073,6 @@ describe('selectMorphemeResetLosesGlosses', () => {
   /**
    * Writes a two-morpheme breakdown for `tokenRef` and returns the id of its first morpheme, so
    * tests can gloss a morpheme whose id the reducer generated.
-   *
-   * @param store - The analysis store to dispatch into.
-   * @param tokenRef - The `Token.ref` to break down.
-   * @returns The first morpheme's generated id.
    */
   function breakDown(store: ReturnType<typeof createAnalysisStore>, tokenRef: string): string {
     store.dispatch(writeMorphemes(tokenRef, 'cats', ['cat', '-s'], 'en'));

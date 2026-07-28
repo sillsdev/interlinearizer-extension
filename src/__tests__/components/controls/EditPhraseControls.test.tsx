@@ -1,4 +1,3 @@
-/** @file Unit tests for components/EditPhraseControls.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -34,9 +33,6 @@ describe('EditPhraseControls', () => {
    * Builds the phrase-link map the component reads via `usePhraseLinkByIdMap`, seeded with a phrase
    * link for `phrase-1` containing `tokenCount` tokens so the live phrase has a known size. A
    * `tokenCount` of `0` returns an empty map, so the component sees the phrase as absent.
-   *
-   * @param tokenCount - Number of tokens to place in the seeded phrase link; `0` omits the link.
-   * @returns A map from phrase id to its `PhraseAnalysisLink`, empty when `tokenCount` is `0`.
    */
   function makePhraseLinkByIdMap(tokenCount: number): Map<string, PhraseAnalysisLink> {
     if (tokenCount === 0) return new Map();
@@ -44,13 +40,7 @@ describe('EditPhraseControls', () => {
     return new Map([['phrase-1', makePhraseLink('phrase-1', tokenRefs)]]);
   }
 
-  /**
-   * Renders `EditPhraseControls` with the phrase-link map stubbed to a phrase of the given size.
-   *
-   * @param tokenCount - Number of tokens in the seeded phrase.
-   * @param setPhraseMode - Setter spy passed to the component.
-   * @returns The rendered element tree.
-   */
+  /** Renders `EditPhraseControls` with the phrase-link map stubbed to a phrase of the given size. */
   function renderWithPhraseSize(tokenCount: number, setPhraseMode: jest.Mock): ReactElement {
     mockUsePhraseLinkByIdMap.mockReturnValue(makePhraseLinkByIdMap(tokenCount));
     return <EditPhraseControls phraseMode={PHRASE_MODE} setPhraseMode={setPhraseMode} />;

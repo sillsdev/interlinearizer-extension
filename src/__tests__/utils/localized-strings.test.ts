@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/localized-strings.ts. */
 /// <reference types="jest" />
 
 import { resolvedOrEmpty } from '../../utils/localized-strings';

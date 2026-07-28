@@ -1,4 +1,3 @@
-/** @file Unit tests for {@link tokenizeBook}. */
 /// <reference types="jest" />
 
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
@@ -7,9 +6,6 @@ import type { RawBook } from 'parsers/papi/usjBookExtractor';
 /**
  * Builds a minimal RawBook fixture for GEN with the given verses. Each verse's rendered `number`
  * defaults to the verse portion of its sid when not given, so existing call sites stay terse.
- *
- * @param verses - Array of verse objects (sid + text, optional number) to include in the book.
- * @returns A RawBook with fixed bookCode, writingSystem, and contentHash.
  */
 function makeRawBook(verses: { sid: string; text: string; number?: string }[]): RawBook {
   return {

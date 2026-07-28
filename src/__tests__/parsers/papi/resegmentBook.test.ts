@@ -1,4 +1,3 @@
-/** @file Unit tests for {@link resegmentBook}. */
 /// <reference types="jest" />
 
 import type { Book } from 'interlinearizer';
@@ -8,9 +7,6 @@ import { resegmentBook } from 'parsers/papi/resegmentBook';
 /**
  * Builds a verse-tokenized GEN book from the given verses. Each verse's rendered `number` defaults
  * to the verse portion of its sid when not given.
- *
- * @param verses - Verse SID + text pairs (optional number).
- * @returns The tokenized book.
  */
 function makeBook(verses: { sid: string; text: string; number?: string }[]): Book {
   return tokenizeBook({

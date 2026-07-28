@@ -21,10 +21,7 @@ declare global {
  * Builds a single-token word segment for the given chapter/verse. Token surface text is irrelevant
  * to windowing, so it is a fixed stub.
  *
- * @param chapter - Chapter number for the segment's refs.
- * @param verse - Verse number for the segment's refs.
  * @param book - Book code for the segment's refs; defaults to `GEN`.
- * @returns A minimal {@link Segment}.
  */
 function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
   return {
@@ -50,10 +47,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
  * Builds a book whose segments span two chapters: `chapter1Count` verses in chapter 1 followed by
  * `chapter2Count` verses in chapter 2.
  *
- * @param chapter1Count - Number of verses in chapter 1.
- * @param chapter2Count - Number of verses in chapter 2.
  * @param book - Book code for the book and its segments; defaults to `GEN`.
- * @returns A {@link Book} with the combined flat segment list.
  */
 function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): Book {
   const segments: Segment[] = [];
@@ -65,10 +59,6 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
 /**
  * Renders {@link useSegmentWindow} with a real, attached scroll container so sentinel ref callbacks
  * register with the stubbed observer and `scrollHeight`/`scrollTop` are writable for assertions.
- *
- * @param book - The book to window.
- * @param scrRef - The scripture reference whose verse anchors the window.
- * @returns The render-hook result plus the scroll container element.
  */
 function renderSegmentWindow(
   book: Book,
@@ -129,11 +119,6 @@ function renderSegmentWindow(
 /**
  * Mounts the rendered window's sentinel elements into `container` so the observer has real targets.
  * Returns the created top/bottom elements.
- *
- * @param container - The scroll container the sentinels live in.
- * @param topRef - The hook's top sentinel ref callback.
- * @param bottomRef - The hook's bottom sentinel ref callback.
- * @returns The mounted sentinel elements.
  */
 function mountSentinels(
   container: HTMLElement,
@@ -154,9 +139,6 @@ function mountSentinels(
 /**
  * Installs a stub `ResizeObserver` that records the most recently created callback and the elements
  * it observes, for tests that drive the scroll-compensation / re-snap observer by hand.
- *
- * @returns `fire` to invoke the recorded observer callback, `observedTargets` to read the elements
- *   the most recent observer watches, and `restore` to reinstate the original.
  */
 function installResizeObserver(): {
   fire: () => void;
@@ -204,8 +186,6 @@ function installResizeObserver(): {
  * Stubs `getBoundingClientRect` on an element to report fixed top and bottom edges, so the window
  * hook's geometry reads (cull walks, extend anchors, sentinel offsets) are deterministic in jsdom.
  *
- * @param el - The element to stub.
- * @param top - The `top` value the rect should report.
  * @param bottom - The `bottom` value the rect should report; defaults to `top` (zero height).
  */
 function stubRect(el: Element, top: number, bottom: number = top): void {
@@ -225,10 +205,6 @@ function stubRect(el: Element, top: number, bottom: number = top): void {
 /**
  * Mounts one stub segment root per id into `container`, carrying the `data-segment-id` attribute
  * the window hook uses to enumerate mounted segments for cull measurement and extend anchoring.
- *
- * @param container - The scroll container to mount into.
- * @param ids - Segment ids in window order.
- * @returns The mounted elements, index-aligned with `ids`.
  */
 function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLElement[] {
   return ids.map((id) => {
@@ -242,9 +218,6 @@ function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLEl
 /**
  * Mounts a stub segment marked `aria-current="true"` — the recenter target the window hook snaps to
  * the top — into `container`.
- *
- * @param container - The scroll container to mount into.
- * @returns The mounted active-segment element.
  */
 function mountActiveSegment(container: HTMLElement): HTMLElement {
   const active = document.createElement('div');
@@ -256,10 +229,6 @@ function mountActiveSegment(container: HTMLElement): HTMLElement {
 /**
  * Mounts a stub `[data-snap-spacer]` div — the element `snapActiveToTop` grows when
  * `scrollIntoView` can't reach the top — into `container`.
- *
- * @param container - The scroll container to mount into.
- * @param initialHeight - Optional starting `style.height` (e.g. to assert it resets to `0px`).
- * @returns The mounted spacer element.
  */
 function mountSnapSpacer(container: HTMLElement, initialHeight?: string): HTMLElement {
   const spacer = document.createElement('div');
@@ -1387,8 +1356,6 @@ describe('useSegmentWindow', () => {
     /**
      * Installs the shared stub `ResizeObserver` and registers its restore for this block's
      * `afterEach`, so callers only need the returned `fire` helper.
-     *
-     * @returns `fire`, which invokes the recorded observer callback inside `act`.
      */
     function installBlockResizeObserver(): { fire: () => void } {
       const { fire, restore } = installResizeObserver();
@@ -1401,8 +1368,6 @@ describe('useSegmentWindow', () => {
      * the recenter-in-flight gate), mounts the segment wrapper plus the window's segment roots
      * (anchor candidates), and stubs the container and first-segment rects so the anchor seeds
      * deterministically (first segment visible at offset 10).
-     *
-     * @returns The render result plus the observer `fire` helper and the mounted segment elements.
      */
     function renderSettledWindow() {
       const { fire } = installBlockResizeObserver();

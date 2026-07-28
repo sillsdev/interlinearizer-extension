@@ -12,7 +12,7 @@ jest.mock('../../components/AnalysisStore');
 
 const LOCALIZED = {
   '%interlinearizer_morphemeEditor_splitLabel%': 'Split into morphemes',
-  '%interlinearizer_morphemeEditor_delete%': 'Reset',
+  '%interlinearizer_morphemeEditor_reset%': 'Reset',
   '%interlinearizer_morphemeEditor_cancel%': 'Cancel',
   '%interlinearizer_morphemeEditor_done%': 'Done',
   '%interlinearizer_morphemeEditor_emptyHint%': 'Enter morpheme forms separated by spaces',

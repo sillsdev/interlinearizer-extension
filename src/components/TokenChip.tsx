@@ -46,7 +46,7 @@ const STRING_KEYS = [
  * When `showMorphology` is true, the morpheme breakdown is shown below the surface text. For
  * analyzed tokens this is a boxed grid ({@link MorphemeBox}) aligning each morpheme form over its
  * gloss field; for unanalyzed tokens it is a muted "define breakdown" button showing the surface
- * text. Clicking either opens an inline popover where the user can define, edit, or delete the
+ * text. Clicking either opens an inline popover where the user can define, edit, or reset the
  * morpheme breakdown.
  *
  * @param props - Component props

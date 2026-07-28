@@ -11,8 +11,10 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import type {
   ChangeEventHandler,
@@ -702,10 +704,16 @@ export function PopoverAnchor({
  * component implements positioning, portaling, and dismissal internally; this stub exposes the
  * dismissal callbacks so tests can simulate them:
  *
- * - `onOpenAutoFocus` is invoked once on mount (mirroring Radix's open auto-focus event).
+ * - The panel's children render only from the second commit, mirroring Radix's portal (which renders
+ *   nothing until its own layout effect flips its `mounted` state). Consumers must therefore not
+ *   reach for a child element from their own mount effect — in the real app that element does not
+ *   exist yet — and this stub is deliberately faithful about that rather than making such code
+ *   appear to work.
+ * - Once the children exist, `onOpenAutoFocus` is invoked; unless it is prevented, the panel's first
+ *   enabled tabbable child is focused (and selected, if a text input), as Radix's focus scope does.
  * - An Escape keydown anywhere inside the content invokes `onEscapeKeyDown`.
- * - A sentinel `data-testid="popover-outside"` button invokes `onInteractOutside` on click,
- *   simulating a pointer interaction outside the popover.
+ * - A sentinel `data-testid="popover-outside"` button invokes `onPointerDownOutside` on click,
+ *   simulating a pointer press outside the popover.
  * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
  *   simulating Radix's focus-restoration event fired as the popover closes.
  *
@@ -714,10 +722,11 @@ export function PopoverAnchor({
  * @param props.className - CSS class names forwarded to the div.
  * @param props.onEscapeKeyDown - Called with the native `KeyboardEvent` when Escape is pressed
  *   inside the content, matching Radix's signature.
- * @param props.onInteractOutside - Called with a `CustomEvent` carrying the original pointer event
- *   in `detail.originalEvent` when the sentinel outside button is clicked, matching the shape of
- *   Radix's `PointerDownOutsideEvent`.
- * @param props.onOpenAutoFocus - Called once on mount with a plain `Event`.
+ * @param props.onPointerDownOutside - Called with a `CustomEvent` carrying the original pointer
+ *   event in `detail.originalEvent` when the sentinel outside button is clicked, matching the shape
+ *   of Radix's `PointerDownOutsideEvent`.
+ * @param props.onOpenAutoFocus - Called once, on the commit that first renders the children, with a
+ *   cancelable `Event`; preventing it suppresses the stub's own focusing, as in Radix.
  * @param props.onCloseAutoFocus - Called with a plain `Event` when the sentinel close button is
  *   clicked, mirroring Radix's close-time focus-restoration event.
  * @param props.onClick - Click handler forwarded to the div.
@@ -728,7 +737,7 @@ export function PopoverContent({
   children,
   className,
   onEscapeKeyDown,
-  onInteractOutside,
+  onPointerDownOutside,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onClick,
@@ -739,20 +748,39 @@ export function PopoverContent({
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
-  onInteractOutside?: (event: CustomEvent) => void;
+  onPointerDownOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
   onClick?: MouseEventHandler<HTMLDivElement>;
   onMouseDown?: MouseEventHandler<HTMLDivElement>;
 }>): ReactElement {
+  // Radix's portal renders no children until its own layout effect has run, so the panel's content
+  // is absent for the first commit. Mirrored here so a consumer that reaches for a child from its
+  // mount effect fails the same way it does in the app instead of silently passing.
+  const [portalMounted, setPortalMounted] = useState(false);
+  useLayoutEffect(() => setPortalMounted(true), []);
+  // eslint-disable-next-line no-null/no-null
+  const contentRef = useRef<HTMLDivElement | null>(null);
   // Capture the mount-time callback so the simulation fires exactly once, like the real event.
   const openAutoFocusRef = useRef(onOpenAutoFocus);
   useEffect(() => {
-    openAutoFocusRef.current?.(new Event('openAutoFocus'));
-  }, []);
+    if (!portalMounted) return;
+    const event = new Event('openAutoFocus', { cancelable: true });
+    openAutoFocusRef.current?.(event);
+    if (event.defaultPrevented) return;
+    const candidates = contentRef.current?.querySelectorAll<HTMLElement>('input, button') ?? [];
+    // The sentinels below are test scaffolding, not panel content, so they are never focus targets.
+    const first = Array.from(candidates).find(
+      (el) => !el.hasAttribute('disabled') && !el.dataset.testid?.startsWith('popover-'),
+    );
+    first?.focus();
+    if (first instanceof HTMLInputElement) first.select();
+  }, [portalMounted]);
+  if (!portalMounted) return <div data-testid="popover-content" />;
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
+      ref={contentRef}
       className={className}
       data-testid="popover-content"
       onClick={onClick}
@@ -762,12 +790,12 @@ export function PopoverContent({
       onMouseDown={onMouseDown}
     >
       {children}
-      {onInteractOutside && (
+      {onPointerDownOutside && (
         <button
           data-testid="popover-outside"
           type="button"
           onClick={(e) =>
-            onInteractOutside(
+            onPointerDownOutside(
               new CustomEvent('dismissableLayer.pointerDownOutside', {
                 detail: { originalEvent: e.nativeEvent },
               }),

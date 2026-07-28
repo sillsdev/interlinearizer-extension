@@ -47,6 +47,9 @@ const MORPHEME_BOX_STRING_KEYS = [
  *   look.
  * @param props.onEditBreakdown - Called when a form cell is clicked (while enabled) to open the
  *   whole-breakdown editor.
+ * @param props.onGlossFocus - Called when any morpheme gloss input receives focus, so the chip can
+ *   report the token as focused; these fields are gloss fields of the same token as the chip's own
+ *   gloss input, so focusing one must move the view's focus just as focusing that input does.
  * @returns A boxed grid of morpheme forms and their gloss fields, wrapped in a popover anchor.
  */
 export function MorphemeBox({
@@ -56,6 +59,7 @@ export function MorphemeBox({
   disabled,
   popoverOpen,
   onEditBreakdown,
+  onGlossFocus,
 }: Readonly<{
   token: Token & { type: 'word' };
   morphemes: readonly MorphemeAnalysis[];
@@ -63,6 +67,7 @@ export function MorphemeBox({
   disabled: boolean;
   popoverOpen: boolean;
   onEditBreakdown: () => void;
+  onGlossFocus: () => void;
 }>) {
   const [localizedStrings] = useLocalizedStrings(MORPHEME_BOX_STRING_KEYS);
   // Hovering anywhere in the box tints the whole forms row: clicking any cell opens the same
@@ -121,9 +126,15 @@ export function MorphemeBox({
               aria-hidden="true"
               className={formClassName}
               onClick={handleClick}
-              // Not a button, so stop mousedown from bubbling to TokenChip's label handler (which
-              // would otherwise focus the gloss input).
-              onMouseDown={(e) => e.stopPropagation()}
+              // Not a button, so this cell is subject to focus moves the first cell is exempt from,
+              // in two ways that both have to be shut off or the editor loses focus the moment it
+              // opens: the browser forwards mouse-down on a label to the labeled control (canceled
+              // with preventDefault), and TokenChip's own label handler does the same deliberately
+              // (kept away by not letting the event reach it).
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
               style={formStyle}
             >
               {m.form}
@@ -138,6 +149,7 @@ export function MorphemeBox({
             column={i + 1}
             disabled={disabled}
             morpheme={m}
+            onFocus={onGlossFocus}
             tokenRef={token.ref}
           />
         ))}
@@ -159,6 +171,8 @@ export function MorphemeBox({
  * @param props.analysisLanguage - BCP 47 tag for reading/writing the gloss.
  * @param props.disabled - When true, the input is read-only.
  * @param props.column - 1-based grid column the input occupies (shared with the morpheme's form).
+ * @param props.onFocus - Called when the input receives focus, so the containing chip can report
+ *   its token as focused.
  * @returns A cell-filling text input for the morpheme gloss, placed in the gloss row.
  */
 export function MorphemeGlossInput({
@@ -167,12 +181,14 @@ export function MorphemeGlossInput({
   analysisLanguage,
   disabled,
   column,
+  onFocus,
 }: Readonly<{
   morpheme: MorphemeAnalysis;
   tokenRef: string;
   analysisLanguage: string;
   disabled: boolean;
   column: number;
+  onFocus: () => void;
 }>) {
   const committed = morpheme.gloss?.[analysisLanguage] ?? '';
   const dispatchMorphemeGloss = useMorphemeGlossDispatch();
@@ -202,6 +218,7 @@ export function MorphemeGlossInput({
       style={{ gridColumn: column, gridRow: 2, fieldSizing: 'content', minWidth: '2ch' }}
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
+      onFocus={onFocus}
       onBlur={() => {
         if (!disabled && draft !== committed) dispatchMorphemeGloss(tokenRef, morpheme.id, draft);
       }}

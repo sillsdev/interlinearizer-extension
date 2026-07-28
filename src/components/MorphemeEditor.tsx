@@ -6,7 +6,7 @@
  */
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, PopoverContent } from 'platform-bible-react';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 
 const POPOVER_STRING_KEYS = [
@@ -96,15 +96,15 @@ export function MorphemeBreakdownPopover({
   const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  // eslint-disable-next-line no-null/no-null
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  // Whether the panel is closing because the user pressed the pointer outside it, which
+  // {@link handleCloseAutoFocus} needs to know so it can leave focus where that press put it.
+  const dismissedByOutsidePointerRef = useRef(false);
 
-  // Focus and select the input on open. The popover's own auto-focus is suppressed (see
-  // onOpenAutoFocus below) so this effect, which runs after it, is the only focus on open.
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, []);
+  // The popover's own open auto-focus is left in place: it focuses and selects the panel's first
+  // tabbable element (this input — the label above it is not tabbable) with `preventScroll`, which
+  // is exactly what this panel wants on open. Focusing the input from a mount effect here instead
+  // would silently do nothing: the panel is portaled, and Radix's portal renders no children until
+  // its own layout effect has run, so on the commit this component mounts there is no input yet.
 
   /**
    * Collapses leading/trailing and repeated internal whitespace to a single space.
@@ -179,15 +179,22 @@ export function MorphemeBreakdownPopover({
   };
 
   /**
-   * Commits the draft when the user interacts outside the popover, except when the text was not
-   * edited — then the interaction acts like Cancel, because an accidental outside click is not a
-   * deliberate commit. An empty draft is likewise dismissed without writing: {@link handleSave}
-   * refuses to interpret it and would otherwise leave the panel open, but an outside click on a
-   * modal popover must always dismiss. While the reset confirmation is showing, an outside click
-   * dismisses it without resetting: the confirmation exists precisely because the loss is
-   * irreversible, so it must not be answered by a stray click.
+   * Commits the draft when the user presses the pointer outside the popover, except when the text
+   * was not edited — then the interaction acts like Cancel, because an accidental outside click is
+   * not a deliberate commit. An empty draft is likewise dismissed without writing:
+   * {@link handleSave} refuses to interpret it and would otherwise leave the panel open, but an
+   * outside click on a modal popover must always dismiss. While the reset confirmation is showing,
+   * an outside click dismisses it without resetting: the confirmation exists precisely because the
+   * loss is irreversible, so it must not be answered by a stray click.
+   *
+   * Wired to `onPointerDownOutside` rather than the broader `onInteractOutside`, which also fires
+   * when focus merely moves outside the panel. A modal popover is not supposed to dismiss on that
+   * (Radix's modal content cancels its own focus-outside dismissal), but `onInteractOutside` runs
+   * regardless of that cancellation — so listening to it would let any stray focus move commit the
+   * user's draft and close the panel.
    */
-  const handleInteractOutside = () => {
+  const handlePointerDownOutside = () => {
+    dismissedByOutsidePointerRef.current = true;
     if (confirmingReset || isUnedited || isEmpty) {
       onClose();
       return;
@@ -216,10 +223,16 @@ export function MorphemeBreakdownPopover({
    * query could match another token's field. Falls back to the token gloss input when no morpheme
    * field exists (dismissed with no breakdown, or deleted).
    *
+   * A dismissal by pointer press outside the panel is exempt: that press has already put focus
+   * where the user aimed it (typically another token), so pulling focus back to this chip would
+   * yank it out of whatever they just clicked. The default is still prevented, so Radix does not
+   * restore focus to the pre-open element either — the click's own focus stands.
+   *
    * @param e - The Radix close auto-focus event.
    */
   const handleCloseAutoFocus = (e: Event) => {
     e.preventDefault();
+    if (dismissedByOutsidePointerRef.current) return;
     const glossInput = document.getElementById(glossInputId);
     const firstMorphemeGloss = glossInput
       ?.closest('label')
@@ -235,9 +248,8 @@ export function MorphemeBreakdownPopover({
       onClick={stopMouseEvents}
       onCloseAutoFocus={handleCloseAutoFocus}
       onEscapeKeyDown={onClose}
-      onInteractOutside={handleInteractOutside}
+      onPointerDownOutside={handlePointerDownOutside}
       onMouseDown={stopMouseEvents}
-      onOpenAutoFocus={(e) => e.preventDefault()}
     >
       {confirmingReset ? (
         <>
@@ -274,7 +286,6 @@ export function MorphemeBreakdownPopover({
             {localizedStrings['%interlinearizer_morphemeEditor_splitLabel%']}
           </Label>
           <Input
-            ref={inputRef}
             className="tw:w-full tw:font-mono"
             id={inputId}
             value={draft}

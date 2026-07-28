@@ -211,7 +211,8 @@ export function PhraseBox({
    * browser's default scroll-into-view would realign the segment list for no reason (the input may
    * sit on another wrapped row of the phrase, partially out of view). Morpheme gloss inputs are
    * excluded from the lookup: when morphology is shown they precede the token gloss input in DOM
-   * order, and only the token gloss input fires the `onFocus` → {@link onFocusPhrase} chain.
+   * order, but a click on the phrase body means "edit this phrase", so focus belongs in the first
+   * token's own gloss field rather than in one of its morpheme sub-fields.
    *
    * @param e - The container's click event.
    */

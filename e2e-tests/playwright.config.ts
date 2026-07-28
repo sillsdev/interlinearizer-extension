@@ -31,8 +31,10 @@ export default defineConfig({
   // Must clear the worst reachable chain in openInterlinearizerFromScriptureEditor, or a pathological
   // cold start reports an opaque "Test timeout" instead of the specific error whichever wait actually
   // lost: dock mount 45s + project metadata 150s + Home probe 5s + Home close 5s + Home reopen 30s +
-  // loaded-editor 30s ≈ 265s. Note the metadata wait only short-circuits when it EXHAUSTS — resolving
-  // at 149s still leaves every later wait in play. Revisit this if any of those budgets change.
+  // loaded-editor 30s ≈ 265s. The metadata wait returns as soon as metadata appears and throws only
+  // once its timeout is exhausted, so exhaustion is the only outcome that ends the test early — a
+  // late success at ~149s still leaves every later wait in play. Revisit if any of those budgets
+  // change.
   timeout: 300_000,
   expect: {
     timeout: 10_000,

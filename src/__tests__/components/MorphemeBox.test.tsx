@@ -126,6 +126,17 @@ describe('MorphemeBox', () => {
     expect(onEditBreakdown).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['first', 'hel'],
+    ['non-first', '-lo'],
+  ])('cancels the default click action on the %s form cell', (_label, form) => {
+    // Regression: the box sits in TokenChip's <label>, so an un-canceled click forwards focus to
+    // the gloss input and dismisses the just-opened editor. jsdom can't reproduce that forwarding,
+    // so assert the preventDefault that suppresses it — fireEvent.click returns false when canceled.
+    renderBox();
+    expect(fireEvent.click(screen.getByText(form))).toBe(false);
+  });
+
   it('stops a non-first form cell mousedown from bubbling to an ancestor handler', () => {
     // Regression test: an ancestor onMouseDown (e.g. TokenChip's label) would otherwise focus the
     // gloss input, since a span (unlike a button) doesn't match its input/button guard.

@@ -30,10 +30,16 @@ jest.mock('../../components/MorphemeEditor', () => ({
   MorphemeBreakdownPopover({
     onSave,
     onClose,
-    onDelete,
-  }: Readonly<{ onSave: (v: string) => void; onClose: () => void; onDelete?: () => void }>) {
+    onReset,
+    needsResetConfirm,
+  }: Readonly<{
+    onSave: (v: string) => void;
+    onClose: () => void;
+    onReset?: () => void;
+    needsResetConfirm?: boolean;
+  }>) {
     return (
-      <div data-testid="morpheme-popover">
+      <div data-testid="morpheme-popover" data-needs-reset-confirm={needsResetConfirm}>
         <button onClick={() => onSave('hel -lo')} type="button">
           mock-save
         </button>
@@ -43,9 +49,9 @@ jest.mock('../../components/MorphemeEditor', () => ({
         <button onClick={onClose} type="button">
           mock-close
         </button>
-        {onDelete && (
-          <button onClick={onDelete} type="button">
-            mock-delete
+        {onReset && (
+          <button onClick={onReset} type="button">
+            mock-reset
           </button>
         )}
       </div>
@@ -513,7 +519,7 @@ describe('TokenChip', () => {
       expect(mockDispatch).not.toHaveBeenCalled();
     });
 
-    it('dispatches morpheme deletion when the popover delete is clicked', async () => {
+    it('dispatches morpheme deletion when the popover reset is clicked', async () => {
       const mockDispatch = jest.fn();
       // AnalysisStore imported at top level
       jest
@@ -527,11 +533,11 @@ describe('TokenChip', () => {
         </AnalysisStoreProvider>,
       );
       await userEvent.click(screen.getByRole('button', { name: 'mock-edit-breakdown' }));
-      await userEvent.click(screen.getByRole('button', { name: 'mock-delete' }));
+      await userEvent.click(screen.getByRole('button', { name: 'mock-reset' }));
       expect(mockDispatch).toHaveBeenCalledWith('GEN 1:1:0');
     });
 
-    it('passes no onDelete to the popover when the token has no breakdown', async () => {
+    it('passes no onReset to the popover when the token has no breakdown', async () => {
       render(
         <AnalysisStoreProvider analysisLanguage="und">
           <TokenChip {...requiredProps()} showMorphology />
@@ -541,7 +547,43 @@ describe('TokenChip', () => {
         screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
       );
       expect(screen.getByTestId('morpheme-popover')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'mock-delete' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'mock-reset' })).not.toBeInTheDocument();
+    });
+
+    it('tells the popover to confirm when a reset would lose glosses', async () => {
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(true);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
+        'data-needs-reset-confirm',
+        'true',
+      );
+    });
+
+    it('tells the popover not to confirm when a reset would lose nothing', async () => {
+      // AnalysisStore imported at top level
+      jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(false);
+
+      render(
+        <AnalysisStoreProvider analysisLanguage="und">
+          <TokenChip {...requiredProps()} showMorphology />
+        </AnalysisStoreProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Define morpheme breakdown for hello' }),
+      );
+      expect(screen.getByTestId('morpheme-popover')).toHaveAttribute(
+        'data-needs-reset-confirm',
+        'false',
+      );
     });
 
     it('focuses the main gloss input on a surface-text mouse-down when the box precedes it', () => {

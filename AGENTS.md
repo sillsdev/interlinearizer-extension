@@ -113,6 +113,10 @@ Jest with ts-jest, jsdom environment. PAPI is fully mocked in `__mocks__/`. Cove
 
 `@papi/backend` and `@papi/frontend` mocks are mutually exclusive: backend tests use `papi-backend.ts`, WebView tests use `papi-frontend.ts` + `papi-frontend-react.ts`. Each mock file ends with `export {}` so TypeScript treats it as a module.
 
+### Testing hooks
+
+Test context hooks and dispatchers directly with `renderHook` + a `wrapper`, not a throwaway button-and-click component. See `renderStoreHook` in [AnalysisStore.test.tsx](src/__tests__/components/AnalysisStore.test.tsx) for the provider-wrapping pattern: return the hooks under test from the callback, drive dispatchers inside `act(...)`, and assert on state read off `result.current`. Reserve rendered components for behavior that genuinely needs the DOM — re-render / render-count assertions and mount/unmount lifecycle.
+
 ### Branches not worth testing
 
 100% coverage is enforced, but coverage is a floor, not a goal — chasing it produces low-value tests that bloat the suite and slow it down. Do **not** write a dedicated test for a branch whose only purpose is to satisfy the coverage gate when the branch carries no real behavior. Such branches should instead be excluded from coverage (via `/* v8 ignore next */` with a one-line reason, or the explicit exclusions in the Jest config) rather than tested. Branches not worth a dedicated test:

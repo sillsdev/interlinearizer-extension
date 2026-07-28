@@ -19,6 +19,7 @@ import {
   selectAnalysisLanguage,
   selectApprovedGloss,
   selectApprovedMorphemes,
+  selectMorphemeResetLosesGlosses,
   selectPhraseLinkByAnalysisId,
   selectPhraseLinkByTokenRef,
   selectPhraseGloss,
@@ -368,6 +369,23 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
 
   return useSelector((state: AnalysisRootState) =>
     selectApprovedMorphemes(state.analysis, tokenRef),
+  );
+}
+
+/**
+ * Returns whether resetting `tokenRef`'s morpheme breakdown would discard glosses no other token
+ * still holds, so the morpheme editor can confirm before an irreversible loss (the app has no
+ * undo). See {@link selectMorphemeResetLosesGlosses} for why a shared payload does not qualify.
+ *
+ * @param tokenRef - The `Token.ref` whose breakdown would be reset.
+ * @returns `true` when the reset needs confirmation.
+ * @throws When called outside an {@link AnalysisStoreProvider}.
+ */
+export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
+  useRequiredCallbacks('useMorphemeResetLosesGlosses');
+
+  return useSelector((state: AnalysisRootState) =>
+    selectMorphemeResetLosesGlosses(state.analysis, tokenRef),
   );
 }
 

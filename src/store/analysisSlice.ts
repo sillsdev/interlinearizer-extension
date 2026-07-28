@@ -111,12 +111,7 @@ export const defaultState: AnalysisState = {
 
 // #region Slice
 
-/**
- * Derives the display surface text for a phrase by joining each token's surface text with a space.
- *
- * @param tokens - Ordered token snapshots forming the phrase, in document order.
- * @returns The space-joined surface text string.
- */
+/** Derives the display surface text for a phrase by joining each token's surface text with a space. */
 function phraseSurfaceText(tokens: TokenSnapshot[]): string {
   return tokens.map((t) => t.surfaceText).join(' ');
 }
@@ -124,9 +119,6 @@ function phraseSurfaceText(tokens: TokenSnapshot[]): string {
 /**
  * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` matching `phraseId` from the
  * Immer draft state in a single step, ensuring both collections stay in sync.
- *
- * @param state - Current slice state (Immer draft).
- * @param phraseId - ID of the phrase to remove.
  */
 function removePhraseById(state: AnalysisState, phraseId: string): void {
   state.analysis.phraseAnalyses = state.analysis.phraseAnalyses.filter((pa) => pa.id !== phraseId);
@@ -141,10 +133,6 @@ function removePhraseById(state: AnalysisState, phraseId: string): void {
  * corruption or a migration), the link is removed from the draft — so the corruption never persists
  * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
  * existed. Mirrors {@link resolveApprovedAnalysis} for the segment layer.
- *
- * @param state - Current slice state (Immer draft).
- * @param segmentId - `Segment.id` of the segment to look up.
- * @returns The approved link and its analysis, or `undefined` when the segment has none.
  */
 function resolveApprovedSegmentAnalysis(
   state: AnalysisState,
@@ -172,9 +160,6 @@ function resolveApprovedSegmentAnalysis(
  * imported word-for-word translation) still survives a free-translation clear while a record left
  * holding only whitespace is dropped — mirroring how {@link isEmptyTokenAnalysis} preserves
  * morphemes/pos.
- *
- * @param analysis - The `SegmentAnalysis` to inspect.
- * @returns `true` when the record holds no content worth keeping.
  */
 function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   return (
@@ -185,10 +170,6 @@ function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
 /**
  * Removes a `SegmentAnalysis` record and its `SegmentAnalysisLink` from the draft in a single step,
  * keeping the two collections in sync. Called when an edit empties an analysis of all content.
- *
- * @param state - Current slice state (Immer draft).
- * @param analysis - The `SegmentAnalysis` record to remove.
- * @param link - The `SegmentAnalysisLink` referencing it.
  */
 function removeSegmentAnalysis(
   state: AnalysisState,
@@ -211,10 +192,6 @@ function removeSegmentAnalysis(
  * the link is removed from the draft — so the corruption never persists or accumulates duplicate
  * approved links — and `undefined` is returned as if no approved link existed. Every token-analysis
  * reducer resolves through this helper so they all repair orphaned links the same way.
- *
- * @param state - Current slice state (Immer draft).
- * @param tokenRef - `Token.ref` of the token to look up.
- * @returns The approved link and its analysis, or `undefined` when the token has none.
  */
 function resolveApprovedAnalysis(
   state: AnalysisState,
@@ -241,10 +218,6 @@ function resolveApprovedAnalysis(
  * records _this_ token's surface text (from `analysis.surfaceText`), not the shared payload's, so
  * per-token drift detection stays accurate even when a sentence-initial form links to a payload
  * first created from a mid-sentence form.
- *
- * @param state - Current slice state (Immer draft).
- * @param analysis - The candidate `TokenAnalysis` record to link or, if novel, append.
- * @param tokenRef - `Token.ref` of the token the link points at.
  */
 function appendApprovedAnalysis(
   state: AnalysisState,
@@ -268,10 +241,6 @@ function appendApprovedAnalysis(
  * remaining references is what stops an edit on one token from orphaning a payload that another
  * token still links to. A payload kept alive by a surviving link may be momentarily empty; it is
  * reclaimed when that last link is cleared.
- *
- * @param state - Current slice state (Immer draft).
- * @param analysis - The emptied `TokenAnalysis` payload.
- * @param link - The `TokenAnalysisLink` from the editing token to remove.
  */
 function detachTokenAnalysisLink(
   state: AnalysisState,
@@ -292,11 +261,6 @@ function detachTokenAnalysisLink(
  * i.e. whether an edit or clear reaching it through `link`'s token would also affect a different
  * token. The shared/sole distinction is what tells a clear, delete, or fork whether it must work on
  * a private clone (to spare the co-linked tokens) or may mutate the payload in place.
- *
- * @param state - Current slice state (Immer draft).
- * @param link - The editing token's approved `TokenAnalysisLink` (excluded from the check).
- * @param analysisId - `TokenAnalysis.id` of the payload to test.
- * @returns `true` when at least one other link points at the same payload.
  */
 function isPayloadSharedByOtherLinks(
   state: AnalysisState,
@@ -316,12 +280,6 @@ function isPayloadSharedByOtherLinks(
  * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
  * without writing through to the frozen shared payload. Used by the per-token edit, clear, and
  * delete paths so a token can edit or detach from a shared analysis without affecting the others.
- *
- * @param state - Current slice state (Immer draft).
- * @param link - The editing token's approved `TokenAnalysisLink`, repointed to the clone.
- * @param analysis - The shared payload to clone.
- * @param cloneId - Pre-generated UUID for the clone (from the action's `prepare`).
- * @returns The clone's draft, for the caller to edit or clear in place.
  */
 function forkSharedAnalysis(
   state: AnalysisState,
@@ -348,9 +306,6 @@ function forkSharedAnalysis(
  * payload and `analysis` is dropped — collapsing a homograph instance that was edited to match a
  * sibling back onto one shared payload (frequency re-merged, no duplicate suggestion). A no-op when
  * the edit left the payload unique.
- *
- * @param state - Current slice state (Immer draft).
- * @param analysis - The payload just edited in place.
  */
 function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
   const other = state.analysis.tokenAnalyses.find(
@@ -378,9 +333,6 @@ function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis
  * empty and may be dropped when its last content field is cleared. This is a deliberate choice — if
  * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a
  * gloss clear, add the relevant fields to the check below.
- *
- * @param analysis - The `TokenAnalysis` to inspect.
- * @returns `true` when the record holds no analysis content worth keeping.
  */
 function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
   return (
@@ -401,11 +353,6 @@ const analysisSlice = createSlice({
       /**
        * Generates a UUID for a potential new `TokenAnalysis` record before the action reaches the
        * reducer, keeping the reducer pure.
-       *
-       * @param tokenRef - `Token.ref` of the token being glossed.
-       * @param surfaceText - Surface text of the token.
-       * @param value - New gloss string.
-       * @returns The prepared action payload including a pre-generated `id`.
        */
       prepare(tokenRef: string, surfaceText: string, value: string) {
         return { payload: { tokenRef, surfaceText, value, id: crypto.randomUUID() } };
@@ -432,9 +379,6 @@ const analysisSlice = createSlice({
        * gloss rather than being stranded on an emptied payload. A blank write to a token with no
        * approved analysis is a no-op, so a focus/blur cycle on an empty gloss never creates a
        * record.
-       *
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the `WriteGlossPayload`.
        */
       reducer(state, action: PayloadAction<WriteGlossPayload>) {
         const { tokenRef, surfaceText, value, id } = action.payload;
@@ -484,14 +428,8 @@ const analysisSlice = createSlice({
     writeMorphemes: {
       /**
        * Generates UUIDs for new morpheme records and a potential new `TokenAnalysis` before the
-       * action reaches the reducer.
-       *
-       * @param tokenRef - `Token.ref` of the token whose morphemes are being set.
-       * @param surfaceText - Surface text of the token.
-       * @param forms - Ordered morpheme form strings as entered by the user.
-       * @param writingSystem - BCP 47 tag of the token's surface text (`Token.writingSystem`),
-       *   stored on each morpheme as the writing system of its form.
-       * @returns The prepared action payload.
+       * action reaches the reducer. The token's own writing system is stored on each morpheme as
+       * the writing system of its form.
        */
       prepare(tokenRef: string, surfaceText: string, forms: string[], writingSystem: string) {
         return {
@@ -520,9 +458,6 @@ const analysisSlice = createSlice({
        * stamped with the supplied writing system, so records written before the writing system was
        * threaded through (which wrongly stored the analysis language) self-correct on the next
        * save.
-       *
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the morpheme payload.
        */
       reducer(
         state,
@@ -588,10 +523,6 @@ const analysisSlice = createSlice({
        * only when the breakdown is removed from a shared payload — keeping the reducer pure.
        * Accepts the same `{ tokenRef }` argument the action took before, so call sites are
        * unchanged.
-       *
-       * @param arg - Object carrying the `tokenRef` whose breakdown is removed.
-       * @param arg.tokenRef - `Token.ref` of the token whose morphemes are removed.
-       * @returns The prepared action payload including a pre-generated clone `id`.
        */
       prepare(arg: { tokenRef: string }) {
         return { payload: { tokenRef: arg.tokenRef, id: crypto.randomUUID() } };
@@ -605,10 +536,6 @@ const analysisSlice = createSlice({
        * {@link forkSharedAnalysis}) so the co-linked tokens keep their morphemes. No-ops when the
        * token has no approved analysis or the analysis has no morphemes (an orphaned approved link
        * is still repaired; see {@link resolveApprovedAnalysis}).
-       *
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the `tokenRef` whose breakdown is removed and the clone
-       *   `id`.
        */
       reducer(state, action: PayloadAction<{ tokenRef: string; id: string }>) {
         const { tokenRef, id } = action.payload;
@@ -655,21 +582,11 @@ const analysisSlice = createSlice({
       /**
        * Generates a UUID for the clone a per-token edit forks from a shared payload, before the
        * action reaches the reducer, keeping the reducer pure. Unused when the payload is not
-       * shared.
-       *
-       * @param arg - Object carrying the token, morpheme, and new gloss value.
-       * @param arg.tokenRef - `Token.ref` of the token whose morpheme gloss is written.
-       * @param arg.morphemeId - Id of the morpheme within the token's approved analysis.
-       * @param arg.value - New gloss string (blank clears the morpheme's active-language gloss).
-       * @returns The prepared action payload including a pre-generated clone `id`.
+       * shared. A blank gloss value clears the morpheme's active-language gloss.
        */
       prepare(arg: { tokenRef: string; morphemeId: string; value: string }) {
         return { payload: { ...arg, id: crypto.randomUUID() } };
       },
-      /**
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the morpheme gloss payload and a pre-generated clone `id`.
-       */
       reducer(
         state,
         action: PayloadAction<{
@@ -733,11 +650,6 @@ const analysisSlice = createSlice({
      * as a fresh orphan. The link's snapshot records _this_ token's `surfaceText` (not the shared
      * payload's), matching {@link appendApprovedAnalysis} so per-token drift detection stays
      * accurate.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the accepting `tokenRef`, its `surfaceText`, and the
-     *   `analysisId` of the payload to approve (the suggested payload, or a candidate when
-     *   promoting).
      */
     approveAnalysisForToken(
       state,
@@ -774,19 +686,11 @@ const analysisSlice = createSlice({
       /**
        * Generates a UUID for the new `PhraseAnalysis` before the action reaches the reducer,
        * keeping the reducer pure.
-       *
-       * @param tokens - Ordered `TokenSnapshot`s forming the phrase, in document order.
-       * @returns The prepared action payload including a pre-generated `id`.
        */
       prepare(tokens: TokenSnapshot[]) {
         return { payload: { id: crypto.randomUUID(), tokens } };
       },
-      /**
-       * Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis.
-       *
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the `CreatePhrasePayload`.
-       */
+      /** Appends a new approved `PhraseAnalysis` and its `PhraseAnalysisLink` to the analysis. */
       reducer(state, action: PayloadAction<CreatePhrasePayload>) {
         const { id, tokens } = action.payload;
         const newAnalysis: PhraseAnalysis = { id, surfaceText: phraseSurfaceText(tokens) };
@@ -802,9 +706,6 @@ const analysisSlice = createSlice({
      * phrase id and any gloss already written on it. When `tokens` is empty the phrase is removed
      * entirely (both the analysis record and its link) so a zero-token phrase can never persist in
      * the store.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the `UpdatePhrasePayload`.
      */
     updatePhrase(state, action: PayloadAction<UpdatePhrasePayload>) {
       const { phraseId, tokens } = action.payload;
@@ -817,12 +718,7 @@ const analysisSlice = createSlice({
       const analysis = state.analysis.phraseAnalyses.find((pa) => pa.id === phraseId);
       if (analysis) analysis.surfaceText = phraseSurfaceText(tokens);
     },
-    /**
-     * Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the `DeletePhrasePayload`.
-     */
+    /** Removes the `PhraseAnalysis` record and its `PhraseAnalysisLink` for the given phrase id. */
     deletePhrase(state, action: PayloadAction<DeletePhrasePayload>) {
       const { phraseId } = action.payload;
       removePhraseById(state, phraseId);
@@ -837,9 +733,6 @@ const analysisSlice = createSlice({
      *
      * No-ops when `absorbedPhraseId === targetPhraseId` to prevent the update from being
      * immediately undone by the delete.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the `MergePhrasesPayload`.
      */
     mergePhrases(state, action: PayloadAction<MergePhrasesPayload>) {
       const { targetPhraseId, tokens, absorbedPhraseId } = action.payload;
@@ -854,9 +747,6 @@ const analysisSlice = createSlice({
     /**
      * Writes a gloss value into the `PhraseAnalysis` record for the given phrase id. No-ops when no
      * matching `PhraseAnalysis` is found.
-     *
-     * @param state - Current slice state (Immer draft).
-     * @param action - Action carrying the `WritePhraseGlossPayload`.
      */
     writePhraseGloss(state, action: PayloadAction<WritePhraseGlossPayload>) {
       const { phraseId, value } = action.payload;
@@ -870,11 +760,6 @@ const analysisSlice = createSlice({
       /**
        * Generates a UUID for a potential new `SegmentAnalysis` record before the action reaches the
        * reducer, keeping the reducer pure.
-       *
-       * @param segmentId - `Segment.id` of the segment being translated.
-       * @param surfaceText - Baseline text of the segment.
-       * @param value - New free-translation string.
-       * @returns The prepared action payload including a pre-generated `id`.
        */
       prepare(segmentId: string, surfaceText: string, value: string) {
         return { payload: { segmentId, surfaceText, value, id: crypto.randomUUID() } };
@@ -892,9 +777,6 @@ const analysisSlice = createSlice({
        * ({@link isEmptySegmentAnalysis}) the record and its link are removed entirely. A blank write
        * to a segment with no approved analysis is a no-op, so a focus/blur cycle on an empty input
        * never creates a record.
-       *
-       * @param state - Current slice state (Immer draft).
-       * @param action - Action carrying the `WriteSegmentFreeTranslationPayload`.
        */
       reducer(state, action: PayloadAction<WriteSegmentFreeTranslationPayload>) {
         const { segmentId, surfaceText, value, id } = action.payload;
@@ -952,28 +834,13 @@ export default analysisSlice.reducer;
 
 // #region Selectors
 
-/**
- * Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input.
- *
- * @param state - The analysis slice state.
- * @returns The `tokenAnalyses` array.
- */
+/** Projects `tokenAnalyses` out of `AnalysisState` for use as a `createSelector` input. */
 const selectTokenAnalyses = (state: AnalysisState) => state.analysis.tokenAnalyses;
 
-/**
- * Projects `tokenAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input.
- *
- * @param state - The analysis slice state.
- * @returns The `tokenAnalysisLinks` array.
- */
+/** Projects `tokenAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */
 const selectTokenAnalysisLinks = (state: AnalysisState) => state.analysis.tokenAnalysisLinks;
 
-/**
- * Projects `analysisLanguage` out of `AnalysisState` for use as a `createSelector` input.
- *
- * @param state - The analysis slice state.
- * @returns The active BCP 47 analysis language tag.
- */
+/** Projects `analysisLanguage` out of `AnalysisState` for use as a `createSelector` input. */
 export const selectAnalysisLanguage = (state: AnalysisState) => state.analysisLanguage;
 
 /**
@@ -1002,21 +869,12 @@ const selectApprovedIdByTokenRef = createSelector(
     }, new Map<string, string>()),
 );
 
-/**
- * Returns the `TextAnalysis` from the analysis slice state.
- *
- * @param state - The analysis slice state.
- * @returns The current `TextAnalysis`.
- */
+/** Returns the `TextAnalysis` from the analysis slice state. */
 export const selectAnalysis = (state: AnalysisState) => state.analysis;
 
 /**
  * Returns the approved gloss string for `tokenRef` in the active analysis language, or `''` when no
  * approved analysis exists or the analysis has no gloss for the active language.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` to look up.
- * @returns The approved gloss string, or `''` when absent.
  */
 export function selectApprovedGloss(state: AnalysisState, tokenRef: string): string {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
@@ -1070,12 +928,6 @@ export const selectPoolIndex = createSelector(
  * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
  * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every store change
  * will re-render the token and trip react-redux's "selector returned a different result" warning.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` to resolve.
- * @param surfaceText - The token's current surface text, matched against the pool when the token is
- *   unapproved.
- * @returns The approved or suggested analysis for the token, or `undefined` when it has neither.
  */
 export function selectResolvedTokenAnalysis(
   state: AnalysisState,
@@ -1102,11 +954,6 @@ export function selectResolvedTokenAnalysis(
  * deletion will surface rather than the approved payload's mere alternatives. Returns `undefined`
  * when the token has no approval (callers only consult this for an approved token) or when nothing
  * in the pool still matches once that approval is discounted.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` whose approval to discount.
- * @param surfaceText - The token's current surface text, matched against the pool.
- * @returns The suggested-status resolved analysis as if the token were unapproved, or `undefined`.
  */
 export function selectSuggestionAfterClearing(
   state: AnalysisState,
@@ -1128,10 +975,6 @@ export function selectSuggestionAfterClearing(
  * no glosses is bare segmentation that is cheap to retype. Sharing is read through
  * {@link selectApprovedTokenCountByAnalysisId} — the same approved-link count the reducer's
  * `isPayloadSharedByOtherLinks` tests — so the two can never disagree about what "shared" means.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` whose breakdown would be removed.
- * @returns `true` when the reset would irrecoverably discard glosses belonging to this token alone.
  */
 export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: string): boolean {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
@@ -1149,12 +992,8 @@ export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: 
 const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
 
 /**
- * Returns the morpheme array from the approved `TokenAnalysis` for `tokenRef`, or an empty array
- * when no approved analysis exists or it has no morphemes.
- *
- * @param state - The analysis slice state.
- * @param tokenRef - The `Token.ref` to look up.
- * @returns The morpheme array, or a stable empty array when absent.
+ * Returns the morpheme array from the approved `TokenAnalysis` for `tokenRef`, or a shared
+ * reference-stable empty array when no approved analysis exists or it has no morphemes.
  */
 export function selectApprovedMorphemes(
   state: AnalysisState,
@@ -1166,12 +1005,7 @@ export function selectApprovedMorphemes(
   return ta?.morphemes ?? EMPTY_MORPHEMES;
 }
 
-/**
- * Projects `phraseAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input.
- *
- * @param state - The analysis slice state.
- * @returns The `phraseAnalysisLinks` array.
- */
+/** Projects `phraseAnalysisLinks` out of `AnalysisState` for use as a `createSelector` input. */
 const selectPhraseAnalysisLinksRaw = (state: AnalysisState) => state.analysis.phraseAnalysisLinks;
 
 /**
@@ -1205,10 +1039,6 @@ export const selectPhraseLinkByAnalysisId = createSelector(
 /**
  * Returns the approved gloss string for the given phrase in the active analysis language, or `''`
  * when no phrase with that id exists or it has no gloss for the active language.
- *
- * @param state - The analysis slice state.
- * @param phraseId - The `PhraseAnalysis.id` to look up.
- * @returns The gloss string, or `''` when absent.
  */
 export function selectPhraseGloss(state: AnalysisState, phraseId: string): string {
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
@@ -1220,10 +1050,6 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
  * language, or `''` when no approved analysis exists or it has no free translation for the active
  * language. An approved link referencing a missing analysis is treated as absent (read-only here;
  * the orphan is repaired on the next write through {@link resolveApprovedSegmentAnalysis}).
- *
- * @param state - The analysis slice state.
- * @param segmentId - The `Segment.id` to look up.
- * @returns The free-translation string, or `''` when absent.
  */
 export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: string): string {
   const link = state.analysis.segmentAnalysisLinks.find(

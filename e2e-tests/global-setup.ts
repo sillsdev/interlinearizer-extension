@@ -14,6 +14,10 @@ export const RENDERER_PORT = 1212;
  * File the renderer dev server's PID is written to, for {@link globalTeardown} to kill it — and for
  * a CDP setup failure path to kill it too, since Playwright skips `globalTeardown` when
  * `globalSetup` throws.
+ *
+ * Names the dev server the CURRENT run spawned, never one it merely reused: a kill from here
+ * signals the recorded PID's whole process tree, so a foreign or already-exited PID could take down
+ * something unrelated.
  */
 export const DEV_SERVER_PID_FILE = path.join(__dirname, '.dev-server.pid');
 
@@ -216,6 +220,9 @@ export async function bootstrapRendererDevServer(): Promise<void> {
   // Start the webpack dev server for the renderer if not already running
   if (await isPortInUse(RENDERER_PORT)) {
     console.log(`Renderer dev server already running on port ${RENDERER_PORT}.`);
+    // A marker on disk can only be a prior run's leftover here, and killing by a stale PID risks a
+    // process the OS has since recycled it onto. The reused server is left running instead.
+    removeDevServerPidMarker();
   } else {
     console.log('Starting paranext-core renderer dev server...');
     const devServer = spawn('npm', ['run', 'start:renderer'], {
@@ -304,6 +311,15 @@ function killSpawnedDevServer(pid: number | undefined): void {
   if (!pid) return;
   console.log(`Renderer dev server failed to become ready — stopping it (PID: ${pid})...`);
   killProcessTree(pid, 'SIGTERM');
+  removeDevServerPidMarker();
+}
+
+/**
+ * Delete the dev server's PID marker so no later cleanup kills by the PID it holds. Best-effort: a
+ * filesystem error is warned about and swallowed, since one caller runs while an exception is
+ * already propagating and the other must not fail a healthy bootstrap over a marker.
+ */
+function removeDevServerPidMarker(): void {
   try {
     fs.rmSync(DEV_SERVER_PID_FILE, { force: true });
   } catch (error) {

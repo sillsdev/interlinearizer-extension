@@ -56,13 +56,10 @@ type SplitPhraseDispatch = {
 };
 
 /**
- * Sorts token snapshots by flat document index so a stored phrase token list reflects visual
- * left-to-right order. Shared by every path that slices a phrase so document order is computed
- * identically everywhere. Tokens missing from `tokenDocOrder` sort to the front (index 0).
- *
- * @param tokens - Token snapshots to sort. Not mutated; a new array is returned.
- * @param tokenDocOrder - Map from token ref to flat document index.
- * @returns A new array sorted by ascending document index.
+ * Sorts token snapshots by flat document index, without mutating the input, so a stored phrase
+ * token list reflects visual left-to-right order. Shared by every path that slices a phrase, so
+ * document order is computed identically everywhere. Tokens missing from the order map sort to the
+ * front.
  */
 export function sortByDocOrder<T extends { tokenRef: string }>(
   tokens: readonly T[],
@@ -75,17 +72,11 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
 }
 
 /**
- * Sorts a phrase's tokens into document order and slices them at the boundary just after
- * `splitAfterTokenRef`. The single source of this slice, read by both {@link computeSplitFreeRefs}
- * and {@link splitPhraseAtBoundary}, so the destructive-border preview can't drift from the split it
- * previews.
+ * Slices a phrase's tokens, in document order, into the half up to and including the boundary token
+ * and the remainder after it; `undefined` when the boundary token is not among them.
  *
- * @param tokens - The phrase's token snapshots. Not mutated.
- * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment (`before`).
- * @param tokenDocOrder - Map from token ref to flat document index; tokens are ordered by this
- *   before slicing.
- * @returns The `before` half (up to and including the boundary token) and the `after` remainder, or
- *   `undefined` when the boundary token is not found.
+ * The single source of this slice, so the destructive-border preview cannot drift from the split it
+ * previews.
  */
 function sliceAtBoundary(
   tokens: readonly TokenSnapshot[],
@@ -100,17 +91,12 @@ function sliceAtBoundary(
 }
 
 /**
- * Enumerates the tokens of `phraseLink` that would become solo (free) after splitting just after
- * `splitAfterTokenRef` — a half with exactly one token leaves it unattached. Shares
- * {@link sliceAtBoundary} with {@link splitPhraseAtBoundary} so the destructive-border preview
- * matches the resulting split.
+ * Enumerates the tokens that a split just after the given boundary would leave solo (free), since a
+ * half with exactly one token leaves it unattached. Yields `undefined` when both halves would keep
+ * at least two tokens, the phrase is absent, or the boundary token is not found.
  *
- * @param phraseLink - The phrase to split, or `undefined` when it cannot be resolved.
- * @param splitAfterTokenRef - Token ref marking the end of the earlier fragment.
- * @param tokenDocOrder - Map from token ref to flat document index; tokens are ordered by this
- *   before slicing.
- * @returns The refs of tokens that would become free, or `undefined` when no token would be left
- *   solo (both halves ≥ 2 tokens), the phrase is absent, or the boundary token is not found.
+ * Shares its slice with the split itself, so the destructive-border preview matches what the split
+ * will do.
  */
 export function computeSplitFreeRefs(
   phraseLink: PhraseAnalysisLink | undefined,
@@ -129,25 +115,19 @@ export function computeSplitFreeRefs(
 }
 
 /**
- * Splits `phraseLink` just after `splitAfterTokenRef` and dispatches the resulting
- * create/update/delete calls. Shared by both views' arc-split buttons and TokenLinkIcon's unlink
- * button so the three paths can't drift apart.
+ * Splits a phrase just after the given token and dispatches the resulting create, update, and
+ * delete calls. Shared by both views' arc-split buttons and by the unlink button, so the three
+ * paths cannot drift apart.
  *
- * Outcomes (`before` is the half up to and including `splitAfterTokenRef`, `after` the remainder):
+ * Outcomes, where `before` is the half up to and including the boundary token:
  *
- * - Both halves ≤ 1 token → delete the phrase (only 2 tokens to begin with).
- * - Both halves ≥ 2 tokens → shrink the phrase to `before`, create a new phrase from `after`.
- * - Exactly one half has 1 token → shrink the phrase to the larger half; the solo token becomes free.
+ * - Both halves ≤ 1 token → delete the phrase; it only had 2 tokens to begin with.
+ * - Both halves ≥ 2 tokens → shrink the phrase to `before` and create a new phrase from `after`.
+ * - Exactly one half has 1 token → shrink to the larger half; the solo token becomes free.
  *
- * The boundary is in document order (how the buttons present it), so tokens are sorted by
- * `tokenDocOrder` before slicing — correct even if the stored list is out of order. No-op when
- * `splitAfterTokenRef` is absent or is the last token (which would leave the phrase unchanged).
- *
- * @param phraseLink - The phrase link to split.
- * @param splitAfterTokenRef - Token ref of the last token to keep in the earlier fragment.
- * @param dispatch - Phrase create/update/delete callbacks.
- * @param tokenDocOrder - Map from token ref to flat document index. Defaults to empty (stored
- *   order).
+ * The boundary is in document order, matching how the buttons present it, so this holds even when
+ * the stored token list is out of order. Omitting the document-order map falls back to stored
+ * order. A boundary that is absent or is the phrase's last token is a no-op.
  */
 export function splitPhraseAtBoundary(
   phraseLink: PhraseAnalysisLink,
@@ -188,18 +168,14 @@ export type StraddledPhrase = {
 };
 
 /**
- * Finds every phrase that a segment boundary placed before `boundaryRef` would cut — phrases with
- * tokens on both sides of the boundary in document order. A discontiguous phrase counts even when
- * `boundaryRef` itself is not one of its tokens (the boundary can fall in the gap between two
- * fragments). Used by the segmentation dispatch to force-break straddling phrases, and by the split
- * control to suppress itself at boundaries that would force-break — one predicate, so the two can't
- * drift apart.
+ * Finds every phrase that a segment boundary would cut — those with tokens on both sides of it in
+ * document order — together with where each would have to be severed. A discontiguous phrase counts
+ * even when the boundary token is not one of its own, since the boundary can fall in the gap
+ * between two fragments.
  *
- * @param boundaryRef - Token ref the new segment would begin at.
- * @param phraseLinks - The phrase links to test (one entry per phrase).
- * @param tokenDocOrder - Map from token ref to flat document index. Must contain `boundaryRef` and
- *   the phrase tokens; a boundary ref absent from the map yields no matches.
- * @returns The straddled phrases with their split points; empty when the boundary cuts nothing.
+ * One predicate serves both the segmentation dispatch, which force-breaks straddling phrases, and
+ * the split control, which suppresses itself at boundaries that would force-break, so the two
+ * cannot drift apart. A boundary ref absent from the document-order map yields no matches.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,
@@ -238,25 +214,18 @@ export function phrasesStraddlingBoundary(
 // #region Arc geometry and strip sizing
 
 /**
- * Stem height (px) an arc run rises above its box top at a given nesting level: the base stem plus
- * one {@link ARC_LEVEL_STEP} per level. The single source of this formula, so same-row and cross-row
- * runs at the same level share a channel (see {@link buildSameRowArcPath} /
- * {@link buildCrossRowArcPath}).
- *
- * @param level - The run's nesting level (0 = outermost).
- * @returns The stem height in pixels.
+ * Stem height (px) an arc run rises above its box top at a given nesting level, where level 0 is
+ * outermost. The single source of this formula, so same-row and cross-row runs at the same level
+ * share a channel.
  */
 function stemForLevel(level: number): number {
   return ARC_BASE_STEM + level * ARC_LEVEL_STEP;
 }
 
 /**
- * Vertical room (px) the topmost arc run at `maxArcLevel` needs above the line it rises from: its
- * stem ({@link stemForLevel}), the corner, and the clearance margin. Shared by
- * {@link computeStripTopPadding} and {@link computeStripRowGap} so both grow with arc depth alike.
- *
- * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
- * @returns The clearance height in pixels.
+ * Vertical room (px) the topmost arc run needs above the line it rises from: its stem, the corner,
+ * and the clearance margin. Shared by the strip's top padding and row gap so both grow with arc
+ * depth alike.
  */
 function arcClearancePx(maxArcLevel: number): number {
   return stemForLevel(maxArcLevel) + ARC_CORNER_RADIUS + ARC_CLEARANCE_MARGIN_PX;
@@ -266,15 +235,10 @@ function arcClearancePx(maxArcLevel: number): number {
  * Top padding (px) a token strip needs so arcs and the floating controls pill both fit above the
  * boxes: {@link arcClearancePx} when any arc is drawn, plus controls headroom.
  *
- * The pill rides the arc top (or box top for contiguous phrases) with its upper half extending
- * above; on box-top phrases it sits at `top: -CONTROLS_HALF_HEIGHT_PX`, so the strip needs `2 *
- * CONTROLS_HALF_HEIGHT_PX` to keep the whole pill visible.
+ * The pill rides the arc top, or the box top for contiguous phrases, with its upper half extending
+ * above — so a box-top phrase needs the pill's full height reserved to stay visible.
  *
- * @param hasArcs - Whether at least one arc is currently drawn.
- * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
- * @param hasRealPhrase - Whether any committed phrase is rendered in the current window.
- * @returns The required top padding in pixels, with a floor of {@link VERSE_SUPERSCRIPT_HEADROOM_PX}
- *   so a peeking verse number is never clipped.
+ * Floored at {@link VERSE_SUPERSCRIPT_HEADROOM_PX} so a peeking verse number is never clipped.
  */
 export function computeStripTopPadding(
   hasArcs: boolean,
@@ -297,16 +261,10 @@ export const BASE_ROW_GAP_PX = 24;
 
 /**
  * Vertical gap (px) between wrapped token rows so arcs above a lower row clear the boxes of the row
- * above. Where {@link computeStripTopPadding} only protects the topmost row, this protects every
- * inter-row gap: a run in a lower row rises {@link arcClearancePx} above its box top into the shared
- * gap, and the controls pill's upper half rides on top of that. Floored at {@link BASE_ROW_GAP_PX}
- * so shallow/absent arcs never pack rows tighter than the static layout.
- *
- * @param hasArcs - Whether at least one arc is currently drawn.
- * @param maxArcLevel - Maximum arc nesting level among the visible arcs.
- * @param hasRealPhrase - Whether any committed phrase is rendered (so a controls pill may ride the
- *   arc top of a lower row).
- * @returns The required inter-row vertical gap in pixels, never below {@link BASE_ROW_GAP_PX}.
+ * above. Where {@link computeStripTopPadding} protects only the topmost row, this protects every
+ * inter-row gap: a run in a lower row rises into the shared gap, with the controls pill's upper
+ * half riding on top of that. Floored at {@link BASE_ROW_GAP_PX} so shallow or absent arcs never
+ * pack rows tighter than the static layout.
  */
 export function computeStripRowGap(
   hasArcs: boolean,
@@ -332,11 +290,8 @@ type ArcStrokeProps = {
   strokeWidth: number;
 };
 
-/**
- * Arc stroke constants mirror the `phrase-*` Tailwind utilities in `tailwind.css`. If you change
- * the opacity values here, update the matching `--phrase-stroke-opacity` in the CSS too, and
- * vice-versa.
- */
+// Arc stroke constants mirror the `phrase-*` Tailwind utilities. If you change the opacity values
+// here, update the matching `--phrase-stroke-opacity` in the CSS too, and vice-versa.
 
 /** Matches `phrase-dimmed`: border-color at full opacity. */
 const DIMMED_ARC_STROKE: ArcStrokeProps = {
@@ -372,12 +327,6 @@ const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
  * - `confirm-unlink`: target arc destructive, others dimmed.
  * - `edit`: edited arc foreground (matches its box ring), others dimmed, hover suppressed.
  * - `view`: focused arc full-foreground, hovered arc mid-foreground, others border-color.
- *
- * @param phraseMode - Current phrase-interaction mode.
- * @param phraseId - The phraseId of the arc being styled.
- * @param hoveredPhraseId - The phraseId currently hovered, if any.
- * @param focusedPhraseId - The phraseId of the focused token's phrase, if any.
- * @returns Stroke styling props for the arc.
  */
 export function getArcStrokeProps(
   phraseMode: PhraseMode,
@@ -424,15 +373,13 @@ type ArcSegment = {
 };
 
 /**
- * Greedy interval-graph coloring shared by {@link assignSegmentLevels} and {@link assignGutterLanes}:
- * walks `items` in order, giving each the lowest level not already taken by an earlier item it
- * `conflicts` with. The two wrappers differ only in their pre-sort and conflict predicate (which
- * axis they overlap on).
+ * Greedy interval-graph coloring shared by both level assignments, which differ only in their
+ * pre-sort and in the axis their conflict predicate overlaps on.
  *
  * @param items - The items to color, pre-sorted into the order they should be assigned.
- * @param conflicts - Returns whether two items overlap and so must take different levels.
- * @returns Map from each item to its assigned level. 0 is the level nearest the boxes — outermost
- *   nesting for segments, the lane nearest the content edge for descents.
+ * @param conflicts - Whether two items overlap and so must take different levels.
+ * @returns Each item's level, where 0 is nearest the boxes — outermost nesting for arc segments,
+ *   the lane nearest the content edge for gutter descents.
  */
 function assignLevels<T>(items: readonly T[], conflicts: (a: T, b: T) => boolean): Map<T, number> {
   const levels = new Map<T, number>();
@@ -460,9 +407,6 @@ function assignLevels<T>(items: readonly T[], conflicts: (a: T, b: T) => boolean
  * row's overlaps demand. Cross-row runs share the same top channel as same-row runs (not an
  * inter-row gap), so the two kinds do conflict when they share a row, keeping rerouted arcs aware
  * of the same-row brackets they cross.
- *
- * @param segments - All arc segments across every phrase.
- * @returns Map from each segment to its assigned nesting level (0 = outermost).
  */
 function assignSegmentLevels(segments: ArcSegment[]): Map<ArcSegment, number> {
   const ordered = [...segments].sort((a, b) => a.left - b.left || a.right - b.right);
@@ -492,9 +436,6 @@ type GutterDescent = {
  * {@link assignSegmentLevels}: two descents conflict when they route down the same side and their
  * `[top, bottom]` spans overlap. Catches the vertically-nested case (C..D inside A..F) that per-row
  * segment levels miss, since a descent's two run lines never share a top channel.
- *
- * @param descents - All cross-row gutter descents across every phrase.
- * @returns Map from each descent to its assigned lane (0 = nearest the content edge).
  */
 function assignGutterLanes(descents: GutterDescent[]): Map<GutterDescent, number> {
   const ordered = [...descents].sort((a, b) => a.top - b.top || a.bottom - b.bottom);
@@ -556,13 +497,7 @@ type ContainerRect = {
   bottom: number;
 };
 
-/**
- * Converts a viewport-relative `DOMRect` to container-relative coordinates.
- *
- * @param rect - The viewport-relative bounding rect of a phrase-box element.
- * @param containerRect - The viewport-relative bounding rect of the arc container.
- * @returns The same rect with every edge expressed relative to the container's top-left corner.
- */
+/** Re-expresses a viewport-relative rect against the arc container's top-left corner. */
 function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect {
   const left = rect.left - containerRect.left;
   const right = rect.right - containerRect.left;
@@ -572,14 +507,8 @@ function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect 
 }
 
 /**
- * Constructs an {@link ArcSegment} whose `left`/`right` span is `[min(x1, x2), max(x1, x2)]`, so
- * callers pass the two x values in any order without worrying which is smaller.
- *
- * @param phraseId - The phrase this segment belongs to.
- * @param row - Rounded scroll-space top of the row whose top channel the horizontal run occupies.
- * @param x1 - One endpoint x of the run (scroll-space).
- * @param x2 - Other endpoint x of the run (scroll-space).
- * @returns An {@link ArcSegment} with `left`/`right` normalized so `left ≤ right`.
+ * Constructs an {@link ArcSegment} with its span normalized, so callers may pass the run's two
+ * endpoint x values in either order.
  */
 function makeArcSegment(phraseId: string, row: number, x1: number, x2: number): ArcSegment {
   return { phraseId, row, left: Math.min(x1, x2), right: Math.max(x1, x2) };
@@ -621,26 +550,18 @@ type PhraseBoxMeasurements = {
   /** Container-space x of the strip's right content edge (right gutter anchor); 0 when no boxes. */
   contentRight: number;
   /**
-   * Maps a box's top edge to its row's top line — the highest (minimum) top among boxes sharing the
-   * box's row band. Cross-row arcs anchor each endpoint here rather than at its own box top, so a
-   * gloss-less box of differing height still meets the channel shared by its row-mates.
-   *
-   * @param boxTop - The top edge of the box whose row top line is wanted.
-   * @param boxBottom - The bottom edge of the box; half the box height is the row-matching
-   *   tolerance.
-   * @returns The minimum top across boxes on the same row, never greater than `boxTop`.
+   * Maps a box's top edge to its row's top line — the highest top among boxes sharing that row
+   * band, and so never below the box's own top. Cross-row arcs anchor each endpoint here rather
+   * than at their own box top, so a gloss-less box of differing height still meets the channel
+   * shared by its row-mates. Half the box height serves as the row-matching tolerance.
    */
   rowTopFor: (boxTop: number, boxBottom: number) => number;
 };
 
 /**
- * Reads every `[data-phrase-box]` element inside `container` once and projects it into the
- * container-relative measurements both arc passes need: per-phrase box lists, the strip's content
- * extent, and the row-top lookup. Splitting this off keeps {@link computeAllArcPaths} a pipeline of
- * named phases (measure → describe → level → build) rather than one long function.
- *
- * @param container - The arc container element to search.
- * @returns The measured phrase boxes, content edges, and row-top lookup.
+ * Reads every phrase-box element in the container once and projects it into the container-relative
+ * measurements both arc passes need. Split out so arc computation reads as a pipeline of named
+ * phases — measure, describe, level, build — rather than one long function.
  */
 function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
   const containerRect = container.getBoundingClientRect();
@@ -686,30 +607,20 @@ function measurePhraseBoxes(container: Element): PhraseBoxMeasurements {
 }
 
 /**
- * Measures all `[data-phrase-box]` elements inside `container` and computes SVG arc paths (in
- * container-relative coordinates) connecting each phrase's discontiguous boxes — same-row upward
- * brackets and cross-row brackets. Same-row arcs are leveled so they don't overlap; cross-row arcs
- * rise into the upper row's top channel then drop down a side gutter (the side nearer the arc's
- * average x, ties left), one lane further out per descent overlap so legs never cross a box.
+ * Computes the container-relative SVG arc paths connecting each phrase's discontiguous boxes, plus
+ * the nesting depth and gutter padding the strip must reserve.
  *
- * @param container - The arc container element to search.
- * @returns The arc paths, max nesting level, and the left/right padding to reserve for gutter
- *   lanes.
+ * Same-row arcs are leveled so they never overlap. Cross-row arcs rise into the upper row's top
+ * channel and then drop down a side gutter — whichever side is nearer the arc's average x, ties
+ * going left — one lane further out per overlapping descent, so no leg ever crosses a box.
  */
 export function computeAllArcPaths(container: Element): ArcState {
   const { boxesByPhrase, contentLeft, contentRight, rowTopFor } = measurePhraseBoxes(container);
 
   /**
    * Builds a {@link SameRowPair} for two boxes that share a row. The single arc run spans between
-   * their centers, anchored to the row's normalized top channel (minimum box top on the row) so it
-   * conflicts correctly with cross-row runs on the same channel.
-   *
-   * @param phraseId - The phrase the pair belongs to.
-   * @param a - Container-space rect of the earlier (document-order) box.
-   * @param b - Container-space rect of the later (document-order) box.
-   * @param splitAfterTokenRef - Token ref of the last token in box `a`; stored for the split
-   *   button.
-   * @returns A {@link SameRowPair} with its level-assignment segment embedded.
+   * their centers, anchored to the row's normalized top channel so it conflicts correctly with
+   * cross-row runs sharing that channel.
    */
   const describeSameRowPair = (
     phraseId: string,
@@ -726,17 +637,8 @@ export function computeAllArcPaths(container: Element): ArcState {
   /**
    * Builds a {@link CrossRowPair} for two boxes on different rows. Emits two independently-leveled
    * segments — one per row's top channel, each spanning from its box center to the chosen side
-   * gutter — so a nested arc routed out the opposite side doesn't conflict. The side is fixed here
-   * (average x vs content edges, ties left) before levels exist.
-   *
-   * @param phraseId - The phrase the pair belongs to.
-   * @param a - Container-space rect of the earlier (document-order) box; assumed upper (`a.top ≤
-   *   b.top`).
-   * @param b - Container-space rect of the later (document-order) box.
-   * @param splitAfterTokenRef - Token ref of the last token in box `a`; stored for the split
-   *   button.
-   * @returns A {@link CrossRowPair} with its two level-assignment segments and routing side
-   *   embedded.
+   * gutter — so a nested arc routed out the opposite side doesn't conflict. The earlier box is
+   * assumed to be the upper one. The routing side is fixed here, before levels exist.
    */
   const describeCrossRowPair = (
     phraseId: string,
@@ -787,12 +689,6 @@ export function computeAllArcPaths(container: Element): ArcState {
   // Deepest nesting level across every run; sizes the strip's top padding.
   const maxLevel = segmentLevels.size > 0 ? Math.max(...segmentLevels.values()) : 0;
 
-  /**
-   * Reads a segment's assigned nesting level.
-   *
-   * @param seg - The segment whose level is wanted; always present, having been leveled above.
-   * @returns The segment's nesting level (0 = outermost).
-   */
   const levelOf = (seg: ArcSegment): number =>
     /* v8 ignore next -- every descriptor stores segments that were passed to assignSegmentLevels */
     segmentLevels.get(seg) ?? 0;
@@ -874,8 +770,6 @@ const SPLIT_BUTTON_HEIGHT_PX = 14;
  *
  * The scan repeats to a fixed point — nudging one button can collide it with another — capped at
  * one pass per button so an unresolvable residual terminates rather than loops.
- *
- * @param paths - All computed arc paths for the current layout; mutated in place.
  */
 export function deconflictSplitButtons(paths: ArcPath[]): void {
   for (let pass = 0; pass < paths.length; pass += 1) {
@@ -913,15 +807,12 @@ export function deconflictSplitButtons(paths: ArcPath[]): void {
 
 /**
  * Builds the SVG path and midpoint for a same-row upward-bracket arc between two boxes. The run
- * sits `stem` px above the box top with corners rounded _into_ the stem (not added on top), so it
- * shares the same channel as a cross-row run at the same stem — keeping intra- and inter-row arcs
- * aligned at a given level. Coordinates are scroll-space.
+ * sits the full stem above the box top with corners rounded _into_ the stem rather than added on
+ * top, so it shares a channel with a cross-row run at the same stem, keeping intra- and inter-row
+ * arcs aligned at a given level.
  *
- * @param a - Scroll-space rect of the left/earlier box.
- * @param b - Scroll-space rect of the right/later box.
- * @param stem - Total stem height in pixels (base + level offset).
- * @returns The SVG path `d`, the arc's visual midpoint, and the x-extent of its run (the channel
- *   the split button slides along).
+ * All coordinates are scroll-space. The returned run extent is the channel the split button slides
+ * along.
  */
 export function buildSameRowArcPath(
   a: { left: number; right: number; top: number },
@@ -951,15 +842,12 @@ export function buildSameRowArcPath(
 }
 
 /**
- * Builds an SVG path for an axis-aligned polyline through `points`, rounding each interior corner
- * with a quarter-circle of radius `r` (a line stopping `r` short of the corner, an arc onto the
- * next leg, continuing `r` past it). The radius is clamped to half the shorter adjacent leg so a
- * short leg never self-overlaps. Used by {@link buildCrossRowArcPath} so its multi-bend route reads
- * as a single rounded bracket.
+ * Builds an SVG path for an axis-aligned polyline, rounding each interior corner with a
+ * quarter-circle so a multi-bend route reads as a single rounded bracket. The radius is clamped to
+ * half the shorter adjacent leg, so a short leg never self-overlaps.
  *
- * @param points - Ordered waypoints; consecutive points must share an x or a y (axis-aligned legs).
- * @param r - Desired corner radius in pixels.
- * @returns The SVG path `d` attribute string starting with `M`.
+ * @param points - Ordered waypoints; consecutive points must share an x or a y.
+ * @param r - Desired corner radius in pixels, before clamping.
  */
 export function roundedPolyline(points: { x: number; y: number }[], r: number): string {
   const [first] = points;
@@ -993,20 +881,12 @@ export function roundedPolyline(points: { x: number; y: number }[], r: number): 
 }
 
 /**
- * Builds the SVG path for a cross-row arc between two boxes on different rows, routed so it never
- * passes behind a box: up from the upper box into its row's top channel (`aStem` above the box),
- * across to the gutter at `gutterX`, down the gutter, across into the lower row's channel (`bStem`
- * above that box), then down into its top. Each run sits its own (independently-leveled) stem above
- * its box; keeping the whole descent in the gutter is what avoids the boxes between the rows.
- * Coordinates are scroll-space.
+ * Builds the SVG path for an arc between two boxes on different rows, routed so it never passes
+ * behind a box. Each run sits its own independently-leveled stem above its box, and keeping the
+ * whole descent out in the side gutter is what clears the boxes lying between the two rows.
  *
- * @param a - Scroll-space rect (top edge) of the earlier (upper) box.
- * @param b - Scroll-space rect (top edge) of the later (lower) box.
- * @param aStem - Stem height (px) of the upper run above the upper box top.
- * @param bStem - Stem height (px) of the lower run above the lower box top.
- * @param gutterX - Scroll-space x of the box-free side gutter the descent travels down.
- * @returns The SVG path `d`, the midpoint on the upper run line (for the split button), and the
- *   x-extent of the upper run (box center → gutter) the button slides along.
+ * All coordinates are scroll-space. The returned midpoint sits on the upper run line, whose extent
+ * is the channel the split button slides along.
  */
 export function buildCrossRowArcPath(
   a: { left: number; right: number; top: number },

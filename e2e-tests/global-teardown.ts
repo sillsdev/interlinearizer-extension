@@ -25,9 +25,9 @@ export interface KillFromPidFileResult {
  * present, so no run leaves a stale marker behind. A filesystem error (concurrent deletion, a
  * locked file) is warned about and swallowed so teardown continues rather than aborting.
  *
- * @param pidFile Absolute path to the file holding the target process's PID.
- * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
- * @param label Human-readable name of the process, used in the "Stopping <label>" log line.
+ * @param pidFile - Absolute path to the file holding the target process's PID.
+ * @param signal - Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
+ * @param label - Human-readable name of the process, used in the "Stopping <label>" log line.
  * @returns See {@link KillFromPidFileResult}.
  */
 export function killProcessFromPidFile(
@@ -63,7 +63,7 @@ export function killProcessFromPidFile(
  * Stops the renderer dev server started by {@link globalSetup} (if any), then runs `npm run stop` in
  * paranext-core to terminate any lingering Electron processes.
  *
- * @param _config Playwright config object — unused; required by Playwright's global-teardown
+ * @param _config - Playwright config object — unused; required by Playwright's global-teardown
  *   interface.
  * @returns Resolves when all cleanup steps have completed.
  */

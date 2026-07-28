@@ -63,34 +63,26 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
     /**
      * Log an uncaught page error to the console.
      *
-     * @param err The error thrown in the page context.
+     * @param err - The error thrown in the page context.
      */
     const onPageError = (err: Error) => console.error(`Page error: ${err.message}`);
 
     /**
      * Log console error messages from the page to the process console.
      *
-     * @param msg The console message emitted by the page.
+     * @param msg - The console message emitted by the page.
      */
     const onConsoleMsg = (msg: ConsoleMessage) => {
       if (msg.type() === 'error') console.error(`Console error: ${msg.text()}`);
     };
 
-    /**
-     * Attach error and console listeners to a page for test observability.
-     *
-     * @param page The Playwright page to listen on.
-     */
+    /** Attach error and console listeners to a page for test observability. */
     const attachListeners = (page: Page) => {
       page.on('pageerror', onPageError);
       page.on('console', onConsoleMsg);
     };
 
-    /**
-     * Remove error and console listeners previously attached by {@link attachListeners}.
-     *
-     * @param page The Playwright page to stop listening on.
-     */
+    /** Remove error and console listeners previously attached by {@link attachListeners}. */
     const detachListeners = (page: Page) => {
       page.off('pageerror', onPageError);
       page.off('console', onConsoleMsg);

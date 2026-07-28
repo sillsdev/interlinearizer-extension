@@ -19,7 +19,6 @@ export const DEV_SERVER_PID_FILE = path.join(__dirname, '.dev-server.pid');
 /**
  * Check if a port is already in use.
  *
- * @param port Port number to probe.
  * @returns Resolves to `true` if the port is occupied, `false` if it is free.
  */
 export function isPortInUse(port: number): Promise<boolean> {
@@ -43,8 +42,7 @@ export function isPortInUse(port: number): Promise<boolean> {
  * Webpack-dev-middleware holds requests open until the initial compilation finishes, so a
  * successful response guarantees the initial renderer bundle is ready.
  *
- * @param url URL to probe.
- * @param timeout Maximum time in milliseconds to wait before rejecting.
+ * @param url - URL to probe.
  * @returns Resolves when the server returns a non-5xx response.
  * @throws {Error} If the server does not respond within `timeout` milliseconds.
  */
@@ -57,7 +55,7 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
     /**
      * Mark the probe as failed, destroy the in-flight request, and reject the outer promise.
      *
-     * @param message Human-readable failure reason passed to the rejected Error.
+     * @param message - Human-readable failure reason passed to the rejected Error.
      */
     const fail = (message: string) => {
       if (done) return;
@@ -114,8 +112,6 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
 /**
  * Wait until a port is accepting connections.
  *
- * @param port Port number to poll.
- * @param timeout Maximum time in milliseconds to wait before rejecting.
  * @returns Resolves when a TCP connection to the port succeeds.
  * @throws {Error} If the port does not become available within `timeout` milliseconds.
  */
@@ -253,7 +249,7 @@ export async function bootstrapRendererDevServer(): Promise<void> {
  * the renderer dev server via {@link bootstrapRendererDevServer}; the smoke fixture
  * (`app.fixture.ts`) then launches its own Electron instance per worker.
  *
- * @param _config Playwright config object — unused; required by Playwright's global-setup
+ * @param _config - Playwright config object — unused; required by Playwright's global-setup
  *   interface.
  * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use.

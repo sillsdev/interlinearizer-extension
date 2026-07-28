@@ -11,7 +11,7 @@ import { removeDirWithRetry, waitForPidExit } from './process-utils';
  * user-data dir, then delegates to the shared {@link globalTeardown} to stop the renderer dev server
  * and sweep any lingering core processes.
  *
- * @param config Playwright config object — forwarded to the shared teardown.
+ * @param config - Playwright config object — forwarded to the shared teardown.
  * @returns Resolves when the launched app is killed, its user-data dir removed, and shared teardown
  *   has completed.
  */

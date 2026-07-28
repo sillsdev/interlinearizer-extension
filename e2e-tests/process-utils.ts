@@ -14,8 +14,9 @@ import fs from 'fs';
  * - Elsewhere the target was spawned `detached` (its own process-group leader): signal the negative
  *   PID to hit the whole group, falling back to the bare PID if the group is already gone.
  *
- * @param pid PID of the detached process to kill. Non-positive values are rejected (see the guard).
- * @param signal POSIX signal to send when not on Windows (ignored on Windows). Defaults to
+ * @param pid - PID of the detached process to kill. Non-positive values are rejected (see the
+ *   guard).
+ * @param signal - POSIX signal to send when not on Windows (ignored on Windows). Defaults to
  *   `'SIGTERM'`.
  * @returns `true` if a kill was issued, `false` if the PID was invalid or the process was already
  *   gone.
@@ -56,8 +57,7 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM')
  *
  * For a caller with only a bare PID and no handle to listen on, use {@link waitForPidExit} instead.
  *
- * @param exitSignal Promise that resolves when the process has exited.
- * @param timeoutMs Maximum time in milliseconds to wait before giving up.
+ * @param exitSignal - Promise that resolves when the process has exited.
  * @returns Resolves once `exitSignal` settles, or once `timeoutMs` elapses — whichever is first.
  */
 export async function waitForProcessExit(
@@ -82,9 +82,8 @@ export async function waitForProcessExit(
  * with only a bare PID and no live process handle to listen on (e.g. teardown, which reads the PID
  * back from a marker file a separate setup invocation wrote).
  *
- * @param pid PID to poll.
- * @param timeoutMs Maximum time in milliseconds to wait before giving up.
- * @param pollIntervalMs Milliseconds between existence checks. Defaults to 100.
+ * @param pid - PID to poll.
+ * @param pollIntervalMs - Milliseconds between existence checks. Defaults to 100.
  * @returns Resolves once the PID no longer exists or `timeoutMs` elapses — whichever is first.
  */
 export async function waitForPidExit(
@@ -113,10 +112,10 @@ export async function waitForPidExit(
  * Best-effort and non-throwing: a persistent failure is logged, never thrown, so callers can rely
  * on this never aborting their own cleanup sequence.
  *
- * @param dir Directory to remove.
- * @param label Human-readable name for the directory, used in the warning log if removal ultimately
- *   fails (e.g. `'user data dir'`, `'CDP user-data dir'`).
- * @param retryDelayMs Milliseconds to wait before the retry attempt. Defaults to 3000.
+ * @param dir - Directory to remove.
+ * @param label - Human-readable name for the directory, used in the warning log if removal
+ *   ultimately fails (e.g. `'user data dir'`, `'CDP user-data dir'`).
+ * @param retryDelayMs - Milliseconds to wait before the retry attempt. Defaults to 3000.
  * @returns Resolves once removal succeeds or the retry attempt is exhausted.
  */
 export async function removeDirWithRetry(

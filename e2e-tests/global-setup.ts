@@ -236,12 +236,27 @@ export async function bootstrapRendererDevServer(): Promise<void> {
     // Scoped to this branch only: the already-running branch above didn't start the server, so this
     // run must leave it alone.
     try {
+      /**
+       * Rejects if the dev server could not be spawned. `spawn` reports that by emitting `'error'`
+       * asynchronously, and an unhandled `'error'` on an EventEmitter throws as an
+       * uncaughtException that no catch here could reach; racing it against the readiness wait
+       * routes it through this block's cleanup instead, and fails immediately rather than after the
+       * full 60s port wait.
+       */
+      const spawnFailed = new Promise<never>((_resolve, reject) => {
+        devServer.once('error', (error) => {
+          reject(new Error(`Failed to spawn the renderer dev server: ${error}`));
+        });
+      });
+      // Nothing awaits this once the waits below succeed, so mark it handled.
+      spawnFailed.catch(() => {});
+
       if (devServer.pid) {
         fs.writeFileSync(DEV_SERVER_PID_FILE, String(devServer.pid));
       }
 
       console.log(`Waiting for renderer dev server on port ${RENDERER_PORT}...`);
-      await waitForPort(RENDERER_PORT, 60_000);
+      await Promise.race([waitForPort(RENDERER_PORT, 60_000), spawnFailed]);
       console.log(
         `Port ${RENDERER_PORT} is accepting connections. Waiting for webpack compilation...`,
       );

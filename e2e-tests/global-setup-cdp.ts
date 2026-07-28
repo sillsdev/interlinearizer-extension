@@ -113,15 +113,17 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   const electronExecutable = coreRequire('electron') as string;
 
   // Isolated user-data dir so the singleton lock can't collide with a developer's own instance and
-  // the run leaves the real profile untouched. If recording the ownership marker fails, remove the
-  // dir we just created rather than leaking an unreferenced temp dir teardown can never find, and
-  // stop the dev server the bootstrap above just started — this is past bootstrapRendererDevServer's
-  // own cleanup but before the try/catch below, so nothing else would.
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paranext-e2e-cdp-'));
+  // the run leaves the real profile untouched. Creating the dir and recording its ownership marker
+  // are both covered here: this is past bootstrapRendererDevServer's own cleanup but before the
+  // try/catch below, so a failure at either step would otherwise leave the dev server it just
+  // started running, plus an unreferenced temp dir that teardown can never find.
+  let userDataDir = '';
   try {
+    userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'paranext-e2e-cdp-'));
     fs.writeFileSync(CDP_USER_DATA_FILE, userDataDir);
   } catch (error) {
-    await removeDirWithRetry(userDataDir, 'CDP user-data dir');
+    // Empty when mkdtempSync itself failed, in which case there is no dir to remove.
+    if (userDataDir) await removeDirWithRetry(userDataDir, 'CDP user-data dir');
     killProcessFromPidFile(DEV_SERVER_PID_FILE, 'SIGTERM', 'renderer dev server');
     throw error;
   }
@@ -197,6 +199,24 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     }
     appProcess.unref();
 
+    /**
+     * Rejects if the process could not be spawned at all (a missing or non-executable Electron
+     * binary). Registering a listener is what makes this recoverable: `spawn` reports such failures
+     * by emitting `'error'` asynchronously, and an unhandled `'error'` on an EventEmitter throws as
+     * an uncaughtException outside this try/catch — killing the setup process before any cleanup
+     * runs and stranding the seeded settings. No `'exit'` follows a failed spawn, so neither
+     * {@link earlyExit} nor `exited` covers this.
+     */
+    const spawnFailed = new Promise<never>((_resolve, reject) => {
+      appProcess?.once('error', (error) => {
+        reject(
+          new Error(`Failed to spawn Platform.Bible (CDP) at ${electronExecutable}: ${error}`),
+        );
+      });
+    });
+    // Handled for the same reason as earlyExit below: setup returns with nothing awaiting this.
+    spawnFailed.catch(() => {});
+
     // Resolves once the process exits (unlike earlyExit below, which rejects). Allows the
     // failure-path cleanup to bound its wait for a just-issued SIGKILL to take effect. Registered
     // before the PID-marker write so a write failure still reaches cleanUpFailedLaunch with a usable
@@ -229,14 +249,14 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
     earlyExit.catch(() => {});
 
     console.log(`Waiting for PAPI WebSocket on port ${WEBSOCKET_PORT}...`);
-    await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit]);
+    await Promise.race([waitForPort(WEBSOCKET_PORT, APP_READY_TIMEOUT), earlyExit, spawnFailed]);
     console.log(`Waiting for CDP debug port ${CDP_PORT}...`);
-    await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit]);
+    await Promise.race([waitForPort(CDP_PORT, APP_READY_TIMEOUT), earlyExit, spawnFailed]);
     console.log(
       'Ports are up. Waiting for the renderer to settle (dock tabs with real titles) and the ' +
         'interlinearizer extension to activate...',
     );
-    await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit]);
+    await Promise.race([waitForRendererSettled(RENDERER_SETTLE_TIMEOUT), earlyExit, spawnFailed]);
   } catch (error) {
     await cleanUpFailedLaunch(userDataDir, appProcess?.pid, exited);
     throw error;

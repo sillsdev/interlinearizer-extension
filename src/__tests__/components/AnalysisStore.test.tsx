@@ -2,9 +2,10 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { render, screen } from '@testing-library/react';
+import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
+import type { ReactNode } from 'react';
 import {
   AnalysisStoreProvider,
   useAnalysis,
@@ -114,17 +115,6 @@ function AnalysisReader() {
 }
 
 /**
- * Renders a component that calls `useGlossDispatch` without a provider, used to assert the hook
- * throws outside an {@link AnalysisStoreProvider}.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function DispatchUser() {
-  useGlossDispatch();
-  return undefined;
-}
-
-/**
  * Renders a button that calls `useGlossDispatch` to write a gloss, used to test dispatch.
  *
  * @param props.tokenRef - Token ref to write.
@@ -143,6 +133,33 @@ function GlossWriter({
       write
     </button>
   );
+}
+
+/**
+ * Renders `useHook` inside an {@link AnalysisStoreProvider} so a test can call the store's dispatch
+ * callbacks and read its selectors directly off `result.current`, without a throwaway button-and-
+ * click component. Mirrors the `renderHook` + `wrapper` idiom used elsewhere in the suite.
+ *
+ * @param useHook - Callback invoking the store hooks under test; its return is `result.current`.
+ * @param options - Provider props; `analysisLanguage` defaults to `'und'`.
+ * @returns The `renderHook` result.
+ */
+function renderStoreHook<T>(
+  useHook: () => T,
+  options: Readonly<{
+    analysisLanguage?: string;
+    initialAnalysis?: TextAnalysis;
+    onSave?: (analysis: TextAnalysis) => void;
+    onGlossChange?: (tokenRef: string, value: string) => void;
+  }> = {},
+) {
+  const { analysisLanguage = 'und', ...rest } = options;
+  const wrapper = ({ children }: Readonly<{ children: ReactNode }>) => (
+    <AnalysisStoreProvider analysisLanguage={analysisLanguage} {...rest}>
+      {children}
+    </AnalysisStoreProvider>
+  );
+  return renderHook(useHook, { wrapper });
 }
 
 // ---------------------------------------------------------------------------
@@ -313,37 +330,32 @@ describe('useAnalysis', () => {
 });
 
 describe('useGlossDispatch', () => {
-  it('replaces the existing approved analysis on subsequent writes for the same token', async () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <AnalysisReader />
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
-      </AnalysisStoreProvider>,
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
-    const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
+  it('replaces the existing approved analysis on subsequent writes for the same token', () => {
+    const { result } = renderStoreHook(() => ({
+      write: useGlossDispatch(),
+      analysis: useAnalysis(),
+    }));
+    act(() => result.current.write('tok-1', 'word', 'hi'));
+    act(() => result.current.write('tok-1', 'word', 'hi'));
+    const { analysis } = result.current;
     expect(analysis.tokenAnalyses).toHaveLength(1);
     expect(analysis.tokenAnalysisLinks).toHaveLength(1);
     expect(analysis.tokenAnalysisLinks[0].status).toBe('approved');
   });
 
-  it('creates a new approved analysis when writing to a different token', async () => {
-    render(
-      <AnalysisStoreProvider analysisLanguage="und">
-        <AnalysisReader />
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
-        <GlossWriter tokenRef="tok-2" surfaceText="other" value="bye" />
-      </AnalysisStoreProvider>,
-    );
-    await userEvent.click(screen.getAllByRole('button', { name: 'write' })[0]);
-    await userEvent.click(screen.getAllByRole('button', { name: 'write' })[1]);
-    const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
+  it('creates a new approved analysis when writing to a different token', () => {
+    const { result } = renderStoreHook(() => ({
+      write: useGlossDispatch(),
+      analysis: useAnalysis(),
+    }));
+    act(() => result.current.write('tok-1', 'word', 'hi'));
+    act(() => result.current.write('tok-2', 'other', 'bye'));
+    const { analysis } = result.current;
     expect(analysis.tokenAnalyses).toHaveLength(2);
     expect(analysis.tokenAnalysisLinks).toHaveLength(2);
   });
 
-  it('does not touch existing suggested analyses on write', async () => {
+  it('does not touch existing suggested analyses on write', () => {
     const suggested: TokenAnalysis = {
       id: 'suggested-1',
       surfaceText: 'word',
@@ -362,14 +374,12 @@ describe('useGlossDispatch', () => {
       phraseAnalyses: [],
       phraseAnalysisLinks: [],
     };
-    render(
-      <AnalysisStoreProvider initialAnalysis={seed} analysisLanguage="und">
-        <AnalysisReader />
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="new" />
-      </AnalysisStoreProvider>,
+    const { result } = renderStoreHook(
+      () => ({ write: useGlossDispatch(), analysis: useAnalysis() }),
+      { initialAnalysis: seed },
     );
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
-    const analysis: TextAnalysis = JSON.parse(screen.getByTestId('analysis').textContent ?? '');
+    act(() => result.current.write('tok-1', 'word', 'new'));
+    const { analysis } = result.current;
     expect(analysis.tokenAnalyses).toHaveLength(2);
     const suggestedEntry = analysis.tokenAnalysisLinks.find((l) => l.status === 'suggested');
     const approvedEntry = analysis.tokenAnalysisLinks.find((l) => l.status === 'approved');
@@ -377,49 +387,35 @@ describe('useGlossDispatch', () => {
     expect(approvedEntry?.analysisId).not.toBe('suggested-1');
   });
 
-  it('calls the onGlossChange spy with tokenRef and value', async () => {
+  it('calls the onGlossChange spy with tokenRef and value', () => {
     const spy = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" onGlossChange={spy}>
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
-      </AnalysisStoreProvider>,
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    const { result } = renderStoreHook(() => useGlossDispatch(), { onGlossChange: spy });
+    act(() => result.current('tok-1', 'word', 'hi'));
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('tok-1', 'hi');
   });
 
-  it('calls onSave with the updated TextAnalysis', async () => {
+  it('calls onSave with the updated TextAnalysis', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="hi" />
-      </AnalysisStoreProvider>,
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    const { result } = renderStoreHook(() => useGlossDispatch(), { onSave });
+    act(() => result.current('tok-1', 'word', 'hi'));
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses[0].gloss).toStrictEqual({ und: 'hi' });
   });
 
-  it('edits only this token when the payload is shared, forking the sibling off', async () => {
+  it('edits only this token when the payload is shared, forking the sibling off', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={makeSharedAnalysis()}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <GlossReader tokenRef="tok-1" />
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="b" />
-      </AnalysisStoreProvider>,
+    const { result } = renderStoreHook(
+      () => ({ write: useGlossDispatch(), gloss: useGloss('tok-1') }),
+      { initialAnalysis: makeSharedAnalysis(), onSave },
     );
-    expect(screen.getByTestId('gloss')).toHaveTextContent('a');
+    expect(result.current.gloss).toBe('a');
 
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    act(() => result.current.write('tok-1', 'word', 'b'));
 
     // tok-1 reads the new 'b'; tok-2 keeps 'a' because editing forked the shared payload.
-    expect(screen.getByTestId('gloss')).toHaveTextContent('b');
+    expect(result.current.gloss).toBe('b');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses).toHaveLength(2);
     const tok1Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1');
@@ -431,23 +427,17 @@ describe('useGlossDispatch', () => {
     expect(tok1Link?.analysisId).not.toBe(tok2Link?.analysisId);
   });
 
-  it('clears a shared gloss for only this token, leaving the sibling untouched', async () => {
+  it('clears a shared gloss for only this token, leaving the sibling untouched', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={makeSharedAnalysis()}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <GlossReader tokenRef="tok-1" />
-        <GlossWriter tokenRef="tok-1" surfaceText="word" value="" />
-      </AnalysisStoreProvider>,
+    const { result } = renderStoreHook(
+      () => ({ write: useGlossDispatch(), gloss: useGloss('tok-1') }),
+      { initialAnalysis: makeSharedAnalysis(), onSave },
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    act(() => result.current.write('tok-1', 'word', ''));
 
     // Clearing forks the shared payload so only tok-1's link goes away; tok-2 keeps the shared 'a'.
-    expect(screen.getByTestId('gloss')).toBeEmptyDOMElement();
+    expect(result.current.gloss).toBe('');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-1')).toBeUndefined();
     const tok2Link = saved.tokenAnalysisLinks.find((l) => l.token.tokenRef === 'tok-2');
@@ -458,7 +448,7 @@ describe('useGlossDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<DispatchUser />)).toThrow(
+    expect(() => renderHook(() => useGlossDispatch())).toThrow(
       'useGlossDispatch must be used inside an AnalysisStoreProvider',
     );
   });
@@ -511,48 +501,6 @@ function PhraseLinkReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
 }
 
 /**
- * Renders buttons that exercise `usePhraseDispatch`, used to assert phrase dispatch callbacks.
- *
- * @param props - Component props.
- * @param props.phraseId - The phrase id to use for update and delete operations.
- * @returns JSX element suitable for passing to `render`.
- */
-function PhraseDispatchUser({ phraseId }: Readonly<{ phraseId: string }>) {
-  const { createPhrase, updatePhrase, deletePhrase, mergePhrases } = usePhraseDispatch();
-  return (
-    <>
-      <button onClick={() => createPhrase([{ tokenRef: 'tok-x', surfaceText: 'X' }])} type="button">
-        create
-      </button>
-      <button
-        onClick={() => updatePhrase(phraseId, [{ tokenRef: 'tok-a', surfaceText: 'A' }])}
-        type="button"
-      >
-        update
-      </button>
-      <button onClick={() => deletePhrase(phraseId)} type="button">
-        delete
-      </button>
-      <button
-        onClick={() =>
-          mergePhrases(
-            phraseId,
-            [
-              { tokenRef: 'tok-a', surfaceText: 'A' },
-              { tokenRef: 'tok-b', surfaceText: 'B' },
-            ],
-            'phrase-2',
-          )
-        }
-        type="button"
-      >
-        merge
-      </button>
-    </>
-  );
-}
-
-/**
  * Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws.
  *
  * @returns Nothing — only mounted to trigger the throw.
@@ -569,16 +517,6 @@ function PhraseLinkMapUser() {
  */
 function PhraseLinkForTokenUser() {
   usePhraseLinkForToken('tok-1');
-  return undefined;
-}
-
-/**
- * Renders a component that calls `usePhraseDispatch` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function PhraseDispatchOutsideProvider() {
-  usePhraseDispatch();
   return undefined;
 }
 
@@ -724,15 +662,11 @@ describe('usePhraseLinkByIdGetter', () => {
 });
 
 describe('usePhraseDispatch', () => {
-  it('createPhrase adds a new phrase and calls onSave', async () => {
+  it('createPhrase adds a new phrase and calls onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
-        <PhraseDispatchUser phraseId="phrase-1" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => usePhraseDispatch(), { onSave });
 
-    await userEvent.click(screen.getByRole('button', { name: 'create' }));
+    act(() => result.current.createPhrase([{ tokenRef: 'tok-x', surfaceText: 'X' }]));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -740,19 +674,14 @@ describe('usePhraseDispatch', () => {
     expect(saved.phraseAnalysisLinks).toHaveLength(1);
   });
 
-  it('updatePhrase modifies the token list and calls onSave', async () => {
+  it('updatePhrase modifies the token list and calls onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={PHRASE_ANALYSIS}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <PhraseDispatchUser phraseId="phrase-1" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => usePhraseDispatch(), {
+      initialAnalysis: PHRASE_ANALYSIS,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'update' }));
+    act(() => result.current.updatePhrase('phrase-1', [{ tokenRef: 'tok-a', surfaceText: 'A' }]));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -760,19 +689,14 @@ describe('usePhraseDispatch', () => {
     expect(saved.phraseAnalysisLinks[0].tokens[0].tokenRef).toBe('tok-a');
   });
 
-  it('deletePhrase removes the phrase and calls onSave', async () => {
+  it('deletePhrase removes the phrase and calls onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={PHRASE_ANALYSIS}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <PhraseDispatchUser phraseId="phrase-1" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => usePhraseDispatch(), {
+      initialAnalysis: PHRASE_ANALYSIS,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'delete' }));
+    act(() => result.current.deletePhrase('phrase-1'));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -780,19 +704,23 @@ describe('usePhraseDispatch', () => {
     expect(saved.phraseAnalysisLinks).toHaveLength(0);
   });
 
-  it('mergePhrases grows the target phrase in one dispatch and calls onSave once', async () => {
+  it('mergePhrases grows the target phrase in one dispatch and calls onSave once', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={PHRASE_ANALYSIS}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <PhraseDispatchUser phraseId="phrase-1" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => usePhraseDispatch(), {
+      initialAnalysis: PHRASE_ANALYSIS,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'merge' }));
+    act(() =>
+      result.current.mergePhrases(
+        'phrase-1',
+        [
+          { tokenRef: 'tok-a', surfaceText: 'A' },
+          { tokenRef: 'tok-b', surfaceText: 'B' },
+        ],
+        'phrase-2',
+      ),
+    );
 
     // A single dispatch means a single save — the intermediate two-phrase state is never observed.
     expect(onSave).toHaveBeenCalledTimes(1);
@@ -806,7 +734,7 @@ describe('usePhraseDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<PhraseDispatchOutsideProvider />)).toThrow(
+    expect(() => renderHook(() => usePhraseDispatch())).toThrow(
       'usePhraseDispatch must be used inside an AnalysisStoreProvider',
     );
   });
@@ -887,47 +815,15 @@ describe('usePhraseGloss', () => {
 // usePhraseGlossDispatch
 // ---------------------------------------------------------------------------
 
-/**
- * Renders a button that writes a phrase gloss via `usePhraseGlossDispatch`.
- *
- * @param props - Component props.
- * @param props.phraseId - Phrase id to write.
- * @param props.value - Gloss value to write.
- * @returns JSX element.
- */
-function PhraseGlossWriter({ phraseId, value }: Readonly<{ phraseId: string; value: string }>) {
-  const dispatch = usePhraseGlossDispatch();
-  return (
-    <button onClick={() => dispatch(phraseId, value)} type="button">
-      write
-    </button>
-  );
-}
-
-/**
- * Renders a component that calls `usePhraseGlossDispatch` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function PhraseGlossDispatchUser() {
-  usePhraseGlossDispatch();
-  return undefined;
-}
-
 describe('usePhraseGlossDispatch', () => {
-  it('writes the phrase gloss and triggers onSave', async () => {
+  it('writes the phrase gloss and triggers onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={PHRASE_ANALYSIS}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <PhraseGlossWriter phraseId="phrase-1" value="beginning" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => usePhraseGlossDispatch(), {
+      initialAnalysis: PHRASE_ANALYSIS,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    act(() => result.current('phrase-1', 'beginning'));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -936,7 +832,7 @@ describe('usePhraseGlossDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<PhraseGlossDispatchUser />)).toThrow(
+    expect(() => renderHook(() => usePhraseGlossDispatch())).toThrow(
       'usePhraseGlossDispatch must be used inside an AnalysisStoreProvider',
     );
   });
@@ -1016,53 +912,12 @@ describe('useSegmentFreeTranslation', () => {
 // useSegmentFreeTranslationDispatch
 // ---------------------------------------------------------------------------
 
-/**
- * Renders a button that writes a segment free translation via `useSegmentFreeTranslationDispatch`.
- *
- * @param props - Component props.
- * @param props.segmentId - Segment id to write.
- * @param props.surfaceText - Segment baseline text to store.
- * @param props.value - Free-translation value to write.
- * @returns JSX element.
- */
-function SegmentTranslationWriter({
-  segmentId,
-  surfaceText,
-  value,
-}: Readonly<{ segmentId: string; surfaceText: string; value: string }>) {
-  const dispatch = useSegmentFreeTranslationDispatch();
-  return (
-    <button onClick={() => dispatch(segmentId, surfaceText, value)} type="button">
-      write
-    </button>
-  );
-}
-
-/**
- * Renders a component that calls `useSegmentFreeTranslationDispatch` without a provider, to assert
- * it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function SegmentTranslationDispatchUser() {
-  useSegmentFreeTranslationDispatch();
-  return undefined;
-}
-
 describe('useSegmentFreeTranslationDispatch', () => {
-  it('writes the segment free translation and triggers onSave', async () => {
+  it('writes the segment free translation and triggers onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
-        <SegmentTranslationWriter
-          segmentId="seg-1"
-          surfaceText="In the beginning"
-          value="au commencement"
-        />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => useSegmentFreeTranslationDispatch(), { onSave });
 
-    await userEvent.click(screen.getByRole('button', { name: 'write' }));
+    act(() => result.current('seg-1', 'In the beginning', 'au commencement'));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -1074,7 +929,7 @@ describe('useSegmentFreeTranslationDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<SegmentTranslationDispatchUser />)).toThrow(
+    expect(() => renderHook(() => useSegmentFreeTranslationDispatch())).toThrow(
       'useSegmentFreeTranslationDispatch must be used inside an AnalysisStoreProvider',
     );
   });
@@ -1106,67 +961,6 @@ function LanguageReader() {
 }
 
 /**
- * Renders a button that dispatches a morpheme breakdown, used to test
- * `useMorphemeBreakdownDispatch`.
- *
- * @param props.tokenRef - Token ref to write.
- * @param props.surfaceText - Surface text of the token.
- * @param props.forms - Morpheme forms to write.
- * @param props.writingSystem - Writing system of the token's surface text.
- * @returns JSX element suitable for passing to `render`.
- */
-function MorphemeWriter({
-  tokenRef,
-  surfaceText,
-  forms,
-  writingSystem,
-}: Readonly<{ tokenRef: string; surfaceText: string; forms: string[]; writingSystem: string }>) {
-  const dispatch = useMorphemeBreakdownDispatch();
-  return (
-    <button onClick={() => dispatch(tokenRef, surfaceText, forms, writingSystem)} type="button">
-      break
-    </button>
-  );
-}
-
-/**
- * Renders a button that dispatches a morpheme breakdown deletion, used to test
- * `useMorphemeDeleteDispatch`.
- *
- * @param props.tokenRef - Token ref whose breakdown to delete.
- * @returns JSX element suitable for passing to `render`.
- */
-function MorphemeDeleter({ tokenRef }: Readonly<{ tokenRef: string }>) {
-  const dispatch = useMorphemeDeleteDispatch();
-  return (
-    <button onClick={() => dispatch(tokenRef)} type="button">
-      delete-morphemes
-    </button>
-  );
-}
-
-/**
- * Renders a button that dispatches a morpheme gloss, used to test `useMorphemeGlossDispatch`.
- *
- * @param props.tokenRef - Token ref to write.
- * @param props.morphemeId - Morpheme id to gloss.
- * @param props.value - Gloss value.
- * @returns JSX element suitable for passing to `render`.
- */
-function MorphemeGlossWriter({
-  tokenRef,
-  morphemeId,
-  value,
-}: Readonly<{ tokenRef: string; morphemeId: string; value: string }>) {
-  const dispatch = useMorphemeGlossDispatch();
-  return (
-    <button onClick={() => dispatch(tokenRef, morphemeId, value)} type="button">
-      gloss
-    </button>
-  );
-}
-
-/**
  * Renders a component that calls `useMorphemes` without a provider, used to test the error.
  *
  * @returns Nothing — only mounted to trigger the throw.
@@ -1183,36 +977,6 @@ function MorphemesUser() {
  */
 function LanguageUser() {
   useAnalysisLanguage();
-  return undefined;
-}
-
-/**
- * Renders a component that calls `useMorphemeBreakdownDispatch` without a provider.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function MorphemeBreakdownDispatchUser() {
-  useMorphemeBreakdownDispatch();
-  return undefined;
-}
-
-/**
- * Renders a component that calls `useMorphemeGlossDispatch` without a provider.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function MorphemeGlossDispatchUser() {
-  useMorphemeGlossDispatch();
-  return undefined;
-}
-
-/**
- * Renders a component that calls `useMorphemeDeleteDispatch` without a provider.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
-function MorphemeDeleteDispatchUser() {
-  useMorphemeDeleteDispatch();
   return undefined;
 }
 
@@ -1283,23 +1047,16 @@ describe('useAnalysisLanguage', () => {
 });
 
 describe('useMorphemeBreakdownDispatch', () => {
-  it('writes morphemes and calls onSave', async () => {
+  it('writes morphemes and calls onSave', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider analysisLanguage="und" onSave={onSave}>
-        <MorphemeWriter
-          tokenRef="tok-1"
-          surfaceText="cat"
-          forms={['ca', '-t']}
-          writingSystem="en"
-        />
-        <MorphemeReader tokenRef="tok-1" />
-      </AnalysisStoreProvider>,
+    const { result } = renderStoreHook(
+      () => ({ breakdown: useMorphemeBreakdownDispatch(), morphemes: useMorphemes('tok-1') }),
+      { onSave },
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+    act(() => result.current.breakdown('tok-1', 'cat', ['ca', '-t'], 'en'));
 
-    expect(screen.getByTestId('morphemes')).toHaveTextContent('ca,-t');
+    expect(result.current.morphemes.map((m) => m.form)).toStrictEqual(['ca', '-t']);
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses).toHaveLength(1);
@@ -1307,24 +1064,14 @@ describe('useMorphemeBreakdownDispatch', () => {
     expect(saved.tokenAnalyses[0].morphemes?.[0].writingSystem).toBe('en');
   });
 
-  it('forks a shared payload so a breakdown edit touches only this token', async () => {
+  it('forks a shared payload so a breakdown edit touches only this token', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={makeSharedAnalysis()}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <MorphemeWriter
-          tokenRef="tok-1"
-          surfaceText="word"
-          forms={['wor', 'd']}
-          writingSystem="en"
-        />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => useMorphemeBreakdownDispatch(), {
+      initialAnalysis: makeSharedAnalysis(),
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'break' }));
+    act(() => result.current('tok-1', 'word', ['wor', 'd'], 'en'));
 
     // tok-1's forked copy gains the breakdown; tok-2's original keeps just the gloss.
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -1340,14 +1087,14 @@ describe('useMorphemeBreakdownDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<MorphemeBreakdownDispatchUser />)).toThrow(
+    expect(() => renderHook(() => useMorphemeBreakdownDispatch())).toThrow(
       'useMorphemeBreakdownDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });
 
 describe('useMorphemeDeleteDispatch', () => {
-  it('removes the morpheme breakdown and calls onSave', async () => {
+  it('deletes the morpheme breakdown and calls onSave', async () => {
     const onSave = jest.fn();
     const ta: TokenAnalysis = {
       id: 'ta-1',
@@ -1370,16 +1117,23 @@ describe('useMorphemeDeleteDispatch', () => {
       phraseAnalyses: [],
       phraseAnalysisLinks: [],
     };
-    render(
+    const wrapper = ({ children }: { children: ReactNode }) => (
       <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und" onSave={onSave}>
-        <MorphemeDeleter tokenRef="tok-1" />
-        <MorphemeReader tokenRef="tok-1" />
-      </AnalysisStoreProvider>,
+        {children}
+      </AnalysisStoreProvider>
     );
+    const { result } = renderHook(
+      () => ({
+        deleteBreakdown: useMorphemeDeleteDispatch(),
+        morphemes: useMorphemes('tok-1'),
+      }),
+      { wrapper },
+    );
+    expect(result.current.morphemes).toHaveLength(2);
 
-    await userEvent.click(screen.getByRole('button', { name: 'delete-morphemes' }));
+    act(() => result.current.deleteBreakdown('tok-1'));
 
-    expect(screen.getByTestId('morphemes')).toHaveTextContent('');
+    expect(result.current.morphemes).toHaveLength(0);
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     // The analysis carried no gloss, so the now-empty record and its link are removed entirely.
@@ -1389,14 +1143,14 @@ describe('useMorphemeDeleteDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<MorphemeDeleteDispatchUser />)).toThrow(
+    expect(() => renderHook(() => useMorphemeDeleteDispatch())).toThrow(
       'useMorphemeDeleteDispatch must be used inside an AnalysisStoreProvider',
     );
   });
 });
 
 describe('useMorphemeGlossDispatch', () => {
-  it('writes a morpheme gloss and calls onSave', async () => {
+  it('writes a morpheme gloss and calls onSave', () => {
     const onSave = jest.fn();
     const ta: TokenAnalysis = {
       id: 'ta-1',
@@ -1419,20 +1173,19 @@ describe('useMorphemeGlossDispatch', () => {
       phraseAnalyses: [],
       phraseAnalysisLinks: [],
     };
-    render(
-      <AnalysisStoreProvider initialAnalysis={analysis} analysisLanguage="und" onSave={onSave}>
-        <MorphemeGlossWriter tokenRef="tok-1" morphemeId="m-1" value="prefix" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => useMorphemeGlossDispatch(), {
+      initialAnalysis: analysis,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'gloss' }));
+    act(() => result.current('tok-1', 'm-1', 'prefix'));
 
     expect(onSave).toHaveBeenCalledTimes(1);
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     expect(saved.tokenAnalyses[0].morphemes?.[0].gloss).toStrictEqual({ und: 'prefix' });
   });
 
-  it('forks a shared payload so a morpheme-gloss edit touches only this token', async () => {
+  it('forks a shared payload so a morpheme-gloss edit touches only this token', () => {
     const onSave = jest.fn();
     const sharedMorpheme: TextAnalysis = {
       segmentAnalyses: [],
@@ -1459,17 +1212,12 @@ describe('useMorphemeGlossDispatch', () => {
       phraseAnalyses: [],
       phraseAnalysisLinks: [],
     };
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={sharedMorpheme}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <MorphemeGlossWriter tokenRef="tok-1" morphemeId="m1" value="root" />
-      </AnalysisStoreProvider>,
-    );
+    const { result } = renderStoreHook(() => useMorphemeGlossDispatch(), {
+      initialAnalysis: sharedMorpheme,
+      onSave,
+    });
 
-    await userEvent.click(screen.getByRole('button', { name: 'gloss' }));
+    act(() => result.current('tok-1', 'm1', 'root'));
 
     // tok-1's forked copy gets the morpheme gloss; tok-2's original morpheme stays bare.
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -1484,7 +1232,7 @@ describe('useMorphemeGlossDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<MorphemeGlossDispatchUser />)).toThrow(
+    expect(() => renderHook(() => useMorphemeGlossDispatch())).toThrow(
       'useMorphemeGlossDispatch must be used inside an AnalysisStoreProvider',
     );
   });
@@ -1623,28 +1371,6 @@ function ResolvedReader({
   const resolved = useResolvedTokenAnalysis(tokenRef, surfaceText, enabled);
   sink?.push(resolved);
   return <span data-testid="resolved">{resolved?.status ?? 'none'}</span>;
-}
-
-/**
- * Renders a button that approves a chosen analysis for a token, used to test
- * `useApproveAnalysisDispatch`.
- *
- * @param props.tokenRef - Token ref to approve for.
- * @param props.surfaceText - Surface text snapshotted on the new link.
- * @param props.analysisId - Payload id to approve.
- * @returns JSX element suitable for passing to `render`.
- */
-function Approver({
-  tokenRef,
-  surfaceText,
-  analysisId,
-}: Readonly<{ tokenRef: string; surfaceText: string; analysisId: string }>) {
-  const approve = useApproveAnalysisDispatch();
-  return (
-    <button onClick={() => approve(tokenRef, surfaceText, analysisId)} type="button">
-      approve
-    </button>
-  );
 }
 
 describe('useShowSuggestions', () => {
@@ -1812,23 +1538,20 @@ describe('useSuggestionAfterClearing', () => {
 });
 
 describe('useApproveAnalysisDispatch', () => {
-  it('approves the chosen payload for the token, flipping it from suggested to approved', async () => {
+  it('approves the chosen payload for the token, flipping it from suggested to approved', () => {
     const onSave = jest.fn();
-    render(
-      <AnalysisStoreProvider
-        initialAnalysis={makeAnalysisWithGloss('tok-1', 'w', 'logos')}
-        analysisLanguage="und"
-        onSave={onSave}
-      >
-        <ResolvedReader tokenRef="tok-2" surfaceText="logos" />
-        <Approver tokenRef="tok-2" surfaceText="logos" analysisId="tok-1-analysis" />
-      </AnalysisStoreProvider>,
+    const { result } = renderStoreHook(
+      () => ({
+        approve: useApproveAnalysisDispatch(),
+        resolved: useResolvedTokenAnalysis('tok-2', 'logos', true),
+      }),
+      { initialAnalysis: makeAnalysisWithGloss('tok-1', 'w', 'logos'), onSave },
     );
-    expect(screen.getByTestId('resolved')).toHaveTextContent('suggested');
+    expect(result.current.resolved?.status).toBe('suggested');
 
-    await userEvent.click(screen.getByRole('button', { name: 'approve' }));
+    act(() => result.current.approve('tok-2', 'logos', 'tok-1-analysis'));
 
-    expect(screen.getByTestId('resolved')).toHaveTextContent('approved');
+    expect(result.current.resolved?.status).toBe('approved');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     // No new payload — tok-2 links to the existing shared analysis (frequency now 2).
     expect(saved.tokenAnalyses).toHaveLength(1);
@@ -1839,7 +1562,7 @@ describe('useApproveAnalysisDispatch', () => {
 
   it('throws when called outside an AnalysisStoreProvider', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<Approver tokenRef="tok-1" surfaceText="logos" analysisId="a" />)).toThrow(
+    expect(() => renderHook(() => useApproveAnalysisDispatch())).toThrow(
       'useApproveAnalysisDispatch must be used inside an AnalysisStoreProvider',
     );
   });

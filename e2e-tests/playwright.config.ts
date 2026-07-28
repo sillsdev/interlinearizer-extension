@@ -23,7 +23,11 @@ export default defineConfig({
   // Tier-specific report/output folders so the second tier's report doesn't overwrite the first's.
   // The `open: 'never'` keeps a run from auto-launching a browser in CI.
   reporter: [['html', { outputFolder: 'playwright-report/smoke', open: 'never' }], ['list']],
-  timeout: 120_000,
+  // Headroom for a cold runner's one-time sample-project install, which `open-interlinearizer` waits
+  // out via waitForAtLeastOneProjectMetadata. A CI Windows runner has been observed still installing
+  // past 60s, and the test itself then needs ~40s, so 120_000 left no room and turned a slow-but-fine
+  // first launch into a red attempt.
+  timeout: 240_000,
   expect: {
     timeout: 10_000,
   },

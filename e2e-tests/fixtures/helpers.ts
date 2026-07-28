@@ -825,11 +825,18 @@ export async function waitForInterlinearizerReady(
  * dock/extension readiness — this closes that race explicitly instead of relying on a locator's own
  * actionability timeout.
  *
+ * The default is sized from CI, not guessed. Core logs `No projects found. Setting up sample WEB
+ * project` and then installs; a cold Windows runner has been seen still going past 60s, which
+ * failed the attempt even though nothing was wrong. The install persists in the project root (only
+ * the user-data dir is per-launch), so it is a one-time cost per machine that the next attempt
+ * inherits — which is exactly why those runs went red then green on retry. Waiting it out on the
+ * first attempt costs nothing on a warm machine and saves a retry on a cold one.
+ *
  * @param timeoutMs Maximum time in milliseconds to poll before throwing.
  * @returns Resolves once at least one project is registered.
  * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
  */
-export async function waitForAtLeastOneProjectMetadata(timeoutMs = 60_000): Promise<void> {
+export async function waitForAtLeastOneProjectMetadata(timeoutMs = 150_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     const remaining = timeoutMs - (Date.now() - start);

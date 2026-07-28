@@ -10,6 +10,10 @@ import {
 
 test.describe('Gloss round-trip', () => {
   test('typing a gloss on a token renders it in the gloss field', async ({ mainPage }) => {
+    // This test front-loads the full open-project-and-navigate sequence and has been observed at
+    // ~108s of the tier's 120s budget on CI, leaving no room for a slower runner. test.slow()
+    // triples the timeout rather than raising it tier-wide, so the faster tests keep a tight bound.
+    test.slow();
     // Shared-CDP readiness profile: lenient gate + short fail-fast budget — see the `cdp` option.
     await waitForAppAndInterlinearizerReady(mainPage, { cdp: true });
     await ensureInterlinearizerOpenOnWeb(mainPage);

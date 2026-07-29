@@ -7,6 +7,8 @@ End-to-end tests for the interlinearizer extension using Playwright + Electron. 
 
 Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can be run alone with `npm run test:e2e:smoke` and `npm run test:e2e:cdp`.
 
+Global setup rebuilds the extension before launching, so there is no separate build step to remember. This matters more than the few seconds it costs: a `dist/` left over from another branch runs an extension the tests were not written against, and the selector failures that follow look exactly like real regressions.
+
 Both tiers are self-launching: the CDP tier's `globalSetup` launches its own Platform.Bible instance (with `--remote-debugging-port=9223`) in an isolated user-data dir and tears it down afterward, so `npm run test:e2e:cdp` needs no manual `npm run start:cdp` first. To iterate against a warm instance instead, run `npm run start:cdp` in one terminal, then run the CDP config directly with `npx playwright test --config e2e-tests/playwright-cdp.config.ts`: the setup detects the in-use CDP port, reuses that instance, and leaves it running.
 
 In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on both Linux and Windows.

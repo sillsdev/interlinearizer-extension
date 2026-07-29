@@ -24,7 +24,21 @@ These rules do not apply to unnamed inline callbacks passed directly to framewor
 
 ## Params, returns, and throws
 
-Omit `@param` and `@returns` unless they add information the signature and type do not already convey - units, nullability meaning, ownership, side effects, or constraints. Never write `@param name - the name`. An exception: if any single method parameter deserves a comment, document all the parameters of that method.
+Omit `@param` and `@returns` when they only restate the signature and type. Keep them when they carry something the declaration cannot - units, nullability meaning, ownership, side effects, constraints, and anything else in that spirit. That list is illustrative, not a checklist to match against. Never write `@param name - the name`.
+
+If any single parameter of a method deserves a comment, document all of that method's parameters.
+
+A `@returns` earns its place whenever the returned value is more than its type. Keep it when it names:
+
+- a **fixed or constrained value** - always `false`, an empty array rather than `undefined`
+- a **transformation** the type doesn't show - normalized, sorted, deduped, cloned
+- something **synthesized** by the call - a generated id, a defaulted field
+- a **test-visible contract** a fixture guarantees - a `data-testid`, a specific element shape
+- **which** of several same-typed results comes back, or what an ambiguous boolean means
+
+Delete a `@returns` that only re-says the type: `@returns The render result.` on a function returning `RenderResult`, `@returns Nothing.` on `void`, `@returns JSX element.` on a component.
+
+When a `@returns` is genuinely borderline, keep it. A redundant line costs a reader a second; a deleted one can cost them a trip into the body.
 
 Include `@throws` for every error condition the caller must handle; omit it when the function never throws.
 

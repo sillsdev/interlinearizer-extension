@@ -483,8 +483,6 @@ function flushAppLog(appLog: fs.WriteStream): Promise<void> {
  * console. Called when the app fails to open its WebSocket port so the startup failure's cause
  * appears inline in the CI log, not only in the uploaded artifact. Best-effort: a missing or
  * unreadable log is reported, never thrown.
- *
- * @returns Nothing; logging-only.
  */
 function dumpSmokeAppLog(): void {
   try {

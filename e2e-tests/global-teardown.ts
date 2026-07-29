@@ -22,7 +22,6 @@ export interface KillFromPidFileResult {
  *
  * @param pidFile Absolute path to the PID marker file to remove.
  * @param label Human-readable name of the process the marker belongs to, used in the warning log.
- * @returns Nothing.
  */
 function removePidFile(pidFile: string, label: string): void {
   try {

@@ -460,21 +460,13 @@ function PhraseLinkReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
   return <span data-testid="link-id">{link?.analysisId ?? 'none'}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws. */
 function PhraseLinkMapUser() {
   usePhraseLinkMap();
   return undefined;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkForToken` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkForToken` without a provider, to assert it throws. */
 function PhraseLinkForTokenUser() {
   usePhraseLinkForToken('tok-1');
   return undefined;
@@ -543,11 +535,7 @@ function PhraseLinkByIdMapReader() {
   return <span data-testid="id-map-size">{map.size}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkByIdMap` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkByIdMap` without a provider, to assert it throws. */
 function PhraseLinkByIdMapUser() {
   usePhraseLinkByIdMap();
   return undefined;
@@ -589,11 +577,7 @@ function PhraseLinkByIdGetterReader() {
   return <span data-testid="getter-map-size">{getPhraseLinkById().size}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws. */
 function PhraseLinkByIdGetterUser() {
   usePhraseLinkByIdGetter();
   return undefined;
@@ -706,11 +690,7 @@ function PhraseGlossReader({ phraseId }: Readonly<{ phraseId: string }>) {
   return <span data-testid="phrase-gloss">{gloss}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseGloss` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseGloss` without a provider, to assert it throws. */
 function PhraseGlossUser() {
   usePhraseGloss('p1');
   return undefined;
@@ -816,8 +796,6 @@ function SegmentTranslationReader({ segmentId }: Readonly<{ segmentId: string }>
 /**
  * Renders a component that calls `useSegmentFreeTranslation` without a provider, to assert it
  * throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
  */
 function SegmentTranslationUser() {
   useSegmentFreeTranslation('seg-1');
@@ -897,21 +875,13 @@ function LanguageReader() {
   return <span data-testid="lang">{lang}</span>;
 }
 
-/**
- * Renders a component that calls `useMorphemes` without a provider, used to test the error.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `useMorphemes` without a provider, used to test the error. */
 function MorphemesUser() {
   useMorphemes('tok-1');
   return undefined;
 }
 
-/**
- * Renders a component that calls `useAnalysisLanguage` without a provider, used to test the error.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `useAnalysisLanguage` without a provider, used to test the error. */
 function LanguageUser() {
   useAnalysisLanguage();
   return undefined;

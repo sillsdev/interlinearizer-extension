@@ -302,7 +302,6 @@ export async function bootstrapRendererDevServer(): Promise<void> {
  *
  * @param pid PID of the spawned dev server; `undefined` if the spawn never reported one, in which
  *   case there is nothing to kill and no marker was written.
- * @returns Nothing.
  */
 function killSpawnedDevServer(pid: number | undefined): void {
   if (!pid) return;

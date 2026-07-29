@@ -312,7 +312,7 @@ describe('extractBookFromUsj', () => {
           marker: 'p',
           content: [{ type: 'verse', sid: 'PSA 1:1' }, 'Blessed is the man'],
         },
-        // s1 heading arrives while PSA 1:1 is still the currentVerse
+        // s1 heading arrives while PSA 1:1 is still the open verse
         { type: 'para', marker: 's1', content: ['Interlude'] },
         {
           type: 'para',
@@ -327,7 +327,7 @@ describe('extractBookFromUsj', () => {
   });
 
   it('includes text nested inside multiple levels of inline char nodes', () => {
-    // The traverse fallback recurses into any unknown node that has content, so deeply
+    // The extractor's fallback recurses into any unknown node that has content, so deeply
     // nested char nodes must still contribute their text.
     const usj: UsjDocument = {
       content: [
@@ -372,9 +372,9 @@ describe('extractBookFromUsj', () => {
   });
 
   it('treats undefined array elements the same as null when computing contentHash', () => {
-    // stableStringify recurses into all object properties; traverse only follows .content.
-    // Putting undefined inside an extra non-content array lets us exercise the
-    // `if (value === undefined) return 'null'` path without crashing traverse.
+    // The hash serialization recurses into all object properties, while the verse traversal only
+    // follows `content`. Putting undefined inside an extra non-content array exercises the
+    // undefined-serialized-as-null path without the traversal tripping over a non-node value.
     type UsjDocumentWithExtra = {
       content: (UsjDocument['content'][number] & { extra?: (undefined | null)[] })[];
     };

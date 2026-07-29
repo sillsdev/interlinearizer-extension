@@ -22,18 +22,18 @@ import MemoizedTokenLinkIcon from './TokenLinkIcon';
  * comes from strip context (fetched once per strip) rather than a per-instance
  * `useLocalizedStrings`, so the `field-sizing: content` input renders at its final width on its
  * first frame.
- *
- * @param props - Component props
- * @param props.phraseId - ID of the `PhraseAnalysis` to read/write.
- * @param props.disabled - When true, the input is read-only.
- * @param props.onFocus - Called when the input receives focus; used to center this phrase in the
- *   strip.
  */
 function PhraseGlossInput({
   phraseId,
   disabled = false,
   onFocus,
-}: Readonly<{ phraseId: string; disabled?: boolean; onFocus?: () => void }>) {
+}: Readonly<{
+  /** ID of the `PhraseAnalysis` whose gloss is read and written. */
+  phraseId: string;
+  disabled?: boolean;
+  /** Called when the input receives focus; used to center this phrase in the strip. */
+  onFocus?: () => void;
+}>) {
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
   const { glossPlaceholder } = usePhraseStripContext();
@@ -139,25 +139,6 @@ type PhraseBoxProps = Readonly<{
  * In `confirm-unlink` mode:
  *
  * - The phrase being unlinked is highlighted; all other phrase boxes are disabled.
- *
- * @param props - Component props
- * @param props.isFocused - Whether this phrase is the current navigation focus
- * @param props.groupKey - Key identifying this phrase group, forwarded to `onFocusPhrase`
- * @param props.onFocusPhrase - Called with `groupKey` when any child gloss input receives focus
- * @param props.tokens - Tokens belonging to this phrase
- * @param props.phraseLink - Approved phrase link shared by all tokens in this box, if any
- * @param props.showGlossInput - When false, hides the gloss input; used for non-first fragments of
- *   a discontiguous phrase so the input appears only once
- * @param props.showControls - When true, edit/unlink buttons are shown above this fragment (parent
- *   sets for hovered fragment only)
- * @param props.isHighlighted - When true, all fragments of the hovered/focused phrase receive the
- *   highlighted border style simultaneously
- * @param props.isCandidate - When true, this box's tokens are part of a hovered operation preview
- *   (link or boundary merge/split) and render the strong candidate outline
- * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split; each
- *   matching chip renders with a destructive border as a preview
- * @param props.punctuationBetween - Punctuation tokens between adjacent word tokens, in document
- *   order; `punctuationBetween[i]` sits between `tokens[i]` and `tokens[i+1]`
  */
 export function PhraseBox({
   isFocused = false,
@@ -203,13 +184,13 @@ export function PhraseBox({
    * container, wrapper spans, padding, or gloss area), so clicking the phrase body — not just a
    * chip — selects it. Each token chip's own input/button handles its own focus, so clicks landing
    * directly on one are left alone (the `closest` check); everything else forwards focus to the
-   * first gloss input, whose `onFocus` → {@link onFocusPhrase} highlights this phrase. Focus is
-   * forwarded with `preventScroll` because the clicked element is already on screen, so the
-   * browser's default scroll-into-view would realign the segment list for no reason (the input may
-   * sit on another wrapped row of the phrase, partially out of view). Morpheme gloss inputs are
-   * excluded from the lookup: when morphology is shown they precede the token gloss input in DOM
-   * order, but a click on the phrase body means "edit this phrase", so focus belongs in the first
-   * token's own gloss field rather than in one of its morpheme sub-fields.
+   * first gloss input, which reports the phrase as focused and highlights it. Focus is forwarded
+   * with `preventScroll` because the clicked element is already on screen, so the browser's default
+   * scroll-into-view would realign the segment list for no reason (the input may sit on another
+   * wrapped row of the phrase, partially out of view). Morpheme gloss inputs are excluded from the
+   * lookup: when morphology is shown they precede the token gloss input in DOM order, but a click
+   * on the phrase body means "edit this phrase", so focus belongs in the first token's own gloss
+   * field rather than in one of its morpheme sub-fields.
    *
    * @param e - The container's click event.
    */
@@ -221,9 +202,9 @@ export function PhraseBox({
   }, []);
 
   /**
-   * Keyboard counterpart to {@link focusFirstGlossOnSelfClick} so the click-target container
-   * satisfies the interactive-element a11y rule. Enter/Space focus the first gloss input. The box
-   * itself is `tabIndex={-1}`, so this only fires for programmatic focus, never normal tabbing.
+   * Keyboard counterpart to the box's self-click focusing, so the click-target container satisfies
+   * the interactive-element a11y rule. Enter/Space focus the first gloss input. The box itself is
+   * `tabIndex={-1}`, so this only fires for programmatic focus, never normal tabbing.
    *
    * @param e - The container's keydown event.
    */
@@ -584,8 +565,8 @@ export function PhraseBox({
   };
 
   /**
-   * Keyboard counterpart to {@link handleBoxClick}: Enter/Space add this box's free token to the
-   * edited phrase, ignored while the box is disabled.
+   * Keyboard counterpart to clicking the box: Enter/Space add this box's free token to the edited
+   * phrase, ignored while the box is disabled.
    *
    * @param e - The container's keydown event.
    */

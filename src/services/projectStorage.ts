@@ -50,8 +50,7 @@ const draftQueues = new Map<string, Promise<unknown>>();
 /**
  * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
  * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws, so a
- * failed operation does not block later ones. Shared by {@link enqueueIndexOp} and
- * {@link enqueuePendingCleanupOp}, which differ only in which module-level queue they advance.
+ * failed operation does not block later ones.
  *
  * @param get - Returns the current tail of the queue to chain `fn` after.
  * @param set - Stores the new tail of the queue (a promise that settles once `fn` settles).
@@ -70,8 +69,8 @@ function enqueueOnQueue<T>(
 }
 
 /**
- * Enqueues `fn` on the index serialization queue. Thin wrapper over {@link enqueueOnQueue} bound to
- * {@link indexQueue}.
+ * Enqueues `fn` on the index serialization queue, so it runs only once every index operation
+ * enqueued before it has settled.
  *
  * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
  *   blocked.
@@ -87,8 +86,8 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Enqueues `fn` on the pending-cleanup serialization queue. Thin wrapper over {@link enqueueOnQueue}
- * bound to {@link pendingCleanupQueue}.
+ * Enqueues `fn` on the pending-cleanup serialization queue, so it runs only once every
+ * pending-cleanup operation enqueued before it has settled.
  *
  * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
  *   blocked.
@@ -131,8 +130,8 @@ function enqueueSerialized<T>(
 }
 
 /**
- * Enqueues `fn` on the per-project serialization queue for `id`. Thin wrapper over
- * {@link enqueueSerialized} bound to {@link projectQueues}.
+ * Enqueues `fn` on the serialization queue for project `id`, so it runs only once every operation
+ * enqueued before it on that same project has settled; other projects proceed independently.
  *
  * @throws Whatever `fn` throws; the queue entry is removed and the rejection propagates to the
  *   caller.
@@ -169,8 +168,7 @@ function isStringArray(value: unknown): value is string[] {
 
 /**
  * Reads and JSON-parses the value stored at `key`, treating a never-written key as an empty array.
- * Shared by {@link readIds} and {@link readPendingCleanup}. Returns the raw parsed value as `unknown`
- * and does not validate that it is an array of strings; each caller validates the shape itself.
+ * Returns the raw parsed value as `unknown` and does not validate that it is an array of strings.
  *
  * @returns The parsed value, or an empty array if `key` has never been written (ENOENT).
  * @throws {SyntaxError} If the stored value contains invalid JSON.
@@ -258,12 +256,12 @@ async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanup
 
 /**
  * Records `id` in the persistent `pendingCleanup` set so a later {@link sweepPendingCleanup} can
- * retry deleting its orphaned `project:{id}` record. Serialized through {@link pendingCleanupQueue}
- * and idempotent: an id already in the set is not added twice.
+ * retry deleting its orphaned `project:{id}` record. Serialized with every other write to the set,
+ * so concurrent updates cannot overwrite each other, and idempotent: an id already in the set is
+ * not added twice.
  *
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason. A corrupt `pendingCleanup` value is not thrown; {@link readPendingCleanup} resets it to
- *   an empty set.
+ *   reason. A corrupt `pendingCleanup` value is not thrown; it is recovered as an empty set.
  */
 function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> {
   return enqueuePendingCleanupOp(async () => {
@@ -288,7 +286,7 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  * set while still indexed (e.g. an index write that persists but then reports failure). Intended to
  * run opportunistically at activation.
  *
- * The whole read-delete-rewrite cycle is serialized through {@link pendingCleanupQueue} so it cannot
+ * The whole read-delete-rewrite cycle is serialized with every other write to the set, so it cannot
  * interleave with a concurrent {@link recordPendingCleanup} and drop a newly recorded orphan. The
  * per-record deletions run concurrently within the cycle; the set is small and each targets a
  * distinct key.
@@ -307,7 +305,7 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
       if (corrupt) await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([]));
       return 0;
     }
-    // Read the index directly rather than through enqueueIndexOp: this snapshot is consulted only
+    // Read the index directly rather than on the index queue: this snapshot is consulted only
     // to protect live projects from deletion, and both directions of a stale read are safe. A read
     // that misses a just-created project is harmless (a live project's id is never in the
     // pending-cleanup work set), and a read that still shows a since-deleted project only makes the
@@ -556,12 +554,9 @@ export async function updateProjectMetadata(
  * Deletes the project with the given ID from storage and removes it from the index. No-ops silently
  * if the project does not exist.
  *
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON (from
- *   {@link readIds}).
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
  * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
  * @throws If `papi.storage.writeUserData` rejects when updating `PROJECT_IDS_KEY`.
- * @throws Any error propagated from {@link readIds}, {@link enqueueProjectOp}, or
- *   {@link enqueueIndexOp}.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   await enqueueProjectOp(id, async () => {
@@ -611,9 +606,9 @@ export async function getDraft(
 
 /**
  * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
- * serialized per source (via {@link draftQueues}) so a WebView's rapid auto-saves cannot persist out
- * of order. The caller owns the whole envelope — including the `dirty` flag — so this function is a
- * plain write with no read-modify-merge.
+ * serialized per source project, so a WebView's rapid auto-saves cannot persist out of order. The
+ * caller owns the whole envelope — including the `dirty` flag — so this function is a plain write
+ * with no read-modify-merge.
  *
  * @throws If `papi.storage.writeUserData` rejects.
  */
@@ -629,8 +624,8 @@ export async function saveDraft(
 
 /**
  * Resets module-level queue state between tests. Jest's `resetMocks` resets mock implementations
- * but does not re-execute modules, so `indexQueue`, `projectQueues`, and `draftQueues` would
- * otherwise persist across tests and allow promise chains from one test to bleed into the next.
+ * but does not re-execute modules, so the serialization queues would otherwise persist across tests
+ * and allow promise chains from one test to bleed into the next.
  */
 export function resetQueuesForTesting(): void {
   indexQueue = Promise.resolve();

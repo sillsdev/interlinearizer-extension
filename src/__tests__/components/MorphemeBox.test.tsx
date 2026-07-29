@@ -75,7 +75,6 @@ describe('MorphemeBox', () => {
     renderBox();
     const firstForm = screen.getByText('hel');
     const firstGloss = screen.getByRole('textbox', { name: 'Gloss for morpheme hel' });
-    // A morpheme and its gloss must share a column; the form sits on row 1, its gloss on row 2.
     expect(firstForm).toHaveStyle({ gridColumn: '1', gridRow: '1' });
     expect(firstGloss).toHaveStyle({ gridColumn: '1', gridRow: '2' });
   });
@@ -116,7 +115,7 @@ describe('MorphemeBox', () => {
   });
 
   it('calls onEditBreakdown when a non-first form cell is clicked', async () => {
-    // Non-first cells are spans, not buttons, so they need their own coverage.
+    // Non-first cells are spans, not buttons, and open the editor through a separate handler.
     const onEditBreakdown = jest.fn();
     renderBox({ onEditBreakdown });
     await userEvent.click(screen.getByText('-lo'));

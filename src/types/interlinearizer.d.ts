@@ -893,9 +893,9 @@ declare module 'interlinearizer' {
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
    * conditioning).
    *
-   * All four refs — `entryRef`, `senseRef`, `allomorphRef`, `grammarRef` — point into the Lexicon
-   * extension. Surface / citation forms, definitions, POS, inflection class, and other lexical
-   * information are read from the extension and not duplicated here.
+   * The `*Ref` fields all point into the Lexicon extension. Surface / citation forms, definitions,
+   * POS, inflection class, and other lexical information are read from the extension and not
+   * duplicated here.
    *
    * Source-system mapping:
    *
@@ -1090,7 +1090,7 @@ declare module 'interlinearizer' {
    * Source-system mapping:
    *
    * - LCM / Paratext: endpoints produced only through external tools or parallel-project inference
-   *   (see `AlignmentLink`).
+   *   (see {@link AlignmentLink}).
    * - BT Extension: one endpoint per `Instance` in an `Alignment`'s `sourceInstances` /
    *   `targetInstances`. `morphemeLink` is set when the token has a morpheme-level parse; otherwise
    *   the endpoint targets the whole token.

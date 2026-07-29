@@ -13,7 +13,7 @@ const AVAILABLE_SCROLL_GROUPS = [undefined, 0, 1, 2, 3, 4];
 /**
  * Localized string keys for {@link BookChapterControl}, hoisted to module scope so the array
  * reference passed to `useLocalizedStrings` is stable across renders (a fresh array each render
- * would make the hook re-fetch every render). Mirrors the `STRING_KEYS` pattern in the views.
+ * would make the hook re-fetch every render).
  */
 const STRING_KEYS = [...BOOK_CHAPTER_CONTROL_STRING_KEYS];
 
@@ -28,7 +28,6 @@ type ScriptureNavControlsProps = Pick<BookChapterControlProps, 'scrRef' | 'handl
  * Renders the scripture-navigation bar: a {@link BookChapterControl} for jumping to a reference and
  * a {@link ScrollGroupSelector} for linking the view to a scroll group.
  *
- * @param props - Component props.
  * @param props.scrRef - The currently displayed scripture reference.
  * @param props.handleSubmit - Called when the user submits a new reference.
  * @param props.scrollGroupId - The currently active scroll-group ID (`undefined` = unlinked).

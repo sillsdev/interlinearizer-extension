@@ -1,11 +1,4 @@
-/**
- * @file Integration tests for {@link TokenChip}'s suggestion combobox (the focus-triggered pop-down
- *   that replaced the inline accept/promote column). Unlike `TokenChip.test.tsx`, this file uses
- *   the real {@link AnalysisStoreProvider} so suggestions are derived from a real analysis pool end
- *   to end. The dropdown opens on focus of the gloss (clicking it), and a row is approved by
- *   clicking it or by keyboard (arrows + Enter). The "+" button — rendered only for a token with
- *   more than one suggestion — re-summons the dropdown over typed text.
- */
+// Suggestion-combobox tests run against the real analysis store rather than mocks.
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -470,7 +463,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
     });
 
     await focusGloss('logos');
-    // No arrow press: activeIndex is -1, so Enter falls back to the top row.
+    // No arrow press: nothing is highlighted, so Enter falls back to the top row.
     await userEvent.keyboard('{Enter}');
 
     const saved: TextAnalysis = onSave.mock.calls[0][0];

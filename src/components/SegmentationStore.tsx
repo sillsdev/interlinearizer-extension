@@ -17,11 +17,7 @@ export type SegmentationDispatch = Readonly<{
    * @param secondSegmentStartRef - First-token ref of the segment to merge into its predecessor.
    */
   merge: (secondSegmentStartRef: string) => void;
-  /**
-   * Splits a segment so a new one begins at `tokenRef`.
-   *
-   * @param tokenRef - The token ref the new segment should begin at.
-   */
+  /** Splits a segment so a new one begins at `tokenRef`. */
   split: (tokenRef: string) => void;
   /**
    * Moves a boundary from `fromRef` to `toRef` — used to pull a single edge token across a segment
@@ -48,9 +44,10 @@ export type SegmentationContextValue = Readonly<{
    * the mapped ref so the restore cancels the removal exactly — even when the verse begins with
    * punctuation, whose ref no word-anchored slot could otherwise name.
    *
-   * Bridges two anchor conventions: `SegmentationDelta.removedVerseStarts` anchors on a verse's
-   * leading token of **any** type, while the boundary slots are keyed by word tokens. The two
-   * diverge only when a verse begins with punctuation; this lookup reconciles them at that seam.
+   * Bridges two anchor conventions: the removed-verse-starts entries of the
+   * {@link SegmentationDelta} anchor on a verse's leading token of **any** type, while the boundary
+   * slots are keyed by word tokens. The two diverge only when a verse begins with punctuation; this
+   * lookup reconciles them at that seam.
    */
   formerBoundaries: ReadonlyMap<string, string>;
   /**
@@ -70,8 +67,8 @@ export const NO_OP_SEGMENTATION_DISPATCH: SegmentationDispatch = {
 
 /**
  * Default context for components rendered without a {@link SegmentationProvider}: the dispatch is
- * inert and the lookups are empty. Lets `SegmentView` / `ContinuousView` / `TokenLinkIcon` be
- * unit-tested in isolation without wiring a provider, while the real app always supplies one.
+ * inert and the lookups are empty. Lets leaf components be unit-tested in isolation without wiring
+ * a provider, while the real app always supplies one.
  */
 const DEFAULT_VALUE: SegmentationContextValue = {
   dispatch: NO_OP_SEGMENTATION_DISPATCH,
@@ -91,22 +88,12 @@ type SegmentationProviderProps = Readonly<{
   children: ReactNode;
 }>;
 
-/**
- * Provides the {@link SegmentationContextValue} to the interlinear views beneath it.
- *
- * @param props - Component props.
- * @param props.value - The segmentation context value.
- * @param props.children - The subtree.
- */
+/** Provides the {@link SegmentationContextValue} to the interlinear views beneath it. */
 export function SegmentationProvider({ value, children }: SegmentationProviderProps) {
   return <SegmentationContext.Provider value={value}>{children}</SegmentationContext.Provider>;
 }
 
-/**
- * Reads the segmentation context, falling back to an inert default when no provider is present.
- *
- * @returns The current {@link SegmentationContextValue}, or an inert default outside a provider.
- */
+/** Reads the segmentation context, falling back to an inert default when no provider is present. */
 export function useSegmentation(): SegmentationContextValue {
   return useContext(SegmentationContext) ?? DEFAULT_VALUE;
 }

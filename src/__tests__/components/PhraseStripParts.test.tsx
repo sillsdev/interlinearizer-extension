@@ -76,10 +76,6 @@ jest.mock('../../components/PhraseBox', () => ({
   ),
 }));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /** Creates a punctuation token fixture. */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
@@ -108,10 +104,6 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
 function withProvider(ui: ReactElement): ReactElement {
   return <PhraseStripProvider value={makePhraseStripContext()}>{ui}</PhraseStripProvider>;
 }
-
-// ---------------------------------------------------------------------------
-// PhraseSlot
-// ---------------------------------------------------------------------------
 
 describe('PhraseSlot', () => {
   it('returns undefined when the slot has no neighbors and no punctuation', () => {
@@ -314,10 +306,6 @@ describe('PhraseSlot', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// PhraseSlot boundary controls
-// ---------------------------------------------------------------------------
-
 describe('PhraseSlot boundary controls', () => {
   const groupA: TokenGroup = {
     tokens: [makeWordToken('a')],
@@ -480,7 +468,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 
-  // Verse number (peeking) coexists with the boundary button (punct row).
   describe('verse number and boundary button coexistence', () => {
     it('keeps the peeking verse number alongside the always-visible merge button while Alt is not held', () => {
       renderBoundary(
@@ -660,7 +647,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 
-  // Former boundary: no tick, Alt still reveals the split marker.
   describe('former boundary', () => {
     // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
     // at a former boundary while Alt is not held.
@@ -689,10 +675,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// PhraseGroup
-// ---------------------------------------------------------------------------
 
 describe('MemoizedPhraseGroup', () => {
   const group: TokenGroup = {
@@ -759,10 +741,6 @@ describe('MemoizedPhraseGroup', () => {
     expect(setHoveredGroupKey).not.toHaveBeenCalled();
   });
 });
-
-// ---------------------------------------------------------------------------
-// PhraseStrip
-// ---------------------------------------------------------------------------
 
 describe('PhraseStrip', () => {
   /** Builds default `PhraseStrip` props with the given items and overrides. */

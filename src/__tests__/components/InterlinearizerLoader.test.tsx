@@ -205,7 +205,7 @@ jest.mock('../../components/modals/ProjectModals', () => ({
    * Minimal ProjectModals stand-in that drives modal state and active-project state through the
    * same `useWebViewState` hook the real component uses, so tests can assert on state transitions
    * without mounting the full modal tree. Accepts (and mostly ignores) the draft-related props the
-   * loader now passes (`hasUnsavedWork`, `getDraftSnapshot`, `loadFromProject`, `markSynced`);
+   * loader passes (`hasUnsavedWork`, `getDraftSnapshot`, `loadFromProject`, `markSynced`);
    * `hasUnsavedWork` is surfaced as a `data-*` attribute so tests can assert the loader feeds it
    * the combined committed-and-pending unsaved state.
    */
@@ -911,7 +911,7 @@ describe('InterlinearizerLoader', () => {
   });
 
   it('takes analysisLanguage from the draft analysisLanguages, not the active project', async () => {
-    // The draft owns the analysis language now; a draft configured for French must win even when
+    // The draft owns the analysis language; a draft configured for French must win even when
     // the active project's summary lists a different language.
     mockSendCommand.mockResolvedValueOnce(
       JSON.stringify({ ...emptyDraft(testProjectId), analysisLanguages: ['fr'] }),
@@ -1038,7 +1038,7 @@ describe('InterlinearizerLoader', () => {
         renderLoader();
       });
 
-      // First create a project to set activeProject
+      // Select a project so activeProject is set
       await userEvent.click(screen.getByTestId('tab-toolbar-project-menu'));
       await userEvent.click(screen.getByTestId('select-modal-select'));
       await userEvent.click(screen.getByTestId('tab-toolbar-view-project-info'));

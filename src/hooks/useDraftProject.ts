@@ -96,12 +96,10 @@ export type UseDraftProjectResult = {
   /**
    * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
    * draft has not changed since the snapshot that was persisted. Pass the exact analysis and
-   * boundary delta that were written; if a later auto-save replaced either (an edit made during the
-   * save round-trip), the draft is left dirty so the unsaved-changes indicator and the next Save
-   * reflect that un-persisted edit rather than being cleared against a now-stale snapshot.
-   *
-   * Pass the exact references that were written; a `undefined` boundary delta means the draft had
-   * the default segmentation.
+   * boundary delta that were written (an `undefined` boundary delta means the draft had the default
+   * segmentation); if a later auto-save replaced either (an edit made during the save round-trip),
+   * the draft is left dirty so the unsaved-changes indicator and the next Save reflect that
+   * un-persisted edit rather than being cleared against a now-stale snapshot.
    */
   markSynced: (
     savedAnalysis: TextAnalysis,
@@ -137,8 +135,8 @@ export default function useDraftProject(
   platformLanguageRef.current = platformLanguage;
 
   // Pending debounced-autosave timer. Flushed on unmount/source change (so the last edit is not
-  // lost), and cancelled on any wholesale replacement (applyReplacement) so stale keystroke data
-  // is never written after a New / Open / Wipe.
+  // lost), and canceled on any wholesale replacement so stale keystroke data is never written
+  // after a New / Open / Wipe.
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /**
@@ -226,10 +224,9 @@ export default function useDraftProject(
    * persistence write, and marks the draft dirty. There is no version bump and so no remount, and
    * re-marking an already-dirty draft is a no-op, so editing does not re-render.
    *
-   * Returns `false` without applying anything when no draft has loaded yet.
-   *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
-   * @returns `true` when the edit was applied; `false` when no draft has loaded yet.
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet (nothing is
+   *   applied in that case).
    */
   const autosaveDraft = useCallback(
     (mutate: (current: DraftProject) => DraftProject): boolean => {
@@ -261,8 +258,7 @@ export default function useDraftProject(
   const autosaveSegmentation = useCallback(
     (segmentation: SegmentationDelta | undefined) => {
       // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
-      // `undefined`: clear the field rather than persisting a redundant custom object. Shares
-      // `isDefaultSegmentation` with the loader's dispatch so the empty-delta rule lives in one place.
+      // `undefined`: clear the field rather than persisting a redundant custom object.
       const hasCustomBoundaries = !isDefaultSegmentation(segmentation);
       const applied = autosaveDraft((current) => {
         const next: DraftProject = { ...current, dirty: true };

@@ -59,7 +59,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
 }));
 
-// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// Hover-preview state is covered by the hook's own unit tests; the view only forwards its
 // handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 const mockSplitFreeTokenRefs = { current: new Set<string>() };

@@ -34,7 +34,6 @@ export type CreateDraftConfig = {
  * Modal dialog that collects the configuration for a new draft — name, description, and analysis
  * language(s) — then hands it back via {@link onCreateDraft}.
  *
- * @param props - Component props
  * @param props.defaultAnalysisLanguage - BCP 47 tag pre-populated in the analysis language field;
  *   caller should pass the platform UI language so the user sees a sensible starting value.
  *   Defaults to `'und'` when absent.

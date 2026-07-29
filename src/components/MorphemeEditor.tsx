@@ -40,35 +40,18 @@ const POPOVER_STRING_KEYS = [
  * inflected surface to its underlying form) and saves normally — morphemes carry no offsets and are
  * not required to reconstruct the surface text.
  *
- * Both routes to a reset — the reset button and typing the bare surface form — funnel through
- * {@link requestReset}, which swaps the panel into a confirmation when `needsResetConfirm` says the
- * reset would destroy glosses this token solely owns. The confirmation replaces the panel's own
- * content rather than opening a second surface: the panel is portaled to `document.body`, so it
- * floats over the token chip and cannot reflow it, and nesting a modal inside this already-modal
- * popover would stack two focus traps.
+ * Both routes to a reset — the reset button and typing the bare surface form — behave identically:
+ * the panel swaps into a confirmation when `needsResetConfirm` says the reset would destroy glosses
+ * this token solely owns. The confirmation replaces the panel's own content rather than opening a
+ * second surface: the panel is portaled to `document.body`, so it floats over the token chip and
+ * cannot reflow it, and nesting a modal inside this already-modal popover would stack two focus
+ * traps.
  *
  * Renders the content of a `platform-bible-react` `Popover`; the caller owns the `Popover` root and
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
  * popover is open so the draft state re-initializes from `initialValue` on every open. The popover
  * is modal, so interactions outside the panel are blocked while it is open.
  *
- * @param props - Component props.
- * @param props.initialValue - Pre-filled text for the input (current morpheme forms joined by
- *   spaces, or the full surface text when no breakdown exists yet).
- * @param props.onSave - Called with the raw input string when the user commits.
- * @param props.onClose - Called to dismiss the popover.
- * @param props.onReset - When provided, a Reset button is shown that calls this to remove the
- *   token's existing morpheme breakdown, then dismisses the popover. Callers should omit it when
- *   the token has no breakdown to reset; its presence is also how the popover knows a breakdown
- *   already exists when deciding whether a commit should save, dismiss, or reset.
- * @param props.needsResetConfirm - Whether a reset would irreversibly discard morpheme glosses no
- *   other token still holds, in which case both reset routes confirm first. Ignored when `onReset`
- *   is absent, since there is then no breakdown to lose.
- * @param props.surfaceText - The token's surface text, used to recognize a "breakdown" that is just
- *   the whole word as a single morpheme (a request to reset).
- * @param props.glossInputId - Id of the token's gloss input; used to locate the chip on close so
- *   focus lands on its first morpheme gloss field (falling back to the gloss input itself), rather
- *   than on the non-tabbable morpheme trigger.
  * @returns A popover panel with a text input and Reset/Cancel/Done buttons, or the reset
  *   confirmation in place of them.
  */
@@ -81,20 +64,46 @@ export function MorphemeBreakdownPopover({
   surfaceText,
   glossInputId,
 }: Readonly<{
+  /**
+   * Pre-filled text for the input (current morpheme forms joined by spaces, or the full surface
+   * text when no breakdown exists yet).
+   */
   initialValue: string;
+  /** Called with the raw input string when the user commits. */
   onSave: (value: string) => void;
+  /** Called to dismiss the popover. */
   onClose: () => void;
+  /**
+   * When provided, a Reset button is shown that calls this to remove the token's existing morpheme
+   * breakdown, then dismisses the popover. Callers should omit it when the token has no breakdown
+   * to reset; its presence is also how the popover knows a breakdown already exists when deciding
+   * whether a commit should save, dismiss, or reset.
+   */
   onReset?: () => void;
+  /**
+   * Whether a reset would irreversibly discard morpheme glosses no other token still holds, in
+   * which case both reset routes confirm first. Ignored when `onReset` is absent, since there is
+   * then no breakdown to lose.
+   */
   needsResetConfirm?: boolean;
+  /**
+   * The token's surface text, used to recognize a "breakdown" that is just the whole word as a
+   * single morpheme (a request to reset).
+   */
   surfaceText: string;
+  /**
+   * Id of the token's gloss input; used to locate the chip on close so focus lands on its first
+   * morpheme gloss field (falling back to the gloss input itself), rather than on the non-tabbable
+   * morpheme trigger.
+   */
   glossInputId: string;
 }>) {
   const [localizedStrings] = useLocalizedStrings(POPOVER_STRING_KEYS);
   const inputId = useId();
   const [draft, setDraft] = useState(initialValue);
   const [confirmingReset, setConfirmingReset] = useState(false);
-  // Whether the panel is closing because the user pressed the pointer outside it, which
-  // {@link handleCloseAutoFocus} needs to know so it can leave focus where that press put it.
+  // Whether the panel is closing because the user pressed the pointer outside it, so the close
+  // handling can leave focus where that press put it instead of pulling it back to this chip.
   const dismissedByOutsidePointerRef = useRef(false);
 
   // The popover's own open auto-focus is left in place: it focuses and selects the panel's first
@@ -103,11 +112,7 @@ export function MorphemeBreakdownPopover({
   // would silently do nothing: the panel is portaled, and Radix's portal renders no children until
   // its own layout effect has run, so on the commit this component mounts there is no input yet.
 
-  /**
-   * Collapses leading/trailing and repeated internal whitespace to a single space.
-   *
-   * @param s - The string to normalize.
-   */
+  /** Collapses leading/trailing and repeated internal whitespace to a single space. */
   const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
 
   // Whether the draft matches the pre-filled value. Shared by the Done/Enter and outside-click
@@ -162,11 +167,7 @@ export function MorphemeBreakdownPopover({
     onClose();
   };
 
-  /**
-   * Handles Enter to commit. Escape is handled by the popover itself (`onEscapeKeyDown`).
-   *
-   * @param e - The keyboard event.
-   */
+  /** Handles Enter to commit. Escape is handled by the popover itself (`onEscapeKeyDown`). */
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -177,11 +178,11 @@ export function MorphemeBreakdownPopover({
   /**
    * Commits the draft when the user presses the pointer outside the popover, except when the text
    * was not edited — then the interaction acts like Cancel, because an accidental outside click is
-   * not a deliberate commit. An empty draft is likewise dismissed without writing:
-   * {@link handleSave} refuses to interpret it and would otherwise leave the panel open, but an
-   * outside click on a modal popover must always dismiss. While the reset confirmation is showing,
-   * an outside click dismisses it without resetting: the confirmation exists precisely because the
-   * loss is irreversible, so it must not be answered by a stray click.
+   * not a deliberate commit. An empty draft is likewise dismissed without writing: the commit path
+   * refuses to interpret it and would otherwise leave the panel open, but an outside click on a
+   * modal popover must always dismiss. While the reset confirmation is showing, an outside click
+   * dismisses it without resetting: the confirmation exists precisely because the loss is
+   * irreversible, so it must not be answered by a stray click.
    *
    * Wired to `onPointerDownOutside` rather than the broader `onInteractOutside`, which also fires
    * when focus merely moves outside the panel. A modal popover is not supposed to dismiss on that

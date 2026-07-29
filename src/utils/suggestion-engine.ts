@@ -135,9 +135,9 @@ export function deriveTokenSuggestion(
 ): TokenSuggestion | undefined {
   const entries = poolIndex.get(normalizeSurfaceForm(surfaceText));
   if (!entries) return undefined;
-  // Common path: the bucket is already ranked best-first by buildPoolIndex, so read it as-is. When
-  // discounting this token's own approval, drop that payload's one approval (removing it when this
-  // was its last) and re-rank the remainder before reading the head.
+  // Common path: the bucket arrives already ranked best-first, so read it as-is. When discounting
+  // this token's own approval, drop that payload's one approval (removing it when this was its
+  // last) and re-rank the remainder before reading the head.
   const ranked =
     excludeAnalysisId === undefined
       ? entries

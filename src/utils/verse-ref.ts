@@ -36,8 +36,6 @@ function parseVerseLabel(verseStartNumber: string): { first: number; last: numbe
 /**
  * The first verse number named by a verbatim USJ verse label, or `undefined` when the label names
  * no verse.
- *
- * @returns The label's leading verse number, or `undefined` when it names none.
  */
 export function firstVerseNumber(verseStartNumber: string): number | undefined {
   return parseVerseLabel(verseStartNumber)?.first;

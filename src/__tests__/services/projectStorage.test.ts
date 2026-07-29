@@ -29,12 +29,6 @@ interface StorageMock {
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
-/**
- * Type guard that narrows `m` to `StorageMock`.
- *
- * @returns `m is StorageMock` — `true` when `m` has all three mock storage properties and the mock
- *   logger.
- */
 function isStorageMock(m: unknown): m is StorageMock {
   return (
     !!m &&

@@ -36,7 +36,6 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * component is presentational: it collects the choice and delegates the actual persistence to the
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
- * @param props - Component props
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if

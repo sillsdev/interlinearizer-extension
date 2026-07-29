@@ -110,8 +110,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
  *
- * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference
- *   (propagated from {@link parseSid}).
+ * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference.
  * @throws {SyntaxError} If any `RawVerse.sid`'s book code does not match `rawBook.bookCode`.
  */
 export function tokenizeBook(rawBook: RawBook): Book {

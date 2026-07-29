@@ -1205,7 +1205,6 @@ describe('ProjectModals', () => {
       setModal.mockClear();
       // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
       await userEvent.click(screen.getByTestId('metadata-delete-2'));
-      // The id guard prevents the reset since proj-2 is not the active proj-1.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });

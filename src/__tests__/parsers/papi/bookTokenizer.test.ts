@@ -305,7 +305,6 @@ describe('tokenizeBook', () => {
       expect(segments[0].tokens[1].surfaceText).toBe('start');
     });
 
-    // Double joiners between word chars are absorbed greedily: a--b → one token "a--b".
     it('tokenizes a--b as a single word token (greedy double-joiner absorption)', () => {
       const { segments } = tokenizeBook(makeRawBook([{ sid: 'GEN 1:1', text: 'a--b' }]));
       expect(segments[0].tokens).toHaveLength(1);

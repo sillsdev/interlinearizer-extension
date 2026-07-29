@@ -18,15 +18,14 @@ const STRING_KEYS = [
 
 /**
  * Free-translation input for a segment. Reads and writes the segment-level free translation from
- * the analysis store. Rendered below a segment's tokens in `SegmentView`. Kept in its own component
- * so the analysis-store hooks are always called unconditionally.
+ * the analysis store. Kept in its own component so the analysis-store hooks are always called
+ * unconditionally.
  *
- * @param props - Component props
  * @param props.segmentId - `Segment.id` of the segment to read/write.
  * @param props.surfaceText - Current baseline text of the segment, stored on the `SegmentAnalysis`
  *   record so it can detect drift if the baseline changes later.
- * @param props.onFocus - Called when the input receives focus; used by `SegmentView` to make the
- *   segment active.
+ * @param props.onFocus - Called when the input receives focus, so the parent can make the segment
+ *   active.
  */
 export default function SegmentFreeTranslationInput({
   segmentId,

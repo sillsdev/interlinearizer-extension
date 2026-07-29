@@ -7,7 +7,6 @@ import userEvent from '@testing-library/user-event';
 import ViewOptionsDropdown from '../../../components/controls/ViewOptionsDropdown';
 
 beforeEach(() => {
-  // Restore key-as-value behavior cleared by resetMocks: true.
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [
@@ -16,7 +15,6 @@ beforeEach(() => {
     ]);
 });
 
-/** Default props with all toggles off and no-op callbacks. */
 const DEFAULT_PROPS = {
   continuousScroll: false,
   onContinuousScrollChange: jest.fn(),

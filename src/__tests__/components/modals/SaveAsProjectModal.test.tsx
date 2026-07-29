@@ -282,7 +282,6 @@ describe('SaveAsProjectModal', () => {
     const saveButton = screen.getByTestId('save-as-new');
     await userEvent.click(saveButton);
 
-    // While the save promise is pending the button is disabled, so the user cannot submit again.
     expect(saveButton).toBeDisabled();
     expect(onSaveNew).toHaveBeenCalledTimes(1);
 

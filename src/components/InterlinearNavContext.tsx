@@ -49,8 +49,7 @@ export type NavOrigin = 'internal' | 'external';
  * to detect the host's duplicate deliveries — the scripture picker fires each external navigation
  * twice in quick succession, as fresh objects naming the same verse. The optional `verse` segment
  * string and `versificationStr` are deliberately excluded: the host fills them inconsistently
- * across the duplicate deliveries (which is exactly what defeated a full-field comparison), and
- * nothing in this extension consumes either field.
+ * across the duplicate deliveries, and nothing in this extension consumes either field.
  *
  * @param a - First reference.
  * @param b - Second reference.
@@ -98,9 +97,8 @@ function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
 /**
  * The single navigation surface for the Interlinearizer WebView. Owns the scripture reference, the
  * scroll-group linkage, the cross-book fade clock, and the internal/external classification of each
- * navigation that were previously read and written by the loader, `Interlinearizer`, and the
- * segment window on independent clocks. Hoisting them here lets every consumer read and mutate
- * navigation through one source of truth.
+ * navigation. Hoisting them here lets every consumer read and mutate navigation through one source
+ * of truth.
  */
 export interface InterlinearNav {
   /**
@@ -121,8 +119,7 @@ export interface InterlinearNav {
    * Sets the scripture reference, writing through to the host scroll-group ref, and records the
    * navigation's {@link NavOrigin}. An `internal` origin marks the target verse so the segment
    * window skips its recenter fade (the target is already on screen); `external` (the default)
-   * leaves it to fade. Replaces the old pattern of stamping a shared `internalNavRef` and
-   * reverse-engineering the origin by string comparison.
+   * leaves it to fade.
    *
    * @param newScrRef - The reference to navigate to.
    * @param origin - Where the navigation came from; defaults to `external`.
@@ -179,7 +176,6 @@ const InterlinearNavContext = createContext<InterlinearNav | undefined>(undefine
  * internally so the PAPI ref remains the ultimate owner of the shared reference — the context
  * writes through it rather than shadowing it, keeping other scroll-group consumers in sync.
  *
- * @param props - Component props.
  * @param props.useWebViewScrollGroupScrRef - The PAPI hook exposing the shared scroll-group
  *   reference and its setter; injected by the host (not imported) so it can be stubbed in tests.
  * @param props.children - The subtree that consumes navigation through {@link useInterlinearNav}.

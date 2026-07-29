@@ -41,8 +41,6 @@ type SuggestionDropdownProps = Readonly<{
  * `'candidate'` (grey, "promote") — carried on the entry rather than inferred from position, so a
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row. Each
  * row suppresses its mouse-down default so clicking it never blurs the input.
- *
- * @param props - Component props (see {@link SuggestionDropdownProps}).
  */
 export default function SuggestionDropdown({
   anchorRef,

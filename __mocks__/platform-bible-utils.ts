@@ -1,6 +1,6 @@
 /**
- * @file Jest mock for platform-bible-utils. Exposes only UnsubscriberAsyncList so test-helpers can build
- * ExecutionActivationContext without loading the real package (which pulls in ESM deps).
+ * @file Jest mock for platform-bible-utils. Reimplements the minimal subset the extension uses so
+ * tests never load the real package (which pulls in ESM deps).
  */
 
 /** Sync unsubscriber: returns true on success. */
@@ -12,12 +12,14 @@ type UnsubscriberAsync = () => Promise<boolean>;
 /** Object that can be disposed synchronously or asynchronously. */
 type Dispose = { dispose: Unsubscriber | UnsubscriberAsync };
 
+/**
+ * Minimal stand-in for the platform's unsubscriber list: collects unsubscribers and runs them all
+ * on teardown.
+ */
 class UnsubscriberAsyncList {
   /** Set of callables to run on teardown. */
   readonly unsubscribers: Set<Unsubscriber | UnsubscriberAsync>;
 
-  /**
-   */
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(_name = 'Anonymous') {
     this.unsubscribers = new Set<Unsubscriber | UnsubscriberAsync>();

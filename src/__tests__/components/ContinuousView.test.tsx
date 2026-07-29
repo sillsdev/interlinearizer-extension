@@ -51,7 +51,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGlossDispatch: () => () => {},
 }));
 
-// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// Hover-preview state is covered by the hook's own unit tests; the view only forwards its
 // handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
@@ -148,10 +148,6 @@ jest.mock('../../components/PhraseBox', () => ({
     </button>
   ),
 }));
-
-// ---------------------------------------------------------------------------
-// Test fixtures
-// ---------------------------------------------------------------------------
 
 /** Factory for a single-chapter book with two segments each having two word tokens. */
 function makeBook(overrides?: Partial<Book>): Book {
@@ -387,8 +383,6 @@ function makeLargeBook(count: number): Book {
   };
 }
 
-// ---------------------------------------------------------------------------
-
 const scrollIntoViewMock = jest.fn();
 
 /** Builds the lookup maps that ContinuousView's parent supplies, derived from a Book. */
@@ -505,10 +499,6 @@ beforeEach(() => {
   });
   mockCandidateTokenRefs.current = new Set();
 });
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView initial render', () => {
   it('renders all tokens from all segments as a flat list', () => {
@@ -698,10 +688,6 @@ describe('ContinuousView initial render', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Click → focus change
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView focus changes', () => {
   it('notifies the parent when an out-of-focus phrase box is clicked', async () => {
     const book = makeBook();
@@ -768,10 +754,6 @@ describe('ContinuousView focus changes', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Arrow disabled states
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView arrow disabled states', () => {
   it('disables the prev arrow when focus is on the first phrase', () => {
     const book = makeBook();
@@ -832,10 +814,6 @@ describe('ContinuousView arrow disabled states', () => {
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Arrow nav
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView arrow navigation', () => {
   it('notifies the parent of the next phrase ref when Next is clicked', async () => {
@@ -914,10 +892,6 @@ describe('ContinuousView arrow navigation', () => {
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-0');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Scroll behavior
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
@@ -1072,8 +1046,8 @@ describe('ContinuousView scroll behavior', () => {
           jest.advanceTimersByTime(510);
         });
 
-        // Let the quiet window (LINK_SLOT_TRANSITION_MS = 200) fully lapse so the tick loop goes
-        // idle — but stay well within HOLD_CENTERED_MAX_MS (2000).
+        // Let the quiet window (LINK_SLOT_TRANSITION_MS) fully lapse so the tick loop goes idle —
+        // but stay well within HOLD_CENTERED_MAX_MS.
         act(() => {
           jest.advanceTimersByTime(400);
         });
@@ -1266,7 +1240,7 @@ describe('ContinuousView scroll behavior', () => {
 
       tokenLinkIconSpy.mockClear();
       act(() => {
-        // Advance past the 600ms fallback so the backstop commits the relayout.
+        // Advance past the fallback timeout so the backstop commits the relayout.
         jest.advanceTimersByTime(700);
       });
       expect(inSegmentIconMounted()).toBe(false);
@@ -1451,10 +1425,6 @@ describe('ContinuousView scroll behavior', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Segmentation edits
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView segmentation edits', () => {
   /**
    * Reads the inline opacity of the link-slot wrapper between `prevRef` and `nextRef`, the style
@@ -1488,10 +1458,6 @@ describe('ContinuousView segmentation edits', () => {
     expect(slotOpacity(container, 'tok-2', 'tok-3')).toBe('1');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Alt-gated split marker (shared PhraseStripParts, confirmed here in the strip)
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView split marker', () => {
   /**
@@ -1541,10 +1507,6 @@ describe('ContinuousView split marker', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// RTL layout
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView RTL layout', () => {
   let originalDir: string;
 
@@ -1584,10 +1546,6 @@ describe('ContinuousView RTL layout', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phrase window — large books
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView phrase window', () => {
   it('renders the focused phrase from a large book', () => {
     const book = makeLargeBook(300);
@@ -1606,14 +1564,10 @@ describe('ContinuousView phrase window', () => {
       withAnalysisStore,
     );
 
-    // PHRASE_WINDOW_HALF = 100; tok-299 is well outside.
+    // tok-299 is well outside the rendered phrase window.
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Phrase grouping
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView phrase grouping', () => {
   it('groups adjacent tokens of the same phrase into a single PhraseBox', () => {

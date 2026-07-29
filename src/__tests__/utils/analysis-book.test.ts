@@ -14,36 +14,31 @@ import {
 } from '../../utils/analysis-book';
 import { makePhraseLink } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Creates a minimal `TokenAnalysis` payload record fixture, with `surfaceText` defaulting to `id`. */
+/**
+ * Creates a minimal {@link TokenAnalysis} payload record fixture, with `surfaceText` defaulting to
+ * `id`.
+ */
 function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
   return { id, surfaceText };
 }
 
-/** Creates a `TokenAnalysisLink` joining a token ref to an analysis id. */
+/** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
 function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return { analysisId, status: 'approved', token: { tokenRef, surfaceText: tokenRef } };
 }
 
 /**
- * Creates a minimal `SegmentAnalysis` payload record fixture, with `surfaceText` defaulting to
+ * Creates a minimal {@link SegmentAnalysis} payload record fixture, with `surfaceText` defaulting to
  * `id`.
  */
 function mkSegmentAnalysis(id: string, surfaceText = id): SegmentAnalysis {
   return { id, surfaceText };
 }
 
-/** Creates a `SegmentAnalysisLink` joining a segment id to an analysis id. */
+/** Creates a {@link SegmentAnalysisLink} joining a segment id to an analysis id. */
 function mkSegmentLink(analysisId: string, segmentId: string): SegmentAnalysisLink {
   return { analysisId, status: 'approved', segmentId };
 }
-
-// ---------------------------------------------------------------------------
-// bookOfRef
-// ---------------------------------------------------------------------------
 
 describe('bookOfRef', () => {
   it('extracts the book code from a token ref with a char offset', () => {
@@ -63,13 +58,9 @@ describe('bookOfRef', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeBookFromAnalysis
-// ---------------------------------------------------------------------------
-
 describe('removeBookFromAnalysis', () => {
   /**
-   * Builds a `TextAnalysis` spanning two books (GEN and EXO) with:
+   * Builds a {@link TextAnalysis} spanning two books (GEN and EXO) with:
    *
    * - A GEN token analysis + link and an EXO token analysis + link,
    * - A GEN segment analysis + link and an EXO segment analysis + link,
@@ -172,10 +163,6 @@ describe('removeBookFromAnalysis', () => {
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-cross']);
   });
 });
-
-// ---------------------------------------------------------------------------
-// removeBookFromSegmentation
-// ---------------------------------------------------------------------------
 
 describe('removeBookFromSegmentation', () => {
   it('returns undefined for an undefined delta', () => {

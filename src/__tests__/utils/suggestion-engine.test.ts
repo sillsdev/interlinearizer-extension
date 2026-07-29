@@ -8,7 +8,7 @@ import {
   resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
-/** Builds a gloss-only `TokenAnalysis` for the pool-construction tests. */
+/** Builds a gloss-only {@link TokenAnalysis} for the pool-construction tests. */
 function ta(id: string, surfaceText: string, gloss: string): TokenAnalysis {
   return { id, surfaceText, gloss: { en: gloss } };
 }

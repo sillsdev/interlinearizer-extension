@@ -63,7 +63,6 @@ const {
   __mockLogger,
 } = papiBackendMock;
 
-/** Type guard that narrows an unknown value to a callable function. */
 function isCallable(f: unknown): f is (...args: unknown[]) => unknown {
   return typeof f === 'function';
 }
@@ -76,7 +75,6 @@ type WebViewProvider = {
   ): Promise<WebViewDefinition | undefined>;
 };
 
-/** Type guard that narrows an unknown value to a {@link WebViewProvider}. */
 function isWebViewProvider(x: unknown): x is WebViewProvider {
   return !!x && typeof x === 'object' && 'getWebView' in x && typeof x.getWebView === 'function';
 }

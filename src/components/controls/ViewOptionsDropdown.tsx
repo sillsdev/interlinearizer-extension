@@ -17,7 +17,6 @@ const STRING_KEYS = [
 /**
  * A labeled on/off switch row used inside the view options dropdown.
  *
- * @param props - Component props
  * @param props.checked - Current toggle value.
  * @param props.label - Visible label text for the toggle.
  * @param props.onCheckedChange - Called when the user flips the switch.
@@ -90,22 +89,6 @@ type ViewOptionsDropdownProps = Readonly<{
 /**
  * Toolbar dropdown that groups the continuous-scroll toggle and the view-mode toggles (each a
  * labeled on/off switch). Opens and closes via a gear icon button.
- *
- * @param props - Component props
- * @param props.continuousScroll - Current continuous-scroll value.
- * @param props.onContinuousScrollChange - Continuous-scroll change callback.
- * @param props.hideInactiveLinkButtons - Current hide-inactive-link-buttons value.
- * @param props.onHideInactiveLinkButtonsChange - Hide-inactive-link-buttons change callback.
- * @param props.simplifyPhrases - Current simplify-phrases value.
- * @param props.onSimplifyPhrasesChange - Simplify-phrases change callback.
- * @param props.showMorphology - Current show-morphology value.
- * @param props.onShowMorphologyChange - Show-morphology change callback.
- * @param props.showFreeTranslation - Current show-free-translation value.
- * @param props.onShowFreeTranslationChange - Show-free-translation change callback.
- * @param props.showVerseGutter - Current show-verse-gutter value.
- * @param props.onShowVerseGutterChange - Show-verse-gutter change callback.
- * @param props.showSuggestions - Current show-suggestions value (removable demo toggle).
- * @param props.onShowSuggestionsChange - Show-suggestions change callback.
  */
 export default function ViewOptionsDropdown({
   continuousScroll,

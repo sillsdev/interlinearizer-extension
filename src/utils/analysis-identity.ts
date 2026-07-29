@@ -9,7 +9,7 @@ import type { MorphemeAnalysis, TokenAnalysis } from 'interlinearizer';
 const NORMALIZED_FORM_CACHE_MAX = 50_000;
 
 /**
- * Memoizes {@link normalizeSurfaceForm} by raw input string. Normalization runs once per visible
+ * Memoizes normalized surface forms by raw input string. Normalization runs once per visible
  * un-approved token on every store dispatch, so the same handful of forms would otherwise be
  * re-derived constantly. Bounded by {@link NORMALIZED_FORM_CACHE_MAX} because the cache is
  * module-global rather than project-scoped.

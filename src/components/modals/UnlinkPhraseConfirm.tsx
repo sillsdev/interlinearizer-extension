@@ -16,25 +16,17 @@ type UnlinkPhraseConfirmProps = Readonly<{
  * dispatching `deletePhrase` and returning to view mode; cancels by returning to view mode without
  * dispatching.
  *
- * @param props - Component props
- * @param props.phraseId - ID of the phrase to delete on confirmation
- * @param props.setPhraseMode - Setter used to exit confirm-unlink mode
  * @returns A label and Confirm / Cancel buttons laid out inline; the host bar supplies the
  *   surrounding container chrome.
  */
 export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkPhraseConfirmProps) {
   const { deletePhrase } = usePhraseDispatch();
 
-  /**
-   * Dispatches `deletePhrase` to remove the phrase analysis and its link, then returns to view
-   * mode.
-   */
   const handleConfirm = () => {
     deletePhrase(phraseId);
     setPhraseMode({ kind: 'view' });
   };
 
-  /** Returns to view mode without deleting the phrase. */
   const handleCancel = () => {
     setPhraseMode({ kind: 'view' });
   };

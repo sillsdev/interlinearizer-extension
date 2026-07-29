@@ -372,8 +372,6 @@ export const Button = forwardRef<
  * Stub input rendered as a native `<input>`, forwarding the attributes the extension's migrated
  * form fields and inline editors rely on so tests can read and drive them by id, testid, role, or
  * value.
- *
- * @param props.type - Input type; defaults to `text`.
  */
 export const Input = forwardRef<
   HTMLInputElement,
@@ -643,9 +641,6 @@ export function PopoverContent({
   onClick?: MouseEventHandler<HTMLDivElement>;
   onMouseDown?: MouseEventHandler<HTMLDivElement>;
 }>): ReactElement {
-  // Radix's portal renders no children until its own layout effect has run, so the panel's content
-  // is absent for the first commit. Mirrored here so a consumer that reaches for a child from its
-  // mount effect fails the same way it does in the app instead of silently passing.
   const [portalMounted, setPortalMounted] = useState(false);
   useLayoutEffect(() => setPortalMounted(true), []);
   // eslint-disable-next-line no-null/no-null
@@ -755,8 +750,8 @@ export function TooltipTrigger({
  * because native and Radix tooltips are both invisible in jsdom, this stub instead reads the
  * `TooltipContent` text from its children and clones the `TooltipTrigger`'s child element with that
  * text applied as a `title` attribute. This keeps the tooltip text assertable on the trigger
- * element (mirroring where hover text lived before the migration) without simulating hover, while
- * the real component supplies the modifier-key-immune tooltip in production.
+ * element without simulating hover, while the real component supplies the modifier-key-immune
+ * tooltip in production.
  *
  * @returns The trigger's child element cloned with the tooltip text as its `title`.
  */

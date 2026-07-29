@@ -106,7 +106,6 @@ type ArcOverlayProps = Readonly<{
  * row. Shared by ContinuousView and SegmentView; intended to sit as a sibling of the row inside the
  * `arc-container` element that owns the coordinate space the arc paths were measured in.
  *
- * @param props - Component props.
  * @returns The SVG + split-button overlay, or `undefined` when there are no arcs to draw.
  */
 export function ArcOverlay({

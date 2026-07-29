@@ -83,8 +83,8 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
  * developer's instance is reused and left running. This keeps the manual
  * iterate-against-a-warm-instance workflow working through the same config.
  *
- * @param _config - Playwright config object — unused; required by Playwright's global-setup
- *   interface.
+ * @param config - Playwright config object; the worker count it carries is what the settings seed
+ *   is gated on.
  * @returns Resolves once a usable app is available (launched here, or an already-running one).
  * @throws {Error} If the run is configured for more than one worker, or if the app's WebSocket or
  *   CDP port do not become ready in time.

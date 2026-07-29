@@ -55,10 +55,9 @@ const SETTLE_VERIFY_DELAYS_MS = [200, 400, 800];
  * are what feed back into layout, and the arc `d` plus the split-button geometry (`midX`/`midY` and
  * the run bounds) are what the strip renders. Including the split-button fields matters because a
  * deconfliction-only shift mutates `midX` without touching `d`, level, or padding: were it omitted,
- * such a pass would match `history[0]`, be dropped as a fixed point, and never reach `setArcPaths`
- * — leaving the button in its pre-shift position. Two measurements with the same signature
- * therefore produce both the same applied padding and the same rendered arcs, so they cannot
- * represent genuine progress.
+ * such a pass would read as a redundant fixed point and be dropped, leaving the button in its
+ * pre-shift position. Two measurements with the same signature therefore produce both the same
+ * applied padding and the same rendered arcs, so they cannot represent genuine progress.
  */
 function signatureOf(
   paths: ArcPath[],
@@ -160,10 +159,8 @@ export function useArcPaths(
 
   const measure = useCallback(
     /**
-     * Runs one measurement pass against `container` and flushes the results into state. Called from
-     * the layout effects, the ResizeObserver, and its own settle-verification timeout (named so the
-     * timeout can re-enter it). Per-field equality guards keep stable measurements from churning
-     * state.
+     * Runs one measurement pass against `container` and flushes the results into state. Per-field
+     * equality guards keep stable measurements from churning state.
      *
      * @param container - The element to measure phrase boxes inside.
      * @param force - When `true`, measure even if the signature was recently seen, and reset the

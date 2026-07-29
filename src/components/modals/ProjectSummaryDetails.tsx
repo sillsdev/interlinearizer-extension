@@ -9,7 +9,6 @@ import { formatModified } from '../../utils/project-summary-format';
  * same detail; it is purely presentational and owns no chrome (border, padding, click behavior),
  * which the parent supplies around it.
  *
- * @param props - Component props.
  * @param props.activeBadgeLabel - Localized text of the active badge.
  * @param props.className - Extra classes appended to the wrapper (e.g. `tw:flex-1` so the block
  *   grows to fill the row).

@@ -38,10 +38,10 @@ const STRING_KEYS = [
 
 /**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
- * text. Gloss value and dispatch are read from {@link AnalysisStoreProvider} context via
- * {@link useGloss} and {@link useGlossDispatch}. The gloss is written to the store only on blur, and
- * only when the draft differs from the committed value, to avoid creating empty analysis entries on
- * focus/blur cycles with no edits.
+ * text. The gloss value and the dispatch that writes it both come from context, so the chip must be
+ * rendered under an {@link AnalysisStoreProvider}. The gloss is written to the store only on blur,
+ * and only when the draft differs from the committed value, to avoid creating empty analysis
+ * entries on focus/blur cycles with no edits.
  *
  * When `showMorphology` is true, the morpheme breakdown is shown below the surface text. For
  * analyzed tokens this is a boxed grid ({@link MorphemeBox}) aligning each morpheme form over its
@@ -49,7 +49,6 @@ const STRING_KEYS = [
  * text. Clicking either opens an inline popover where the user can define, edit, or reset the
  * morpheme breakdown.
  *
- * @param props - Component props
  * @param props.token - The word token to render.
  * @param props.onFocus - Called when this token takes focus — its gloss input or one of its
  *   morpheme gloss inputs receives focus, or its morpheme breakdown editor is opened.
@@ -61,8 +60,8 @@ const STRING_KEYS = [
  * @param props.showMorphology - When true, morpheme breakdown and per-morpheme glosses are shown
  *   below the surface text.
  * @param props.glossPlaceholder - Placeholder for the gloss input, resolved once per strip and
- *   passed down (see `PhraseStripContextValue.glossPlaceholder`). Passed as a prop rather than read
- *   from context so the chip's memoization keeps shielding it from unrelated context churn.
+ *   passed down. Passed as a prop rather than read from context so the chip's memoization keeps
+ *   shielding it from unrelated context churn.
  */
 export function TokenChip({
   token,
@@ -165,10 +164,10 @@ export function TokenChip({
    * input directly with `preventScroll` instead; the native forwarding then finds it already
    * focused and does nothing. The input is looked up by id, not `querySelector('input')`, because
    * the morpheme gloss inputs precede it inside the label when morphology is shown. A mouse-down on
-   * any input is left to that input's own handling ({@link handleMouseDown} for the gloss input); a
-   * mouse-down on the first morpheme form cell or the unanalyzed "define" trigger (both `button`s)
-   * is left to that button's own click handler. The remaining morpheme form cells are `span`s that
-   * stop their own mousedown from bubbling here (see {@link MorphemeBox}).
+   * any input is left to that input's own handling; a mouse-down on the first morpheme form cell or
+   * the unanalyzed "define" trigger (both `button`s) is left to that button's own click handler.
+   * The remaining morpheme form cells are `span`s that stop their own mousedown from bubbling
+   * here.
    *
    * @param e - The label's mouse-down event.
    */
@@ -180,9 +179,9 @@ export function TokenChip({
 
   /**
    * Opens the morpheme breakdown editor, first reporting this token as focused. Nothing in the
-   * morpheme row moves focus into the chip otherwise — the trigger is a `button`, which
-   * {@link handleLabelMouseDown} deliberately leaves alone, and the remaining form cells stop their
-   * own mouse-down — so without this the editor would float over a token the rest of the view still
+   * morpheme row moves focus into the chip otherwise — the trigger is a `button`, and a mouse-down
+   * on a button is deliberately left to that button, while the remaining form cells stop their own
+   * mouse-down — so without this the editor would float over a token the rest of the view still
    * treats as unfocused: the phrase highlight, arcs, and scroll position would stay on whichever
    * token was focused before, and would only catch up once the user clicked the chip again.
    */
@@ -232,7 +231,7 @@ export function TokenChip({
    * Returns the listbox option id for `index`; kept in sync with `aria-activedescendant` so
    * assistive tech follows the keyboard-highlighted row.
    *
-   * @param index - The row's index in {@link glossedRanked}.
+   * @param index - The row's index in the dropdown's suggestion list.
    */
   const optionId = useCallback((index: number) => `${listboxId}-opt-${index}`, [listboxId]);
 
@@ -363,8 +362,8 @@ export function TokenChip({
 
   // The label is bound to the gloss input with an explicit htmlFor so clicking the chip body always
   // focuses the gloss input. Without it, the label's implicit control would be its first labelable
-  // descendant — the X button, or the morpheme trigger button when showMorphology is on — and
-  // clicking the chip would activate that button instead.
+  // descendant — the morpheme trigger button (or a morpheme gloss input) when showMorphology is on —
+  // and clicking the chip would activate that instead.
   return (
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
@@ -548,7 +547,6 @@ export function TokenChip({
 /**
  * Renders a non-word token (e.g. punctuation) as muted inline monospace text with no gloss input.
  *
- * @param props - Component props
  * @param props.token - The non-word token to render.
  */
 export function InertTokenChip({ token }: Readonly<{ token: Token }>) {

@@ -120,8 +120,8 @@ export interface UseSegmentWindowResult {
    * Scripture reference the list should highlight as active. Lags the live `scrRef` through a
    * recenter fade so the active-verse highlight only moves once the window swaps behind the fade —
    * never before it starts. For internal nav and the initial mount it tracks `scrRef` immediately.
-   * Mirrors ContinuousView's `displayFocusedTokenRef`, so the two views' highlights move in
-   * lockstep.
+   * The continuous view gates its focused-token highlight on this same clock, so the two views'
+   * highlights move in lockstep.
    */
   displayScrRef: SerializedVerseRef;
   /**
@@ -217,15 +217,15 @@ export default function useSegmentWindow({
    * `true` on the first commit when the initial window has segments above the anchor — i.e. the
    * anchor sits mid-book, as on a cross-book remount (the loader swaps to `Loading…` then remounts
    * this hook fresh on the new book). Without snapping on mount the active verse would render
-   * mid-window, below the fold, at `scrollTop` 0. Seeding {@link pendingRecenterSnapRef} and passing
-   * it to {@link useRecenterSnap} (which both normally skip the initial mount) pulls it to the top
+   * mid-window, below the fold, at `scrollTop` 0. Seeding {@link pendingRecenterSnapRef} and the
+   * post-recenter snap lifecycle — which both normally skip the initial mount — pulls it to the top
    * behind the loader curtain. A normal first mount (anchor at the book start) leaves it `false` so
    * scroll stays at 0.
    */
   const needsInitialSnapRef = useRef(anchorIndex > range.start);
 
-  // Latest callbacks/inputs, mirrored into refs (see useLatestRef) so the recenter effect,
-  // `triggerRecenter`, and the snap loop can read the current value while keeping a stable identity.
+  // Latest callbacks/inputs, mirrored into refs so the recenter effect, `triggerRecenter`, and the
+  // snap loop can read the current value while keeping a stable identity.
   // This matters because the PAPI host hands `scrRef` back as a fresh object on many renders: closing
   // over these directly would re-run the recenter effect on renders where nothing recenter-worthy
   // changed, whose cleanup could strand an in-flight fade and park the window on its initial range.
@@ -314,8 +314,8 @@ export default function useSegmentWindow({
   /** Latest range, mirrored so the observer callbacks read fresh bounds without re-subscribing. */
   const rangeRef = useLatestRef(range);
 
-  // Latest recenter inputs, mirrored into refs (see useLatestRef) so `triggerRecenter` keeps a stable
-  // identity rather than churning on every `anchorIndex` / `total` / `scrRef` change.
+  // Latest recenter inputs, mirrored into refs so `triggerRecenter` keeps a stable identity rather
+  // than churning on every `anchorIndex` / `total` / `scrRef` change.
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);
   const scrRefRef = useLatestRef(scrRef);
@@ -656,14 +656,15 @@ export default function useSegmentWindow({
   }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted
-  // segments can't shove what the user is reading as their arc padding settles asynchronously (a
-  // ResizeObserver → rAF → setState chain in `useArcPaths` that finishes across several later
-  // frames). This single observer plays two roles depending on whether a recenter is in flight:
+  // segments can't shove what the user is reading as their arc padding settles asynchronously (the
+  // arc-measurement pass's ResizeObserver → rAF → setState chain, which finishes across several
+  // later frames). This single observer plays two roles depending on whether a recenter is in
+  // flight:
   //
-  // - **While a recenter is in flight** it relays each resize to the re-snap handler
-  //   (`relayResize`), which re-snaps the verse to the top against the now-settled geometry and
-  //   restarts the settle's quiet timer. The recenter owns the scroll position here, so this is how
-  //   the verse stays pinned through every settling wave — one re-snap per actual layout change.
+  // - **While a recenter is in flight** it relays each resize to the re-snap handler, which
+  //   re-snaps the verse to the top against the now-settled geometry and restarts the settle's
+  //   quiet timer. The recenter owns the scroll position here, so this is how the verse stays
+  //   pinned through every settling wave — one re-snap per actual layout change.
   //
   // - **Otherwise** it compensates: on each resize it restores the anchor segment (see
   //   `compensationAnchorRef`) to its recorded offset below the container top, generalizing the

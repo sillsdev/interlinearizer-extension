@@ -176,9 +176,9 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
 }
 
 /**
- * Builds a minimal word token for use in component tests. When `surfaceText` is omitted it defaults
- * to `ref`, which is appropriate for tests that only need a syntactically valid token and do not
- * assert on surface text independently.
+ * Builds a minimal word token for use in component tests. Called without a surface text, it reuses
+ * the ref as one, which is appropriate for tests that only need a syntactically valid token and do
+ * not assert on surface text independently.
  */
 export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };

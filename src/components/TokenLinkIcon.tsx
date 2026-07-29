@@ -20,8 +20,8 @@ type TokenLinkIconProps = Readonly<{
   /**
    * The bundle of focus-derived inputs for this slot: link direction (`focusedSideIsPrev`),
    * single-segment validity (`isSameSegmentAsFocus`), and the focused phrase/free token used to
-   * resolve cross-slot link targets. Built by `resolveSlotFocus` for real slots, or `NO_SLOT_FOCUS`
-   * for the in-phrase unlink icons rendered by `PhraseBox`.
+   * resolve cross-slot link targets. Real slots supply computed focus info; the in-phrase unlink
+   * icons supply an inert placeholder.
    */
   slotFocus: SlotFocusInfo;
   /**
@@ -58,7 +58,6 @@ type TokenLinkIconProps = Readonly<{
  * - One half = 1 token → that token leaves the phrase; the other half keeps/shrinks the phrase.
  * - Both halves = 1 token → delete the phrase entirely.
  *
- * @param props - Component props
  * @returns A button-styled icon, or `undefined` when the slot has no adjacent word tokens.
  */
 export function TokenLinkIcon({

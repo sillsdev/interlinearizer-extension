@@ -30,8 +30,8 @@ import { useSegmentation } from './SegmentationStore';
 /**
  * The two display modes for {@link SegmentView}.
  *
- * - `token-chip` — renders each token as an inline chip (word tokens via `PhraseBox`, punctuation via
- *   `TokenChip`). Used for the main interactive view.
+ * - `token-chip` — renders each token as an inline interactive chip. Used for the main interactive
+ *   view.
  * - `baseline-text` — renders the segment's raw `baselineText` as a single monospace string. Used for
  *   fallback or debug display.
  */
@@ -133,7 +133,6 @@ function buildBaselinePieces(
  * appear in the running text's reference markup, so announcing the gutter too would duplicate
  * them.
  *
- * @param props - Component props.
  * @param props.label - The verse-range label to render, or `undefined` to render an empty gutter
  *   (reserving the column width so the content stays aligned across cards).
  */
@@ -167,13 +166,6 @@ type BaselineSplitGapProps = Readonly<{
  * gap is its plain verbatim text, so the baseline width never changes; while Alt is held it gains a
  * tint and a slim, absolutely-positioned insertion caret (adding no width) marking where a split
  * lands.
- *
- * @param props - Component props.
- * @param props.text - The verbatim gap text.
- * @param props.splitRef - The split anchor ref an Alt+click dispatches.
- * @param props.splitLabel - Localized tooltip for the split affordance.
- * @param props.onSplit - Dispatches the split, gated on the Alt key inside the handler.
- * @returns The gap span — plain text at rest, an Alt-clickable marker while Alt is held.
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();
@@ -209,9 +201,15 @@ const MemoizedBaselineSplitGap = memo(BaselineSplitGap);
 type SegmentViewProps = Readonly<{
   /** Controls whether tokens are rendered as chips or as raw baseline text. */
   displayMode: SegmentDisplayMode;
-  /** Segment id of the phrase being edited, or `undefined` outside edit mode. */
+  /**
+   * Segment id of the phrase being edited, or `undefined` outside edit mode; used to disable
+   * cross-segment selection.
+   */
   editPhraseSegmentId: string | undefined;
-  /** Token ref of the word token that should appear focused; `undefined` clears focus. */
+  /**
+   * Token ref of the word token that should appear focused; `undefined` clears focus. Only
+   * meaningful in `token-chip` mode.
+   */
   focusedTokenRef: string | undefined;
   /** Whether this segment corresponds to the currently active verse. */
   isActive: boolean;
@@ -263,39 +261,7 @@ type SegmentViewProps = Readonly<{
   viewOptions: ViewOptions;
 }>;
 
-/**
- * Renders a single segment as either inline token chips or plain baseline text.
- *
- * @param props - Component props
- * @param props.displayMode - Controls how segment content is rendered
- * @param props.editPhraseSegmentId - Segment id of the phrase being edited; used to disable
- *   cross-segment selection.
- * @param props.focusedTokenRef - When set, the matching word token's `PhraseBox` is rendered in the
- *   focused state; only meaningful in `token-chip` mode.
- * @param props.isActive - Whether this segment is the currently selected verse
- * @param props.onSelect - Required callback invoked when the segment or one of its word tokens is
- *   interacted with. In `baseline-text` mode the whole segment is clickable and selecting it passes
- *   the segment's first word token; in `token-chip` mode only word tokens trigger this callback
- *   with the clicked token. `tokenRef` is omitted only when the segment has no word token.
- * @param props.segment - The segment to render
- * @param props.verseStartLabels - Per-verse-start inline superscript labels (parallel to
- *   `segment.verseStarts`), chapter-qualified by the list where a verse start opens a new chapter;
- *   falls back to the verbatim verse number when absent.
- * @param props.gutterLabel - The segment's verse-range label shown in its left gutter column when
- *   `viewOptions.showVerseGutter` is on.
- * @param props.phraseMode - Current phrase-interaction mode
- * @param props.setPhraseMode - Setter for `phraseMode`
- * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer
- * @param props.onHoverPhrase - Called with the phraseId when the pointer enters a phrase box, or
- *   `undefined` when it leaves
- * @param props.tokenSegmentMap - Token ref → segment id lookup; passed through to `PhraseBox` for
- *   segment-scope edit.
- * @param props.tokenDocOrder - Book-level map from word token ref to flat document index; used to
- *   sort phrase tokens across segment boundaries.
- * @param props.wordTokenByRef - Word token ref → token lookup; used to resolve focus context.
- * @param props.viewOptions - Bundled display toggles; `showFreeTranslation` gates the
- *   free-translation input, while the rest pass through to the phrase strip context.
- */
+/** Renders a single segment as either inline token chips or plain baseline text. */
 export function SegmentView({
   displayMode,
   editPhraseSegmentId,
@@ -415,9 +381,6 @@ export function SegmentView({
       if (prevWord !== undefined && !straddledBoundaryRefs.has(token.ref)) {
         const anchor = resolveSplitAnchor(prevWord, token, pendingPunct, baselineText);
         const splitRef = formerBoundaries.get(token.ref) ?? anchor;
-        // Key the gap by the token the split lands before — the dispatched ref's own token — so the
-        // caret aligns with the actual cut. For a former boundary that ref can be leading punctuation
-        // sitting a few characters left of the punctuation-travel anchor.
         const splitToken = tokenByRef.get(splitRef);
         /* v8 ignore next -- the split ref always names a token in this segment */
         if (splitToken !== undefined) {
@@ -445,8 +408,8 @@ export function SegmentView({
 
   /**
    * Splits the segment at the given anchor when the click carries the Alt modifier; a plain click
-   * falls through to {@link handleBaselineClick} (which selects the segment). Keeps the gesture
-   * Alt-only so it never fights the plain-click select/focus behavior.
+   * is left to fall through to the container, which selects the segment. Keeps the gesture Alt-only
+   * so it never fights the plain-click select/focus behavior.
    *
    * @param event - The click event on the split gap.
    * @param splitRef - The resolved split anchor ref to dispatch.
@@ -539,13 +502,12 @@ export function SegmentView({
 
   /**
    * Verse-start token ref → resolved verse label. The verse-start token is the first token at or
-   * after a verse start's offset ({@link verseStartToken}); keying by ref lets the strip builder
-   * mark the slot that begins each verse — the slot before the verse's first group, or (for a verse
-   * opening on leading punctuation) the slot that carries that punctuation — so {@link PhraseSlot}
-   * can render the verse number below the link icon. Continuation entries (a mid-verse split's
-   * later piece) contribute no label: the verse's number already showed at its real start. Empty
-   * when the verse gutter is on, since the gutter then carries the verse information instead of
-   * these inline slot labels.
+   * after a verse start's offset; keying by ref lets the strip builder mark the slot that begins
+   * each verse — the slot before the verse's first group, or (for a verse opening on leading
+   * punctuation) the slot that carries that punctuation — so {@link PhraseSlot} can render the verse
+   * number below the link icon. Continuation entries (a mid-verse split's later piece) contribute
+   * no label: the verse's number already showed at its real start. Empty when the verse gutter is
+   * on, since the gutter then carries the verse information instead of these inline slot labels.
    */
   const verseStartLabelByTokenRef = useMemo(() => {
     const map = new Map<string, string>();
@@ -680,8 +642,8 @@ export function SegmentView({
    * the segment gains focus (and the active highlight) even when it is verse 0 — a superscription
    * that cannot be written back to the host as the active verse, and so would otherwise never
    * become active from a bare-ref select. Clicks that originate inside the free-translation input
-   * are ignored: that input fires its own {@link handleFreeTranslationFocus} on focus, so letting
-   * the container also fire would double-select the verse.
+   * are ignored: that input already selects this segment on focus, so letting the container also
+   * fire would double-select the verse.
    *
    * @param event - The click event on the baseline-text container.
    */

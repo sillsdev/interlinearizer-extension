@@ -65,8 +65,8 @@ describe('InterlinearNavContext', () => {
   });
 
   it('passes a chapter-level (verse 0) reference through to scrRef unchanged', () => {
-    // Verse 0 is a real verse (a Psalm superscription), so it is no longer mapped to verse 1 here.
-    // The loader resolves it to verse 1 only when the loaded book has no verse-0 segment.
+    // Verse 0 is a real verse (a Psalm superscription), so it passes through unmapped here. The
+    // loader resolves it to verse 1 only when the loaded book has no verse-0 segment.
     const ref: SerializedVerseRef = { book: 'GEN', chapterNum: 3, verseNum: 0 };
     const { result } = renderNav(makeScrollGroupHook(ref));
 
@@ -483,8 +483,8 @@ describe('InterlinearNavContext', () => {
     it('re-engages the curtain when an expired stranded internal mark names the mid-reveal target', () => {
       // A stranded internal marker (its echo never arrived) must stop exempting the verse once the
       // TTL passes: a later external navigation to that verse landing mid-reveal still re-engages
-      // the curtain. Markers stamp at navigate time and RECENTER_FADE_MS (500ms) is far shorter
-      // than the TTL (3000ms), so the clock is advanced past the TTL *before* the reveal begins —
+      // the curtain. Markers stamp at navigate time and RECENTER_FADE_MS is far shorter than the
+      // TTL, so the clock is advanced past the TTL *before* the reveal begins —
       // advancing during the 'in' phase would fire the fade-in timer to 'idle' first.
       const { result, rerender, setRef } = renderNavMutable({
         book: 'GEN',

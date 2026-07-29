@@ -69,9 +69,8 @@ export function Plus(props: Readonly<{ size?: number; className?: string }>): Re
   return <svg data-testid="plus-icon" {...props} />;
 }
 /**
- * Stub for the Merge icon used by both merge controls (the row-gap merge in the segment list and the
- * cross-segment merge in the continuous strip). A single Y-join glyph, deliberately a different
- * shape from the split marker's arrows-apart glyph.
+ * Stub for the Merge icon: a single Y-join glyph, deliberately a different shape from the split
+ * marker's arrows-apart glyph.
  */
 export function Merge(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="merge-icon" {...props} />;

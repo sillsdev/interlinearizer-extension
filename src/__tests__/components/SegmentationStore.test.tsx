@@ -51,7 +51,6 @@ describe('SegmentationStore', () => {
   });
 
   it('exposes an inert no-op dispatch that does nothing when invoked', () => {
-    // Calling each method must not throw; this also exercises the no-op function bodies.
     expect(() => {
       NO_OP_SEGMENTATION_DISPATCH.merge('GEN 1:1:0');
       NO_OP_SEGMENTATION_DISPATCH.split('GEN 1:1:6');

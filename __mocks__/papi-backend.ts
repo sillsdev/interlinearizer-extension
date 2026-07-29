@@ -51,6 +51,10 @@ const papi = {
   },
 };
 
+/**
+ * Re-exports each internal jest fn as a `__mock*` property so tests can assert on registrations
+ * without re-importing them.
+ */
 const defaultExport = {
   ...papi,
   __mockRegisterWebViewProvider: mockRegisterWebViewProvider,

@@ -64,8 +64,6 @@ type ProjectMetadataModalProps = Readonly<{
  * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
  * fields are name, description, and analysis language. Read-only fields are project ID, creation
  * date, and source project. Includes an inline delete-with-confirmation flow.
- *
- * @param props - Component props (see {@link ProjectMetadataModalProps}).
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -304,7 +302,6 @@ export function ProjectMetadataModal({
 /**
  * A single label/value row inside the read-only metadata description list.
  *
- * @param props - Component props.
  * @param props.label - Localized field label shown as `<dt>`.
  * @param props.value - Value string shown as `<dd>`.
  * @param props.mono - When true, renders the value in a monospace font.

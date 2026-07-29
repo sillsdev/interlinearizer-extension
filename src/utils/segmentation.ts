@@ -178,8 +178,9 @@ export function moveBoundary(
 
 /**
  * Merges a segment into the one before it, identified by the first-token ref of the _second_
- * segment — the one absorbed into its predecessor. A thin alias for {@link removeBoundaryAt}, named
- * for the explicit merge control.
+ * segment — the one absorbed into its predecessor. Clearing that token's segment start is the whole
+ * operation, so merging the book's first token is a no-op; the separate name states the merge
+ * intent.
  */
 export function mergeSegments(
   verseBook: Book,
@@ -190,8 +191,9 @@ export function mergeSegments(
 }
 
 /**
- * Splits a segment so a new one begins at the given token. A thin alias for
- * {@link addBoundaryBefore}, named for the explicit split control.
+ * Splits a segment so a new one begins at the given token. Making that token a segment start is the
+ * whole operation, so a token that already begins one is unchanged; the separate name states the
+ * split intent.
  */
 export function splitSegmentBefore(
   verseBook: Book,
@@ -201,11 +203,7 @@ export function splitSegmentBefore(
   return addBoundaryBefore(verseBook, delta, ref);
 }
 
-/**
- * Whether the delta represents the default verse segmentation: absent, or both arrays empty.
- *
- * @returns `true` when applying `delta` yields the default segmentation.
- */
+/** Whether the delta represents the default verse segmentation: absent, or both arrays empty. */
 export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }

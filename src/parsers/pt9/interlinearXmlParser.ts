@@ -202,8 +202,7 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
  *
  * @throws {SyntaxError} If a Cluster is missing its Range element, Range is missing Index or
  *   Length, or Range Index/Length are not non-negative integers.
- * @throws {SyntaxError} If any Lexeme element in a Cluster is missing the required Id attribute
- *   (propagated from {@link extractLexemesFromCluster}).
+ * @throws {SyntaxError} If any Lexeme element in a Cluster is missing the required Id attribute.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
   const clusterElements = verseDataElement.Cluster ?? [];
@@ -231,7 +230,6 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 
     // Join with "/"; lexeme IDs may contain "/", so do not split LexemesId elsewhere.
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
-    /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
     const excluded = el.Excluded === 'true';
 
@@ -249,20 +247,16 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
- * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
+ * Output is the {@link InterlinearData} shape declared in this module; no extra conversion is done.
+ * Expects the interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
  *
  * Each instance holds a configured `XMLParser`; create one parser and reuse it across multiple
  * `parse()` calls rather than constructing a new instance per file.
  */
 export class InterlinearXmlParser {
-  /** Shared XMLParser instance, pre-configured in the constructor and reused across `parse()` calls. */
   private readonly parser: XMLParser;
 
-  /**
-   * Creates a parser configured for interlinear XML: attribute prefix `@_`, and array paths for
-   * Verses items, Cluster, Punctuation, and Lexeme.
-   */
+  /** Creates a parser configured for the interlinear XML schema. */
   constructor() {
     const arrayPaths = new Set([
       'InterlinearData.Verses.item',

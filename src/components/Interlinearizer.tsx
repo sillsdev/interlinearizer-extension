@@ -106,17 +106,6 @@ type InterlinearizerProps = Readonly<{
 /**
  * Inner component that renders the segment list and continuous view. Separated from
  * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
- *
- * @param props - Component props
- * @param props.book - Tokenized book whose segments are rendered.
- * @param props.continuousScroll - When true, the horizontal token strip is shown above the segment
- *   list.
- * @param props.scrRef - Current scripture reference used to highlight the active verse.
- * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
- * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
- *   transition modes.
- * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
- *   views.
  */
 function InterlinearizerInner({
   book,
@@ -452,26 +441,9 @@ function InterlinearizerInner({
 }
 
 /**
- * Main component for the Interlinearizer. Renders a sticky toolbar and continuous view at the top,
- * followed by segmented views. Wraps the layout in an {@link AnalysisStoreProvider} so all
- * descendant components can read and write analysis data without prop drilling.
- *
- * @param props - Component props
- * @param props.book - Book data used by the continuous view and segment window
- * @param props.continuousScroll - Whether the continuous scroll view is shown
- * @param props.scrRef - Current scripture reference; always names a verse with a segment (verse 0
- *   only when a superscription segment exists, see {@link InterlinearizerProps}).
- * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for gloss read/write
- * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
- * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
- *   uncommitted text, so the caller can show the unsaved indicator while the user types
- * @param props.phraseMode - Current phrase-interaction mode owned by the parent
- * @param props.setPhraseMode - Setter for `phraseMode`
- * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
- *   views.
- * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
- *   suggestion with accept / promote affordances; forwarded to {@link AnalysisStoreProvider}.
+ * Main component for the Interlinearizer. Renders the segment list, with the continuous strip
+ * optionally shown above it, all wrapped in an {@link AnalysisStoreProvider} so descendant
+ * components can read and write analysis data without prop drilling.
  */
 export default function Interlinearizer({
   initialAnalysis,

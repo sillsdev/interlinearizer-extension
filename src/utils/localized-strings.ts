@@ -6,8 +6,6 @@
  * flashes the bare `%…%` key in user-visible text — most noticeable in input placeholders, which
  * paint immediately on mount. Substituting an empty string turns that flash into a momentarily
  * empty field instead.
- *
- * @returns The value, or `''` when it is still an unresolved `%…%` key.
  */
 export function resolvedOrEmpty(value: string): string {
   return /^%.*%$/.test(value) ? '' : value;

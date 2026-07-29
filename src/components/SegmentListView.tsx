@@ -41,8 +41,6 @@ type MergeRowButtonProps = Readonly<{
  * The caller omits this control entirely while a phrase mode is active (a merge could re-segment
  * the phrase the mode UI is operating on), so this component itself has no disabled state.
  *
- * @param props - Component props.
- * @param props.segment - The segment below the gap.
  * @returns The fixed-height row gap with its rail and always-enabled merge button; `undefined` when
  *   the segment has no tokens.
  */
@@ -103,9 +101,9 @@ type SegmentListViewProps = Readonly<{
   /** Current scripture reference; its verse is the recenter anchor and active-verse highlight. */
   scrRef: SerializedVerseRef;
   /**
-   * Monotonic counter bumped on every boundary edit. Forwarded to {@link useSegmentWindow} so it can
-   * tell a boundary edit (redraw in place) apart from a re-tokenization of the loaded book
-   * (recenter with a fade) when the segments identity changes.
+   * Monotonic counter bumped on every boundary edit, so that when the segments identity changes a
+   * boundary edit (redraw in place) can be told apart from a re-tokenization of the loaded book
+   * (recenter with a fade).
    */
   segmentationVersion: number;
   /** Token ref of the currently focused word token, or `undefined` when nothing is focused. */
@@ -120,9 +118,8 @@ type SegmentListViewProps = Readonly<{
   displayContinuousScroll: boolean;
   /**
    * Reports the gated continuous-scroll value — the mode that should actually be rendered, which a
-   * toggle defers to the recenter midpoint (behind the fade). Forwarded straight into
-   * {@link useSegmentWindow}, which calls it inside the midpoint state batch so the parent's strip
-   * mounts/unmounts in the same commit as this list's window rebuild.
+   * toggle defers to the recenter midpoint (behind the fade). Called inside the midpoint state
+   * batch, so the parent's strip mounts/unmounts in the same commit as this list's window rebuild.
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
@@ -156,34 +153,9 @@ type SegmentListViewProps = Readonly<{
 
 /**
  * Renders the scroll-anchored, infinitely-scrolling list of segments for the active book. Owns the
- * scroll container, the {@link useSegmentWindow} window into the book's segments, the LocateFixed
- * "scroll to active verse" button, the recenter fade wrapper, and the top/bottom infinite-scroll
- * sentinels. Extracted from {@link Interlinearizer} so the list — which carries the bulk of the
- * scroll/fade/window machinery — lives in one focused component.
- *
- * @param props - Component props
- * @param props.book - Tokenized book whose segments are windowed and rendered.
- * @param props.scrRef - Current scripture reference; its verse is the recenter anchor.
- * @param props.segmentationVersion - Monotonic boundary-edit counter forwarded to the window.
- * @param props.focusedTokenRef - Token ref of the currently focused word token, or `undefined`.
- * @param props.continuousScroll - When true, the horizontal token strip is shown above this list.
- * @param props.displayContinuousScroll - Continuous-scroll mode the segments actually render; owned
- *   by the parent and updated at the recenter midpoint.
- * @param props.onDisplayContinuousScrollChange - Reports the gated continuous-scroll value
- *   (deferred to the recenter midpoint) so the parent mounts/unmounts the strip in lockstep with
- *   this list.
- * @param props.consumeInternalNav - Consumes the internal-nav classification to suppress the fade.
- * @param props.reportSettled - Reports the window has settled; lifts the cross-book curtain.
- * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
- * @param props.setPhraseMode - Setter for `phraseMode`.
- * @param props.viewOptions - Bundled display toggles forwarded unchanged to each segment.
- * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the interlinearizer.
- * @param props.setHoveredPhraseId - Sets the hovered phraseId.
- * @param props.editPhraseSegmentId - Segment id containing the phrase being edited, or `undefined`.
- * @param props.onSelect - Called when a segment or one of its word tokens is selected.
- * @param props.tokenSegmentMap - Token ref → segment id lookup.
- * @param props.tokenDocOrder - Word token ref → flat book-level index.
- * @param props.wordTokenByRef - Word token ref → token lookup for the whole book.
+ * scroll container, the mounted window into the book's segments, the LocateFixed "scroll to active
+ * verse" button, the recenter fade wrapper, and the top/bottom infinite-scroll sentinels. Keeps the
+ * list — which carries the bulk of the scroll/fade/window machinery — in one focused component.
  */
 export default function SegmentListView({
   book,

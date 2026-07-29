@@ -26,7 +26,6 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * select one, view its details (via the info icon), or request that a new one be created. Fires
  * `interlinearizer.getProjectsForSource` to load the list on mount.
  *
- * @param props - Component props.
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the

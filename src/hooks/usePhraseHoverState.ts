@@ -7,7 +7,6 @@ export type PhraseHoverState = {
    * so the pill floats above whichever fragment the pointer is over.
    */
   hoveredGroupKey: string | undefined;
-  /** Setter for {@link hoveredGroupKey}. */
   setHoveredGroupKey: (key: string | undefined) => void;
   /**
    * Token refs of the free tokens a hovered link icon would join into a new phrase; used to
@@ -38,8 +37,8 @@ export type PhraseHoverState = {
 /**
  * Owns the hover-preview state both phrase strips need, along with the stable callbacks that feed
  * it from the arc overlay and the link icons. Extracted so the two views can never drift apart in
- * how these previews are wired, and so neither view's body carries five near-identical state
- * declarations.
+ * how these previews are wired, and so neither view's body carries its own cluster of
+ * near-identical state declarations.
  *
  * The hovered phrase id is deliberately **not** owned here: one view keeps it locally while the
  * other receives it as a prop, so the two manage it differently.

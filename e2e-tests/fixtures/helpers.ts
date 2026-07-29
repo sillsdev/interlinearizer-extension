@@ -597,8 +597,8 @@ async function sendPapiJsonRpcOnce<T>(
 }
 
 /**
- * Send a single JSON-RPC request where `method` is a PAPI request type (e.g. `rpc.discover`). Opens
- * a connection, sends one request, waits for the matching response id, then closes.
+ * Send a single JSON-RPC request for a PAPI request type (e.g. `rpc.discover`). Opens a connection,
+ * sends one request, waits for the matching response id, then closes.
  *
  * @returns The `result` field of the JSON-RPC response, typed as `T`.
  * @throws {Error} If the request times out or the server returns a JSON-RPC error.

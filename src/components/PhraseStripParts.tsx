@@ -33,13 +33,6 @@ type BoundaryButtonProps = Readonly<{
  * available, so there is no disabled styling. Its CSS `hover:bg-accent` is the only hover
  * affordance; it does not feed the shared candidate-token highlight channel (that stays for the
  * link icon).
- *
- * @param props - Component props.
- * @param props.label - Accessible label for screen readers.
- * @param props.title - Tooltip text (may differ from the label).
- * @param props.testId - `data-testid` for the button element.
- * @param props.icon - The icon rendered inside the button.
- * @param props.action - The boundary edit to run on click.
  */
 function BoundaryButton({ label, title, testId, icon, action }: BoundaryButtonProps) {
   return (
@@ -80,8 +73,9 @@ type BoundaryControlProps = Readonly<{
    */
   nextToken: Token | undefined;
   /**
-   * Punctuation tokens sitting in the gap between the two words, in document order. Fed to
-   * {@link resolveSplitAnchor} so leading-quote punctuation lands on the following segment.
+   * Punctuation tokens sitting in the gap between the two words, in document order. Taken into
+   * account when resolving the split anchor, so leading-quote punctuation lands on the following
+   * segment.
    */
   punctuation: readonly Token[];
 }>;
@@ -112,12 +106,6 @@ type BoundaryControlProps = Readonly<{
  * No boundary control renders at all while a phrase mode (edit / confirm-unlink) is active: a
  * boundary edit mid-mode could re-segment the phrase the mode UI is operating on.
  *
- * @param props - Component props.
- * @param props.prevSegmentId - Segment id before the slot.
- * @param props.nextSegmentId - Segment id after the slot.
- * @param props.prevToken - Last word token before the slot.
- * @param props.nextToken - First word token after the slot (the word boundary).
- * @param props.punctuation - Gap punctuation between the two words, in document order.
  * @returns The merge button, split marker, empty wrapper, or `undefined` when no boundary slot
  *   exists here.
  */
@@ -214,10 +202,6 @@ type SplitMarkerProps = Readonly<{
  * render and click) is ignored — so the marker never fights the plain-click select/focus behavior.
  * Keyboard split is out of scope, so this is a pointer-only affordance (the relevant a11y lint
  * rules are disabled, matching the segment-container click handlers).
- *
- * @param props - Component props.
- * @param props.label - Accessible label and tooltip.
- * @param props.onSplit - Runs the split; called only for a genuine Alt+click.
  */
 function SplitMarker({ label, onSplit }: SplitMarkerProps) {
   return (
@@ -241,9 +225,8 @@ function SplitMarker({ label, onSplit }: SplitMarkerProps) {
 }
 
 /**
- * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so `ContinuousView`
- * can re-center the focused phrase for exactly this long after `committedActiveSegmentId` flips,
- * keeping it anchored while the fade runs.
+ * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so layout work
+ * timed against the fade can share the exact duration.
  */
 export const LINK_SLOT_TRANSITION_MS = 200;
 
@@ -291,14 +274,6 @@ type PhraseSlotProps = Readonly<{
  * view. The link icon's phrase mode, document-order lookup, and hover callbacks come from
  * {@link PhraseStripContext}.
  *
- * @param props - Component props
- * @param props.slot - The slot's neighboring groups and gap punctuation
- * @param props.focus - Resolved focus context for the link icon's focus inputs
- * @param props.prevSegmentId - Segment id of the group before the slot
- * @param props.nextSegmentId - Segment id of the group after the slot
- * @param props.focusedSideIsPrev - Whether focus is start-ward of this slot
- * @param props.hoveredPhraseId - PhraseId currently hovered anywhere in the view
- * @param props.verseLabel - Verse label that peeks above the column when a verse begins here
  * @returns A `link-slot` fixed column, or `undefined` when the slot has nothing to render.
  */
 export function PhraseSlot({
@@ -460,22 +435,6 @@ type PhraseGroupProps = Readonly<{
  * Accepts `phraseId` and `groupKey` as data props and calls the stable `onHoverPhrase`,
  * `setHoveredGroupKey`, and `onFocusPhrase` callbacks with them so the parent never needs to create
  * per-render closures, preserving the `memo()` bail-out on unchanged props.
- *
- * @param props - Component props
- * @param props.group - The phrase group to render
- * @param props.isFocused - Whether this group is the navigation focus
- * @param props.isHighlighted - Whether this group renders highlighted
- * @param props.isCandidate - Whether this group's tokens are part of a hovered operation preview
- * @param props.splitFreeTokenRefs - Token refs in this group that preview as becoming free
- * @param props.showControls - Whether to show the controls pill
- * @param props.showGlossInput - Whether to show the gloss input
- * @param props.allowHover - Whether hover handlers are wired
- * @param props.phraseId - PhraseId passed to hover callbacks
- * @param props.groupKey - Group key passed to hover/focus callbacks
- * @param props.onHoverPhrase - Called with phraseId on pointer enter/leave
- * @param props.setHoveredGroupKey - Called with groupKey on pointer enter/leave
- * @param props.onFocusPhrase - Called with groupKey when this group's gloss input gains focus
- * @param props.groupRef - Optional DOM-ref callback for the wrapper span
  */
 export const MemoizedPhraseGroup = memo(function PhraseGroup({
   group,
@@ -539,11 +498,8 @@ export const MemoizedPhraseGroup = memo(function PhraseGroup({
 
 /**
  * Renders one inline verse-number superscript within the token strip, marking a verse start in
- * document order so the running text announces verse identity inline.
- *
- * @param props - Component props.
- * @param props.label - The verse label to display (verbatim number, or `chapter:number` at a
- *   chapter transition).
+ * document order so the running text announces verse identity inline. Displays `label` verbatim — a
+ * bare verse number, or `chapter:number` at a chapter transition.
  */
 export function VerseSuperscript({ label }: Readonly<{ label: string }>) {
   return (
@@ -629,18 +585,6 @@ type PhraseStripProps = Readonly<{
  * views ({@link SegmentView}, {@link ContinuousView}) share one body and can never drift apart. Each
  * view supplies only the layout-specific fields baked into the items (segment ids, focus side,
  * focus ref, scroll refs).
- *
- * @param props - Component props
- * @param props.items - The normalized, ordered strip items
- * @param props.phraseMode - Current phrase-interaction mode
- * @param props.focus - Resolved focus context
- * @param props.hoveredPhraseId - PhraseId hovered anywhere in the view
- * @param props.hoveredGroupKey - Group key of the hovered phrase box
- * @param props.candidateTokenRefs - Token refs a hovered link or boundary control would affect
- * @param props.splitFreeTokenRefs - Token refs that would become free after a hovered split
- * @param props.onHoverPhrase - Phrase-box enter/leave callback
- * @param props.setHoveredGroupKey - Hovered-group-key setter
- * @param props.onFocusPhrase - Gloss-input focus callback, by group key
  */
 export function PhraseStrip({
   items,

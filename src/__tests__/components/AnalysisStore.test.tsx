@@ -32,10 +32,6 @@ import {
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /** Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token. */
 function makeAnalysisWithGloss(
   tokenRef: string,
@@ -133,10 +129,6 @@ function renderStoreHook<T>(
   return renderHook(useHook, { wrapper });
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 describe('useGloss', () => {
   it('returns an empty string for an unknown token', () => {
     render(
@@ -200,8 +192,6 @@ describe('useGloss', () => {
     /**
      * Renders the current gloss for a token while counting how many times it re-renders, so tests
      * can assert that unrelated gloss changes do not cause extra renders.
-     *
-     * @throws When called outside an {@link AnalysisStoreProvider}.
      */
     function CountingGlossReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
       renderCount += 1;
@@ -421,10 +411,6 @@ describe('useGlossDispatch', () => {
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// Phrase hooks
-// ---------------------------------------------------------------------------
 
 /** Approved phrase analysis seed used across phrase hook tests. */
 const PHRASE_ANALYSIS: TextAnalysis = {
@@ -680,10 +666,6 @@ describe('usePhraseDispatch', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// usePhraseGloss
-// ---------------------------------------------------------------------------
-
 /** Renders the phrase gloss for a given phraseId, used to assert on `usePhraseGloss`. */
 function PhraseGlossReader({ phraseId }: Readonly<{ phraseId: string }>) {
   const gloss = usePhraseGloss(phraseId);
@@ -741,10 +723,6 @@ describe('usePhraseGloss', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// usePhraseGlossDispatch
-// ---------------------------------------------------------------------------
-
 describe('usePhraseGlossDispatch', () => {
   it('writes the phrase gloss and triggers onSave', () => {
     const onSave = jest.fn();
@@ -767,10 +745,6 @@ describe('usePhraseGlossDispatch', () => {
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// useSegmentFreeTranslation
-// ---------------------------------------------------------------------------
 
 /** A `TextAnalysis` with an approved segment analysis carrying a free translation in `'und'`. */
 const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
@@ -832,10 +806,6 @@ describe('useSegmentFreeTranslation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// useSegmentFreeTranslationDispatch
-// ---------------------------------------------------------------------------
-
 describe('useSegmentFreeTranslationDispatch', () => {
   it('writes the segment free translation and triggers onSave', () => {
     const onSave = jest.fn();
@@ -858,10 +828,6 @@ describe('useSegmentFreeTranslationDispatch', () => {
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// Morpheme hooks
-// ---------------------------------------------------------------------------
 
 /** Renders the morpheme forms for a token, used to assert on `useMorphemes`. */
 function MorphemeReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
@@ -1147,9 +1113,7 @@ describe('useMorphemeGlossDispatch', () => {
 
 /**
  * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
- * pending-edits accounting from tests.
- *
- * @returns An empty fragment; the component exists only for its hook side effect.
+ * pending-edits accounting from tests. Renders nothing; it exists only for its hook side effect.
  */
 function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
   useReportGlossEditing(isEditing);

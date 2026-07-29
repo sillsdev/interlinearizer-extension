@@ -19,10 +19,6 @@ import {
 } from '../../utils/phrase-arc';
 import { makePhraseLink } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /**
  * Creates a minimal `DOMRect`-like plain object. jsdom's `getBoundingClientRect` returns zeroes by
  * default; we override per-element via `jest.spyOn` in each test that needs real geometry.
@@ -76,10 +72,6 @@ function buildContainer(boxes: { phraseId: string; r: DOMRect }[]): Element {
   return container;
 }
 
-// ---------------------------------------------------------------------------
-// computeStripRowGap
-// ---------------------------------------------------------------------------
-
 describe('computeStripRowGap', () => {
   it('returns the base gap when there are no arcs', () => {
     expect(computeStripRowGap(false, 0, false)).toBe(BASE_ROW_GAP_PX);
@@ -104,10 +96,6 @@ describe('computeStripRowGap', () => {
     expect(computeStripRowGap(true, 0, false)).toBe(BASE_ROW_GAP_PX);
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildSameRowArcPath
-// ---------------------------------------------------------------------------
 
 describe('buildSameRowArcPath', () => {
   it('returns an SVG path string starting with M', () => {
@@ -167,10 +155,6 @@ describe('buildSameRowArcPath', () => {
     expect(midY).toBe(50 - ARC_BASE_STEM);
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildCrossRowArcPath
-// ---------------------------------------------------------------------------
 
 describe('buildCrossRowArcPath', () => {
   it('returns an SVG path string starting at the upper box top', () => {
@@ -245,10 +229,6 @@ describe('buildCrossRowArcPath', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// roundedPolyline
-// ---------------------------------------------------------------------------
-
 describe('roundedPolyline', () => {
   it('starts at the first point and ends at the last', () => {
     const d = roundedPolyline(
@@ -312,10 +292,6 @@ describe('roundedPolyline', () => {
     expect(d).toMatch(/A 2 2 /);
   });
 });
-
-// ---------------------------------------------------------------------------
-// computeAllArcPaths
-// ---------------------------------------------------------------------------
 
 describe('computeAllArcPaths', () => {
   it('returns empty state when the container has no phrase boxes', () => {
@@ -795,10 +771,6 @@ describe('computeAllArcPaths', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// getArcStrokeProps
-// ---------------------------------------------------------------------------
-
 describe('getArcStrokeProps', () => {
   const dimmed = { stroke: 'var(--border)', strokeOpacity: 1, strokeWidth: 2 };
   const hovered = { stroke: 'var(--foreground)', strokeOpacity: 0.55, strokeWidth: 2 };
@@ -854,10 +826,6 @@ describe('getArcStrokeProps', () => {
     );
   });
 });
-
-// ---------------------------------------------------------------------------
-// splitPhraseAtBoundary
-// ---------------------------------------------------------------------------
 
 describe('splitPhraseAtBoundary', () => {
   it('no-ops when splitAfterTokenRef is not found in the phrase', () => {
@@ -962,10 +930,6 @@ describe('splitPhraseAtBoundary', () => {
     expect(dispatch.deletePhrase).not.toHaveBeenCalled();
   });
 });
-
-// ---------------------------------------------------------------------------
-// deconflictSplitButtons
-// ---------------------------------------------------------------------------
 
 describe('deconflictSplitButtons', () => {
   /**

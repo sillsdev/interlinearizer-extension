@@ -80,7 +80,7 @@ type CapturedSegmentViewProps = {
 };
 let capturedSegmentViewPropsList: CapturedSegmentViewProps[] = [];
 
-/** Stable spy for `updatePhrase` — reset between tests via resetMocks. */
+/** Stable spy for `updatePhrase`. */
 const mockUpdatePhrase = jest.fn();
 
 /** Stable spies for `createPhrase` / `deletePhrase`, asserted on by the force-break tests. */
@@ -102,9 +102,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   AnalysisStoreProvider({ children }: Readonly<{ children: ReactNode }>) {
     return children;
   },
-  /** Returns a fixed empty gloss string for any token. */
   useGloss: () => '',
-  /** Returns a no-op dispatch function. */
   useGlossDispatch: () => () => {},
   /** Returns an empty map; cross-segment arc logic is a layout effect that no-ops in jsdom. */
   usePhraseLinkMap: () => new Map(),
@@ -582,8 +580,7 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
-  // resetMocks clears the shared useLocalizedStrings implementation; re-establish the
-  // key-to-itself mapping the merge control's label relies on.
+  // Key-as-value localization so the merge control's label resolves.
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [
@@ -1218,7 +1215,6 @@ describe('Interlinearizer', () => {
    * pinned-chapter overlay resolves it deterministically in jsdom (which otherwise reports every
    * rect as zero). Every `[data-segment-id]` before the target is placed fully above the top edge
    * (negative bottom); the target and those after it sit at/below it. The container reports top 0.
-   * Restored automatically by `restoreMocks`.
    */
   function positionSegmentAtTop(orderedSegmentIds: string[], topSegmentId: string): void {
     const targetIndex = orderedSegmentIds.indexOf(topSegmentId);

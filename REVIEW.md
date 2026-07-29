@@ -20,6 +20,10 @@ Most functions here carry no `@param` or `@returns` tags. That is intentional, n
 
 Two shapes are still worth reporting: a **partial** block, where some but not all parameters are documented, which is the one arrangement the rule rejects outright; and a function that throws without an `@throws`, which is required for every error condition a caller must handle.
 
+## `{@link}` targets
+
+`{@link}` references to functions, components, hooks, and constants are sanctioned, not just references to types — the comment-rules skill permits linking any named declaration. Do not flag a non-type `{@link}` target as a violation; what the skill bans is documenting consumers/callers and referencing another function's locals or private internals.
+
 ## Keyboard navigation
 
 Keyboard accessibility is planned but not yet implemented. Do not flag missing `tabIndex` attributes, absent `aria-*` roles, or gaps in focus management as issues — these will be addressed in a dedicated pass once the core interaction model is stable.

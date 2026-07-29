@@ -14,7 +14,7 @@ import {
 } from '../../components/PhraseStripContext';
 import { makePhraseStripContext, makeWordToken } from '../test-helpers';
 
-/** Stable mock fns for AnalysisStore hooks — reset between tests via resetMocks. */
+/** Stable mock fns for AnalysisStore hooks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 const mockUsePhraseLinkForToken = jest.fn().mockReturnValue(undefined);
@@ -122,7 +122,6 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   ),
 }));
 
-/** Pre-built test token */
 const TEST_TOKEN = {
   ref: 'token-1',
   surfaceText: 'Hello',
@@ -132,7 +131,6 @@ const TEST_TOKEN = {
   charEnd: 5,
 } satisfies Token;
 
-/** Second test token */
 const TEST_TOKEN_2 = {
   ref: 'token-2',
   surfaceText: 'World',
@@ -190,8 +188,7 @@ function requiredProps(): PhraseBoxTestProps {
 
 /**
  * Renders a `PhraseBox` wrapped in both the analysis store and strip-context providers. Strip-wide
- * state (phrase mode, edit context, hover callbacks) now comes from `PhraseStripContext`, so tests
- * pass those as `context` overrides rather than as props.
+ * state comes from the strip context, so tests pass it as `context` overrides.
  */
 function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
@@ -203,7 +200,7 @@ function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> =
 
 describe('PhraseBox', () => {
   beforeEach(() => {
-    // Restore key-as-value behavior cleared by resetMocks: true, so the gloss placeholder resolves.
+    // Key-as-value localization so the gloss placeholder resolves.
     jest
       .mocked(useLocalizedStrings)
       .mockImplementation((keys: readonly string[]) => [
@@ -592,7 +589,7 @@ describe('PhraseBox', () => {
       phraseMode: { kind: 'confirm-unlink', phraseId: 'phrase-1' },
     });
 
-    // UnlinkPhraseConfirm is now rendered at toolbar level, not inside PhraseBox.
+    // UnlinkPhraseConfirm renders at toolbar level, not inside PhraseBox.
     expect(screen.queryByTestId('unlink-confirm')).not.toBeInTheDocument();
     expect(document.querySelector('[data-phrase-box="true"]')).toBeInTheDocument();
   });
@@ -886,7 +883,7 @@ describe('PhraseBox', () => {
   });
 
   it('does nothing in edit mode when token is free (no phrase link)', async () => {
-    // token is not in any phrase — tokenPhraseLinkFromStore returns undefined
+    // token is not in any phrase — the store yields no phrase link for it
     // phraseMode targets some other phrase
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
@@ -1056,7 +1053,7 @@ describe('PhraseBox', () => {
       editPhraseSegmentId: 'seg-1',
       tokenSegmentMap: new Map([['token-1', 'seg-2']]),
     });
-    // token-1 is in seg-2, but editPhraseSegmentId is seg-1 → isInWrongSegment=true → isDisabled
+    // token-1 is in seg-2, but the edited phrase lives in seg-1, so the box renders disabled
     const btn = document.querySelector('[role="button"]');
     expect(btn).toHaveAttribute('aria-disabled', 'true');
   });
@@ -1077,7 +1074,6 @@ describe('PhraseBox', () => {
         originalTokens: TEST_PHRASE_LINK.tokens,
       },
     });
-    // In edit-target mode, each token has a role="button" wrapper with onKeyDown.
     const tokenWrapper = screen.getAllByRole('button')[0];
     await userEvent.type(tokenWrapper, '{Enter}');
     expect(updatePhraseSpy).toHaveBeenCalled();

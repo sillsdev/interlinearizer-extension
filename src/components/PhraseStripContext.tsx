@@ -108,10 +108,6 @@ type PhraseStripProviderProps = Readonly<{
 /**
  * Provides the strip-wide {@link PhraseStripContextValue} to every phrase group and link slot
  * rendered beneath it. One provider per strip render.
- *
- * @param props - Component props.
- * @param props.value - The strip-wide context value.
- * @param props.children - The strip's token row.
  */
 export function PhraseStripProvider({ value, children }: PhraseStripProviderProps) {
   return <PhraseStripContext.Provider value={value}>{children}</PhraseStripContext.Provider>;

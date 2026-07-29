@@ -17,9 +17,6 @@ export type UseSubmitGuardResult = {
  * Guards an async submit handler against re-entrant invocation (a double-click, or a programmatic
  * second call before the re-render that disables the control lands). A ref mirror short-circuits
  * the second call synchronously, while the state drives the disabled UI.
- *
- * Factors out the flag-plus-mirror-plus-try/finally pattern the Save As and metadata modals each
- * repeated for every submit handler.
  */
 export default function useSubmitGuard(): UseSubmitGuardResult {
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -12,10 +12,6 @@ import {
 } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /** Creates a word token fixture. */
 function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
@@ -25,10 +21,6 @@ function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
 }
-
-// ---------------------------------------------------------------------------
-// resolveFocusContext
-// ---------------------------------------------------------------------------
 
 describe('resolveFocusContext', () => {
   it('returns all-undefined context when focusedTokenRef is undefined', () => {
@@ -75,10 +67,6 @@ describe('resolveFocusContext', () => {
     expect(ctx.focusedToken).toBeUndefined();
   });
 });
-
-// ---------------------------------------------------------------------------
-// resolveSlotFocus
-// ---------------------------------------------------------------------------
 
 describe('resolveSlotFocus', () => {
   /**
@@ -133,10 +121,6 @@ describe('resolveSlotFocus', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// NO_SLOT_FOCUS
-// ---------------------------------------------------------------------------
-
 describe('NO_SLOT_FOCUS', () => {
   it('represents an inert, unfocused slot', () => {
     expect(NO_SLOT_FOCUS).toEqual({
@@ -147,10 +131,6 @@ describe('NO_SLOT_FOCUS', () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// groupTokens
-// ---------------------------------------------------------------------------
 
 describe('groupTokens', () => {
   it('returns an empty array for an empty token list', () => {
@@ -203,10 +183,6 @@ describe('groupTokens', () => {
     expect(groups[1].firstIndex).toBe(2);
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildRenderUnits
-// ---------------------------------------------------------------------------
 
 describe('buildRenderUnits', () => {
   it('produces a leading and trailing slot when there is one group', () => {

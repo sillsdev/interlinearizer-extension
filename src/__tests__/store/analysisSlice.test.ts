@@ -37,7 +37,10 @@ import {
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makePhraseLink } from '../test-helpers';
 
-/** Builds an approved `TokenAnalysisLink` for `tok-1` pointing at the given `TokenAnalysis`. */
+/**
+ * Builds an approved {@link TokenAnalysisLink} for `tok-1` pointing at the given
+ * {@link TokenAnalysis}.
+ */
 function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   return {
     analysisId: ta.id,
@@ -46,7 +49,7 @@ function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   };
 }
 
-/** Builds a minimal `TextAnalysis` with a single approved link for `tok-1`/`ta-1`. */
+/** Builds a minimal {@link TextAnalysis} with a single approved link for `tok-1`/`ta-1`. */
 function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
   return {
     ...emptyAnalysis(),
@@ -371,11 +374,7 @@ describe('selectApprovedGloss', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phrase reducers
-// ---------------------------------------------------------------------------
-
-/** Builds a `TextAnalysis` seeded with the given approved phrase link. */
+/** Builds a {@link TextAnalysis} seeded with the given approved phrase link. */
 function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
   return {
     ...emptyAnalysis(),
@@ -643,10 +642,6 @@ describe('mergePhrases', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phrase selectors
-// ---------------------------------------------------------------------------
-
 describe('selectPhraseLinks', () => {
   it('returns only approved phrase links', () => {
     const approved = makePhraseLink('phrase-1', ['tok-a']);
@@ -744,7 +739,7 @@ describe('selectPhraseGloss', () => {
 });
 
 /**
- * Builds a `TextAnalysis` seeded with a single segment analysis for `seg-1`.
+ * Builds a {@link TextAnalysis} seeded with a single segment analysis for `seg-1`.
  *
  * @param analysis - The lone entry in `segmentAnalyses`.
  * @param link - Joining link to use instead of the default, which approves `analysis` for `seg-1`.
@@ -1801,7 +1796,7 @@ describe('selectSuggestionAfterClearing', () => {
    * majority) and `finance` once (`f1`), so an approved majority token's deletion can be previewed
    * against a still-majority pick rather than a tie.
    *
-   * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
+   * @returns A {@link TextAnalysis} with a 3:1 approval split for 'bank'.
    */
   function bankPool(): TextAnalysis {
     const river: TokenAnalysis = {

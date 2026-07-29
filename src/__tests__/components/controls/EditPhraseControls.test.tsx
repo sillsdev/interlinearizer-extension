@@ -13,7 +13,7 @@ const mockUsePhraseLinkByIdMap = jest.fn<Map<string, PhraseAnalysisLink>, []>();
 
 // AnalysisStore is exercised by its own dedicated suite. EditPhraseControls only reads the live
 // phrase's token count via usePhraseLinkByIdMap, so we stub that single hook rather than driving
-// the real provider (which would pull AnalysisStore into this suite's coverage).
+// the real provider.
 jest.mock('../../../components/AnalysisStore', () => ({
   __esModule: true,
   usePhraseLinkByIdMap: () => mockUsePhraseLinkByIdMap(),
@@ -42,7 +42,10 @@ describe('EditPhraseControls', () => {
     return new Map([['phrase-1', makePhraseLink('phrase-1', tokenRefs)]]);
   }
 
-  /** Renders `EditPhraseControls` with the phrase-link map stubbed to a phrase of the given size. */
+  /**
+   * Builds an `EditPhraseControls` element with the phrase-link map stubbed to a phrase of the
+   * given size.
+   */
   function renderWithPhraseSize(tokenCount: number, setPhraseMode: jest.Mock): ReactElement {
     mockUsePhraseLinkByIdMap.mockReturnValue(makePhraseLinkByIdMap(tokenCount));
     return <EditPhraseControls phraseMode={PHRASE_MODE} setPhraseMode={setPhraseMode} />;

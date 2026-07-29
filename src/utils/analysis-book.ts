@@ -4,8 +4,6 @@ import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
  * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
  * formatted `"<book> <chapter>:<verse>[:<charStart>]"` (e.g. `"GEN 1:1"`, `"1JN 2:3:5"`). A string
  * with no space is returned whole.
- *
- * @returns The leading book code, or the whole string when it contains no space.
  */
 export function bookOfRef(ref: string): string {
   const spaceIndex = ref.indexOf(' ');

@@ -12,10 +12,6 @@ import {
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// AnalysisStore mock
-// ---------------------------------------------------------------------------
-
 const mockCreatePhrase = jest.fn();
 const mockUpdatePhrase = jest.fn();
 const mockDeletePhrase = jest.fn();
@@ -30,10 +26,6 @@ jest.mock('../../components/AnalysisStore', () => ({
     mergePhrases: mockMergePhrases,
   }),
 }));
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
@@ -62,19 +54,12 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
   };
 }
 
-/**
- * Renders a `TokenLinkIcon` inside a `PhraseStripProvider`. The phrase mode, document-order lookup,
- * and hover callbacks now come from strip context rather than props.
- */
+/** Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides. */
 function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
     <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>,
   );
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('TokenLinkIcon', () => {
   beforeEach(() => {
@@ -100,10 +85,6 @@ describe('TokenLinkIcon', () => {
     const { container } = renderIcon(<TokenLinkIcon {...requiredProps()} nextToken={undefined} />);
     expect(container.firstChild).toBeNull();
   });
-
-  // ---------------------------------------------------------------------------
-  // Unlink icon (both sides same phrase)
-  // ---------------------------------------------------------------------------
 
   it('renders an unlink button when both sides are in the same phrase', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
@@ -205,7 +186,7 @@ describe('TokenLinkIcon', () => {
     expect(onHoverPhrase).toHaveBeenCalledWith('p1');
 
     await userEvent.unhover(btn);
-    // Phrase hover is cleared by the PhraseGroup wrapper span's onMouseLeave, not by the button.
+    // Phrase hover is cleared when the pointer leaves the phrase-group wrapper, not by the button.
     expect(onHoverPhrase).not.toHaveBeenCalledWith(undefined);
   });
 
@@ -233,10 +214,6 @@ describe('TokenLinkIcon', () => {
     await userEvent.unhover(btn);
     expect(onHoverSplitFreeTokens).toHaveBeenCalledWith(undefined);
   });
-
-  // ---------------------------------------------------------------------------
-  // Link icon (different phrases or free)
-  // ---------------------------------------------------------------------------
 
   it('renders a link button when sides are in different phrases', () => {
     renderIcon(<TokenLinkIcon {...requiredProps()} />);

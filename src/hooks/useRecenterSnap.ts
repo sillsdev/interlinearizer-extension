@@ -7,12 +7,12 @@ import useLatestRef from './useLatestRef';
  * How long, in milliseconds, the post-recenter snap keeps watching for late layout shifts before it
  * gives up and reports settled regardless. After a recenter the freshly-mounted layout does not
  * reach its final geometry in a single frame — and on a continuous-scroll toggle it settles in
- * _waves_: the segments switch display mode, the horizontal strip mounts, and `useArcPaths`
- * measures/clears arc padding, each across its own ResizeObserver → rAF → setState chain that lands
- * on different frames. Rather than poll every frame for this whole window, the snap is driven by
- * the resize observer that already fires on each of those waves (it re-snaps the verse on every
- * fire); this is only the backstop deadline for a layout that never stops shifting, so the loader
- * curtain is never stranded waiting for a settle that won't come.
+ * _waves_: the segments switch display mode, the horizontal strip mounts, and the arc-measurement
+ * pass applies or clears arc padding, each across its own ResizeObserver → rAF → setState chain
+ * that lands on different frames. Rather than poll every frame for this whole window, the snap is
+ * driven by the resize observer that already fires on each of those waves (it re-snaps the verse on
+ * every fire); this is only the backstop deadline for a layout that never stops shifting, so the
+ * loader curtain is never stranded waiting for a settle that won't come.
  */
 const RECENTER_RESNAP_DEADLINE_MS = RECENTER_FADE_MS;
 
@@ -95,8 +95,8 @@ export interface UseRecenterSnapResult {
  * event-driven rather than a per-frame loop — and reports settled once the layout goes quiet. All
  * of it runs behind the recenter fade, so none of the intermediate corrections are seen.
  *
- * Extracted from the segment-window hook so its intricate timing (epoch bump, quiet-debounce, and
- * deadline backstop) lives behind one boundary rather than tangled into that hook's body.
+ * Keeps the intricate timing (epoch bump, quiet-debounce, and deadline backstop) behind one
+ * boundary.
  */
 export default function useRecenterSnap({
   snapActiveToTop,

@@ -29,7 +29,7 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /** Collect coverage from all source files. Excludes tests, types, and select utils. */
+  /** Collect coverage from all source files, excluding tests and type declarations. */
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
@@ -54,7 +54,7 @@ const config: Config = {
   /** Ts-jest compiles TS to JS; V8 instruments it for coverage. */
   coverageProvider: 'v8',
 
-  /** Enforce 100% coverage on parsers, main, and web-view (except where explicitly excluded). */
+  /** Enforce 100% coverage on all collected source files (except explicit exclusions). */
   coverageThreshold: {
     global: {
       branches: 100,
@@ -67,7 +67,7 @@ const config: Config = {
   /** Make calling deprecated Jest/Node APIs throw so we fix them instead of drifting. */
   errorOnDeprecated: true,
 
-  /** Extensions resolved when importing; matches webpack.config.base resolve.extensions order. */
+  /** Extensions resolved when importing; covers the same TS/JS set webpack resolves. */
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
 
   /**
@@ -77,7 +77,8 @@ const config: Config = {
   moduleNameMapper: {
     /**
      * Resolve src-rooted path aliases so tests can use e.g. "@main" or "parsers/..." instead of
-     * relative paths. Must match tsconfig.json "paths" and webpack resolve.alias.
+     * relative paths. Must match tsconfig.json "paths" (webpack reads the same paths via
+     * TsconfigPathsPlugin).
      */
     '^@main$': '<rootDir>/src/main',
     '^parsers/(.*)$': '<rootDir>/src/parsers/$1',
@@ -122,7 +123,7 @@ const config: Config = {
 
   /**
    * Only treat _.test._ and _.spec._ as test files so that helpers (e.g. test-helpers.ts) in
-   * **tests** are never discovered by Jest or the VS Code Jest extension.
+   * `__tests__` are never discovered by Jest or the VS Code Jest extension.
    */
   testMatch: ['**/__tests__/**/*.(test|spec).[jt]s?(x)', '**/?(*.)+(spec|test).[jt]s?(x)'],
 

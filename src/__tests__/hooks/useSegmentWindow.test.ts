@@ -181,7 +181,7 @@ function installResizeObserver(): {
 /**
  * Stubs `getBoundingClientRect` on an element to report fixed top and bottom edges, so the window
  * hook's geometry reads (cull walks, extend anchors, sentinel offsets) are deterministic in jsdom.
- * `bottom` defaults to `top`, giving a zero-height rect.
+ * Called without a bottom edge, it stubs a zero-height rect.
  */
 function stubRect(el: Element, top: number, bottom: number = top): void {
   el.getBoundingClientRect = () => ({
@@ -222,8 +222,8 @@ function mountActiveSegment(container: HTMLElement): HTMLElement {
 }
 
 /**
- * Mounts a stub `[data-snap-spacer]` div — the element `snapActiveToTop` grows when
- * `scrollIntoView` can't reach the top — into `container`.
+ * Mounts a stub `[data-snap-spacer]` div — the element the hook grows when `scrollIntoView` can't
+ * reach the top — into `container`.
  */
 function mountSnapSpacer(container: HTMLElement, initialHeight?: string): HTMLElement {
   const spacer = document.createElement('div');
@@ -660,11 +660,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('shifts the window range to keep the visible content framed when a merge above it removes a segment', () => {
-    // The window holds absolute indices, so a merge above `range.start` (which shifts every later
-    // segment down one) would otherwise leave the slice starting one segment too late — dropping the
-    // top-visible segment. Anchored at verse 20 the initial window is [11, 28); the top segment is
-    // verse 12. A merge of verses 5+6 removes one segment above the window, so verse 12 moves to
-    // index 10 and the range must shift to [10, 27) to keep it framed.
+    // The window holds absolute indices, so a merge above the window start (which shifts every
+    // later segment down one) would otherwise leave the slice starting one segment too late —
+    // dropping the top-visible segment. Anchored at verse 20 the initial window is [11, 28); the
+    // top segment is verse 12. A merge of verses 5+6 removes one segment above the window, so verse
+    // 12 moves to index 10 and the range must shift to [10, 27) to keep it framed.
     const book = makeBook(30, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
@@ -691,7 +691,7 @@ describe('useSegmentWindow', () => {
   });
 
   it('shifts the window range to keep the visible content framed when a split above it adds a segment', () => {
-    // The mirror case: a split above `range.start` shifts every later segment up one, so a stale
+    // The mirror case: a split above the window start shifts every later segment up one, so a stale
     // range would start one segment too early and push the bottom-visible segment out. Anchored at
     // verse 20 the window top is verse 12; splitting verse 5 into two segments must shift the range
     // up one so verse 12 stays the top-visible segment.
@@ -904,7 +904,7 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    // scrollIntoView succeeded (remainingOffset is 0 in jsdom) — spacer stays at 0 from the reset.
+    // scrollIntoView succeeded (jsdom reports no leftover offset) — spacer stays at 0 from the reset.
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(spacer.style.height).toBe('0px');
   });
@@ -1374,7 +1374,7 @@ describe('useSegmentWindow', () => {
         chapterNum: 1,
         verseNum: 1,
       });
-      // Anchor at book start needs no mount snap, so the next frame clears recenterInFlight.
+      // Anchor at book start needs no mount snap, so the next frame ends the in-flight recenter.
       act(() => jest.advanceTimersByTime(16));
       stubRect(container, 0, 600);
       const wrapper = document.createElement('div');
@@ -1471,7 +1471,7 @@ describe('useSegmentWindow', () => {
     it('re-baselines after an extend so the next resize does not re-apply the extend shift', () => {
       const { fire } = installBlockResizeObserver();
       // Anchor mid-book so earlier segments remain to prepend. The mid-book mount snap settles below,
-      // clearing recenterInFlight — otherwise the compensation observer stands down for the test.
+      // ending the in-flight recenter — otherwise the compensation observer stands down for the test.
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',

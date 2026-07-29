@@ -46,8 +46,8 @@ export const GUTTER_LANE_STEP = 10;
 
 /**
  * Subset of the phrase-store dispatch surface that {@link splitPhraseAtBoundary} needs. Kept local
- * to the utils layer so this module doesn't depend on `components/AnalysisStore`; the real
- * `PhraseDispatch` is structurally compatible.
+ * so the utils layer doesn't depend on the store; the store's real dispatch type is structurally
+ * compatible.
  */
 type SplitPhraseDispatch = {
   createPhrase: (tokens: TokenSnapshot[]) => string;
@@ -241,15 +241,13 @@ function arcClearancePx(maxArcLevel: number): number {
 
 /**
  * Top padding (px) a token strip needs so arcs and the floating controls pill both fit above the
- * boxes: {@link arcClearancePx} when any arc is drawn, plus controls headroom.
+ * boxes: the topmost arc run's full vertical clearance when any arc is drawn, plus controls
+ * headroom.
  *
  * The pill rides the arc top, or the box top for contiguous phrases, with its upper half extending
  * above — so a box-top phrase needs the pill's full height reserved to stay visible.
  *
  * Floored at {@link VERSE_SUPERSCRIPT_HEADROOM_PX} so a peeking verse number is never clipped.
- *
- * @returns The required top padding in pixels, with a floor of {@link VERSE_SUPERSCRIPT_HEADROOM_PX}
- *   so a peeking verse number is never clipped.
  */
 export function computeStripTopPadding(
   hasArcs: boolean,
@@ -722,7 +720,7 @@ export function computeAllArcPaths(container: Element): ArcState {
   // Cross-row arcs route down a side gutter. A descent's extent depends on each run's stem, so
   // resolve the geometry first, build a GutterDescent per arc, then color those into lanes. The
   // lane (not the run level) drives the gutter offset, so vertically-nested arcs (C..D inside A..F)
-  // take different lanes. Endpoints anchor on each row's top line via rowTopFor.
+  // take different lanes. Endpoints anchor on each row's shared top line, not their own box top.
   const crossRowGeometries = crossRowPairs.map(
     ({ phraseId, a, b, splitAfterTokenRef, nearerLeft, upperSeg, lowerSeg }) => {
       const aStem = stemForLevel(levelOf(upperSeg));

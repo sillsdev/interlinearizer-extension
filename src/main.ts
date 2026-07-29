@@ -111,7 +111,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
  * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  * @throws If `papi.webViews.getOpenWebViewDefinition` rejects.
- * @throws Any error thrown by {@link openInterlinearizer} (dialog or WebView errors).
+ * @throws If the project picker dialog or the WebView open fails.
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
@@ -394,8 +394,9 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
 // #region Lifecycle
 
 /**
- * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
- * Called by the platform when the extension is loaded.
+ * Extension entry point. Registers the Interlinearizer WebView provider, its commands,
+ * project-setting validators, and WebView lifecycle subscriptions. Called by the platform when the
+ * extension is loaded.
  *
  * @param context - Activation context; used to register disposables so the platform can clean them
  *   up on deactivation.
@@ -433,9 +434,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
         ],
         // `undefined` (returned on cancel) is not a JSON type and cannot appear in a JSON-RPC
-        // response, so the schema only describes the shape when a value is present. All other
-        // WebView-opening commands in paranext-core use `{ type: 'string' }` for this same pattern
-        // (e.g. platform-scripture-editor openScriptureEditor, platform-get-resources).
+        // response, so the schema only describes the shape when a value is present.
         result: {
           name: 'return value',
           summary: 'The ID of the opened WebView, if opened; omitted when the user cancels',

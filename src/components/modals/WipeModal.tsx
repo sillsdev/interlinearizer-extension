@@ -25,7 +25,6 @@ const WIPE_MODAL_STRING_KEYS: `%${string}%`[] = [
  * component is presentational — it collects the scope and hands it back via {@link onConfirm}; the
  * caller performs the actual wipe.
  *
- * @param props - Component props
  * @param props.hasActiveBook - Whether a book is currently loaded. When `false`, the "current book"
  *   option is disabled and the selection defaults to the whole draft, since there is no book to
  *   wipe.

@@ -79,6 +79,7 @@ const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
+  /** Subtree given access to the analysis store. */
   children: ReactNode;
   /** BCP 47 analysis-language tag used when reading and writing `TokenAnalysis.gloss` values. */
   analysisLanguage: string;
@@ -116,17 +117,6 @@ type AnalysisStoreProviderProps = Readonly<{
  * Provides a Redux-backed `TextAnalysis` store to the subtree. Components inside can read per-token
  * approved gloss values via {@link useGloss} and write new approved analyses via
  * {@link useGlossDispatch}. The full analysis snapshot is accessible via {@link useAnalysis}.
- *
- * @param props - Component props
- * @param props.children - Subtree that should have access to the analysis store
- * @param props.initialAnalysis - Seed `TextAnalysis`; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for reading/writing gloss values
- * @param props.onSave - Callback receiving the updated `TextAnalysis` after each mutation
- * @param props.onGlossChange - Spy called after each gloss write; for test observability only
- * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
- *   uncommitted text, so the caller can show the unsaved indicator while the user types
- * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
- *   suggestion with accept / promote affordances
  */
 export function AnalysisStoreProvider({
   children,
@@ -286,8 +276,7 @@ export function useGloss(tokenRef: string): string {
  *
  * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
  * so a chip that is not currently showing suggestions does no per-token pool lookup or
- * normalization on each store change. The only consumer ({@link TokenChip}) passes its
- * `showSuggestions` flag here.
+ * normalization on each store change.
  *
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text, matched against the pool when the token is
@@ -344,7 +333,6 @@ export function useSuggestionAfterClearing(
  * Returns whether un-approved tokens should render the engine's derived suggestion, as set by the
  * nearest {@link AnalysisStoreProvider}'s `showSuggestions` prop (a removable demo toggle).
  *
- * @returns `true` when suggestions should be shown.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useShowSuggestions(): boolean {
@@ -423,9 +411,9 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
 /**
  * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
  * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
- * chosen alternative). Dispatches `approveAnalysisForToken` then calls `onSave`. Accepting only
- * adds an approved link to the existing payload (raising its frequency), it does not rewrite the
- * shared content, so no other token's gloss changes.
+ * chosen alternative). Persists immediately. Accepting only adds an approved link to the existing
+ * payload (raising its frequency), it does not rewrite the shared content, so no other token's
+ * gloss changes.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -473,8 +461,8 @@ export function useMorphemeBreakdownDispatch(): (
 /**
  * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
  * for a given token (deleting the analysis record entirely when removing the breakdown leaves it
- * with no other content — no gloss, POS, features, or lexicon sense reference). Dispatches the
- * `deleteMorphemes` action and triggers `onSave`.
+ * with no other content — no gloss, POS, features, or lexicon sense reference). Persists
+ * immediately.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
@@ -564,7 +552,6 @@ export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink>
  * token changes.
  *
  * @param tokenRef - The `Token.ref` to look up.
- * @returns The matching approved `PhraseAnalysisLink`, or `undefined`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
@@ -645,9 +632,8 @@ export type PhraseDispatch = {
 };
 
 /**
- * Returns stable callbacks for creating, updating, and deleting phrases. Each callback dispatches
- * the corresponding Redux action then calls `onSave` with the updated `TextAnalysis`, matching the
- * pattern of {@link useGlossDispatch}.
+ * Returns stable callbacks for creating, updating, and deleting phrases. Each callback commits
+ * immediately and persists the updated analysis.
  *
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */

@@ -19,13 +19,7 @@ type AltHeldProviderProps = Readonly<{
   children: ReactNode;
 }>;
 
-/**
- * Provides the current Alt-held state to the split-gap markers beneath it.
- *
- * @param props - Component props.
- * @param props.value - Whether the Alt key is currently held.
- * @param props.children - The subtree.
- */
+/** Provides the current Alt-held state to the split-gap markers beneath it. */
 export function AltHeldProvider({ value, children }: AltHeldProviderProps) {
   return <AltHeldContext.Provider value={value}>{children}</AltHeldContext.Provider>;
 }

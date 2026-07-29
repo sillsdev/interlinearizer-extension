@@ -63,10 +63,6 @@ export interface UsjDocument {
   content: MarkerContent[];
 }
 
-// ---------------------------------------------------------------------------
-// Implementation
-// ---------------------------------------------------------------------------
-
 /**
  * Para markers whose content is not part of the verse baseline text (headings, spacing, speaker
  * IDs, acrostic headings, etc.). Verse-content para markers (p, m, pi, q*, etc.) are absent from
@@ -74,7 +70,7 @@ export interface UsjDocument {
  *
  * The descriptive-title marker `d` (a Psalm superscription, e.g. "A Psalm of David") is
  * deliberately absent: its text is genuine scripture that the source omits a verse marker for, so
- * it is accumulated as the chapter's verse-0 content (see {@link handleChapterNode}).
+ * it is accumulated as the chapter's verse-0 content.
  */
 const HEADING_PARA_MARKERS = new Set([
   // Major section headings and reference ranges
@@ -118,10 +114,9 @@ interface TraversalState {
   /** The verse currently being accumulated; `undefined` when outside a verse scope. */
   currentVerse: { sid: string; number: string; text: string } | undefined;
   /**
-   * `true` when `currentVerse` is the synthetic verse-0 scope opened at a chapter boundary (see
-   * {@link handleChapterNode}). A synthetic verse-0 is emitted only when it accumulates text, so
-   * chapters with no superscription don't produce an empty verse-0; real verse markers are always
-   * emitted even when empty.
+   * `true` when `currentVerse` is the synthetic verse-0 scope opened at a chapter boundary. A
+   * synthetic verse-0 is emitted only when it accumulates text, so chapters with no superscription
+   * don't produce an empty verse-0; real verse markers are always emitted even when empty.
    */
   currentVerseIsSynthetic: boolean;
   /** Completed verses in document order. */
@@ -134,9 +129,9 @@ interface TraversalState {
  * rather than pushed when it accumulated no text, so chapters without a superscription emit no
  * spurious empty verse-0 segment. Real verse markers are pushed even when empty.
  *
- * Every emitted verse's SID is recorded in `seenVerseIds`. Real markers are already recorded when
- * opened (see {@link handleVerseNode}); recording synthetic verse-0 scopes here lets a later
- * explicit marker with the same SID be rejected as a duplicate.
+ * Every emitted verse's SID is recorded in `seenVerseIds`. A real marker's SID is already recorded
+ * when that marker opens; recording synthetic verse-0 scopes here lets a later explicit marker with
+ * the same SID be rejected as a duplicate.
  */
 function closeCurrentVerse(state: TraversalState): void {
   if (state.currentVerse === undefined) return;
@@ -240,7 +235,7 @@ const NODE_HANDLERS: Partial<Record<string, (node: UsjNode, state: TraversalStat
  * Recursively walks a USJ content array, accumulating verse text into `state`.
  *
  * @throws {SyntaxError} If any verse node encountered during traversal is missing its `sid`
- *   attribute or contains a duplicate SID (propagated from {@link handleVerseNode}).
+ *   attribute or contains a duplicate SID.
  */
 function traverse(nodes: MarkerContent[], state: TraversalState): void {
   nodes.forEach((node) => {
@@ -298,13 +293,11 @@ function fnv1a32(s: string): string {
  *
  * Content preceding a chapter's first `verse` marker — chiefly a `d` descriptive title (Psalm
  * superscription) — is captured as a synthetic verse-0 `RawVerse` with SID `"<book> <chapter>:0"`,
- * but only when it has text; see {@link handleChapterNode}.
+ * but only when it has text.
  *
  * @throws {SyntaxError} If no `book` marker with a `code` attribute is found in the document.
- * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute (propagated
- *   from {@link handleVerseNode} via {@link traverse}).
- * @throws {SyntaxError} If a duplicate `verse` SID is encountered (propagated from
- *   {@link handleVerseNode} via {@link traverse}).
+ * @throws {SyntaxError} If a `verse` marker is missing its required `sid` attribute.
+ * @throws {SyntaxError} If a duplicate `verse` SID is encountered.
  */
 export function extractBookFromUsj(usj: UsjDocument, writingSystem: string): RawBook {
   const contentHash = fnv1a32(stableStringify(usj.content));

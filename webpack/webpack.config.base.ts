@@ -94,9 +94,15 @@ const configBase: webpack.Configuration = {
         resourceQuery: { not: [/raw/] },
         use: [
           // We are not using style-loader since we are passing styles to papi, not inserting them
-          // into dom. style-loader would add html style elements for our styles if we used it
-          // We are not using css-loader since we are getting style files using ?inline. css-loader
-          // would allow us to import CSS into CommonJS
+          // into dom. style-loader would add html style elements for our styles if we used it.
+          // css-loader lets us import the transformed CSS as a plain string for the WebView.
+          {
+            loader: 'css-loader',
+            options: {
+              esModule: false,
+              exportType: 'string',
+            },
+          },
           // Processes style transformations in PostCSS - after scss so PostCSS runs on just css
           'postcss-loader',
           // Compiles Sass to CSS

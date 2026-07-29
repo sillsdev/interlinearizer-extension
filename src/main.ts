@@ -9,7 +9,7 @@ import type {
 } from '@papi/core';
 import type { SegmentationDelta } from 'interlinearizer';
 import interlinearizerReact from './interlinearizer.web-view?inline';
-import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import interlinearizerStyles from './interlinearizer.web-view.scss';
 import * as projectStorage from './services/projectStorage';
 import { isDraftProject, isSegmentationDelta, isTextAnalysis } from './types/type-guards';
 

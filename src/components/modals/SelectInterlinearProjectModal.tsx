@@ -30,6 +30,9 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
  *   draft is currently working against.
+ * @param props.isOpening - When `true`, a project the user already chose is still being loaded into
+ *   the draft. Dismissal is suppressed for the duration, because the open completes regardless and
+ *   letting the modal close would read as having canceled it.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onClose - Called when the user cancels without selecting.
@@ -40,6 +43,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 export function SelectInterlinearProjectModal({
   sourceProjectId,
   activeProjectId,
+  isOpening = false,
   onSelect,
   onCreateNew,
   onClose,
@@ -47,6 +51,7 @@ export function SelectInterlinearProjectModal({
 }: Readonly<{
   sourceProjectId: string;
   activeProjectId?: string;
+  isOpening?: boolean;
   onSelect: (project: InterlinearProjectSummary) => void;
   onCreateNew: () => void;
   onClose: () => void;
@@ -113,7 +118,7 @@ export function SelectInterlinearProjectModal({
       titleId="select-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
-      onClose={isLoading ? undefined : onClose}
+      onClose={isLoading || isOpening ? undefined : onClose}
     >
       {projects.length === 0 ? (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
@@ -164,10 +169,10 @@ export function SelectInterlinearProjectModal({
       )}
 
       <div className="tw:modal-actions">
-        <Button variant="secondary" onClick={onClose} disabled={isLoading}>
+        <Button variant="secondary" onClick={onClose} disabled={isLoading || isOpening}>
           {localizedStrings['%interlinearizer_modal_select_cancel%']}
         </Button>
-        <Button onClick={onCreateNew} disabled={isLoading}>
+        <Button onClick={onCreateNew} disabled={isLoading || isOpening}>
           {localizedStrings['%interlinearizer_modal_select_create_new%']}
         </Button>
       </div>

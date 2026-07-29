@@ -241,6 +241,35 @@ describe('SelectInterlinearProjectModal', () => {
     );
   });
 
+  it('disables Cancel and Create New while a chosen project is being opened', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SelectInterlinearProjectModal {...defaultProps} isOpening />);
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /create new/i })).toBeDisabled();
+  });
+
+  it('ignores Escape while a chosen project is being opened, since the open completes regardless', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SelectInterlinearProjectModal {...defaultProps} isOpening />);
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(defaultProps.onClose).not.toHaveBeenCalled();
+  });
+
+  it('closes on Escape once no open is in flight', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('clears the project list immediately when a new load begins', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     const { rerender } = render(<SelectInterlinearProjectModal {...defaultProps} />);

@@ -4,6 +4,8 @@ import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
  * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
  * formatted `"<book> <chapter>:<verse>[:<charStart>]"` (e.g. `"GEN 1:1"`, `"1JN 2:3:5"`). A string
  * with no space is returned whole.
+ *
+ * @returns The leading book code, or the whole string when it contains no space.
  */
 export function bookOfRef(ref: string): string {
   const spaceIndex = ref.indexOf(' ');
@@ -49,6 +51,9 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
  *
  * Yields `undefined` when no other book's anchors remain, so an emptied delta collapses back to the
  * default segmentation rather than persisting empty arrays.
+ *
+ * @returns A new `SegmentationDelta` without the book's anchors, or `undefined` when the result is
+ *   the default segmentation (or the input already was).
  */
 export function removeBookFromSegmentation(
   delta: SegmentationDelta | undefined,

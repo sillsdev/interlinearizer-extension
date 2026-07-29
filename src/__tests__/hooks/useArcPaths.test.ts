@@ -44,6 +44,9 @@ describe('useArcPaths', () => {
   /**
    * Installs a stubbed `ResizeObserver` with a manual rAF queue. The observer callback defers its
    * measurement to the next animation frame, so `pump` drives rAF by hand to flush it.
+   *
+   * @returns `pump`, which fires the observer + flushes the rAF and returns the number of
+   *   `computeAllArcPaths` calls it triggered.
    */
   const installObserverHarness = (): { pump: () => number } => {
     const rafCallbacks: FrameRequestCallback[] = [];

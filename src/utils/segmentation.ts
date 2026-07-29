@@ -202,7 +202,11 @@ export function splitSegmentBefore(
   return addBoundaryBefore(verseBook, delta, ref);
 }
 
-/** Whether the delta represents the default verse segmentation: absent, or both arrays empty. */
+/**
+ * Whether the delta represents the default verse segmentation: absent, or both arrays empty.
+ *
+ * @returns `true` when applying `delta` yields the default segmentation.
+ */
 export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }

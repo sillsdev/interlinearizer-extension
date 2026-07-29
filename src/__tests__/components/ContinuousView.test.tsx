@@ -1306,7 +1306,11 @@ describe('ContinuousView scroll behavior', () => {
         />
       );
     }
-    /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
+    /**
+     * Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible.
+     *
+     * @returns `true` when that in-segment link icon is mounted and not hidden.
+     */
     const inSegmentIconMounted = () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',

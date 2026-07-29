@@ -1177,6 +1177,8 @@ describe('useMorphemeGlossDispatch', () => {
 /**
  * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
  * pending-edits accounting from tests.
+ *
+ * @returns An empty fragment; the component exists only for its hook side effect.
  */
 function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
   useReportGlossEditing(isEditing);

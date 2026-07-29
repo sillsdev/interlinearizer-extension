@@ -133,6 +133,8 @@ function removePhraseById(state: AnalysisState, phraseId: string): void {
  * corruption or a migration), the link is removed from the draft — so the corruption never persists
  * or accumulates duplicate approved links — and `undefined` is returned as if no approved link
  * existed. Mirrors {@link resolveApprovedAnalysis} for the segment layer.
+ *
+ * @returns The approved link and its analysis, or `undefined` when the segment has none.
  */
 function resolveApprovedSegmentAnalysis(
   state: AnalysisState,
@@ -160,6 +162,8 @@ function resolveApprovedSegmentAnalysis(
  * imported word-for-word translation) still survives a free-translation clear while a record left
  * holding only whitespace is dropped — mirroring how {@link isEmptyTokenAnalysis} preserves
  * morphemes/pos.
+ *
+ * @returns `true` when the record holds no content worth keeping.
  */
 function isEmptySegmentAnalysis(analysis: SegmentAnalysis): boolean {
   return (
@@ -192,6 +196,8 @@ function removeSegmentAnalysis(
  * the link is removed from the draft — so the corruption never persists or accumulates duplicate
  * approved links — and `undefined` is returned as if no approved link existed. Every token-analysis
  * reducer resolves through this helper so they all repair orphaned links the same way.
+ *
+ * @returns The approved link and its analysis, or `undefined` when the token has none.
  */
 function resolveApprovedAnalysis(
   state: AnalysisState,
@@ -261,6 +267,8 @@ function detachTokenAnalysisLink(
  * i.e. whether an edit or clear reaching it through `link`'s token would also affect a different
  * token. The shared/sole distinction is what tells a clear, delete, or fork whether it must work on
  * a private clone (to spare the co-linked tokens) or may mutate the payload in place.
+ *
+ * @returns `true` when at least one other link points at the same payload.
  */
 function isPayloadSharedByOtherLinks(
   state: AnalysisState,
@@ -333,6 +341,8 @@ function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis
  * empty and may be dropped when its last content field is cleared. This is a deliberate choice — if
  * a future workflow needs provenance-only records (e.g. imported parser metadata) to survive a
  * gloss clear, add the relevant fields to the check below.
+ *
+ * @returns `true` when the record holds no analysis content worth keeping.
  */
 function isEmptyTokenAnalysis(analysis: TokenAnalysis): boolean {
   return (
@@ -875,6 +885,8 @@ export const selectAnalysis = (state: AnalysisState) => state.analysis;
 /**
  * Returns the approved gloss string for `tokenRef` in the active analysis language, or `''` when no
  * approved analysis exists or the analysis has no gloss for the active language.
+ *
+ * @returns The approved gloss string, or `''` when absent.
  */
 export function selectApprovedGloss(state: AnalysisState, tokenRef: string): string {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
@@ -928,6 +940,8 @@ export const selectPoolIndex = createSelector(
  * therefore NOT rely on the default `Object.is` equality: subscribe through a per-token memoized
  * selector or pass a shallow/custom `equalityFn` (or `useMemo` the result), or every store change
  * will re-render the token and trip react-redux's "selector returned a different result" warning.
+ *
+ * @returns The approved or suggested analysis for the token, or `undefined` when it has neither.
  */
 export function selectResolvedTokenAnalysis(
   state: AnalysisState,
@@ -975,6 +989,8 @@ export function selectSuggestionAfterClearing(
  * no glosses is bare segmentation that is cheap to retype. Sharing is read through
  * {@link selectApprovedTokenCountByAnalysisId} — the same approved-link count the reducer's
  * `isPayloadSharedByOtherLinks` tests — so the two can never disagree about what "shared" means.
+ *
+ * @returns `true` when the reset would irrecoverably discard glosses belonging to this token alone.
  */
 export function selectMorphemeResetLosesGlosses(state: AnalysisState, tokenRef: string): boolean {
   const approvedId = selectApprovedIdByTokenRef(state).get(tokenRef);
@@ -994,6 +1010,8 @@ const EMPTY_MORPHEMES: readonly MorphemeAnalysis[] = [];
 /**
  * Returns the morpheme array from the approved `TokenAnalysis` for `tokenRef`, or a shared
  * reference-stable empty array when no approved analysis exists or it has no morphemes.
+ *
+ * @returns The morpheme array, or a stable empty array when absent.
  */
 export function selectApprovedMorphemes(
   state: AnalysisState,
@@ -1039,6 +1057,8 @@ export const selectPhraseLinkByAnalysisId = createSelector(
 /**
  * Returns the approved gloss string for the given phrase in the active analysis language, or `''`
  * when no phrase with that id exists or it has no gloss for the active language.
+ *
+ * @returns The gloss string, or `''` when absent.
  */
 export function selectPhraseGloss(state: AnalysisState, phraseId: string): string {
   const pa = state.analysis.phraseAnalyses.find((p) => p.id === phraseId);
@@ -1050,6 +1070,8 @@ export function selectPhraseGloss(state: AnalysisState, phraseId: string): strin
  * language, or `''` when no approved analysis exists or it has no free translation for the active
  * language. An approved link referencing a missing analysis is treated as absent (read-only here;
  * the orphan is repaired on the next write through {@link resolveApprovedSegmentAnalysis}).
+ *
+ * @returns The free-translation string, or `''` when absent.
  */
 export function selectSegmentFreeTranslation(state: AnalysisState, segmentId: string): string {
   const link = state.analysis.segmentAnalysisLinks.find(

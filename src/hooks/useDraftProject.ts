@@ -229,6 +229,7 @@ export default function useDraftProject(
    * Returns `false` without applying anything when no draft has loaded yet.
    *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet.
    */
   const autosaveDraft = useCallback(
     (mutate: (current: DraftProject) => DraftProject): boolean => {

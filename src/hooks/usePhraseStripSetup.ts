@@ -14,6 +14,8 @@ import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
  * Reads the by-id phrase-link map internally so both views share one derivation.
+ *
+ * @returns The edit-mode phrase's token snapshots, or `undefined` when not editing.
  */
 export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | undefined {
   const phraseLinkById = usePhraseLinkByIdMap();

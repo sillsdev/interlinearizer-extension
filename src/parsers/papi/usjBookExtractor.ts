@@ -179,6 +179,8 @@ function handleChapterNode(node: UsjNode, state: TraversalState): void {
  * Derives the verse-label fallback from a verse SID: the text after the last colon (e.g. `"7"` from
  * `"GEN 1:7"`, `"1a"` from `"GEN 1:1a"`). Used as the rendered verse number when a `verse` marker
  * omits its `number` attribute.
+ *
+ * @returns The verse portion after the final colon; the whole `sid` when it contains no colon.
  */
 function verseNumberFromSid(sid: string): string {
   return sid.slice(sid.lastIndexOf(':') + 1);

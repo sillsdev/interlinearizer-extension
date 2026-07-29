@@ -24,6 +24,8 @@ type EditPhraseControlsProps = Readonly<{
  * @param props - Component props
  * @param props.phraseMode - The current edit-mode phrase mode value
  * @param props.setPhraseMode - Setter used to commit or revert the edit
+ * @returns Done / Cancel buttons laid out inline; the host bar supplies the surrounding container
+ *   chrome.
  */
 export default function EditPhraseControls({ phraseMode, setPhraseMode }: EditPhraseControlsProps) {
   const phraseLinkById = usePhraseLinkByIdMap();

@@ -179,7 +179,7 @@ export function ProjectMetadataModal({
       titleId="project-metadata-modal-title"
       title={localizedStrings['%interlinearizer_modal_metadata_title%']}
       width="tw:w-lg"
-      rounded="tw:rounded-lg"
+      onClose={isSubmitting ? undefined : onClose}
     >
       {/* Editable fields */}
       <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">

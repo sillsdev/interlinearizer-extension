@@ -117,10 +117,6 @@
   @apply tw:flex tw:gap-2 tw:justify-end;
 }
 
-@utility modal-dialog {
-  @apply tw:static tw:bg-background tw:text-foreground tw:border tw:border-border tw:p-6 tw:shadow-lg;
-}
-
 @utility modal-error-box {
   @apply tw:rounded tw:border tw:border-destructive/40 tw:bg-destructive/5;
 }
@@ -129,13 +125,6 @@
   @apply tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground;
 }
 
-@utility modal-overlay {
-  @apply tw:fixed tw:inset-0 tw:z-50 tw:flex tw:items-center tw:justify-center tw:bg-black/40;
-}
-
-@utility modal-title {
-  @apply tw:text-base tw:font-semibold tw:text-foreground tw:mb-4;
-}
 
 @utility no-scrollbar {
   scrollbar-width: none;

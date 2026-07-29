@@ -125,7 +125,6 @@
   @apply tw:rounded tw:border tw:border-border tw:bg-background tw:px-2 tw:py-1 tw:text-sm tw:text-foreground;
 }
 
-
 @utility no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;

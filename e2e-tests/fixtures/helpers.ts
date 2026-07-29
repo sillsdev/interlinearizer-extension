@@ -36,13 +36,15 @@ const MODAL_DIALOG_SELECTOR = '[data-slot="dialog-content"]';
  * Resolves to a single element on purpose. The discard-draft guard overlays the modal that
  * triggered it rather than replacing it, and the platform dialog stays mounted through its closing
  * animation, so two surfaces can legitimately coexist; an unqualified match would fail strict mode
- * at those moments. First-in-DOM is the modal that opened first — the one every caller here drives,
- * since the guard is reached by its own test id.
+ * at those moments. Last-in-DOM is the frontmost surface: the platform dialog portals in mount
+ * order, so the most recently opened modal sorts last. That is the one a caller can actually reach
+ * — a stacked guard makes the modal beneath it inert, and a surface still playing its closing
+ * animation is on its way out.
  *
  * @param frame The frame locator for the Interlinearizer iframe.
  */
 export function modalDialog(frame: FrameLocator): Locator {
-  return frame.locator(MODAL_DIALOG_SELECTOR).first();
+  return frame.locator(MODAL_DIALOG_SELECTOR).last();
 }
 
 /**

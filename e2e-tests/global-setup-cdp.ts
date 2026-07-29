@@ -83,8 +83,8 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
  * developer's instance is reused and left running. This keeps the manual
  * iterate-against-a-warm-instance workflow working through the same config.
  *
- * @param config Playwright config object, read for the run's worker count (the settings seed only
- *   accepts a single worker).
+ * @param _config - Playwright config object — unused; required by Playwright's global-setup
+ *   interface.
  * @returns Resolves once a usable app is available (launched here, or an already-running one).
  * @throws {Error} If the run is configured for more than one worker, or if the app's WebSocket or
  *   CDP port do not become ready in time.
@@ -319,8 +319,6 @@ async function cleanUpFailedLaunch(
  * The Playwright connection is closed before returning either way — it only disconnects; the app
  * keeps running for the test fixtures to connect to.
  *
- * @param timeout Maximum time in milliseconds to wait for the renderer page, settled tabs, and the
- *   extension's activation.
  * @returns Resolves when the renderer page shows at least one dock tab with no "Unknown" titles and
  *   the interlinearizer extension has registered its open-webview command.
  * @throws {Error} If no renderer page appears, tab titles do not resolve, or the extension does not
@@ -385,8 +383,6 @@ async function waitForRendererSettled(timeout: number): Promise<void> {
  * this run owns none of the resources those markers describe, so a stale marker from a prior
  * launched run would make {@link globalTeardownCdp} act on foreign resources (and a stale settings
  * seed would linger in the developer's dev-appdata). Best-effort: each removal is guarded.
- *
- * @returns Nothing.
  */
 function clearStaleOwnershipMarkers(): void {
   // Undo any seed a prior launched run left behind before it crashed, so the developer's warm
@@ -404,8 +400,6 @@ function clearStaleOwnershipMarkers(): void {
 /**
  * Seed {@link E2E_SETTINGS_OVERRIDES} before launching the app. Thin wrapper around
  * {@link backupAndSeedSettings} — see its doc for the backup/self-heal behavior.
- *
- * @returns Nothing.
  */
 function seedE2ESettingsOverrides(workers: number): void {
   backupAndSeedSettings(E2E_SETTINGS_OVERRIDES, workers);
@@ -414,8 +408,6 @@ function seedE2ESettingsOverrides(workers: number): void {
 /**
  * Undo {@link seedE2ESettingsOverrides}. Thin wrapper around {@link restoreBackedUpSettings} — see
  * its doc for the restore/self-heal behavior.
- *
- * @returns Nothing.
  */
 export function restoreSeededSettings(): void {
   restoreBackedUpSettings();
@@ -424,8 +416,6 @@ export function restoreSeededSettings(): void {
 /**
  * Print the launched app's captured stdout/stderr to the console. Called when the app fails to open
  * its ports so the startup failure's cause appears inline in the CI log.
- *
- * @returns Nothing; logging-only.
  */
 function dumpAppLog(): void {
   try {

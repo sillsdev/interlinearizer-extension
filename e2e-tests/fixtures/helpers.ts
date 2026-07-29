@@ -227,6 +227,24 @@ const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
 const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
 
 /**
+ * Publish the settings backup so it is only ever observable complete or absent, never half-written.
+ * Restoring a truncated backup would overwrite the developer's real settings with corrupt content —
+ * the one outcome the backup exists to prevent — and every restore path reads the backup
+ * unconditionally, so the guarantee has to hold at the write rather than at each read.
+ *
+ * @param contents Backup body: the original settings JSON, or the marker for "no settings file
+ *   existed".
+ * @throws A filesystem error while writing or renaming the temp file. The published backup is left
+ *   untouched, so a caller's rollback still sees the pre-call state.
+ */
+function publishSettingsBackup(contents: string): void {
+  // Sibling of the published file so the rename stays within one filesystem, and so atomic.
+  const tempFile = `${SETTINGS_BACKUP_FILE}.tmp`;
+  fs.writeFileSync(tempFile, contents);
+  fs.renameSync(tempFile, SETTINGS_BACKUP_FILE);
+}
+
+/**
  * Back up paranext-core's dev-appdata settings file to {@link SETTINGS_BACKUP_FILE} (recording
  * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
  * called BEFORE launching Electron so the app reads the overrides at startup.
@@ -263,7 +281,7 @@ export function backupAndSeedSettings(overrides: Record<string, unknown>, worker
   let existing: Record<string, unknown> = {};
   if (fs.existsSync(DEV_APPDATA_SETTINGS_PATH)) {
     const original = fs.readFileSync(DEV_APPDATA_SETTINGS_PATH, 'utf-8');
-    fs.writeFileSync(SETTINGS_BACKUP_FILE, original);
+    publishSettingsBackup(original);
     try {
       const parsed: unknown = JSON.parse(original);
       // Preserve existing settings only when the file holds a JSON object; a corrupt or non-object
@@ -275,7 +293,7 @@ export function backupAndSeedSettings(overrides: Record<string, unknown>, worker
   } else {
     // Record absence so restoreBackedUpSettings deletes the file this seed creates rather than
     // leaving it behind.
-    fs.writeFileSync(SETTINGS_BACKUP_FILE, SETTINGS_ABSENT_SENTINEL);
+    publishSettingsBackup(SETTINGS_ABSENT_SENTINEL);
   }
   fs.mkdirSync(settingsDir, { recursive: true });
   fs.writeFileSync(DEV_APPDATA_SETTINGS_PATH, JSON.stringify({ ...existing, ...overrides }));
@@ -327,9 +345,9 @@ export function preConfigureSettings(
   try {
     backupAndSeedSettings(overrides, workers);
   } catch (error) {
-    // Best-effort and non-throwing (see restoreBackedUpSettings), so this cannot mask `error`. If
-    // the backup file was written before the failure, this restores from it; if the failure came
-    // before that, there is nothing to undo and it is a no-op.
+    // Best-effort and non-throwing (see restoreBackedUpSettings), so this cannot mask `error`. The
+    // backup is published atomically — complete or absent — so this either restores the true
+    // original or is a no-op.
     restoreBackedUpSettings();
     throw error;
   }
@@ -1451,7 +1469,9 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * every instance carries the same `aria-label="book-chapter-trigger"`. So the trigger is scoped to
  * the toolbar's `toolbar-reserved-space-wrapper` root rather than selected page-wide; a bare
  * `.first()` would depend on the toolbar happening to render before the dock layout in document
- * order, and would silently drive some tab's control if paranext-core ever reordered them.
+ * order, and would silently drive some tab's control if paranext-core ever reordered them. Scoping
+ * to that wrapper is unambiguous: paranext-core renders it once, as top-level app chrome outside
+ * the dock layout that hosts the per-tab controls.
  *
  * The scoping also matters for the enabled-wait below, because the two kinds of control differ:
  * only the toolbar's is passed a `disabled` prop (bound to whether BCV navigation has a resolved
@@ -1495,8 +1515,10 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
     throw new Error(
       `navigateToScriptureRef: the top toolbar's root (data-testid="toolbar-reserved-space-wrapper") ` +
         `never appeared, so the book-chapter control could not be located and "${reference}" could ` +
-        'not be navigated to. Either the renderer never finished loading its toolbar, or ' +
-        'paranext-core renamed that test id and the locator here needs updating.',
+        'not be navigated to. Either the renderer never finished loading its toolbar, or the ' +
+        'locator here needs updating because paranext-core renamed that test id — or started ' +
+        "rendering it in more than one place, which trips Playwright's strict mode and lands here " +
+        'too.',
     );
   }
 

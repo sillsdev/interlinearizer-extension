@@ -86,6 +86,7 @@ export function CreateProjectModal({
       titleId="create-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_create_title%']}
       width="tw:w-96"
+      onClose={isSubmitting ? undefined : onClose}
     >
       <Label className="tw:mb-1" htmlFor="project-name">
         {localizedStrings['%interlinearizer_modal_create_name_label%']}

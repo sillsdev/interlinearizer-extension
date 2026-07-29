@@ -165,7 +165,7 @@ export function SaveAsProjectModal({
       titleId="save-as-modal-title"
       title={localizedStrings['%interlinearizer_modal_saveAs_title%']}
       width="tw:w-lg"
-      rounded="tw:rounded-lg"
+      onClose={isLoading || isSubmitting ? undefined : onClose}
     >
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}

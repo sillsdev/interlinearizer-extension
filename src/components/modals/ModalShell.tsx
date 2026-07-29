@@ -1,49 +1,65 @@
-/** @file Shared overlay + dialog + title chrome for the project modal dialogs. */
+import { Dialog, DialogContent, DialogTitle } from 'platform-bible-react';
 import type { ReactNode } from 'react';
 
 /**
- * Shared chrome for the project modals: the full-screen overlay, the `<dialog>` with its
- * accessibility attributes, and the title heading. Centralizes the markup every modal repeated so a
- * change to the overlay/dialog structure (or its a11y wiring) lives in one place. The body of each
- * modal is supplied as `children`.
+ * Shared chrome for the project modals: the platform dialog surface, its accessibility wiring, and
+ * the title heading. Centralizes the markup every modal repeated so a change to the dialog
+ * structure (or its a11y wiring) lives in one place.
+ *
+ * The platform dialog supplies a focus trap, scroll lock, and focus restore on close, so a modal
+ * genuinely blocks the view behind it rather than merely covering it.
  *
  * @param props - Component props
- * @param props.titleId - DOM id wired to both the dialog's `aria-labelledby` and the title `<h2>`.
+ * @param props.titleId - DOM id shared by the title and the dialog's `aria-labelledby`. End-to-end
+ *   tests locate each modal by this id.
  * @param props.title - Localized title text rendered in the heading.
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
- * @param props.rounded - Tailwind rounding utility; defaults to `'tw:rounded'`. Pass
- *   `'tw:rounded-lg'` for the wider modals.
+ * @param props.onClose - Dismisses the modal when the user presses Escape. Omit to make the modal
+ *   undismissable, which callers do while a submission is in flight so Escape cannot abandon work
+ *   the user has already committed to.
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
- *   still resolving its localized content, so the blocking overlay can show before the body
- *   exists.
- * @returns The overlay + dialog wrapper around the title and children.
+ *   still resolving its localized content, so the blocking dialog can show before the body exists.
+ * @returns The dialog wrapper around the title and children.
  */
 export function ModalShell({
   titleId,
   title,
   width,
-  rounded = 'tw:rounded',
+  onClose,
   children,
 }: Readonly<{
   titleId: string;
   title: string;
   width: string;
-  rounded?: string;
+  onClose?: () => void;
   children?: ReactNode;
 }>) {
   return (
-    <div className="tw:modal-overlay">
-      <dialog
+    <Dialog
+      open
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose?.();
+      }}
+    >
+      <DialogContent
+        // The dialog is labeled by its own title; it has no separate description element, and
+        // passing `undefined` explicitly suppresses the platform's missing-description warning.
+        aria-describedby={undefined}
         aria-labelledby={titleId}
-        aria-modal="true"
-        className={`tw:modal-dialog ${rounded} ${width}`}
-        open
+        // `gap-0` opts out of the platform's row rhythm because each modal body already spaces its
+        // own sections; `sm:max-w-none` clears the platform's default cap so `width` decides.
+        className={`tw:gap-0 tw:sm:max-w-none ${width}`}
+        // Every modal's Cancel control is disabled while it is busy, so leaving that as the only
+        // pointer-driven dismissal keeps a stray click outside from discarding in-flight work.
+        /* v8 ignore next -- platform-component wiring; the test double has no outside region */
+        onInteractOutside={(event) => event.preventDefault()}
+        showCloseButton={false}
       >
-        <h2 id={titleId} className="tw:modal-title">
+        <DialogTitle className="tw:mb-4" id={titleId}>
           {title}
-        </h2>
+        </DialogTitle>
         {children}
-      </dialog>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

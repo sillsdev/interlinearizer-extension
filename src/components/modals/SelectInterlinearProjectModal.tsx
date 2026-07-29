@@ -113,7 +113,7 @@ export function SelectInterlinearProjectModal({
       titleId="select-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
-      rounded="tw:rounded-lg"
+      onClose={isLoading ? undefined : onClose}
     >
       {projects.length === 0 ? (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">

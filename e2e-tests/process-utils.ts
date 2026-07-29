@@ -50,6 +50,17 @@ export function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM')
 }
 
 /**
+ * How long either tier waits for a SIGKILLed app to actually exit before touching the files it held
+ * (its user-data dir, and paranext-core's shared dev-appdata settings the run seeded). One budget
+ * for both so the two paths that guard the same settings file cannot drift apart.
+ *
+ * SIGKILL gives the app no chance to flush settings on the way out, so what protects the seeded
+ * file is restoring it only after the kill — never the length of this wait, which merely keeps a
+ * still-open user-data dir from failing removal.
+ */
+export const POST_SIGKILL_EXIT_WAIT_MS = 3_000;
+
+/**
  * Bound the wait for a killed process to actually exit without blindly sleeping the full timeout
  * when it dies sooner. Use before touching files the process may still hold open (e.g. its
  * user-data dir). Races `exitSignal` (a live process handle's exit event) against `timeoutMs`.

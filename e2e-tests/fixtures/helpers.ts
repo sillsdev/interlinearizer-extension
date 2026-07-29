@@ -13,7 +13,12 @@ import { createRequire } from 'module';
 import os from 'os';
 import path from 'path';
 import WebSocket from 'ws';
-import { killProcessTree, removeDirWithRetry, waitForProcessExit } from '../process-utils';
+import {
+  killProcessTree,
+  POST_SIGKILL_EXIT_WAIT_MS,
+  removeDirWithRetry,
+  waitForProcessExit,
+} from '../process-utils';
 
 const DEFAULT_WEBSOCKET_PORT = 8876;
 const RPC_DISCOVER_POLL_INTERVAL_MS = 250;
@@ -83,16 +88,20 @@ const FATAL_STARTUP_PAGE_ERROR =
  * Playwright surfaces uncaught page errors as `Error` objects, but when the page throws a non-Error
  * value (e.g. a plain object) `.message` collapses to something useless like "Object" — hiding the
  * real cause from both the CI log and {@link FATAL_STARTUP_PAGE_ERROR}, which is why a doomed cold
- * start can burn its whole readiness budget instead of fast-failing. This combines the message, the
- * stack (which often carries the true text for wrapped throwables), and a JSON dump of any
- * own-enumerable properties so the real error survives to the log and to the tripwire regex.
+ * start can burn its whole readiness budget instead of fast-failing. This preserves every distinct
+ * detail recoverable from the error — its message, its stack (which often carries the true text for
+ * wrapped throwables), and any own-enumerable properties — so the real cause survives to the log
+ * and to the tripwire regex.
  *
  * @param err The error surfaced by Playwright's `pageerror` event.
  * @returns A newline-joined description containing every distinct detail recoverable from `err`.
  */
 export function describePageError(err: Error): string {
   const parts: string[] = [];
-  if (err.message) parts.push(err.message);
+  // A V8 stack opens with a "Name: message" header line, so for an ordinary Error pushing both would
+  // repeat the message in every logged description.
+  const stackHeader = err.stack?.split('\n', 1)[0] ?? '';
+  if (err.message && !stackHeader.includes(err.message)) parts.push(err.message);
   if (err.stack) parts.push(err.stack);
   try {
     // A real Error serializes to "{}" — its message and stack are non-enumerable — so only a wrapped
@@ -209,8 +218,8 @@ export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
  * set `workers: 1` and `fullyParallel: false`, and the tiers run sequentially. Two concurrent
  * cycles would interleave — one restoring `settings.json` to the original while the other's app
  * reads it at startup (dropping the overrides), and the backup could capture an already-seeded
- * file. If either tier ever gains workers or the two are run at once, give each tier its own backup
- * file.
+ * file. Seeding therefore refuses a multi-worker run outright; running the two tiers at once is
+ * still on the caller, and would need a backup file per tier.
  */
 const SETTINGS_BACKUP_FILE = path.join(__dirname, '..', '.e2e-settings-backup');
 
@@ -227,14 +236,27 @@ const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
  *
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
+ * @param workers Worker count of the run doing the seeding, from the Playwright config.
  * @returns Nothing.
+ * @throws If `workers` exceeds 1: one shared settings file and one shared backup cannot survive
+ *   concurrent seed/restore cycles, so this fails loudly instead of corrupting the developer's
+ *   settings. Nothing is seeded in that case.
  * @throws A filesystem error while backing up the original settings, creating the settings
  *   directory, or writing the seeded file. The seed may be partially applied when it throws, so a
  *   caller that has to leave the developer's settings untouched must roll it back with
  *   {@link restoreBackedUpSettings} (see {@link preConfigureSettings}). A corrupt settings file is
  *   not an error — it is overwritten with just the overrides.
  */
-export function backupAndSeedSettings(overrides: Record<string, unknown>): void {
+export function backupAndSeedSettings(overrides: Record<string, unknown>, workers: number): void {
+  if (workers > 1) {
+    throw new Error(
+      `E2E settings seeding requires a single worker, but this run is configured for ${workers}. ` +
+        `Every worker seeds the same ${DEV_APPDATA_SETTINGS_PATH} through the same backup file, so ` +
+        "concurrent cycles would interleave: one worker's restore drops another's overrides just as " +
+        'its app reads them, and a backup can capture an already-seeded file. Keep `workers: 1` in ' +
+        'the Playwright config, or give each worker its own backup file.',
+    );
+  }
   restoreBackedUpSettings();
 
   const settingsDir = path.dirname(DEV_APPDATA_SETTINGS_PATH);
@@ -288,17 +310,22 @@ export function restoreBackedUpSettings(): void {
  *
  * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
+ * @param workers Worker count of the run doing the seeding, from the Playwright config.
  * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
  *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
  *   not permanently replaced by test values.
- * @throws Whatever {@link backupAndSeedSettings} throws (a filesystem error while backing up,
- *   creating the settings directory, or writing the seeded file). The caller never receives a
- *   restore function in that case, so this rolls the partial seed back itself before rethrowing —
- *   otherwise a mid-seed failure would strand the developer's settings in a seeded state.
+ * @throws Whatever {@link backupAndSeedSettings} throws (a multi-worker run, or a filesystem error
+ *   while backing up, creating the settings directory, or writing the seeded file). The caller
+ *   never receives a restore function in that case, so this rolls the partial seed back itself
+ *   before rethrowing — otherwise a mid-seed failure would strand the developer's settings in a
+ *   seeded state.
  */
-export function preConfigureSettings(overrides: Record<string, unknown>): () => void {
+export function preConfigureSettings(
+  overrides: Record<string, unknown>,
+  workers: number,
+): () => void {
   try {
-    backupAndSeedSettings(overrides);
+    backupAndSeedSettings(overrides, workers);
   } catch (error) {
     // Best-effort and non-throwing (see restoreBackedUpSettings), so this cannot mask `error`. If
     // the backup file was written before the failure, this restores from it; if the failure came
@@ -484,8 +511,10 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
   if (electronProcess && electronProcess.exitCode === null && electronProcess.signalCode === null) {
     console.log('[teardown] Sending SIGKILL to process group...');
     if (electronProcess.pid) killProcessTree(electronProcess.pid, 'SIGKILL');
-    console.log('[teardown] Waiting for appClosed after SIGKILL (up to 3s)...');
-    await waitForProcessExit(appClosed, 3_000);
+    console.log(
+      `[teardown] Waiting for appClosed after SIGKILL (up to ${POST_SIGKILL_EXIT_WAIT_MS}ms)...`,
+    );
+    await waitForProcessExit(appClosed, POST_SIGKILL_EXIT_WAIT_MS);
     console.log('[teardown] Done waiting after SIGKILL');
   }
 
@@ -1444,17 +1473,32 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @param reference Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
  * @returns Resolves once the reference has been submitted.
- * @throws If the control never becomes enabled within the wait (no navigation target resolved), or
- *   if it is enabled but its popover does not open or close within the timeouts.
+ * @throws If the toolbar root that scopes the lookup never appears, if the control never becomes
+ *   enabled within the wait (no navigation target resolved), or if it is enabled but its popover
+ *   does not open or close within the timeouts.
  */
 export async function navigateToScriptureRef(page: Page, reference: string): Promise<void> {
   // Scope to the top toolbar's own root: in Power mode each open web view tab renders its own
   // identically-labeled (and always-enabled) BookChapterControl, so a page-wide lookup would be
   // ambiguous. `.first()` stays as a strict-mode guard within that single scope.
-  const trigger = page
-    .getByTestId('toolbar-reserved-space-wrapper')
-    .locator('button[aria-label="book-chapter-trigger"]')
-    .first();
+  const toolbar = page.getByTestId('toolbar-reserved-space-wrapper');
+  const trigger = toolbar.locator('button[aria-label="book-chapter-trigger"]').first();
+
+  // Check the scope root separately so a missing one names its own cause: the test id is upstream's,
+  // and if paranext-core renames it the enabled-wait below would blame a closed Scripture Editor for
+  // what is really a stale selector.
+  const toolbarAttached = await expect(toolbar)
+    .toBeAttached({ timeout: 10_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!toolbarAttached) {
+    throw new Error(
+      `navigateToScriptureRef: the top toolbar's root (data-testid="toolbar-reserved-space-wrapper") ` +
+        `never appeared, so the book-chapter control could not be located and "${reference}" could ` +
+        'not be navigated to. Either the renderer never finished loading its toolbar, or ' +
+        'paranext-core renamed that test id and the locator here needs updating.',
+    );
+  }
 
   // Bounded wait for the control to become enabled, covering the brief post-launch window before the
   // navigation target resolves. `toBeEnabled` polls (unlike `isEnabled`, which reads once); swallow

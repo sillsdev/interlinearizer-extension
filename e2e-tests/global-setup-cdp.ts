@@ -23,7 +23,12 @@ import {
   WEBSOCKET_PORT,
 } from './global-setup';
 import { killProcessFromPidFile } from './global-teardown';
-import { killProcessTree, removeDirWithRetry, waitForProcessExit } from './process-utils';
+import {
+  killProcessTree,
+  POST_SIGKILL_EXIT_WAIT_MS,
+  removeDirWithRetry,
+  waitForProcessExit,
+} from './process-utils';
 
 /**
  * Chromium remote-debugging port the self-launched Electron instance exposes and the CDP fixture
@@ -78,13 +83,13 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
  * developer's instance is reused and left running. This keeps the manual
  * iterate-against-a-warm-instance workflow working through the same config.
  *
- * @param _config Playwright config object — unused; required by Playwright's global-setup
- *   interface.
+ * @param config Playwright config object, read for the run's worker count (the settings seed only
+ *   accepts a single worker).
  * @returns Resolves once a usable app is available (launched here, or an already-running one).
- * @throws {Error} If the app's WebSocket or CDP port do not become ready in time.
+ * @throws {Error} If the run is configured for more than one worker, or if the app's WebSocket or
+ *   CDP port do not become ready in time.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default async function globalSetupCdp(_config: FullConfig): Promise<void> {
+export default async function globalSetupCdp(config: FullConfig): Promise<void> {
   // A warm instance already owns the CDP port (a developer's `npm run start:cdp`). Reuse it: don't
   // launch a second app (it would collide on the WebSocket singleton) and don't record a PID, so
   // teardown leaves the developer's instance running.
@@ -147,7 +152,7 @@ export default async function globalSetupCdp(_config: FullConfig): Promise<void>
   try {
     // Seed E2E_SETTINGS_OVERRIDES before launch and back up settings (restored by globalTeardownCdp
     // after the launched app is killed).
-    seedE2ESettingsOverrides();
+    seedE2ESettingsOverrides(config.workers);
 
     // Stream the app's output to a log file rather than discarding it (`stdio: 'ignore'`): when the
     // app crashes on startup the only other symptom is an opaque WebSocket-port timeout below.
@@ -291,7 +296,7 @@ async function cleanUpFailedLaunch(
   dumpAppLog();
   const killed = pid ? killProcessTree(pid, 'SIGKILL') : false;
   if (killed && exited) {
-    await waitForProcessExit(exited, 1_000);
+    await waitForProcessExit(exited, POST_SIGKILL_EXIT_WAIT_MS);
   }
   await removeDirWithRetry(userDataDir, 'CDP user-data dir');
   // Restore settings after waiting for the kill above to take effect. The still-running app owns
@@ -402,8 +407,8 @@ function clearStaleOwnershipMarkers(): void {
  *
  * @returns Nothing.
  */
-function seedE2ESettingsOverrides(): void {
-  backupAndSeedSettings(E2E_SETTINGS_OVERRIDES);
+function seedE2ESettingsOverrides(workers: number): void {
+  backupAndSeedSettings(E2E_SETTINGS_OVERRIDES, workers);
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   ElectronApplication,
   Page,
   TestInfo,
+  WorkerInfo,
 } from '@playwright/test';
 import {
   E2E_SETTINGS_OVERRIDES,
@@ -37,9 +38,12 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
   // avoiding the process startup/teardown cost per test.
   electronApp: [
     // eslint-disable-next-line no-empty-pattern
-    async ({}, use) => {
+    async ({}, use, workerInfo: WorkerInfo) => {
       console.log('[startup] Configuring settings for worker-scoped app launch...');
-      const restoreSettings = preConfigureSettings(E2E_SETTINGS_OVERRIDES);
+      const restoreSettings = preConfigureSettings(
+        E2E_SETTINGS_OVERRIDES,
+        workerInfo.config.workers,
+      );
       try {
         const ctx = await launchElectronWithExtension();
         try {

@@ -2,6 +2,7 @@ import { expect, test } from '../../fixtures/cdp.fixture';
 import {
   ensureInterlinearizerOpenOnWeb,
   getInterlinearizerFrame,
+  MODAL_DIALOG_SELECTOR,
   openInterlinearizerProjectMenu,
   waitForAppAndInterlinearizerReady,
 } from '../../fixtures/helpers';
@@ -45,7 +46,7 @@ test.describe('Project modals cancel tour', () => {
       const modalTitle = frame.locator(modal.titleSelector);
       await expect(modalTitle).toBeVisible({ timeout: 5_000 });
 
-      await frame.locator('dialog').getByRole('button', { name: 'Cancel' }).click();
+      await frame.locator(MODAL_DIALOG_SELECTOR).getByRole('button', { name: 'Cancel' }).click();
       await expect(modalTitle).not.toBeVisible({ timeout: 5_000 });
 
       // The underlying view must still be interactive after the modal unmounts — a stuck

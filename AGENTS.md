@@ -46,11 +46,11 @@ This is a **Platform.Bible extension** for interlinear Bible text alignment. Pla
 
 [Interlinearizer](src/components/Interlinearizer.tsx) — renders the interlinear view from the loaded book data.
 
-The WebView is injected into the main bundle via Webpack's `?inline` query:
+The WebView is injected into the main bundle via Webpack's `?inline` query, while its stylesheet is imported directly so css-loader can resolve `url()` references into bundled assets:
 
 ```ts
 import interlinearizerReact from './interlinearizer.web-view?inline';
-import interlinearizerStyles from './interlinearizer.web-view.scss?inline';
+import interlinearizerStyles from './interlinearizer.web-view.scss';
 ```
 
 [src/webpack-env.d.ts](src/webpack-env.d.ts) declares the `*?inline`, `*?raw`, and `*.scss` module types that make these imports type-safe.
@@ -146,7 +146,7 @@ Mock files:
 - **`__mocks__/papi-frontend-react.ts`** — Stubs PAPI React hooks.
 - **`__mocks__/platform-bible-react.tsx`** — Stubs components with appropriate `data-testid` attributes. See file for test IDs.
 - **`__mocks__/platform-bible-utils.ts`** — Stubs util functions.
-- **`__mocks__/styleInlineMock.ts`** and **`__mocks__/styleMock.ts`** — Stub `.scss?inline` and `.scss`.
+- **`__mocks__/styleMock.ts`** — Stubs stylesheet imports as an empty string.
 - **`__mocks__/web-view-inline.ts`** — Stubs `*.web-view?inline` imports as a null-returning React component.
 - **`src/__tests__/test-helpers.ts`** — Exports `createTestActivationContext()` for testing `activate()` without type assertions.
 

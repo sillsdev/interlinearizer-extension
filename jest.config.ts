@@ -100,8 +100,6 @@ const config: Config = {
     '^lucide-react$': '<rootDir>/__mocks__/lucide-react.tsx',
     /** Resolve webpack ?inline imports. */
     '^(.+)\\.web-view\\?inline$': '<rootDir>/__mocks__/web-view-inline.ts',
-    /** Resolve webpack ?inline imports: SCSS content. */
-    '^(.+)\\.(scss|sass|css)\\?inline$': '<rootDir>/__mocks__/styleInlineMock.ts',
   },
 
   /**

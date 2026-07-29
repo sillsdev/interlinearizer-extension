@@ -173,6 +173,7 @@ type BaselineSplitGapProps = Readonly<{
  * @param props.splitRef - The split anchor ref an Alt+click dispatches.
  * @param props.splitLabel - Localized tooltip for the split affordance.
  * @param props.onSplit - Dispatches the split, gated on the Alt key inside the handler.
+ * @returns The gap span — plain text at rest, an Alt-clickable marker while Alt is held.
  */
 function BaselineSplitGap({ text, splitRef, splitLabel, onSplit }: BaselineSplitGapProps) {
   const altHeld = useAltHeldValue();

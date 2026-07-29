@@ -107,6 +107,9 @@ function buildSegment(run: SourcedToken[]): Segment {
  *
  * Token-less verses (empty verse markers) pass through as their own segments in document order, so
  * they survive a custom segmentation exactly as they do the default one.
+ *
+ * @returns A book with the custom segmentation applied, or `book` itself when `delta` is the
+ *   default.
  */
 export function resegmentBook(book: Book, delta: SegmentationDelta | undefined): Book {
   if (isDefaultSegmentation(delta)) return book;

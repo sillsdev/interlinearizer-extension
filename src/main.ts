@@ -861,6 +861,8 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
 /**
  * Extension teardown. Called by the platform when the extension is unloaded. Registrations added
  * during activate are disposed by the platform.
+ *
+ * @returns True to indicate successful deactivation; the platform may use this for logging.
  */
 export async function deactivate(): Promise<boolean> {
   openWebViewsByProject.clear();

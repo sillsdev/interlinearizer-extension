@@ -1356,6 +1356,8 @@ describe('useSegmentWindow', () => {
     /**
      * Installs the shared stub `ResizeObserver` and registers its restore for this block's
      * `afterEach`, so callers only need the returned `fire` helper.
+     *
+     * @returns `fire`, which invokes the recorded observer callback inside `act`.
      */
     function installBlockResizeObserver(): { fire: () => void } {
       const { fire, restore } = installResizeObserver();

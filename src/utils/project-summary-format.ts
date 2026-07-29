@@ -4,6 +4,8 @@
  * The summary type guard only checks that `updatedAt` is a string, so a corrupted value could
  * otherwise yield `NaN` and leave the sort comparator's result undefined. Normalizing to `0` keeps
  * ordering deterministic, with corrupted entries sorting last.
+ *
+ * @returns The parsed epoch milliseconds, or `0` when `value` is not a valid date.
  */
 export function parseUpdatedAt(value: string): number {
   const time = Date.parse(value);
@@ -13,6 +15,9 @@ export function parseUpdatedAt(value: string): number {
 /**
  * Compares two ISO 8601 timestamps newest-first. Ordering is locale-independent, unlike
  * `localeCompare`, whose result can vary by collator.
+ *
+ * @returns A negative number when `a` is newer than `b` (sorts first), positive when older, `0`
+ *   when the two timestamps are equal.
  */
 export function compareUpdatedAtDescending(a: string, b: string): number {
   return parseUpdatedAt(b) - parseUpdatedAt(a);

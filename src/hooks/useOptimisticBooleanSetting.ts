@@ -19,6 +19,9 @@ const TIMEOUT_MS = 15_000;
  * the new value before the timeout, the lock is released; if the platform never responds (or
  * responds after the timeout), the lock clears and subsequent platform updates flow through
  * normally.
+ *
+ * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
+ *   stable change handler; `value` — the current display value
  */
 export default function useOptimisticBooleanSetting(
   projectId: string,

@@ -416,6 +416,8 @@ export function restoreSeededSettings(): void {
 /**
  * Print the launched app's captured stdout/stderr to the console. Called when the app fails to open
  * its ports so the startup failure's cause appears inline in the CI log.
+ *
+ * @returns Nothing; logging-only.
  */
 function dumpAppLog(): void {
   try {

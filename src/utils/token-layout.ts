@@ -14,6 +14,8 @@ export type { FocusContext, LinkSlot, RenderUnit, SlotFocusInfo, TokenGroup };
  * Resolves the {@link FocusContext} implied by a single focused token ref. All views share these
  * rules; layouts differ only in how they discover which token is focused, not in what that focus
  * means.
+ *
+ * @returns The resolved focus context. All fields are `undefined` when `focusedTokenRef` is unset.
  */
 export function resolveFocusContext(
   focusedTokenRef: string | undefined,

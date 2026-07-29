@@ -250,6 +250,9 @@ export default function ProjectModals({
    * so the catch block only needs to log, matching {@link handleSaveAsNew}.
    *
    * @param config - The configuration collected by the New dialog.
+   * @returns `true` if the project was created and persisted successfully; `false` otherwise.
+   *   Callers are responsible for closing the modal on success and keeping it open on failure so
+   *   the user can retry without re-entering their inputs.
    */
   const createAndPersistProject = useCallback(
     async (config: CreateDraftConfig): Promise<boolean> => {

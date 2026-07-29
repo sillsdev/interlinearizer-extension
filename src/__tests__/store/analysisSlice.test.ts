@@ -58,6 +58,8 @@ function makeAnalysis(ta: TokenAnalysis): TextAnalysis {
 /**
  * Counts approved links on the same payload as `tokenRef`'s own approved link, used to assert
  * sharing without reaching into the link arrays at each call site.
+ *
+ * @returns The number of approved links on that token's payload, or 0 when it has no approved link.
  */
 function approvedLinkCountForPayload(state: AnalysisState, tokenRef: string): number {
   const { tokenAnalysisLinks } = state.analysis;

@@ -115,6 +115,9 @@ export const MOCK_WIPE_MENU_ITEM: MenuItemContainingCommand = {
 /**
  * Stub toolbar that renders project-menu and view-info buttons using sentinel menu items so tests
  * can trigger menu commands without a real toolbar implementation.
+ *
+ * @returns A `data-testid="tab-toolbar"` container; its buttons carry `tab-toolbar-`-prefixed ids
+ *   naming the command each one sends.
  */
 export function TabToolbar({
   startAreaChildren,
@@ -215,6 +218,8 @@ export function TabToolbar({
 /**
  * Stub scroll-group selector rendered as a native `<select>` so tests can change the scroll group
  * without the real component's styling or animation.
+ *
+ * @returns A `data-testid="scroll-group-selector"` `<select>`.
  */
 export function ScrollGroupSelector({
   availableScrollGroupIds,
@@ -457,6 +462,8 @@ export const Textarea = forwardRef<
 /**
  * Stub book/chapter control that displays the current reference as text and exposes a single
  * "Submit reference" button so tests can simulate reference changes without the real picker UI.
+ *
+ * @returns A `data-testid="book-chapter-control"` container holding the reference and that button.
  */
 export function BookChapterControl({
   scrRef,
@@ -724,6 +731,8 @@ export function Label({
  * renders a portaled popover on hover; this stub carries no markup of its own — {@link Tooltip}
  * reads its text children and projects them onto the trigger (see there) so the tooltip text is
  * assertable on the trigger element without simulating hover.
+ *
+ * @returns `null`; the text is surfaced by {@link Tooltip}, not rendered here.
  */
 export function TooltipContent({ children: _children }: Readonly<{ children?: ReactNode }>): null {
   return null;

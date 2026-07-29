@@ -77,6 +77,9 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
  *
  * The single source of this slice, so the destructive-border preview cannot drift from the split it
  * previews.
+ *
+ * @returns The `before` half (up to and including the boundary token) and the `after` remainder, or
+ *   `undefined` when the boundary token is not found.
  */
 function sliceAtBoundary(
   tokens: readonly TokenSnapshot[],
@@ -97,6 +100,9 @@ function sliceAtBoundary(
  *
  * Shares its slice with the split itself, so the destructive-border preview matches what the split
  * will do.
+ *
+ * @returns The refs of tokens that would become free, or `undefined` when no token would be left
+ *   solo (both halves ≥ 2 tokens), the phrase is absent, or the boundary token is not found.
  */
 export function computeSplitFreeRefs(
   phraseLink: PhraseAnalysisLink | undefined,
@@ -176,6 +182,8 @@ export type StraddledPhrase = {
  * One predicate serves both the segmentation dispatch, which force-breaks straddling phrases, and
  * the split control, which suppresses itself at boundaries that would force-break, so the two
  * cannot drift apart. A boundary ref absent from the document-order map yields no matches.
+ *
+ * @returns The straddled phrases with their split points; empty when the boundary cuts nothing.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,
@@ -239,6 +247,9 @@ function arcClearancePx(maxArcLevel: number): number {
  * above — so a box-top phrase needs the pill's full height reserved to stay visible.
  *
  * Floored at {@link VERSE_SUPERSCRIPT_HEADROOM_PX} so a peeking verse number is never clipped.
+ *
+ * @returns The required top padding in pixels, with a floor of {@link VERSE_SUPERSCRIPT_HEADROOM_PX}
+ *   so a peeking verse number is never clipped.
  */
 export function computeStripTopPadding(
   hasArcs: boolean,
@@ -509,6 +520,8 @@ function toContainerSpace(rect: DOMRect, containerRect: DOMRect): ContainerRect 
 /**
  * Constructs an {@link ArcSegment} with its span normalized, so callers may pass the run's two
  * endpoint x values in either order.
+ *
+ * @returns An {@link ArcSegment} with `left`/`right` normalized so `left ≤ right`.
  */
 function makeArcSegment(phraseId: string, row: number, x1: number, x2: number): ArcSegment {
   return { phraseId, row, left: Math.min(x1, x2), right: Math.max(x1, x2) };

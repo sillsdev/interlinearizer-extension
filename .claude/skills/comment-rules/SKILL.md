@@ -31,6 +31,8 @@ Omit `@param` and `@returns` when they only restate the signature and type. Keep
 - **Document every parameter**, including ones you would otherwise omit. Use this when each has something real to say. Write what each contributes to the call - never pad with `@param name - the name`.
 - **Fold the note into the summary prose** and drop the `@param` entirely. Use this when the other parameters would only restate the signature, so documenting them all would mean writing exactly the padding the rule above forbids.
 
+A fold has to be prose about what the function does. A parameter name may appear in it, as the natural way to say what the function acts on - "Removes the record matching `phraseId`" is a fold. What the prose may not do is make a parameter its subject: "`link` overrides the joining link" is an `@param` with the tag stripped off, and dodges the rule rather than satisfying it. If a sentence would read the same with `@param` in front of it, document every parameter instead.
+
 Prefer whichever leaves the block honest. Do not resolve the tension by leaving the lone `@param` in place.
 
 A `@returns` earns its place whenever the returned value is more than its type. Keep it when it names:

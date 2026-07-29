@@ -252,6 +252,8 @@ function publishSettingsBackup(contents: string): void {
  *
  * @param overrides - Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
+ * @param workers - The run's configured worker count. Seeding is single-worker only, so anything
+ *   above 1 throws rather than letting concurrent cycles corrupt the shared backup.
  */
 export function backupAndSeedSettings(overrides: Record<string, unknown>, workers: number): void {
   if (workers > 1) {

@@ -108,10 +108,11 @@ function GlossWriter({
 }
 
 /**
- * Renders `useHook` inside an {@link AnalysisStoreProvider} so a test can call the store's dispatch
- * callbacks and read its selectors directly off `result.current`, without a throwaway button-and-
- * click component. Mirrors the `renderHook` + `wrapper` idiom used elsewhere in the suite.
+ * Renders a hook inside an {@link AnalysisStoreProvider} so a test can drive the store's dispatch
+ * callbacks and read its selectors directly, without a throwaway button-and-click component.
+ * Mirrors the `renderHook` + `wrapper` idiom used elsewhere in the suite.
  *
+ * @param useHook - Called inside the provider; whatever it returns becomes `result.current`.
  * @param options - Provider props; `analysisLanguage` defaults to `'und'`.
  */
 function renderStoreHook<T>(

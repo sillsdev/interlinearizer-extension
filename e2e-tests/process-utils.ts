@@ -69,6 +69,8 @@ export const POST_SIGKILL_EXIT_WAIT_MS = 3_000;
  * For a caller with only a bare PID and no handle to listen on, use {@link waitForPidExit} instead.
  *
  * @param exitSignal - Promise that resolves when the process has exited.
+ * @param timeoutMs - Cap on the wait; elapsing it resolves rather than throwing, so callers cannot
+ *   distinguish a clean exit from a timeout.
  * @returns Resolves once `exitSignal` settles, or once `timeoutMs` elapses — whichever is first.
  */
 export async function waitForProcessExit(
@@ -94,6 +96,8 @@ export async function waitForProcessExit(
  * back from a marker file a separate setup invocation wrote).
  *
  * @param pid - PID to poll.
+ * @param timeoutMs - Cap on the wait; elapsing it resolves rather than throwing, so callers cannot
+ *   distinguish an exit from a timeout.
  * @param pollIntervalMs - Milliseconds between existence checks. Defaults to 100.
  * @returns Resolves once the PID no longer exists or `timeoutMs` elapses — whichever is first.
  */

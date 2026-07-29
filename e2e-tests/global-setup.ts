@@ -48,6 +48,7 @@ export function isPortInUse(port: number): Promise<boolean> {
  * successful response guarantees the initial renderer bundle is ready.
  *
  * @param url - URL to probe.
+ * @param timeout - Total budget in ms, spanning all retries rather than one probe.
  * @returns Resolves when the server returns a non-5xx response.
  * @throws {Error} If the server does not respond within `timeout` milliseconds.
  */

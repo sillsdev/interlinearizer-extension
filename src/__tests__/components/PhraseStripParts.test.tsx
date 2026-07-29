@@ -356,6 +356,7 @@ describe('PhraseSlot boundary controls', () => {
   /**
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
+   * @param props - Overrides merged over the default `PhraseSlot` props.
    * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
    *   the phrase mode, and whether Alt is held (defaults to held, so the split marker appears).
    */

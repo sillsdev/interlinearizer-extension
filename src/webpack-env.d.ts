@@ -26,19 +26,19 @@ declare module '*?raw' {
   export default content;
 }
 
-/** Import scss, sass, and css files as strings */
+/** Import scss and sass files as strings */
 declare module '*.scss' {
   const content: string;
   export default content;
 }
 
-/** Import scss, sass, and css files as strings */
+/** Import scss and sass files as strings */
 declare module '*.sass' {
   const content: string;
   export default content;
 }
 
-/** Import scss, sass, and css files as strings */
+/** Import css files as strings */
 declare module '*.css' {
   const content: string;
   export default content;

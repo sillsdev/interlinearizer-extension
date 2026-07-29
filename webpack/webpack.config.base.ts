@@ -11,6 +11,23 @@ const shouldGenerateSourceMaps = isDev || process.env.DEBUG_PROD;
 /** The base directory from which webpack should operate (should be the root repo folder) */
 export const rootDir = path.resolve(__dirname, '..');
 
+/**
+ * Loader that hands a processed style file back as a plain CSS string with its `url()` references
+ * resolved to bundled assets.
+ *
+ * We are not using style-loader since we pass styles to papi instead of inserting them into the
+ * dom; style-loader would add html style elements for our styles if we used it.
+ */
+const cssLoader = {
+  loader: 'css-loader',
+  options: {
+    esModule: false,
+    exportType: 'string',
+    // These styles ship as strings with no `sourceMappingURL`, so a map would never be reachable
+    sourceMap: false,
+  },
+};
+
 // Note: we do not want to do any chunking because neither WebViews nor main can import dependencies
 // other than those listed in configBase.externals. Each WebView must contain all its dependency
 // code, and main must contain all its dependency code.
@@ -87,22 +104,23 @@ const configBase: webpack.Configuration = {
         },
         exclude: /node_modules/,
       },
-      /** Import scss, sass, and css files as strings */
-      // https://webpack.js.org/loaders/sass-loader/#getting-started
+      /** Import css files as strings */
       {
-        test: /\.(sa|sc|c)ss$/,
+        test: /\.css$/,
         resourceQuery: { not: [/raw/] },
         use: [
-          // We are not using style-loader since we are passing styles to papi, not inserting them
-          // into dom. style-loader would add html style elements for our styles if we used it.
-          // css-loader lets us import the transformed CSS as a plain string for the WebView.
-          {
-            loader: 'css-loader',
-            options: {
-              esModule: false,
-              exportType: 'string',
-            },
-          },
+          cssLoader,
+          // Processes style transformations in PostCSS
+          'postcss-loader',
+        ],
+      },
+      /** Import scss and sass files as strings */
+      // https://webpack.js.org/loaders/sass-loader/#getting-started
+      {
+        test: /\.(sa|sc)ss$/,
+        resourceQuery: { not: [/raw/] },
+        use: [
+          cssLoader,
           // Processes style transformations in PostCSS - after scss so PostCSS runs on just css
           'postcss-loader',
           // Compiles Sass to CSS

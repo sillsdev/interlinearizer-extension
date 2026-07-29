@@ -14,6 +14,12 @@ Type declarations document each field individually rather than describing the fi
 
 Before reporting any documentation as missing, open the file and confirm the JSDoc is actually absent. Do not infer missing docs from a symbol name, a type signature, or an excerpt — read the declaration.
 
+## Absent `@param` and `@returns` tags
+
+Most functions here carry no `@param` or `@returns` tags. That is intentional, not an oversight: the [comment-rules skill](.claude/skills/comment-rules/SKILL.md) — the authority, worth opening before any tag-related finding — requires omitting a tag that would only restate the signature and type. A doc comment with a prose summary and no tags is therefore **complete**. Do not flag it as under-documented, and do not ask for tags so a block matches its neighbors. A summary that names a parameter while describing what the function does is the sanctioned alternative to an `@param`, not a tag someone forgot.
+
+Two shapes are still worth reporting: a **partial** block, where some but not all parameters are documented, which is the one arrangement the rule rejects outright; and a function that throws without an `@throws`, which is required for every error condition a caller must handle.
+
 ## Keyboard navigation
 
 Keyboard accessibility is planned but not yet implemented. Do not flag missing `tabIndex` attributes, absent `aria-*` roles, or gaps in focus management as issues — these will be addressed in a dedicated pass once the core interaction model is stable.

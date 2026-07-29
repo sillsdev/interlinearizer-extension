@@ -27,11 +27,7 @@ function makeSegment(covered: [number, number][]): Segment {
   };
 }
 
-/**
- * Builds a `SerializedVerseRef` in the test book.
- *
- * @param book - The book id; defaults to the segments' book.
- */
+/** Builds a `SerializedVerseRef`, defaulting `book` to the one the test segments use. */
 function makeRef(chapterNum: number, verseNum: number, book: string = 'GEN'): SerializedVerseRef {
   return { book, chapterNum, verseNum };
 }

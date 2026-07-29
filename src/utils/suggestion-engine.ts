@@ -117,6 +117,9 @@ export function buildPoolIndex(
  * `undefined` when nothing matches. Callers are responsible for only asking about tokens that have
  * no approved analysis, since an approved token reads its decision rather than a suggestion.
  *
+ * @param poolIndex - The pool to match against, already ranked best-first at build time.
+ * @param surfaceText - The token's raw surface text; normalized here before lookup, so callers pass
+ *   it verbatim.
  * @param excludeAnalysisId - An approved payload to discount by one approval before ranking,
  *   previewing the suggestion this token would fall back to if its own approval were removed. Used
  *   the instant an approved gloss is cleared, before the empty value commits, so the preview

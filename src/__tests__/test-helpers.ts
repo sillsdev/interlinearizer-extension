@@ -179,8 +179,6 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
  * Builds a minimal word token for use in component tests. When `surfaceText` is omitted it defaults
  * to `ref`, which is appropriate for tests that only need a syntactically valid token and do not
  * assert on surface text independently.
- *
- * @param surfaceText - Display text; defaults to `ref` when omitted.
  */
 export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
@@ -189,6 +187,8 @@ export function makeWordToken(ref: string, surfaceText = ref): Token & { type: '
 /**
  * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
  *
+ * @param phraseId - Doubles as the link's `analysisId`, so tests can address the phrase by one id.
+ * @param tokenRefs - The linked token refs, in phrase order.
  * @param surfaceTexts - Surface text for each token, parallel to `tokenRefs`. Defaults to the ref
  *   string when omitted, which is only appropriate when drift detection is not under test.
  */

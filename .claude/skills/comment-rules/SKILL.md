@@ -26,7 +26,12 @@ These rules do not apply to unnamed inline callbacks passed directly to framewor
 
 Omit `@param` and `@returns` when they only restate the signature and type. Keep them when they carry something the declaration cannot - units, nullability meaning, ownership, side effects, constraints, and anything else in that spirit. That list is illustrative, not a checklist to match against. Never write `@param name - the name`.
 
-If any single parameter of a method deserves a comment, document all of that method's parameters.
+**All-or-nothing, and this overrides the omit rule above:** never document only some of a method's parameters. A block with one `@param` on a three-parameter method reads as an oversight - the reader cannot tell whether the other two were judged self-evident or simply forgotten. So when one parameter deserves a note, pick one of:
+
+- **Document every parameter**, including ones you would otherwise omit. Use this when each has something real to say. Write what each contributes to the call - never pad with `@param name - the name`.
+- **Fold the note into the summary prose** and drop the `@param` entirely. Use this when the other parameters would only restate the signature, so documenting them all would mean writing exactly the padding the rule above forbids.
+
+Prefer whichever leaves the block honest. Do not resolve the tension by leaving the lone `@param` in place.
 
 A `@returns` earns its place whenever the returned value is more than its type. Keep it when it names:
 

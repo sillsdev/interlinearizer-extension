@@ -18,11 +18,7 @@ import { makePhraseLink } from '../test-helpers';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Creates a minimal `TokenAnalysis` payload record fixture.
- *
- * @param surfaceText - Surface text; defaults to `id` when omitted.
- */
+/** Creates a minimal `TokenAnalysis` payload record fixture, with `surfaceText` defaulting to `id`. */
 function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
   return { id, surfaceText };
 }
@@ -33,9 +29,8 @@ function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
 }
 
 /**
- * Creates a minimal `SegmentAnalysis` payload record fixture.
- *
- * @param surfaceText - Surface text; defaults to `id` when omitted.
+ * Creates a minimal `SegmentAnalysis` payload record fixture, with `surfaceText` defaulting to
+ * `id`.
  */
 function mkSegmentAnalysis(id: string, surfaceText = id): SegmentAnalysis {
   return { id, surfaceText };

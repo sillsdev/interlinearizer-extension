@@ -177,10 +177,9 @@ export function moveBoundary(
 }
 
 /**
- * Merges a segment into the one before it. A thin alias for {@link removeBoundaryAt}, named for the
- * explicit merge control.
- *
- * @param secondSegmentStartRef - First-token ref of the segment being merged into its predecessor.
+ * Merges a segment into the one before it, identified by the first-token ref of the _second_
+ * segment — the one absorbed into its predecessor. A thin alias for {@link removeBoundaryAt}, named
+ * for the explicit merge control.
  */
 export function mergeSegments(
   verseBook: Book,

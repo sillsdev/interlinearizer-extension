@@ -18,10 +18,8 @@ declare global {
 }
 
 /**
- * Builds a single-token word segment for the given chapter/verse. Token surface text is irrelevant
- * to windowing, so it is a fixed stub.
- *
- * @param book - Book code for the segment's refs; defaults to `GEN`.
+ * Builds a single-token word segment for the given chapter/verse, in `book` (default `GEN`). Token
+ * surface text is irrelevant to windowing, so it is a fixed stub.
  */
 function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
   return {
@@ -45,9 +43,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
 
 /**
  * Builds a book whose segments span two chapters: `chapter1Count` verses in chapter 1 followed by
- * `chapter2Count` verses in chapter 2.
- *
- * @param book - Book code for the book and its segments; defaults to `GEN`.
+ * `chapter2Count` verses in chapter 2, all in `book` (default `GEN`).
  */
 function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): Book {
   const segments: Segment[] = [];
@@ -185,8 +181,7 @@ function installResizeObserver(): {
 /**
  * Stubs `getBoundingClientRect` on an element to report fixed top and bottom edges, so the window
  * hook's geometry reads (cull walks, extend anchors, sentinel offsets) are deterministic in jsdom.
- *
- * @param bottom - The `bottom` value the rect should report; defaults to `top` (zero height).
+ * `bottom` defaults to `top`, giving a zero-height rect.
  */
 function stubRect(el: Element, top: number, bottom: number = top): void {
   el.getBoundingClientRect = () => ({

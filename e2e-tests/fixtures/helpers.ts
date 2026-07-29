@@ -442,8 +442,12 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
  * One JSON-RPC 2.0 request over WebSocket: open, send, wait for response id `1`, close. Ignores
  * unrelated messages until the matching response arrives.
  *
+ * @param method - The PAPI method to invoke.
  * @param timeoutErrorMessage - Custom error message on timeout; defaults to a standard timeout
  *   message.
+ * @param params - Positional JSON-RPC params; empty when the method takes none.
+ * @param port - The PAPI WebSocket port; defaults to the suite-wide port.
+ * @param perRequestTimeoutMs - Budget for this single attempt, not for any surrounding retry loop.
  * @returns The `result` field of the JSON-RPC response, typed as `T`.
  * @throws {Error} If the request times out or the server returns a JSON-RPC error.
  */
@@ -523,6 +527,8 @@ export async function sendPapiRequestOnce<T>(
  * Poll `rpc.discover` until `methodName` appears in `result.methods` or `timeoutMs` elapses.
  *
  * @param methodName - The fully-qualified PAPI method name to wait for (e.g. `command:foo.bar`).
+ * @param port - The PAPI WebSocket port; defaults to the suite-wide port.
+ * @param timeoutMs - Total budget across all polls, not per poll.
  * @returns Resolves when the method appears in `rpc.discover`.
  * @throws {Error} If the method is not registered within `timeoutMs` milliseconds.
  */
@@ -610,6 +616,7 @@ interface DockTabTitlesOptions {
  * "tripwire fired" from an ordinary `fn` rejection, so only a genuine fatal error is remapped to
  * the fast failure.
  *
+ * @param page - The renderer page to listen on; the listener is removed from it in `finally`.
  * @param enabled - Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
  * @param fn - The readiness work to run under the tripwire.
  * @returns Resolves with `fn`'s result once it completes without the tripwire firing.
@@ -665,6 +672,9 @@ export async function withFatalStartupTripwire<T>(
  * {@link withFatalStartupTripwire}, which callers wrap around the whole readiness sequence; this
  * wait does not arm that tripwire itself.
  *
+ * @param page - The renderer page hosting the dock layout.
+ * @param timeout - Remaining budget for this wait, in ms; a non-positive value is an exhausted
+ *   budget and throws rather than waiting.
  * @param options - Readiness options; see {@link DockTabTitlesOptions}.
  * @returns Resolves once the dock is ready per the chosen `strict` mode.
  * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
@@ -744,6 +754,7 @@ interface AppReadyOptions {
  * tab-title poll only runs once the data behind the titles exists. On a healthy startup the hosts
  * are already up.
  *
+ * @param page - The renderer page to wait on.
  * @param options - Readiness options; see {@link AppReadyOptions}.
  * @returns Resolves when the dock layout is visible with resolved tab titles, the service hosts are
  *   registered, and `platform.about` is registered.
@@ -876,6 +887,7 @@ const HOME_CLOSE_TIMEOUT_MS = 5_000;
  * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
  * rather than projects that have not finished installing.
  *
+ * @param page - The renderer page hosting the Home WebView.
  * @param homeTab - Locator for the Home dock tab.
  * @param homeButton - Locator for the toolbar's Home button.
  * @returns Resolves once the Home WebView shows at least one project row.
@@ -965,6 +977,7 @@ async function ensureHomeWebViewLoaded(
  * 5. Click "Open Interlinearizer for this Project".
  * 6. Wait for the "Interlinearizer" dock tab and click it.
  *
+ * @param page - The renderer page to drive the dock, Home, and ≡ menu on.
  * @param projectName - Name of the project to load into the editor and open the Interlinearizer for
  *   (default: `"WEB"`).
  * @returns Resolves when the Interlinearizer tab is focused and visible.
@@ -1190,6 +1203,7 @@ interface AppAndInterlinearizerReadyOptions {
  * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the timeout budget
  * across both so an explicit (shorter) budget caps the WHOLE wait, not just the first half.
  *
+ * @param page - The renderer page to wait on.
  * @param options - Readiness options; see {@link AppAndInterlinearizerReadyOptions.cdp} for the
  *   shared-CDP-instance profile feature tests pass.
  * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
@@ -1329,6 +1343,7 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * was never resolved (editor closed, or its project failed to load), so this THROWS rather than
  * silently navigating against the wrong verse.
  *
+ * @param page - The renderer page whose toolbar reference control is driven.
  * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
  * @returns Resolves once the reference has been submitted.
  * @throws If the control never becomes enabled within the wait (no navigation target resolved), or
@@ -1466,7 +1481,7 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
  * Mutating tests call this at the START (with rescue on) to establish their precondition, and again
  * at the END (with rescue off) to discard their own leftovers so the next run starts clean.
  *
- * @param opts - Options object.
+ * @param page - The renderer page whose modals and draft state are driven.
  * @param opts.rescueDirtyDraft - Whether a dirty draft not owned by the e2e project is rescued
  *   before being replaced (default `true`). Pass `false` only at the end of a test, where the dirty
  *   state is known to be the test's own leftovers.

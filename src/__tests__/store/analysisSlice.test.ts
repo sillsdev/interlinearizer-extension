@@ -744,9 +744,8 @@ describe('selectPhraseGloss', () => {
 });
 
 /**
- * Builds a `TextAnalysis` seeded with a single approved `SegmentAnalysis` for `seg-1`.
- *
- * @param link - Optional override for the link; defaults to an approved link for `seg-1`.
+ * Builds a `TextAnalysis` seeded with a single approved `SegmentAnalysis` for `seg-1`. `link`
+ * overrides the joining link, which otherwise approves `analysis` for `seg-1`.
  */
 function makeAnalysisWithSegment(
   analysis: SegmentAnalysis,

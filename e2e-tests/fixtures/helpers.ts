@@ -28,7 +28,22 @@ export const PROCESS_READY_TIMEOUT = process.env.CI ? 600_000 : 120_000;
  * Selects a project modal's dialog surface. The platform dialog marks its surface with this slot,
  * which distinguishes a modal from the view-options popover — both carry `role="dialog"`.
  */
-export const MODAL_DIALOG_SELECTOR = '[data-slot="dialog-content"]';
+const MODAL_DIALOG_SELECTOR = '[data-slot="dialog-content"]';
+
+/**
+ * The frontmost project modal's dialog surface, for scoping a lookup to the modal's own controls.
+ *
+ * Resolves to a single element on purpose. The discard-draft guard overlays the modal that
+ * triggered it rather than replacing it, and the platform dialog stays mounted through its closing
+ * animation, so two surfaces can legitimately coexist; an unqualified match would fail strict mode
+ * at those moments. First-in-DOM is the modal that opened first — the one every caller here drives,
+ * since the guard is reached by its own test id.
+ *
+ * @param frame The frame locator for the Interlinearizer iframe.
+ */
+export function modalDialog(frame: FrameLocator): Locator {
+  return frame.locator(MODAL_DIALOG_SELECTOR).first();
+}
 
 /**
  * Fail-fast readiness budget (ms) for a CDP feature test's per-test wait (the `{ cdp: true }`
@@ -1380,7 +1395,7 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
   const frame = getInterlinearizerFrame(page);
   // The modal surface both detects an open modal and scopes the Cancel lookup — no separate
   // overlay selector needed.
-  const dialog = frame.locator(MODAL_DIALOG_SELECTOR).first();
+  const dialog = modalDialog(frame);
 
   // Bounded; a couple of chained confirmations is the realistic worst case.
   for (let attempt = 0; attempt < 3; attempt += 1) {
@@ -1611,9 +1626,7 @@ async function openSelectProjectModal(page: Page): Promise<FrameLocator> {
     .first()
     .click();
   await expect(frame.locator('#select-project-modal-title')).toBeVisible({ timeout: 10_000 });
-  await expect(
-    frame.locator(MODAL_DIALOG_SELECTOR).getByRole('button', { name: 'Cancel' }),
-  ).toBeEnabled({
+  await expect(modalDialog(frame).getByRole('button', { name: 'Cancel' })).toBeEnabled({
     timeout: 10_000,
   });
   return frame;
@@ -1678,7 +1691,7 @@ export async function ensureE2eProjectActive(
 
   let dirty = await isDraftDirty(page);
   let frame = await openSelectProjectModal(page);
-  let dialog = frame.locator(MODAL_DIALOG_SELECTOR);
+  let dialog = modalDialog(frame);
 
   // Match the E2E entry by its project-name element with EXACT text, not the button's accessible
   // name: the modal renders name, an optional "Active" badge, and the languages as adjacent <span>s
@@ -1695,7 +1708,7 @@ export async function ensureE2eProjectActive(
     await rescueDraftToNewProject(page);
     dirty = false;
     frame = await openSelectProjectModal(page);
-    dialog = frame.locator(MODAL_DIALOG_SELECTOR);
+    dialog = modalDialog(frame);
   }
 
   const selectTitle = frame.locator('#select-project-modal-title');
@@ -1716,7 +1729,7 @@ export async function ensureE2eProjectActive(
     const createTitle = frame.locator('#create-project-modal-title');
     await expect(createTitle).toBeVisible({ timeout: 5_000 });
     await frame.locator('#project-name').fill(E2E_PROJECT_NAME);
-    await frame.locator(MODAL_DIALOG_SELECTOR).getByRole('button', { name: 'Create' }).click();
+    await modalDialog(frame).getByRole('button', { name: 'Create' }).click();
     // Creating a draft over a dirty one defers behind the discard confirmation instead of closing
     // the create modal (handleCreateDraft in ProjectModals.tsx), so dismiss it when dirty.
     if (dirty) {

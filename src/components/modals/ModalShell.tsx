@@ -11,9 +11,10 @@ import type { ReactNode } from 'react';
  * @param props.titleId - DOM id wired to both the dialog's `aria-labelledby` and the title `<h2>`.
  * @param props.title - Localized title text rendered in the heading.
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
- * @param props.onClose - Dismisses the modal when the user presses Escape. Omit to make the modal
- *   undismissable, which callers do while a submission is in flight so Escape cannot abandon work
- *   the user has already committed to.
+ * @param props.onClose - Called when the user presses Escape, normally to dismiss the modal; a
+ *   caller with an inline confirmation of its own may instead back out of that first. Omit to make
+ *   the modal undismissable, which callers do while a submission is in flight so Escape cannot
+ *   abandon work the user has already committed to.
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.

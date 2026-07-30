@@ -31,8 +31,9 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
  *   draft is currently working against.
  * @param props.isOpening - When `true`, a project the user already chose is still being loaded into
- *   the draft. Dismissal is suppressed for the duration, because the open completes regardless and
- *   letting the modal close would read as having canceled it.
+ *   the draft, so the modal's controls go inert for the duration: the open completes regardless, so
+ *   letting the modal be dismissed would read as having canceled it, and choosing another project
+ *   would race the open already in flight.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onClose - Called when the user cancels without selecting.
@@ -133,6 +134,7 @@ export function SelectInterlinearProjectModal({
                 <button
                   type="button"
                   aria-current={isActive ? 'true' : undefined}
+                  disabled={isOpening}
                   className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
                     isActive
                       ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
@@ -158,6 +160,7 @@ export function SelectInterlinearProjectModal({
                   size="icon"
                   aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
                   className="tw:shrink-0"
+                  disabled={isOpening}
                   onClick={() => onViewInfo(project)}
                 >
                   <Info className="tw:size-[15px]" />

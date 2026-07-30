@@ -153,6 +153,16 @@ export function SaveAsProjectModal({
     [onOverwrite, runGuarded],
   );
 
+  /**
+   * Escape backs out one layer at a time: an armed overwrite confirmation collapses first, so a
+   * keypress aimed at that box does not also discard the name and description typed above it. A
+   * second Escape then closes the modal.
+   */
+  const handleDismiss = useCallback(() => {
+    if (confirmOverwrite) setConfirmOverwrite(undefined);
+    else onClose();
+  }, [confirmOverwrite, onClose]);
+
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
@@ -160,7 +170,7 @@ export function SaveAsProjectModal({
       titleId="save-as-modal-title"
       title={localizedStrings['%interlinearizer_modal_saveAs_title%']}
       width="tw:w-lg"
-      onClose={isLoading || isSubmitting ? undefined : onClose}
+      onClose={isLoading || isSubmitting ? undefined : handleDismiss}
     >
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}

@@ -57,4 +57,25 @@ describe('ModalShell', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
+
+  it('dismisses only the topmost modal on Escape when one overlays another', async () => {
+    const onCloseUnder = jest.fn();
+    const onCloseOver = jest.fn();
+    render(
+      <>
+        <ModalShell {...defaultProps} onClose={onCloseUnder} />
+        <ModalShell
+          {...defaultProps}
+          titleId="overlay-modal-title"
+          title="Overlay"
+          onClose={onCloseOver}
+        />
+      </>,
+    );
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onCloseOver).toHaveBeenCalledTimes(1);
+    expect(onCloseUnder).not.toHaveBeenCalled();
+  });
 });

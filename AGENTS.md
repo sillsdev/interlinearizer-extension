@@ -77,6 +77,8 @@ Size icons inside a `Button` with `size-*` (e.g. `tw:size-3`), never `h-*`/`w-*`
 
 All UI uses Tailwind CSS (via `src/tailwind.css`). Every Tailwind class is prefixed `tw:` to avoid collisions with Platform.Bible's own styles (configured in `tailwind.config.ts`). For modifier variants the prefix comes first: `tw:hover:px-3`, not `hover:tw-px-3`.
 
+Sass must not process `src/tailwind.css`. In production sass-loader compresses its output, which strips the space in `@import 'tailwindcss' prefix(tw);` — `@tailwindcss/postcss` then never registers the `tw` variant and every `@apply tw:*` fails. Dev builds pass because Sass output is expanded, so this surfaces only in `npm run build:production`. Hence the scss entry uses `@import './tailwind.css'`, which Dart Sass emits verbatim, and the `.css` webpack rule omits sass-loader.
+
 ### Parser pipeline
 
 Data flows from Platform.Bible's USJ (Unified Scripture JSON) format through two stages:

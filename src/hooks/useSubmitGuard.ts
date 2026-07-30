@@ -7,8 +7,6 @@ export type UseSubmitGuardResult = {
   /**
    * Runs the given submit work unless a prior guarded call is still in flight, in which case the
    * call is ignored. Flips {@link isSubmitting} for the duration and always clears it afterward.
-   *
-   * @returns A promise that resolves once `fn` settles (or immediately when the call is ignored).
    */
   runGuarded: (fn: () => Promise<void>) => Promise<void>;
 };

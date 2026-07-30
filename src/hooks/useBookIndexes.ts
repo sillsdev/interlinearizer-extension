@@ -38,8 +38,6 @@ export interface BookIndexes {
  * `book.segments`. The indexes always travel together through the view prop plumbing, so deriving
  * them in one memo keeps them in lockstep — one traversal, one identity change per book change —
  * instead of separate memos each walking the segment list.
- *
- * @returns The lookup indexes; stable identities until `book.segments` changes.
  */
 export default function useBookIndexes(book: Book): BookIndexes {
   return useMemo(() => {

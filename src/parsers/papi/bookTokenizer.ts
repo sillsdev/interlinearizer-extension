@@ -85,8 +85,6 @@ function parseSid(sid: string): ScriptureRef {
  * @param text - The verse's baseline text.
  * @param sid - Verse SID used as each token ref's prefix, e.g. `"GEN 1:1"`.
  * @param writingSystem - BCP 47 tag assigned to every emitted token.
- * @returns Ordered array of {@link Token}s; empty when `text` contains no word or punctuation
- *   characters.
  */
 function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[] {
   return Array.from(text.matchAll(TOKEN_RE), (match) => {

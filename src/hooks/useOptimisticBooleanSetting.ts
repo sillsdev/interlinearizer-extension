@@ -18,8 +18,8 @@ const TIMEOUT_MS = 15_000;
  * the stored setting to finish updating without causing a visible bounce. While the lock is held,
  * platform updates are ignored; once it expires, they flow through normally.
  *
- * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
- *   stable change handler; `value` — the current display value
+ * The change handler keeps a stable identity across renders, so consumers may pass it straight to a
+ * memoized child.
  */
 export default function useOptimisticBooleanSetting(
   projectId: string,

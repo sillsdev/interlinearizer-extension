@@ -157,8 +157,6 @@ export interface UseSegmentWindowResult {
  * verse absorbed into a multi-verse segment — or the later portions of a split verse — resolves to
  * the segment that actually contains it rather than only to exact segment starts. Falls back to the
  * first segment of the same book+chapter, then to `0`, so there is always a valid anchor.
- *
- * @returns The index of the anchor segment, clamped to a valid position (or `0` when empty).
  */
 function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
   const containing = segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));

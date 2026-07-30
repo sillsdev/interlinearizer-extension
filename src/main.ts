@@ -169,7 +169,6 @@ async function createInterlinearProject(
  * select-project modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to delete.
- * @returns A promise that resolves when the deletion (or no-op) is complete.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
  *   `projectStorage.deleteProject`).
  * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
@@ -202,8 +201,6 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
  *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
- * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
- *   found.
  * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
  *   so the frontend `catch` block can suppress it without sending a second notification.
  */
@@ -343,7 +340,6 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
- * @returns A promise that resolves when the draft has been written to storage.
  * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
  *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
  *   second notification.
@@ -400,7 +396,6 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
  *
  * @param context - Activation context; used to register disposables so the platform can clean them
  *   up on deactivation.
- * @returns A promise that resolves when all registrations are complete.
  */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
@@ -448,7 +443,6 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
    * Returns whether the supplied project-setting value is a boolean.
    *
    * @param newValue - Candidate project-setting value.
-   * @returns A promise that resolves to `true` when `newValue` is a boolean.
    */
   /* v8 ignore next 3 */
   function isBoolean(newValue: unknown): Promise<boolean> {

@@ -170,7 +170,6 @@ function isStringArray(value: unknown): value is string[] {
  * Reads and JSON-parses the value stored at `key`, treating a never-written key as an empty array.
  * Returns the raw parsed value as `unknown` and does not validate that it is an array of strings.
  *
- * @returns The parsed value, or an empty array if `key` has never been written (ENOENT).
  * @throws {SyntaxError} If the stored value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
  *   I/O error).
@@ -230,8 +229,6 @@ interface PendingCleanupRead {
  * was present but corrupt, `corrupt` is set so the caller can rewrite the key with a valid value,
  * self-healing it instead of re-reading (and re-warning about) the bad value on every launch.
  *
- * @returns The recovered ids and whether the stored value was corrupt. A missing (ENOENT) value is
- *   an empty, non-corrupt set (nothing to repair).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanupRead> {
@@ -429,7 +426,6 @@ export async function getProject(
  * after a failed delete) are silently omitted. Projects that fail to read or parse are logged and
  * skipped so a single corrupted record does not prevent access to the rest.
  *
- * @returns All stored projects, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
@@ -452,7 +448,6 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  * Returns all interlinearizer projects whose `sourceProjectId` matches the given value, in creation
  * order.
  *
- * @returns All projects for the given source, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
@@ -575,13 +570,11 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 
 /**
  * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
- * been written yet (ENOENT) or when the stored draft fails validation. Drafts are never added to
- * the `projectIds` index, so they stay out of {@link listProjects} and {@link getProjectsForSource}
- * and never appear in the project picker.
+ * been written yet (ENOENT), when the stored draft fails validation, or when it belongs to a
+ * different source project — the invalid draft is logged and silently discarded. Drafts are never
+ * added to the `projectIds` index, so they stay out of {@link listProjects} and
+ * {@link getProjectsForSource} and never appear in the project picker.
  *
- * @returns The stored {@link DraftProject}; or a fresh empty draft when none exists, or when the
- *   stored draft fails the {@link isDraftProject} guard or its `sourceProjectId` does not match the
- *   requested one (the invalid draft is logged and silently discarded).
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */

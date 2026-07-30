@@ -36,7 +36,6 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
  * Used to seed `focusedTokenRef` from the active verse's leading word.
  *
  * @param segment - The segment to read, or `undefined` when no active segment is resolved.
- * @returns The first word token's ref, or `undefined`.
  */
 function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
@@ -138,8 +137,6 @@ function InterlinearizerInner({
    * `segmentContainsVerse` also matches the book, so during a cross-book navigation (where `scrRef`
    * names the new book before its data loads, leaving `book` still the previous one) this returns
    * `undefined` rather than resolving to the wrong book's verse.
-   *
-   * @returns The active verse's segment, or `undefined` when no segment matches.
    */
   const findActiveSegment = useCallback(
     () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef)),

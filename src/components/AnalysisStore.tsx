@@ -255,11 +255,11 @@ export function useReportGlossEditing(isEditing: boolean): void {
 // #region Token hooks
 
 /**
- * Returns the approved gloss string for the given token in the store's active analysis language,
- * re-rendering only when that token's approved analysis changes.
+ * Returns the approved gloss string for the given token in the store's active analysis language, or
+ * `''` when no approved analysis exists. Re-renders only when that token's approved analysis
+ * changes.
  *
  * @param tokenRef - The token whose gloss to read.
- * @returns The current approved gloss string, or `''` when no approved analysis exists.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGloss(tokenRef: string): string {
@@ -283,8 +283,6 @@ export function useGloss(tokenRef: string): string {
  *   unapproved.
  * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
  *   Defaults to `true`.
- * @returns The approved or suggested analysis for the token, or `undefined` when it has neither (or
- *   when `enabled` is `false`).
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useResolvedTokenAnalysis(
@@ -312,7 +310,6 @@ export function useResolvedTokenAnalysis(
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text.
  * @param enabled - Whether to derive at all; `false` returns `undefined` without pool work.
- * @returns The suggested analysis as if the token were unapproved, or `undefined`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useSuggestionAfterClearing(
@@ -345,7 +342,6 @@ export function useShowSuggestions(): boolean {
  * exists or it has no morphemes.
  *
  * @param tokenRef - The `Token.ref` to look up.
- * @returns The morpheme array from the approved analysis, or a stable empty array.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
@@ -362,7 +358,6 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
  * undo). See {@link selectMorphemeResetLosesGlosses} for why a shared payload does not qualify.
  *
  * @param tokenRef - The `Token.ref` whose breakdown would be reset.
- * @returns `true` when the reset needs confirmation.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
@@ -536,7 +531,6 @@ export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
  * the phrases only when a boundary edit fires and would otherwise re-render the whole view tree on
  * every phrase change.
  *
- * @returns A stable function returning the phrase-link-by-id map at call time.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink> {
@@ -563,11 +557,10 @@ export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | un
 }
 
 /**
- * Returns the gloss string for the given phrase in the store's active analysis language,
- * re-rendering only when that phrase's gloss changes.
+ * Returns the gloss string for the given phrase in the store's active analysis language, or `''`
+ * when absent. Re-renders only when that phrase's gloss changes.
  *
  * @param phraseId - The `PhraseAnalysis.id` whose gloss to read.
- * @returns The current gloss string, or `''` when absent.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseGloss(phraseId: string): string {
@@ -690,10 +683,9 @@ export function usePhraseDispatch(): PhraseDispatch {
 
 /**
  * Returns the approved free-translation string for the given segment in the store's active analysis
- * language, re-rendering only when that segment's free translation changes.
+ * language, or `''` when absent. Re-renders only when that segment's free translation changes.
  *
  * @param segmentId - The `Segment.id` whose free translation to read.
- * @returns The current free-translation string, or `''` when absent.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useSegmentFreeTranslation(segmentId: string): string {

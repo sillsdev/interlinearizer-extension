@@ -51,9 +51,6 @@ const POPOVER_STRING_KEYS = [
  * the `PopoverAnchor` the panel is positioned from, and must render this component only while the
  * popover is open so the draft state re-initializes from `initialValue` on every open. The popover
  * is modal, so interactions outside the panel are blocked while it is open.
- *
- * @returns A popover panel with a text input and Reset/Cancel/Done buttons, or the reset
- *   confirmation in place of them.
  */
 export function MorphemeBreakdownPopover({
   initialValue,

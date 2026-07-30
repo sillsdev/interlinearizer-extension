@@ -65,9 +65,6 @@ export function SelectInterlinearProjectModal({
    * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
    * shows a notification on failure. Ignores the response if a newer load has started since this
    * one was initiated.
-   *
-   * @returns A promise that resolves when the project list is loaded or the error notification is
-   *   sent.
    */
   const loadProjects = useCallback(async () => {
     loadGenRef.current += 1;

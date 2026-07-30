@@ -89,8 +89,6 @@ export function SaveAsProjectModal({
   /**
    * Loads existing interlinear projects for `sourceProjectId` to populate the overwrite list. Logs
    * and notifies on failure; ignores a response superseded by a newer load.
-   *
-   * @returns A promise that resolves when the list is loaded or the failure has been handled.
    */
   const loadProjects = useCallback(async () => {
     loadGenRef.current += 1;

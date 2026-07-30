@@ -57,8 +57,6 @@ type TokenLinkIconProps = Readonly<{
  * - Both halves ≥ 2 tokens → split into two phrases.
  * - One half = 1 token → that token leaves the phrase; the other half keeps/shrinks the phrase.
  * - Both halves = 1 token → delete the phrase entirely.
- *
- * @returns A button-styled icon, or `undefined` when the slot has no adjacent word tokens.
  */
 export function TokenLinkIcon({
   prevToken,

@@ -50,10 +50,6 @@ export type NavOrigin = 'internal' | 'external';
  * twice in quick succession, as fresh objects naming the same verse. The optional `verse` segment
  * string and `versificationStr` are deliberately excluded: the host fills them inconsistently
  * across the duplicate deliveries, and nothing in this extension consumes either field.
- *
- * @param a - First reference.
- * @param b - Second reference.
- * @returns `true` when both references name the same book, chapter, and verse number.
  */
 function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean {
   return a.book === b.book && a.chapterNum === b.chapterNum && a.verseNum === b.verseNum;
@@ -88,7 +84,6 @@ export const INTERNAL_NAV_TTL_MS = 3000;
  * most {@link INTERNAL_NAV_TTL_MS}.
  *
  * @param stampedAt - The marker's `Date.now()` stamp, or `undefined` when no marker exists.
- * @returns `true` when a marker exists and is within the TTL.
  */
 function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
   return stampedAt !== undefined && Date.now() - stampedAt <= INTERNAL_NAV_TTL_MS;

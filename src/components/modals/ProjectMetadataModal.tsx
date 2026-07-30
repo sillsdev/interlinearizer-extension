@@ -106,8 +106,6 @@ export function ProjectMetadataModal({
    * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
    * are trimmed and empty entries dropped. Save is disabled when the parsed list is empty since
    * `analysisLanguages` is required and must not be cleared.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(
     () =>
@@ -159,8 +157,6 @@ export function ProjectMetadataModal({
    * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
    * failure; the backend command handler is responsible for showing the error notification so this
    * handler does not re-send it.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(
     () =>

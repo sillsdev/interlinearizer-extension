@@ -105,9 +105,6 @@ type BoundaryControlProps = Readonly<{
  *
  * No boundary control renders at all while a phrase mode (edit / confirm-unlink) is active: a
  * boundary edit mid-mode could re-segment the phrase the mode UI is operating on.
- *
- * @returns The merge button, split marker, empty wrapper, or `undefined` when no boundary slot
- *   exists here.
  */
 function BoundaryControl({
   prevSegmentId,

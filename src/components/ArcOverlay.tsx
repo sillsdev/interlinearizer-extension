@@ -176,7 +176,6 @@ export function ArcOverlay({
    *
    * @param phraseId - The arc segment's phrase id.
    * @param splitAfterTokenRef - The token ref at the segment's split boundary.
-   * @returns `true` when this segment's split button is hovered.
    */
   const isSplitHovered = (phraseId: string, splitAfterTokenRef: string): boolean =>
     splitHoveredArc?.phraseId === phraseId &&

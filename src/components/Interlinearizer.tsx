@@ -80,8 +80,8 @@ type InterlinearizerProps = Readonly<{
 
 /**
  * Renders the interlinear view for one book: an optional continuous token strip above a segment
- * list. Must be mounted inside an `AnalysisStoreProvider` whose lifetime spans every book, and
- * remounted per book, so that a book change replaces the views without discarding analysis state.
+ * list. Reads and writes analysis through the store its caller mounts, and expects to be remounted
+ * on a book change — the store deliberately outlives that remount, since it holds the whole draft.
  */
 export default function Interlinearizer({
   book,
@@ -97,7 +97,7 @@ export default function Interlinearizer({
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
-  // `consumeFocusRequest` collects a focus asked for before this book was loaded.
+  // the last two collect a token focus asked for from outside the views.
   const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, pendingFocusToken } =
     useInterlinearNav();
 
@@ -291,19 +291,15 @@ export default function Interlinearizer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
 
-  // Claim a focus requested from outside the views — an analysis-catalog usage click, which can name
-  // a token in a book that was not loaded when the click happened. Declared *after* both reseed
-  // effects above so it wins: they run first in the same commit and would otherwise overwrite the
-  // requested token with the active verse's first word (the scrRef reseed reads a `focusedTokenRef`
-  // closure that predates the book reseed, so its guard cannot see the claim). Consumed in an effect
-  // rather than the `useState` seed so it is claimed exactly once per book and never during render.
+  // Claim a focus asked for from outside the views. Declared after both reseed effects above so it
+  // wins: they run first in the same commit, and the scrRef reseed reads a focus closure that
+  // predates the book reseed, so its own guard cannot see this claim. Claimed in an effect rather
+  // than the seed above so it happens exactly once per book, never during render.
   useEffect(() => {
     const requested = consumeFocusRequest(book.bookRef);
     if (requested !== undefined && wordTokenByRef.has(requested)) setFocusedTokenRef(requested);
-    // `pendingFocusToken` is the request itself — the only dep that changes when a usage click names
-    // a token in the verse already on screen. `book` covers the requested book arriving. Both are
-    // needed: a request made before its book loads is not claimable when it is made.
-    // `wordTokenByRef` derives from `book` and `consumeFocusRequest` is stable, so neither is listed.
+    // Both deps are needed: the request is the only signal when it names the verse already on
+    // screen, and the book is the only signal when it named a book that had yet to load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, pendingFocusToken]);
 

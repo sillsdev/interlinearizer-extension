@@ -5,84 +5,74 @@ description: Rules for writing and editing comments in TypeScript. Use whenever 
 
 # Comment Rules
 
-Priorities when writing comments: accuracy first, then brevity. A comment must earn its place - if it restates what the signature and types already say, delete it.
+Accuracy first, then brevity. Delete any comment that restates what the signature and types already say.
 
-A comment's audience is the next reader of the code - never the reviewer of the current diff and never the coverage gate. A comment that defends a change, justifies a test's existence to a metric, or restates a convention already documented repo-wide is noise.
+The audience is the next reader of the code - never the reviewer of the current diff, never the coverage gate. Comments that defend a change, justify a test to a metric, or restate a repo-wide convention are noise.
 
-Comments describe the code as it is; git owns the diff. Never narrate what the code used to do, what a change replaced, or that call sites are unchanged - in any comment form. "Now", "no longer", "previously", "replaced", and "before the migration" are the usual tells. (Describing how current code handles legacy _data_ is fine - that is present-tense behavior.)
+Comments describe the code as it is; git owns the diff. Never narrate what code used to do, what a change replaced, or that call sites are unchanged - in any comment form. Tells: "now", "no longer", "previously", "replaced", "before the migration". (How current code handles legacy _data_ is present-tense behavior, and fine.)
 
 ## Doc comments
 
-State **what a thing is for and why it exists**. Never explain **how** it works - the code shows that.
+State what a thing is **for**, never **how** it works. How-test: would the sentence survive an equivalent reimplementation? If not it is a how, and a "so that…" clause does not redeem it - keep the purpose clause, drop the mechanism.
 
-The test for a **how**: would the sentence still be true after an equivalent reimplementation? If not, it is a how - and appending a "so that…" purpose clause does not turn it into a why. Keep the purpose clause, drop the mechanism it was defending.
+A doc comment must stand alone for someone hovering the symbol who will not read the body.
 
-A doc comment must stand alone: someone hovering over the symbol, who will not read the body, should understand its purpose from the comment.
+- Exported methods, classes, interfaces, types, constants: short summary.
+- Private/internal symbols: only when non-obvious. Skip trivial getters, thin wrappers, self-evident helpers.
 
-Required vs optional:
+Module-level comments only when the module is a consumed API surface. No file-header banners. No section dividers that merely restate the adjacent symbol or `describe` name - a divider must carry information of its own. Keep `#region … shared with …` sync markers; they delimit template-synced code.
 
-- Exported methods, classes, interfaces, types, and constants: give a short summary.
-- Private/internal symbols: comment only when the purpose is non-obvious. Skip trivial getters, thin wrappers, and self-evident helpers.
-
-Module-level comments are worthwhile only when the module is a consumed API surface. Do not add file-header banners, and do not add section dividers that merely restate the name of the adjacent symbol or `describe` block - a divider must carry information of its own. Leave `#region … shared with …` sync markers intact; they delimit template-synced code, not decoration.
-
-These rules do not apply to unnamed inline callbacks passed directly to framework APIs (e.g. `describe()`, `test()`) - the test-title string serves as the documentation.
+Unnamed inline callbacks passed to framework APIs (`describe()`, `test()`) are exempt - the test title is the documentation.
 
 ## Params, returns, and throws
 
-Omit `@param` and `@returns` when they only restate the signature and type. Keep them when they carry something the declaration cannot - units, nullability meaning, ownership, side effects, constraints, and anything else in that spirit. That list is illustrative, not a checklist to match against. Never write `@param name - the name`.
+Omit `@param`/`@returns` that only restate the signature and type. Keep ones carrying what the declaration cannot: units, nullability meaning, ownership, side effects, constraints, and the like (illustrative, not a checklist). Never `@param name - the name`.
 
-**All-or-nothing, and this overrides the omit rule above:** never document only some of a method's parameters. A block with one `@param` on a three-parameter method reads as an oversight - the reader cannot tell whether the other two were judged self-evident or simply forgotten. So when one parameter deserves a note, pick one of:
+**All-or-nothing (overrides the omit rule):** never document only some of a method's parameters. When one deserves a note, either:
 
-- **Document every parameter**, including ones you would otherwise omit. Use this when each has something real to say. Write what each contributes to the call - never pad with `@param name - the name`.
-- **Fold the note into the summary prose** and drop the `@param` entirely. Use this when the other parameters would only restate the signature, so documenting them all would mean writing exactly the padding the rule above forbids.
+- **Document every parameter**, including ones you would otherwise omit - when each has something real to say; never pad.
+- **Fold the note into the summary prose** and drop the tag - when the rest would be padding. Folding edits the summary: rewrite it to take the note; "the summary doesn't already say this" is no reason to keep the tag.
 
-A fold has to be prose about what the function does. A parameter name may appear in it, as the natural way to say what the function acts on - "Removes the record matching `phraseId`" is a fold. What the prose may not do is make a parameter its subject: "`link` overrides the joining link" is an `@param` with the tag stripped off, and dodges the rule rather than satisfying it. If a sentence would read the same with `@param` in front of it, document every parameter instead.
+A fold is prose about what the function does. A parameter name may appear as what the function acts on - "Removes the record matching `phraseId`" - but not as the sentence's subject: "`link` overrides the joining link" is an `@param` minus the tag. If the sentence would read the same with `@param` in front, document every parameter instead.
 
-**Folding is an edit to the summary, not a test of it.** Whether the summary already happens to carry the note is not the question - the question is whether the note belongs in prose. When it does, rewrite the summary to take it and drop the tag. Keeping a `@param` because "the summary doesn't say this" reads the rule backwards: the summary is the half you are free to change.
+Where a note belongs: what the call **does** with an argument ("used in the thrown error message", "matched against the pool") folds; what qualifies the **value** - units, meaning of absence, ownership, a constraint the type cannot express - stays a tag. This governs one-parameter functions too: a lone `@param` whose only content is what the argument is for is a fold waiting to happen - do not leave it in place.
 
-Which half a note belongs in: one that says what the call **does** with an argument - "used in the thrown error message", "matched against the pool" - is a sentence about the function, so it folds. One that qualifies the **value** - units, what an absent one means, ownership, a constraint the type cannot express - is about the argument itself and stays a tag. This test governs a one-parameter function too, where all-or-nothing is satisfied either way and the omit rule is doing all the work: a lone `@param` whose only content is what the argument is for is a fold waiting to happen, not a documented parameter.
+**No double documentation.** A fact lives in the summary or in a tag, never both.
 
-Prefer whichever leaves the block honest. Do not resolve the tension by leaving the lone `@param` in place.
+**No mirrored field docs.** When a parameter's type documents its own fields (a props type, an options interface), do not restate them as `@param` - the field docs are the single source of truth. `@param props - Component props` is always wrong; anything a tag would add goes into the field doc instead.
 
-**No double documentation.** A fact belongs in the summary or in a tag, never both: a `@param` or `@returns` that repeats a sentence already in the summary is redundant, not borderline - keep one of the two.
+**Start from the return type.** A self-describing type needs no `@returns`. Write one when the type under-describes the value:
 
-**No mirrored field docs.** When a parameter's type declares its own documented fields (a props type, an options interface), do not restate those field docs as `@param` tags - the field docs are the single source of truth, and a second copy only drifts. `@param props - Component props` is the padding form of this and is always wrong; if a tag would carry something the field doc lacks, move it into the field doc instead.
-
-**Start from the return type.** A single, self-describing type needs no `@returns` - the signature already says it. Write one when the type under-describes the value:
-
-- **several possible outcomes** - a union, a `T | undefined`, or a bare `boolean` whose two sides the name does not settle. This is the most common earner: name what produces each arm, not merely that arms exist. Two shapes are already self-describing and take no tag - a type predicate (`v is Token`) states its own condition, and a `Promise<void>` has no arms at all.
-- an **inline composed shape** whose parts are documented nowhere else - a returned tuple, or an object literal assembled by a hook. A named return type documents its own fields; restating them here is the mirrored-field-docs mistake above.
+- **several possible outcomes** - a union, a `T | undefined`, or a bare `boolean` the name does not settle. The most common earner: name what produces each arm, not merely that arms exist. A type predicate (`v is Token`) and a `Promise<void>` are self-describing - no tag.
+- an **inline composed shape** documented nowhere else - a returned tuple, an object literal assembled by a hook. A named return type documents its own fields; restating them is the mirrored-field-docs mistake.
 - a **fixed or constrained value** - always `false`, an empty array rather than `undefined`
 - a **transformation** the type doesn't show - normalized, sorted, deduped, cloned
 - something **synthesized** by the call - a generated id, a defaulted field
 - a **test-visible contract** a fixture guarantees - a `data-testid`, a specific element shape
 
-For `Promise<void>` the question is not what comes back but **when it resolves**, and only non-obvious timing is worth a tag. "Resolves once `exitSignal` settles, or once `timeoutMs` elapses - whichever is first" earns its place; "Resolves when cleanup is complete" on a cleanup function is the type in different words.
+For `Promise<void>` the question is **when it resolves**; only non-obvious timing earns a tag. "Resolves once `exitSignal` settles, or once `timeoutMs` elapses - whichever is first" - yes; "Resolves when cleanup is complete" is the type in different words.
 
-Delete a `@returns` that only re-says the type: `@returns The render result.` on a function returning `RenderResult`, `@returns Nothing.` on `void`, `@returns JSX element.` on a component.
+Delete a `@returns` that re-says the type: `@returns The render result.` on `RenderResult`, `@returns Nothing.` on `void`, `@returns JSX element.` on a component.
 
-The bullets are the test. When a function is subtle enough that dropping its tag feels lossy, the subtlety is about what the function does, not what it hands back - put it in the summary rather than padding `@returns` to hold it.
+The bullets are the test. When dropping a tag feels lossy, the subtlety is about what the function does - put it in the summary, not in a padded `@returns`.
 
-Include `@throws` for every error condition the caller must handle; omit it when the function never throws.
+`@throws` for every error condition the caller must handle; omit it when the function never throws.
 
 ## Type declarations
 
-Interfaces, type aliases, and enums follow the same doc-comment rules. Document each field or member whose purpose is not self-evident from its name and type, individually rather than in the type-level summary.
+Interfaces, type aliases, and enums follow the same rules. Document each field or member whose purpose is not self-evident from its name and type, individually rather than in the type-level summary.
 
 ## References to other code
 
-A reference is any mention of other named code, whatever the markup - a name in backticks is as much a reference as a bare one, and rewording it ("the loader's dispatch") only hides the coupling. Reference other code only when the reader needs it to understand **this** symbol - never for completeness or navigation.
+Any mention of named code is a reference, whatever the markup - backticks or a reworded pointer alike. If the reader is expected to go find one specific symbol ("the loader's dispatch"), it is a reference however worded: link it or cut it. Prose that stays true whatever the neighbor is named ("the arc-measurement pass") is description, and fine. Reference other code only when the reader needs it to understand **this** symbol - never for completeness or navigation.
 
-Write a necessary reference as TSDoc `{@link}` so tooling can resolve it: `{@link SomeType}`, `{@link someFunction}`. A type, exported function, component, hook, or constant may all be linked. In `//` inline comments, where tooling does not process `{@link}`, write the bare name instead - the necessity test still applies. Never reference another function's locals, another module's private internals, or a test file; if the reference reaches into something the reader cannot see from the linked name, describe the behavior instead.
+Write a necessary reference as TSDoc `{@link}`: `{@link SomeType}`, `{@link someFunction}` - types, exported functions, components, hooks, and constants may all be linked. In `//` comments, where tooling does not process `{@link}`, write the bare name; the necessity test still applies. Never reference another function's locals, another module's private internals, or a test file - describe the behavior instead.
 
-The line between describing and referencing: a phrase that points at one specific symbol the reader is expected to go find ("the loader's dispatch") is a reference however it is worded - link it or cut it. Prose that stays true regardless of what the neighboring code is named ("the arc-measurement pass") is description, and fine.
+**Link the contract, not the collaborator (overrides the necessity test):** naming the helper a symbol delegates to - "resolves through `resolveApprovedAnalysis`", "forks via `forkSharedAnalysis`" - documents _how_ it works, and no reference form makes that acceptable, even same-file. State what the delegation guarantees and leave the callee unnamed. Rewrite rather than delete; the guarantee is the useful half.
 
-**Link the contract, not the collaborator. This is an exception to the necessity test above, and it overrides it:** naming the helper a symbol delegates to - "resolves through `resolveApprovedAnalysis`", "forks via `forkSharedAnalysis`" - documents _how_ the symbol works, and no reference form makes that acceptable. It holds even when the helper sits in the same file, where the link is cheapest and therefore most tempting. When the only reason to name something is that this code calls it, state what the delegation guarantees and leave the callee unnamed. Rewrite rather than delete: the guarantee is usually the useful half of the sentence, and cutting it loses information the link was carrying.
+Linking a **constant** stays encouraged - it is how the values rule below avoids restating a literal.
 
-Linking a **constant** is the opposite case and stays encouraged - naming one is how the values rule below avoids restating a literal.
-
-**Never document consumers.** "Shared by X and Y", "the only caller is…", "exported so X can…" document the callers, not the symbol; they go stale silently and add nothing to the contract. State what the symbol guarantees and let callers stay anonymous. The same goes for provenance - "extracted from X" says where code came from, not what it is for.
+**Never document consumers.** "Shared by X and Y", "the only caller is…", "exported so X can…" document the callers and go stale silently. State what the symbol guarantees; callers stay anonymous. Same for provenance - "extracted from X" says where code came from, not what it is for.
 
 ## Values, counts, and enumerations
 
@@ -90,6 +80,6 @@ Never restate in prose a value, count, or member list that code declares: "the f
 
 ## Inline comments
 
-Use sparingly. Warranted only when the reasoning is not clear from the code, or when a bugfix introduces a non-obvious change. Keep them short - reasoning that outgrows a few sentences belongs on the nearest doc comment, not interleaved with statements - and always about the code they sit next to.
+Sparingly: only when the reasoning is not clear from the code, or a bugfix is non-obvious. Keep them short - reasoning that outgrows a few sentences belongs on the nearest doc comment, not interleaved with statements - and about the code they sit next to.
 
-In tests, two extra tells of noise: comments that restate the test title or narrate steps the code shows, and comments that justify the test to the coverage gate ("covers the false branch of…"). Explaining why a module is mocked or why fixture geometry is shaped the way it is stays fine - that is reasoning the code cannot show.
+In tests, two extra tells of noise: restating the test title or narrating steps the code shows, and justifying the test to the coverage gate ("covers the false branch of…"). Why a module is mocked, or why fixture geometry is shaped as it is, stays fine - that is reasoning the code cannot show.

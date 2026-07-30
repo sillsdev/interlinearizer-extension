@@ -277,17 +277,17 @@ export function InterlinearNavProvider({
   /**
    * `Token.ref` of a focus request awaiting the book it names, or `undefined` when none is pending.
    * State rather than a ref because the request must be _observable_: a usage click on a token in
-   * the verse already on screen changes neither the book nor the reference, so the request itself is
-   * the only event the consuming effect can key on. Consuming clears it, costing one extra render
-   * per claimed request.
+   * the verse already on screen changes neither the book nor the reference, so the request itself
+   * is the only event the consuming effect can key on. Consuming clears it, costing one extra
+   * render per claimed request.
    */
   const [pendingFocusToken, setPendingFocusToken] = useState<string | undefined>(undefined);
 
   /**
    * Mirrors {@link pendingFocusToken} for {@link consumeFocusRequest}, so consuming reads the request
    * as of _now_ rather than as of the render that created the callback. Without this, two consumers
-   * claiming in one commit — or a claim in an effect that runs before the clearing re-render — would
-   * read a stale value and hand the same request out twice.
+   * claiming in one commit — or a claim in an effect that runs before the clearing re-render —
+   * would read a stale value and hand the same request out twice.
    */
   const pendingFocusTokenRef = useRef<string | undefined>(undefined);
   pendingFocusTokenRef.current = pendingFocusToken;

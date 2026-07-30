@@ -93,7 +93,6 @@ const FATAL_STARTUP_PAGE_ERROR =
  * wrapped throwables), and any own-enumerable properties — so the real cause survives to the log
  * and to the tripwire regex.
  *
- * @param err The error surfaced by Playwright's `pageerror` event.
  * @returns A newline-joined description containing every distinct detail recoverable from `err`.
  */
 export function describePageError(err: Error): string {
@@ -346,7 +345,6 @@ export function preConfigureSettings(
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
  * `--extensions`.
  *
- * @param opts - Optional launch options (e.g. environment variable overrides).
  * @throws If Electron fails to launch or the WebSocket server does not become ready.
  */
 export async function launchElectronWithExtension(
@@ -460,8 +458,6 @@ export async function launchElectronWithExtension(
  * Flush and close the smoke app-log write stream, resolving once its buffered data has reached disk
  * so a following read of the file sees the captured output rather than an empty buffer.
  * Best-effort: a stream error resolves rather than rejects.
- *
- * @param appLog - The write stream created for {@link SMOKE_APP_LOG_FILE}.
  */
 function flushAppLog(appLog: fs.WriteStream): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -495,8 +491,6 @@ function dumpSmokeAppLog(): void {
 /**
  * Tear down an Electron instance: kill the process group, wait for close, and clean up the isolated
  * user-data directory.
- *
- * @param ctx - The app context returned by {@link launchElectronWithExtension}.
  */
 export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void> {
   const { electronApp, userDataDir, appClosed } = ctx;
@@ -846,8 +840,6 @@ interface AppReadyOptions {
  * tab-title poll only runs once the data behind the titles exists. On a healthy startup the hosts
  * are already up.
  *
- * @param page - The renderer page to wait on.
- * @param options - Readiness options; see {@link AppReadyOptions}.
  * @throws If the dock layout, service hosts, resolved tab titles, or the `platform.about` command
  *   do not appear within `timeout` milliseconds.
  */
@@ -975,9 +967,6 @@ const HOME_CLOSE_TIMEOUT_MS = 5_000;
  * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
  * rather than projects that have not finished installing.
  *
- * @param page - The renderer page hosting the Home WebView.
- * @param homeTab - Locator for the Home dock tab.
- * @param homeButton - Locator for the toolbar's Home button.
  * @throws {Error} If Home still shows no project row after being reopened.
  */
 async function ensureHomeWebViewLoaded(
@@ -1282,9 +1271,6 @@ interface AppAndInterlinearizerReadyOptions {
  * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the timeout budget
  * across both so an explicit (shorter) budget caps the WHOLE wait, not just the first half.
  *
- * @param page - The renderer page to wait on.
- * @param options - Readiness options; see {@link AppAndInterlinearizerReadyOptions.cdp} for the
- *   shared-CDP-instance profile feature tests pass.
  * @throws If the app or extension do not finish starting up within the timeout budget.
  */
 export async function waitForAppAndInterlinearizerReady(

@@ -144,8 +144,6 @@ export function SaveAsProjectModal({
   /**
    * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
    * flight so a double-click cannot fire the overwrite (or another save) twice.
-   *
-   * @param project - The existing project to overwrite.
    */
   const handleConfirmOverwrite = useCallback(
     (project: InterlinearProjectSummary) =>

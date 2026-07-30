@@ -203,8 +203,6 @@ export function MorphemeBreakdownPopover({
    * — which would steal focus to the gloss input behind the popover. The events' default actions
    * are left alone so interactions inside the panel (e.g. the panel's own label focusing its input)
    * keep their native behavior.
-   *
-   * @param e - The mouse event on the popover panel.
    */
   const stopMouseEvents = (e: MouseEvent) => {
     e.stopPropagation();
@@ -221,8 +219,6 @@ export function MorphemeBreakdownPopover({
    * where the user aimed it (typically another token), so pulling focus back to this chip would
    * yank it out of whatever they just clicked. The default is still prevented, so Radix does not
    * restore focus to the pre-open element either — the click's own focus stands.
-   *
-   * @param e - The Radix close auto-focus event.
    */
   const handleCloseAutoFocus = (e: Event) => {
     e.preventDefault();

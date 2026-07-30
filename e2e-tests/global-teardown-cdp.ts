@@ -10,8 +10,6 @@ import { removeDirWithRetry, waitForPidExit } from './process-utils';
  * {@link globalSetupCdp} (by the PID recorded in {@link CDP_PID_FILE}), removes its isolated
  * user-data dir, then delegates to the shared {@link globalTeardown} to stop the renderer dev server
  * and sweep any lingering core processes.
- *
- * @param config - Playwright config object — forwarded to the shared teardown.
  */
 export default async function globalTeardownCdp(config: FullConfig): Promise<void> {
   // Snapshot before killProcessFromPidFile unlinks CDP_PID_FILE. `||` not `&&`: a run that crashed

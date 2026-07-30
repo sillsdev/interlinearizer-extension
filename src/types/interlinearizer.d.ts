@@ -49,9 +49,6 @@ declare module 'papi-shared-types' {
      * WebView context menus, which pass the tab's WebView ID as the argument. Falls back to a
      * project picker dialog if the WebView has no project or no ID is given.
      *
-     * @param webViewId - ID of the WebView tab whose associated project should be opened; when
-     *   omitted or when the WebView has no linked project, a project-picker dialog is shown
-     *   instead.
      * @returns A promise that resolves to the opened WebView ID, or `undefined` if the user
      *   dismissed the picker without selecting a project.
      */
@@ -100,7 +97,6 @@ declare module 'papi-shared-types' {
     /**
      * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
      *
-     * @param interlinearProjectId - UUID of the interlinearizer project to delete.
      * @throws If the underlying storage write fails (the failure is also logged and surfaced as an
      *   error notification before being re-thrown).
      */
@@ -151,7 +147,6 @@ declare module 'papi-shared-types' {
      * Returns the interlinearizer project with the given UUID, including its full `TextAnalysis`.
      * The WebView calls this when the active project changes to load the stored analysis.
      *
-     * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
      * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
      * @throws If storage fails (logged before rethrowing).
      */

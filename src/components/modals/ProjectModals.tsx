@@ -136,11 +136,7 @@ export default function ProjectModals({
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
-  /**
-   * Opens the metadata modal for the project whose info icon was clicked in the select modal.
-   *
-   * @param project - The project to display in the metadata modal.
-   */
+  /** Opens the metadata modal for the project whose info icon was clicked in the select modal. */
   const handleViewInfo = useCallback(
     (project: InterlinearProjectSummary) => {
       setMetadataProject(project);
@@ -189,8 +185,6 @@ export default function ProjectModals({
    * the full project (with analysis and any stored segment boundaries) via
    * `interlinearizer.getProject`, validates it, then seeds the draft and dismisses the modal. Logs
    * and notifies on failure, leaving the draft untouched.
-   *
-   * @param project - The project summary the user chose to open.
    */
   const openProject = useCallback(
     async (project: InterlinearProjectSummary) => {
@@ -294,8 +288,6 @@ export default function ProjectModals({
   /**
    * Called when the user selects a project in the select modal. Opens it immediately, or defers
    * behind the unsaved-changes confirmation when the draft has unsaved work.
-   *
-   * @param project - The project the user selected.
    */
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
@@ -432,8 +424,6 @@ export default function ProjectModals({
    * languages / alignment target) with the draft so the metadata matches the glosses now stored in
    * it, makes it the active Save target, and clears the dirty flag. The backend surfaces its own
    * error notification; here we only log.
-   *
-   * @param project - The existing project to overwrite.
    */
   const handleOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {

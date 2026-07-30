@@ -39,6 +39,10 @@ Omit `@param` and `@returns` when they only restate the signature and type. Keep
 
 A fold has to be prose about what the function does. A parameter name may appear in it, as the natural way to say what the function acts on - "Removes the record matching `phraseId`" is a fold. What the prose may not do is make a parameter its subject: "`link` overrides the joining link" is an `@param` with the tag stripped off, and dodges the rule rather than satisfying it. If a sentence would read the same with `@param` in front of it, document every parameter instead.
 
+**Folding is an edit to the summary, not a test of it.** Whether the summary already happens to carry the note is not the question - the question is whether the note belongs in prose. When it does, rewrite the summary to take it and drop the tag. Keeping a `@param` because "the summary doesn't say this" reads the rule backwards: the summary is the half you are free to change.
+
+Which half a note belongs in: one that says what the call **does** with an argument - "used in the thrown error message", "matched against the pool" - is a sentence about the function, so it folds. One that qualifies the **value** - units, what an absent one means, ownership, a constraint the type cannot express - is about the argument itself and stays a tag. This test governs a one-parameter function too, where all-or-nothing is satisfied either way and the omit rule is doing all the work: a lone `@param` whose only content is what the argument is for is a fold waiting to happen, not a documented parameter.
+
 Prefer whichever leaves the block honest. Do not resolve the tension by leaving the lone `@param` in place.
 
 **No double documentation.** A fact belongs in the summary or in a tag, never both: a `@param` or `@returns` that repeats a sentence already in the summary is redundant, not borderline - keep one of the two.

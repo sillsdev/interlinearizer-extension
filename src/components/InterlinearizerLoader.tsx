@@ -290,8 +290,6 @@ function InterlinearizerLoaderInner({
     /**
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
-     *
-     * @param next - The transformed segmentation delta to persist.
      */
     const apply = (next: ReturnType<typeof mergeSegments>) => {
       autosaveSegmentation(isDefaultSegmentation(next) ? undefined : next);
@@ -436,8 +434,6 @@ function InterlinearizerLoaderInner({
   /**
    * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses
    * the dialog.
-   *
-   * @param scope - The wipe scope the user selected in the dialog.
    */
   const handleWipeConfirm = useCallback(
     (scope: WipeScope) => {
@@ -459,8 +455,6 @@ function InterlinearizerLoaderInner({
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
    * file commands save (or open Save As); the draft command opens the wipe dialog.
-   *
-   * @param item - The menu item that was activated.
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {

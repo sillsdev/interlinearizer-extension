@@ -54,9 +54,8 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
     let currentReq: http.ClientRequest | undefined;
 
     /**
-     * Mark the probe as failed, destroy the in-flight request, and reject the outer promise.
-     *
-     * @param message - Human-readable failure reason passed to the rejected Error.
+     * Mark the probe as failed, destroy the in-flight request, and reject the outer promise with
+     * `message` as the Error's text.
      */
     const fail = (message: string) => {
       if (done) return;

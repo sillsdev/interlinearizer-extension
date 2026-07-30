@@ -146,7 +146,7 @@ function installResizeObserver(): {
   let observed: Element[] = [];
   const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
   class StubResizeObserver implements ResizeObserver {
-    /** @param cb - Stored so a test can fire it on demand. */
+    /** Stores the callback so a test can fire it on demand. */
     constructor(cb: ResizeObserverCallback) {
       callback = cb;
       observed = [];

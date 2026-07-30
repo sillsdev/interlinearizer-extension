@@ -191,8 +191,6 @@ export function PhraseBox({
    * lookup: when morphology is shown they precede the token gloss input in DOM order, but a click
    * on the phrase body means "edit this phrase", so focus belongs in the first token's own gloss
    * field rather than in one of its morpheme sub-fields.
-   *
-   * @param e - The container's click event.
    */
   const focusFirstGlossOnSelfClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
     if (e.target instanceof Element && e.target.closest('input, button, a, label')) return;
@@ -205,8 +203,6 @@ export function PhraseBox({
    * Keyboard counterpart to the box's self-click focusing, so the click-target container satisfies
    * the interactive-element a11y rule. Enter/Space focus the first gloss input. The box itself is
    * `tabIndex={-1}`, so this only fires for programmatic focus, never normal tabbing.
-   *
-   * @param e - The container's keydown event.
    */
   const focusFirstGlossOnSelfKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return;
@@ -241,8 +237,6 @@ export function PhraseBox({
    * Pops a single token out of the phrase in view mode. When only one token remains after removal
    * the phrase is deleted entirely (the unlink button handles the two-token case explicitly, so
    * `onRemove` is only ever wired for middle tokens of 3+ token phrases).
-   *
-   * @param tokenRef - Ref of the token to remove.
    */
   const handleViewPopOut = useCallback(
     (tokenRef: string) => {
@@ -259,11 +253,7 @@ export function PhraseBox({
     [phraseLink, updatePhrase, deletePhrase],
   );
 
-  /**
-   * Removes a specific token from the phrase being edited.
-   *
-   * @param tokenRef - Ref of the token to remove from the phrase.
-   */
+  /** Removes a specific token from the phrase being edited. */
   const handleEditRemove = useCallback(
     (tokenRef: string) => {
       /* v8 ignore next -- only called from edit-target mode where phraseMode.kind is always 'edit' */
@@ -280,9 +270,6 @@ export function PhraseBox({
    * token list always matches the visual left-to-right order. Keeping the list sorted is required
    * for `splitPhraseAtBoundary` (and its hover previews), which slice the stored array by position
    * to determine the before/after fragments.
-   *
-   * @param tokenRef - Ref of the free token to add.
-   * @param surfaceText - Surface text of that token.
    */
   const handleEditAdd = useCallback(
     (tokenRef: string, surfaceText: string) => {
@@ -507,8 +494,6 @@ export function PhraseBox({
     /**
      * Builds a keydown handler that removes the given token from the edited phrase on Enter/Space,
      * so each token chip is removable via the keyboard as well as by click.
-     *
-     * @param tokenRef - Ref of the token the returned handler removes.
      */
     const handlePerTokenKeyDown = (tokenRef: string) => (e: KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -567,8 +552,6 @@ export function PhraseBox({
   /**
    * Keyboard counterpart to clicking the box: Enter/Space add this box's free token to the edited
    * phrase, ignored while the box is disabled.
-   *
-   * @param e - The container's keydown event.
    */
   const handleKeyDown = (e: KeyboardEvent) => {
     if (!isDisabled && (e.key === 'Enter' || e.key === ' ')) {

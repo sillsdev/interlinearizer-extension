@@ -16,11 +16,7 @@
 import { test, expect } from '../../fixtures/cdp.fixture';
 import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
 
-/**
- * Filter out expected/benign console errors from a list of captured error messages.
- *
- * @param errors - Array of console error message strings to filter.
- */
+/** Filter out expected/benign console errors from a list of captured error messages. */
 function filterConsoleErrors(errors: string[]): string[] {
   return errors.filter(
     (e) =>

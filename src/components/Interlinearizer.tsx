@@ -208,8 +208,6 @@ function InterlinearizerInner({
    * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
    * ever spans two segments. Reads the phrase links at call time (not via subscription) and applies
    * {@link splitPhraseAtBoundary} at each straddled phrase's boundary-side split point.
-   *
-   * @param boundaryRef - Token ref the new segment will begin at.
    */
   const forceBreakStraddledPhrases = useCallback(
     (boundaryRef: string) => {
@@ -330,8 +328,6 @@ function InterlinearizerInner({
    * an external book change `scrRef` can briefly name the new book while the mounted book (and this
    * token) still belong to the previous one, and echoing that stale verse would overwrite the new
    * reference.
-   *
-   * @param tokenRef - The word-token ref to focus.
    */
   const focusToken = useCallback(
     (tokenRef: string) => {

@@ -61,8 +61,6 @@ function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean 
  * internally-originated change apart from an external one. Verse 0 is keyed verbatim (as its own
  * verse) so a deliberate navigation to a chapter's verse-0 superscription is distinct from verse
  * 1.
- *
- * @param ref - The scripture reference to key.
  */
 export function verseKey(ref: SerializedVerseRef): string {
   return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
@@ -128,8 +126,6 @@ export interface InterlinearNav {
    * {@link INTERNAL_NAV_TTL_MS} are ignored (and discarded): a marker stranded by React batching
    * rapid clicks — where the host echoes only the last of several internal navigations — must not
    * misclassify a later external navigation to the un-echoed verse.
-   *
-   * @param ref - The reference whose pending classification to consume.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
   /** The currently active scroll-group ID (`undefined` = unlinked). */

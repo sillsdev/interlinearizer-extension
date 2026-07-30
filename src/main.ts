@@ -82,7 +82,6 @@ const openWebViewsByProject = new Map<string, string>();
  * project picker dialog. Each project gets its own tab; reopening an already-open project brings
  * that tab to front.
  *
- * @param projectId - Project to open; if omitted a picker dialog is shown.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  * @throws If `papi.dialogs.selectProject` rejects (e.g. platform error while showing the dialog).
  * @throws If `papi.webViews.openWebView` rejects (e.g. the platform cannot open or focus the tab).
@@ -168,7 +167,6 @@ async function createInterlinearProject(
  * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
  * select-project modal.
  *
- * @param interlinearProjectId - UUID of the interlinearizer project to delete.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
  *   `projectStorage.deleteProject`).
  * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
@@ -392,10 +390,8 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
 /**
  * Extension entry point. Registers the Interlinearizer WebView provider, its commands,
  * project-setting validators, and WebView lifecycle subscriptions. Called by the platform when the
- * extension is loaded.
- *
- * @param context - Activation context; used to register disposables so the platform can clean them
- *   up on deactivation.
+ * extension is loaded. Every registration is added to `context` so the platform can dispose them on
+ * deactivation.
  */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
@@ -439,11 +435,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  /**
-   * Returns whether the supplied project-setting value is a boolean.
-   *
-   * @param newValue - Candidate project-setting value.
-   */
+  /** Returns whether the supplied project-setting value is a boolean. */
   /* v8 ignore next 3 */
   function isBoolean(newValue: unknown): Promise<boolean> {
     return Promise.resolve(typeof newValue === 'boolean');

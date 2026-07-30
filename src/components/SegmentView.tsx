@@ -303,8 +303,6 @@ export function SegmentView({
   /**
    * Forwards a token-chip click (identified by the group's first-token ref) to the parent as a
    * scripture reference + token id. Stable across renders so `MemoizedPhraseBox` can memoize.
-   *
-   * @param tokenRef - Ref of the group's first token, supplied by `PhraseBox`.
    */
   const handleTokenClick = useCallback(
     (tokenRef?: string) => {
@@ -410,9 +408,6 @@ export function SegmentView({
    * Splits the segment at the given anchor when the click carries the Alt modifier; a plain click
    * is left to fall through to the container, which selects the segment. Keeps the gesture Alt-only
    * so it never fights the plain-click select/focus behavior.
-   *
-   * @param event - The click event on the split gap.
-   * @param splitRef - The resolved split anchor ref to dispatch.
    */
   const handleBaselineGapClick = useCallback(
     (event: MouseEvent, splitRef: string) => {
@@ -609,8 +604,6 @@ export function SegmentView({
    * `hideInactiveLinkButtons` hides its button in place; ignoring it keeps the click a no-op,
    * matching the buttons-visible behavior. Everything else — padding, arc gutters, empty wrap space
    * — focuses the first phrase.
-   *
-   * @param event - The click event on the segment container.
    */
   const handleBackgroundClick = useCallback(
     (event: MouseEvent) => {
@@ -644,8 +637,6 @@ export function SegmentView({
    * become active from a bare-ref select. Clicks that originate inside the free-translation input
    * are ignored: that input already selects this segment on focus, so letting the container also
    * fire would double-select the verse.
-   *
-   * @param event - The click event on the baseline-text container.
    */
   const handleBaselineClick = useCallback(
     (event: MouseEvent) => {

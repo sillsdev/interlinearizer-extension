@@ -20,8 +20,6 @@ export function emptyAnalysis(): TextAnalysis {
  * An empty {@link DraftProject} for a source project: empty analysis, no analysis languages yet, and
  * not dirty. Used as the fallback when no draft has been written and as the seed for the "New"
  * (reset) flow. Each call returns a fresh object with its own analysis.
- *
- * @param sourceProjectId - The Platform.Bible source project ID the draft belongs to.
  */
 export function emptyDraft(sourceProjectId: string): DraftProject {
   return {

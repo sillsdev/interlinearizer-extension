@@ -11,20 +11,13 @@ import type { ReactNode } from 'react';
  * call a method here and never see the delta itself.
  */
 export type SegmentationDispatch = Readonly<{
-  /**
-   * Merges the segment that begins at `secondSegmentStartRef` into the segment before it.
-   *
-   * @param secondSegmentStartRef - First-token ref of the segment to merge into its predecessor.
-   */
+  /** Merges the segment that begins at `secondSegmentStartRef` into the segment before it. */
   merge: (secondSegmentStartRef: string) => void;
   /** Splits a segment so a new one begins at `tokenRef`. */
   split: (tokenRef: string) => void;
   /**
    * Moves a boundary from `fromRef` to `toRef` — used to pull a single edge token across a segment
    * boundary when a cross-segment phrase link is made.
-   *
-   * @param fromRef - The current segment-start ref to remove.
-   * @param toRef - The new segment-start ref to add.
    */
   move: (fromRef: string, toRef: string) => void;
 }>;

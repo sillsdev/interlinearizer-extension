@@ -150,8 +150,6 @@ export function TokenChip({
    * Intercepts mouse-down on the gloss input to suppress the browser's built-in focus-and-scroll,
    * then re-focuses the input with `preventScroll` so only the React-controlled smooth
    * scrollIntoView fires.
-   *
-   * @param e - The gloss input's mouse-down event.
    */
   const handleMouseDown: MouseEventHandler<HTMLInputElement> = (e) => {
     e.preventDefault();
@@ -168,8 +166,6 @@ export function TokenChip({
    * the unanalyzed "define" trigger (both `button`s) is left to that button's own click handler.
    * The remaining morpheme form cells are `span`s that stop their own mousedown from bubbling
    * here.
-   *
-   * @param e - The label's mouse-down event.
    */
   const handleLabelMouseDown: MouseEventHandler<HTMLLabelElement> = (e) => {
     if (e.target instanceof Element && e.target.closest('input, button')) return;
@@ -190,11 +186,7 @@ export function TokenChip({
     setPopoverOpen(true);
   };
 
-  /**
-   * Commits the morpheme breakdown from the popover input, splitting on whitespace.
-   *
-   * @param value - The raw text from the popover input.
-   */
+  /** Commits the morpheme breakdown from the popover input, splitting on whitespace. */
   const handleMorphemeSave = (value: string) => {
     const forms = value.split(/\s+/).filter(Boolean);
     if (forms.length > 0) {
@@ -230,8 +222,6 @@ export function TokenChip({
   /**
    * Returns the listbox option id for `index`; kept in sync with `aria-activedescendant` so
    * assistive tech follows the keyboard-highlighted row.
-   *
-   * @param index - The row's index in the dropdown's suggestion list.
    */
   const optionId = useCallback((index: number) => `${listboxId}-opt-${index}`, [listboxId]);
 
@@ -266,8 +256,6 @@ export function TokenChip({
    * or the top row, and Escape closes without committing. While closed, ArrowDown opens the
    * dropdown (the keyboard way to reopen it after typing has closed it, without clearing the field)
    * and Enter commits the typed draft.
-   *
-   * @param e - The gloss input's key-down event.
    */
   const handleGlossKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (suggestionsOpen) {
@@ -319,8 +307,6 @@ export function TokenChip({
    * Handles gloss-input typing: updates the draft, and re-opens the dropdown when the field is
    * emptied back out or closes it as soon as the user types a gloss (which overrides the
    * suggestion).
-   *
-   * @param value - The new input value.
    */
   const handleDraftChange = (value: string) => {
     setDraft(value);
@@ -544,11 +530,7 @@ export function TokenChip({
   );
 }
 
-/**
- * Renders a non-word token (e.g. punctuation) as muted inline monospace text with no gloss input.
- *
- * @param props.token - The non-word token to render.
- */
+/** Renders a non-word token (e.g. punctuation) as muted inline monospace text with no gloss input. */
 export function InertTokenChip({ token }: Readonly<{ token: Token }>) {
   return (
     <span className="tw:inline-block tw:font-mono tw:text-sm tw:text-muted-foreground tw:pt-0.5">

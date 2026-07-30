@@ -328,7 +328,6 @@ export default function ContinuousView({
    * {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't hold the
    * observer forever), and any reflow within it restarts the tick loop to re-center.
    *
-   * @param groupIndex - Index of the group to keep centered.
    * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
    *   it from the owning effect's cleanup.
    */
@@ -460,8 +459,6 @@ export default function ContinuousView({
    * match and applies it immediately with a smooth scroll instead of the fade-then-snap used for
    * external jumps. Folds the stamp and the notify into one call so the "this is an internal emit"
    * intent lives in a single place rather than being restated at each call site.
-   *
-   * @param ref - The word-token ref to focus.
    */
   const emitInternalFocus = useCallback(
     (ref: string) => {

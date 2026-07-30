@@ -65,18 +65,10 @@ export const test = base.extend<TestAppFixtures, WorkerAppFixtures>({
     const rendererUrl = 'http://localhost:1212/index.html?logLevel=debug';
     const readyDeadline = Date.now() + PROCESS_READY_TIMEOUT;
 
-    /**
-     * Log an uncaught page error to the console.
-     *
-     * @param err - The error thrown in the page context.
-     */
+    /** Log an uncaught page error to the console. */
     const onPageError = (err: Error) => console.error(`Page error: ${describePageError(err)}`);
 
-    /**
-     * Log console error messages from the page to the process console.
-     *
-     * @param msg - The console message emitted by the page.
-     */
+    /** Log console error messages from the page to the process console. */
     const onConsoleMsg = (msg: ConsoleMessage) => {
       if (msg.type() === 'error') console.error(`Console error: ${msg.text()}`);
     };

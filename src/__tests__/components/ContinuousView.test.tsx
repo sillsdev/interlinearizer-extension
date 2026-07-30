@@ -456,7 +456,7 @@ class TrackingResizeObserver implements ResizeObserver {
   /** Whether {@link disconnect} has been called on this instance. */
   disconnected = false;
 
-  /** @param callback - Stored so a test can fire it, simulating a late content reflow. */
+  /** Stores the callback so a test can fire it, simulating a late content reflow. */
   constructor(public callback: ResizeObserverCallback) {
     resizeObserverInstances.push(this);
   }

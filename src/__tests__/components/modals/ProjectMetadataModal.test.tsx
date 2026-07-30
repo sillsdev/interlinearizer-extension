@@ -359,6 +359,30 @@ describe('ProjectMetadataModal', () => {
     expect(screen.queryByText('Delete project?')).not.toBeInTheDocument();
   });
 
+  it('hides delete confirmation on Escape, keeping the modal and its edits open', async () => {
+    const onClose = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Renamed');
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByText('Delete project?')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/^name$/i)).toHaveValue('Renamed');
+  });
+
+  it('closes on a second Escape once the delete confirmation has collapsed', async () => {
+    const onClose = jest.fn();
+    render(<ProjectMetadataModal {...testProps} onClose={onClose} />);
+    await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it('calls deleteProject command when delete is confirmed', async () => {
     render(<ProjectMetadataModal {...testProps} />);
 

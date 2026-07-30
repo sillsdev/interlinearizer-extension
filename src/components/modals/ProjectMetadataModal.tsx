@@ -179,6 +179,16 @@ export function ProjectMetadataModal({
     [interlinearProjectId, onProjectDeleted, onClose, runGuarded],
   );
 
+  /**
+   * Escape backs out one layer at a time: an armed delete confirmation collapses first, so a
+   * keypress aimed at that box does not also discard the edits typed into the fields behind it. A
+   * second Escape then closes the modal.
+   */
+  const handleDismiss = useCallback(() => {
+    if (confirmingDelete) setConfirmingDelete(false);
+    else onClose();
+  }, [confirmingDelete, onClose]);
+
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
@@ -186,7 +196,7 @@ export function ProjectMetadataModal({
       titleId="project-metadata-modal-title"
       title={localizedStrings['%interlinearizer_modal_metadata_title%']}
       width="tw:w-lg"
-      onClose={isSubmitting ? undefined : onClose}
+      onClose={isSubmitting ? undefined : handleDismiss}
     >
       {/* Editable fields */}
       <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">

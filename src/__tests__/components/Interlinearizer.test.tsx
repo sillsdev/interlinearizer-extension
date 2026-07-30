@@ -562,7 +562,6 @@ function renderInterlinearizer({
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
         scrRef={scrRef}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{
@@ -818,7 +817,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -927,7 +925,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -961,7 +958,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1000,7 +996,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1016,7 +1011,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1056,7 +1050,6 @@ describe('Interlinearizer', () => {
           book={GEN_TWO_CHAPTER_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1090,7 +1083,6 @@ describe('Interlinearizer', () => {
             book={GEN_TWO_CHAPTER_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1117,7 +1109,6 @@ describe('Interlinearizer', () => {
           book={GEN_V1_SPLIT_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1141,7 +1132,6 @@ describe('Interlinearizer', () => {
           book={GEN_V1_SPLIT_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1173,7 +1163,6 @@ describe('Interlinearizer', () => {
             book={GEN_V1_SPLIT_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1198,7 +1187,6 @@ describe('Interlinearizer', () => {
             book={GEN_V1_SPLIT_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1410,7 +1398,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1429,7 +1416,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{
             kind: 'edit',
             phraseId: 'phrase-1',
@@ -1450,7 +1436,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1469,7 +1454,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
           setPhraseMode={setPhraseMode}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1488,7 +1472,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
           setPhraseMode={setPhraseMode}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1570,7 +1553,6 @@ describe('Interlinearizer', () => {
           book={book}
           continuousScroll={false}
           scrRef={ref}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1811,7 +1793,6 @@ describe('between-rows merge control', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{
             kind: 'edit',
             phraseId: 'phrase-1',
@@ -1905,7 +1886,6 @@ describe('focus preservation across segmentation edits', () => {
         book={withDefaultVerseStarts(book)}
         continuousScroll
         scrRef={scrRef}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={allFalseViewOptions}
@@ -2016,7 +1996,6 @@ describe('segmentationVersion pass-through', () => {
         continuousScroll={false}
         scrRef={defaultScrRef}
         segmentationVersion={segmentationVersion}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{ ...allFalseViewOptions }}
@@ -2131,7 +2110,6 @@ describe('cross-book focus requests', () => {
           book={book}
           continuousScroll
           scrRef={{ book: book.bookRef, chapterNum: 1, verseNum: 1 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={allFalseViewOptions}

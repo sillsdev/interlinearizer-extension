@@ -1,14 +1,9 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, ScriptureRef, Segment } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  AnalysisStoreProvider,
-  usePhraseDispatch,
-  usePhraseLinkByIdGetter,
-  usePhraseLinkByIdMap,
-} from './AnalysisStore';
+import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -56,31 +51,12 @@ type InterlinearizerProps = Readonly<{
    * and verse 0 only when a matching verse-0 superscription segment exists.
    */
   scrRef: SerializedVerseRef;
-  /**
-   * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
-   * active project (supplied by the caller).
-   */
-  analysisLanguage: string;
-  /** Initial analysis data seeded into the store; not reactive after mount. */
-  initialAnalysis?: TextAnalysis;
-  /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
-  onSaveAnalysis?: (analysis: TextAnalysis) => void;
-  /**
-   * Called with whether any gloss input currently holds uncommitted text, so the caller can show
-   * the unsaved indicator while the user is typing — before the edit commits on blur.
-   */
-  onPendingEditsChange?: (pending: boolean) => void;
   /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
-  /**
-   * When true, un-approved tokens render the engine's derived suggestion with accept / promote
-   * affordances. Forwarded straight to {@link AnalysisStoreProvider}. Defaults to `false`.
-   */
-  showSuggestions?: boolean;
   /**
    * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
    * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
@@ -103,10 +79,11 @@ type InterlinearizerProps = Readonly<{
 }>;
 
 /**
- * Inner component that renders the segment list and continuous view. Separated from
- * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
+ * Renders the interlinear view for one book: an optional continuous token strip above a segment
+ * list. Must be mounted inside an `AnalysisStoreProvider` whose lifetime spans every book, and
+ * remounted per book, so that a book change replaces the views without discarding analysis state.
  */
-function InterlinearizerInner({
+export default function Interlinearizer({
   book,
   continuousScroll,
   scrRef,
@@ -116,10 +93,7 @@ function InterlinearizerInner({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   segmentationVersion = 0,
-}: Omit<
-  InterlinearizerProps,
-  'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'showSuggestions'
->) {
+}: InterlinearizerProps) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
@@ -448,31 +422,5 @@ function InterlinearizerInner({
         </SegmentationProvider>
       </TooltipProvider>
     </AltHeldProvider>
-  );
-}
-
-/**
- * Main component for the Interlinearizer. Renders the segment list, with the continuous strip
- * optionally shown above it, all wrapped in an {@link AnalysisStoreProvider} so descendant
- * components can read and write analysis data without prop drilling.
- */
-export default function Interlinearizer({
-  initialAnalysis,
-  analysisLanguage,
-  onSaveAnalysis,
-  onPendingEditsChange,
-  showSuggestions = false,
-  ...innerProps
-}: InterlinearizerProps) {
-  return (
-    <AnalysisStoreProvider
-      initialAnalysis={initialAnalysis}
-      analysisLanguage={analysisLanguage}
-      onSave={onSaveAnalysis}
-      onPendingEditsChange={onPendingEditsChange}
-      showSuggestions={showSuggestions}
-    >
-      <InterlinearizerInner {...innerProps} />
-    </AnalysisStoreProvider>
   );
 }

@@ -244,16 +244,20 @@ function publishSettingsBackup(contents: string): void {
 
 /**
  * Back up paranext-core's dev-appdata settings file to {@link SETTINGS_BACKUP_FILE} (recording
- * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
- * called BEFORE launching Electron so the app reads the overrides at startup.
+ * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it, replacing
+ * rather than failing on a file that does not hold a JSON object. Must be called BEFORE launching
+ * Electron so the app reads the overrides at startup.
  *
  * Self-heals a stale backup left by a prior hard-killed run of EITHER tier (restoring it first), so
  * the backup always captures the true original settings, never an already-seeded file.
  *
  * @param overrides - Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
- * @param workers - The run's configured worker count. Seeding is single-worker only, so anything
- *   above 1 throws rather than letting concurrent cycles corrupt the shared backup.
+ * @param workers - The run's configured worker count, from the Playwright config.
+ * @throws If the run is configured for more than a single worker: concurrent seed/restore cycles
+ *   would interleave and corrupt the developer's settings. Nothing is seeded in that case.
+ * @throws A filesystem error while backing up or seeding, which may leave the seed partially
+ *   applied — roll it back with {@link restoreBackedUpSettings}.
  */
 export function backupAndSeedSettings(overrides: Record<string, unknown>, workers: number): void {
   if (workers > 1) {
@@ -320,11 +324,8 @@ export function restoreBackedUpSettings(): void {
  * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
  *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
  *   not permanently replaced by test values.
- * @throws Whatever {@link backupAndSeedSettings} throws (a multi-worker run, or a filesystem error
- *   while backing up, creating the settings directory, or writing the seeded file). The caller
- *   never receives a restore function in that case, so this rolls the partial seed back itself
- *   before rethrowing — otherwise a mid-seed failure would strand the developer's settings in a
- *   seeded state.
+ * @throws If seeding fails. No restore function is returned, so this rolls the partial seed back
+ *   itself rather than stranding the developer's settings in a seeded state.
  */
 export function preConfigureSettings(
   overrides: Record<string, unknown>,

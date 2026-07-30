@@ -586,6 +586,7 @@ export type PhraseDispatch = {
    * Creates a new approved phrase from an ordered list of token snapshots.
    *
    * @param tokens - Ordered `TokenSnapshot`s in document order.
+   * @returns The UUID assigned to the new phrase.
    */
   createPhrase: (tokens: TokenSnapshot[]) => string;
   /**

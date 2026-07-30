@@ -547,4 +547,41 @@ describe('InterlinearNavContext', () => {
       expect(() => jest.advanceTimersByTime(RECENTER_FADE_MS)).not.toThrow();
     });
   });
+
+  describe('cross-book focus requests', () => {
+    it('hands a requested token to the book it belongs to', () => {
+      // The analysis catalog asks for a token in a book that is not loaded yet. The request must
+      // outlive the book load — the view that will focus the token does not exist when the request
+      // is made — so the provider holds it until that book asks for it.
+      const { result } = renderNav(makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('hands the request over only once', () => {
+      // The book subtree remounts for reasons other than this request (a draft reload, a
+      // segmentation edit). A request that survived consumption would drag focus back to a token
+      // the user has since navigated away from, so consuming must clear it.
+      const { result } = renderNav(makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }));
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      result.current.consumeFocusRequest('LUK');
+
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+    });
+
+    it('leaves a request pending until its own book asks for it', () => {
+      // The loaded book asks on every mount, so the book being replaced asks before the requested
+      // one arrives. Answering it would both focus the wrong book and discard the request, leaving
+      // the requested token unfocused once its book finally loads.
+      const { result } = renderNav(makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }));
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.consumeFocusRequest('GEN')).toBeUndefined();
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+  });
 });

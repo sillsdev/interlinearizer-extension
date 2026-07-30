@@ -157,13 +157,9 @@ type CapturedInterlinearizerProps = {
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
 
-/**
- * Props the loader passes to `AnalysisStoreProvider`, captured by the spy wrapper below.
- *
- * The spy forwards every prop to the real provider wholesale rather than reading any of them, so
- * the unused-prop-type rule has nothing to see; the fields exist for the assertions, not the
- * component.
- */
+/** Provider props the loader supplies, captured by the spy wrapper below. */
+// The spy forwards every prop wholesale rather than reading any, so these exist for the assertions
+// rather than for the component — which is exactly what the unused-prop-type rule objects to.
 /* eslint-disable react/no-unused-prop-types */
 type CapturedStoreProps = {
   /** BCP 47 tag for reading and writing gloss values. */
@@ -182,21 +178,16 @@ type CapturedStoreProps = {
 /* eslint-enable react/no-unused-prop-types */
 let capturedStoreProps: CapturedStoreProps | undefined;
 
-// Spy wrapper around the real `AnalysisStoreProvider`: the store must stay real (the lifetime tests
-// compare store identity across a book change) while the loader's provider props stay observable —
-// they moved here from `Interlinearizer` when the store was hoisted above the book key.
+// Spy wrapper around the real provider rather than a replacement for it: the lifetime tests compare
+// store identity across a book change, so the store has to be genuine, while the props the loader
+// passes still need to be observable.
 jest.mock('../../components/AnalysisStore', () => {
   const actual = jest.requireActual('../../components/AnalysisStore');
   // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
   const { createElement } = require('react');
   return {
     ...actual,
-    /**
-     * Records the provider props, then renders the real provider unchanged.
-     *
-     * @param props - Props the loader passed to the provider.
-     * @returns The real provider element.
-     */
+    /** Records the props, then renders the real provider unchanged. */
     AnalysisStoreProvider(props: CapturedStoreProps) {
       capturedStoreProps = props;
       return createElement(actual.AnalysisStoreProvider, props);
@@ -205,9 +196,8 @@ jest.mock('../../components/AnalysisStore', () => {
 });
 
 /**
- * Whether the `Interlinearizer` stub should mount {@link StoreProbe}. Off by default: the probe
- * calls real `AnalysisStore` hooks, which throw outside a Redux provider, and most tests here
- * render no provider (or care nothing about the store). The store-lifetime tests switch it on.
+ * Whether the view stub should mount {@link StoreProbe}. Off by default, because the probe's hooks
+ * throw outside a Redux provider and most tests here neither render one nor care about the store.
  */
 let mountStoreProbe = false;
 
@@ -218,10 +208,8 @@ let probeStore: unknown;
 let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
 
 /**
- * Probe mounted inside the stubbed `Interlinearizer` that reads and writes one token's gloss
- * through the real analysis store, so a test can assert whether a write survives a book change.
- *
- * @returns Nothing; the probe renders no markup.
+ * Publishes the store it is mounted in, and a way to write into it, so a test can tell whether a
+ * book change replaced the store or left it alone. Renders no markup.
  */
 function StoreProbe() {
   probeStore = useStore();

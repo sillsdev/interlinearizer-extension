@@ -511,12 +511,9 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject]);
 
-  /**
-   * The book area: the error / loading placeholders, or the interlinear view once the book is
-   * ready. Held in a variable rather than written inline twice so it can be rendered either inside
-   * the analysis store (the normal case) or bare, while the draft is still loading and there is no
-   * store to mount yet.
-   */
+  // The error / loading placeholders, or the interlinear view once the book is ready. A variable
+  // because it is rendered from two places: inside the analysis store, and bare while the draft is
+  // still loading and there is no store to mount yet.
   const bookArea =
     hasError || showLoading || !book ? (
       <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
@@ -609,18 +606,14 @@ function InterlinearizerLoaderInner({
         }}
       >
         {isDraftLoading ? (
-          // No store yet, and none needed: `showLoading` includes `isDraftLoading`, so `bookArea` in
-          // this branch is always the Loading… placeholder, never the view.
+          // Nothing to seed a store with yet, and nothing that needs one: this branch can only be
+          // the Loading… placeholder, never the view.
           bookArea
         ) : (
-          // The store's lifetime is the draft's, not the loaded book's: it holds the whole draft,
-          // every book. Keyed on `draftVersion` because `initialAnalysis` is not reactive — a
-          // wholesale replacement (New / Open / Wipe) reseeds by remounting — and mounted *above*
-          // the book-keyed `Interlinearizer` so a book change never rebuilds it. It also wraps the
-          // loading and error branches, so the store survives the gap while the next book's USJ is
-          // in flight rather than being torn down and reseeded on arrival. Mounted only once the
-          // draft has loaded, since a provider mounted against an absent draft would seed itself
-          // empty and never pick the draft up.
+          // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
+          // on the draft version because the seed is not reactive, so a wholesale replacement (New
+          // / Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps
+          // it alive across the gap while the next book's USJ is in flight.
           <AnalysisStoreProvider
             key={draftVersion}
             initialAnalysis={draft?.analysis}

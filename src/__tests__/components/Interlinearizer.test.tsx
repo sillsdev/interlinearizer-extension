@@ -2084,23 +2084,16 @@ describe('cross-book focus requests', () => {
   /** Nav surface captured from inside the provider so a test can request a focus. */
   let capturedNav: InterlinearNav | undefined;
 
-  /**
-   * Probe that publishes the nav surface to {@link capturedNav}, so a test can request a focus
-   * through the same provider `Interlinearizer` consumes.
-   *
-   * @returns Nothing; the probe renders no markup.
-   */
+  /** Publishes the nav surface so a test can request a focus through it. Renders no markup. */
   function NavProbe() {
     capturedNav = useInterlinearNav();
     return undefined;
   }
 
   /**
-   * Renders `book` alongside a {@link NavProbe} inside one nav provider. The continuous strip is on
-   * because its stub is what exposes the focused token ref to assertions.
-   *
-   * @param book - The book to render.
-   * @returns The element tree to render or rerender.
+   * Renders a book alongside the probe inside one nav provider, so a focus requested through the
+   * probe reaches the same provider the view consumes. The continuous strip is on because its stub
+   * is what exposes the focused token ref to assertions.
    */
   function withProbe(book: Book): ReactNode {
     return withNav(

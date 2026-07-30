@@ -154,30 +154,26 @@ export interface InterlinearNav {
    */
   cancelFade: () => void;
   /**
-   * Requests that `tokenRef`'s token become the focused token once its book is on screen. The
-   * request is held here, above the book-keyed remount of `Interlinearizer`, so a caller outside
-   * the views — the analysis catalog, whose usages span every analyzed book — can ask for a token
-   * in a book that is not loaded yet and have the request survive the load it triggers.
+   * Asks for a token to be focused once its book is on screen. The request outlives the book load
+   * it may trigger, so a caller with no view mounted for that book — the analysis catalog, whose
+   * usages span every analyzed book — can still ask for it.
    *
-   * @param tokenRef - `Token.ref` of the token to focus, e.g. `"LUK 2:4:0"`.
+   * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
    */
   requestFocusToken: (tokenRef: string) => void;
   /**
-   * The `Token.ref` of the request currently pending, or `undefined` when none is. Exposed so a
-   * consumer can list it as an effect dependency: a usage click on a token in the verse already on
-   * screen changes neither the book nor the reference, so without this the effect that claims the
-   * request would have nothing to re-run on. Read it to _notice_ a request; call
-   * {@link InterlinearNav.consumeFocusRequest} to claim one.
+   * The token ref currently requested, or `undefined` when none is. A request naming a token in the
+   * verse already on screen changes nothing else about navigation, so this is the only signal by
+   * which a consumer can notice one. Reading it does not claim it.
    */
   pendingFocusToken: string | undefined;
   /**
-   * Consumes a pending focus request when it belongs to `bookCode`. Returns the requested
-   * `Token.ref` and clears the request, so a later remount of the same book cannot re-focus a token
-   * the user has since navigated away from. A request for a different book is left pending: the
-   * book that request names has not mounted yet.
+   * Claims a pending focus request for the book now on screen, clearing it so a later remount of
+   * that book cannot re-focus a token the user has since navigated away from. A request naming a
+   * different book stays pending — the book it names has not mounted yet.
    *
-   * @param bookCode - 3-letter code of the book now on screen.
-   * @returns The requested `Token.ref`, or `undefined` when no request applies to this book.
+   * @param bookCode - 3-letter book code, e.g. `"LUK"`.
+   * @returns The requested token ref, or `undefined` when no request names this book.
    */
   consumeFocusRequest: (bookCode: string) => string | undefined;
 }
@@ -274,21 +270,13 @@ export function InterlinearNavProvider({
     return true;
   }, []);
 
-  /**
-   * `Token.ref` of a focus request awaiting the book it names, or `undefined` when none is pending.
-   * State rather than a ref because the request must be _observable_: a usage click on a token in
-   * the verse already on screen changes neither the book nor the reference, so the request itself
-   * is the only event the consuming effect can key on. Consuming clears it, costing one extra
-   * render per claimed request.
-   */
+  // State, not a ref, because a request must be observable: one naming a token in the verse already
+  // on screen changes nothing else a consumer could key on. Costs one extra render per claim.
   const [pendingFocusToken, setPendingFocusToken] = useState<string | undefined>(undefined);
 
-  /**
-   * Mirrors {@link pendingFocusToken} for {@link consumeFocusRequest}, so consuming reads the request
-   * as of _now_ rather than as of the render that created the callback. Without this, two consumers
-   * claiming in one commit — or a claim in an effect that runs before the clearing re-render —
-   * would read a stale value and hand the same request out twice.
-   */
+  // Mirror of the state above, so a claim reads the request as of now rather than as of the render
+  // that created the callback — otherwise two claims in one commit both see it and it is handed out
+  // twice.
   const pendingFocusTokenRef = useRef<string | undefined>(undefined);
   pendingFocusTokenRef.current = pendingFocusToken;
 

@@ -608,6 +608,13 @@ export function Dialog({
 }
 
 /**
+ * Mounted {@link DialogContent} surfaces in mount order, so an Escape can be routed to the topmost
+ * one alone. The real component stacks dismissal layers this way; without the stack, a dialog
+ * overlaying another would dismiss both at once.
+ */
+const mountedDialogs: { current?: (open: boolean) => void }[] = [];
+
+/**
  * Stub dialog surface rendered as a `<div role="dialog">` that reports Escape back through the
  * root's change handler, which is the one dismissal path the extension's own code implements. The
  * real component additionally traps focus, locks scrolling, and restores focus on close; those are
@@ -635,15 +642,25 @@ export function DialogContent({
   showCloseButton?: boolean;
 }>): ReactElement {
   const { onOpenChange } = useContext(DialogContext);
-  // The real component dismisses on Escape from anywhere in the document rather than only when the
-  // surface itself holds focus, so listen the same way here.
+  const onOpenChangeRef = useRef(onOpenChange);
   useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  });
+
+  // The real component dismisses on Escape from anywhere in the document rather than only when the
+  // surface itself holds focus, so listen the same way here — but only the topmost dialog reacts.
+  useEffect(() => {
+    const entry = onOpenChangeRef;
+    mountedDialogs.push(entry);
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onOpenChange?.(false);
+      if (event.key === 'Escape' && mountedDialogs.at(-1) === entry) entry.current?.(false);
     };
     document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onOpenChange]);
+    return () => {
+      mountedDialogs.splice(mountedDialogs.indexOf(entry), 1);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   return (
     <div aria-labelledby={ariaLabelledBy} aria-modal="true" className={className} role="dialog">

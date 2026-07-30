@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 import { ModalShell } from '../../../components/modals/ModalShell';
 
 const defaultProps = {
-  titleId: 'test-modal-title',
+  titleTestId: 'test-modal-title',
   title: 'Test modal',
   width: 'tw:w-96',
 };
@@ -20,9 +20,17 @@ describe('ModalShell', () => {
       </ModalShell>,
     );
 
+    // The platform dialog generates the heading's id and aims its own `aria-labelledby` at it, so
+    // the shell must leave both alone; overriding the id makes the dialog report a missing title.
     const heading = screen.getByRole('heading', { name: 'Test modal' });
-    expect(heading).toHaveAttribute('id', 'test-modal-title');
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', 'test-modal-title');
+    expect(heading.id).toBeTruthy();
+    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', heading.id);
+  });
+
+  it('tags the title with the test id end-to-end tests locate the modal by', () => {
+    render(<ModalShell {...defaultProps} />);
+
+    expect(screen.getByTestId('test-modal-title')).toHaveTextContent('Test modal');
   });
 
   it('renders the body below the title', () => {
@@ -66,7 +74,7 @@ describe('ModalShell', () => {
         <ModalShell {...defaultProps} onClose={onCloseUnder} />
         <ModalShell
           {...defaultProps}
-          titleId="overlay-modal-title"
+          titleTestId="overlay-modal-title"
           title="Overlay"
           onClose={onCloseOver}
         />

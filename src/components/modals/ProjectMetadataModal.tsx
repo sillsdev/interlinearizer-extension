@@ -186,7 +186,7 @@ export function ProjectMetadataModal({
 
   return (
     <ModalShell
-      titleId="project-metadata-modal-title"
+      titleTestId="project-metadata-modal-title"
       title={localizedStrings['%interlinearizer_modal_metadata_title%']}
       width="tw:w-lg"
       onClose={isSubmitting ? undefined : handleDismiss}

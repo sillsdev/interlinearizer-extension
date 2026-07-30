@@ -9,25 +9,25 @@ import {
 
 /**
  * The project-related modals reachable from the Interlinearizer's ≡ (Project) menu, each with the
- * menu item that opens it and the title element that identifies it (from ModalShell's `titleId`).
- * The tour is read-only: each modal is opened, verified, and canceled — no project is created,
- * saved, or deleted, so the shared CDP instance is left untouched.
+ * menu item that opens it and the title element that identifies it (from ModalShell's
+ * `titleTestId`). The tour is read-only: each modal is opened, verified, and canceled — no project
+ * is created, saved, or deleted, so the shared CDP instance is left untouched.
  */
 const MODAL_TOURS = [
   {
     name: 'Select Interlinear Project',
     menuItem: /Select Interlinear Project/i,
-    titleSelector: '#select-project-modal-title',
+    titleTestId: 'select-project-modal-title',
   },
   {
     name: 'New Interlinear Project',
     menuItem: /New Interlinear Project/i,
-    titleSelector: '#create-project-modal-title',
+    titleTestId: 'create-project-modal-title',
   },
   {
     name: 'Save As',
     menuItem: /^Save As/i,
-    titleSelector: '#save-as-modal-title',
+    titleTestId: 'save-as-modal-title',
   },
 ];
 
@@ -43,7 +43,7 @@ test.describe('Project modals cancel tour', () => {
       const frame = await openInterlinearizerProjectMenu(mainPage);
       await frame.getByRole('menuitem', { name: modal.menuItem }).first().click();
 
-      const modalTitle = frame.locator(modal.titleSelector);
+      const modalTitle = frame.getByTestId(modal.titleTestId);
       await expect(modalTitle).toBeVisible({ timeout: 5_000 });
 
       await modalDialog(frame).getByRole('button', { name: 'Cancel' }).click();

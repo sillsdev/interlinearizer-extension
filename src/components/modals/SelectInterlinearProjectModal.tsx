@@ -116,7 +116,7 @@ export function SelectInterlinearProjectModal({
 
   return (
     <ModalShell
-      titleId="select-project-modal-title"
+      titleTestId="select-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
       onClose={isLoading || isOpening ? undefined : onClose}

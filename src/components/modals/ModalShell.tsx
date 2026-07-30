@@ -20,13 +20,13 @@ import type { ReactNode } from 'react';
  *   exists.
  */
 export function ModalShell({
-  titleId,
+  titleTestId,
   title,
   width,
   onClose,
   children,
 }: Readonly<{
-  titleId: string;
+  titleTestId: string;
   title: string;
   width: string;
   onClose?: () => void;
@@ -40,10 +40,10 @@ export function ModalShell({
       }}
     >
       <DialogContent
-        // The dialog is labeled by its own title; it has no separate description element, and
-        // passing `undefined` explicitly suppresses the platform's missing-description warning.
+        // The dialog is labeled by its own title, which the platform wires up itself; it has no
+        // separate description element, and passing `undefined` explicitly suppresses the
+        // platform's missing-description warning.
         aria-describedby={undefined}
-        aria-labelledby={titleId}
         // `gap-0` opts out of the platform's row rhythm because each modal body already spaces its
         // own sections; `sm:max-w-none` clears the platform's default cap so `width` decides.
         className={`tw:gap-0 tw:sm:max-w-none ${width}`}
@@ -53,7 +53,7 @@ export function ModalShell({
         onInteractOutside={(event) => event.preventDefault()}
         showCloseButton={false}
       >
-        <DialogTitle className="tw:mb-4" id={titleId}>
+        <DialogTitle className="tw:mb-4" data-testid={titleTestId}>
           {title}
         </DialogTitle>
         {children}

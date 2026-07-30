@@ -1550,7 +1550,7 @@ async function openSelectProjectModal(page: Page): Promise<FrameLocator> {
     .getByRole('menuitem', { name: /Select Interlinear Project/i })
     .first()
     .click();
-  await expect(frame.locator('#select-project-modal-title')).toBeVisible({ timeout: 10_000 });
+  await expect(frame.getByTestId('select-project-modal-title')).toBeVisible({ timeout: 10_000 });
   await expect(modalDialog(frame).getByRole('button', { name: 'Cancel' })).toBeEnabled({
     timeout: 10_000,
   });
@@ -1573,7 +1573,7 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
     .first()
     .click();
 
-  const saveAsTitle = frame.locator('#save-as-modal-title');
+  const saveAsTitle = frame.getByTestId('save-as-modal-title');
   await expect(saveAsTitle).toBeVisible({ timeout: 10_000 });
   await frame.locator('#save-as-name').fill(`${RESCUE_PROJECT_PREFIX}-${Date.now()}`);
   await frame.getByTestId('save-as-new').click();
@@ -1625,14 +1625,16 @@ export async function ensureE2eProjectActive(
 
   if (dirty && !activeIsE2e && rescueDirtyDraft) {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(frame.locator('#select-project-modal-title')).not.toBeVisible({ timeout: 5_000 });
+    await expect(frame.getByTestId('select-project-modal-title')).not.toBeVisible({
+      timeout: 5_000,
+    });
     await rescueDraftToNewProject(page);
     dirty = false;
     frame = await openSelectProjectModal(page);
     dialog = modalDialog(frame);
   }
 
-  const selectTitle = frame.locator('#select-project-modal-title');
+  const selectTitle = frame.getByTestId('select-project-modal-title');
   // Rebuilt against the (possibly re-opened) dialog so it targets the current modal instance.
   const e2eEntry = dialog
     .locator('button', { has: frame.getByText(E2E_PROJECT_NAME, { exact: true }) })
@@ -1647,7 +1649,7 @@ export async function ensureE2eProjectActive(
     }
   } else {
     await dialog.getByRole('button', { name: 'Create New' }).click();
-    const createTitle = frame.locator('#create-project-modal-title');
+    const createTitle = frame.getByTestId('create-project-modal-title');
     await expect(createTitle).toBeVisible({ timeout: 5_000 });
     await frame.locator('#project-name').fill(E2E_PROJECT_NAME);
     await modalDialog(frame).getByRole('button', { name: 'Create' }).click();
@@ -1675,7 +1677,7 @@ export async function wipeDraft(page: Page): Promise<void> {
   const frame = await openInterlinearizerProjectMenu(page);
   await frame.getByRole('menuitem', { name: /Wipe/i }).first().click();
 
-  const wipeDialogTitle = frame.locator('#wipe-modal-title');
+  const wipeDialogTitle = frame.getByTestId('wipe-modal-title');
   await expect(wipeDialogTitle).toBeVisible({ timeout: 5_000 });
   const scopeAll = frame.getByTestId('wipe-scope-all');
   // `force`: on a slow/software-rendered CI display the just-opened modal overlay hasn't won the

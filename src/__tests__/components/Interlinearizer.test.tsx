@@ -9,7 +9,11 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import Interlinearizer from '../../components/Interlinearizer';
-import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
+import {
+  InterlinearNavProvider,
+  useInterlinearNav,
+  type InterlinearNav,
+} from '../../components/InterlinearNavContext';
 import {
   useSegmentation,
   type SegmentationContextValue,
@@ -2061,5 +2065,107 @@ describe('segmentationVersion pass-through', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+/** Two-token LUK book used by the cross-book focus tests, so focus can land on a non-first token. */
+const LUK_1_1_BOOK: Book = withDefaultVerseStarts({
+  id: 'LUK',
+  bookRef: 'LUK',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'LUK 1:1',
+      startRef: { book: 'LUK', chapter: 1, verse: 1 },
+      endRef: { book: 'LUK', chapter: 1, verse: 1 },
+      baselineText: 'Since many',
+      tokens: [
+        {
+          ref: 'LUK 1:1:0',
+          surfaceText: 'Since',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+        {
+          ref: 'LUK 1:1:6',
+          surfaceText: 'many',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 6,
+          charEnd: 10,
+        },
+      ],
+    },
+  ],
+});
+
+describe('cross-book focus requests', () => {
+  /** Nav surface captured from inside the provider so a test can request a focus. */
+  let capturedNav: InterlinearNav | undefined;
+
+  /**
+   * Probe that publishes the nav surface to {@link capturedNav}, so a test can request a focus
+   * through the same provider `Interlinearizer` consumes.
+   *
+   * @returns Nothing; the probe renders no markup.
+   */
+  function NavProbe() {
+    capturedNav = useInterlinearNav();
+    return undefined;
+  }
+
+  /**
+   * Renders `book` alongside a {@link NavProbe} inside one nav provider. The continuous strip is on
+   * because its stub is what exposes the focused token ref to assertions.
+   *
+   * @param book - The book to render.
+   * @returns The element tree to render or rerender.
+   */
+  function withProbe(book: Book): ReactNode {
+    return withNav(
+      <>
+        <NavProbe />
+        <Interlinearizer
+          book={book}
+          continuousScroll
+          scrRef={{ book: book.bookRef, chapterNum: 1, verseNum: 1 }}
+          analysisLanguage="und"
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          viewOptions={allFalseViewOptions}
+        />
+      </>,
+    );
+  }
+
+  beforeEach(() => {
+    capturedNav = undefined;
+    capturedContinuousViewProps = undefined;
+  });
+
+  it('focuses a token requested while a different book was loaded', () => {
+    // The catalog spans every analyzed book while the editor holds one at a time, so a usage click
+    // routinely names a book that is not loaded. The request is made against the outgoing book and
+    // must still be honored once the requested book's data arrives.
+    const { rerender } = render(withProbe(GEN_1_1_BOOK));
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:6'));
+    act(() => rerender(withProbe(LUK_1_1_BOOK)));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:6');
+  });
+
+  it('focuses a token requested for the verse already on screen', () => {
+    // Two usages of one analysis can sit in the same verse, so a usage click need not change the
+    // book or the reference. Nothing about the loaded book changes — the request itself is the only
+    // event — so it cannot be claimed off a book or scrRef change.
+    render(withProbe(LUK_1_1_BOOK));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:6'));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:6');
   });
 });

@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
+import { bookOfRef } from '../utils/analysis-book';
 import { RECENTER_FADE_MS } from './recenter-fade';
 
 /**
@@ -152,6 +153,33 @@ export interface InterlinearNav {
    * will never receive a settle.
    */
   cancelFade: () => void;
+  /**
+   * Requests that `tokenRef`'s token become the focused token once its book is on screen. The
+   * request is held here, above the book-keyed remount of `Interlinearizer`, so a caller outside
+   * the views — the analysis catalog, whose usages span every analyzed book — can ask for a token
+   * in a book that is not loaded yet and have the request survive the load it triggers.
+   *
+   * @param tokenRef - `Token.ref` of the token to focus, e.g. `"LUK 2:4:0"`.
+   */
+  requestFocusToken: (tokenRef: string) => void;
+  /**
+   * The `Token.ref` of the request currently pending, or `undefined` when none is. Exposed so a
+   * consumer can list it as an effect dependency: a usage click on a token in the verse already on
+   * screen changes neither the book nor the reference, so without this the effect that claims the
+   * request would have nothing to re-run on. Read it to _notice_ a request; call
+   * {@link InterlinearNav.consumeFocusRequest} to claim one.
+   */
+  pendingFocusToken: string | undefined;
+  /**
+   * Consumes a pending focus request when it belongs to `bookCode`. Returns the requested
+   * `Token.ref` and clears the request, so a later remount of the same book cannot re-focus a token
+   * the user has since navigated away from. A request for a different book is left pending: the
+   * book that request names has not mounted yet.
+   *
+   * @param bookCode - 3-letter code of the book now on screen.
+   * @returns The requested `Token.ref`, or `undefined` when no request applies to this book.
+   */
+  consumeFocusRequest: (bookCode: string) => string | undefined;
 }
 
 /**
@@ -244,6 +272,37 @@ export function InterlinearNavProvider({
     if (!pending.has(key)) return false;
     pending.delete(key);
     return true;
+  }, []);
+
+  /**
+   * `Token.ref` of a focus request awaiting the book it names, or `undefined` when none is pending.
+   * State rather than a ref because the request must be _observable_: a usage click on a token in
+   * the verse already on screen changes neither the book nor the reference, so the request itself is
+   * the only event the consuming effect can key on. Consuming clears it, costing one extra render
+   * per claimed request.
+   */
+  const [pendingFocusToken, setPendingFocusToken] = useState<string | undefined>(undefined);
+
+  /**
+   * Mirrors {@link pendingFocusToken} for {@link consumeFocusRequest}, so consuming reads the request
+   * as of _now_ rather than as of the render that created the callback. Without this, two consumers
+   * claiming in one commit — or a claim in an effect that runs before the clearing re-render — would
+   * read a stale value and hand the same request out twice.
+   */
+  const pendingFocusTokenRef = useRef<string | undefined>(undefined);
+  pendingFocusTokenRef.current = pendingFocusToken;
+
+  const requestFocusToken = useCallback((tokenRef: string) => {
+    pendingFocusTokenRef.current = tokenRef;
+    setPendingFocusToken(tokenRef);
+  }, []);
+
+  const consumeFocusRequest = useCallback((bookCode: string) => {
+    const pending = pendingFocusTokenRef.current;
+    if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
+    pendingFocusTokenRef.current = undefined;
+    setPendingFocusToken(undefined);
+    return pending;
   }, []);
 
   const [fadePhase, setFadePhase] = useState<FadePhase>('idle');
@@ -344,6 +403,9 @@ export function InterlinearNavProvider({
       fadePhase,
       reportSettled,
       cancelFade,
+      requestFocusToken,
+      pendingFocusToken,
+      consumeFocusRequest,
     }),
     [
       scrRef,
@@ -354,6 +416,9 @@ export function InterlinearNavProvider({
       fadePhase,
       reportSettled,
       cancelFade,
+      requestFocusToken,
+      pendingFocusToken,
+      consumeFocusRequest,
     ],
   );
 

@@ -456,7 +456,6 @@ class TrackingResizeObserver implements ResizeObserver {
   /** Whether {@link disconnect} has been called on this instance. */
   disconnected = false;
 
-  /** Stores the callback so a test can fire it, simulating a late content reflow. */
   constructor(public callback: ResizeObserverCallback) {
     resizeObserverInstances.push(this);
   }
@@ -467,10 +466,6 @@ class TrackingResizeObserver implements ResizeObserver {
   // eslint-disable-next-line @typescript-eslint/class-methods-use-this
   unobserve() {}
 
-  /**
-   * Records the disconnect so tests can distinguish a still-connected observer from a torn-down
-   * one.
-   */
   disconnect() {
     this.disconnected = true;
   }

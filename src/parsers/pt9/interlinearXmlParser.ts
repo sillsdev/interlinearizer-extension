@@ -256,7 +256,6 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 export class InterlinearXmlParser {
   private readonly parser: XMLParser;
 
-  /** Creates a parser configured for the interlinear XML schema. */
   constructor() {
     const arrayPaths = new Set([
       'InterlinearData.Verses.item',

@@ -63,7 +63,6 @@ describe('useArcPaths', () => {
       disconnect() {},
     };
     global.ResizeObserver = class implements ResizeObserver {
-      /** Stores the callback so the test can fire it on demand. */
       constructor(callback: ResizeObserverCallback) {
         observerCallback = callback;
       }

@@ -287,6 +287,29 @@ describe('SelectInterlinearProjectModal', () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('closes on Escape while the project list is still loading, since the fetch has nothing to abandon', async () => {
+    // Hold the load in-flight so Escape lands while the modal is still waiting on the list.
+    let resolveLoad: (v: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<SelectInterlinearProjectModal {...defaultProps} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
+
+    // Settle the held load so its state update lands inside the test rather than after teardown.
+    resolveLoad('[]');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+  });
+
   it('clears the project list immediately when a new load begins', async () => {
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
     const { rerender } = render(<SelectInterlinearProjectModal {...defaultProps} />);

@@ -32,10 +32,9 @@ const useProjectData = jest.fn(() =>
 );
 
 /**
- * Mock for `useProjectSetting`. Returns `[defaultState, setSetting, resetSetting, isLoading]`,
- * passing `defaultState` through unchanged so callers receive a predictable initial value.
- *
- * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ * Mock for `useProjectSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing
+ * `defaultState` through unchanged so callers receive a predictable initial value and never a
+ * loading state.
  */
 const useProjectSetting = jest
   .fn()
@@ -59,10 +58,9 @@ const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
 ]);
 
 /**
- * Mock for `useSetting`. Returns `[defaultState, setSetting, resetSetting, false]`, passing
- * `defaultState` through unchanged so callers receive a predictable initial value.
- *
- * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ * Mock for `useSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing
+ * `defaultState` through unchanged so callers receive a predictable initial value and never a
+ * loading state.
  */
 const useSetting = jest
   .fn()

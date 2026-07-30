@@ -86,7 +86,10 @@ function getRegisteredProvider(): WebViewProvider {
   return raw;
 }
 
-/** Finds the handler registered for `commandName` in the most recent `activate()` call. */
+/**
+ * Finds the handler registered for `commandName` in the most recent `activate()` call, or
+ * `undefined` when that call registered none under that name.
+ */
 function findRegisteredHandler(commandName: string): ((...args: unknown[]) => unknown) | undefined {
   const call = jest.mocked(__mockRegisterCommand).mock.calls.find((c) => c[0] === commandName);
   const rawHandler: unknown = call?.[1];

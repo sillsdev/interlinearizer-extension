@@ -1795,8 +1795,6 @@ describe('selectSuggestionAfterClearing', () => {
    * Builds a homograph 'bank' pool where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
    * majority) and `finance` once (`f1`), so an approved majority token's deletion can be previewed
    * against a still-majority pick rather than a tie.
-   *
-   * @returns A {@link TextAnalysis} with a 3:1 approval split for 'bank'.
    */
   function bankPool(): TextAnalysis {
     const river: TokenAnalysis = {

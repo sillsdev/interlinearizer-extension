@@ -33,8 +33,6 @@ describe('EditPhraseControls', () => {
    * Builds the phrase-link map the component reads via `usePhraseLinkByIdMap`, seeded with a phrase
    * link for `phrase-1` containing `tokenCount` tokens so the live phrase has a known size. A
    * `tokenCount` of `0` returns an empty map, so the component sees the phrase as absent.
-   *
-   * @returns A map from phrase id to its `PhraseAnalysisLink`, empty when `tokenCount` is `0`.
    */
   function makePhraseLinkByIdMap(tokenCount: number): Map<string, PhraseAnalysisLink> {
     if (tokenCount === 0) return new Map();

@@ -383,8 +383,6 @@ describe('TokenChip suggestion dropdown', () => {
  * Builds the homograph 'bank' where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
  * majority) and `finance` once (`f1`, the minority) — so clearing an approved majority token can be
  * tested for previewing the still-majority pick rather than the lone alternative.
- *
- * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
  */
 function homographMajorityPool(): TextAnalysis {
   const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };

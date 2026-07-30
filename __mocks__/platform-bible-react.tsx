@@ -726,8 +726,6 @@ export function Label({
  * renders a portaled popover on hover; this stub carries no markup of its own — {@link Tooltip}
  * reads its text children and projects them onto the trigger (see there) so the tooltip text is
  * assertable on the trigger element without simulating hover.
- *
- * @returns `null`; the text is surfaced by {@link Tooltip}, not rendered here.
  */
 export function TooltipContent({ children: _children }: Readonly<{ children?: ReactNode }>): null {
   return null;
@@ -752,8 +750,6 @@ export function TooltipTrigger({
  * text applied as a `title` attribute. This keeps the tooltip text assertable on the trigger
  * element without simulating hover, while the real component supplies the modifier-key-immune
  * tooltip in production.
- *
- * @returns The trigger's child element cloned with the tooltip text as its `title`.
  */
 export function Tooltip({ children }: Readonly<{ children?: ReactNode }>): ReactNode {
   let tooltipText: ReactNode;

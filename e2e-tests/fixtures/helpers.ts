@@ -228,7 +228,7 @@ const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
  * the one outcome the backup exists to prevent — and every restore path reads the backup
  * unconditionally, so the guarantee has to hold at the write rather than at each read.
  *
- * @param contents Backup body: the original settings JSON, or the marker for "no settings file
+ * @param contents - Backup body: the original settings JSON, or the marker for "no settings file
  *   existed".
  * @throws A filesystem error while writing or renaming the temp file. The published backup is left
  *   untouched, so a caller's rollback still sees the pre-call state.
@@ -318,7 +318,7 @@ export function restoreBackedUpSettings(): void {
  *
  * @param overrides - Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
- * @param workers Worker count of the run doing the seeding, from the Playwright config.
+ * @param workers - Worker count of the run doing the seeding, from the Playwright config.
  * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
  *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
  *   not permanently replaced by test values.

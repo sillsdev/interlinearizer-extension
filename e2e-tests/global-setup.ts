@@ -293,7 +293,7 @@ export async function bootstrapRendererDevServer(): Promise<void> {
  * Best-effort: every step swallows its own error, since this runs while an exception is already
  * propagating and must not replace the real failure with a cleanup one.
  *
- * @param pid PID of the spawned dev server; `undefined` if the spawn never reported one, in which
+ * @param pid - PID of the spawned dev server; `undefined` if the spawn never reported one, in which
  *   case there is nothing to kill and no marker was written.
  */
 function killSpawnedDevServer(pid: number | undefined): void {

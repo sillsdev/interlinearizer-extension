@@ -20,8 +20,8 @@ export interface KillFromPidFileResult {
  * {@link killProcessFromPidFile}). A leftover marker is harmless — the next run re-reads it and
  * finds a dead PID — so warning and continuing beats aborting teardown.
  *
- * @param pidFile Absolute path to the PID marker file to remove.
- * @param label Human-readable name of the process the marker belongs to, used in the warning log.
+ * @param pidFile - Absolute path to the PID marker file to remove.
+ * @param label - Human-readable name of the process the marker belongs to, used in the warning log.
  */
 function removePidFile(pidFile: string, label: string): void {
   try {

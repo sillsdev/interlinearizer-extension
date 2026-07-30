@@ -278,10 +278,10 @@ export default async function globalSetupCdp(config: FullConfig): Promise<void> 
  * `pid` simply skips the kill. Every step is individually best-effort (the kill, the dir removal,
  * and the settings restore all swallow their own errors), so one failure cannot strand the rest.
  *
- * @param userDataDir Isolated user-data dir created for the launch, removed here.
- * @param pid PID of the launched app if it was spawned; `undefined` if the failure preceded the
+ * @param userDataDir - Isolated user-data dir created for the launch, removed here.
+ * @param pid - PID of the launched app if it was spawned; `undefined` if the failure preceded the
  *   spawn or the process never reported a PID.
- * @param exited Promise resolving when the launched process exits, used to bound the post-SIGKILL
+ * @param exited - Promise resolving when the launched process exits, used to bound the post-SIGKILL
  *   wait; `undefined` when no process was spawned.
  */
 async function cleanUpFailedLaunch(

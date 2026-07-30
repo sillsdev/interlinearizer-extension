@@ -609,6 +609,8 @@ function InterlinearizerLoaderInner({
         }}
       >
         {isDraftLoading ? (
+          // No store yet, and none needed: `showLoading` includes `isDraftLoading`, so `bookArea` in
+          // this branch is always the Loading… placeholder, never the view.
           bookArea
         ) : (
           // The store's lifetime is the draft's, not the loaded book's: it holds the whole draft,

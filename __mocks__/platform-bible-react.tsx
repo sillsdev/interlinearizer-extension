@@ -11,6 +11,7 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -671,14 +672,20 @@ export function RadioGroupItem({
 }
 
 /**
- * Context carrying the {@link Dialog}'s open-state change handler down to {@link DialogContent},
- * mirroring how the real Radix-based component reaches its content from the root.
+ * Context carrying the {@link Dialog}'s open-state change handler and generated title id down to
+ * {@link DialogContent} and {@link DialogTitle}, mirroring how the real Radix-based component
+ * reaches its parts from the root.
  */
-const DialogContext = createContext<{ onOpenChange?: (open: boolean) => void }>({});
+const DialogContext = createContext<{ onOpenChange?: (open: boolean) => void; titleId?: string }>(
+  {},
+);
 
 /**
  * Stub dialog root that renders its children unconditionally. The extension mounts a modal only
  * while it should be showing and holds `open` at `true`, so visibility needs no simulation here.
+ *
+ * Generates the title id the way the real component does, so the automatic `aria-labelledby`
+ * wiring between the surface and its heading is exercised rather than assumed.
  *
  * @param props - Component props.
  * @param props.children - The dialog content element.
@@ -692,7 +699,8 @@ export function Dialog({
   children?: ReactNode;
   onOpenChange?: (open: boolean) => void;
 }>): ReactElement {
-  const contextValue = useMemo(() => ({ onOpenChange }), [onOpenChange]);
+  const titleId = useId();
+  const contextValue = useMemo(() => ({ onOpenChange, titleId }), [onOpenChange, titleId]);
   return <DialogContext.Provider value={contextValue}>{children}</DialogContext.Provider>;
 }
 
@@ -714,23 +722,21 @@ const mountedDialogs: { current?: (open: boolean) => void }[] = [];
  * A close button is never rendered because the extension always suppresses it.
  *
  * @param props - Component props.
- * @param props['aria-labelledby'] - Id of the element naming the dialog.
  * @param props.children - Dialog body content.
  * @param props.className - CSS class names.
  * @returns A `<div role="dialog">` wrapping the children.
  */
 export function DialogContent({
-  'aria-labelledby': ariaLabelledBy,
   children,
   className,
 }: Readonly<{
-  'aria-labelledby'?: string;
+  'aria-describedby'?: undefined;
   children?: ReactNode;
   className?: string;
   onInteractOutside?: (event: { preventDefault: () => void }) => void;
   showCloseButton?: boolean;
 }>): ReactElement {
-  const { onOpenChange } = useContext(DialogContext);
+  const { onOpenChange, titleId } = useContext(DialogContext);
   const onOpenChangeRef = useRef(onOpenChange);
   useEffect(() => {
     onOpenChangeRef.current = onOpenChange;
@@ -752,7 +758,7 @@ export function DialogContent({
   }, []);
 
   return (
-    <div aria-labelledby={ariaLabelledBy} aria-modal="true" className={className} role="dialog">
+    <div aria-labelledby={titleId} aria-modal="true" className={className} role="dialog">
       {children}
     </div>
   );
@@ -760,25 +766,26 @@ export function DialogContent({
 
 /**
  * Stub dialog title rendered as the `<h2>` the real component produces, keeping the heading role and
- * the `id` that names the dialog.
+ * taking its `id` from the root so the dialog's `aria-labelledby` resolves to it.
  *
  * @param props - Component props.
  * @param props.children - Title text.
  * @param props.className - CSS class names.
- * @param props.id - HTML `id` attribute, referenced by the dialog's `aria-labelledby`.
+ * @param props['data-testid'] - Test id, which is how end-to-end tests locate each modal.
  * @returns An `<h2>` heading.
  */
 export function DialogTitle({
   children,
   className,
-  id,
+  'data-testid': testId,
 }: Readonly<{
   children?: ReactNode;
   className?: string;
-  id?: string;
+  'data-testid'?: string;
 }>): ReactElement {
+  const { titleId } = useContext(DialogContext);
   return (
-    <h2 className={className} id={id}>
+    <h2 className={className} data-testid={testId} id={titleId}>
       {children}
     </h2>
   );

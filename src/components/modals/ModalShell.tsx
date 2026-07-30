@@ -10,8 +10,10 @@ import type { ReactNode } from 'react';
  * genuinely blocks the view behind it rather than merely covering it.
  *
  * @param props - Component props
- * @param props.titleId - DOM id shared by the title and the dialog's `aria-labelledby`. End-to-end
- *   tests locate each modal by this id.
+ * @param props.titleTestId - `data-testid` on the title heading, which is how end-to-end tests
+ *   locate each modal. The heading's `id` is deliberately left to the platform dialog: it generates
+ *   one and points its own `aria-labelledby` at it, and overriding that id makes the dialog report
+ *   its title as missing.
  * @param props.title - Localized title text rendered in the heading.
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
  * @param props.onClose - Called when the user presses Escape, normally to dismiss the modal; a
@@ -23,13 +25,13 @@ import type { ReactNode } from 'react';
  * @returns The dialog wrapper around the title and children.
  */
 export function ModalShell({
-  titleId,
+  titleTestId,
   title,
   width,
   onClose,
   children,
 }: Readonly<{
-  titleId: string;
+  titleTestId: string;
   title: string;
   width: string;
   onClose?: () => void;
@@ -43,10 +45,10 @@ export function ModalShell({
       }}
     >
       <DialogContent
-        // The dialog is labeled by its own title; it has no separate description element, and
-        // passing `undefined` explicitly suppresses the platform's missing-description warning.
+        // The dialog is labeled by its own title, which the platform wires up itself; it has no
+        // separate description element, and passing `undefined` explicitly suppresses the
+        // platform's missing-description warning.
         aria-describedby={undefined}
-        aria-labelledby={titleId}
         // `gap-0` opts out of the platform's row rhythm because each modal body already spaces its
         // own sections; `sm:max-w-none` clears the platform's default cap so `width` decides.
         className={`tw:gap-0 tw:sm:max-w-none ${width}`}
@@ -56,7 +58,7 @@ export function ModalShell({
         onInteractOutside={(event) => event.preventDefault()}
         showCloseButton={false}
       >
-        <DialogTitle className="tw:mb-4" id={titleId}>
+        <DialogTitle className="tw:mb-4" data-testid={titleTestId}>
           {title}
         </DialogTitle>
         {children}

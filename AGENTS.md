@@ -73,7 +73,7 @@ Prefer Platform.Bible's `platform-bible-react` components (`Button`, `Input`, `T
 
 Size icons inside a `Button` with `size-*` (e.g. `tw:size-3`), never `h-*`/`w-*` — `buttonVariants` forces any child SVG lacking a `size-` class to `size-4`, silently overriding `h-*`/`w-*`.
 
-Modals go through [ModalShell](src/components/modals/ModalShell.tsx) rather than building their own overlay — it supplies the platform `Dialog`, which brings a focus trap, scroll lock, focus restore, and Escape-to-dismiss. A modal that is mid-submission passes no `onClose`, which suppresses Escape so in-flight work can't be abandoned. Modals keep their title `id`s because end-to-end tests locate them that way, and the platform `Dialog` and `Popover` both render `role="dialog"` — select a modal by `[data-slot="dialog-content"]` when the two must be told apart.
+Modals go through [ModalShell](src/components/modals/ModalShell.tsx) rather than building their own overlay — it supplies the platform `Dialog`, which brings a focus trap, scroll lock, focus restore, and Escape-to-dismiss. A modal that is mid-submission passes no `onClose`, which suppresses Escape so in-flight work can't be abandoned. Modals tag their title with a `data-testid` because end-to-end tests locate them that way; never give the title an `id` instead, since that displaces the one the platform `Dialog` generates and the dialog then logs that its title is missing. The platform `Dialog` and `Popover` both render `role="dialog"` — select a modal by `[data-slot="dialog-content"]` when the two must be told apart.
 
 ### Styling
 

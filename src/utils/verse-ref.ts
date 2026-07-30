@@ -4,8 +4,6 @@ import type { ScriptureRef, Segment } from 'interlinearizer';
 /**
  * Whether the two refs name the same verse, bridging {@link ScriptureRef}'s `chapter`/`verse` field
  * names to {@link SerializedVerseRef}'s `chapterNum`/`verseNum`.
- *
- * @returns `true` when both name the same book, chapter, and verse.
  */
 export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): boolean {
   return (
@@ -17,9 +15,6 @@ export function isSameVerse(ref: ScriptureRef, scrRef: SerializedVerseRef): bool
  * Parses the leading verse range out of a verbatim USJ verse label: `"7"` yields `7`–`7` and a
  * hyphenated range `"3-4"` yields `3`–`4`. A label beginning with no digits (an empty or note-only
  * marker) yields `undefined`. The one place the label grammar is defined.
- *
- * @returns The label's `first`/`last` endpoints (equal for a plain number), or `undefined` when it
- *   names no verse.
  */
 function parseVerseLabel(verseStartNumber: string): { first: number; last: number } | undefined {
   // Accept an ASCII hyphen or any common Unicode dash (U+2010–U+2015: hyphen, non-breaking hyphen,
@@ -44,8 +39,6 @@ export function firstVerseNumber(verseStartNumber: string): number | undefined {
 /**
  * Whether a verbatim USJ verse label names the given verse. A range matches any verse between its
  * endpoints inclusive; a label that parses to no digits matches nothing.
- *
- * @returns `true` when the label names `verseNum`.
  */
 function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
   const range = parseVerseLabel(verseStartNumber);
@@ -61,8 +54,6 @@ function verseLabelCovers(verseStartNumber: string, verseNum: number): boolean {
  * start-to-end interval: for a cross-chapter merge (say `1:2`..`2:1`) the interval would over-claim
  * every verse in the start chapter above `2`. Character anchors are ignored, so every portion of a
  * split verse contains it.
- *
- * @returns `true` when the segment covers the verse named by `scrRef`.
  */
 export function segmentContainsVerse(segment: Segment, scrRef: SerializedVerseRef): boolean {
   if (segment.startRef.book !== scrRef.book) return false;

@@ -5,8 +5,6 @@ import type { LinkSlot } from '../types/token-layout';
  * Finds the token that renders a verse start. Deliberately not an exact offset match: a verse whose
  * baseline begins with whitespace has its first token a few characters in. An empty verse has no
  * token to carry the superscript and yields `undefined`.
- *
- * @returns The first token at or after the verse start's offset, or `undefined` when none exists.
  */
 export function verseStartToken(segment: Segment, vs: VerseStart): Token | undefined {
   return segment.tokens.find((t) => t.charStart >= vs.charStart);
@@ -48,8 +46,6 @@ export function buildVerseStartLabels(segments: readonly Segment[]): Map<string,
  * word can sit mid-group. A group fusing across _two_ internal verse boundaries shows only the
  * first verse's number, since a slot carries one label; a second buried verse start would need an
  * in-box superscript this model lacks.
- *
- * @returns The verse label to render at this slot, or `undefined` when no verse begins here.
  */
 export function slotVerseLabel(
   slot: LinkSlot,

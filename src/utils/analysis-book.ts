@@ -49,9 +49,6 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
  *
  * Yields `undefined` when no other book's anchors remain, so an emptied delta collapses back to the
  * default segmentation rather than persisting empty arrays.
- *
- * @returns A new `SegmentationDelta` without the book's anchors, or `undefined` when the result is
- *   the default segmentation (or the input already was).
  */
 export function removeBookFromSegmentation(
   delta: SegmentationDelta | undefined,

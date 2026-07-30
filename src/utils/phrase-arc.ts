@@ -77,9 +77,6 @@ export function sortByDocOrder<T extends { tokenRef: string }>(
  *
  * The single source of this slice, so the destructive-border preview cannot drift from the split it
  * previews.
- *
- * @returns The `before` half (up to and including the boundary token) and the `after` remainder, or
- *   `undefined` when the boundary token is not found.
  */
 function sliceAtBoundary(
   tokens: readonly TokenSnapshot[],
@@ -100,9 +97,6 @@ function sliceAtBoundary(
  *
  * Shares its slice with the split itself, so the destructive-border preview matches what the split
  * will do.
- *
- * @returns The refs of tokens that would become free, or `undefined` when no token would be left
- *   solo (both halves ≥ 2 tokens), the phrase is absent, or the boundary token is not found.
  */
 export function computeSplitFreeRefs(
   phraseLink: PhraseAnalysisLink | undefined,
@@ -182,8 +176,6 @@ export type StraddledPhrase = {
  * One predicate serves both the segmentation dispatch, which force-breaks straddling phrases, and
  * the split control, which suppresses itself at boundaries that would force-break, so the two
  * cannot drift apart. A boundary ref absent from the document-order map yields no matches.
- *
- * @returns The straddled phrases with their split points; empty when the boundary cuts nothing.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,

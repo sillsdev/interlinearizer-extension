@@ -27,8 +27,6 @@ const OPENING_MARKS: ReadonlySet<string> = new Set([
 /**
  * Reports whether two adjacent tokens touch, meaning no whitespace separates them. Pure adjacency
  * and script-agnostic: only the gap between the tokens is examined, never the token text itself.
- *
- * @returns `true` when there is no whitespace between the two tokens.
  */
 function touches(before: Token, after: Token, baselineText: string): boolean {
   const gap = baselineText.slice(before.charEnd, after.charStart);
@@ -45,7 +43,6 @@ function touches(before: Token, after: Token, baselineText: string): boolean {
  * @param step - `+1` to scan toward the following word, `-1` toward the preceding one.
  * @param boundary - Index of the word the chain must reach (`run.length - 1` forward, `0` back).
  * @param baselineText - The owning segment's baseline text; inter-token gaps are read from it.
- * @returns `true` when an unbroken whitespace-free chain connects the token to that word.
  */
 function reachesWord(
   run: Token[],

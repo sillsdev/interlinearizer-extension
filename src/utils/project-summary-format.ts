@@ -4,8 +4,6 @@
  * The summary type guard only checks that `updatedAt` is a string, so a corrupted value could
  * otherwise yield `NaN` and leave the sort comparator's result undefined. Normalizing to `0` keeps
  * ordering deterministic, with corrupted entries sorting last.
- *
- * @returns The parsed epoch milliseconds, or `0` when `value` is not a valid date.
  */
 export function parseUpdatedAt(value: string): number {
   const time = Date.parse(value);

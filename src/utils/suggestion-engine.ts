@@ -125,8 +125,6 @@ export function buildPoolIndex(
  *   the instant an approved gloss is cleared, before the empty value commits, so the preview
  *   matches the pool the committed deletion will produce rather than the approved payload's mere
  *   alternatives.
- * @returns The token's suggestion, or `undefined` when no pooled analysis matches (or none remains
- *   once the excluded payload is discounted).
  */
 export function deriveTokenSuggestion(
   poolIndex: PoolIndex,
@@ -190,8 +188,6 @@ export interface GlossedSuggestionEntry {
  * the active language, the next-ranked glossed match becomes the accept row rather than the whole
  * suggestion vanishing. An already-approved token has no accept row at all: every pool peer is a
  * promotion, so even the top row reads as one.
- *
- * @returns The glossed entries in rank order; empty when there is nothing renderable.
  */
 export function glossedSuggestionEntries(
   resolved: ResolvedTokenAnalysis | undefined,
@@ -233,8 +229,6 @@ export function glossedSuggestionEntries(
  * correct and cheap, because the pool only ever re-files the same reference-stable store objects:
  * the result is equal whenever the rendered suggestion is unchanged, even when an incidental edit
  * elsewhere rebuilt the pool index around those same payloads.
- *
- * @returns `true` when the two describe the same approved decision or suggestion.
  */
 export function resolvedTokenAnalysisEqual(
   a: ResolvedTokenAnalysis | undefined,

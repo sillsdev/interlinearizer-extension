@@ -123,7 +123,10 @@ export function SelectInterlinearProjectModal({
       titleTestId="select-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
-      onClose={isLoading || isOpening ? undefined : onClose}
+      // The list load deliberately does not suppress dismissal: it is a read-only fetch with
+      // nothing to abandon, and withholding `onClose` for it would strand the user in a modal that
+      // looks idle — empty list, disabled buttons — for as long as the backend takes.
+      onClose={isOpening ? undefined : onClose}
     >
       {projects.length === 0 ? (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">

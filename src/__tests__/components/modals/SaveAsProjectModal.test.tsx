@@ -228,6 +228,30 @@ describe('SaveAsProjectModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it('closes on Escape while the overwrite list is still loading, since the fetch has nothing to abandon', async () => {
+    const onClose = jest.fn();
+    // Hold the load in-flight so Escape lands while the modal is still waiting on the list.
+    let resolveLoad: (v: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Settle the held load so its state update lands inside the test rather than after teardown.
+    resolveLoad('[]');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+  });
+
   it('clears an armed overwrite confirm when the source changes so a stale target cannot be used', async () => {
     mockSendCommand
       .mockResolvedValueOnce(JSON.stringify([STUB_PROJECT]))

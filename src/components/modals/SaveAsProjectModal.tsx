@@ -175,7 +175,9 @@ export function SaveAsProjectModal({
       titleTestId="save-as-modal-title"
       title={localizedStrings['%interlinearizer_modal_saveAs_title%']}
       width="tw:w-lg"
-      onClose={isLoading || isSubmitting ? undefined : handleDismiss}
+      // Only an in-flight save suppresses dismissal. The overwrite-list load is a read-only fetch
+      // with nothing to abandon, so it leaves the modal dismissable while it runs.
+      onClose={isSubmitting ? undefined : handleDismiss}
     >
       <h3 className="tw:text-sm tw:font-medium tw:mb-2">
         {localizedStrings['%interlinearizer_modal_saveAs_new_section%']}

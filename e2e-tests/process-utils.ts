@@ -1,4 +1,4 @@
-// Cross-platform process-tree termination, shared by global-teardown.ts and global-teardown-cdp.ts.
+// Cross-platform process-tree termination.
 import { execFileSync } from 'child_process';
 import fs from 'fs';
 

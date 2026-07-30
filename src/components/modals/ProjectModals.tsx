@@ -299,9 +299,9 @@ export default function ProjectModals({
 
   /**
    * Creates and persists a project from the given config (guarded against double-submit) and, on
-   * success, closes the create modal. Shared by the direct New flow and the deferred, post-discard
-   * New flow, so the two can never diverge; on failure the modal stays open so the user can retry
-   * without re-entering their inputs.
+   * success, closes the create modal. Every New flow lands here, so none can diverge on how a
+   * project is created; on failure the modal stays open so the user can retry without re-entering
+   * their inputs.
    *
    * @param config - The configuration collected by the New dialog.
    */

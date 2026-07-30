@@ -1,7 +1,8 @@
 /**
- * Setup hooks shared by both phrase strips — the arc-split handler, the candidate-phrase-id
- * derivation, and the strip-wide context value — so the two views cannot drift apart in how a split
- * is dispatched, how hovered candidates resolve to phrase ids, or which fields the leaves receive.
+ * Setup hooks for a phrase strip — the arc-split handler, the candidate-phrase-id derivation, and
+ * the strip-wide context value. Each is the single definition of its behavior, so no strip layout
+ * can differ in how a split is dispatched, how hovered candidates resolve to phrase ids, or which
+ * fields the leaves receive.
  */
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -13,7 +14,7 @@ import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
- * Reads the by-id phrase-link map internally so both views share one derivation.
+ * Resolves the phrase link itself, so callers need not thread the by-id map through.
  */
 export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | undefined {
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -77,7 +78,7 @@ export function useCandidatePhraseIds(
 export type PhraseStripContextParams = Readonly<{
   /** Current phrase-interaction mode; controls rendering and click behavior in all leaves. */
   phraseMode: PhraseMode;
-  /** Setter for `phraseMode`; used by phrase boxes to enter edit / confirm-unlink modes. */
+  /** Setter for `phraseMode`; entering edit or confirm-unlink mode goes through it. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Token list of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseTokens: PhraseAnalysisLink['tokens'] | undefined;
@@ -116,10 +117,10 @@ export type PhraseStripContextParams = Readonly<{
 }>;
 
 /**
- * Builds the memoized strip-wide {@link PhraseStripContextValue} shared by every phrase group and
- * link slot in one render, so the memoized leaves don't re-render on unrelated changes.
- * Centralizing the build keeps the long dependency list in one place, so the two views cannot drift
- * apart when a field is added.
+ * Builds the memoized strip-wide {@link PhraseStripContextValue} for one render, so the memoized
+ * leaves don't re-render on unrelated changes. The single build site for the value, keeping its
+ * long dependency list in one place so adding a field cannot reach one strip layout and miss
+ * another.
  */
 export function usePhraseStripContextValue(
   params: PhraseStripContextParams,

@@ -75,9 +75,10 @@ function signatureOf(
 
 /**
  * Measures the rendered phrase boxes after each layout commit and computes the arcs connecting
- * every discontiguous phrase's runs. Shared by both strips so the two layouts can't drift apart.
- * State is only replaced when the serialized arc shape changes, so the layout effect settles after
- * one extra pass. A disabled container resets to empty instead of being measured.
+ * every discontiguous phrase's runs — the single arc derivation, so no layout can draw the same
+ * phrase differently. State is only replaced when the serialized arc shape changes, so the layout
+ * effect settles after one extra pass. A disabled container resets to empty instead of being
+ * measured.
  *
  * Measurement is settle-aware: because box geometry can drift without any resize event on the
  * observed container (see {@link SETTLE_VERIFY_DELAYS_MS}), each pass arms a delayed verification

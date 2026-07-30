@@ -23,7 +23,7 @@ export interface BookIndexes {
   fullTokenOrder: ReadonlyMap<string, number>;
   /** Maps every token ref to the id of the segment that contains it. */
   tokenSegmentMap: ReadonlyMap<string, string>;
-  /** Maps every word token ref to the token; used by views to resolve focus context. */
+  /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
   /**
    * Every word token ref in document order — the inverse of {@link BookIndexes.tokenDocOrder}

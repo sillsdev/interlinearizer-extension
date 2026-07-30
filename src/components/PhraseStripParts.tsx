@@ -100,8 +100,8 @@ type BoundaryControlProps = Readonly<{
  * The not-mid-phrase rule: no split marker renders at a boundary that would cut a phrase (including
  * the gap between two fragments of a discontiguous phrase), and an Alt+click there is a silent
  * no-op. (The segmentation dispatch itself accepts such boundaries and force-breaks the straddled
- * phrases; only callers that cannot see token chunks take that path.) Merge needs no such guard:
- * removing a boundary can never leave a phrase straddling one.
+ * phrases; that path exists for entry points that cannot see token chunks.) Merge needs no such
+ * guard: removing a boundary can never leave a phrase straddling one.
  *
  * No boundary control renders at all while a phrase mode (edit / confirm-unlink) is active: a
  * boundary edit mid-mode could re-segment the phrase the mode UI is operating on.
@@ -221,10 +221,7 @@ function SplitMarker({ label, onSplit }: SplitMarkerProps) {
   );
 }
 
-/**
- * Duration, in milliseconds, of the link-slot opacity fade transition. Exported so layout work
- * timed against the fade can share the exact duration.
- */
+/** Duration, in milliseconds, of the link-slot opacity fade transition. */
 export const LINK_SLOT_TRANSITION_MS = 200;
 
 // #region PhraseSlot
@@ -233,7 +230,7 @@ export const LINK_SLOT_TRANSITION_MS = 200;
 type PhraseSlotProps = Readonly<{
   /** The between-group slot to render: its neighboring groups and any punctuation in the gap. */
   slot: LinkSlot;
-  /** Resolved focus context shared by both views; supplies the link-icon's focus inputs. */
+  /** Resolved focus context; supplies the link-icon's focus inputs. */
   focus: FocusContext;
   /** Segment id of the group before the slot, or `undefined` for the leading slot. */
   prevSegmentId: string | undefined;
@@ -266,10 +263,9 @@ type PhraseSlotProps = Readonly<{
  *
  * Every in-flow row is a fixed height, reserved (and blank) even when its item is absent, so the
  * columns line up strip-wide and each item sits at an identical vertical offset regardless of which
- * others are present. Pure — both views feed it identical inputs so the slot renders the same in
- * either layout, which is why the verse number and boundary controls live here rather than in each
- * view. The link icon's phrase mode, document-order lookup, and hover callbacks come from
- * {@link PhraseStripContext}.
+ * others are present. Pure — identical inputs render an identical slot, which is why the verse
+ * number and boundary controls live here rather than in each layout. The link icon's phrase mode,
+ * document-order lookup, and hover callbacks come from {@link PhraseStripContext}.
  *
  * @returns A `link-slot` fixed column, or `undefined` when the slot has nothing to render.
  */
@@ -418,16 +414,15 @@ type PhraseGroupProps = Readonly<{
   setHoveredGroupKey: (key: string | undefined) => void;
   /** Called with this group's key when its gloss input gains focus. */
   onFocusPhrase: (groupKey: string) => void;
-  /** Optional DOM-ref callback for the wrapper span; used by ContinuousView for scroll-into-view. */
+  /** Optional DOM-ref callback for the wrapper span, for scrolling the group into view. */
   groupRef?: (el: HTMLSpanElement | null) => void;
 }>;
 
 /**
- * Renders one phrase group: the hover-wrapper span around a `MemoizedPhraseBox`. Pure — both views
- * feed it identical, pre-computed inputs so the box renders the same in either layout. The parent
- * owns all layout-specific math (focus highlighting, hover state, scroll refs) and passes the
- * results in; strip-wide state (phrase mode, edit context, hover callbacks) reaches the box through
- * {@link PhraseStripContext}.
+ * Renders one phrase group: the hover-wrapper span around a `MemoizedPhraseBox`. Pure — identical,
+ * pre-computed inputs render an identical box. The parent owns all layout-specific math (focus
+ * highlighting, hover state, scroll refs) and passes the results in; strip-wide state (phrase mode,
+ * edit context, hover callbacks) reaches the box through {@link PhraseStripContext}.
  *
  * Accepts `phraseId` and `groupKey` as data props and calls the stable `onHoverPhrase`,
  * `setHoveredGroupKey`, and `onFocusPhrase` callbacks with them so the parent never needs to create
@@ -514,9 +509,8 @@ const EMPTY_SPLIT_FREE_REFS: ReadonlySet<string> = new Set();
 
 /**
  * A normalized item in a phrase strip: either a between-group slot or a phrase group, carrying only
- * the per-item data each view resolves differently. The shared {@link PhraseStrip} body owns
- * everything common to both views (highlight, controls, arc offset, hover wiring); the views supply
- * just these layout-specific fields.
+ * the per-item data a layout must resolve for itself. {@link PhraseStrip} owns everything common
+ * (highlight, controls, arc offset, hover wiring); these fields are the layout-specific remainder.
  */
 export type StripItem =
   | {
@@ -525,17 +519,18 @@ export type StripItem =
       key: string;
       /** The slot's neighboring groups and gap punctuation. */
       slot: LinkSlot;
-      /** Segment id of the group before the slot (views resolve this differently). */
+      /** Segment id of the group before the slot; how it is resolved is layout-specific. */
       prevSegmentId: string | undefined;
       /** Segment id of the group after the slot. */
       nextSegmentId: string | undefined;
-      /** Whether focus is start-ward of this slot, precomputed by the view. */
+      /** Whether focus is start-ward of this slot, precomputed by the caller. */
       focusedSideIsPrev: boolean | undefined;
       /**
        * Verse label to show at this slot when it begins a verse (verbatim number, or
        * `chapter:number` at a chapter transition), or `undefined` when no verse starts here.
-       * {@link PhraseSlot} renders it below the link icon so both views mark verse boundaries
-       * identically. Each view resolves which slot starts a verse from its own verse-start data.
+       * {@link PhraseSlot} renders it below the link icon, so verse boundaries are marked
+       * identically wherever the strip appears. Which slot starts a verse is resolved by the caller
+       * from its own verse-start data.
        */
       verseLabel: string | undefined;
     }
@@ -545,9 +540,9 @@ export type StripItem =
       key: string;
       /** The phrase group to render. */
       group: TokenGroup;
-      /** Whether this group is the navigation focus (views key this off different focus refs). */
+      /** Whether this group is the navigation focus; which focus ref that keys off is the caller's. */
       isFocused: boolean;
-      /** Optional DOM-ref callback for the wrapper span; used by ContinuousView for scroll-in. */
+      /** Optional DOM-ref callback for the wrapper span, for scrolling the group into view. */
       groupRef?: (el: HTMLSpanElement | null) => void;
     };
 
@@ -557,7 +552,7 @@ type PhraseStripProps = Readonly<{
   items: StripItem[];
   /** Current phrase-interaction mode; gates controls, split previews, and highlight rules. */
   phraseMode: PhraseMode;
-  /** Resolved focus context shared by both views. */
+  /** Resolved focus context. */
   focus: FocusContext;
   /** PhraseId currently hovered anywhere in the view. */
   hoveredPhraseId: string | undefined;

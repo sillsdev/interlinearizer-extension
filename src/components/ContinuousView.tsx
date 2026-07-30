@@ -754,10 +754,10 @@ export default function ContinuousView({
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot. `setHoveredPhraseId`
-   * doubles as both the phrase-hover and candidate-phrase hover callback. The active segment lags
-   * the focus (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip
-   * is faded out or snapping into place after an instant jump.
+   * Strip-wide context value for this render. `setHoveredPhraseId` doubles as both the phrase-hover
+   * and candidate-phrase hover callback. The active segment lags the focus
+   * (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip is faded
+   * out or snapping into place after an instant jump.
    */
   const stripContext = usePhraseStripContextValue({
     phraseMode,

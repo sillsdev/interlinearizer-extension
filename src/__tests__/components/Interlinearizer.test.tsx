@@ -240,7 +240,7 @@ function withDefaultVerseStarts(book: BookWithOptionalVerseStarts): Book {
   };
 }
 
-/** Pre-built Book with no segments — used by the no-verse-data test. */
+/** Pre-built Book with no segments. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
 /**
@@ -272,7 +272,7 @@ function makeLargeBook(count: number): Book {
   return { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments };
 }
 
-/** Book with two segments in GEN 1 — used by chapter-display tests. */
+/** Book with two segments in GEN 1. */
 const GEN_1_MULTI_BOOK: Book = withDefaultVerseStarts({
   id: 'GEN',
   bookRef: 'GEN',
@@ -1892,8 +1892,8 @@ describe('focus preservation across segmentation edits', () => {
   });
 
   /**
-   * Builds the wrapped `<Interlinearizer>` element used by these tests, so the initial render and
-   * the post-edit rerender share identical props apart from the book.
+   * Builds the wrapped `<Interlinearizer>` element, so an initial render and a post-edit rerender
+   * share identical props apart from the book.
    */
   function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
     return withNav(

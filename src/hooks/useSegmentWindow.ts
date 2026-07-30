@@ -474,8 +474,8 @@ export default function useSegmentWindow({
   // #region Recenter trigger + navigation reaction
 
   /**
-   * Rebuilds the window centered on the active verse and fades it into view. Used by the
-   * external-navigation effect and returned directly as the imperative `recenterOnActive`.
+   * Rebuilds the window centered on the active verse and fades it into view. Exposed as the
+   * imperative `recenterOnActive`.
    *
    * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
    * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade

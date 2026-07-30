@@ -206,9 +206,9 @@ export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
 
 /**
  * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
- * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers, not one file per tier:
- * there is only one `settings.json` to protect, so a stale backup left by either tier's crashed run
- * can be recovered by the other tier's own self-heal (see {@link backupAndSeedSettings}).
+ * the `.cdp-*` run-marker files). One backup file for every tier, not one per tier: there is only
+ * one `settings.json` to protect, so a stale backup left by a crashed run can be recovered by the
+ * next run's own self-heal (see {@link backupAndSeedSettings}).
  *
  * Sharing one file is safe only because seed/restore cycles never overlap: both Playwright configs
  * set `workers: 1` and `fullyParallel: false`, and the tiers run sequentially. Two concurrent
@@ -1028,8 +1028,7 @@ async function ensureHomeWebViewLoaded(
 
 /**
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
- * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
- * Interlinearizer to be open.
+ * is loaded into the editor first.
  *
  * Loading the project into a Scripture Editor is the load-bearing step: it resolves a BCV
  * navigation target (so `navigateToScriptureRef`'s toolbar control is enabled) and lets the ≡ menu
@@ -1668,8 +1667,7 @@ export async function wipeDraft(page: Page): Promise<void> {
 }
 
 /**
- * Close the Interlinearizer dock tab via its close button and wait for it to disappear. Used by
- * tests that verify draft persistence across a close/reopen cycle.
+ * Close the Interlinearizer dock tab via its close button and wait for it to disappear.
  *
  * @throws If the tab is not visible, or the tab does not close within the timeout.
  */

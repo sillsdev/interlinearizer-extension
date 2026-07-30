@@ -2,7 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { ModalShell } from './ModalShell';
 
-/** Localized string keys used by {@link DiscardDraftConfirm}. */
+/** Localized string keys requested for this modal's rendered text. */
 const DISCARD_DRAFT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_confirm_discard_title%',
   '%interlinearizer_confirm_discard_body%',

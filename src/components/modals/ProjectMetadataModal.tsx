@@ -7,7 +7,7 @@ import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 
-/** Localized string keys used by {@link ProjectMetadataModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_title%',
   '%interlinearizer_modal_metadata_id_label%',
@@ -93,8 +93,8 @@ export function ProjectMetadataModal({
   const formattedModifiedDate = useMemo(() => new Date(updatedAt).toLocaleString(), [updatedAt]);
 
   /**
-   * Parsed analysis-language tags from the comma-separated field. Computed once and reused by both
-   * the Save command and the Save-button enabled check so the two cannot disagree.
+   * Parsed analysis-language tags from the comma-separated field. Parsed once per edit, so every
+   * decision that depends on the tags sees the same list.
    */
   const parsedLanguages = useMemo(() => parseLanguageTags(editLanguages), [editLanguages]);
 

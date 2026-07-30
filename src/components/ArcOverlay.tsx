@@ -103,8 +103,8 @@ type ArcOverlayProps = Readonly<{
 
 /**
  * Renders the phrase-arc SVG layer and (in view mode) the split-button overlay on top of a token
- * row. Shared by ContinuousView and SegmentView; intended to sit as a sibling of the row inside the
- * `arc-container` element that owns the coordinate space the arc paths were measured in.
+ * row. Intended to sit as a sibling of the row inside the `arc-container` element that owns the
+ * coordinate space the arc paths were measured in.
  *
  * @returns The SVG + split-button overlay, or `undefined` when there are no arcs to draw.
  */

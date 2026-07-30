@@ -151,8 +151,8 @@ const TEST_PUNCT: Token = {
 };
 
 /**
- * An approved phrase link fixture used by phrase-mode tests. Includes TEST_TOKEN so
- * `usePhraseLinkForToken` returns this link when mocked.
+ * An approved phrase link fixture. Includes TEST_TOKEN so `usePhraseLinkForToken` returns this link
+ * when mocked.
  */
 const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   analysisId: 'phrase-1',
@@ -163,7 +163,7 @@ const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   ],
 };
 
-/** Shared props shape used by the helper function. */
+/** Props shape for a PhraseBox render. */
 type PhraseBoxTestProps = {
   isFocused: boolean;
   groupKey: string;

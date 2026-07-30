@@ -4,8 +4,9 @@ import type { PhraseAnalysisLink } from 'interlinearizer';
 import type { PhraseMode } from '../types/phrase-mode';
 
 /**
- * The stable, strip-wide context shared by every phrase group and link slot in one render. Both
- * strips build one value per render and wrap their token row in a {@link PhraseStripProvider}.
+ * The stable, strip-wide context for one render of a token row: a single value is built per render
+ * and provided around the row via {@link PhraseStripProvider}, reaching every phrase group and link
+ * slot beneath it.
  *
  * It holds the values identical across a whole strip render — the edit-mode context and the
  * hover-preview callbacks — so the structural intermediaries never forward props they don't touch,
@@ -17,7 +18,7 @@ import type { PhraseMode } from '../types/phrase-mode';
 export type PhraseStripContextValue = Readonly<{
   /** Current phrase-interaction mode; controls rendering and click behavior in all leaves. */
   phraseMode: PhraseMode;
-  /** Setter for `phraseMode`; used by phrase boxes to enter edit / confirm-unlink modes. */
+  /** Setter for `phraseMode`; entering edit or confirm-unlink mode goes through it. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Token list of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseTokens: PhraseAnalysisLink['tokens'] | undefined;

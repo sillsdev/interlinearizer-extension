@@ -28,9 +28,8 @@ jest.mock('../../components/AnalysisStore', () => ({
 }));
 
 /**
- * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
- * link-icon tests, which then layer on `focusedSideIsPrev` / `focusedPhraseLink` /
- * `focusedFreeToken` as needed.
+ * Builds a `slotFocus` bundle. Defaults to "no focus, same segment"; `focusedSideIsPrev` /
+ * `focusedPhraseLink` / `focusedFreeToken` layer on from there.
  */
 function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
   return {

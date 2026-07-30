@@ -9,7 +9,7 @@ import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
-/** Localized string keys used by {@link SaveAsProjectModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_title%',
   '%interlinearizer_modal_saveAs_new_section%',

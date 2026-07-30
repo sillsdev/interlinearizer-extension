@@ -76,8 +76,7 @@ export function verseKey(ref: SerializedVerseRef): string {
 export const INTERNAL_NAV_TTL_MS = 3000;
 
 /**
- * The single freshness definition for an internal-navigation marker, shared by both marker readers
- * — `consumeInternalNav` and the render-phase mid-reveal guard — so the two can never drift on what
+ * The single freshness definition for an internal-navigation marker, so no reader can drift on what
  * counts as expired. The boundary is consistent with eviction: a marker is fresh iff its age is at
  * most {@link INTERNAL_NAV_TTL_MS}.
  *
@@ -95,17 +94,17 @@ function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
  */
 export interface InterlinearNav {
   /**
-   * The reference from the host scroll-group hook, value-verbatim, driving both the editable
-   * book/chapter nav controls and the views' recentering. Identity-stable across the host's
-   * duplicate deliveries: when the host re-sends a value-equal reference (the scripture picker
-   * fires each navigation twice), the previously adopted object is handed back so consumers see no
-   * change. Verse 0 is treated as an ordinary verse: a `verseNum: 0` reference passes through
-   * verbatim, so the host's `<` (previous-verse) from verse 1 lands on the chapter's
-   * superscription. When it names a chapter with a verse-0 superscription segment, that segment
-   * becomes the active verse. Which verses actually have segments is unknown here (the book is not
-   * loaded at this layer), so the loader resolves a reference with no matching segment before
-   * rendering: verse 0 falls back to the chapter's first numbered verse, any other unmatched verse
-   * to the nearest preceding segment start in its chapter.
+   * The reference from the host scroll-group hook, value-verbatim: the reference every
+   * navigation-driven behavior keys off. Identity-stable across the host's duplicate deliveries:
+   * when the host re-sends a value-equal reference (the scripture picker fires each navigation
+   * twice), the previously adopted object is handed back so consumers see no change. Verse 0 is
+   * treated as an ordinary verse: a `verseNum: 0` reference passes through verbatim, so the host's
+   * `<` (previous-verse) from verse 1 lands on the chapter's superscription. When it names a
+   * chapter with a verse-0 superscription segment, that segment becomes the active verse. Which
+   * verses actually have segments is unknown here (the book is not loaded at this layer), so the
+   * loader resolves a reference with no matching segment before rendering: verse 0 falls back to
+   * the chapter's first numbered verse, any other unmatched verse to the nearest preceding segment
+   * start in its chapter.
    */
   scrRef: SerializedVerseRef;
   /**

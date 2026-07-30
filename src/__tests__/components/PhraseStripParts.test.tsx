@@ -84,7 +84,7 @@ function mkPunct(ref: string, surfaceText = '.'): Token {
 /** A minimal no-focus context. */
 const NO_FOCUS: FocusContext = emptyFocusContext();
 
-/** Default props shared by PhraseSlot tests. */
+/** Default props for a PhraseSlot render. */
 function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
   return {
     slot,

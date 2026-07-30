@@ -141,12 +141,11 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
  * Bootstrap everything an Electron launch needs, short of launching Electron itself: verify no
  * conflicting instance is running, clear stale singleton locks, confirm the extension is built,
  * ensure the paranext-core dev main bundle exists, and start the renderer dev server on port 1212
- * (recording its PID for teardown). Shared by both the smoke {@link globalSetup} (whose fixture then
- * launches Electron) and the CDP setup (which launches Electron itself with remote debugging).
+ * (recording its PID for teardown).
  *
  * Self-cleaning on failure: if a dev server started here never becomes ready, it is killed before
- * the error propagates (see {@link killSpawnedDevServer}), so neither caller leaks it. Callers
- * therefore need no dev-server cleanup of their own for a bootstrap failure.
+ * the error propagates (see {@link killSpawnedDevServer}), so it cannot leak. Callers therefore need
+ * no dev-server cleanup of their own for a bootstrap failure.
  *
  * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use (a running Platform.Bible would conflict).

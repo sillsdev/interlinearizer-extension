@@ -448,9 +448,9 @@ let resizeObserverInstances: TrackingResizeObserver[] = [];
 
 /**
  * A ResizeObserver test double that records its callback and disconnect state and appends itself to
- * {@link resizeObserverInstances}. Used by the hold-loop tests to fire a simulated late content
- * reflow and to assert whether the active observer was disconnected. Module-scoped (rather than an
- * inline class per test) so the file stays under `max-classes-per-file`.
+ * {@link resizeObserverInstances}, so a test can fire a simulated late content reflow and assert
+ * whether the active observer was disconnected. Module-scoped (rather than an inline class per
+ * test) so the file stays under `max-classes-per-file`.
  */
 class TrackingResizeObserver implements ResizeObserver {
   /** Whether {@link disconnect} has been called on this instance. */

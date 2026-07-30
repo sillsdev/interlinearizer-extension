@@ -112,8 +112,8 @@ export function MorphemeBreakdownPopover({
   /** Collapses leading/trailing and repeated internal whitespace to a single space. */
   const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
 
-  // Whether the draft matches the pre-filled value. Shared by the Done/Enter and outside-click
-  // commit paths so the two can never disagree about what counts as an edit. Whitespace is
+  // Whether the draft matches the pre-filled value. Every commit path tests this one value, so they
+  // can never disagree about what counts as an edit. Whitespace is
   // normalized because the save path splits on /\s+/, so differing spacing yields identical forms —
   // comparing normalized text avoids a no-op persistence round-trip.
   const isUnedited = normalize(draft) === normalize(initialValue);
@@ -132,8 +132,8 @@ export function MorphemeBreakdownPopover({
 
   /**
    * Removes the breakdown and closes, or swaps the panel into the confirmation first when the reset
-   * would discard glosses no other token holds. Shared by the reset button and the commit path so
-   * the two can never disagree about when a reset is confirmed.
+   * would discard glosses no other token holds. Every reset request routes through here, so they
+   * can never disagree about when a reset needs confirming.
    */
   const requestReset = () => {
     if (needsResetConfirm) {

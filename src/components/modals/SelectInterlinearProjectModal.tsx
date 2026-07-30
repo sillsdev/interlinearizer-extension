@@ -9,7 +9,7 @@ import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
-/** Localized string keys used by {@link SelectInterlinearProjectModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_title%',
   '%interlinearizer_modal_select_none%',

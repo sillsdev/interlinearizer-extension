@@ -281,10 +281,10 @@ function InterlinearizerLoaderInner({
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
 
   /**
-   * Boundary-editing operations passed down to the views. Each reads the draft's latest boundary
-   * delta synchronously (so rapid edits compose correctly), applies the relevant pure transform
-   * against the original verse book, and auto-saves the normalized result — clearing the field back
-   * to `undefined` when the edit restores the default verse segmentation.
+   * Boundary-editing operations exposed through the segmentation context. Each reads the draft's
+   * latest boundary delta synchronously (so rapid edits compose correctly), applies the relevant
+   * pure transform against the original verse book, and auto-saves the normalized result — clearing
+   * the field back to `undefined` when the edit restores the default verse segmentation.
    */
   const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
     /**

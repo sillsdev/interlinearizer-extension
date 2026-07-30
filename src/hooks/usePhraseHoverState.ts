@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-/** Hover-driven preview state shared by both phrase strips. */
+/** Hover-driven preview state for a phrase strip. */
 export type PhraseHoverState = {
   /**
    * Group key (first token ref) of the phrase box currently hovered; drives controls-pill placement

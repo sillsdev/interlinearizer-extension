@@ -32,9 +32,8 @@ function removePidFile(pidFile: string, label: string): void {
 }
 
 /**
- * Kill a process recorded in a PID file (whole tree), then remove the PID file. Shared by this
- * teardown's dev-server kill and {@link globalTeardownCdp}'s launched-app kill, which follow the
- * same read-PID-file → validate → kill → remove-marker shape and differ only in signal and
+ * Kill a process recorded in a PID file (whole tree), then remove the PID file. The single
+ * read-PID-file → validate → kill → remove-marker implementation, parameterized by signal and
  * logging.
  *
  * A missing PID file is a no-op; a file whose contents don't parse as an integer is warned about

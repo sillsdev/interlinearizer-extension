@@ -147,7 +147,7 @@ type SegmentListViewProps = Readonly<{
   tokenSegmentMap: ReadonlyMap<string, string>;
   /** Maps every word token ref to its flat book-level index; used to sort phrase tokens. */
   tokenDocOrder: ReadonlyMap<string, number>;
-  /** Maps every word token ref to the token; used by segments to resolve focus context. */
+  /** Maps every word token ref to the token; the input for resolving focus context. */
   wordTokenByRef: ReadonlyMap<string, Token & { type: 'word' }>;
 }>;
 

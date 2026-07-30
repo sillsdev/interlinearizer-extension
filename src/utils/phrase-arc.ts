@@ -57,8 +57,8 @@ type SplitPhraseDispatch = {
 
 /**
  * Sorts token snapshots by flat document index, without mutating the input, so a stored phrase
- * token list reflects visual left-to-right order. Shared by every path that slices a phrase, so
- * document order is computed identically everywhere. Tokens missing from the order map sort to the
+ * token list reflects visual left-to-right order. The single document-order sort, so slicing a
+ * phrase orders its tokens identically everywhere. Tokens missing from the order map sort to the
  * front.
  */
 export function sortByDocOrder<T extends { tokenRef: string }>(
@@ -116,8 +116,7 @@ export function computeSplitFreeRefs(
 
 /**
  * Splits a phrase just after the given token and dispatches the resulting create, update, and
- * delete calls. Shared by both views' arc-split buttons and by the unlink button, so the three
- * paths cannot drift apart.
+ * delete calls. The single split implementation, so no entry point can slice a phrase differently.
  *
  * Outcomes, where `before` is the half up to and including the boundary token:
  *
@@ -224,8 +223,8 @@ function stemForLevel(level: number): number {
 
 /**
  * Vertical room (px) the topmost arc run needs above the line it rises from: its stem, the corner,
- * and the clearance margin. Shared by the strip's top padding and row gap so both grow with arc
- * depth alike.
+ * and the clearance margin. The single clearance figure, so everything reserving room above an arc
+ * grows with arc depth alike.
  */
 function arcClearancePx(maxArcLevel: number): number {
   return stemForLevel(maxArcLevel) + ARC_CORNER_RADIUS + ARC_CLEARANCE_MARGIN_PX;
@@ -323,7 +322,8 @@ const HIGHLIGHTED_ARC_STROKE: ArcStrokeProps = {
 };
 
 /**
- * Stroke styling for a phrase arc, so both views render lines identically across interaction modes:
+ * Stroke styling for a phrase arc — the single definition, so lines render identically across
+ * interaction modes:
  *
  * - `confirm-unlink`: target arc destructive, others dimmed.
  * - `edit`: edited arc foreground (matches its box ring), others dimmed, hover suppressed.
@@ -374,8 +374,8 @@ type ArcSegment = {
 };
 
 /**
- * Greedy interval-graph coloring shared by both level assignments, which differ only in their
- * pre-sort and in the axis their conflict predicate overlaps on.
+ * Greedy interval-graph coloring, parameterized by pre-sort order and conflict predicate so one
+ * implementation serves every level assignment.
  *
  * @param items - The items to color, pre-sorted into the order they should be assigned.
  * @param conflicts - Whether two items overlap and so must take different levels.

@@ -1,8 +1,8 @@
 import type { PhraseAnalysisLink, Token } from 'interlinearizer';
 
 /**
- * Resolved focus state shared by the segment and continuous views so both derive their highlight
- * and link-icon rules from one source. Built once per render.
+ * Resolved focus state, built once per render, so every highlight and link-icon rule derives from
+ * one source instead of resolving focus independently.
  */
 export type FocusContext = {
   /** The focused word token itself, or `undefined` when nothing is focused. */

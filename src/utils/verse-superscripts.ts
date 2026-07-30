@@ -38,8 +38,8 @@ export function buildVerseStartLabels(segments: readonly Segment[]): Map<string,
 
 /**
  * Resolves the inline verse label for a between-group slot — the verse that begins as the slot is
- * crossed — or `undefined` when no verse begins there. Shared by both strips so they mark verse
- * boundaries on the same slot.
+ * crossed — or `undefined` when no verse begins there. The single slot-to-label resolution, so a
+ * verse boundary always lands on the same slot.
  *
  * Every token of the following group is a candidate, not just the first: a phrase spanning an
  * internal verse boundary of a merged segment fuses its tokens into one group, so the verse-start
@@ -67,8 +67,8 @@ export function slotVerseLabel(
 
 /**
  * Builds a whole-book lookup from each verse-start token's ref to its inline superscript label.
- * Computed once and shared by both strips, so the continuous view and the segment list mark verse
- * boundaries identically and neither re-walks the book to key labels by token ref.
+ * Built once for the whole book, so verse boundaries are marked identically everywhere without
+ * re-walking the book to key labels by token ref.
  *
  * Empty verses contribute no entry, having no token to carry the number, but are still walked so
  * chapter qualification stays correct across them.

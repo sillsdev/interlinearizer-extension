@@ -82,8 +82,8 @@ type InterlinearizerProps = Readonly<{
    */
   showSuggestions?: boolean;
   /**
-   * Boundary-editing operations provided to the views via {@link SegmentationProvider}. Optional so
-   * isolated tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
+   * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
+   * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
    */
   segmentationDispatch?: SegmentationDispatch;
   /**
@@ -143,14 +143,14 @@ function InterlinearizerInner({
     [book.segments, scrRef],
   );
 
-  // Seed focusedTokenRef from the active verse on first render so the views always see a defined
-  // value: an undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
+  // Seed focusedTokenRef from the active verse on first render so it is never undefined: an
+  // undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
   // focus.focusedSegmentId).
   const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(() =>
     firstWordTokenRefOf(findActiveSegment()),
   );
 
-  // Book-wide lookup indexes the views share.
+  // Book-wide lookup indexes.
   const {
     segmentById,
     segmentOrder,
@@ -220,10 +220,10 @@ function InterlinearizerInner({
   );
 
   /**
-   * The dispatch the views receive: wraps the raw boundary writer so any operation that adds a
-   * boundary (split, and the add-half of move) first force-breaks the phrases the new boundary
-   * would cut. Merge only removes a boundary, which can never leave a phrase straddling segments,
-   * so it passes through.
+   * The dispatch provided through the segmentation context: wraps the raw boundary writer so any
+   * operation that adds a boundary (split, and the add-half of move) first force-breaks the phrases
+   * the new boundary would cut. Merge only removes a boundary, which can never leave a phrase
+   * straddling segments, so it passes through.
    */
   const dispatch = useMemo<SegmentationDispatch>(
     () => ({
@@ -240,7 +240,7 @@ function InterlinearizerInner({
     [segmentationDispatch, forceBreakStraddledPhrases],
   );
 
-  /** Segmentation context shared by the views — the dispatch plus the lookups its call sites need. */
+  /** Segmentation context value — the dispatch paired with the lookups it operates over. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
       dispatch,

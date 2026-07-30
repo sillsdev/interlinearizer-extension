@@ -4,7 +4,7 @@ import { useState, useCallback } from 'react';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 
-/** Localized string keys used by {@link CreateProjectModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const CREATE_PROJECT_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_create_title%',
   '%interlinearizer_modal_create_name_label%',

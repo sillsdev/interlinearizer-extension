@@ -277,8 +277,7 @@ function isPayloadSharedByOtherLinks(
  * only this token while every other token keeps the original shared payload. The clone carries the
  * same content (including morpheme ids) under a new id, with fresh copies of the mutable `gloss`
  * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
- * without writing through to the frozen shared payload. Used by the per-token edit, clear, and
- * delete paths so a token can edit or detach from a shared analysis without affecting the others.
+ * without writing through to the frozen shared payload.
  */
 function forkSharedAnalysis(
   state: AnalysisState,

@@ -407,8 +407,8 @@ function mockOptimisticSetting(
 }
 
 /**
- * Configures `useSetting` to return per-key values for the two settings consumed by
- * `InterlinearizerLoader`: `platform.interfaceMode` and `platform.interfaceLanguage`.
+ * Configures `useSetting` to return per-key values for `platform.interfaceMode` and
+ * `platform.interfaceLanguage`.
  *
  * @param interfaceMode - Value for `platform.interfaceMode`; defaults to `'simple'`.
  * @param interfaceLanguage - Value for `platform.interfaceLanguage`; defaults to `[]`.

@@ -6,7 +6,7 @@ import { ModalShell } from './ModalShell';
 /** The portion of the draft a wipe removes: the current book only, or the entire draft. */
 export type WipeScope = 'book' | 'all';
 
-/** Localized string keys used by {@link WipeModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const WIPE_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_wipe_modal_title%',
   '%interlinearizer_wipe_modal_prompt%',

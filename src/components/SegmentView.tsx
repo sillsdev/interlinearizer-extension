@@ -462,8 +462,7 @@ export function SegmentView({
 
   /**
    * Resolved focus context — what's focused, what segment it's in, what phrase it belongs to. Built
-   * once from `focusedTokenRef` and reused by all highlight + slot decisions so the rules match
-   * ContinuousView exactly.
+   * once from `focusedTokenRef` so every highlight and slot decision reads the same resolution.
    */
   const focus = useMemo(
     () => resolveFocusContext(focusedTokenRef, wordTokenByRef, phraseLinkByRef, tokenSegmentMap),
@@ -551,10 +550,10 @@ export function SegmentView({
   const editPhraseTokens = useEditPhraseTokens(phraseMode);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot in this segment.
-   * `onHoverPhrase` doubles as the candidate-phrase hover callback. The active segment is this
-   * segment only while it is the active verse; the link-slot transition is suppressed until just
-   * after first paint so the initial state snaps in without a flash.
+   * Strip-wide context value for this segment's render. `onHoverPhrase` doubles as the
+   * candidate-phrase hover callback. The active segment is this segment only while it is the active
+   * verse; the link-slot transition is suppressed until just after first paint so the initial state
+   * snaps in without a flash.
    */
   const stripContext = usePhraseStripContextValue({
     phraseMode,

@@ -1,7 +1,7 @@
 /**
- * Bundled display toggles threaded from the loader down through the views to the phrase strips.
- * Grouping them in one object lets intermediate components forward the bundle unchanged, so adding
- * a toggle touches only the code that builds it and the leaf that reads it.
+ * Bundled display toggles threaded down the component tree to the leaves that render them. Grouping
+ * them in one object lets intermediate components forward the bundle unchanged, so adding a toggle
+ * touches only the code that builds it and the leaf that reads it.
  */
 export type ViewOptions = Readonly<{
   /** When true, link buttons between phrases are hidden in segments other than the active verse. */

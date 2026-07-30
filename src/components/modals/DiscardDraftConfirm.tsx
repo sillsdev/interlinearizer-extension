@@ -36,7 +36,7 @@ export function DiscardDraftConfirm({
 
   return (
     <ModalShell
-      titleId="discard-draft-modal-title"
+      titleTestId="discard-draft-modal-title"
       title={localizedStrings['%interlinearizer_confirm_discard_title%']}
       width="tw:w-96"
       onClose={isSubmitting ? undefined : onCancel}

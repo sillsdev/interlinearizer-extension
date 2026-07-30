@@ -167,7 +167,7 @@ export function SaveAsProjectModal({
 
   return (
     <ModalShell
-      titleId="save-as-modal-title"
+      titleTestId="save-as-modal-title"
       title={localizedStrings['%interlinearizer_modal_saveAs_title%']}
       width="tw:w-lg"
       onClose={isLoading || isSubmitting ? undefined : handleDismiss}

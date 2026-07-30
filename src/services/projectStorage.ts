@@ -290,8 +290,11 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  *
  * @returns A promise resolving to the number of orphaned records successfully deleted this pass
  *   (live ids dropped from the set without deleting their record are not counted).
- * @throws If reading the set or rewriting it (`papi.storage.writeUserData`) rejects for a
- *   non-ENOENT reason. A per-record delete failure is not thrown; the id is retained instead.
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If reading the set or the index, or rewriting the set (`papi.storage.writeUserData`),
+ *   rejects for a non-ENOENT reason. A per-record delete failure is not thrown; the id is retained
+ *   instead.
  */
 export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
   return enqueuePendingCleanupOp(async () => {
@@ -350,6 +353,8 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  * @throws If the project or index `papi.storage.writeUserData` rejects. On an index-write failure
  *   the original error is rethrown after best-effort rollback; a failed rollback does not throw —
  *   the orphaned record is instead recorded for a later {@link sweepPendingCleanup} (and a failure
@@ -427,6 +432,7 @@ export async function getProject(
  * skipped so a single corrupted record does not prevent access to the rest.
  *
  * @throws {SyntaxError} If `projectIds` contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
@@ -449,6 +455,7 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  * order.
  *
  * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getProjectsForSource(
@@ -550,6 +557,8 @@ export async function updateProjectMetadata(
  * if the project does not exist.
  *
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
  * @throws If `papi.storage.writeUserData` rejects when updating `PROJECT_IDS_KEY`.
  */

@@ -167,9 +167,10 @@ async function createInterlinearProject(
  * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
  * select-project modal.
  *
- * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
- *   `projectStorage.deleteProject`).
- * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
+ * @throws {SyntaxError} If the project-IDs index contains invalid JSON.
+ * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason while reading the index,
+ *   if `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
  *   `papi.storage.writeUserData` rejects when updating the index. All storage errors are logged and
  *   shown as a notification before being re-thrown so the caller can handle failure UX.
  */
@@ -369,9 +370,9 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
  *   project records are logged and skipped, not thrown.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
- *   `projectStorage.getProjectsForSource`). Callers can use this to distinguish a storage outage
- *   from a legitimately empty list.
+ * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. Callers can use this to
+ *   distinguish a storage outage from a legitimately empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {

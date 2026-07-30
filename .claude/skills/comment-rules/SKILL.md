@@ -78,6 +78,8 @@ Linking a **constant** stays encouraged - it is how the values rule below avoids
 
 Never restate in prose a value, count, or member list that code declares: "the four fade wrappers (curtain, toggle, list, strip)", "the timeout (500ms)", "all three storage properties". Nothing keeps the copy in sync. Name the constant and use quantity-free phrasing: "the fade wrappers", "longer than {@link TIMEOUT_MS}", "the `*Ref` fields".
 
+One exception - a parameter's default, which a call site's hover shows as `timeoutMs?: number`, not as the literal. State it when absence carries meaning, never as a bare magic number: hoist that to a named constant and link it.
+
 ## Inline comments
 
 Sparingly: only when the reasoning is not clear from the code, or a bugfix is non-obvious. Keep them short - reasoning that outgrows a few sentences belongs on the nearest doc comment, not interleaved with statements - and about the code they sit next to.

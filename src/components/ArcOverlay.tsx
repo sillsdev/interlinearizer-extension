@@ -30,11 +30,11 @@ export type ArcSplitTarget = {
 type EmphasisTier = 'focused' | 'hovered' | 'unfocused';
 
 /**
- * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered (6) > focused
- * (4) > dimmed (2) — above each tier's own arc line but below the token row — so the button under
- * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The color matches
- * the arc: focused foreground like its full-foreground arc, hovered in muted foreground, unfocused
- * faint until its phrase is hovered or focused.
+ * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered > focused >
+ * dimmed — above each tier's own arc line but below the token row — so the button under the cursor
+ * is always on top (see the layering comment in {@link ArcOverlay}). The color matches the arc:
+ * focused foreground like its full-foreground arc, hovered in muted foreground, unfocused faint
+ * until its phrase is hovered or focused.
  */
 const TIER_BUTTON_CLASSES: Record<EmphasisTier, { z: string; color: string }> = {
   focused: { z: 'tw:z-4', color: 'tw:phrase-focused tw:text-foreground' },
@@ -220,7 +220,6 @@ export function ArcOverlay({
     );
   };
 
-  /** Classifies a phrase into one of three emphasis tiers (see {@link EmphasisTier}). */
   const tierOf = (phraseId: string): EmphasisTier => {
     if (phraseId === focusedPhraseId) return 'focused';
     if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 'hovered';

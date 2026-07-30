@@ -90,6 +90,8 @@ export async function waitForProcessExit(
   }
 }
 
+const DEFAULT_PID_POLL_INTERVAL_MS = 100;
+
 /**
  * Poll for a PID to stop existing. This is the {@link waitForProcessExit} equivalent for a caller
  * with only a bare PID and no live process handle to listen on (e.g. teardown, which reads the PID
@@ -98,13 +100,14 @@ export async function waitForProcessExit(
  * @param pid - PID to poll.
  * @param timeoutMs - Cap on the wait; elapsing it resolves rather than throwing, so callers cannot
  *   distinguish an exit from a timeout.
- * @param pollIntervalMs - Milliseconds between existence checks. Defaults to 100.
+ * @param pollIntervalMs - Milliseconds between existence checks. Defaults to
+ *   {@link DEFAULT_PID_POLL_INTERVAL_MS}.
  * @returns Resolves once the PID no longer exists or `timeoutMs` elapses — whichever is first.
  */
 export async function waitForPidExit(
   pid: number,
   timeoutMs: number,
-  pollIntervalMs = 100,
+  pollIntervalMs = DEFAULT_PID_POLL_INTERVAL_MS,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -121,6 +124,8 @@ export async function waitForPidExit(
   }
 }
 
+const DEFAULT_RMDIR_RETRY_DELAY_MS = 3_000;
+
 /**
  * Remove a directory tree, retrying once after a delay if the first attempt fails — e.g. a
  * just-killed process (Electron's SingletonLock, a Windows file handle) has not yet released it.
@@ -130,12 +135,13 @@ export async function waitForPidExit(
  * @param dir - Directory to remove.
  * @param label - Human-readable name for the directory, used in the warning log if removal
  *   ultimately fails (e.g. `'user data dir'`, `'CDP user-data dir'`).
- * @param retryDelayMs - Milliseconds to wait before the retry attempt. Defaults to 3000.
+ * @param retryDelayMs - Milliseconds to wait before the retry attempt. Defaults to
+ *   {@link DEFAULT_RMDIR_RETRY_DELAY_MS}.
  */
 export async function removeDirWithRetry(
   dir: string,
   label: string,
-  retryDelayMs = 3_000,
+  retryDelayMs = DEFAULT_RMDIR_RETRY_DELAY_MS,
 ): Promise<void> {
   try {
     fs.rmSync(dir, { recursive: true, force: true });

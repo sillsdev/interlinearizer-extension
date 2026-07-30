@@ -47,7 +47,6 @@ function removePidFile(pidFile: string, label: string): void {
  * @param pidFile - Absolute path to the file holding the target process's PID.
  * @param signal - Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
  * @param label - Human-readable name of the process, used in the "Stopping <label>" log line.
- * @returns See {@link KillFromPidFileResult}.
  */
 export function killProcessFromPidFile(
   pidFile: string,
@@ -88,7 +87,6 @@ export function killProcessFromPidFile(
  *
  * @param _config - Playwright config object — unused; required by Playwright's global-teardown
  *   interface.
- * @returns Resolves when all cleanup steps have completed.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalTeardown(_config: FullConfig): Promise<void> {

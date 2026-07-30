@@ -131,7 +131,6 @@ export async function waitForPidExit(
  * @param label - Human-readable name for the directory, used in the warning log if removal
  *   ultimately fails (e.g. `'user data dir'`, `'CDP user-data dir'`).
  * @param retryDelayMs - Milliseconds to wait before the retry attempt. Defaults to 3000.
- * @returns Resolves once removal succeeds or the retry attempt is exhausted.
  */
 export async function removeDirWithRetry(
   dir: string,

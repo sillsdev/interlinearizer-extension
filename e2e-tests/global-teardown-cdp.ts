@@ -12,8 +12,6 @@ import { removeDirWithRetry, waitForPidExit } from './process-utils';
  * and sweep any lingering core processes.
  *
  * @param config - Playwright config object — forwarded to the shared teardown.
- * @returns Resolves when the launched app is killed, its user-data dir removed, and shared teardown
- *   has completed.
  */
 export default async function globalTeardownCdp(config: FullConfig): Promise<void> {
   // Snapshot before killProcessFromPidFile unlinks CDP_PID_FILE. `||` not `&&`: a run that crashed

@@ -85,7 +85,6 @@ const RENDERER_SETTLE_TIMEOUT = process.env.CI ? 180_000 : 120_000;
  *
  * @param config - Playwright config object; the worker count it carries is what the settings seed
  *   is gated on.
- * @returns Resolves once a usable app is available (launched here, or an already-running one).
  * @throws {Error} If the run is configured for more than one worker, or if the app's WebSocket or
  *   CDP port do not become ready in time.
  */
@@ -284,7 +283,6 @@ export default async function globalSetupCdp(config: FullConfig): Promise<void> 
  *   spawn or the process never reported a PID.
  * @param exited Promise resolving when the launched process exits, used to bound the post-SIGKILL
  *   wait; `undefined` when no process was spawned.
- * @returns Resolves once every cleanup step has been attempted.
  */
 async function cleanUpFailedLaunch(
   userDataDir: string,
@@ -319,8 +317,6 @@ async function cleanUpFailedLaunch(
  * The Playwright connection is closed before returning either way — it only disconnects; the app
  * keeps running for the test fixtures to connect to.
  *
- * @returns Resolves when the renderer page shows at least one dock tab with no "Unknown" titles and
- *   the interlinearizer extension has registered its open-webview command.
  * @throws {Error} If no renderer page appears, tab titles do not resolve, or the extension does not
  *   activate within `timeout`.
  */

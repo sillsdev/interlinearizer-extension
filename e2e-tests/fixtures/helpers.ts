@@ -145,7 +145,6 @@ export interface LaunchElectronAppOptions {
 /**
  * Wait for the WebSocket server to be ready on the specified port.
  *
- * @returns Resolves when a WebSocket connection to the port succeeds.
  * @throws {Error} If the WebSocket server is not ready within `timeout` milliseconds.
  */
 async function waitForWebSocketReady(port: number, timeout: number): Promise<void> {
@@ -348,8 +347,6 @@ export function preConfigureSettings(
  * `--extensions`.
  *
  * @param opts - Optional launch options (e.g. environment variable overrides).
- * @returns The app handle, the isolated user-data directory path, and a promise that resolves when
- *   the app closes.
  * @throws If Electron fails to launch or the WebSocket server does not become ready.
  */
 export async function launchElectronWithExtension(
@@ -465,7 +462,6 @@ export async function launchElectronWithExtension(
  * Best-effort: a stream error resolves rather than rejects.
  *
  * @param appLog - The write stream created for {@link SMOKE_APP_LOG_FILE}.
- * @returns Resolves once the stream has flushed and closed (or errored).
  */
 function flushAppLog(appLog: fs.WriteStream): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -501,7 +497,6 @@ function dumpSmokeAppLog(): void {
  * user-data directory.
  *
  * @param ctx - The app context returned by {@link launchElectronWithExtension}.
- * @returns Resolves when the Electron process has been killed and user-data cleaned up.
  */
 export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void> {
   const { electronApp, userDataDir, appClosed } = ctx;
@@ -619,7 +614,6 @@ export async function sendPapiRequestOnce<T>(
  * @param methodName - The fully-qualified PAPI method name to wait for (e.g. `command:foo.bar`).
  * @param port - The PAPI WebSocket port; defaults to the suite-wide port.
  * @param timeoutMs - Total budget across all polls, not per poll.
- * @returns Resolves when the method appears in `rpc.discover`.
  * @throws {Error} If the method is not registered within `timeoutMs` milliseconds.
  */
 export async function waitForPapiMethodRegistered(
@@ -664,7 +658,6 @@ export async function waitForPapiMethodRegistered(
  * The three waits run concurrently and share the one `timeout` budget (the hosts register in
  * parallel, so serializing would triple the worst-case wait for no benefit).
  *
- * @returns Resolves once all three service-host providers are listed in `rpc.discover`.
  * @throws {Error} If any of the three hosts is not registered within `timeout` milliseconds.
  */
 export async function waitForServiceHostsRegistered(timeout: number): Promise<void> {
@@ -716,7 +709,6 @@ interface DockTabTitlesOptions {
  * @param page - The renderer page to listen on; the listener is removed from it in `finally`.
  * @param enabled - Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
  * @param fn - The readiness work to run under the tripwire.
- * @returns Resolves with `fn`'s result once it completes without the tripwire firing.
  * @throws If the renderer emitted a fatal startup error while `fn` was in flight (with `enabled`),
  *   or whatever `fn` itself throws.
  */
@@ -777,7 +769,6 @@ export async function withFatalStartupTripwire<T>(
  * @param timeout - Remaining budget for this wait, in ms; a non-positive value is an exhausted
  *   budget and throws rather than waiting.
  * @param options - Readiness options; see {@link DockTabTitlesOptions}.
- * @returns Resolves once the dock is ready per the chosen `strict` mode.
  * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
  *   have not resolved within `timeout` milliseconds, or if the renderer page was closed while
  *   waiting.
@@ -857,8 +848,6 @@ interface AppReadyOptions {
  *
  * @param page - The renderer page to wait on.
  * @param options - Readiness options; see {@link AppReadyOptions}.
- * @returns Resolves when the dock layout is visible with resolved tab titles, the service hosts are
- *   registered, and `platform.about` is registered.
  * @throws If the dock layout, service hosts, resolved tab titles, or the `platform.about` command
  *   do not appear within `timeout` milliseconds.
  */
@@ -889,7 +878,6 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
  * Wait for the interlinearizer extension to finish activating by polling `rpc.discover` until
  * `interlinearizer.openForWebView` is listed.
  *
- * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws {Error} If the extension does not register within `timeoutMs` milliseconds.
  */
 export async function waitForInterlinearizerReady(
@@ -916,7 +904,6 @@ export async function waitForInterlinearizerReady(
  * inherits — which is exactly why those runs went red then green on retry. Waiting it out on the
  * first attempt costs nothing on a warm machine and saves a retry on a cold one.
  *
- * @returns Resolves once at least one project is registered.
  * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
  */
 export async function waitForAtLeastOneProjectMetadata(timeoutMs = 150_000): Promise<void> {
@@ -991,7 +978,6 @@ const HOME_CLOSE_TIMEOUT_MS = 5_000;
  * @param page - The renderer page hosting the Home WebView.
  * @param homeTab - Locator for the Home dock tab.
  * @param homeButton - Locator for the toolbar's Home button.
- * @returns Resolves once the Home WebView shows at least one project row.
  * @throws {Error} If Home still shows no project row after being reopened.
  */
 async function ensureHomeWebViewLoaded(
@@ -1081,7 +1067,6 @@ async function ensureHomeWebViewLoaded(
  * @param page - The renderer page to drive the dock, Home, and ≡ menu on.
  * @param projectName - Name of the project to load into the editor and open the Interlinearizer for
  *   (default: `"WEB"`).
- * @returns Resolves when the Interlinearizer tab is focused and visible.
  * @throws If any step does not complete within its timeout.
  */
 export async function openInterlinearizerFromScriptureEditor(
@@ -1225,9 +1210,6 @@ export async function openInterlinearizerFromScriptureEditor(
  * mirroring {@link closeInterlinearizerTab}, so an off-viewport tab still closes).
  *
  * Best-effort, non-throwing, and bounded: a picker that refuses to close must not fail the caller.
- *
- * @returns Resolves once no picker tab remains, or after the bounded attempts are exhausted (a
- *   no-op on the common warm path where no picker was ever opened).
  */
 export async function closeSelectProjectPickers(page: Page): Promise<void> {
   const pickerTab = page.locator('.dock-tab', { hasText: 'Open Interlinearizer' });
@@ -1259,8 +1241,6 @@ export async function closeSelectProjectPickers(page: Page): Promise<void> {
 /**
  * Frame locator for the Interlinearizer WebView's iframe, where all of the extension's own UI
  * (toolbar, token strips, modals) renders.
- *
- * @returns A `FrameLocator` scoped to the Interlinearizer WebView iframe.
  */
 export function getInterlinearizerFrame(page: Page): FrameLocator {
   // Prefix match so this excludes the project-picker dialog ("Open Interlinearizer") while still
@@ -1273,8 +1253,6 @@ export function getInterlinearizerFrame(page: Page): FrameLocator {
  * "Interlinearizer" while excluding the project-picker dialog's own dock tab ("Open
  * Interlinearizer"), whose title also contains the word. Centralizes the exclusion so callers can't
  * forget it (the `getInterlinearizerFrame` iframe uses a prefix match for the same purpose).
- *
- * @returns A `Locator` for the Interlinearizer WebView dock tab.
  */
 function interlinearizerTabLocator(page: Page): Locator {
   return page
@@ -1307,7 +1285,6 @@ interface AppAndInterlinearizerReadyOptions {
  * @param page - The renderer page to wait on.
  * @param options - Readiness options; see {@link AppAndInterlinearizerReadyOptions.cdp} for the
  *   shared-CDP-instance profile feature tests pass.
- * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws If the app or extension do not finish starting up within the timeout budget.
  */
 export async function waitForAppAndInterlinearizerReady(
@@ -1339,8 +1316,6 @@ export async function waitForAppAndInterlinearizerReady(
  * Each project modal's only reliable dismiss affordance is its Cancel/secondary button — the
  * dialogs are a plain `<dialog open>` (not `showModal()`), so native Escape doesn't fire their
  * onCancel. Modals can chain, so cancel in a bounded loop until no overlay remains.
- *
- * @returns Resolves once no modal overlay remains in the iframe (a no-op on the common clean path).
  */
 export async function dismissLeftoverModals(page: Page): Promise<void> {
   const frame = getInterlinearizerFrame(page);
@@ -1390,7 +1365,6 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
  * tab left open (via {@link closeSelectProjectPickers}, whose accumulation would trip strict mode on
  * the `.select-project-dialog` locator).
  *
- * @returns Resolves when the Interlinearizer tab is focused and its toolbar is interactive.
  * @throws If the Interlinearizer cannot be opened or its toolbar does not render within the
  *   timeouts.
  */
@@ -1461,7 +1435,6 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  *
  * @param page - The renderer page whose toolbar reference control is driven.
  * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @returns Resolves once the reference has been submitted.
  * @throws If the toolbar root that scopes the lookup never appears, if the control never becomes
  *   enabled within the wait (no navigation target resolved), or if it is enabled but its popover
  *   does not open or close within the timeouts.
@@ -1551,8 +1524,6 @@ const UNSAVED_TAB_MARKER = '●';
 /**
  * Read whether the draft has unsaved changes from the Interlinearizer dock tab's title marker (the
  * only place the dirty state is observable outside the WebView).
- *
- * @returns `true` when the tab title carries the unsaved-changes glyph.
  */
 async function isDraftDirty(page: Page): Promise<boolean> {
   const tabText = await interlinearizerTabLocator(page).textContent();
@@ -1585,7 +1556,6 @@ async function openSelectProjectModal(page: Page): Promise<FrameLocator> {
  * hold a developer's unsaved work, so nothing is silently discarded. Clears the draft's
  * unsaved-changes state as a side effect (the rescue project becomes the active Save target).
  *
- * @returns Resolves when the Save As modal has closed and the unsaved marker has cleared.
  * @throws If the Save As modal does not open, close, or clear the unsaved marker within the
  *   timeouts.
  */
@@ -1624,7 +1594,6 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
  * @param opts.rescueDirtyDraft - Whether a dirty draft not owned by the e2e project is rescued
  *   before being replaced (default `true`). Pass `false` only at the end of a test, where the dirty
  *   state is known to be the test's own leftovers.
- * @returns Resolves when the e2e project is active and all modals have closed.
  * @throws If the modals do not open/close or the project cannot be selected or created within the
  *   timeouts.
  */
@@ -1693,7 +1662,6 @@ export async function ensureE2eProjectActive(
  * START of a test (never at the end) so a previously failed run self-heals instead of poisoning the
  * next one.
  *
- * @returns Resolves when the wipe dialog has closed after confirming.
  * @throws If the wipe dialog does not open or does not close after confirming.
  */
 export async function wipeDraft(page: Page): Promise<void> {
@@ -1717,7 +1685,6 @@ export async function wipeDraft(page: Page): Promise<void> {
  * Close the Interlinearizer dock tab via its close button and wait for it to disappear. Used by
  * tests that verify draft persistence across a close/reopen cycle.
  *
- * @returns Resolves when the Interlinearizer tab is gone.
  * @throws If the tab is not visible, or the tab does not close within the timeout.
  */
 export async function closeInterlinearizerTab(page: Page): Promise<void> {

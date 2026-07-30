@@ -20,7 +20,6 @@ import { waitForAppAndInterlinearizerReady } from '../../fixtures/helpers';
  * Filter out expected/benign console errors from a list of captured error messages.
  *
  * @param errors - Array of console error message strings to filter.
- * @returns The subset of `errors` that are not considered benign.
  */
 function filterConsoleErrors(errors: string[]): string[] {
   return errors.filter(

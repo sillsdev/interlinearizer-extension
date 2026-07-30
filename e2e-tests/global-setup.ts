@@ -21,11 +21,7 @@ export const RENDERER_PORT = 1212;
  */
 export const DEV_SERVER_PID_FILE = path.join(__dirname, '.dev-server.pid');
 
-/**
- * Check if a port is already in use.
- *
- * @returns Resolves to `true` if the port is occupied, `false` if it is free.
- */
+/** Check if a port is already in use. */
 export function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -49,7 +45,6 @@ export function isPortInUse(port: number): Promise<boolean> {
  *
  * @param url - URL to probe.
  * @param timeout - Total budget in ms, spanning all retries rather than one probe.
- * @returns Resolves when the server returns a non-5xx response.
  * @throws {Error} If the server does not respond within `timeout` milliseconds.
  */
 function waitForHttpOk(url: string, timeout: number): Promise<void> {
@@ -118,7 +113,6 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
 /**
  * Wait until a port is accepting connections.
  *
- * @returns Resolves when a TCP connection to the port succeeds.
  * @throws {Error} If the port does not become available within `timeout` milliseconds.
  */
 export function waitForPort(port: number, timeout: number): Promise<void> {
@@ -332,7 +326,6 @@ function removeDevServerPidMarker(): void {
  *
  * @param _config - Playwright config object — unused; required by Playwright's global-setup
  *   interface.
- * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use.
  * @throws {Error} If the extension dist is missing.
  */

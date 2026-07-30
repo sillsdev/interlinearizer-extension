@@ -45,17 +45,20 @@ Prefer whichever leaves the block honest. Do not resolve the tension by leaving 
 
 **No mirrored field docs.** When a parameter's type declares its own documented fields (a props type, an options interface), do not restate those field docs as `@param` tags - the field docs are the single source of truth, and a second copy only drifts. `@param props - Component props` is the padding form of this and is always wrong; if a tag would carry something the field doc lacks, move it into the field doc instead.
 
-A `@returns` earns its place whenever the returned value is more than its type. Keep it when it names:
+**Start from the return type.** A single, self-describing type needs no `@returns` - the signature already says it. Write one when the type under-describes the value:
 
+- **several possible outcomes** - a union, a `T | undefined`, or a bare `boolean` whose two sides the name does not settle. This is the most common earner: name what produces each arm, not merely that arms exist. Two shapes are already self-describing and take no tag - a type predicate (`v is Token`) states its own condition, and a `Promise<void>` has no arms at all.
+- an **inline composed shape** whose parts are documented nowhere else - a returned tuple, or an object literal assembled by a hook. A named return type documents its own fields; restating them here is the mirrored-field-docs mistake above.
 - a **fixed or constrained value** - always `false`, an empty array rather than `undefined`
 - a **transformation** the type doesn't show - normalized, sorted, deduped, cloned
 - something **synthesized** by the call - a generated id, a defaulted field
 - a **test-visible contract** a fixture guarantees - a `data-testid`, a specific element shape
-- **which** of several same-typed results comes back, or what an ambiguous boolean means
+
+For `Promise<void>` the question is not what comes back but **when it resolves**, and only non-obvious timing is worth a tag. "Resolves once `exitSignal` settles, or once `timeoutMs` elapses - whichever is first" earns its place; "Resolves when cleanup is complete" on a cleanup function is the type in different words.
 
 Delete a `@returns` that only re-says the type: `@returns The render result.` on a function returning `RenderResult`, `@returns Nothing.` on `void`, `@returns JSX element.` on a component.
 
-When a `@returns` is genuinely borderline, keep it. A redundant line costs a reader a second; a deleted one can cost them a trip into the body.
+The bullets are the test. When a function is subtle enough that dropping its tag feels lossy, the subtlety is about what the function does, not what it hands back - put it in the summary rather than padding `@returns` to hold it.
 
 Include `@throws` for every error condition the caller must handle; omit it when the function never throws.
 

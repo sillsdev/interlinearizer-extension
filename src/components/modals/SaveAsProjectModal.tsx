@@ -83,7 +83,10 @@ export function SaveAsProjectModal({
     undefined,
   );
 
-  /** Incremented each time a load starts; lets an in-flight response detect it has been superseded. */
+  /**
+   * Incremented each time a load starts and again when the modal unmounts; lets an in-flight
+   * response detect it has been superseded or abandoned.
+   */
   const loadGenRef = useRef(0);
 
   /**
@@ -112,8 +115,9 @@ export function SaveAsProjectModal({
       valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
       setProjects(valid);
     } catch (e) {
-      // Ignore a failure from a load that a newer one has superseded (mirrors the success-path stale
-      // guard above) so a stale rejection cannot fire a spurious error notification.
+      // Ignore a failure from a load that a newer one has superseded, or that the modal was
+      // dismissed out from under (mirrors the success-path stale guard above), so a stale rejection
+      // cannot fire an error notification about a list nobody is waiting on.
       if (gen !== loadGenRef.current) return;
       logger.error('Interlinearizer: failed to load projects for Save As', e);
       await papi.notifications
@@ -126,6 +130,11 @@ export function SaveAsProjectModal({
 
   useEffect(() => {
     loadProjects();
+    // Escape and outside-click stay live during the load, so the modal can be gone before the
+    // response lands; retiring the generation on the way out keeps that response silent.
+    return () => {
+      loadGenRef.current += 1;
+    };
   }, [loadProjects]);
 
   /**

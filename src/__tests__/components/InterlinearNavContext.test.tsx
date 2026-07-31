@@ -589,5 +589,40 @@ describe('InterlinearNavContext', () => {
       expect(result.current.consumeFocusRequest('GEN')).toBeUndefined();
       expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
     });
+
+    it('holds a request while navigation is still headed for its book', () => {
+      // The whole point of the request is to outlive the load it triggers, so arriving at the
+      // requested book must not disturb it — the view that claims it has yet to mount.
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => setRef({ book: 'LUK', chapterNum: 2, verseNum: 4 }));
+      rerender();
+
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('abandons a request once navigation lands on a different book', () => {
+      // The requested book may never mount: its load errors out (the loader renders the error
+      // instead of the view, so nothing claims the request) or the navigation that would have
+      // brought it up is superseded. Held indefinitely, the request would fire on whatever much
+      // later visit to that book came next, yanking focus onto a token the user asked for long ago.
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 }));
+      rerender();
+
+      expect(result.current.pendingFocusToken).toBeUndefined();
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+    });
   });
 });

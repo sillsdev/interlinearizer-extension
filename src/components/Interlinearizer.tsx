@@ -295,7 +295,9 @@ export default function Interlinearizer({
   // Claim a focus asked for from outside the views. Declared after both reseed effects above so it
   // wins: they run first in the same commit, and the scrRef reseed reads a focus closure that
   // predates the book reseed, so its own guard cannot see this claim. Claimed in an effect rather
-  // than the seed above so it happens exactly once per book, never during render.
+  // than the seed above so the claim lands after commit, never during a render React may discard.
+  // It re-runs whenever the book object changes identity — a boundary edit re-segments it — which is
+  // harmless: claiming clears the request, so a repeat call finds nothing left to claim.
   useEffect(() => {
     const requested = consumeFocusRequest(book.bookRef);
     if (requested === undefined) return;

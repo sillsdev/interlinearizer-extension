@@ -3,8 +3,9 @@
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import papi from '@papi/frontend';
+import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { useState } from 'react';
 import { SelectInterlinearProjectModal } from '../../../components/modals/SelectInterlinearProjectModal';
 import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
 
@@ -308,6 +309,39 @@ describe('SelectInterlinearProjectModal', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
     );
+  });
+
+  it('stays silent when the project-list load fails after the modal has been dismissed', async () => {
+    // Dismissal unmounts the modal in the real tree, so the host below mirrors that: a load that
+    // fails afterwards must not raise an error notification over a list nobody is waiting on.
+    let rejectLoad: (reason: unknown) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    function Host() {
+      const [isOpen, setIsOpen] = useState(true);
+      return isOpen ? (
+        <SelectInterlinearProjectModal {...defaultProps} onClose={() => setIsOpen(false)} />
+      ) : undefined;
+    }
+    render(<Host />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument(),
+    );
+
+    rejectLoad(new Error('failed after dismissal'));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
   });
 
   it('clears the project list immediately when a new load begins', async () => {

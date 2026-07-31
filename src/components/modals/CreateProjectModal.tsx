@@ -34,13 +34,6 @@ export type CreateDraftConfig = {
  * Modal dialog that collects the configuration for a new draft — name, description, and analysis
  * language(s) — then hands it back via {@link onCreateDraft}.
  *
- * @param props.defaultAnalysisLanguage - BCP 47 tag pre-populated in the analysis language field;
- *   caller should pass the platform UI language so the user sees a sensible starting value.
- *   Defaults to `'und'` when absent.
- * @param props.isSubmitting - When `true`, both buttons are disabled to prevent interaction while
- *   the caller is processing the submitted configuration.
- * @param props.onClose - Callback invoked when the modal should be dismissed (cancel).
- * @param props.onCreateDraft - Callback invoked with the collected configuration on submit.
  * @returns The modal overlay with name, description, and language inputs, or nothing while
  *   localized strings are loading.
  */
@@ -50,11 +43,16 @@ export function CreateProjectModal({
   onClose,
   onCreateDraft,
 }: Readonly<{
-  /** BCP 47 tag pre-populated in the analysis language field; defaults to `'und'` when absent. */
+  /**
+   * BCP 47 tag pre-populated in the analysis language field; pass the platform UI language so the
+   * user sees a sensible starting value. Defaults to `'und'` when absent.
+   */
   defaultAnalysisLanguage?: string;
   /** When `true`, both buttons are disabled while the caller processes the submitted config. */
   isSubmitting?: boolean;
+  /** Dismisses the modal without creating a draft. */
   onClose: () => void;
+  /** Receives the collected configuration on submit. */
   onCreateDraft: (config: CreateDraftConfig) => void;
 }>) {
   const [localizedStrings, stringsLoading] = useLocalizedStrings(CREATE_PROJECT_MODAL_STRING_KEYS);

@@ -245,8 +245,7 @@ type PhraseSlotProps = Readonly<{
   hoveredPhraseId: string | undefined;
   /**
    * Verse label shown below the link icon when a verse begins at this slot, or `undefined`
-   * otherwise. Rendered here (not by either view) so both strips mark verse boundaries
-   * identically.
+   * otherwise. Owned by the slot so verse boundaries are marked identically in every strip layout.
    */
   verseLabel: string | undefined;
 }>;
@@ -572,11 +571,10 @@ type PhraseStripProps = Readonly<{
 
 /**
  * Renders a complete phrase strip from normalized {@link StripItem}s: the alternating sequence of
- * {@link PhraseSlot}s and {@link PhraseGroup}s, with all per-group derivations (gloss-input
- * deduplication, arc offset, highlight, controls visibility, hover handlers) computed here so both
- * views ({@link SegmentView}, {@link ContinuousView}) share one body and can never drift apart. Each
- * view supplies only the layout-specific fields baked into the items (segment ids, focus side,
- * focus ref, scroll refs).
+ * {@link PhraseSlot}s and {@link PhraseGroup}s. Every per-group derivation (gloss-input
+ * deduplication, arc offset, highlight, controls visibility, hover handlers) is computed here, so a
+ * strip behaves identically whatever its layout; the items carry only the layout-specific fields
+ * (segment ids, focus side, focus ref, scroll refs).
  */
 export function PhraseStrip({
   items,

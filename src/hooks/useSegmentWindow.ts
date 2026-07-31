@@ -120,8 +120,6 @@ export interface UseSegmentWindowResult {
    * Scripture reference the list should highlight as active. Lags the live `scrRef` through a
    * recenter fade so the active-verse highlight only moves once the window swaps behind the fade —
    * never before it starts. For internal nav and the initial mount it tracks `scrRef` immediately.
-   * The continuous view gates its focused-token highlight on this same clock, so the two views'
-   * highlights move in lockstep.
    */
   displayScrRef: SerializedVerseRef;
   /**
@@ -184,11 +182,10 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  *
  * On external navigation (an `scrRef` change the parent did not originate internally) the window
  * fades out, rebuilds centered on the new verse, snaps that verse into view behind the fade, and
- * fades back in — on the same clock and easing as the continuous strip, so the two views animate as
- * one. This happens for _every_ external navigation, even when the new verse already sits inside
- * the mounted window, so the fade and the strip's fade can never disagree. Internal navigation (a
- * segment/token click here, or strip arrow nav echoed back) skips the fade entirely: the target is
- * already on screen.
+ * fades back in — on the shared {@link RECENTER_FADE_MS} clock and easing. This happens for _every_
+ * external navigation, even when the new verse already sits inside the mounted window, so every
+ * recenter fade in the panel stays in step. Internal navigation (a segment/token click here, or
+ * strip arrow nav echoed back) skips the fade entirely: the target is already on screen.
  */
 export default function useSegmentWindow({
   book,

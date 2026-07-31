@@ -172,9 +172,9 @@ export type StraddledPhrase = {
  * even when the boundary token is not one of its own, since the boundary can fall in the gap
  * between two fragments.
  *
- * One predicate serves both the segmentation dispatch, which force-breaks straddling phrases, and
- * the split control, which suppresses itself at boundaries that would force-break, so the two
- * cannot drift apart. A boundary ref absent from the document-order map yields no matches.
+ * The single source of truth for whether a boundary cuts a phrase, so deciding to force-break one
+ * and deciding whether a boundary is safe to offer can never disagree. A boundary ref absent from
+ * the document-order map yields no matches.
  */
 export function phrasesStraddlingBoundary(
   boundaryRef: string,

@@ -517,9 +517,9 @@ export function SegmentView({
   /**
    * Normalized strip items handed to the shared {@link PhraseStrip} body. Each slot carries the
    * verse label when a verse begins at it (its following group's first token, or one of its own gap
-   * punctuation tokens, is a verse start); the shared {@link PhraseSlot} renders that number below
-   * the link icon so both strips mark verse boundaries identically. Both slot neighbors are in this
-   * segment by construction (one segment per render), so both slot segment ids are `segment.id`.
+   * punctuation tokens, is a verse start); {@link PhraseSlot} renders that number below the link
+   * icon. Both slot neighbors are in this segment by construction (one segment per render), so both
+   * slot segment ids are `segment.id`.
    */
   const stripItems = useMemo<StripItem[]>(
     () =>

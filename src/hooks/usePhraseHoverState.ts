@@ -35,13 +35,12 @@ export type PhraseHoverState = {
 };
 
 /**
- * Owns the hover-preview state both phrase strips need, along with the stable callbacks that feed
- * it from the arc overlay and the link icons. Extracted so the two views can never drift apart in
- * how these previews are wired, and so neither view's body carries its own cluster of
- * near-identical state declarations.
+ * Owns a phrase strip's hover-preview state — which box the pointer is over, and which tokens a
+ * hovered link, unlink, or split would affect — along with the stable callbacks that update it. One
+ * definition of the preview wiring, so every strip previews an operation the same way.
  *
- * The hovered phrase id is deliberately **not** owned here: one view keeps it locally while the
- * other receives it as a prop, so the two manage it differently.
+ * The hovered phrase id is deliberately **not** part of this state: its ownership differs by mount
+ * site, so it stays outside the shared wiring.
  */
 export function usePhraseHoverState(): PhraseHoverState {
   const [hoveredGroupKey, setHoveredGroupKey] = useState<string | undefined>();

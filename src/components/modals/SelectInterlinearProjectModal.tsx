@@ -65,7 +65,10 @@ export function SelectInterlinearProjectModal({
 
   const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  /** Incremented each time a load starts; lets an in-flight response detect it has been superseded. */
+  /**
+   * Incremented each time a load starts and again when the modal unmounts; lets an in-flight
+   * response detect it has been superseded or abandoned.
+   */
   const loadGenRef = useRef(0);
 
   /**
@@ -103,6 +106,10 @@ export function SelectInterlinearProjectModal({
       valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
       setProjects(valid);
     } catch (e) {
+      // Ignore a failure from a load that a newer one has superseded, or that the modal was
+      // dismissed out from under (mirrors the success-path stale guard above), so a stale rejection
+      // cannot fire an error notification about a list nobody is waiting on.
+      if (gen !== loadGenRef.current) return;
       logger.error('Interlinearizer: failed to load projects for source', e);
       await papi.notifications
         .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
@@ -114,6 +121,11 @@ export function SelectInterlinearProjectModal({
 
   useEffect(() => {
     loadProjects();
+    // Escape and outside-click stay live during the load, so the modal can be gone before the
+    // response lands; retiring the generation on the way out keeps that response silent.
+    return () => {
+      loadGenRef.current += 1;
+    };
   }, [loadProjects]);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;

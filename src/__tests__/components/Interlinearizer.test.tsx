@@ -1489,7 +1489,6 @@ describe('Interlinearizer', () => {
       const props = {
         book,
         continuousScroll: false,
-        analysisLanguage: 'und',
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
         viewOptions: { ...allFalseViewOptions },
@@ -1585,7 +1584,6 @@ describe('Interlinearizer', () => {
       const book = makeLargeBook(60);
       const props = {
         book,
-        analysisLanguage: 'und',
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
@@ -2138,5 +2136,26 @@ describe('cross-book focus requests', () => {
     act(() => capturedNav?.requestFocusToken('LUK 1:1:6'));
 
     expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:6');
+  });
+
+  it('leaves focus alone when a request names this book but no word token in it', () => {
+    // Reachable from a ref that has gone stale against a re-tokenized book, or one naming a token
+    // that is not a word.
+    render(withProbe(LUK_1_1_BOOK));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:99'));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+  });
+
+  it('discards an unresolvable request rather than leaving it pending', () => {
+    // Holding it would let a request outlive the load it was made for and claim a focus on some
+    // unrelated later navigation.
+    render(withProbe(LUK_1_1_BOOK));
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:99'));
+
+    expect(capturedNav?.pendingFocusToken).toBeUndefined();
   });
 });

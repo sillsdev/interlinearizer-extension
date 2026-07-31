@@ -606,8 +606,8 @@ function InterlinearizerLoaderInner({
         }}
       >
         {isDraftLoading ? (
-          // Nothing to seed a store with yet, and nothing that needs one: this branch can only be
-          // the Loading… placeholder, never the view.
+          // Nothing to seed a store with yet, and nothing that needs one: while the draft loads this
+          // is a placeholder or an error panel, never the view.
           bookArea
         ) : (
           // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed

@@ -271,14 +271,15 @@ export function InterlinearNavProvider({
   }, []);
 
   // State, not a ref, because a request must be observable: one naming a token in the verse already
-  // on screen changes nothing else a consumer could key on. Costs one extra render per claim.
+  // on screen changes nothing else a consumer could key on. Costs one extra render per claim. Every
+  // writer below sets the mirror alongside it — the two are read as one value and must not diverge.
   const [pendingFocusToken, setPendingFocusToken] = useState<string | undefined>(undefined);
 
   // Mirror of the state above, so a claim reads the request as of now rather than as of the render
   // that created the callback — otherwise two claims in one commit both see it and it is handed out
-  // twice.
+  // twice. Written only from the callbacks below, never during render, so a render React discards
+  // cannot resurrect an already-claimed request.
   const pendingFocusTokenRef = useRef<string | undefined>(undefined);
-  pendingFocusTokenRef.current = pendingFocusToken;
 
   const requestFocusToken = useCallback((tokenRef: string) => {
     pendingFocusTokenRef.current = tokenRef;

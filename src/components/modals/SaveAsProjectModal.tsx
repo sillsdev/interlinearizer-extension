@@ -168,9 +168,9 @@ export function SaveAsProjectModal({
   );
 
   /**
-   * Escape backs out one layer at a time: an armed overwrite confirmation collapses first, so a
-   * keypress aimed at that box does not also discard the name and description typed above it. A
-   * second Escape then closes the modal.
+   * A dismissal — Escape or a click outside — backs out one layer at a time: an armed overwrite
+   * confirmation collapses first, so an attempt aimed at that box does not also discard the name
+   * and description typed above it. A second dismissal then closes the modal.
    */
   const handleDismiss = useCallback(() => {
     if (confirmOverwrite) setConfirmOverwrite(undefined);

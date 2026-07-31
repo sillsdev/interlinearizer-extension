@@ -40,6 +40,21 @@ function renderNavMutable(initial: SerializedVerseRef) {
   };
 }
 
+/**
+ * Runs a focus claim inside `act`, since a claim that matches clears the provider's pending-request
+ * state. Wraps the call rather than the assertion so the claimed value can still be asserted on.
+ *
+ * @param claim - Calls `consumeFocusRequest` on the hook result under test.
+ * @returns Whatever the claim returned.
+ */
+function claimFocus(claim: () => string | undefined): string | undefined {
+  let claimed: string | undefined;
+  act(() => {
+    claimed = claim();
+  });
+  return claimed;
+}
+
 describe('InterlinearNavContext', () => {
   it('exposes the host reference and scroll-group plumbing verbatim', () => {
     const setScrRef = jest.fn();
@@ -559,7 +574,7 @@ describe('InterlinearNavContext', () => {
 
       act(() => result.current.requestFocusToken('LUK 2:4:0'));
 
-      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+      expect(claimFocus(() => result.current.consumeFocusRequest('LUK'))).toBe('LUK 2:4:0');
     });
 
     it('hands the request over only once', () => {
@@ -571,9 +586,9 @@ describe('InterlinearNavContext', () => {
       );
 
       act(() => result.current.requestFocusToken('LUK 2:4:0'));
-      result.current.consumeFocusRequest('LUK');
+      claimFocus(() => result.current.consumeFocusRequest('LUK'));
 
-      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+      expect(claimFocus(() => result.current.consumeFocusRequest('LUK'))).toBeUndefined();
     });
 
     it('leaves a request pending until its own book asks for it', () => {
@@ -586,8 +601,8 @@ describe('InterlinearNavContext', () => {
 
       act(() => result.current.requestFocusToken('LUK 2:4:0'));
 
-      expect(result.current.consumeFocusRequest('GEN')).toBeUndefined();
-      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+      expect(claimFocus(() => result.current.consumeFocusRequest('GEN'))).toBeUndefined();
+      expect(claimFocus(() => result.current.consumeFocusRequest('LUK'))).toBe('LUK 2:4:0');
     });
 
     it('holds a request while navigation is still headed for its book', () => {
@@ -603,7 +618,7 @@ describe('InterlinearNavContext', () => {
       act(() => setRef({ book: 'LUK', chapterNum: 2, verseNum: 4 }));
       rerender();
 
-      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+      expect(claimFocus(() => result.current.consumeFocusRequest('LUK'))).toBe('LUK 2:4:0');
     });
 
     it('abandons a request once navigation lands on a different book', () => {
@@ -622,7 +637,7 @@ describe('InterlinearNavContext', () => {
       rerender();
 
       expect(result.current.pendingFocusToken).toBeUndefined();
-      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+      expect(claimFocus(() => result.current.consumeFocusRequest('LUK'))).toBeUndefined();
     });
   });
 });

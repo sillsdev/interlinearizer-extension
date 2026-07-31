@@ -824,9 +824,9 @@ export default function ContinuousView({
   );
 
   /**
-   * Interleaved render units (groups + link slots) in document order across the window — the same
-   * interleaving the segment list builds, so the two strips can never lay tokens out differently.
-   * Each group unit is then annotated with its absolute group index.
+   * Interleaved render units (groups + link slots) in document order across the window — built by
+   * the one shared interleaving, so no two layouts can order tokens and slots differently. Each
+   * group unit is then annotated with its absolute group index.
    */
   const renderItems = useMemo(() => {
     const renderWindowTokens = allTokens.slice(

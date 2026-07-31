@@ -29,7 +29,10 @@ const config: Config = {
    */
   collectCoverage: false,
 
-  /** Collect coverage from all source files, excluding tests and type declarations. */
+  /**
+   * Collect coverage from source files, excluding tests, declaration files, and everything under
+   * `src/types` — including the runtime modules that live there.
+   */
   collectCoverageFrom: [
     'src/**/*.{ts,tsx}',
     '!src/**/*.d.ts',
@@ -67,7 +70,7 @@ const config: Config = {
   /** Make calling deprecated Jest/Node APIs throw so we fix them instead of drifting. */
   errorOnDeprecated: true,
 
-  /** Extensions resolved when importing; covers the same TS/JS set webpack resolves. */
+  /** Extensions tried, left to right, when an import specifier has no file extension. */
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
 
   /**

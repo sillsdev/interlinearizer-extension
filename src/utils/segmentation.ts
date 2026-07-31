@@ -71,8 +71,8 @@ export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
 /**
  * The token refs that begin a segment once the delta is applied to the default verse starts:
  * `(defaults \ removedVerseStarts) ∪ addedStarts`. Added anchors whose token no longer exists are
- * dropped, and the book's first token is always forced to be a start. Shared with re-segmentation
- * so it and the editing operations agree on where boundaries fall.
+ * dropped, and the book's first token is always forced to be a start. This is the single definition
+ * of where a segment begins, so no two boundary operations can disagree.
  */
 export function effectiveStarts(
   verseBook: Book,

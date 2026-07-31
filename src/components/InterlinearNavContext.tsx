@@ -163,6 +163,11 @@ export interface InterlinearNav {
    * claiming side). A load that never arrives therefore strands nothing — a book that errors out
    * holds the request only while the user is still looking at that book's error.
    *
+   * A request moves focus and nothing else, so the caller must navigate to the token's verse
+   * itself: unpaired, the focus lands outside the verse on screen, and the request is dropped only
+   * once navigation happens to leave the book it names. The slot holds one request — a second
+   * replaces an unclaimed first.
+   *
    * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
    */
   requestFocusToken: (tokenRef: string) => void;

@@ -1,3 +1,4 @@
+import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
@@ -297,7 +298,15 @@ export default function Interlinearizer({
   // than the seed above so it happens exactly once per book, never during render.
   useEffect(() => {
     const requested = consumeFocusRequest(book.bookRef);
-    if (requested !== undefined && wordTokenByRef.has(requested)) setFocusedTokenRef(requested);
+    if (requested === undefined) return;
+    if (wordTokenByRef.has(requested)) {
+      setFocusedTokenRef(requested);
+      return;
+    }
+    // A ref this book cannot resolve is dropped rather than held for a later attempt: one that
+    // outlived the load it was made for would fire on an unrelated navigation, long after the
+    // click that raised it. Logged because the drop is otherwise invisible.
+    logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
     // Both deps are needed: the request is the only signal when it names the verse already on
     // screen, and the book is the only signal when it named a book that had yet to load.
     // eslint-disable-next-line react-hooks/exhaustive-deps

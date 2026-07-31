@@ -2245,6 +2245,7 @@ describe('analysis store lifetime', () => {
     probeStore = undefined;
     probeWriteGloss = undefined;
     capturedInterlinearizerProps = undefined;
+    capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();

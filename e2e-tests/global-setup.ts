@@ -123,7 +123,7 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
         reject(new Error(`Port ${port} did not become available within ${timeout}ms`));
         return;
       }
-      const socket = net.createConnection(port, '127.0.0.1');
+      const socket = net.createConnection(port, 'localhost');
       socket.on('connect', () => {
         socket.destroy();
         resolve();
@@ -261,7 +261,7 @@ export async function bootstrapRendererDevServer(): Promise<void> {
       // probe because CI runners can be noisy and late-compiling; the fixture has a longer CI-ready
       // timeout and will keep waiting for the renderer window to recover.
       try {
-        await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/`, 120_000);
+        await waitForHttpOk(`http://localhost:${RENDERER_PORT}/`, 120_000);
       } catch (error) {
         if (!process.env.CI) throw error;
         const message =

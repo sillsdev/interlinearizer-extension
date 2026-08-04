@@ -1,4 +1,3 @@
-/** @file Unit tests for ModalShell. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 

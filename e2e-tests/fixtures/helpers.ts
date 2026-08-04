@@ -40,8 +40,6 @@ const MODAL_DIALOG_SELECTOR = '[data-slot="dialog-content"]';
  * order, so the most recently opened modal sorts last. That is the one a caller can actually reach
  * — a stacked guard makes the modal beneath it inert, and a surface still playing its closing
  * animation is on its way out.
- *
- * @param frame The frame locator for the Interlinearizer iframe.
  */
 export function modalDialog(frame: FrameLocator): Locator {
   return frame.locator(MODAL_DIALOG_SELECTOR).last();

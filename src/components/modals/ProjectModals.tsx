@@ -137,7 +137,7 @@ export default function ProjectModals({
   /**
    * Guards opening a project straight from the select modal — the path taken when the draft has no
    * unsaved work, so no confirmation intervenes. `isSubmitting` suppresses that modal's dismissal
-   * while the open is in flight; the deferred path is covered by {@link replaceGuard} instead.
+   * while the open is in flight. An open deferred behind the confirmation has its own guard.
    */
   const openGuard = useSubmitGuard();
 

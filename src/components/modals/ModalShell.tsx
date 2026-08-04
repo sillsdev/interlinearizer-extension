@@ -1,14 +1,16 @@
+import { Dialog, DialogContent, DialogTitle } from 'platform-bible-react';
 import type { ReactNode } from 'react';
 
 /**
  * Shared chrome for the project modals: the platform dialog surface, its accessibility wiring, and
- * the title heading. Centralizes the markup every modal repeated so a change to the dialog
- * structure (or its a11y wiring) lives in one place.
+ * the title heading.
  *
  * The platform dialog supplies a focus trap, scroll lock, and focus restore on close, so a modal
  * genuinely blocks the view behind it rather than merely covering it.
  *
- * @param props.titleId - DOM id wired to both the dialog's `aria-labelledby` and the title `<h2>`.
+ * @param props.titleTestId - Test id tagged onto the title heading, which is how a modal is
+ *   identified from outside. The heading's `id` belongs to the platform dialog, which generates it
+ *   and points its own `aria-labelledby` there.
  * @param props.title - Localized title text rendered in the heading.
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
  * @param props.onClose - Called when the user dismisses the modal, by pressing Escape or by

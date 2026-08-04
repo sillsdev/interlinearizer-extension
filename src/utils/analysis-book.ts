@@ -45,10 +45,9 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
 
 /**
  * Returns a copy of the delta with every boundary anchor belonging to the book removed, so wiping a
- * book also drops its custom segment boundaries.
- *
- * Yields `undefined` when no other book's anchors remain, so an emptied delta collapses back to the
- * default segmentation rather than persisting empty arrays.
+ * book also drops its custom segment boundaries. The result is `undefined` when the delta is absent
+ * or the removal empties it, so segmentation collapses back to the default rather than persisting
+ * empty arrays.
  */
 export function removeBookFromSegmentation(
   delta: SegmentationDelta | undefined,

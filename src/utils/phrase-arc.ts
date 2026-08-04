@@ -92,11 +92,11 @@ function sliceAtBoundary(
 
 /**
  * Enumerates the tokens that a split just after the given boundary would leave solo (free), since a
- * half with exactly one token leaves it unattached. Yields `undefined` when both halves would keep
+ * half with exactly one token leaves it unattached. Returns `undefined` when both halves would keep
  * at least two tokens, the phrase is absent, or the boundary token is not found.
  *
- * Shares its slice with the split itself, so the destructive-border preview matches what the split
- * will do.
+ * The destructive-border preview and the split itself cannot disagree about which tokens end up
+ * free.
  */
 export function computeSplitFreeRefs(
   phraseLink: PhraseAnalysisLink | undefined,

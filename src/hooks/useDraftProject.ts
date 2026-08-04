@@ -59,9 +59,9 @@ export type UseDraftProjectResult = {
    */
   dirty: boolean;
   /**
-   * Returns the latest draft envelope synchronously by reading the live ref rather than a render
-   * snapshot. Save / Save As must use this so they persist edits that auto-saved without a
-   * re-render. Yields `undefined` before the initial load completes.
+   * Returns the draft as of the moment of the call, including edits that auto-saved without a
+   * re-render; {@link UseDraftProjectResult.draft} is only current as of the last render.
+   * `undefined` before the initial load completes.
    */
   getDraftSnapshot: () => DraftProject | undefined;
   /**

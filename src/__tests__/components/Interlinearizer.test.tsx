@@ -2045,7 +2045,7 @@ describe('segmentationVersion pass-through', () => {
   });
 });
 
-/** Two-token LUK book used by the cross-book focus tests, so focus can land on a non-first token. */
+/** Two-token LUK book, so a focus request can name a token that is not the segment's first. */
 const LUK_1_1_BOOK: Book = withDefaultVerseStarts({
   id: 'LUK',
   bookRef: 'LUK',

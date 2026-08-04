@@ -1,12 +1,12 @@
 /**
- * @file Jest mock for lucide-react. Provides stub icon components used by extension components.
+ * @file Jest mock for lucide-react. Each stub renders a bare SVG carrying a `data-testid` so tests
+ *   can locate the icon.
  */
 
 import type { ReactElement } from 'react';
 
 /**
- * Stub for the LocateFixed icon; renders a bare SVG element so tests can locate the icon by test
- * ID.
+ * Stub for the LocateFixed icon.
  */
 export function LocateFixed(props: Readonly<{ className?: string }>): ReactElement {
   return <svg data-testid="locate-fixed-icon" {...props} />;
@@ -34,40 +34,41 @@ export function X(props: Readonly<{ size?: number; className?: string }>): React
 }
 
 /**
- * Stub for the Link2 (link) icon used by the between-token link button.
+ * Stub for the Link2 (link) icon.
  */
 export function Link2(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="link2-icon" {...props} />;
 }
 
 /**
- * Stub for the Link2Off (unlink) icon used by the arc-split button.
+ * Stub for the Link2Off (unlink) icon.
  */
 export function Link2Off(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="link2off-icon" {...props} />;
 }
 
 /**
- * Stub for the Unlink2 icon used by the between-token unlink button; a broken-chain glyph whose
- * chain sits at the same vertical position as Link2 so their button centers line up.
+ * Stub for the Unlink2 icon: a broken-chain glyph whose chain sits at the same vertical position as
+ * {@link Link2}, so buttons carrying either one line up.
  */
 export function Unlink2(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="unlink2-icon" {...props} />;
 }
 
 /**
- * Stub for the Settings gear icon used by the view-options dropdown button.
+ * Stub for the Settings gear icon.
  */
 export function Settings(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="settings-icon" {...props} />;
 }
 
 /**
- * Stub for the Plus icon used by the token chip's suggestion-dropdown toggle.
+ * Stub for the Plus icon.
  */
 export function Plus(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="plus-icon" {...props} />;
 }
+
 /**
  * Stub for the Merge icon: a single Y-join glyph, deliberately a different shape from the split
  * marker's arrows-apart glyph.
@@ -77,8 +78,8 @@ export function Merge(props: Readonly<{ className?: string }>): ReactElement {
 }
 
 /**
- * Stub for the Split icon used by the Alt-gated split markers (token-chip and baseline-text). One
- * stroke diverging into two — the mirror of the `Merge` glyph's join.
+ * Stub for the Split icon: one stroke diverging into two, the mirror of the {@link Merge} glyph's
+ * join.
  */
 export function Split(props: Readonly<{ size?: number; className?: string }>): ReactElement {
   return <svg data-testid="split-icon" {...props} />;

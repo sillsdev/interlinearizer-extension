@@ -55,6 +55,7 @@ For `Promise<void>` the question is **when it resolves**; only non-obvious timin
 Delete a `@returns` that re-says the type: `@returns The render result.` on `RenderResult`, `@returns Nothing.` on `void`, `@returns JSX element.` on a component.
 
 The bullets are the test. When dropping a tag feels lossy, the subtlety is about what the function does - put it in the summary, not in a padded `@returns`.
+Match the neighbors: one surface folds or tags its outcomes, never both.
 
 `@throws` for every error condition the caller must handle; omit it when the function never throws.
 

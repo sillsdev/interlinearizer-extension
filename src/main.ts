@@ -191,8 +191,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
 
 /**
  * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
- * user saves edits in the project info modal. Returns the updated project as a JSON string, or
- * `undefined` if no project with the given ID exists.
+ * user saves edits in the project info modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
@@ -200,6 +199,8 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
  *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
+ * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
+ *   exists.
  * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
  *   so the frontend `catch` block can suppress it without sending a second notification.
  */
@@ -233,9 +234,9 @@ async function updateProjectMetadata(
 }
 
 /**
- * Returns the interlinearizer project with the given ID as a JSON string, including its full
- * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
- * analysis into the interlinearizer.
+ * Loads the interlinearizer project with the given ID, including its full `TextAnalysis`. The
+ * WebView calls this when the active project changes to load the stored analysis into the
+ * interlinearizer.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
  * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.

@@ -408,7 +408,7 @@ export async function createProject(
 }
 
 /**
- * Returns the project with the given ID.
+ * Reads one persisted interlinearizer project.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.

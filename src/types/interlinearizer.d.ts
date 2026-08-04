@@ -80,9 +80,9 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Returns all interlinearizer projects for the given source project. The WebView uses this to
-     * populate the project picker and to decide whether to show "create new" vs "select existing"
-     * on first open.
+     * Lists the interlinearizer projects belonging to the given source project. The WebView uses
+     * this to populate the project picker and to decide whether to show "create new" vs "select
+     * existing" on first open.
      *
      * @param sourceProjectId - Platform.Bible project ID of the source text to query.
      * @returns A JSON string containing an `InterlinearProject[]`; `"[]"` when none exist.
@@ -144,8 +144,8 @@ declare module 'papi-shared-types' {
     'interlinearizer.wipe': () => Promise<void>;
 
     /**
-     * Returns the interlinearizer project with the given UUID, including its full `TextAnalysis`.
-     * The WebView calls this when the active project changes to load the stored analysis.
+     * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
+     * WebView calls this when the active project changes to load the stored analysis.
      *
      * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
      * @throws If storage fails (logged before rethrowing).
@@ -176,12 +176,11 @@ declare module 'papi-shared-types' {
 
     /**
      * Returns the draft working buffer for the given source project, serialized as a JSON string.
-     * Creates and returns a fresh empty draft when none has been written. The WebView loads this on
-     * mount to seed the editor. The draft is decoupled from saved projects and never appears in the
-     * project picker.
+     * Creates a fresh empty draft when none has been written. The WebView loads this on mount to
+     * seed the editor. The draft is decoupled from saved projects and never appears in the project
+     * picker.
      *
      * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
-     * @returns JSON-stringified `DraftProject`.
      * @throws {SyntaxError} If the stored draft contains invalid JSON.
      * @throws If `papi.storage.readUserData` rejects for a reason other than the draft not
      *   existing.

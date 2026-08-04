@@ -1278,9 +1278,9 @@ describe('InterlinearizerLoader', () => {
     };
 
     /**
-     * Returns the segmentation delta from the most recent saveDraft call.
+     * Reads the segmentation delta back out of the most recent `saveDraft` call.
      *
-     * @returns The persisted draft's `segmentation`, or `undefined` when not set / no call.
+     * @returns The persisted delta, or `undefined` when no draft has been saved or it carried none.
      */
     function lastPersistedSegmentation(): DraftProject['segmentation'] {
       const calls = mockSendCommand.mock.calls.filter(([c]) => c === 'interlinearizer.saveDraft');

@@ -85,10 +85,8 @@ export function useMorphemes(_tokenRef: string): readonly MorphemeAnalysis[] {
 }
 
 /**
- * Returns the analysis language string from mock context, mirroring the `analysisLanguage` prop
- * passed to the mock provider.
- *
- * @returns The BCP 47 tag from mock context (defaults to `'und'` outside a provider).
+ * Returns the BCP 47 analysis language mirroring the `analysisLanguage` prop passed to the mock
+ * provider, or `'und'` outside a provider.
  */
 export function useAnalysisLanguage(): string {
   return useContext(MockCtx).language;

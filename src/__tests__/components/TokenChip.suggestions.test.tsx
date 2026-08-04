@@ -33,6 +33,11 @@ function wordToken(ref: string, surfaceText: string): Token & { type: 'word' } {
 /**
  * Builds an analysis seeding one approved payload, so a different token with the same surface form
  * resolves to it as a suggestion.
+ *
+ * @param gloss - Gloss text, filed under `en` to match the rendered active analysis language, or
+ *   `undefined` to leave the payload unglossed.
+ * @param surfaceText - Surface form carried by both the approved payload and the token that must
+ *   match it.
  */
 function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): TextAnalysis {
   const ta: TokenAnalysis = {
@@ -51,6 +56,9 @@ function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): 
 /**
  * Builds an analysis for the homograph 'bank': `riverbank` approved twice (the suggested pick) and
  * `finance` approved once (a candidate).
+ *
+ * @param financeGloss - Gloss text for the candidate payload, filed under `en` to match the
+ *   rendered active analysis language, or `undefined` to leave it unglossed.
  */
 function homographBankPool(financeGloss: string | undefined): TextAnalysis {
   const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };

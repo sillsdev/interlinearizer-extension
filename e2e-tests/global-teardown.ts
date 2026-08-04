@@ -20,9 +20,8 @@ export interface KillFromPidFileResult {
  * {@link killProcessFromPidFile}). A leftover marker is harmless — the next run re-reads it and
  * finds a dead PID — so warning and continuing beats aborting teardown.
  *
- * @param pidFile Absolute path to the PID marker file to remove.
- * @param label Human-readable name of the process the marker belongs to, used in the warning log.
- * @returns Nothing.
+ * @param pidFile - Absolute path to the PID marker file to remove.
+ * @param label - Human-readable name of the process the marker belongs to, used in the warning log.
  */
 function removePidFile(pidFile: string, label: string): void {
   try {
@@ -33,9 +32,8 @@ function removePidFile(pidFile: string, label: string): void {
 }
 
 /**
- * Kill a process recorded in a PID file (whole tree), then remove the PID file. Shared by this
- * teardown's dev-server kill and {@link globalTeardownCdp}'s launched-app kill, which follow the
- * same read-PID-file → validate → kill → remove-marker shape and differ only in signal and
+ * Kill a process recorded in a PID file (whole tree), then remove the PID file. The single
+ * read-PID-file → validate → kill → remove-marker implementation, parameterized by signal and
  * logging.
  *
  * A missing PID file is a no-op; a file whose contents don't parse as an integer is warned about
@@ -45,10 +43,9 @@ function removePidFile(pidFile: string, label: string): void {
  * marker removal guarded separately (see {@link removePidFile}) so it cannot downgrade a successful
  * kill to `killed: false`.
  *
- * @param pidFile Absolute path to the file holding the target process's PID.
- * @param signal Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
- * @param label Human-readable name of the process, used in the "Stopping <label>" log line.
- * @returns See {@link KillFromPidFileResult}.
+ * @param pidFile - Absolute path to the file holding the target process's PID.
+ * @param signal - Kill signal to send (`'SIGKILL'` when the target may ignore SIGTERM).
+ * @param label - Human-readable name of the process, used in the "Stopping <label>" log line.
  */
 export function killProcessFromPidFile(
   pidFile: string,
@@ -87,9 +84,8 @@ export function killProcessFromPidFile(
  * Stops the renderer dev server started by {@link globalSetup} (if any), then runs `npm run stop` in
  * paranext-core to terminate any lingering Electron processes.
  *
- * @param _config Playwright config object — unused; required by Playwright's global-teardown
+ * @param _config - Playwright config object — unused; required by Playwright's global-teardown
  *   interface.
- * @returns Resolves when all cleanup steps have completed.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalTeardown(_config: FullConfig): Promise<void> {

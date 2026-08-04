@@ -1,10 +1,3 @@
-/**
- * @file The pop-down listbox a {@link TokenChip} shows while its gloss input is the active combobox.
- *   Rendering and positioning live here; the combobox state (open, active row, keyboard) is owned
- *   by the chip, which drives this purely through props. Portaled to `document.body` so it escapes
- *   the clipping and stacking of the interlinear view's scroll viewports and token-row stacking
- *   contexts.
- */
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
@@ -39,14 +32,14 @@ type SuggestionDropdownProps = Readonly<{
 }>;
 
 /**
- * Renders the portaled suggestion listbox for a token's gloss combobox. Each row is colored and
- * labeled by its own `status` — `'suggested'` (blue, "accept") or `'candidate'` (grey, "promote") —
- * carried on the entry rather than inferred from position, so a dropped blank-in-language pick can
- * never leave a candidate masquerading as the accept row. Each row suppresses its mouse-down
- * default so clicking it never blurs the input.
+ * The pop-down listbox a token chip shows while its gloss input is the active combobox. Rendering
+ * and positioning live here; the combobox state — open, active row, keyboard — is owned by the
+ * chip, which drives this purely through props. Portaled to the document body so it escapes the
+ * clipping and stacking of the interlinear view's scroll viewports and token rows.
  *
- * @param props - Component props (see {@link SuggestionDropdownProps}).
- * @returns A `document.body` portal containing the listbox, positioned under the anchor input.
+ * Each row is colored and labeled by its own `status` — `'suggested'` (blue, "accept") or
+ * `'candidate'` (grey, "promote") — carried on the entry rather than inferred from position, so a
+ * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
  */
 export default function SuggestionDropdown({
   anchorRef,

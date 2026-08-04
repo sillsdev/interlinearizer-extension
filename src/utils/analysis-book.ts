@@ -1,13 +1,9 @@
-/** @file Pure helpers for filtering a `TextAnalysis` by the book a record belongs to. */
 import type { SegmentationDelta, TextAnalysis } from 'interlinearizer';
 
 /**
  * Returns the 3-letter book code embedded at the start of a segment id or token ref. Both are
- * formatted `"<book> <chapter>:<verse>[:<charStart>]"` (e.g. `"GEN 1:1"`, `"1JN 2:3:5"`), so the
- * book code is the substring before the first space.
- *
- * @param ref - A `Segment.id` or `Token.ref` / `TokenSnapshot.tokenRef` value.
- * @returns The leading book code, or the whole string when it contains no space.
+ * formatted `"<book> <chapter>:<verse>[:<charStart>]"` (e.g. `"GEN 1:1"`, `"1JN 2:3:5"`). A string
+ * with no space is returned whole.
  */
 export function bookOfRef(ref: string): string {
   const spaceIndex = ref.indexOf(' ');
@@ -15,15 +11,12 @@ export function bookOfRef(ref: string): string {
 }
 
 /**
- * Returns a copy of `analysis` with every record belonging to `bookCode` removed. A token- or
- * segment-level record is dropped when its referenced token/segment is in the book; a phrase is
- * dropped when **any** of its member tokens is in the book (so a rare cross-book phrase is removed
- * when wiping either side). Analysis payloads left unreferenced by a surviving link are also
- * dropped, so no orphans remain.
+ * Returns a copy of the analysis, unmutated, with every record belonging to the book removed.
  *
- * @param analysis - The analysis to filter. Not mutated.
- * @param bookCode - The 3-letter book code (e.g. `"GEN"`) whose records to remove.
- * @returns A new `TextAnalysis` with the book's records (and any orphaned payloads) removed.
+ * A token- or segment-level record is dropped when its referenced token or segment is in the book;
+ * a phrase is dropped when **any** of its member tokens is, so a rare cross-book phrase goes when
+ * either side is wiped. Analysis payloads left unreferenced by a surviving link are dropped too, so
+ * no orphans remain.
  */
 export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string): TextAnalysis {
   const tokenAnalysisLinks = analysis.tokenAnalysisLinks.filter(
@@ -51,16 +44,10 @@ export function removeBookFromAnalysis(analysis: TextAnalysis, bookCode: string)
 }
 
 /**
- * Returns a copy of `delta` with every boundary anchor belonging to `bookCode` removed, so wiping a
- * book also drops its custom segment boundaries (the anchors are book-prefixed token refs, keyed
- * the same way as analysis records). Returns `undefined` when nothing for any other book remains,
- * so a wiped-then-emptied delta collapses to the default segmentation rather than persisting empty
- * arrays.
- *
- * @param delta - The current boundary delta, or `undefined` for the default segmentation.
- * @param bookCode - The 3-letter book code (e.g. `"GEN"`) whose anchors to remove.
- * @returns A new `SegmentationDelta` without the book's anchors, or `undefined` when the result is
- *   the default segmentation (or the input already was).
+ * Returns a copy of the delta with every boundary anchor belonging to the book removed, so wiping a
+ * book also drops its custom segment boundaries. The result is `undefined` when the delta is absent
+ * or the removal empties it, so segmentation collapses back to the default rather than persisting
+ * empty arrays.
  */
 export function removeBookFromSegmentation(
   delta: SegmentationDelta | undefined,

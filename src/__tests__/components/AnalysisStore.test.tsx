@@ -1,4 +1,3 @@
-/** @file Unit tests for components/AnalysisStore.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -33,18 +32,7 @@ import {
 } from '../../components/AnalysisStore';
 import type { ResolvedTokenAnalysis } from '../../utils/suggestion-engine';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token.
- *
- * @param tokenRef - Token reference string.
- * @param gloss - Gloss value for the `'und'` language key.
- * @param surfaceText - Surface text of the token.
- * @returns A `TextAnalysis` seeded with one approved token analysis.
- */
+/** Builds a minimal `TextAnalysis` with a single approved `TokenAnalysis` for the given token. */
 function makeAnalysisWithGloss(
   tokenRef: string,
   gloss: string,
@@ -73,10 +61,6 @@ function makeAnalysisWithGloss(
 /**
  * Builds a `TextAnalysis` where two tokens (`tok-1`, `tok-2`) share one approved `TokenAnalysis`
  * payload, so editing either token must fork the payload to avoid affecting its sibling.
- *
- * @param gloss - Gloss value shared by both tokens for the `'und'` language key.
- * @param surfaceText - Surface text of both tokens.
- * @returns A `TextAnalysis` with one payload referenced by two approved links.
  */
 function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
   const ta: TokenAnalysis = { id: 'shared-analysis', surfaceText, gloss: { und: gloss } };
@@ -93,35 +77,19 @@ function makeSharedAnalysis(gloss = 'a', surfaceText = 'word'): TextAnalysis {
   };
 }
 
-/**
- * Renders a component that displays the gloss for a single token, used to assert on `useGloss`.
- *
- * @param tokenRef - Token ref to subscribe to.
- * @returns JSX element suitable for passing to `render`.
- */
+/** Renders a component that displays the gloss for a single token, used to assert on `useGloss`. */
 function GlossReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
   const gloss = useGloss(tokenRef);
   return <span data-testid="gloss">{gloss}</span>;
 }
 
-/**
- * Renders a component that displays the full analysis as JSON, used to assert on `useAnalysis`.
- *
- * @returns JSX element suitable for passing to `render`.
- */
+/** Renders a component that displays the full analysis as JSON, used to assert on `useAnalysis`. */
 function AnalysisReader() {
   const analysis = useAnalysis();
   return <span data-testid="analysis">{JSON.stringify(analysis)}</span>;
 }
 
-/**
- * Renders a button that calls `useGlossDispatch` to write a gloss, used to test dispatch.
- *
- * @param props.tokenRef - Token ref to write.
- * @param props.surfaceText - Surface text of the token.
- * @param props.value - Gloss value to write.
- * @returns JSX element suitable for passing to `render`.
- */
+/** Renders a button that calls `useGlossDispatch` to write a gloss, used to test dispatch. */
 function GlossWriter({
   tokenRef,
   surfaceText,
@@ -136,13 +104,12 @@ function GlossWriter({
 }
 
 /**
- * Renders `useHook` inside an {@link AnalysisStoreProvider} so a test can call the store's dispatch
- * callbacks and read its selectors directly off `result.current`, without a throwaway button-and-
- * click component. Mirrors the `renderHook` + `wrapper` idiom used elsewhere in the suite.
+ * Renders a hook inside an {@link AnalysisStoreProvider} so a test can drive the store's dispatch
+ * callbacks and read its selectors directly, without a throwaway button-and-click component.
+ * Mirrors the `renderHook` + `wrapper` idiom used elsewhere in the suite.
  *
- * @param useHook - Callback invoking the store hooks under test; its return is `result.current`.
+ * @param useHook - Called inside the provider; whatever it returns becomes `result.current`.
  * @param options - Provider props; `analysisLanguage` defaults to `'und'`.
- * @returns The `renderHook` result.
  */
 function renderStoreHook<T>(
   useHook: () => T,
@@ -161,10 +128,6 @@ function renderStoreHook<T>(
   );
   return renderHook(useHook, { wrapper });
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('useGloss', () => {
   it('returns an empty string for an unknown token', () => {
@@ -229,11 +192,6 @@ describe('useGloss', () => {
     /**
      * Renders the current gloss for a token while counting how many times it re-renders, so tests
      * can assert that unrelated gloss changes do not cause extra renders.
-     *
-     * @param props - Component props.
-     * @param props.tokenRef - The token whose approved gloss to read via {@link useGloss}.
-     * @returns A span containing the gloss string.
-     * @throws When called outside an {@link AnalysisStoreProvider}.
      */
     function CountingGlossReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
       renderCount += 1;
@@ -454,10 +412,6 @@ describe('useGlossDispatch', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phrase hooks
-// ---------------------------------------------------------------------------
-
 /** Approved phrase analysis seed used across phrase hook tests. */
 const PHRASE_ANALYSIS: TextAnalysis = {
   segmentAnalyses: [],
@@ -477,11 +431,7 @@ const PHRASE_ANALYSIS: TextAnalysis = {
   ],
 };
 
-/**
- * Renders a component that displays the phrase link map size, used to assert `usePhraseLinkMap`.
- *
- * @returns JSX element suitable for passing to `render`.
- */
+/** Renders a component that displays the phrase link map size, used to assert `usePhraseLinkMap`. */
 function PhraseLinkMapReader() {
   const map = usePhraseLinkMap();
   return <span data-testid="map-size">{map.size}</span>;
@@ -490,31 +440,19 @@ function PhraseLinkMapReader() {
 /**
  * Renders a component that displays the phrase link analysisId for a given token ref, used to
  * assert `usePhraseLinkForToken`.
- *
- * @param props - Component props.
- * @param props.tokenRef - Token ref to look up.
- * @returns JSX element suitable for passing to `render`.
  */
 function PhraseLinkReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
   const link = usePhraseLinkForToken(tokenRef);
   return <span data-testid="link-id">{link?.analysisId ?? 'none'}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkMap` without a provider, to assert it throws. */
 function PhraseLinkMapUser() {
   usePhraseLinkMap();
   return undefined;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkForToken` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkForToken` without a provider, to assert it throws. */
 function PhraseLinkForTokenUser() {
   usePhraseLinkForToken('tok-1');
   return undefined;
@@ -577,19 +515,13 @@ describe('usePhraseLinkForToken', () => {
 /**
  * Renders a component that displays the phrase-link-by-id map size, used to assert
  * `usePhraseLinkByIdMap`.
- *
- * @returns JSX element suitable for passing to `render`.
  */
 function PhraseLinkByIdMapReader() {
   const map = usePhraseLinkByIdMap();
   return <span data-testid="id-map-size">{map.size}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkByIdMap` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkByIdMap` without a provider, to assert it throws. */
 function PhraseLinkByIdMapUser() {
   usePhraseLinkByIdMap();
   return undefined;
@@ -625,19 +557,13 @@ describe('usePhraseLinkByIdMap', () => {
 /**
  * Renders a component that reads the phrase-link map through `usePhraseLinkByIdGetter` at render
  * time and displays its size, used to assert the getter resolves current store state.
- *
- * @returns JSX element suitable for passing to `render`.
  */
 function PhraseLinkByIdGetterReader() {
   const getPhraseLinkById = usePhraseLinkByIdGetter();
   return <span data-testid="getter-map-size">{getPhraseLinkById().size}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseLinkByIdGetter` without a provider, to assert it throws. */
 function PhraseLinkByIdGetterUser() {
   usePhraseLinkByIdGetter();
   return undefined;
@@ -740,27 +666,13 @@ describe('usePhraseDispatch', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// usePhraseGloss
-// ---------------------------------------------------------------------------
-
-/**
- * Renders the phrase gloss for a given phraseId, used to assert on `usePhraseGloss`.
- *
- * @param props - Component props.
- * @param props.phraseId - Phrase id to look up.
- * @returns JSX element.
- */
+/** Renders the phrase gloss for a given phraseId, used to assert on `usePhraseGloss`. */
 function PhraseGlossReader({ phraseId }: Readonly<{ phraseId: string }>) {
   const gloss = usePhraseGloss(phraseId);
   return <span data-testid="phrase-gloss">{gloss}</span>;
 }
 
-/**
- * Renders a component that calls `usePhraseGloss` without a provider, to assert it throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `usePhraseGloss` without a provider, to assert it throws. */
 function PhraseGlossUser() {
   usePhraseGloss('p1');
   return undefined;
@@ -811,10 +723,6 @@ describe('usePhraseGloss', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// usePhraseGlossDispatch
-// ---------------------------------------------------------------------------
-
 describe('usePhraseGlossDispatch', () => {
   it('writes the phrase gloss and triggers onSave', () => {
     const onSave = jest.fn();
@@ -838,10 +746,6 @@ describe('usePhraseGlossDispatch', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// useSegmentFreeTranslation
-// ---------------------------------------------------------------------------
-
 /** A `TextAnalysis` with an approved segment analysis carrying a free translation in `'und'`. */
 const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
   segmentAnalyses: [
@@ -857,10 +761,6 @@ const SEGMENT_ANALYSIS_WITH_TRANSLATION: TextAnalysis = {
 /**
  * Renders the free translation for a given segmentId, used to assert on
  * `useSegmentFreeTranslation`.
- *
- * @param props - Component props.
- * @param props.segmentId - Segment id to look up.
- * @returns JSX element.
  */
 function SegmentTranslationReader({ segmentId }: Readonly<{ segmentId: string }>) {
   const value = useSegmentFreeTranslation(segmentId);
@@ -870,8 +770,6 @@ function SegmentTranslationReader({ segmentId }: Readonly<{ segmentId: string }>
 /**
  * Renders a component that calls `useSegmentFreeTranslation` without a provider, to assert it
  * throws.
- *
- * @returns Nothing — only mounted to trigger the throw.
  */
 function SegmentTranslationUser() {
   useSegmentFreeTranslation('seg-1');
@@ -908,10 +806,6 @@ describe('useSegmentFreeTranslation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// useSegmentFreeTranslationDispatch
-// ---------------------------------------------------------------------------
-
 describe('useSegmentFreeTranslationDispatch', () => {
   it('writes the segment free translation and triggers onSave', () => {
     const onSave = jest.fn();
@@ -935,46 +829,25 @@ describe('useSegmentFreeTranslationDispatch', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Morpheme hooks
-// ---------------------------------------------------------------------------
-
-/**
- * Renders the morpheme forms for a token, used to assert on `useMorphemes`.
- *
- * @param props.tokenRef - Token ref to subscribe to.
- * @returns JSX element with joined morpheme forms.
- */
+/** Renders the morpheme forms for a token, used to assert on `useMorphemes`. */
 function MorphemeReader({ tokenRef }: Readonly<{ tokenRef: string }>) {
   const morphemes = useMorphemes(tokenRef);
   return <span data-testid="morphemes">{morphemes.map((m) => m.form).join(',')}</span>;
 }
 
-/**
- * Renders the analysis language, used to assert on `useAnalysisLanguage`.
- *
- * @returns JSX element with the analysis language string.
- */
+/** Renders the analysis language, used to assert on `useAnalysisLanguage`. */
 function LanguageReader() {
   const lang = useAnalysisLanguage();
   return <span data-testid="lang">{lang}</span>;
 }
 
-/**
- * Renders a component that calls `useMorphemes` without a provider, used to test the error.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `useMorphemes` without a provider, used to test the error. */
 function MorphemesUser() {
   useMorphemes('tok-1');
   return undefined;
 }
 
-/**
- * Renders a component that calls `useAnalysisLanguage` without a provider, used to test the error.
- *
- * @returns Nothing — only mounted to trigger the throw.
- */
+/** Renders a component that calls `useAnalysisLanguage` without a provider, used to test the error. */
 function LanguageUser() {
   useAnalysisLanguage();
   return undefined;
@@ -1240,11 +1113,7 @@ describe('useMorphemeGlossDispatch', () => {
 
 /**
  * Reports its `isEditing` prop through {@link useReportGlossEditing}, used to drive the provider's
- * pending-edits accounting from tests.
- *
- * @param props - Component props.
- * @param props.isEditing - Whether this stand-in input currently holds uncommitted text.
- * @returns An empty fragment; the component exists only for its hook side effect.
+ * pending-edits accounting from tests. Renders nothing; it exists only for its hook side effect.
  */
 function EditingReporter({ isEditing }: Readonly<{ isEditing: boolean }>) {
   useReportGlossEditing(isEditing);
@@ -1349,13 +1218,6 @@ describe('useReportGlossEditing', () => {
 /**
  * Renders the merged analysis status for a token, used to assert on `useResolvedTokenAnalysis`.
  * Records every render's resolved value so a test can assert referential stability.
- *
- * @param props.tokenRef - Token ref to resolve.
- * @param props.surfaceText - The token's surface text.
- * @param props.enabled - Whether the hook should derive; `false` short-circuits to `undefined`.
- * @param props.sink - Array each render appends its resolved value to (for render-count
- *   assertions).
- * @returns JSX element suitable for passing to `render`.
  */
 function ResolvedReader({
   tokenRef,
@@ -1374,11 +1236,7 @@ function ResolvedReader({
 }
 
 describe('useShowSuggestions', () => {
-  /**
-   * Renders the active show-suggestions flag, used to assert on `useShowSuggestions`.
-   *
-   * @returns JSX element suitable for passing to `render`.
-   */
+  /** Renders the active show-suggestions flag, used to assert on `useShowSuggestions`. */
   function ShowSuggestionsReader() {
     return <span data-testid="show">{String(useShowSuggestions())}</span>;
   }
@@ -1488,11 +1346,6 @@ describe('useSuggestionAfterClearing', () => {
   /**
    * Renders the status of the cleared-token preview for a token, used to assert on
    * `useSuggestionAfterClearing`.
-   *
-   * @param props.tokenRef - Token ref to resolve.
-   * @param props.surfaceText - Surface text to match against the pool.
-   * @param props.enabled - Whether the hook should derive (mirrors the chip's gating).
-   * @returns JSX element suitable for passing to `render`.
    */
   function ClearingReader({
     tokenRef,

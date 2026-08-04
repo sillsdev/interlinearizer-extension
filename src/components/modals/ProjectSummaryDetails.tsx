@@ -4,12 +4,10 @@ import { formatModified } from '../../utils/project-summary-format';
 /**
  * The two-line detail block shown for a project in a list: the name (with an optional "active"
  * badge and the right-aligned analysis-language tags) on the first line, and the localized modified
- * date on the second. Shared by {@link SelectInterlinearProjectModal} (inside its clickable row
- * button) and {@link SaveAsProjectModal} (inside each overwrite target) so both lists present the
- * same detail; it is purely presentational and owns no chrome (border, padding, click behavior),
- * which the parent supplies around it.
+ * date on the second. The single rendering of that block, so every project list presents the same
+ * detail; it is purely presentational and owns no chrome (border, padding, click behavior), which
+ * the parent supplies around it.
  *
- * @param props - Component props.
  * @param props.activeBadgeLabel - Localized text of the active badge.
  * @param props.className - Extra classes appended to the wrapper (e.g. `tw:flex-1` so the block
  *   grows to fill the row).
@@ -18,7 +16,6 @@ import { formatModified } from '../../utils/project-summary-format';
  * @param props.modifiedPrefix - Localized `"Modified"` label preceding the formatted date.
  * @param props.project - The project summary to describe.
  * @param props.unnamedLabel - Localized fallback label rendered when the project has no name.
- * @returns The detail block.
  */
 export function ProjectSummaryDetails({
   activeBadgeLabel,

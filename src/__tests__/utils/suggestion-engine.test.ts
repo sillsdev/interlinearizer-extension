@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/suggestion-engine.ts. */
 /// <reference types="jest" />
 
 import type { TokenAnalysis } from 'interlinearizer';
@@ -9,14 +8,7 @@ import {
   resolvedTokenAnalysisEqual,
 } from '../../utils/suggestion-engine';
 
-/**
- * Builds a gloss-only `TokenAnalysis` for the pool-construction tests.
- *
- * @param id - The analysis id.
- * @param surfaceText - The analyzed surface form.
- * @param gloss - The English gloss to attach.
- * @returns A `TokenAnalysis` with the given id, surface text, and English gloss.
- */
+/** Builds a gloss-only {@link TokenAnalysis} for the pool-construction tests. */
 function ta(id: string, surfaceText: string, gloss: string): TokenAnalysis {
   return { id, surfaceText, gloss: { en: gloss } };
 }

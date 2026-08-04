@@ -1,4 +1,3 @@
-/** @file Unit tests for useDraftProject hook. */
 /// <reference types="jest" />
 
 import papi, { logger } from '@papi/frontend';
@@ -10,14 +9,11 @@ import { emptyAnalysis } from '../../types/empty-factories';
 const SOURCE_PROJECT_ID = 'source-project-1';
 const PLATFORM_LANGUAGE = 'en';
 
-/** Handle to the mocked PAPI sendCommand so tests can assert on / override its calls. */
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
 /**
- * Builds a `DraftProject` for seeding the `getDraft` mock, overriding any fields needed by a test.
- *
- * @param overrides - Partial fields to merge over the baseline draft.
- * @returns A fresh `DraftProject` with the overrides applied.
+ * Builds a {@link DraftProject} for seeding the `getDraft` mock, overriding any fields needed by a
+ * test.
  */
 function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
   return {
@@ -30,11 +26,8 @@ function makeDraft(overrides: Partial<DraftProject> = {}): DraftProject {
 }
 
 /**
- * Builds a `TextAnalysis` carrying a single token analysis so tests can prove a specific analysis
- * object round-trips through the draft.
- *
- * @param id - Identifier for the lone token analysis, used to distinguish instances.
- * @returns A `TextAnalysis` containing one token analysis with the given id.
+ * Builds a {@link TextAnalysis} carrying a single token analysis so tests can prove a specific
+ * analysis object round-trips through the draft.
  */
 function analysisWithToken(id: string): TextAnalysis {
   return {
@@ -49,8 +42,6 @@ function analysisWithToken(id: string): TextAnalysis {
 /**
  * Points the `getDraft` command at a resolved JSON draft while leaving `saveDraft` resolving void.
  * All other commands resolve undefined so an unexpected call never rejects.
- *
- * @param draft - The draft the `getDraft` command should return (JSON-serialized).
  */
 function mockGetDraftResolves(draft: DraftProject): void {
   mockSendCommand.mockImplementation((...args: Parameters<typeof mockSendCommand>) => {
@@ -62,8 +53,6 @@ function mockGetDraftResolves(draft: DraftProject): void {
 /**
  * Renders the hook and waits for the initial `getDraft` load to settle so `draft` is populated and
  * `isDraftLoading` is false before a test exercises a callback.
- *
- * @returns The renderHook result handle, post-load.
  */
 async function renderLoaded() {
   const view = renderHook(() => useDraftProject(SOURCE_PROJECT_ID, PLATFORM_LANGUAGE));
@@ -72,9 +61,9 @@ async function renderLoaded() {
 }
 
 /**
- * Returns the JSON payload of the most recent `saveDraft` call, parsed back into a `DraftProject`.
+ * Returns the JSON payload of the most recent `saveDraft` call, parsed back into a
+ * {@link DraftProject}.
  *
- * @returns The persisted draft from the latest `saveDraft` invocation.
  * @throws If no `saveDraft` call has been made, or its second argument was not a string.
  */
 function lastSavedDraft(): DraftProject {
@@ -136,7 +125,8 @@ describe('useDraftProject', () => {
 
     const { result } = await renderLoaded();
 
-    // emptyDraft has no analysis languages, so the seeding branch fills in the platform language.
+    // The fallback draft has no analysis languages, so the seeding branch fills in the platform
+    // language.
     expect(result.current.draft?.analysisLanguages).toEqual([PLATFORM_LANGUAGE]);
     expect(result.current.draft?.analysis.tokenAnalyses).toEqual([]);
     expect(result.current.dirty).toBe(false);
@@ -213,8 +203,8 @@ describe('useDraftProject', () => {
     });
 
     it('bumps segmentationVersion on every edit, including when the draft was already dirty', async () => {
-      // `setDirty(true)` bails out of the re-render once the draft is already dirty, so the version
-      // bump is what forces the view to recompute the ref-held segmentation on each edit.
+      // Re-marking an already-dirty draft causes no re-render, so the version bump is what forces
+      // the view to recompute the ref-held segmentation on each edit.
       const { result } = await renderLoaded();
 
       jest.useFakeTimers();
@@ -623,7 +613,7 @@ describe('useDraftProject', () => {
 
     unmount();
 
-    // Resolve after unmount: the canceled guard must skip the ref/state publish.
+    // Resolve after unmount: the stale-load guard must skip the ref/state publish.
     await act(async () => {
       resolveGetDraft(JSON.stringify(makeDraft()));
       await deferred;

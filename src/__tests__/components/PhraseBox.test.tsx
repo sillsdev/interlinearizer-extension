@@ -1,4 +1,3 @@
-/** @file Unit tests for PhraseBox component. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -15,7 +14,7 @@ import {
 } from '../../components/PhraseStripContext';
 import { makePhraseStripContext, makeWordToken } from '../test-helpers';
 
-/** Stable mock fns for AnalysisStore hooks — reset between tests via resetMocks. */
+/** Stable mock fns for AnalysisStore hooks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
 const mockUseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 const mockUsePhraseLinkForToken = jest.fn().mockReturnValue(undefined);
@@ -29,13 +28,7 @@ const mockUsePhraseGlossDispatch = jest.fn().mockReturnValue(jest.fn());
 
 jest.mock('../../components/AnalysisStore', () => ({
   __esModule: true,
-  /**
-   * Pass-through AnalysisStoreProvider stub.
-   *
-   * @param props - Component props.
-   * @param props.children - Children to render.
-   * @returns Children unchanged.
-   */
+  /** Pass-through AnalysisStoreProvider stub. */
   AnalysisStoreProvider({ children }: Readonly<{ children: import('react').ReactNode }>) {
     return children;
   },
@@ -54,17 +47,6 @@ jest.mock('../../components/TokenChip', () => {
    * Minimal TokenChip stub that renders the token's surface text, a controlled gloss input, and an
    * optional remove button. Lets PhraseBox tests verify gloss-forwarding, focus callbacks, and
    * token-removal interactions without pulling in the real TokenChip implementation.
-   *
-   * @param props - Component props.
-   * @param props.onFocus - Called when the gloss input receives focus.
-   * @param props.token - The word token to render.
-   * @param props.isSplitFree - When true, marks the chip as a would-be-free token.
-   * @param props.onRemove - Called when the remove button is clicked; omitted for edge tokens.
-   * @param props.showMorphology - Exposed as a data attribute so tests can verify every PhraseBox
-   *   render path forwards the strip-wide morphology toggle. When true, also renders a
-   *   `data-morpheme-gloss` input before the main gloss input, mirroring the real chip's DOM order
-   *   so focus-routing tests exercise the morpheme-exclusion selector.
-   * @returns A span containing the surface text, a gloss input, and an optional remove button.
    */
   function MockTokenChip({
     onFocus,
@@ -108,13 +90,7 @@ jest.mock('../../components/TokenChip', () => {
       </span>
     );
   }
-  /**
-   * Minimal InertTokenChip stub rendering the token's surface text.
-   *
-   * @param props - Component props.
-   * @param props.token - The non-word token to render.
-   * @returns A span containing the surface text.
-   */
+  /** Minimal InertTokenChip stub rendering the token's surface text. */
   function MockInertTokenChip({ token }: Readonly<{ token: Token }>) {
     return <span data-testid={`inert-${token.ref}`}>{token.surfaceText}</span>;
   }
@@ -123,13 +99,7 @@ jest.mock('../../components/TokenChip', () => {
 
 jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   __esModule: true,
-  /**
-   * Minimal UnlinkPhraseConfirm stub that renders confirm/cancel buttons.
-   *
-   * @param props - Component props.
-   * @param props.setPhraseMode - Called to exit confirm-unlink mode.
-   * @returns A stub div with confirm and cancel buttons.
-   */
+  /** Minimal UnlinkPhraseConfirm stub that renders confirm/cancel buttons. */
   default: ({
     setPhraseMode,
   }: Readonly<{ phraseId: string; setPhraseMode: (m: unknown) => void }>) => (
@@ -152,7 +122,6 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   ),
 }));
 
-/** Pre-built test token */
 const TEST_TOKEN = {
   ref: 'token-1',
   surfaceText: 'Hello',
@@ -162,7 +131,6 @@ const TEST_TOKEN = {
   charEnd: 5,
 } satisfies Token;
 
-/** Second test token */
 const TEST_TOKEN_2 = {
   ref: 'token-2',
   surfaceText: 'World',
@@ -183,8 +151,8 @@ const TEST_PUNCT: Token = {
 };
 
 /**
- * An approved phrase link fixture used by phrase-mode tests. Includes TEST_TOKEN so
- * `usePhraseLinkForToken` returns this link when mocked.
+ * An approved phrase link fixture. Includes TEST_TOKEN so `usePhraseLinkForToken` returns this link
+ * when mocked.
  */
 const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   analysisId: 'phrase-1',
@@ -195,7 +163,7 @@ const TEST_PHRASE_LINK: PhraseAnalysisLink = {
   ],
 };
 
-/** Shared props shape used by the helper function. */
+/** Props shape for a PhraseBox render. */
 type PhraseBoxTestProps = {
   isFocused: boolean;
   groupKey: string;
@@ -207,8 +175,6 @@ type PhraseBoxTestProps = {
 /**
  * Minimal required props for PhraseBox. Spread into render calls so tests only need to override
  * what they actually care about.
- *
- * @returns An object containing all required PhraseBox props set to no-op stubs.
  */
 function requiredProps(): PhraseBoxTestProps {
   return {
@@ -222,12 +188,7 @@ function requiredProps(): PhraseBoxTestProps {
 
 /**
  * Renders a `PhraseBox` wrapped in both the analysis store and strip-context providers. Strip-wide
- * state (phrase mode, edit context, hover callbacks) now comes from `PhraseStripContext`, so tests
- * pass those as `context` overrides rather than as props.
- *
- * @param ui - The `PhraseBox` element to render.
- * @param context - Partial strip-context overrides (phraseMode, edit context, hover callbacks).
- * @returns The Testing Library render result.
+ * state comes from the strip context, so tests pass it as `context` overrides.
  */
 function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
@@ -239,7 +200,7 @@ function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> =
 
 describe('PhraseBox', () => {
   beforeEach(() => {
-    // Restore key-as-value behavior cleared by resetMocks: true, so the gloss placeholder resolves.
+    // Key-as-value localization so the gloss placeholder resolves.
     jest
       .mocked(useLocalizedStrings)
       .mockImplementation((keys: readonly string[]) => [
@@ -628,7 +589,7 @@ describe('PhraseBox', () => {
       phraseMode: { kind: 'confirm-unlink', phraseId: 'phrase-1' },
     });
 
-    // UnlinkPhraseConfirm is now rendered at toolbar level, not inside PhraseBox.
+    // UnlinkPhraseConfirm renders at toolbar level, not inside PhraseBox.
     expect(screen.queryByTestId('unlink-confirm')).not.toBeInTheDocument();
     expect(document.querySelector('[data-phrase-box="true"]')).toBeInTheDocument();
   });
@@ -922,7 +883,7 @@ describe('PhraseBox', () => {
   });
 
   it('does nothing in edit mode when token is free (no phrase link)', async () => {
-    // token is not in any phrase — tokenPhraseLinkFromStore returns undefined
+    // token is not in any phrase — the store yields no phrase link for it
     // phraseMode targets some other phrase
     mockUsePhraseLinkForToken.mockReturnValue(undefined);
     const updatePhraseSpy = jest.fn();
@@ -1092,7 +1053,7 @@ describe('PhraseBox', () => {
       editPhraseSegmentId: 'seg-1',
       tokenSegmentMap: new Map([['token-1', 'seg-2']]),
     });
-    // token-1 is in seg-2, but editPhraseSegmentId is seg-1 → isInWrongSegment=true → isDisabled
+    // token-1 is in seg-2, but the edited phrase lives in seg-1, so the box renders disabled
     const btn = document.querySelector('[role="button"]');
     expect(btn).toHaveAttribute('aria-disabled', 'true');
   });
@@ -1113,7 +1074,6 @@ describe('PhraseBox', () => {
         originalTokens: TEST_PHRASE_LINK.tokens,
       },
     });
-    // In edit-target mode, each token has a role="button" wrapper with onKeyDown.
     const tokenWrapper = screen.getAllByRole('button')[0];
     await userEvent.type(tokenWrapper, '{Enter}');
     expect(updatePhraseSpy).toHaveBeenCalled();

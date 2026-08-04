@@ -1,4 +1,3 @@
-/** @file Unit tests for projectStorage.ts. */
 /// <reference types="jest" />
 
 import papiBackendMock from '@papi/backend';
@@ -30,13 +29,6 @@ interface StorageMock {
   __mockLogger: { debug: jest.Mock; error: jest.Mock; info: jest.Mock; warn: jest.Mock };
 }
 
-/**
- * Type guard that narrows `m` to `StorageMock`.
- *
- * @param m - The value to test.
- * @returns `m is StorageMock` — `true` when `m` has all three mock storage properties and the mock
- *   logger.
- */
 function isStorageMock(m: unknown): m is StorageMock {
   return (
     !!m &&
@@ -57,8 +49,6 @@ const token = createTestActivationContext().executionToken;
 /**
  * Constructs an ENOENT Error that mirrors the error thrown by `papi.storage.readUserData` when a
  * storage key has never been written.
- *
- * @returns An `Error` with `code` set to `'ENOENT'`.
  */
 function enoentError(): Error {
   return Object.assign(new Error('ENOENT: no such file or directory'), { code: 'ENOENT' });
@@ -522,8 +512,6 @@ describe('projectStorage', () => {
     /**
      * Makes `readUserData` return `pendingCleanup` as the given id list and ENOENT for every other
      * key, so a sweep sees exactly `ids` as its work set.
-     *
-     * @param ids - The project IDs the pending-cleanup set should contain.
      */
     function stubPendingCleanup(ids: string[]): void {
       __mockReadUserData.mockImplementation((_t: unknown, key: unknown) =>

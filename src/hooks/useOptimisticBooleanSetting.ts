@@ -11,19 +11,15 @@ type BooleanProjectSettingKey = {
 const TIMEOUT_MS = 15_000;
 
 /**
- * Manages a boolean project setting with optimistic UI updates.
+ * Manages a boolean project setting with optimistic UI updates, falling back to the given default
+ * until the setting has been persisted for the first time.
  *
  * The local value is updated immediately on change and stays locked for {@link TIMEOUT_MS} to allow
- * the stored setting to finish updating without causing a visible bounce. If the platform confirms
- * the new value before the timeout, the lock is released; if the platform never responds (or
- * responds after the timeout), the lock clears and subsequent platform updates flow through
- * normally.
+ * the stored setting to finish updating without causing a visible bounce. While the lock is held,
+ * platform updates are ignored; once it expires, they flow through normally.
  *
- * @param projectId - PAPI project ID
- * @param settingKey - A valid key for a boolean setting
- * @param defaultValue - Default value used when the setting has not been persisted yet
- * @returns `isLoading` — whether the setting value is still loading from the platform; `onChange` —
- *   stable change handler; `value` — the current display value
+ * The change handler keeps a stable identity across renders, so consumers may pass it straight to a
+ * memoized child.
  */
 export default function useOptimisticBooleanSetting(
   projectId: string,
@@ -41,7 +37,6 @@ export default function useOptimisticBooleanSetting(
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const ignoreRef = useRef(false);
 
-  // Drive UI from optimistic local state and clear pending once the setting confirms.
   useEffect(() => {
     // Ignore platform errors or settings that arrive during the timeout period.
     if (ignoreRef.current || typeof setting !== 'boolean') return;
@@ -49,7 +44,6 @@ export default function useOptimisticBooleanSetting(
     setValue(setting);
   }, [setting]);
 
-  // Clean up on unmount.
   useEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);

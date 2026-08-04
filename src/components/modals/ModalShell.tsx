@@ -1,4 +1,3 @@
-/** @file Shared overlay + dialog + title chrome for the project modal dialogs. */
 import type { ReactNode } from 'react';
 
 /**
@@ -7,7 +6,6 @@ import type { ReactNode } from 'react';
  * change to the overlay/dialog structure (or its a11y wiring) lives in one place. The body of each
  * modal is supplied as `children`.
  *
- * @param props - Component props
  * @param props.titleId - DOM id wired to both the dialog's `aria-labelledby` and the title `<h2>`.
  * @param props.title - Localized title text rendered in the heading.
  * @param props.width - Tailwind width utility for the dialog (e.g. `'tw:w-96'`, `'tw:w-lg'`).
@@ -16,7 +14,6 @@ import type { ReactNode } from 'react';
  * @param props.children - Modal body content rendered below the title. Omitted while a modal is
  *   still resolving its localized content, so the blocking overlay can show before the body
  *   exists.
- * @returns The overlay + dialog wrapper around the title and children.
  */
 export function ModalShell({
   titleId,

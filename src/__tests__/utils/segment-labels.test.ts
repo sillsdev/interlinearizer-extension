@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/segment-labels.ts. */
 /// <reference types="jest" />
 
 import type { Segment } from 'interlinearizer';
@@ -9,10 +8,6 @@ import { buildSegmentLabels } from '../../utils/segment-labels';
  * `verseStarts` covered-verse set, so `covered` enumerates each covered verse as a `[chapter,
  * verse]` pair; `startRef`/`endRef` are set from the first and last covered verse for completeness
  * but are not consulted by the labeler.
- *
- * @param id - The segment id.
- * @param covered - The verses the segment covers, in document order, as `[chapter, verse]` pairs.
- * @returns The assembled segment.
  */
 function makeSegment(id: string, covered: [number, number][]): Segment {
   const [startChapter, startVerse] = covered[0];

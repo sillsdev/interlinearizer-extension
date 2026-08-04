@@ -1,10 +1,8 @@
 /**
- * @file Shared phrase-strip setup hooks used by both `SegmentView` and `ContinuousView`.
- *
- *   Consolidates the setup logic the two views share — the arc-split handler, the candidate-phrase-id
- *   derivation, and the strip-wide context value — so they can't drift apart in how a split is
- *   dispatched, how hovered candidates resolve to phrase ids, or which fields the leaf components
- *   receive.
+ * Setup hooks for a phrase strip — the arc-split handler, the candidate-phrase-id derivation, and
+ * the strip-wide context value. Each is the single definition of its behavior, so no strip layout
+ * can differ in how a split is dispatched, how hovered candidates resolve to phrase ids, or which
+ * fields the leaves receive.
  */
 import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
@@ -16,10 +14,7 @@ import { splitPhraseAtBoundary } from '../utils/phrase-arc';
 
 /**
  * Returns the token list of the phrase currently being edited, or `undefined` outside edit mode.
- * Reads the by-id phrase-link map internally so both views share one derivation.
- *
- * @param phraseMode - Current phrase-interaction mode; only `edit` mode resolves a token list.
- * @returns The edit-mode phrase's token snapshots, or `undefined` when not editing.
+ * Resolves the phrase link itself, so callers need not thread the by-id map through.
  */
 export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | undefined {
   const phraseLinkById = usePhraseLinkByIdMap();
@@ -35,14 +30,10 @@ export function useEditPhraseTokens(phraseMode: PhraseMode): TokenSnapshot[] | u
 }
 
 /**
- * Returns a memoized handler that splits a phrase arc at a token boundary and dispatches the
- * resulting create/update/delete operations via {@link splitPhraseAtBoundary}. The handler no-ops
- * when its `phraseId` is not in the phrase-link-by-id map. Reads the by-id map internally so
- * callers only supply `tokenDocOrder`.
- *
- * @param tokenDocOrder - Word token ref → flat document index, used to keep the split fragments in
- *   document order.
- * @returns A stable `(phraseId, splitAfterTokenRef) => void` callback.
+ * Returns a stable handler that splits a phrase arc at a token boundary and dispatches the
+ * resulting create, update, and delete operations. Reads the by-id phrase map internally, so
+ * callers supply only the document order used to keep the split fragments ordered. Splitting a
+ * phrase that is not in the map is a no-op.
  */
 export function useArcSplitHandler(
   tokenDocOrder: ReadonlyMap<string, number>,
@@ -67,12 +58,7 @@ export function useArcSplitHandler(
 
 /**
  * Derives the set of phrase ids that contain at least one of the hovered link-candidate tokens, so
- * the arcs of those phrases can be highlighted as link targets. Returns an empty set when nothing
- * is hovered.
- *
- * @param candidateTokenRefs - Token refs a hovered link icon would join into a new phrase.
- * @param phraseLinkByRef - Token ref → phrase link map for the whole strip.
- * @returns The set of `analysisId`s whose phrase contains a candidate token.
+ * the arcs of those phrases can be highlighted as link targets. Empty when nothing is hovered.
  */
 export function useCandidatePhraseIds(
   candidateTokenRefs: ReadonlySet<string>,
@@ -92,7 +78,7 @@ export function useCandidatePhraseIds(
 export type PhraseStripContextParams = Readonly<{
   /** Current phrase-interaction mode; controls rendering and click behavior in all leaves. */
   phraseMode: PhraseMode;
-  /** Setter for `phraseMode`; used by phrase boxes to enter edit / confirm-unlink modes. */
+  /** Setter for `phraseMode`; entering edit or confirm-unlink mode goes through it. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Token list of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseTokens: PhraseAnalysisLink['tokens'] | undefined;
@@ -122,7 +108,7 @@ export type PhraseStripContextParams = Readonly<{
   boundaryMergeAltHint: string;
   /** Label and tooltip for the Alt-gated split marker. */
   boundarySplitLabel: string;
-  /** Placeholder for all gloss inputs, fetched once per strip (see the context field's doc). */
+  /** Placeholder for all gloss inputs, fetched once per strip rather than per token. */
   glossPlaceholder: string;
   /** When true, the link-slot sliding-door transition is suppressed (duration 0ms). */
   skipLinkTransition: boolean;
@@ -131,13 +117,10 @@ export type PhraseStripContextParams = Readonly<{
 }>;
 
 /**
- * Builds the memoized strip-wide {@link PhraseStripContextValue} shared by every phrase group and
- * link slot in one render, so the leaf `MemoizedPhraseBox` / `MemoizedTokenLinkIcon` consumers
- * don't re-render on unrelated changes. Centralizing the build keeps the (long) dependency list in
- * one place so the two views can't drift apart when a field is added.
- *
- * @param params - The fields each view resolves and passes in.
- * @returns The memoized strip-wide context value.
+ * Builds the memoized strip-wide {@link PhraseStripContextValue} for one render, so the memoized
+ * leaves don't re-render on unrelated changes. The single build site for the value, keeping its
+ * long dependency list in one place so adding a field cannot reach one strip layout and miss
+ * another.
  */
 export function usePhraseStripContextValue(
   params: PhraseStripContextParams,

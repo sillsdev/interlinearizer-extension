@@ -1,4 +1,3 @@
-/** @file Unit tests for components/MorphemeEditor.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -26,12 +25,8 @@ beforeEach(() => {
 });
 
 /**
- * Renders {@link MorphemeBreakdownPopover} with the two structural props (`surfaceText`,
- * `glossInputId`) defaulted so each test only supplies what it asserts on.
- *
- * @param props - Overrides merged over the defaults; callers pass their own `onSave`/`onClose`
- *   spies.
- * @returns The render result.
+ * Renders the popover with all required props defaulted so each test only supplies what it asserts
+ * on.
  */
 function renderPopover(props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {}) {
   return render(
@@ -157,10 +152,7 @@ describe('MorphemeBreakdownPopover', () => {
 
   it('does not save on outside interaction when the input is only whitespace', async () => {
     const onSave = jest.fn();
-    // Start from a real word and edit it down to whitespace so the draft differs from initialValue
-    // (isUnedited is false). This forces handleInteractOutside past the unedited guard into
-    // handleSave, where the isEmpty check is what rejects the empty breakdown — the behavior this
-    // test names. If isEmpty were removed, handleSave would call onSave and this fails.
+    // Start from a real word and edit it down to whitespace so the draft differs from initialValue.
     renderPopover({ initialValue: 'word', onSave, surfaceText: 'whole' });
     await userEvent.clear(screen.getByRole('textbox'));
     await userEvent.type(screen.getByRole('textbox'), '   ');
@@ -379,9 +371,6 @@ describe('MorphemeBreakdownPopover', () => {
     /**
      * Renders the popover on a glossed, solely-linked breakdown — the state in which a reset is
      * irreversible, so both reset routes confirm first.
-     *
-     * @param props - Overrides merged over the confirming defaults.
-     * @returns The render result.
      */
     function renderConfirming(
       props: Partial<ComponentProps<typeof MorphemeBreakdownPopover>> = {},

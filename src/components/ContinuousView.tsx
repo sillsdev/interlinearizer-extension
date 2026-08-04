@@ -24,13 +24,7 @@ import useLatestRef from '../hooks/useLatestRef';
 import MemoizedArcOverlay from './ArcOverlay';
 import { RECENTER_FADE_MS, RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 
-/**
- * Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero.
- *
- * @param index - The raw index to clamp.
- * @param len - Length of the target array.
- * @returns A safe index guaranteed to be within bounds.
- */
+/** Clamps `index` to `[0, len - 1]`, returning `0` when `len` is zero. */
 function clampIndex(index: number, len: number): number {
   /* v8 ignore next -- only called when len > 0; guard is a defensive invariant */
   if (len === 0) return 0;
@@ -48,11 +42,11 @@ function clampIndex(index: number, len: number): number {
 const SCROLL_SETTLE_FALLBACK_MS = 600;
 
 /**
- * Hard cap (ms) on how long {@link holdCentered} keeps re-centering the focused phrase after an
- * instant jump. The hold normally ends a short quiet period after the strip's last content reflow
- * (glosses, morpheme rows, and arcs settling asynchronously push the focus sideways for a while);
- * this cap bounds the total so a strip that never fully stabilizes cannot spin the rAF loop
- * indefinitely. Sized to comfortably outlast the observed settle on slow hardware.
+ * Hard cap (ms) on how long the focused phrase is held re-centered after an instant jump. The hold
+ * normally ends a short quiet period after the strip's last content reflow (glosses, morpheme rows,
+ * and arcs settling asynchronously push the focus sideways for a while); this cap bounds the total
+ * so a strip that never fully stabilizes cannot spin the rAF loop indefinitely. Sized to
+ * comfortably outlast the observed settle on slow hardware.
  */
 const HOLD_CENTERED_MAX_MS = 2_000;
 
@@ -100,7 +94,7 @@ type GroupUnit = {
 type ContinuousViewProps = Readonly<{
   /** The full tokenized book whose tokens are streamed into the strip. */
   book: Book;
-  /** Segment id of the phrase being edited, or `undefined` outside edit mode. Passed to `PhraseBox`. */
+  /** Segment id of the phrase being edited, or `undefined` outside edit mode. */
   editPhraseSegmentId: string | undefined;
   /**
    * Token ref of the currently focused word token, or `undefined` when nothing is focused. The
@@ -139,20 +133,6 @@ type ContinuousViewProps = Readonly<{
  * that token. Arrow buttons advance or retreat focus by one group and notify the parent; the parent
  * echoes the new ref back through `focusedTokenRef`. The previous/next arrows are disabled when the
  * first/last phrase is focused.
- *
- * @param props - Component props
- * @param props.book - The full tokenized book whose tokens should be streamed
- * @param props.editPhraseSegmentId - Segment id of the phrase being edited; passed to `PhraseBox`
- * @param props.focusedTokenRef - Single source of truth for focus + scroll position
- * @param props.onFocusedTokenRefChange - Called when arrow navigation or click changes focus
- * @param props.phraseMode - Current phrase-interaction mode; controls token click behavior
- * @param props.setPhraseMode - Setter for `phraseMode`; passed to phrase boxes for mode transitions
- * @param props.tokenSegmentMap - Token ref → segment id lookup for focus resolution
- * @param props.tokenDocOrder - Word token ref → flat book-level index for document-order phrase
- *   merges
- * @param props.wordTokenByRef - Word token ref → token lookup for focus resolution
- * @param props.viewOptions - Bundled display toggles forwarded to the strip.
- * @returns A horizontal phrase strip with previous/next navigation arrows and edge-fade overlays
  */
 export default function ContinuousView({
   book,
@@ -177,11 +157,11 @@ export default function ContinuousView({
   );
 
   /**
-   * Verse-start token ref → verse label, over the whole book. Shares
-   * {@link buildVerseStartLabelsByTokenRef} with the segment list so chapter qualification and the
-   * verse-start token resolution match exactly. The strip builder marks the slot that begins each
-   * verse with its label, and {@link PhraseSlot} renders it below the link icon — this is what gives
-   * the continuous strip its inline verse numbers (it had none before).
+   * Verse-start token ref → verse label, over the whole book. Resolved exactly as the segment
+   * list's labels are, so chapter qualification and the verse-start token resolution match. The
+   * strip builder marks the slot that begins each verse with its label, and {@link PhraseSlot}
+   * renders it below the link icon — this is what gives the continuous strip its inline verse
+   * numbers.
    */
   const verseStartLabelByTokenRef = useMemo(
     () => buildVerseStartLabelsByTokenRef(book.segments),
@@ -342,13 +322,12 @@ export default function ContinuousView({
    * {@link LINK_SLOT_TRANSITION_MS} (so it isn't spinning rAF forever while the strip is idle). But
    * the dominant reflow — the gloss-placeholder string resolving and the arc-settle passes widening
    * content to the left of the focus — routinely lands 300-500ms after mount, i.e. AFTER that quiet
-   * window has already lapsed. If the observer were torn down when the loop stopped (as it once
-   * was), that late reflow would go unobserved and the focus would be stranded ~1100px off-center —
-   * the exact intermittent "not centered on first load" bug. So the observer stays connected for
-   * the full {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't
-   * hold the observer forever), and any reflow within it restarts the tick loop to re-center.
+   * window has already lapsed. If the observer were torn down when the loop stopped, that late
+   * reflow would go unobserved and the focus would be stranded well off-center — an intermittent
+   * "not centered on first load" failure. So the observer stays connected for the full
+   * {@link HOLD_CENTERED_MAX_MS} window (a bound so a strip that never stabilizes can't hold the
+   * observer forever), and any reflow within it restarts the tick loop to re-center.
    *
-   * @param groupIndex - Index of the group to keep centered.
    * @returns A cancel function that stops the loop, the observer, and the hard-deadline timer; call
    *   it from the owning effect's cleanup.
    */
@@ -480,8 +459,6 @@ export default function ContinuousView({
    * match and applies it immediately with a smooth scroll instead of the fade-then-snap used for
    * external jumps. Folds the stamp and the notify into one call so the "this is an internal emit"
    * intent lives in a single place rather than being restated at each call site.
-   *
-   * @param ref - The word-token ref to focus.
    */
   const emitInternalFocus = useCallback(
     (ref: string) => {
@@ -512,10 +489,10 @@ export default function ContinuousView({
 
   /**
    * The groups in the rendered window. Memoized on the bounds (and the source groups) so the array
-   * identity is stable while the window is unchanged. This matters because `renderWindowGroups`
-   * feeds the `useArcPaths` dependency list: a fresh `.slice()` every render would bump the hook's
-   * internal version counter every render, forcing a re-measure on each pass and defeating the arc
-   * hook's own loop-damping (which keys off whether a real input changed).
+   * identity is stable while the window is unchanged. This matters because these groups feed the
+   * arc-measurement pass's dependency list: a fresh `.slice()` every render would bump its internal
+   * version counter every render, forcing a re-measure on each pass and defeating its own
+   * loop-damping (which keys off whether a real input changed).
    */
   const renderWindowGroups = useMemo(
     () => phraseGroups.slice(renderWindowStart, renderWindowEnd + 1),
@@ -715,7 +692,7 @@ export default function ContinuousView({
   // Re-center the focused group when a view option toggles. Toggling `simplifyPhrases` or
   // `showMorphology` changes the strip's layout (morpheme rows can widen phrase boxes), so the
   // previously-centered group may drift off-center; snap it back into view.
-  // `hideInactiveLinkButtons` is excluded: inactive link slots now reserve their space even when
+  // `hideInactiveLinkButtons` is excluded: inactive link slots reserve their space even when
   // hidden (`opacity: 0`; clickability is guarded at the button level), so toggling it does not
   // shift the layout.
   useEffect(() => {
@@ -777,10 +754,10 @@ export default function ContinuousView({
   const candidatePhraseIds = useCandidatePhraseIds(candidateTokenRefs, committedPhraseLinkByRef);
 
   /**
-   * Strip-wide context value shared by every phrase group and link slot. `setHoveredPhraseId`
-   * doubles as both the phrase-hover and candidate-phrase hover callback. The active segment lags
-   * the focus (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip
-   * is faded out or snapping into place after an instant jump.
+   * Strip-wide context value for this render. `setHoveredPhraseId` doubles as both the phrase-hover
+   * and candidate-phrase hover callback. The active segment lags the focus
+   * (`committedActiveSegmentId`); the link-slot transition is suppressed while the strip is faded
+   * out or snapping into place after an instant jump.
    */
   const stripContext = usePhraseStripContextValue({
     phraseMode,
@@ -847,9 +824,9 @@ export default function ContinuousView({
   );
 
   /**
-   * Interleaved render units (groups + link slots) in document order across the window. Built from
-   * the window token slice using the shared {@link buildRenderUnits} utility, then each group unit
-   * is annotated with its absolute group index.
+   * Interleaved render units (groups + link slots) in document order across the window — built by
+   * the one shared interleaving, so no two layouts can order tokens and slots differently. Each
+   * group unit is then annotated with its absolute group index.
    */
   const renderItems = useMemo(() => {
     const renderWindowTokens = allTokens.slice(

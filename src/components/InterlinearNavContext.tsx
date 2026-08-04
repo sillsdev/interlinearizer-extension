@@ -49,12 +49,7 @@ export type NavOrigin = 'internal' | 'external';
  * to detect the host's duplicate deliveries — the scripture picker fires each external navigation
  * twice in quick succession, as fresh objects naming the same verse. The optional `verse` segment
  * string and `versificationStr` are deliberately excluded: the host fills them inconsistently
- * across the duplicate deliveries (which is exactly what defeated a full-field comparison), and
- * nothing in this extension consumes either field.
- *
- * @param a - First reference.
- * @param b - Second reference.
- * @returns `true` when both references name the same book, chapter, and verse number.
+ * across the duplicate deliveries, and nothing in this extension consumes either field.
  */
 function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean {
   return a.book === b.book && a.chapterNum === b.chapterNum && a.verseNum === b.verseNum;
@@ -66,9 +61,6 @@ function areScrRefsEqual(a: SerializedVerseRef, b: SerializedVerseRef): boolean 
  * internally-originated change apart from an external one. Verse 0 is keyed verbatim (as its own
  * verse) so a deliberate navigation to a chapter's verse-0 superscription is distinct from verse
  * 1.
- *
- * @param ref - The scripture reference to key.
- * @returns A `book:chapter:verse` string uniquely identifying the verse.
  */
 export function verseKey(ref: SerializedVerseRef): string {
   return `${ref.book}:${ref.chapterNum}:${ref.verseNum}`;
@@ -84,13 +76,11 @@ export function verseKey(ref: SerializedVerseRef): string {
 export const INTERNAL_NAV_TTL_MS = 3000;
 
 /**
- * The single freshness definition for an internal-navigation marker, shared by both marker readers
- * — `consumeInternalNav` and the render-phase mid-reveal guard — so the two can never drift on what
+ * The single freshness definition for an internal-navigation marker, so no reader can drift on what
  * counts as expired. The boundary is consistent with eviction: a marker is fresh iff its age is at
  * most {@link INTERNAL_NAV_TTL_MS}.
  *
  * @param stampedAt - The marker's `Date.now()` stamp, or `undefined` when no marker exists.
- * @returns `true` when a marker exists and is within the TTL.
  */
 function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
   return stampedAt !== undefined && Date.now() - stampedAt <= INTERNAL_NAV_TTL_MS;
@@ -99,31 +89,29 @@ function isInternalNavMarkerFresh(stampedAt: number | undefined): boolean {
 /**
  * The single navigation surface for the Interlinearizer WebView. Owns the scripture reference, the
  * scroll-group linkage, the cross-book fade clock, and the internal/external classification of each
- * navigation that were previously read and written by the loader, `Interlinearizer`, and the
- * segment window on independent clocks. Hoisting them here lets every consumer read and mutate
- * navigation through one source of truth.
+ * navigation. Hoisting them here lets every consumer read and mutate navigation through one source
+ * of truth.
  */
 export interface InterlinearNav {
   /**
-   * The reference from the host scroll-group hook, value-verbatim, driving both the editable
-   * book/chapter nav controls and the views' recentering. Identity-stable across the host's
-   * duplicate deliveries: when the host re-sends a value-equal reference (the scripture picker
-   * fires each navigation twice), the previously adopted object is handed back so consumers see no
-   * change. Verse 0 is treated as an ordinary verse: a `verseNum: 0` reference passes through
-   * verbatim, so the host's `<` (previous-verse) from verse 1 lands on the chapter's
-   * superscription. When it names a chapter with a verse-0 superscription segment, that segment
-   * becomes the active verse. Which verses actually have segments is unknown here (the book is not
-   * loaded at this layer), so the loader resolves a reference with no matching segment before
-   * rendering: verse 0 falls back to the chapter's first numbered verse, any other unmatched verse
-   * to the nearest preceding segment start in its chapter.
+   * The reference from the host scroll-group hook, value-verbatim: the reference every
+   * navigation-driven behavior keys off. Identity-stable across the host's duplicate deliveries:
+   * when the host re-sends a value-equal reference (the scripture picker fires each navigation
+   * twice), the previously adopted object is handed back so consumers see no change. Verse 0 is
+   * treated as an ordinary verse: a `verseNum: 0` reference passes through verbatim, so the host's
+   * `<` (previous-verse) from verse 1 lands on the chapter's superscription. When it names a
+   * chapter with a verse-0 superscription segment, that segment becomes the active verse. Which
+   * verses actually have segments is unknown here (the book is not loaded at this layer), so the
+   * loader resolves a reference with no matching segment before rendering: verse 0 falls back to
+   * the chapter's first numbered verse, any other unmatched verse to the nearest preceding segment
+   * start in its chapter.
    */
   scrRef: SerializedVerseRef;
   /**
    * Sets the scripture reference, writing through to the host scroll-group ref, and records the
    * navigation's {@link NavOrigin}. An `internal` origin marks the target verse so the segment
    * window skips its recenter fade (the target is already on screen); `external` (the default)
-   * leaves it to fade. Replaces the old pattern of stamping a shared `internalNavRef` and
-   * reverse-engineering the origin by string comparison.
+   * leaves it to fade.
    *
    * @param newScrRef - The reference to navigate to.
    * @param origin - Where the navigation came from; defaults to `external`.
@@ -137,9 +125,6 @@ export interface InterlinearNav {
    * {@link INTERNAL_NAV_TTL_MS} are ignored (and discarded): a marker stranded by React batching
    * rapid clicks — where the host echoes only the last of several internal navigations — must not
    * misclassify a later external navigation to the un-echoed verse.
-   *
-   * @param ref - The reference whose pending classification to consume.
-   * @returns `true` if the navigation to `ref` was internal (skip the fade), else `false`.
    */
   consumeInternalNav: (ref: SerializedVerseRef) => boolean;
   /** The currently active scroll-group ID (`undefined` = unlinked). */
@@ -181,11 +166,9 @@ const InterlinearNavContext = createContext<InterlinearNav | undefined>(undefine
  * internally so the PAPI ref remains the ultimate owner of the shared reference — the context
  * writes through it rather than shadowing it, keeping other scroll-group consumers in sync.
  *
- * @param props - Component props.
  * @param props.useWebViewScrollGroupScrRef - The PAPI hook exposing the shared scroll-group
  *   reference and its setter; injected by the host (not imported) so it can be stubbed in tests.
  * @param props.children - The subtree that consumes navigation through {@link useInterlinearNav}.
- * @returns The provider wrapping `children`.
  */
 export function InterlinearNavProvider({
   useWebViewScrollGroupScrRef,
@@ -380,7 +363,6 @@ export function InterlinearNavProvider({
 /**
  * Reads the {@link InterlinearNav} surface from the nearest {@link InterlinearNavProvider}.
  *
- * @returns The navigation surface.
  * @throws {Error} When called outside an {@link InterlinearNavProvider}.
  */
 export function useInterlinearNav(): InterlinearNav {

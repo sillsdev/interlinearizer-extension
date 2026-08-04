@@ -1,4 +1,3 @@
-/** @file Analysis store backed by Redux Toolkit with per-token subscriptions via `useSelector`. */
 import type {
   MorphemeAnalysis,
   PhraseAnalysisLink,
@@ -80,6 +79,7 @@ const AnalysisCallbackCtx = createContext<CallbackRefs | undefined>(undefined);
 
 /** Props for {@link AnalysisStoreProvider}. */
 type AnalysisStoreProviderProps = Readonly<{
+  /** Subtree given access to the analysis store. */
   children: ReactNode;
   /** BCP 47 analysis-language tag used when reading and writing `TokenAnalysis.gloss` values. */
   analysisLanguage: string;
@@ -117,18 +117,6 @@ type AnalysisStoreProviderProps = Readonly<{
  * Provides a Redux-backed `TextAnalysis` store to the subtree. Components inside can read per-token
  * approved gloss values via {@link useGloss} and write new approved analyses via
  * {@link useGlossDispatch}. The full analysis snapshot is accessible via {@link useAnalysis}.
- *
- * @param props - Component props
- * @param props.children - Subtree that should have access to the analysis store
- * @param props.initialAnalysis - Seed `TextAnalysis`; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for reading/writing gloss values
- * @param props.onSave - Callback receiving the updated `TextAnalysis` after each mutation
- * @param props.onGlossChange - Spy called after each gloss write; for test observability only
- * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
- *   uncommitted text, so the caller can show the unsaved indicator while the user types
- * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
- *   suggestion with accept / promote affordances
- * @returns A context provider wrapping the subtree
  */
 export function AnalysisStoreProvider({
   children,
@@ -208,11 +196,9 @@ export function AnalysisStoreProvider({
 // #region Internal hooks
 
 /**
- * Reads the nearest {@link AnalysisStoreProvider}'s callback refs, throwing a hook-named error when
- * called outside a provider. Centralizes the guard every analysis hook shares.
+ * Reads the nearest {@link AnalysisStoreProvider}'s callback refs, naming `hookName` in the guard's
+ * error. Centralizes the guard every analysis hook shares.
  *
- * @param hookName - Name of the calling hook, used in the thrown error message.
- * @returns The provider's {@link CallbackRefs}.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 function useRequiredCallbacks(hookName: string): CallbackRefs {
@@ -222,12 +208,11 @@ function useRequiredCallbacks(hookName: string): CallbackRefs {
 }
 
 /**
- * Shared setup for the mutation hooks: resolves the provider callbacks and Redux dispatch, and
- * returns a stable `save` that reads the latest analysis from the store and forwards it to
- * `onSave`. Factors out the dispatch-then-save pattern every write hook repeats.
+ * Shared setup for the mutation hooks: resolves the provider callbacks and Redux dispatch — naming
+ * `hookName` in the guard's error — and returns a stable `save` that reads the latest analysis from
+ * the store and forwards it to `onSave`. Factors out the dispatch-then-save pattern every write
+ * hook repeats.
  *
- * @param hookName - Name of the calling hook, used in the guard's error message.
- * @returns The provider callbacks, the typed `dispatch`, and a stable `save` callback.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 function useAnalysisSave(hookName: string): {
@@ -269,11 +254,10 @@ export function useReportGlossEditing(isEditing: boolean): void {
 // #region Token hooks
 
 /**
- * Returns the approved gloss string for the given token in the store's active analysis language,
- * re-rendering only when that token's approved analysis changes.
+ * Returns the approved gloss string for the given token in the store's active analysis language, or
+ * `''` when no approved analysis exists. Re-renders only when that token's approved analysis
+ * changes.
  *
- * @param tokenRef - The token whose gloss to read.
- * @returns The current approved gloss string, or `''` when no approved analysis exists.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGloss(tokenRef: string): string {
@@ -290,16 +274,13 @@ export function useGloss(tokenRef: string): string {
  *
  * When `enabled` is `false` the selector short-circuits to `undefined` without consulting the pool,
  * so a chip that is not currently showing suggestions does no per-token pool lookup or
- * normalization on each store change. The only consumer ({@link TokenChip}) passes its
- * `showSuggestions` flag here.
+ * normalization on each store change.
  *
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text, matched against the pool when the token is
  *   unapproved.
  * @param enabled - Whether to resolve at all; `false` returns `undefined` without pool work.
  *   Defaults to `true`.
- * @returns The approved or suggested analysis for the token, or `undefined` when it has neither (or
- *   when `enabled` is `false`).
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useResolvedTokenAnalysis(
@@ -327,7 +308,6 @@ export function useResolvedTokenAnalysis(
  * @param tokenRef - The `Token.ref` to resolve.
  * @param surfaceText - The token's current surface text.
  * @param enabled - Whether to derive at all; `false` returns `undefined` without pool work.
- * @returns The suggested analysis as if the token were unapproved, or `undefined`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useSuggestionAfterClearing(
@@ -348,7 +328,6 @@ export function useSuggestionAfterClearing(
  * Returns whether un-approved tokens should render the engine's derived suggestion, as set by the
  * nearest {@link AnalysisStoreProvider}'s `showSuggestions` prop (a removable demo toggle).
  *
- * @returns `true` when suggestions should be shown.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useShowSuggestions(): boolean {
@@ -360,8 +339,6 @@ export function useShowSuggestions(): boolean {
  * only when the morpheme array changes. Returns a stable empty array when no approved analysis
  * exists or it has no morphemes.
  *
- * @param tokenRef - The `Token.ref` to look up.
- * @returns The morpheme array from the approved analysis, or a stable empty array.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
@@ -377,8 +354,6 @@ export function useMorphemes(tokenRef: string): readonly MorphemeAnalysis[] {
  * still holds, so the morpheme editor can confirm before an irreversible loss (the app has no
  * undo). See {@link selectMorphemeResetLosesGlosses} for why a shared payload does not qualify.
  *
- * @param tokenRef - The `Token.ref` whose breakdown would be reset.
- * @returns `true` when the reset needs confirmation.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
@@ -392,7 +367,6 @@ export function useMorphemeResetLosesGlosses(tokenRef: string): boolean {
 /**
  * Returns the active BCP 47 analysis-language tag from the nearest {@link AnalysisStoreProvider}.
  *
- * @returns The analysis language string.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysisLanguage(): string {
@@ -405,7 +379,6 @@ export function useAnalysisLanguage(): string {
  * Returns the current `TextAnalysis` snapshot, re-rendering on every analysis change. Intended for
  * components that need the full analysis (e.g. an analysis-selection popup).
  *
- * @returns The current `TextAnalysis` from the nearest {@link AnalysisStoreProvider}.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useAnalysis(): TextAnalysis {
@@ -420,7 +393,6 @@ export function useAnalysis(): TextAnalysis {
  * rewrites the others. Commits immediately, invoking `onSave` and the optional (test-only)
  * `onGlossChange` spy.
  *
- * @returns A function `(tokenRef, surfaceText, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useGlossDispatch(): (tokenRef: string, surfaceText: string, value: string) => void {
@@ -430,13 +402,10 @@ export function useGlossDispatch(): (tokenRef: string, surfaceText: string, valu
 /**
  * Returns a stable callback that approves an existing shared `TokenAnalysis` payload for a token —
  * the persisted half of accepting a suggestion (the suggested payload) or promoting a candidate (a
- * chosen alternative). Dispatches `approveAnalysisForToken` then calls `onSave`. Accepting only
- * adds an approved link to the existing payload (raising its frequency), it does not rewrite the
- * shared content, so no other token's gloss changes.
+ * chosen alternative). Persists immediately. Accepting only adds an approved link to the existing
+ * payload (raising its frequency), it does not rewrite the shared content, so no other token's
+ * gloss changes.
  *
- * @returns A function `(tokenRef, surfaceText, analysisId) => void`, where `analysisId` is the
- *   payload to approve and `surfaceText` is this token's surface text, snapshotted on the new
- *   link.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useApproveAnalysisDispatch(): (
@@ -461,9 +430,6 @@ export function useApproveAnalysisDispatch(): (
  * re-segmenting, so editing one token's breakdown never rewrites the others. Commits immediately
  * and triggers `onSave`.
  *
- * @returns A function `(tokenRef, surfaceText, forms, writingSystem) => void`, where
- *   `writingSystem` is the BCP 47 tag of the token's surface text (`Token.writingSystem`), stored
- *   on each morpheme as the writing system of its form.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeBreakdownDispatch(): (
@@ -486,10 +452,9 @@ export function useMorphemeBreakdownDispatch(): (
 /**
  * Returns a stable callback that removes the morpheme breakdown from the approved `TokenAnalysis`
  * for a given token (deleting the analysis record entirely when removing the breakdown leaves it
- * with no other content — no gloss, POS, features, or lexicon sense reference). Dispatches the
- * `deleteMorphemes` action and triggers `onSave`.
+ * with no other content — no gloss, POS, features, or lexicon sense reference). Persists
+ * immediately.
  *
- * @returns A function `(tokenRef) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
@@ -510,7 +475,6 @@ export function useMorphemeDeleteDispatch(): (tokenRef: string) => void {
  * before writing, so editing one token's morpheme gloss never rewrites the others. Commits
  * immediately and triggers `onSave`.
  *
- * @returns A function `(tokenRef, morphemeId, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useMorphemeGlossDispatch(): (
@@ -537,7 +501,6 @@ export function useMorphemeGlossDispatch(): (
  * Returns a `Map` from every token ref that belongs to an approved phrase to its
  * `PhraseAnalysisLink`. Re-renders only when the phrase link map reference changes.
  *
- * @returns The current phrase link map.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
@@ -550,7 +513,6 @@ export function usePhraseLinkMap(): Map<string, PhraseAnalysisLink> {
  * Returns a `Map` from `analysisId` to the approved `PhraseAnalysisLink` for O(1) phrase lookup by
  * id. Re-renders only when the phrase link map reference changes.
  *
- * @returns The current phrase-link-by-id map.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
@@ -565,7 +527,6 @@ export function usePhraseLinkByIdMap(): Map<string, PhraseAnalysisLink> {
  * the phrases only when a boundary edit fires and would otherwise re-render the whole view tree on
  * every phrase change.
  *
- * @returns A stable function returning the phrase-link-by-id map at call time.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink> {
@@ -580,8 +541,6 @@ export function usePhraseLinkByIdGetter(): () => Map<string, PhraseAnalysisLink>
  * when the token is not part of any phrase. Re-renders only when the phrase membership of this
  * token changes.
  *
- * @param tokenRef - The `Token.ref` to look up.
- * @returns The matching approved `PhraseAnalysisLink`, or `undefined`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | undefined {
@@ -593,11 +552,9 @@ export function usePhraseLinkForToken(tokenRef: string): PhraseAnalysisLink | un
 }
 
 /**
- * Returns the gloss string for the given phrase in the store's active analysis language,
- * re-rendering only when that phrase's gloss changes.
+ * Returns the gloss string for the given phrase in the store's active analysis language, or `''`
+ * when absent. Re-renders only when that phrase's gloss changes.
  *
- * @param phraseId - The `PhraseAnalysis.id` whose gloss to read.
- * @returns The current gloss string, or `''` when absent.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseGloss(phraseId: string): string {
@@ -609,7 +566,6 @@ export function usePhraseGloss(phraseId: string): string {
 /**
  * Returns a stable callback that writes a gloss value for the given phrase, then calls `onSave`.
  *
- * @returns A function `(phraseId, value) => void`.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseGlossDispatch(): (phraseId: string, value: string) => void {
@@ -640,11 +596,7 @@ export type PhraseDispatch = {
    * @param tokens - Replacement ordered `TokenSnapshot`s in document order.
    */
   updatePhrase: (phraseId: string, tokens: TokenSnapshot[]) => void;
-  /**
-   * Deletes a phrase analysis and its link.
-   *
-   * @param phraseId - ID of the phrase to delete.
-   */
+  /** Deletes a phrase analysis and its link. */
   deletePhrase: (phraseId: string) => void;
   /**
    * Merges a neighboring phrase (or free token) into a target phrase in a single atomic dispatch,
@@ -664,12 +616,9 @@ export type PhraseDispatch = {
 };
 
 /**
- * Returns stable callbacks for creating, updating, and deleting phrases. Each callback dispatches
- * the corresponding Redux action then calls `onSave` with the updated `TextAnalysis`, matching the
- * pattern of {@link useGlossDispatch}.
+ * Returns stable callbacks for creating, updating, and deleting phrases. Each callback commits
+ * immediately and persists the updated analysis.
  *
- * @returns An object with `createPhrase`, `updatePhrase`, `deletePhrase`, and `mergePhrases`
- *   functions.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function usePhraseDispatch(): PhraseDispatch {
@@ -725,10 +674,8 @@ export function usePhraseDispatch(): PhraseDispatch {
 
 /**
  * Returns the approved free-translation string for the given segment in the store's active analysis
- * language, re-rendering only when that segment's free translation changes.
+ * language, or `''` when absent. Re-renders only when that segment's free translation changes.
  *
- * @param segmentId - The `Segment.id` whose free translation to read.
- * @returns The current free-translation string, or `''` when absent.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useSegmentFreeTranslation(segmentId: string): string {
@@ -744,8 +691,6 @@ export function useSegmentFreeTranslation(segmentId: string): string {
  * `onSave`. Mirrors {@link useGlossDispatch}: a blank value clears the translation and may drop the
  * now-empty `SegmentAnalysis` record.
  *
- * @returns A function `(segmentId, surfaceText, value) => void`, where `surfaceText` is the
- *   segment's current baseline text, stored on the `SegmentAnalysis` record.
  * @throws When called outside an {@link AnalysisStoreProvider}.
  */
 export function useSegmentFreeTranslationDispatch(): (

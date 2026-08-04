@@ -30,11 +30,11 @@ export type ArcSplitTarget = {
 type EmphasisTier = 'focused' | 'hovered' | 'unfocused';
 
 /**
- * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered (6) > focused
- * (4) > dimmed (2) — above each tier's own arc line but below the token row — so the button under
- * the cursor is always on top (see the layering comment in {@link ArcOverlay}). The color matches
- * the arc: focused foreground like its full-foreground arc, hovered in muted foreground, unfocused
- * faint until its phrase is hovered or focused.
+ * Per-tier Tailwind classes for a split button. The z-index orders buttons hovered > focused >
+ * dimmed — above each tier's own arc line but below the token row — so the button under the cursor
+ * is always on top (see the layering comment in {@link ArcOverlay}). The color matches the arc:
+ * focused foreground like its full-foreground arc, hovered in muted foreground, unfocused faint
+ * until its phrase is hovered or focused.
  */
 const TIER_BUTTON_CLASSES: Record<EmphasisTier, { z: string; color: string }> = {
   focused: { z: 'tw:z-4', color: 'tw:phrase-focused tw:text-foreground' },
@@ -103,10 +103,9 @@ type ArcOverlayProps = Readonly<{
 
 /**
  * Renders the phrase-arc SVG layer and (in view mode) the split-button overlay on top of a token
- * row. Shared by ContinuousView and SegmentView; intended to sit as a sibling of the row inside the
- * `arc-container` element that owns the coordinate space the arc paths were measured in.
+ * row. Intended to sit as a sibling of the row inside the `arc-container` element that owns the
+ * coordinate space the arc paths were measured in.
  *
- * @param props - Component props.
  * @returns The SVG + split-button overlay, or `undefined` when there are no arcs to draw.
  */
 export function ArcOverlay({
@@ -127,10 +126,6 @@ export function ArcOverlay({
   /**
    * Marks a free-split arc segment as hovered and notifies the parent of the token refs that would
    * become free if the split were confirmed.
-   *
-   * @param phraseId - The id of the phrase whose arc segment is being hovered.
-   * @param splitAfterTokenRef - Token ref at whose right edge the split would occur.
-   * @param freeRefs - Token refs of the tokens that would become free after the split.
    */
   const handleSplitHoverEnter = useCallback(
     (phraseId: string, splitAfterTokenRef: string, freeRefs: string[]) => {
@@ -150,9 +145,6 @@ export function ArcOverlay({
    * Marks the hovered arc segment as a non-freeing ("reshape") split so {@link renderArcPath} dims
    * just that segment, and highlights the whole phrase like a box hover. Used when both halves keep
    * ≥ 2 tokens, so there is nothing destructive to preview — only the disappearing connection.
-   *
-   * @param phraseId - The phrase whose arc segment is hovered.
-   * @param splitAfterTokenRef - Token ref marking the start of the hovered segment's split.
    */
   const handleReshapeHoverEnter = useCallback(
     (phraseId: string, splitAfterTokenRef: string) => {
@@ -174,10 +166,6 @@ export function ArcOverlay({
    * Whether this exact arc segment (phrase + split boundary) is the one whose split button is
    * currently hovered. Both an arc's `phraseId` and `splitAfterTokenRef` must match, since a phrase
    * with several boundaries draws one arc segment per boundary.
-   *
-   * @param phraseId - The arc segment's phrase id.
-   * @param splitAfterTokenRef - The token ref at the segment's split boundary.
-   * @returns `true` when this segment's split button is hovered.
    */
   const isSplitHovered = (phraseId: string, splitAfterTokenRef: string): boolean =>
     splitHoveredArc?.phraseId === phraseId &&
@@ -187,8 +175,6 @@ export function ArcOverlay({
    * Assigns a paint-order priority so highlighted arcs render on top of dimmed ones inside the
    * single SVG (last element wins). Split-hovered > focused > hovered/candidate > everything else.
    *
-   * @param phraseId - The arc segment's phrase id.
-   * @param splitAfterTokenRef - Token ref at whose right edge this segment's split would occur.
    * @returns The paint-order priority: 3 = split-hovered, 2 = focused, 1 = hovered/candidate, 0 =
    *   otherwise.
    */
@@ -210,9 +196,6 @@ export function ArcOverlay({
    * depends on the split kind: a `free` split shows the destructive preview, while a `reshape`
    * split dims this one segment (it would simply disappear). All other arcs use the standard
    * hover/focus stroke.
-   *
-   * @param arc - The arc path to render.
-   * @returns The SVG path element.
    */
   const renderArcPath = ({ phraseId, d, splitAfterTokenRef }: ArcPath) => {
     const effectiveHoveredPhraseId = candidatePhraseIds.has(phraseId) ? phraseId : hoveredPhraseId;
@@ -237,12 +220,6 @@ export function ArcOverlay({
     );
   };
 
-  /**
-   * Classifies a phrase into one of three emphasis tiers (see {@link EmphasisTier}).
-   *
-   * @param phraseId - The phrase id to classify.
-   * @returns The emphasis tier.
-   */
   const tierOf = (phraseId: string): EmphasisTier => {
     if (phraseId === focusedPhraseId) return 'focused';
     if (phraseId === hoveredPhraseId || candidatePhraseIds.has(phraseId)) return 'hovered';
@@ -264,9 +241,6 @@ export function ArcOverlay({
   /**
    * Like {@link tierOf}, but promotes a destructive (`free`) split-hovered segment to the `hovered`
    * tier so its red stroke renders above other arcs.
-   *
-   * @param arc - The arc path to classify.
-   * @returns The emphasis tier the arc should be painted in.
    */
   const effectiveTierOf = (arc: ArcPath): EmphasisTier => {
     if (isSplitHovered(arc.phraseId, arc.splitAfterTokenRef) && splitHoveredArc?.kind === 'free')

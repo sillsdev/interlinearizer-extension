@@ -50,13 +50,11 @@ const draftQueues = new Map<string, Promise<unknown>>();
 /**
  * Enqueues `fn` on a single shared serialization queue and returns a promise that resolves or
  * rejects with `fn`'s result. The queue always advances regardless of whether `fn` throws, so a
- * failed operation does not block later ones. Shared by {@link enqueueIndexOp} and
- * {@link enqueuePendingCleanupOp}, which differ only in which module-level queue they advance.
+ * failed operation does not block later ones.
  *
  * @param get - Returns the current tail of the queue to chain `fn` after.
  * @param set - Stores the new tail of the queue (a promise that settles once `fn` settles).
  * @param fn - The async function to serialize.
- * @returns A promise that resolves or rejects with the return value of `fn`.
  * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
  *   blocked.
  */
@@ -71,11 +69,9 @@ function enqueueOnQueue<T>(
 }
 
 /**
- * Enqueues `fn` on the index serialization queue. Thin wrapper over {@link enqueueOnQueue} bound to
- * {@link indexQueue}.
+ * Enqueues `fn` on the index serialization queue, so it runs only once every index operation
+ * enqueued before it has settled.
  *
- * @param fn - The async function to serialize.
- * @returns A promise that resolves or rejects with the return value of `fn`.
  * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
  *   blocked.
  */
@@ -90,11 +86,9 @@ function enqueueIndexOp<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Enqueues `fn` on the pending-cleanup serialization queue. Thin wrapper over {@link enqueueOnQueue}
- * bound to {@link pendingCleanupQueue}.
+ * Enqueues `fn` on the pending-cleanup serialization queue, so it runs only once every
+ * pending-cleanup operation enqueued before it has settled.
  *
- * @param fn - The async function to serialize.
- * @returns A promise that resolves or rejects with the return value of `fn`.
  * @throws Whatever `fn` throws; the queue advances past the error so later operations are not
  *   blocked.
  */
@@ -116,7 +110,6 @@ function enqueuePendingCleanupOp<T>(fn: () => Promise<T>): Promise<T> {
  * @param queues - The queue map to serialize on; one chain per `key`.
  * @param key - The key whose queue `fn` should join.
  * @param fn - The async function to serialize.
- * @returns A promise that resolves or rejects with the return value of `fn`.
  * @throws Whatever `fn` throws; the queue entry is removed and the rejection propagates to the
  *   caller.
  */
@@ -137,12 +130,9 @@ function enqueueSerialized<T>(
 }
 
 /**
- * Enqueues `fn` on the per-project serialization queue for `id`. Thin wrapper over
- * {@link enqueueSerialized} bound to {@link projectQueues}.
+ * Enqueues `fn` on the serialization queue for project `id`, so it runs only once every operation
+ * enqueued before it on that same project has settled; other projects proceed independently.
  *
- * @param id - The project UUID whose queue `fn` should join.
- * @param fn - The async function to serialize.
- * @returns A promise that resolves or rejects with the return value of `fn`.
  * @throws Whatever `fn` throws; the queue entry is removed and the rejection propagates to the
  *   caller.
  */
@@ -150,22 +140,12 @@ function enqueueProjectOp<T>(id: string, fn: () => Promise<T>): Promise<T> {
   return enqueueSerialized(projectQueues, id, fn);
 }
 
-/**
- * Returns the storage key for a project by ID.
- *
- * @param id - The project UUID.
- * @returns The storage key string used to read and write the project record.
- */
+/** Returns the storage key for a project by ID. */
 function projectKey(id: string): string {
   return `project:${id}`;
 }
 
-/**
- * Returns the storage key for a source project's draft.
- *
- * @param sourceProjectId - The Platform.Bible source project ID the draft belongs to.
- * @returns The storage key string used to read and write the draft record.
- */
+/** Returns the storage key for a source project's draft. */
 function draftKey(sourceProjectId: string): string {
   return `draft:${sourceProjectId}`;
 }
@@ -173,9 +153,6 @@ function draftKey(sourceProjectId: string): string {
 /**
  * Returns true when `e` is a file-not-found error (ENOENT) from the Node.js file system, which is
  * what `papi.storage.readUserData` throws when the requested key has never been written.
- *
- * @param e - The caught value.
- * @returns Whether the error represents a missing storage key.
  */
 function isNotFound(e: unknown): boolean {
   return !!e && typeof e === 'object' && 'code' in e && e.code === 'ENOENT';
@@ -184,9 +161,6 @@ function isNotFound(e: unknown): boolean {
 /**
  * Type guard for a JSON-parsed value that must be an array of strings — the shape of both the
  * `projectIds` index and the `pendingCleanup` set.
- *
- * @param value - The parsed value to test.
- * @returns Whether `value` is an array whose every element is a string.
  */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((id) => typeof id === 'string');
@@ -194,12 +168,8 @@ function isStringArray(value: unknown): value is string[] {
 
 /**
  * Reads and JSON-parses the value stored at `key`, treating a never-written key as an empty array.
- * Shared by {@link readIds} and {@link readPendingCleanup}. Returns the raw parsed value as `unknown`
- * and does not validate that it is an array of strings; each caller validates the shape itself.
+ * Returns the raw parsed value as `unknown` and does not validate that it is an array of strings.
  *
- * @param token - The execution token for storage access.
- * @param key - The storage key to read.
- * @returns The parsed value, or an empty array if `key` has never been written (ENOENT).
  * @throws {SyntaxError} If the stored value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason (e.g. permission denied,
  *   I/O error).
@@ -221,7 +191,6 @@ async function readJsonArray(token: ExecutionToken, key: string): Promise<unknow
  * characters in {@link createProject}, or calling `.filter` on a non-array in
  * {@link deleteProject}).
  *
- * @param token - The execution token for storage access.
  * @returns The stored project ID array, or an empty array if `projectIds` has never been written
  *   (ENOENT).
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
@@ -260,9 +229,6 @@ interface PendingCleanupRead {
  * was present but corrupt, `corrupt` is set so the caller can rewrite the key with a valid value,
  * self-healing it instead of re-reading (and re-warning about) the bad value on every launch.
  *
- * @param token - The execution token for storage access.
- * @returns The recovered ids and whether the stored value was corrupt. A missing (ENOENT) value is
- *   an empty, non-corrupt set (nothing to repair).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanupRead> {
@@ -287,15 +253,12 @@ async function readPendingCleanup(token: ExecutionToken): Promise<PendingCleanup
 
 /**
  * Records `id` in the persistent `pendingCleanup` set so a later {@link sweepPendingCleanup} can
- * retry deleting its orphaned `project:{id}` record. Serialized through {@link pendingCleanupQueue}
- * and idempotent: an id already in the set is not added twice.
+ * retry deleting its orphaned `project:{id}` record. Serialized with every other write to the set,
+ * so concurrent updates cannot overwrite each other, and idempotent: an id already in the set is
+ * not added twice.
  *
- * @param token - The execution token for storage access.
- * @param id - The orphaned project UUID to record for later cleanup.
- * @returns A promise that resolves once the id has been persisted (or was already present).
  * @throws If `papi.storage.readUserData` or `papi.storage.writeUserData` rejects for a non-ENOENT
- *   reason. A corrupt `pendingCleanup` value is not thrown; {@link readPendingCleanup} resets it to
- *   an empty set.
+ *   reason. A corrupt `pendingCleanup` value is not thrown; it is recovered as an empty set.
  */
 function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> {
   return enqueuePendingCleanupOp(async () => {
@@ -320,16 +283,18 @@ function recordPendingCleanup(token: ExecutionToken, id: string): Promise<void> 
  * set while still indexed (e.g. an index write that persists but then reports failure). Intended to
  * run opportunistically at activation.
  *
- * The whole read-delete-rewrite cycle is serialized through {@link pendingCleanupQueue} so it cannot
+ * The whole read-delete-rewrite cycle is serialized with every other write to the set, so it cannot
  * interleave with a concurrent {@link recordPendingCleanup} and drop a newly recorded orphan. The
  * per-record deletions run concurrently within the cycle; the set is small and each targets a
  * distinct key.
  *
- * @param token - The execution token for storage access.
  * @returns A promise resolving to the number of orphaned records successfully deleted this pass
  *   (live ids dropped from the set without deleting their record are not counted).
- * @throws If reading the set or rewriting it (`papi.storage.writeUserData`) rejects for a
- *   non-ENOENT reason. A per-record delete failure is not thrown; the id is retained instead.
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If reading the set or the index, or rewriting the set (`papi.storage.writeUserData`),
+ *   rejects for a non-ENOENT reason. A per-record delete failure is not thrown; the id is retained
+ *   instead.
  */
 export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
   return enqueuePendingCleanupOp(async () => {
@@ -340,7 +305,7 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
       if (corrupt) await papi.storage.writeUserData(token, PENDING_CLEANUP_KEY, JSON.stringify([]));
       return 0;
     }
-    // Read the index directly rather than through enqueueIndexOp: this snapshot is consulted only
+    // Read the index directly rather than on the index queue: this snapshot is consulted only
     // to protect live projects from deletion, and both directions of a stale read are safe. A read
     // that misses a just-created project is harmless (a live project's id is never in the
     // pending-cleanup work set), and a read that still shows a since-deleted project only makes the
@@ -387,8 +352,9 @@ export function sweepPendingCleanup(token: ExecutionToken): Promise<number> {
  *   when omitted the project is analysis-only and `links` is left undefined.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns The newly created project record.
  * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  * @throws If the project or index `papi.storage.writeUserData` rejects. On an index-write failure
  *   the original error is rethrown after best-effort rollback; a failed rollback does not throw —
  *   the orphaned record is instead recorded for a later {@link sweepPendingCleanup} (and a failure
@@ -442,10 +408,8 @@ export async function createProject(
 }
 
 /**
- * Returns the project with the given ID.
+ * Reads one persisted interlinearizer project.
  *
- * @param token - The execution token for storage access.
- * @param id - The project UUID.
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
@@ -467,9 +431,8 @@ export async function getProject(
  * after a failed delete) are silently omitted. Projects that fail to read or parse are logged and
  * skipped so a single corrupted record does not prevent access to the rest.
  *
- * @param token - The execution token for storage access.
- * @returns All stored projects, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  */
 export async function listProjects(token: ExecutionToken): Promise<InterlinearProject[]> {
@@ -491,10 +454,8 @@ export async function listProjects(token: ExecutionToken): Promise<InterlinearPr
  * Returns all interlinearizer projects whose `sourceProjectId` matches the given value, in creation
  * order.
  *
- * @param token - The execution token for storage access.
- * @param sourceProjectId - The Platform.Bible project ID to filter by.
- * @returns All projects for the given source, ordered by creation time.
  * @throws {SyntaxError} If `projectIds` or any project's storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
 export async function getProjectsForSource(
@@ -595,14 +556,11 @@ export async function updateProjectMetadata(
  * Deletes the project with the given ID from storage and removes it from the index. No-ops silently
  * if the project does not exist.
  *
- * @param token - The execution token for storage access.
- * @param id - The project UUID to delete.
- * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON (from
- *   {@link readIds}).
+ * @throws {SyntaxError} If the `projectIds` storage value contains invalid JSON.
+ * @throws {Error} If the stored `projectIds` value is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason when reading the index.
  * @throws If `papi.storage.deleteUserData` throws for a reason other than ENOENT.
  * @throws If `papi.storage.writeUserData` rejects when updating `PROJECT_IDS_KEY`.
- * @throws Any error propagated from {@link readIds}, {@link enqueueProjectOp}, or
- *   {@link enqueueIndexOp}.
  */
 export async function deleteProject(token: ExecutionToken, id: string): Promise<void> {
   await enqueueProjectOp(id, async () => {
@@ -621,15 +579,11 @@ export async function deleteProject(token: ExecutionToken, id: string): Promise<
 
 /**
  * Reads the draft working buffer for a source project, returning a fresh empty draft when none has
- * been written yet (ENOENT) or when the stored draft fails validation. Drafts are never added to
- * the `projectIds` index, so they stay out of {@link listProjects} and {@link getProjectsForSource}
- * and never appear in the project picker.
+ * been written yet (ENOENT), when the stored draft fails validation, or when it belongs to a
+ * different source project — the invalid draft is logged and silently discarded. Drafts are never
+ * added to the `projectIds` index, so they stay out of {@link listProjects} and
+ * {@link getProjectsForSource} and never appear in the project picker.
  *
- * @param token - The execution token for storage access.
- * @param sourceProjectId - The Platform.Bible source project ID whose draft to read.
- * @returns The stored {@link DraftProject}; or a fresh empty draft when none exists, or when the
- *   stored draft fails the {@link isDraftProject} guard or its `sourceProjectId` does not match the
- *   requested one (the invalid draft is logged and silently discarded).
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for any non-ENOENT reason.
  */
@@ -654,14 +608,10 @@ export async function getDraft(
 
 /**
  * Writes the draft working buffer for a source project, replacing any existing draft. Writes are
- * serialized per source (via {@link draftQueues}) so a WebView's rapid auto-saves cannot persist out
- * of order. The caller owns the whole envelope — including the `dirty` flag — so this function is a
- * plain write with no read-modify-merge.
+ * serialized per source project, so a WebView's rapid auto-saves cannot persist out of order. The
+ * caller owns the whole envelope — including the `dirty` flag — so this function is a plain write
+ * with no read-modify-merge.
  *
- * @param token - The execution token for storage access.
- * @param sourceProjectId - The Platform.Bible source project ID whose draft to write.
- * @param draft - The full {@link DraftProject} envelope to persist.
- * @returns A promise that resolves once the draft has been written.
  * @throws If `papi.storage.writeUserData` rejects.
  */
 export async function saveDraft(
@@ -676,8 +626,8 @@ export async function saveDraft(
 
 /**
  * Resets module-level queue state between tests. Jest's `resetMocks` resets mock implementations
- * but does not re-execute modules, so `indexQueue`, `projectQueues`, and `draftQueues` would
- * otherwise persist across tests and allow promise chains from one test to bleed into the next.
+ * but does not re-execute modules, so the serialization queues would otherwise persist across tests
+ * and allow promise chains from one test to bleed into the next.
  */
 export function resetQueuesForTesting(): void {
   indexQueue = Promise.resolve();

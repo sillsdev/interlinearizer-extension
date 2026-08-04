@@ -1,13 +1,12 @@
 import { useCallback, useState } from 'react';
 
-/** Hover-driven preview state shared by SegmentView and ContinuousView. */
+/** Hover-driven preview state for a phrase strip. */
 export type PhraseHoverState = {
   /**
    * Group key (first token ref) of the phrase box currently hovered; drives controls-pill placement
    * so the pill floats above whichever fragment the pointer is over.
    */
   hoveredGroupKey: string | undefined;
-  /** Setter for {@link hoveredGroupKey}. */
   setHoveredGroupKey: (key: string | undefined) => void;
   /**
    * Token refs of the free tokens a hovered link icon would join into a new phrase; used to
@@ -22,18 +21,13 @@ export type PhraseHoverState = {
    */
   splitFreeTokenRefs: ReadonlySet<string>;
   /**
-   * Mirrors the free token refs emitted by `ArcOverlay`'s internal split-hover state so the phrase
-   * boxes can show a destructive border preview.
-   *
-   * @param freeTokenRefs - Token refs that would become solo after the split, or an empty set on
-   *   leave.
+   * Mirrors the free token refs emitted by the arc overlay's own split-hover state so the phrase
+   * boxes can show a destructive border preview. Pass an empty set on leave.
    */
   handleSplitHoverChange: (freeTokenRefs: ReadonlySet<string>) => void;
   /**
-   * Sets (or clears) the would-become-free token refs previewed with a destructive border when a
-   * link/unlink icon is hovered.
-   *
-   * @param refs - The would-be-free token refs, or `undefined`/empty on leave.
+   * Sets the would-become-free token refs previewed with a destructive border when a link or unlink
+   * icon is hovered. Pass `undefined` or an empty array on leave.
    */
   handleHoverSplitFreeTokens: (refs: readonly string[] | undefined) => void;
   /** Clears every hover preview at once; wired to the token row's `onMouseLeave`. */
@@ -41,16 +35,12 @@ export type PhraseHoverState = {
 };
 
 /**
- * Owns the hover-preview state that both phrase strips ({@link SegmentView} and
- * {@link ContinuousView}) need: the hovered group key, link-candidate token refs, and
- * would-become-free token refs, plus the stable callbacks that feed them from `ArcOverlay` and the
- * link/unlink icons. Extracted so the two views can never drift apart in how these previews are
- * wired, and so each view's body is freed of five near-identical state declarations.
+ * Owns a phrase strip's hover-preview state — which box the pointer is over, and which tokens a
+ * hovered link, unlink, or split would affect — along with the stable callbacks that update it. One
+ * definition of the preview wiring, so every strip previews an operation the same way.
  *
- * `hoveredPhraseId` is intentionally **not** owned here: ContinuousView keeps it locally while
- * SegmentView receives it as a prop from its parent, so the two views manage it differently.
- *
- * @returns The shared hover-preview state and its setters/handlers.
+ * The hovered phrase id is deliberately **not** part of this state: its ownership differs by mount
+ * site, so it stays outside the shared wiring.
  */
 export function usePhraseHoverState(): PhraseHoverState {
   const [hoveredGroupKey, setHoveredGroupKey] = useState<string | undefined>();

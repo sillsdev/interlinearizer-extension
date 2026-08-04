@@ -1,4 +1,3 @@
-/** @file Shared test helpers for unit and component tests. */
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
 import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';
@@ -25,13 +24,6 @@ type StateSlot<T> = { get: () => T; set: (v: T) => void };
 /**
  * Returns a `useWebViewState` hook stub that stores values in typed per-key closures so state
  * persists across re-renders within the same test without requiring any type assertions.
- *
- * @param seed - Optional map of key → initial value. When a key is present in `seed` the slot is
- *   pre-populated with that value instead of using the hook's `defaultValue` argument.
- * @returns A hook function with the signature `(key, defaultValue) => [value, setter, reset]` where
- *   `value` is the current stored value for `key` (initially `defaultValue` or the seeded value),
- *   `setter` updates it, and `reset` removes the slot so the next call re-initializes from
- *   `defaultValue`.
  */
 export function makeWebViewState(seed: Record<string, unknown> = {}) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,9 +56,6 @@ export function makeWebViewState(seed: Record<string, unknown> = {}) {
  * Builds a {@link PhraseStripContextValue} for component tests, with no-op callbacks and empty
  * lookups by default. Tests that consume strip context wrap their subject in `PhraseStripProvider`
  * with this value (overriding only the fields they assert on).
- *
- * @param overrides - Partial context fields to override the defaults.
- * @returns A complete `PhraseStripContextValue`.
  */
 export function makePhraseStripContext(
   overrides: Partial<PhraseStripContextValue> = {},
@@ -114,7 +103,6 @@ export type ScrollGroupTuple = ReturnType<UseWebViewScrollGroupScrRefHook>;
  * @param scrollGroupId - The active scroll-group id; defaults to `undefined` (unlinked).
  * @param setScrollGroupId - The scroll-group setter; defaults to a no-op.
  * @param sourceProjectId - The scroll group's source project id; defaults to `undefined`.
- * @returns A hook returning the assembled tuple.
  */
 export function makeScrollGroupHook(
   ref: SerializedVerseRef = defaultScrRef,
@@ -162,9 +150,6 @@ const mockElevatedPrivileges = {
 /**
  * Builds a minimal ExecutionActivationContext for unit testing activate(). Uses
  * UnsubscriberAsyncList from the platform-bible-utils Jest mock.
- *
- * @returns Context that satisfies ExecutionActivationContext for tests that only use
- *   registrations.add
  */
 export function createTestActivationContext(): ExecutionActivationContext {
   return {
@@ -178,9 +163,6 @@ export function createTestActivationContext(): ExecutionActivationContext {
 /**
  * Builds a minimal `InterlinearProject` test fixture with stable defaults used across command
  * tests.
- *
- * @param id - Project ID override for tests that need a specific identifier.
- * @returns A project with fixed metadata and a fresh empty analysis object.
  */
 export function makeStubProject(id = 'proj-id'): InterlinearProject {
   return {
@@ -194,13 +176,9 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
 }
 
 /**
- * Builds a minimal word token for use in component tests. When `surfaceText` is omitted it defaults
- * to `ref`, which is appropriate for tests that only need a syntactically valid token and do not
- * assert on surface text independently.
- *
- * @param ref - Token reference string.
- * @param surfaceText - Display text; defaults to `ref` when omitted.
- * @returns A word token with the given ref and surface text.
+ * Builds a minimal word token for use in component tests. Called without a surface text, it reuses
+ * the ref as one, which is appropriate for tests that only need a syntactically valid token and do
+ * not assert on surface text independently.
  */
 export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
@@ -209,11 +187,10 @@ export function makeWordToken(ref: string, surfaceText = ref): Token & { type: '
 /**
  * Builds an approved `PhraseAnalysisLink` fixture for unit tests.
  *
- * @param phraseId - The analysis id for both the link and its corresponding `PhraseAnalysis`.
- * @param tokenRefs - Token refs to include.
+ * @param phraseId - Doubles as the link's `analysisId`, so tests can address the phrase by one id.
+ * @param tokenRefs - The linked token refs, in phrase order.
  * @param surfaceTexts - Surface text for each token, parallel to `tokenRefs`. Defaults to the ref
  *   string when omitted, which is only appropriate when drift detection is not under test.
- * @returns A `PhraseAnalysisLink` with `status: 'approved'`.
  */
 export function makePhraseLink(
   phraseId: string,

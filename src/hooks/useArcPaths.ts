@@ -55,16 +55,9 @@ const SETTLE_VERIFY_DELAYS_MS = [200, 400, 800];
  * are what feed back into layout, and the arc `d` plus the split-button geometry (`midX`/`midY` and
  * the run bounds) are what the strip renders. Including the split-button fields matters because a
  * deconfliction-only shift mutates `midX` without touching `d`, level, or padding: were it omitted,
- * such a pass would match `history[0]`, be dropped as a fixed point, and never reach `setArcPaths`
- * — leaving the button in its pre-shift position. Two measurements with the same signature
- * therefore produce both the same applied padding and the same rendered arcs, so they cannot
- * represent genuine progress.
- *
- * @param paths - The measured arc paths.
- * @param maxLevel - The measured max nesting level.
- * @param leftPadding - The measured left gutter padding.
- * @param rightPadding - The measured right gutter padding.
- * @returns A signature string that is equal iff the layout- and render-affecting outputs match.
+ * such a pass would read as a redundant fixed point and be dropped, leaving the button in its
+ * pre-shift position. Two measurements with the same signature therefore produce both the same
+ * applied padding and the same rendered arcs, so they cannot represent genuine progress.
  */
 function signatureOf(
   paths: ArcPath[],
@@ -81,11 +74,11 @@ function signatureOf(
 }
 
 /**
- * Measures the rendered phrase boxes inside `containerRef` after each layout commit and computes
- * the arcs connecting every discontiguous phrase's runs. Shared by SegmentView and ContinuousView
- * so the two strip layouts can't drift apart. State is only replaced when the serialized arc shape
- * changes, so the layout effect settles after one extra pass; when `enabled` is `false` the result
- * is reset to empty instead of measured.
+ * Measures the rendered phrase boxes after each layout commit and computes the arcs connecting
+ * every discontiguous phrase's runs — the single arc derivation, so no layout can draw the same
+ * phrase differently. State is only replaced when the serialized arc shape changes, so the layout
+ * effect settles after one extra pass. A disabled container resets to empty instead of being
+ * measured.
  *
  * Measurement is settle-aware: because box geometry can drift without any resize event on the
  * observed container (see {@link SETTLE_VERIFY_DELAYS_MS}), each pass arms a delayed verification
@@ -96,14 +89,11 @@ function signatureOf(
  * padding shifts the layout the arcs are measured against — otherwise a 0→1 arc transition would
  * leave paths positioned for the old padding until an unrelated render.
  *
- * @param containerRef - Ref to the element wrapping the `[data-phrase-box]` elements to measure.
- * @param enabled - Whether the container is mounted and should be measured; `false` resets to
- *   empty.
+ * @param containerRef - Wraps the phrase-box elements to measure.
+ * @param enabled - Whether the container is mounted and should be measured.
  * @param hasRealPhrase - Whether any committed phrase is rendered; feeds the controls headroom.
- * @param deps - Extra dependencies that should trigger a re-measure (token data, phrase mode,
- *   etc.).
- * @returns The current arc paths, max nesting level, and the strip's top/row-gap/left/right
- *   padding.
+ * @param deps - Extra dependencies that should trigger a re-measure, such as token data or phrase
+ *   mode.
  */
 export function useArcPaths(
   containerRef: RefObject<HTMLElement | null>,
@@ -170,10 +160,8 @@ export function useArcPaths(
 
   const measure = useCallback(
     /**
-     * Runs one measurement pass against `container` and flushes the results into state. Called from
-     * the layout effects, the ResizeObserver, and its own settle-verification timeout (named so the
-     * timeout can re-enter it). Per-field equality guards keep stable measurements from churning
-     * state.
+     * Runs one measurement pass against `container` and flushes the results into state. Per-field
+     * equality guards keep stable measurements from churning state.
      *
      * @param container - The element to measure phrase boxes inside.
      * @param force - When `true`, measure even if the signature was recently seen, and reset the
@@ -226,15 +214,9 @@ export function useArcPaths(
       // other applies prepend onto a 2-deep window so entry 0 stays the applied signature.
       recentArcSignaturesRef.current = force ? [signature] : [signature, ...history].slice(0, 2);
       setArcPaths((prev) => {
-        /**
-         * Serializes one arc path into an identity key for the referential-equality guard below.
-         * Includes the split-button geometry (midX/midY and run bounds) so a deconfliction-only
-         * shift — which mutates midX without touching `d` — still replaces the paths rather than
-         * leaving the button in its pre-shift position.
-         *
-         * @param p - The arc path to serialize.
-         * @returns A string equal iff the rendered arc and its split-button geometry match.
-         */
+        // Identity key for the referential-equality guard below. Includes the split-button geometry
+        // so a deconfliction-only shift — which moves the button without touching the arc path —
+        // still replaces the paths rather than leaving the button in its pre-shift position.
         const key = (p: ArcPath) =>
           `${p.phraseId}:${p.splitAfterTokenRef}:${p.d}:${p.midX}:${p.midY}:${p.runLeft}:${p.runRight}`;
         const prevKey = prev.map(key).join('|');

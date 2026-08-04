@@ -9,7 +9,7 @@ import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
-/** Localized string keys used by {@link SaveAsProjectModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_saveAs_title%',
   '%interlinearizer_modal_saveAs_new_section%',
@@ -36,7 +36,6 @@ const SAVE_AS_MODAL_STRING_KEYS: `%${string}%`[] = [
  * component is presentational: it collects the choice and delegates the actual persistence to the
  * caller via {@link onSaveNew} / {@link onOverwrite}.
  *
- * @param props - Component props
  * @param props.sourceProjectId - Source project whose existing interlinear projects to list as
  *   overwrite targets.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
@@ -90,8 +89,6 @@ export function SaveAsProjectModal({
   /**
    * Loads existing interlinear projects for `sourceProjectId` to populate the overwrite list. Logs
    * and notifies on failure; ignores a response superseded by a newer load.
-   *
-   * @returns A promise that resolves when the list is loaded or the failure has been handled.
    */
   const loadProjects = useCallback(async () => {
     loadGenRef.current += 1;
@@ -147,8 +144,6 @@ export function SaveAsProjectModal({
   /**
    * Overwrites the chosen existing project with the draft, blocking re-entry while the save is in
    * flight so a double-click cannot fire the overwrite (or another save) twice.
-   *
-   * @param project - The existing project to overwrite.
    */
   const handleConfirmOverwrite = useCallback(
     (project: InterlinearProjectSummary) =>

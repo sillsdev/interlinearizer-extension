@@ -93,7 +93,6 @@ const FATAL_STARTUP_PAGE_ERROR =
  * wrapped throwables), and any own-enumerable properties — so the real cause survives to the log
  * and to the tripwire regex.
  *
- * @param err The error surfaced by Playwright's `pageerror` event.
  * @returns A newline-joined description containing every distinct detail recoverable from `err`.
  */
 export function describePageError(err: Error): string {
@@ -145,9 +144,6 @@ export interface LaunchElectronAppOptions {
 /**
  * Wait for the WebSocket server to be ready on the specified port.
  *
- * @param port Port number to connect to.
- * @param timeout Maximum time in milliseconds to wait before throwing.
- * @returns Resolves when a WebSocket connection to the port succeeds.
  * @throws {Error} If the WebSocket server is not ready within `timeout` milliseconds.
  */
 async function waitForWebSocketReady(port: number, timeout: number): Promise<void> {
@@ -210,9 +206,9 @@ export const E2E_SETTINGS_OVERRIDES: Record<string, unknown> = {
 
 /**
  * File the pre-launch dev-appdata settings backup is written to (kept in `e2e-tests/`, alongside
- * the `.cdp-*` run-marker files). Shared by BOTH the smoke and CDP tiers, not one file per tier:
- * there is only one `settings.json` to protect, so a stale backup left by either tier's crashed run
- * can be recovered by the other tier's own self-heal (see {@link backupAndSeedSettings}).
+ * the `.cdp-*` run-marker files). One backup file for every tier, not one per tier: there is only
+ * one `settings.json` to protect, so a stale backup left by a crashed run can be recovered by the
+ * next run's own self-heal (see {@link backupAndSeedSettings}).
  *
  * Sharing one file is safe only because seed/restore cycles never overlap: both Playwright configs
  * set `workers: 1` and `fullyParallel: false`, and the tiers run sequentially. Two concurrent
@@ -232,7 +228,7 @@ const SETTINGS_ABSENT_SENTINEL = '__SETTINGS_ABSENT__';
  * the one outcome the backup exists to prevent — and every restore path reads the backup
  * unconditionally, so the guarantee has to hold at the write rather than at each read.
  *
- * @param contents Backup body: the original settings JSON, or the marker for "no settings file
+ * @param contents - Backup body: the original settings JSON, or the marker for "no settings file
  *   existed".
  * @throws A filesystem error while writing or renaming the temp file. The published backup is left
  *   untouched, so a caller's rollback still sees the pre-call state.
@@ -246,24 +242,20 @@ function publishSettingsBackup(contents: string): void {
 
 /**
  * Back up paranext-core's dev-appdata settings file to {@link SETTINGS_BACKUP_FILE} (recording
- * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it. Must be
- * called BEFORE launching Electron so the app reads the overrides at startup.
+ * {@link SETTINGS_ABSENT_SENTINEL} if no file exists yet) and merge `overrides` into it, replacing
+ * rather than failing on a file that does not hold a JSON object. Must be called BEFORE launching
+ * Electron so the app reads the overrides at startup.
  *
  * Self-heals a stale backup left by a prior hard-killed run of EITHER tier (restoring it first), so
  * the backup always captures the true original settings, never an already-seeded file.
  *
- * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ * @param overrides - Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
- * @param workers Worker count of the run doing the seeding, from the Playwright config.
- * @returns Nothing.
- * @throws If `workers` exceeds 1: one shared settings file and one shared backup cannot survive
- *   concurrent seed/restore cycles, so this fails loudly instead of corrupting the developer's
- *   settings. Nothing is seeded in that case.
- * @throws A filesystem error while backing up the original settings, creating the settings
- *   directory, or writing the seeded file. The seed may be partially applied when it throws, so a
- *   caller that has to leave the developer's settings untouched must roll it back with
- *   {@link restoreBackedUpSettings} (see {@link preConfigureSettings}). A corrupt settings file is
- *   not an error — it is overwritten with just the overrides.
+ * @param workers - The run's configured worker count, from the Playwright config.
+ * @throws If the run is configured for more than a single worker: concurrent seed/restore cycles
+ *   would interleave and corrupt the developer's settings. Nothing is seeded in that case.
+ * @throws A filesystem error while backing up or seeding, which may leave the seed partially
+ *   applied — roll it back with {@link restoreBackedUpSettings}.
  */
 export function backupAndSeedSettings(overrides: Record<string, unknown>, workers: number): void {
   if (workers > 1) {
@@ -304,8 +296,6 @@ export function backupAndSeedSettings(overrides: Record<string, unknown>, worker
  * {@link SETTINGS_BACKUP_FILE} (or delete it if the backup marks that no settings file existed
  * before seeding), then remove the backup marker. A no-op when no backup exists. Best-effort:
  * guarded so a settings-restore failure never throws.
- *
- * @returns Nothing.
  */
 export function restoreBackedUpSettings(): void {
   if (!fs.existsSync(SETTINGS_BACKUP_FILE)) return;
@@ -326,17 +316,14 @@ export function restoreBackedUpSettings(): void {
  * timeout SIGKILL, Ctrl+C) leaves a recoverable backup instead of losing the developer's original
  * settings with the process.
  *
- * @param overrides Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
+ * @param overrides - Setting keys to merge into the file (e.g. `{ 'platform.firstRunComplete': true
  *   }`).
- * @param workers Worker count of the run doing the seeding, from the Playwright config.
+ * @param workers - Worker count of the run doing the seeding, from the Playwright config.
  * @returns A restore function that puts the file back to its exact pre-call contents (or deletes it
  *   if it did not exist). Call it AFTER the app has closed so the developer's saved settings are
  *   not permanently replaced by test values.
- * @throws Whatever {@link backupAndSeedSettings} throws (a multi-worker run, or a filesystem error
- *   while backing up, creating the settings directory, or writing the seeded file). The caller
- *   never receives a restore function in that case, so this rolls the partial seed back itself
- *   before rethrowing — otherwise a mid-seed failure would strand the developer's settings in a
- *   seeded state.
+ * @throws If seeding fails. No restore function is returned, so this rolls the partial seed back
+ *   itself rather than stranding the developer's settings in a seeded state.
  */
 export function preConfigureSettings(
   overrides: Record<string, unknown>,
@@ -358,9 +345,6 @@ export function preConfigureSettings(
  * Launch a fresh Electron instance (paranext-core) with the interlinearizer extension loaded via
  * `--extensions`.
  *
- * @param opts Optional launch options (e.g. environment variable overrides).
- * @returns The app handle, the isolated user-data directory path, and a promise that resolves when
- *   the app closes.
  * @throws If Electron fails to launch or the WebSocket server does not become ready.
  */
 export async function launchElectronWithExtension(
@@ -474,9 +458,6 @@ export async function launchElectronWithExtension(
  * Flush and close the smoke app-log write stream, resolving once its buffered data has reached disk
  * so a following read of the file sees the captured output rather than an empty buffer.
  * Best-effort: a stream error resolves rather than rejects.
- *
- * @param appLog The write stream created for {@link SMOKE_APP_LOG_FILE}.
- * @returns Resolves once the stream has flushed and closed (or errored).
  */
 function flushAppLog(appLog: fs.WriteStream): Promise<void> {
   return new Promise<void>((resolve) => {
@@ -495,8 +476,6 @@ function flushAppLog(appLog: fs.WriteStream): Promise<void> {
  * console. Called when the app fails to open its WebSocket port so the startup failure's cause
  * appears inline in the CI log, not only in the uploaded artifact. Best-effort: a missing or
  * unreadable log is reported, never thrown.
- *
- * @returns Nothing; logging-only.
  */
 function dumpSmokeAppLog(): void {
   try {
@@ -512,9 +491,6 @@ function dumpSmokeAppLog(): void {
 /**
  * Tear down an Electron instance: kill the process group, wait for close, and clean up the isolated
  * user-data directory.
- *
- * @param ctx The app context returned by {@link launchElectronWithExtension}.
- * @returns Resolves when the Electron process has been killed and user-data cleaned up.
  */
 export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void> {
   const { electronApp, userDataDir, appClosed } = ctx;
@@ -545,12 +521,12 @@ export async function teardownElectronApp(ctx: ElectronAppContext): Promise<void
  * One JSON-RPC 2.0 request over WebSocket: open, send, wait for response id `1`, close. Ignores
  * unrelated messages until the matching response arrives.
  *
- * @param method JSON-RPC method name to invoke.
- * @param timeoutErrorMessage Custom error message on timeout; defaults to a standard timeout
+ * @param method - The PAPI method to invoke.
+ * @param timeoutErrorMessage - Custom error message on timeout; defaults to a standard timeout
  *   message.
- * @param params Positional parameters to send with the request.
- * @param port WebSocket port to connect to.
- * @param perRequestTimeoutMs Milliseconds before the request times out.
+ * @param params - Positional JSON-RPC params; empty when the method takes none.
+ * @param port - The PAPI WebSocket port; defaults to the suite-wide port.
+ * @param perRequestTimeoutMs - Budget for this single attempt, not for any surrounding retry loop.
  * @returns The `result` field of the JSON-RPC response, typed as `T`.
  * @throws {Error} If the request times out or the server returns a JSON-RPC error.
  */
@@ -611,13 +587,9 @@ async function sendPapiJsonRpcOnce<T>(
 }
 
 /**
- * Send a single JSON-RPC request where `method` is a PAPI request type (e.g. `rpc.discover`). Opens
- * a connection, sends one request, waits for the matching response id, then closes.
+ * Send a single JSON-RPC request for a PAPI request type (e.g. `rpc.discover`). Opens a connection,
+ * sends one request, waits for the matching response id, then closes.
  *
- * @param method PAPI request type to invoke (e.g. `rpc.discover`).
- * @param params Positional parameters to send with the request.
- * @param port WebSocket port to connect to.
- * @param perRequestTimeoutMs Milliseconds before the request times out.
  * @returns The `result` field of the JSON-RPC response, typed as `T`.
  * @throws {Error} If the request times out or the server returns a JSON-RPC error.
  */
@@ -633,10 +605,9 @@ export async function sendPapiRequestOnce<T>(
 /**
  * Poll `rpc.discover` until `methodName` appears in `result.methods` or `timeoutMs` elapses.
  *
- * @param methodName The fully-qualified PAPI method name to wait for (e.g. `command:foo.bar`).
- * @param port WebSocket port to connect to.
- * @param timeoutMs Maximum time in milliseconds to poll before throwing.
- * @returns Resolves when the method appears in `rpc.discover`.
+ * @param methodName - The fully-qualified PAPI method name to wait for (e.g. `command:foo.bar`).
+ * @param port - The PAPI WebSocket port; defaults to the suite-wide port.
+ * @param timeoutMs - Total budget across all polls, not per poll.
  * @throws {Error} If the method is not registered within `timeoutMs` milliseconds.
  */
 export async function waitForPapiMethodRegistered(
@@ -681,9 +652,6 @@ export async function waitForPapiMethodRegistered(
  * The three waits run concurrently and share the one `timeout` budget (the hosts register in
  * parallel, so serializing would triple the worst-case wait for no benefit).
  *
- * @param timeout Maximum time in milliseconds to wait for all three hosts. Floored to a small
- *   positive value so an already-thin remaining budget still gets one real poll.
- * @returns Resolves once all three service-host providers are listed in `rpc.discover`.
  * @throws {Error} If any of the three hosts is not registered within `timeout` milliseconds.
  */
 export async function waitForServiceHostsRegistered(timeout: number): Promise<void> {
@@ -732,10 +700,9 @@ interface DockTabTitlesOptions {
  * "tripwire fired" from an ordinary `fn` rejection, so only a genuine fatal error is remapped to
  * the fast failure.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param enabled Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
- * @param fn The readiness work to run under the tripwire.
- * @returns Resolves with `fn`'s result once it completes without the tripwire firing.
+ * @param page - The renderer page to listen on; the listener is removed from it in `finally`.
+ * @param enabled - Whether to arm the tripwire. When `false`, `fn` runs with no listener attached.
+ * @param fn - The readiness work to run under the tripwire.
  * @throws If the renderer emitted a fatal startup error while `fn` was in flight (with `enabled`),
  *   or whatever `fn` itself throws.
  */
@@ -792,13 +759,10 @@ export async function withFatalStartupTripwire<T>(
  * {@link withFatalStartupTripwire}, which callers wrap around the whole readiness sequence; this
  * wait does not arm that tripwire itself.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param timeout Maximum time in milliseconds to wait before throwing. Must be positive: Playwright
- *   treats `waitForFunction({ timeout: 0 })` as an unbounded wait, so a non-positive value (an
- *   already-exhausted budget) is failed fast rather than forwarded, to avoid hanging on the exact
- *   "Unknown"-tab stall this helper bounds.
- * @param options Readiness options; see {@link DockTabTitlesOptions}.
- * @returns Resolves once the dock is ready per the chosen `strict` mode.
+ * @param page - The renderer page hosting the dock layout.
+ * @param timeout - Remaining budget for this wait, in ms; a non-positive value is an exhausted
+ *   budget and throws rather than waiting.
+ * @param options - Readiness options; see {@link DockTabTitlesOptions}.
  * @throws If `timeout` is non-positive (budget exhausted before this wait began), if tab titles
  *   have not resolved within `timeout` milliseconds, or if the renderer page was closed while
  *   waiting.
@@ -876,10 +840,6 @@ interface AppReadyOptions {
  * tab-title poll only runs once the data behind the titles exists. On a healthy startup the hosts
  * are already up.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param options Readiness options; see {@link AppReadyOptions}.
- * @returns Resolves when the dock layout is visible with resolved tab titles, the service hosts are
- *   registered, and `platform.about` is registered.
  * @throws If the dock layout, service hosts, resolved tab titles, or the `platform.about` command
  *   do not appear within `timeout` milliseconds.
  */
@@ -910,11 +870,6 @@ export async function waitForAppReady(page: Page, options: AppReadyOptions = {})
  * Wait for the interlinearizer extension to finish activating by polling `rpc.discover` until
  * `interlinearizer.openForWebView` is listed.
  *
- * @param timeoutMs Maximum time in milliseconds to poll before throwing. `undefined` selects the
- *   generous default (a cold instance can be slow to register the command); callers threading a
- *   shared budget pass the remaining time, clamped to a small floor so an already-exhausted budget
- *   still gets one real poll rather than throwing instantly.
- * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws {Error} If the extension does not register within `timeoutMs` milliseconds.
  */
 export async function waitForInterlinearizerReady(
@@ -941,8 +896,6 @@ export async function waitForInterlinearizerReady(
  * inherits — which is exactly why those runs went red then green on retry. Waiting it out on the
  * first attempt costs nothing on a warm machine and saves a retry on a cold one.
  *
- * @param timeoutMs Maximum time in milliseconds to poll before throwing.
- * @returns Resolves once at least one project is registered.
  * @throws {Error} If no project is registered within `timeoutMs` milliseconds.
  */
 export async function waitForAtLeastOneProjectMetadata(timeoutMs = 150_000): Promise<void> {
@@ -1014,10 +967,6 @@ const HOME_CLOSE_TIMEOUT_MS = 5_000;
  * {@link waitForAtLeastOneProjectMetadata}) before calling, so an empty table means a dead WebView
  * rather than projects that have not finished installing.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param homeTab Locator for the Home dock tab.
- * @param homeButton Locator for the toolbar's Home button.
- * @returns Resolves once the Home WebView shows at least one project row.
  * @throws {Error} If Home still shows no project row after being reopened.
  */
 async function ensureHomeWebViewLoaded(
@@ -1079,8 +1028,7 @@ async function ensureHomeWebViewLoaded(
 
 /**
  * Open the Interlinearizer WebView from the Scripture Editor's top (≡) menu, ensuring the project
- * is loaded into the editor first. Prerequisite stage shared by all e2e tests that require the
- * Interlinearizer to be open.
+ * is loaded into the editor first.
  *
  * Loading the project into a Scripture Editor is the load-bearing step: it resolves a BCV
  * navigation target (so `navigateToScriptureRef`'s toolbar control is enabled) and lets the ≡ menu
@@ -1104,10 +1052,9 @@ async function ensureHomeWebViewLoaded(
  * 5. Click "Open Interlinearizer for this Project".
  * 6. Wait for the "Interlinearizer" dock tab and click it.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param projectName Name of the project to load into the editor and open the Interlinearizer for
+ * @param page - The renderer page to drive the dock, Home, and ≡ menu on.
+ * @param projectName - Name of the project to load into the editor and open the Interlinearizer for
  *   (default: `"WEB"`).
- * @returns Resolves when the Interlinearizer tab is focused and visible.
  * @throws If any step does not complete within its timeout.
  */
 export async function openInterlinearizerFromScriptureEditor(
@@ -1251,10 +1198,6 @@ export async function openInterlinearizerFromScriptureEditor(
  * mirroring {@link closeInterlinearizerTab}, so an off-viewport tab still closes).
  *
  * Best-effort, non-throwing, and bounded: a picker that refuses to close must not fail the caller.
- *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves once no picker tab remains, or after the bounded attempts are exhausted (a
- *   no-op on the common warm path where no picker was ever opened).
  */
 export async function closeSelectProjectPickers(page: Page): Promise<void> {
   const pickerTab = page.locator('.dock-tab', { hasText: 'Open Interlinearizer' });
@@ -1286,9 +1229,6 @@ export async function closeSelectProjectPickers(page: Page): Promise<void> {
 /**
  * Frame locator for the Interlinearizer WebView's iframe, where all of the extension's own UI
  * (toolbar, token strips, modals) renders.
- *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns A `FrameLocator` scoped to the Interlinearizer WebView iframe.
  */
 export function getInterlinearizerFrame(page: Page): FrameLocator {
   // Prefix match so this excludes the project-picker dialog ("Open Interlinearizer") while still
@@ -1301,9 +1241,6 @@ export function getInterlinearizerFrame(page: Page): FrameLocator {
  * "Interlinearizer" while excluding the project-picker dialog's own dock tab ("Open
  * Interlinearizer"), whose title also contains the word. Centralizes the exclusion so callers can't
  * forget it (the `getInterlinearizerFrame` iframe uses a prefix match for the same purpose).
- *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns A `Locator` for the Interlinearizer WebView dock tab.
  */
 function interlinearizerTabLocator(page: Page): Locator {
   return page
@@ -1333,10 +1270,6 @@ interface AppAndInterlinearizerReadyOptions {
  * {@link waitForAppReady} and {@link waitForInterlinearizerReady}, splitting the timeout budget
  * across both so an explicit (shorter) budget caps the WHOLE wait, not just the first half.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param options Readiness options; see {@link AppAndInterlinearizerReadyOptions.cdp} for the
- *   shared-CDP-instance profile feature tests pass.
- * @returns Resolves when `interlinearizer.openForWebView` is listed in `rpc.discover`.
  * @throws If the app or extension do not finish starting up within the timeout budget.
  */
 export async function waitForAppAndInterlinearizerReady(
@@ -1368,9 +1301,6 @@ export async function waitForAppAndInterlinearizerReady(
  * Each project modal's only reliable dismiss affordance is its Cancel/secondary button — the
  * dialogs are a plain `<dialog open>` (not `showModal()`), so native Escape doesn't fire their
  * onCancel. Modals can chain, so cancel in a bounded loop until no overlay remains.
- *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves once no modal overlay remains in the iframe (a no-op on the common clean path).
  */
 export async function dismissLeftoverModals(page: Page): Promise<void> {
   const frame = getInterlinearizerFrame(page);
@@ -1420,8 +1350,6 @@ export async function dismissLeftoverModals(page: Page): Promise<void> {
  * tab left open (via {@link closeSelectProjectPickers}, whose accumulation would trip strict mode on
  * the `.select-project-dialog` locator).
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves when the Interlinearizer tab is focused and its toolbar is interactive.
  * @throws If the Interlinearizer cannot be opened or its toolbar does not render within the
  *   timeouts.
  */
@@ -1490,9 +1418,8 @@ export async function ensureInterlinearizerOpenOnWeb(page: Page): Promise<void> 
  * was never resolved (editor closed, or its project failed to load), so this THROWS rather than
  * silently navigating against the wrong verse.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param reference Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
- * @returns Resolves once the reference has been submitted.
+ * @param page - The renderer page whose toolbar reference control is driven.
+ * @param reference - Fully-qualified scripture reference to navigate to (e.g. `"GEN 1:1"`).
  * @throws If the toolbar root that scopes the lookup never appears, if the control never becomes
  *   enabled within the wait (no navigation target resolved), or if it is enabled but its popover
  *   does not open or close within the timeouts.
@@ -1553,7 +1480,6 @@ export async function navigateToScriptureRef(page: Page, reference: string): Pro
  * Open the Interlinearizer's ≡ ("Project") top menu inside its iframe and wait for the dropdown to
  * appear.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns The frame locator for the Interlinearizer iframe, for chaining menu-item clicks.
  * @throws If the menu button or the opened menu does not become visible within the timeouts.
  */
@@ -1583,9 +1509,6 @@ const UNSAVED_TAB_MARKER = '●';
 /**
  * Read whether the draft has unsaved changes from the Interlinearizer dock tab's title marker (the
  * only place the dirty state is observable outside the WebView).
- *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns `true` when the tab title carries the unsaved-changes glyph.
  */
 async function isDraftDirty(page: Page): Promise<boolean> {
   const tabText = await interlinearizerTabLocator(page).textContent();
@@ -1596,7 +1519,6 @@ async function isDraftDirty(page: Page): Promise<boolean> {
  * Open the "Select Interlinear Project" modal from the Project menu and wait for its project list
  * to finish loading (the modal's buttons are disabled while the fetch is in flight).
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
  * @returns The frame locator for the Interlinearizer iframe, for chaining clicks in the modal.
  * @throws If the modal does not open or its list does not finish loading within the timeouts.
  */
@@ -1619,8 +1541,6 @@ async function openSelectProjectModal(page: Page): Promise<FrameLocator> {
  * hold a developer's unsaved work, so nothing is silently discarded. Clears the draft's
  * unsaved-changes state as a side effect (the rescue project becomes the active Save target).
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves when the Save As modal has closed and the unsaved marker has cleared.
  * @throws If the Save As modal does not open, close, or clear the unsaved marker within the
  *   timeouts.
  */
@@ -1655,12 +1575,10 @@ async function rescueDraftToNewProject(page: Page): Promise<void> {
  * Mutating tests call this at the START (with rescue on) to establish their precondition, and again
  * at the END (with rescue off) to discard their own leftovers so the next run starts clean.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @param opts Options object.
- * @param opts.rescueDirtyDraft Whether a dirty draft not owned by the e2e project is rescued before
- *   being replaced (default `true`). Pass `false` only at the end of a test, where the dirty state
- *   is known to be the test's own leftovers.
- * @returns Resolves when the e2e project is active and all modals have closed.
+ * @param page - The renderer page whose modals and draft state are driven.
+ * @param opts.rescueDirtyDraft - Whether a dirty draft not owned by the e2e project is rescued
+ *   before being replaced (default `true`). Pass `false` only at the end of a test, where the dirty
+ *   state is known to be the test's own leftovers.
  * @throws If the modals do not open/close or the project cannot be selected or created within the
  *   timeouts.
  */
@@ -1729,8 +1647,6 @@ export async function ensureE2eProjectActive(
  * START of a test (never at the end) so a previously failed run self-heals instead of poisoning the
  * next one.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves when the wipe dialog has closed after confirming.
  * @throws If the wipe dialog does not open or does not close after confirming.
  */
 export async function wipeDraft(page: Page): Promise<void> {
@@ -1751,11 +1667,8 @@ export async function wipeDraft(page: Page): Promise<void> {
 }
 
 /**
- * Close the Interlinearizer dock tab via its close button and wait for it to disappear. Used by
- * tests that verify draft persistence across a close/reopen cycle.
+ * Close the Interlinearizer dock tab via its close button and wait for it to disappear.
  *
- * @param page The Playwright `Page` for the Platform.Bible renderer window.
- * @returns Resolves when the Interlinearizer tab is gone.
  * @throws If the tab is not visible, or the tab does not close within the timeout.
  */
 export async function closeInterlinearizerTab(page: Page): Promise<void> {

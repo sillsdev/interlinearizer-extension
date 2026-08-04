@@ -6,7 +6,7 @@ import { ModalShell } from './ModalShell';
 /** The portion of the draft a wipe removes: the current book only, or the entire draft. */
 export type WipeScope = 'book' | 'all';
 
-/** Localized string keys used by {@link WipeModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const WIPE_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_wipe_modal_title%',
   '%interlinearizer_wipe_modal_prompt%',
@@ -25,7 +25,6 @@ const WIPE_MODAL_STRING_KEYS: `%${string}%`[] = [
  * component is presentational — it collects the scope and hands it back via {@link onConfirm}; the
  * caller performs the actual wipe.
  *
- * @param props - Component props
  * @param props.hasActiveBook - Whether a book is currently loaded. When `false`, the "current book"
  *   option is disabled and the selection defaults to the whole draft, since there is no book to
  *   wipe.

@@ -1,5 +1,3 @@
-/** @file Tokenizes a {@link RawBook} into the interlinear model's `Book → Segment → Token` chain. */
-
 import { VerseRef } from '@sillsdev/scripture';
 import type { Book, ScriptureRef, Segment, Token, TokenType } from 'interlinearizer';
 
@@ -66,8 +64,6 @@ const WORD_CONTAIN_RE = new RegExp(`[${CHAR_SET}]`, 'v');
 /**
  * Parses a USJ verse SID (e.g. `"GEN 1:1"`) into a {@link ScriptureRef}.
  *
- * @param sid - Verse SID string from the USJ `verse` marker (e.g. `"GEN 1:1"`).
- * @returns A `ScriptureRef` with `book`, `chapter`, and `verse` populated.
  * @throws {SyntaxError} If `sid` is not a valid scripture reference string.
  */
 function parseSid(sid: string): ScriptureRef {
@@ -84,13 +80,11 @@ function parseSid(sid: string): ScriptureRef {
  * offsets are zero-based relative to `text`; `charEnd` is exclusive.
  *
  * Each token inherits `writingSystem` from the book so that downstream consumers (renderers,
- * alignment tools) can identify the script without access to the parent `RawBook`.
+ * alignment tools) can identify the script without access to the parent book.
  *
- * @param text - The verse's `baselineText` string.
- * @param sid - The verse SID used as the token `ref` prefix (e.g. `"GEN 1:1"`).
- * @param writingSystem - BCP 47 tag assigned to every token's `writingSystem` field.
- * @returns Ordered array of {@link Token}s; empty when `text` contains no word or punctuation
- *   characters.
+ * @param text - The verse's baseline text.
+ * @param sid - Verse SID used as each token ref's prefix, e.g. `"GEN 1:1"`.
+ * @param writingSystem - BCP 47 tag assigned to every emitted token.
  */
 function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[] {
   return Array.from(text.matchAll(TOKEN_RE), (match) => {
@@ -114,10 +108,7 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.
  *
- * @param rawBook - Extracted book data from {@link extractBookFromUsj}.
- * @returns A `Book` with one `Segment` per verse, each containing its ordered `Token`s.
- * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference
- *   (propagated from {@link parseSid}).
+ * @throws {SyntaxError} If any `RawVerse.sid` cannot be parsed as a valid scripture reference.
  * @throws {SyntaxError} If any `RawVerse.sid`'s book code does not match `rawBook.bookCode`.
  */
 export function tokenizeBook(rawBook: RawBook): Book {

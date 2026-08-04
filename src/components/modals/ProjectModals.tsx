@@ -38,7 +38,6 @@ type PendingReplace =
  * Select right away) and seeds the draft from it; Open loads an existing project into the draft;
  * Save / Save As write the draft's analysis back to the active project or create a new one.
  *
- * @param props - Component props
  * @param props.activeProject - The currently active interlinear project (the Save target), read
  *   from WebView state by the parent.
  * @param props.defaultAnalysisLanguage - BCP 47 tag forwarded to {@link CreateProjectModal} as the
@@ -52,8 +51,8 @@ type PendingReplace =
  * @param props.loadFromProject - Loads a project's analysis + config into the draft (the "Open"
  *   flow).
  * @param props.newDraft - Seeds the in-memory draft with empty analysis and the given config;
- *   called by {@link createAndPersistProject} before the backend round-trip so the editor is ready
- *   regardless of whether persistence succeeds.
+ *   called before the New flow's backend round-trip so the editor is ready regardless of whether
+ *   persistence succeeds.
  * @param props.markSynced - Marks the draft as saved (clears `dirty`) after a successful Save As,
  *   given the analysis and boundary delta that were persisted; a no-op if an edit landed during the
  *   save.
@@ -137,11 +136,7 @@ export default function ProjectModals({
 
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
-  /**
-   * Opens the metadata modal for the project whose info icon was clicked in the select modal.
-   *
-   * @param project - The project to display in the metadata modal.
-   */
+  /** Opens the metadata modal for the project whose info icon was clicked in the select modal. */
   const handleViewInfo = useCallback(
     (project: InterlinearProjectSummary) => {
       setMetadataProject(project);
@@ -190,9 +185,6 @@ export default function ProjectModals({
    * the full project (with analysis and any stored segment boundaries) via
    * `interlinearizer.getProject`, validates it, then seeds the draft and dismisses the modal. Logs
    * and notifies on failure, leaving the draft untouched.
-   *
-   * @param project - The project summary the user chose to open.
-   * @returns A promise that resolves once the draft is loaded or the failure has been handled.
    */
   const openProject = useCallback(
     async (project: InterlinearProjectSummary) => {
@@ -248,7 +240,7 @@ export default function ProjectModals({
    * to discard.
    *
    * The `interlinearizer.createProject` command sends its own error notification before rethrowing,
-   * so the catch block only needs to log, matching {@link handleSaveAsNew}.
+   * so the catch block only needs to log.
    *
    * @param config - The configuration collected by the New dialog.
    * @returns `true` if the project was created and persisted successfully; `false` otherwise.
@@ -296,8 +288,6 @@ export default function ProjectModals({
   /**
    * Called when the user selects a project in the select modal. Opens it immediately, or defers
    * behind the unsaved-changes confirmation when the draft has unsaved work.
-   *
-   * @param project - The project the user selected.
    */
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
@@ -309,12 +299,11 @@ export default function ProjectModals({
 
   /**
    * Creates and persists a project from the given config (guarded against double-submit) and, on
-   * success, closes the create modal. Shared by the direct New flow ({@link handleCreateDraft}) and
-   * the deferred, post-discard New flow ({@link handleConfirmReplace}); on failure the modal stays
-   * open so the user can retry without re-entering their inputs.
+   * success, closes the create modal. Every New flow lands here, so none can diverge on how a
+   * project is created; on failure the modal stays open so the user can retry without re-entering
+   * their inputs.
    *
    * @param config - The configuration collected by the New dialog.
-   * @returns A promise that resolves once the creation settles or was ignored as re-entrant.
    */
   const createDraftAndClose = useCallback(
     async (config: CreateDraftConfig) => {
@@ -348,10 +337,10 @@ export default function ProjectModals({
   );
 
   /**
-   * Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. For
-   * a deferred Open, delegates entirely to {@link openProject}. For a deferred New, closes on
-   * success; on failure the discard confirm is dismissed but the underlying create modal stays
-   * visible so the user can retry.
+   * Confirms the deferred draft-replacing action after the user accepts losing unsaved changes. A
+   * deferred Open then proceeds exactly as an unguarded one would, error handling and modal
+   * dismissal included. A deferred New closes on success; on failure the discard confirm is
+   * dismissed but the underlying create modal stays visible so the user can retry.
    */
   const handleConfirmReplace = useCallback(async () => {
     /* v8 ignore next -- the confirm only renders while a pending action exists */
@@ -381,7 +370,6 @@ export default function ProjectModals({
    *
    * @param name - Trimmed project name, or `undefined`.
    * @param description - Trimmed project description, or `undefined`.
-   * @returns A promise that resolves once the save completes or the failure has been handled.
    */
   const handleSaveAsNew = useCallback(
     async (name?: string, description?: string) => {
@@ -436,9 +424,6 @@ export default function ProjectModals({
    * languages / alignment target) with the draft so the metadata matches the glosses now stored in
    * it, makes it the active Save target, and clears the dirty flag. The backend surfaces its own
    * error notification; here we only log.
-   *
-   * @param project - The existing project to overwrite.
-   * @returns A promise that resolves once the overwrite completes or the failure has been handled.
    */
   const handleOverwrite = useCallback(
     async (project: InterlinearProjectSummary) => {

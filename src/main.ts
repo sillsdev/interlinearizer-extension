@@ -35,7 +35,6 @@ const mainWebViewProvider: IWebViewProvider = {
    *
    * @param savedWebView - Platform-provided definition (webViewType, etc.).
    * @param openWebViewOptions - Options passed by the caller; may include a projectId to link.
-   * @returns WebView definition with title, content, and styles.
    * @throws {TypeError} When savedWebView.webViewType is not the Interlinearizer type.
    */
   async getWebView(
@@ -83,7 +82,6 @@ const openWebViewsByProject = new Map<string, string>();
  * project picker dialog. Each project gets its own tab; reopening an already-open project brings
  * that tab to front.
  *
- * @param projectId - Project to open; if omitted a picker dialog is shown.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  * @throws If `papi.dialogs.selectProject` rejects (e.g. platform error while showing the dialog).
  * @throws If `papi.webViews.openWebView` rejects (e.g. the platform cannot open or focus the tab).
@@ -112,7 +110,7 @@ async function openInterlinearizer(projectId?: string): Promise<string | undefin
  * @param webViewId - ID of an open WebView whose project to use; if omitted falls back to a picker.
  * @returns The WebView ID of the opened (or focused) tab, or `undefined` if the user cancels.
  * @throws If `papi.webViews.getOpenWebViewDefinition` rejects.
- * @throws Any error thrown by {@link openInterlinearizer} (dialog or WebView errors).
+ * @throws If the project picker dialog or the WebView open fails.
  */
 async function openInterlinearizerForWebView(webViewId?: string): Promise<string | undefined> {
   if (!webViewId) return openInterlinearizer();
@@ -132,7 +130,6 @@ async function openInterlinearizerForWebView(webViewId?: string): Promise<string
  *   alignment projects. Omit for analysis-only projects.
  * @param name - Optional user-facing name for the project.
  * @param description - Optional user-facing description for the project.
- * @returns JSON-stringified `InterlinearProject` for the new project.
  * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
  *   so the frontend `catch` block can suppress it without sending a second notification.
  */
@@ -170,11 +167,10 @@ async function createInterlinearProject(
  * from the WebView via `papi.commands.sendCommand` when the user deletes a project from the
  * select-project modal.
  *
- * @param interlinearProjectId - UUID of the interlinearizer project to delete.
- * @returns A promise that resolves when the deletion (or no-op) is complete.
- * @throws {SyntaxError} If the project-IDs index contains invalid JSON (propagated from
- *   `projectStorage.deleteProject`).
- * @throws If `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
+ * @throws {SyntaxError} If the project-IDs index contains invalid JSON.
+ * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason while reading the index,
+ *   if `papi.storage.deleteUserData` rejects for a non-ENOENT reason, or if
  *   `papi.storage.writeUserData` rejects when updating the index. All storage errors are logged and
  *   shown as a notification before being re-thrown so the caller can handle failure UX.
  */
@@ -195,8 +191,7 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
 
 /**
  * Updates the metadata of an existing interlinearizer project. Called from the WebView when the
- * user saves edits in the project info modal. Returns the updated project as a JSON string, or
- * `undefined` if no project with the given ID exists.
+ * user saves edits in the project info modal.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to update.
  * @param name - New user-facing name, or `undefined` to clear it.
@@ -204,8 +199,8 @@ async function deleteInterlinearProject(interlinearProjectId: string): Promise<v
  * @param analysisLanguages - New BCP 47 analysis language tags. Required and must be non-empty;
  *   pass the current value to leave it unchanged.
  * @param targetProjectId - New target-project ID; omit to clear the target binding.
- * @returns JSON string of the updated `InterlinearProject`, or `undefined` if the project ID is not
- *   found.
+ * @returns The updated project as a JSON string, or `undefined` if no project with the given ID
+ *   exists.
  * @throws If storage fails. The error is logged and an error notification is sent before rethrowing
  *   so the frontend `catch` block can suppress it without sending a second notification.
  */
@@ -239,9 +234,9 @@ async function updateProjectMetadata(
 }
 
 /**
- * Returns the interlinearizer project with the given ID as a JSON string, including its full
- * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
- * analysis into the interlinearizer.
+ * Loads the interlinearizer project with the given ID, including its full `TextAnalysis`. The
+ * WebView calls this when the active project changes to load the stored analysis into the
+ * interlinearizer.
  *
  * @param interlinearProjectId - UUID of the interlinearizer project to fetch.
  * @returns JSON-stringified `InterlinearProject`, or `undefined` if no project with that ID exists.
@@ -325,7 +320,6 @@ async function saveInterlinearAnalysis(
  * draft when none has been written. The WebView loads this on mount to seed the editor.
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
- * @returns JSON-stringified `DraftProject`.
  * @throws {SyntaxError} If the draft's storage value contains invalid JSON.
  * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. The error is logged
  *   before rethrowing.
@@ -346,7 +340,6 @@ async function getInterlinearDraft(sourceProjectId: string): Promise<string> {
  *
  * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
  * @param draftJson - JSON-stringified `DraftProject` to persist.
- * @returns A promise that resolves when the draft has been written to storage.
  * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
  *   notification is sent before rethrowing so the frontend `catch` block can suppress it without a
  *   second notification.
@@ -376,12 +369,11 @@ async function saveInterlinearDraft(sourceProjectId: string, draftJson: string):
  * "select existing" when the user opens the project menu.
  *
  * @param sourceProjectId - Platform.Bible project ID of the source text to query.
- * @returns A JSON string of `InterlinearProject[]`, or `"[]"` if none exist.
  * @throws {SyntaxError} If the project-IDs index contains invalid JSON. Corrupted individual
  *   project records are logged and skipped, not thrown.
- * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason (propagated from
- *   `projectStorage.getProjectsForSource`). Callers can use this to distinguish a storage outage
- *   from a legitimately empty list.
+ * @throws {Error} If the stored project-IDs index is not an array of strings (a corrupt index).
+ * @throws If `papi.storage.readUserData` rejects for a non-ENOENT reason. Callers can use this to
+ *   distinguish a storage outage from a legitimately empty list.
  */
 async function getProjectsForSource(sourceProjectId: string): Promise<string> {
   try {
@@ -398,12 +390,10 @@ async function getProjectsForSource(sourceProjectId: string): Promise<string> {
 // #region Lifecycle
 
 /**
- * Extension entry point. Registers the Interlinearizer WebView provider and the open command.
- * Called by the platform when the extension is loaded.
- *
- * @param context - Activation context; used to register disposables so the platform can clean them
- *   up on deactivation.
- * @returns A promise that resolves when all registrations are complete.
+ * Extension entry point. Registers the Interlinearizer WebView provider, its commands,
+ * project-setting validators, and WebView lifecycle subscriptions. Called by the platform when the
+ * extension is loaded. Every registration is added to `context` so the platform can dispose them on
+ * deactivation.
  */
 export async function activate(context: ExecutionActivationContext): Promise<void> {
   logger.debug('Interlinearizer extension is activating!');
@@ -437,9 +427,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
           },
         ],
         // `undefined` (returned on cancel) is not a JSON type and cannot appear in a JSON-RPC
-        // response, so the schema only describes the shape when a value is present. All other
-        // WebView-opening commands in paranext-core use `{ type: 'string' }` for this same pattern
-        // (e.g. platform-scripture-editor openScriptureEditor, platform-get-resources).
+        // response, so the schema only describes the shape when a value is present.
         result: {
           name: 'return value',
           summary: 'The ID of the opened WebView, if opened; omitted when the user cancels',
@@ -449,12 +437,7 @@ export async function activate(context: ExecutionActivationContext): Promise<voi
     },
   );
 
-  /**
-   * Returns whether the supplied project-setting value is a boolean.
-   *
-   * @param newValue - Candidate project-setting value.
-   * @returns A promise that resolves to `true` when `newValue` is a boolean.
-   */
+  /** Returns whether the supplied project-setting value is a boolean. */
   /* v8 ignore next 3 */
   function isBoolean(newValue: unknown): Promise<boolean> {
     return Promise.resolve(typeof newValue === 'boolean');

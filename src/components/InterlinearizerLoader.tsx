@@ -47,8 +47,7 @@ const DEFAULT_WEB_VIEW_MENU = {
 
 /**
  * Base tab title for the Interlinearizer WebView. PAPI exposes no native unsaved-changes indicator,
- * so {@link UNSAVED_TAB_MARKER} is appended to this via `updateWebViewDefinition` while the draft
- * has unsaved changes.
+ * so {@link UNSAVED_TAB_MARKER} is appended to this while the draft has unsaved changes.
  */
 const BASE_TAB_TITLE = 'Interlinearizer';
 
@@ -58,17 +57,7 @@ const UNSAVED_TAB_MARKER = ' ●';
 /**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
  * loader and the whole {@link Interlinearizer} subtree read and write navigation through one source
- * of truth, then delegates the actual loading/rendering to {@link InterlinearizerLoaderInner}.
- *
- * @param props - Component props
- * @param props.projectId - PAPI project ID passed from the host
- * @param props.useWebViewScrollGroupScrRef - Hook that exposes the shared scroll-group scripture
- *   reference and its setter
- * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
- *   by the PAPI host
- * @param props.updateWebViewDefinition - Host-injected callback to update this WebView's
- *   definition; used to toggle the tab's unsaved-changes title marker
- * @returns The nav provider wrapping {@link InterlinearizerLoaderInner}
+ * of truth; the loading and rendering happen inside that provider.
  */
 export default function InterlinearizerLoader({
   projectId,
@@ -76,9 +65,13 @@ export default function InterlinearizerLoader({
   useWebViewState,
   updateWebViewDefinition,
 }: Readonly<{
+  /** PAPI project ID passed from the host. */
   projectId: string;
+  /** Host-injected hook exposing the shared scroll-group scripture reference and its setter. */
   useWebViewScrollGroupScrRef: UseWebViewScrollGroupScrRefHook;
+  /** Host-injected hook for reading and writing typed WebView-scoped state. */
   useWebViewState: UseWebViewStateHook;
+  /** Used to toggle the tab's unsaved-changes title marker. */
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
   return (
@@ -97,23 +90,17 @@ export default function InterlinearizerLoader({
  * renders error and loading states or delegates to {@link Interlinearizer} when data is ready. Reads
  * the scripture reference and scroll-group linkage from {@link useInterlinearNav} rather than
  * calling the host hook directly.
- *
- * @param props - Component props
- * @param props.projectId - PAPI project ID passed from the host
- * @param props.useWebViewState - Hook for reading and writing typed WebView-scoped state persisted
- *   by the PAPI host
- * @param props.updateWebViewDefinition - Host-injected callback used to toggle the tab's
- *   unsaved-changes title marker
- * @returns The toolbar and either an error/loading state or the fully rendered
- *   {@link Interlinearizer}
  */
 function InterlinearizerLoaderInner({
   projectId,
   useWebViewState,
   updateWebViewDefinition,
 }: Readonly<{
+  /** PAPI project ID passed from the host. */
   projectId: string;
+  /** Host-injected hook for reading and writing typed WebView-scoped state. */
   useWebViewState: UseWebViewStateHook;
+  /** Used to toggle the tab's unsaved-changes title marker. */
   updateWebViewDefinition: UpdateWebViewDefinition;
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
@@ -128,9 +115,10 @@ function InterlinearizerLoaderInner({
 
   /**
    * Persisted snapshot of the active interlinear project — kept in WebView state so it survives tab
-   * restores. The setter lives in {@link ProjectModals}, which writes to the same `'activeProject'`
-   * key; this component reads the value to decide which menu items to show and which analysis
-   * language to use.
+   * restores. The project modals write the same `'activeProject'` key as projects are opened,
+   * created, or edited. Read here to gate the project-specific menu items and to route Save to the
+   * active project (Save As when none); written here to fold the refreshed `updatedAt` from a
+   * successful save back into the snapshot.
    */
   const [activeProject, setActiveProject] = useWebViewState<InterlinearProjectSummary | undefined>(
     'activeProject',
@@ -166,9 +154,9 @@ function InterlinearizerLoaderInner({
   // unsaved indicator light up the moment the user starts typing.
   const [pendingEdits, setPendingEdits] = useState(false);
 
-  // Reflect the draft's unsaved-changes state in the tab title via the host-injected
-  // `updateWebViewDefinition`, since PAPI has no native dirty indicator. The marker shows for both
-  // committed changes (`dirty`) and in-progress typing (`pendingEdits`).
+  // Reflect the draft's unsaved-changes state in the tab title, since PAPI has no native dirty
+  // indicator. The marker shows for both committed changes (`dirty`) and in-progress typing
+  // (`pendingEdits`).
   const hasUnsavedChanges = dirty || pendingEdits;
   useEffect(() => {
     updateWebViewDefinition({
@@ -293,17 +281,15 @@ function InterlinearizerLoaderInner({
   }, [verseBook, segmentationVersion, draftVersion, isDraftLoading]);
 
   /**
-   * Boundary-editing operations passed down to the views. Each reads the draft's latest boundary
-   * delta synchronously (so rapid edits compose correctly), applies the relevant pure transform
-   * against the original verse book, and auto-saves the normalized result — clearing the field back
-   * to `undefined` when the edit restores the default verse segmentation.
+   * Boundary-editing operations exposed through the segmentation context. Each reads the draft's
+   * latest boundary delta synchronously (so rapid edits compose correctly), applies the relevant
+   * pure transform against the original verse book, and auto-saves the normalized result — clearing
+   * the field back to `undefined` when the edit restores the default verse segmentation.
    */
   const segmentationDispatch = useMemo<SegmentationDispatch>(() => {
     /**
      * Auto-saves the result of a boundary transform, clearing the segmentation field back to
      * `undefined` when the edit restores the default verse segmentation.
-     *
-     * @param next - The transformed segmentation delta to persist.
      */
     const apply = (next: ReturnType<typeof mergeSegments>) => {
       autosaveSegmentation(isDefaultSegmentation(next) ? undefined : next);
@@ -397,8 +383,6 @@ function InterlinearizerLoaderInner({
    * Saves the current draft to the active project. When no project is active there is nothing to
    * save to yet, so it opens Save As instead. Errors are logged; the backend surfaces the
    * notification.
-   *
-   * @returns A promise that resolves once the save completes or Save As is opened.
    */
   const handleSave = useCallback(async () => {
     if (!activeProject) {
@@ -450,8 +434,6 @@ function InterlinearizerLoaderInner({
   /**
    * Performs the confirmed wipe for the chosen scope (current book or whole draft) and dismisses
    * the dialog.
-   *
-   * @param scope - The wipe scope the user selected in the dialog.
    */
   const handleWipeConfirm = useCallback(
     (scope: WipeScope) => {
@@ -473,8 +455,6 @@ function InterlinearizerLoaderInner({
   /**
    * Routes top-menu commands to the appropriate action. The project commands open their modals; the
    * file commands save (or open Save As); the draft command opens the wipe dialog.
-   *
-   * @param item - The menu item that was activated.
    */
   const menuCommandHandler = useCallback<SelectMenuItemHandler>(
     (item) => {

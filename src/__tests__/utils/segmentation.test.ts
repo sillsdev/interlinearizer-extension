@@ -1,4 +1,3 @@
-/** @file Unit tests for the pure segmentation-delta transforms. */
 /// <reference types="jest" />
 
 import type { Book, SegmentationDelta } from 'interlinearizer';
@@ -14,12 +13,7 @@ import {
   splitSegmentBefore,
 } from '../../utils/segmentation';
 
-/**
- * Builds a verse-tokenized GEN book from the given verses for use as the `verseBook` argument.
- *
- * @param verses - Verse SID + text pairs.
- * @returns The tokenized book.
- */
+/** Builds a verse-tokenized GEN book from the given verses for use as the `verseBook` argument. */
 function makeBook(verses: { sid: string; number: string; text: string }[]): Book {
   return tokenizeBook({ bookCode: 'GEN', writingSystem: 'en', contentHash: 'h', verses });
 }

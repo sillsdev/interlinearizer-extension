@@ -1,4 +1,3 @@
-/** @file Hook owning the always-present, auto-saved draft buffer for one source project. */
 import papi, { logger } from '@papi/frontend';
 import type {
   DraftProject,
@@ -60,32 +59,24 @@ export type UseDraftProjectResult = {
    */
   dirty: boolean;
   /**
-   * Returns the latest draft envelope synchronously by reading the live ref rather than a render
-   * snapshot. Save / Save As must use this so they persist edits that auto-saved without a
-   * re-render.
-   *
-   * @returns The current draft, or `undefined` before the initial load completes.
+   * Returns the draft as of the moment of the call, including edits that auto-saved without a
+   * re-render; {@link UseDraftProjectResult.draft} is only current as of the last render.
+   * `undefined` before the initial load completes.
    */
   getDraftSnapshot: () => DraftProject | undefined;
   /**
    * Persists an edited analysis into the draft and marks it dirty. Wire as the editor's
    * `onSaveAnalysis`.
-   *
-   * @param analysis - The updated analysis from the store.
    */
   autosaveAnalysis: (analysis: TextAnalysis) => void;
   /**
    * Persists an edited segment-boundary delta into the draft and marks it dirty. Pass `undefined`
    * (or a default/empty delta) to clear custom boundaries back to the default verse segmentation.
-   *
-   * @param segmentation - The updated boundary delta, or `undefined` for the default segmentation.
    */
   autosaveSegmentation: (segmentation: SegmentationDelta | undefined) => void;
   /**
    * Replaces the draft with a working copy of an existing project's analysis and config — the
    * "Open" flow.
-   *
-   * @param project - The project whose analysis / languages / target to copy into the draft.
    */
   loadFromProject: (project: OpenableProject) => void;
   /**
@@ -93,15 +84,9 @@ export type UseDraftProjectResult = {
    * languages and retains the typed name/description as `suggestedName`/`suggestedDescription`. The
    * new draft is clean (`dirty: false`), so the unsaved-changes indicator stays clear until the
    * first edit. The caller is responsible for immediately persisting the project to the backend.
-   *
-   * @param config - The languages and optional suggested name/description from the New dialog.
    */
   newDraft: (config: NewDraftConfig) => void;
-  /**
-   * Removes one book's analysis from the draft and marks it dirty.
-   *
-   * @param bookCode - The 3-letter book code (e.g. `"GEN"`) to wipe.
-   */
+  /** Removes one book's analysis from the draft, by 3-letter book code, and marks it dirty. */
   wipeBook: (bookCode: string) => void;
   /**
    * Clears the draft's analysis entirely and marks it **not** dirty — a wiped draft is treated as a
@@ -111,13 +96,10 @@ export type UseDraftProjectResult = {
   /**
    * Marks the draft as synced (not dirty) after a successful Save / Save As — but only when the
    * draft has not changed since the snapshot that was persisted. Pass the exact analysis and
-   * boundary delta that were written; if a later auto-save replaced either (an edit made during the
-   * save round-trip), the draft is left dirty so the unsaved-changes indicator and the next Save
-   * reflect that un-persisted edit rather than being cleared against a now-stale snapshot.
-   *
-   * @param savedAnalysis - The `TextAnalysis` reference that was actually persisted to the project.
-   * @param savedSegmentation - The `SegmentationDelta` reference that was persisted alongside it
-   *   (`undefined` when the draft had the default segmentation).
+   * boundary delta that were written (an `undefined` boundary delta means the draft had the default
+   * segmentation); if a later auto-save replaced either (an edit made during the save round-trip),
+   * the draft is left dirty so the unsaved-changes indicator and the next Save reflect that
+   * un-persisted edit rather than being cleared against a now-stale snapshot.
    */
   markSynced: (
     savedAnalysis: TextAnalysis,
@@ -135,8 +117,7 @@ export type UseDraftProjectResult = {
  * per-edit auto-saves never re-render the loader unless the dirty flag actually flips.
  *
  * @param sourceProjectId - The Platform.Bible source project whose draft to manage.
- * @param platformLanguage - BCP 47 tag used to seed `analysisLanguages` for a brand-new source.
- * @returns Draft state and the callbacks described on {@link UseDraftProjectResult}.
+ * @param platformLanguage - BCP 47 tag used to seed the analysis languages of a brand-new source.
  */
 export default function useDraftProject(
   sourceProjectId: string,
@@ -154,8 +135,8 @@ export default function useDraftProject(
   platformLanguageRef.current = platformLanguage;
 
   // Pending debounced-autosave timer. Flushed on unmount/source change (so the last edit is not
-  // lost), and cancelled on any wholesale replacement (applyReplacement) so stale keystroke data
-  // is never written after a New / Open / Wipe.
+  // lost), and canceled on any wholesale replacement so stale keystroke data is never written
+  // after a New / Open / Wipe.
   const autosaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   /**
@@ -166,8 +147,6 @@ export default function useDraftProject(
    * unavailable during editing the backend sends one error notification per failed write; should
    * that notification itself fail, edits in that window are silently lost on the next refresh. The
    * `dirty` flag is set optimistically before the write, not in response to its outcome.
-   *
-   * @param draft - The draft envelope to write.
    */
   const persist = useCallback(
     (draft: DraftProject) => {
@@ -185,8 +164,6 @@ export default function useDraftProject(
     /**
      * Loads the stored draft for the source (falling back to an empty draft on failure), seeds a
      * gloss language when none is present, and publishes it to the ref and state.
-     *
-     * @returns A promise that resolves once the draft has been published or the load was canceled.
      */
     const load = async () => {
       let draft: DraftProject;
@@ -225,8 +202,6 @@ export default function useDraftProject(
   /**
    * Applies a wholesale draft replacement: update the ref, persist, refresh `dirty`, and bump the
    * remount counter so the editor reseeds.
-   *
-   * @param next - The replacement draft.
    */
   const applyReplacement = useCallback(
     (next: DraftProject) => {
@@ -245,13 +220,13 @@ export default function useDraftProject(
   );
 
   /**
-   * Shared per-edit auto-save pipeline: derives the next draft from the current one via `mutate`,
-   * swaps it into the ref, debounces the persistence write, and marks the draft dirty. No version
-   * bump (no remount) and `setDirty(true)` is a no-op when already dirty, so editing does not
-   * re-render.
+   * Shared per-edit auto-save pipeline: swaps the mutated draft into the ref, debounces the
+   * persistence write, and marks the draft dirty. There is no version bump and so no remount, and
+   * re-marking an already-dirty draft is a no-op, so editing does not re-render.
    *
    * @param mutate - Produces the next draft from the current one; must set `dirty: true`.
-   * @returns `true` when the edit was applied; `false` when no draft has loaded yet.
+   * @returns `true` when the edit was applied; `false` when no draft has loaded yet (nothing is
+   *   applied in that case).
    */
   const autosaveDraft = useCallback(
     (mutate: (current: DraftProject) => DraftProject): boolean => {
@@ -283,8 +258,7 @@ export default function useDraftProject(
   const autosaveSegmentation = useCallback(
     (segmentation: SegmentationDelta | undefined) => {
       // Treat the default segmentation (undefined or a delta with both arrays empty) the same as
-      // `undefined`: clear the field rather than persisting a redundant custom object. Shares
-      // `isDefaultSegmentation` with the loader's dispatch so the empty-delta rule lives in one place.
+      // `undefined`: clear the field rather than persisting a redundant custom object.
       const hasCustomBoundaries = !isDefaultSegmentation(segmentation);
       const applied = autosaveDraft((current) => {
         const next: DraftProject = { ...current, dirty: true };

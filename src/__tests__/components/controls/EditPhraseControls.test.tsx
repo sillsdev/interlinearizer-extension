@@ -1,4 +1,3 @@
-/** @file Unit tests for components/EditPhraseControls.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -14,7 +13,7 @@ const mockUsePhraseLinkByIdMap = jest.fn<Map<string, PhraseAnalysisLink>, []>();
 
 // AnalysisStore is exercised by its own dedicated suite. EditPhraseControls only reads the live
 // phrase's token count via usePhraseLinkByIdMap, so we stub that single hook rather than driving
-// the real provider (which would pull AnalysisStore into this suite's coverage).
+// the real provider.
 jest.mock('../../../components/AnalysisStore', () => ({
   __esModule: true,
   usePhraseLinkByIdMap: () => mockUsePhraseLinkByIdMap(),
@@ -34,9 +33,6 @@ describe('EditPhraseControls', () => {
    * Builds the phrase-link map the component reads via `usePhraseLinkByIdMap`, seeded with a phrase
    * link for `phrase-1` containing `tokenCount` tokens so the live phrase has a known size. A
    * `tokenCount` of `0` returns an empty map, so the component sees the phrase as absent.
-   *
-   * @param tokenCount - Number of tokens to place in the seeded phrase link; `0` omits the link.
-   * @returns A map from phrase id to its `PhraseAnalysisLink`, empty when `tokenCount` is `0`.
    */
   function makePhraseLinkByIdMap(tokenCount: number): Map<string, PhraseAnalysisLink> {
     if (tokenCount === 0) return new Map();
@@ -45,11 +41,8 @@ describe('EditPhraseControls', () => {
   }
 
   /**
-   * Renders `EditPhraseControls` with the phrase-link map stubbed to a phrase of the given size.
-   *
-   * @param tokenCount - Number of tokens in the seeded phrase.
-   * @param setPhraseMode - Setter spy passed to the component.
-   * @returns The rendered element tree.
+   * Builds an `EditPhraseControls` element with the phrase-link map stubbed to a phrase of the
+   * given size.
    */
   function renderWithPhraseSize(tokenCount: number, setPhraseMode: jest.Mock): ReactElement {
     mockUsePhraseLinkByIdMap.mockReturnValue(makePhraseLinkByIdMap(tokenCount));

@@ -1,11 +1,3 @@
-/**
- * @file Inline display of an analyzed token's morpheme breakdown, rendered inside {@link TokenChip}
- *   when the morphology toggle is active and the token has a breakdown. {@link MorphemeBox} boxes
- *   the breakdown and lays it out as a grid so each morpheme form aligns vertically with its gloss
- *   field (and, in future, its lexicon link); {@link MorphemeGlossInput} provides a per-morpheme
- *   gloss field that fills its grid column. The breakdown _editor_ (the popover where forms are
- *   entered) lives separately in {@link ./MorphemeEditor}.
- */
 import type { MorphemeAnalysis, Token } from 'interlinearizer';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { PopoverAnchor } from 'platform-bible-react';
@@ -21,11 +13,14 @@ const MORPHEME_BOX_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Renders an analyzed token's morpheme breakdown as a boxed grid: each grid column is one morpheme,
- * with its form on the top row directly above its gloss field on the bottom row, so a morpheme and
- * its gloss always share a column (a future lexicon link slots into a third row with the same
- * column alignment). The box appears only for tokens that have a breakdown; an unanalyzed token's
- * "define breakdown" affordance lives in {@link TokenChip} instead.
+ * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
+ * entered lives separately.
+ *
+ * The breakdown renders as a boxed grid: each grid column is one morpheme, with its form on the top
+ * row directly above its gloss field on the bottom row, so a morpheme and its gloss always share a
+ * column (a future lexicon link slots into a third row with the same column alignment). The box
+ * appears only for tokens that have a breakdown; an unanalyzed token's "define breakdown"
+ * affordance lives in {@link TokenChip} instead.
  *
  * The whole forms row is a single accessible "edit breakdown" control rather than one labeled
  * button per morpheme: every form cell opens the same whole-breakdown editor, so per-cell labels
@@ -35,22 +30,6 @@ const MORPHEME_BOX_STRING_KEYS = [
  *
  * Renders the {@link PopoverAnchor} the editor popover is positioned from; the caller owns the
  * `Popover` root and the popover content.
- *
- * @param props - Component props.
- * @param props.token - The analyzed word token whose breakdown is shown; used for the column forms,
- *   the token ref, and the accessible label.
- * @param props.morphemes - The token's ordered morpheme breakdown; one grid column per entry.
- * @param props.analysisLanguage - BCP 47 tag for reading/writing each morpheme gloss.
- * @param props.disabled - When true, the box is non-interactive and form-cell clicks do not open
- *   the editor.
- * @param props.popoverOpen - When true, the editor popover is open; the box renders its active
- *   look.
- * @param props.onEditBreakdown - Called when a form cell is clicked (while enabled) to open the
- *   whole-breakdown editor.
- * @param props.onGlossFocus - Called when any morpheme gloss input receives focus, so the chip can
- *   report the token as focused; these fields are gloss fields of the same token as the chip's own
- *   gloss input, so focusing one must move the view's focus just as focusing that input does.
- * @returns A boxed grid of morpheme forms and their gloss fields, wrapped in a popover anchor.
  */
 export function MorphemeBox({
   token,
@@ -61,12 +40,23 @@ export function MorphemeBox({
   onEditBreakdown,
   onGlossFocus,
 }: Readonly<{
+  /** The analyzed word token whose breakdown is shown. */
   token: Token & { type: 'word' };
+  /** The token's ordered morpheme breakdown; one grid column per entry. */
   morphemes: readonly MorphemeAnalysis[];
+  /** BCP 47 tag for reading and writing each morpheme gloss. */
   analysisLanguage: string;
+  /** When true, the box is non-interactive and form-cell clicks do not open the editor. */
   disabled: boolean;
+  /** When true, the editor popover is open; the box renders its active look. */
   popoverOpen: boolean;
+  /** Called when a form cell is clicked (while enabled) to open the whole-breakdown editor. */
   onEditBreakdown: () => void;
+  /**
+   * Called when any morpheme gloss input receives focus, so the chip can report the token as
+   * focused; these fields are gloss fields of the same token as the chip's own gloss input, so
+   * focusing one must move the view's focus just as focusing that input does.
+   */
   onGlossFocus: () => void;
 }>) {
   const [localizedStrings] = useLocalizedStrings(MORPHEME_BOX_STRING_KEYS);
@@ -162,18 +152,7 @@ export function MorphemeBox({
  * Renders a single morpheme's gloss as an editable input filling its grid column, directly under
  * the morpheme's form. Writes to the store on blur when the draft differs from the committed value.
  * The input carries a `data-morpheme-gloss` attribute so container-level "focus the first gloss
- * input" handlers (e.g. {@link PhraseBox}) can exclude morpheme glosses, which precede the token
- * gloss input in DOM order.
- *
- * @param props - Component props.
- * @param props.morpheme - The morpheme whose gloss is being edited.
- * @param props.tokenRef - The token ref for dispatching gloss writes.
- * @param props.analysisLanguage - BCP 47 tag for reading/writing the gloss.
- * @param props.disabled - When true, the input is read-only.
- * @param props.column - 1-based grid column the input occupies (shared with the morpheme's form).
- * @param props.onFocus - Called when the input receives focus, so the containing chip can report
- *   its token as focused.
- * @returns A cell-filling text input for the morpheme gloss, placed in the gloss row.
+ * input" handlers can exclude morpheme glosses, which precede the token gloss input in DOM order.
  */
 export function MorphemeGlossInput({
   morpheme,
@@ -184,10 +163,14 @@ export function MorphemeGlossInput({
   onFocus,
 }: Readonly<{
   morpheme: MorphemeAnalysis;
+  /** The token ref gloss writes are dispatched against. */
   tokenRef: string;
+  /** BCP 47 tag for reading and writing the gloss. */
   analysisLanguage: string;
   disabled: boolean;
+  /** 1-based grid column the input occupies (shared with the morpheme's form). */
   column: number;
+  /** Called when the input receives focus, so the containing chip can report its token as focused. */
   onFocus: () => void;
 }>) {
   const committed = morpheme.gloss?.[analysisLanguage] ?? '';

@@ -18,13 +18,8 @@ declare global {
 }
 
 /**
- * Builds a single-token word segment for the given chapter/verse. Token surface text is irrelevant
- * to windowing, so it is a fixed stub.
- *
- * @param chapter - Chapter number for the segment's refs.
- * @param verse - Verse number for the segment's refs.
- * @param book - Book code for the segment's refs; defaults to `GEN`.
- * @returns A minimal {@link Segment}.
+ * Builds a single-token word segment for the given chapter/verse, in `book` (default `GEN`). Token
+ * surface text is irrelevant to windowing, so it is a fixed stub.
  */
 function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
   return {
@@ -48,12 +43,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
 
 /**
  * Builds a book whose segments span two chapters: `chapter1Count` verses in chapter 1 followed by
- * `chapter2Count` verses in chapter 2.
- *
- * @param chapter1Count - Number of verses in chapter 1.
- * @param chapter2Count - Number of verses in chapter 2.
- * @param book - Book code for the book and its segments; defaults to `GEN`.
- * @returns A {@link Book} with the combined flat segment list.
+ * `chapter2Count` verses in chapter 2, all in `book` (default `GEN`).
  */
 function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): Book {
   const segments: Segment[] = [];
@@ -65,10 +55,6 @@ function makeBook(chapter1Count: number, chapter2Count: number, book = 'GEN'): B
 /**
  * Renders {@link useSegmentWindow} with a real, attached scroll container so sentinel ref callbacks
  * register with the stubbed observer and `scrollHeight`/`scrollTop` are writable for assertions.
- *
- * @param book - The book to window.
- * @param scrRef - The scripture reference whose verse anchors the window.
- * @returns The render-hook result plus the scroll container element.
  */
 function renderSegmentWindow(
   book: Book,
@@ -129,11 +115,6 @@ function renderSegmentWindow(
 /**
  * Mounts the rendered window's sentinel elements into `container` so the observer has real targets.
  * Returns the created top/bottom elements.
- *
- * @param container - The scroll container the sentinels live in.
- * @param topRef - The hook's top sentinel ref callback.
- * @param bottomRef - The hook's bottom sentinel ref callback.
- * @returns The mounted sentinel elements.
  */
 function mountSentinels(
   container: HTMLElement,
@@ -154,9 +135,6 @@ function mountSentinels(
 /**
  * Installs a stub `ResizeObserver` that records the most recently created callback and the elements
  * it observes, for tests that drive the scroll-compensation / re-snap observer by hand.
- *
- * @returns `fire` to invoke the recorded observer callback, `observedTargets` to read the elements
- *   the most recent observer watches, and `restore` to reinstate the original.
  */
 function installResizeObserver(): {
   fire: () => void;
@@ -168,7 +146,6 @@ function installResizeObserver(): {
   let observed: Element[] = [];
   const stub: ResizeObserver = { observe() {}, unobserve() {}, disconnect() {} };
   class StubResizeObserver implements ResizeObserver {
-    /** @param cb - Stored so a test can fire it on demand. */
     constructor(cb: ResizeObserverCallback) {
       callback = cb;
       observed = [];
@@ -203,10 +180,7 @@ function installResizeObserver(): {
 /**
  * Stubs `getBoundingClientRect` on an element to report fixed top and bottom edges, so the window
  * hook's geometry reads (cull walks, extend anchors, sentinel offsets) are deterministic in jsdom.
- *
- * @param el - The element to stub.
- * @param top - The `top` value the rect should report.
- * @param bottom - The `bottom` value the rect should report; defaults to `top` (zero height).
+ * Called without a bottom edge, it stubs a zero-height rect.
  */
 function stubRect(el: Element, top: number, bottom: number = top): void {
   el.getBoundingClientRect = () => ({
@@ -225,10 +199,6 @@ function stubRect(el: Element, top: number, bottom: number = top): void {
 /**
  * Mounts one stub segment root per id into `container`, carrying the `data-segment-id` attribute
  * the window hook uses to enumerate mounted segments for cull measurement and extend anchoring.
- *
- * @param container - The scroll container to mount into.
- * @param ids - Segment ids in window order.
- * @returns The mounted elements, index-aligned with `ids`.
  */
 function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLElement[] {
   return ids.map((id) => {
@@ -242,9 +212,6 @@ function mountSegmentEls(container: HTMLElement, ids: readonly string[]): HTMLEl
 /**
  * Mounts a stub segment marked `aria-current="true"` — the recenter target the window hook snaps to
  * the top — into `container`.
- *
- * @param container - The scroll container to mount into.
- * @returns The mounted active-segment element.
  */
 function mountActiveSegment(container: HTMLElement): HTMLElement {
   const active = document.createElement('div');
@@ -254,12 +221,8 @@ function mountActiveSegment(container: HTMLElement): HTMLElement {
 }
 
 /**
- * Mounts a stub `[data-snap-spacer]` div — the element `snapActiveToTop` grows when
- * `scrollIntoView` can't reach the top — into `container`.
- *
- * @param container - The scroll container to mount into.
- * @param initialHeight - Optional starting `style.height` (e.g. to assert it resets to `0px`).
- * @returns The mounted spacer element.
+ * Mounts a stub `[data-snap-spacer]` div — the element the hook grows when `scrollIntoView` can't
+ * reach the top — into `container`.
  */
 function mountSnapSpacer(container: HTMLElement, initialHeight?: string): HTMLElement {
   const spacer = document.createElement('div');
@@ -696,11 +659,11 @@ describe('useSegmentWindow', () => {
   });
 
   it('shifts the window range to keep the visible content framed when a merge above it removes a segment', () => {
-    // The window holds absolute indices, so a merge above `range.start` (which shifts every later
-    // segment down one) would otherwise leave the slice starting one segment too late — dropping the
-    // top-visible segment. Anchored at verse 20 the initial window is [11, 28); the top segment is
-    // verse 12. A merge of verses 5+6 removes one segment above the window, so verse 12 moves to
-    // index 10 and the range must shift to [10, 27) to keep it framed.
+    // The window holds absolute indices, so a merge above the window start (which shifts every
+    // later segment down one) would otherwise leave the slice starting one segment too late —
+    // dropping the top-visible segment. Anchored at verse 20 the initial window is [11, 28); the
+    // top segment is verse 12. A merge of verses 5+6 removes one segment above the window, so verse
+    // 12 moves to index 10 and the range must shift to [10, 27) to keep it framed.
     const book = makeBook(30, 0);
     const scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 20 };
     const { result, rerender } = renderSegmentWindow(book, scrRef);
@@ -727,7 +690,7 @@ describe('useSegmentWindow', () => {
   });
 
   it('shifts the window range to keep the visible content framed when a split above it adds a segment', () => {
-    // The mirror case: a split above `range.start` shifts every later segment up one, so a stale
+    // The mirror case: a split above the window start shifts every later segment up one, so a stale
     // range would start one segment too early and push the bottom-visible segment out. Anchored at
     // verse 20 the window top is verse 12; splitting verse 5 into two segments must shift the range
     // up one so verse 12 stays the top-visible segment.
@@ -940,7 +903,7 @@ describe('useSegmentWindow', () => {
     act(() => rerender({ b: book, ref: { book: 'GEN', chapterNum: 1, verseNum: 50 } }));
     act(() => jest.advanceTimersByTime(RECENTER_FADE_MS));
 
-    // scrollIntoView succeeded (remainingOffset is 0 in jsdom) — spacer stays at 0 from the reset.
+    // scrollIntoView succeeded (jsdom reports no leftover offset) — spacer stays at 0 from the reset.
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(spacer.style.height).toBe('0px');
   });
@@ -1401,8 +1364,6 @@ describe('useSegmentWindow', () => {
      * the recenter-in-flight gate), mounts the segment wrapper plus the window's segment roots
      * (anchor candidates), and stubs the container and first-segment rects so the anchor seeds
      * deterministically (first segment visible at offset 10).
-     *
-     * @returns The render result plus the observer `fire` helper and the mounted segment elements.
      */
     function renderSettledWindow() {
       const { fire } = installBlockResizeObserver();
@@ -1412,7 +1373,7 @@ describe('useSegmentWindow', () => {
         chapterNum: 1,
         verseNum: 1,
       });
-      // Anchor at book start needs no mount snap, so the next frame clears recenterInFlight.
+      // Anchor at book start needs no mount snap, so the next frame ends the in-flight recenter.
       act(() => jest.advanceTimersByTime(16));
       stubRect(container, 0, 600);
       const wrapper = document.createElement('div');
@@ -1509,7 +1470,7 @@ describe('useSegmentWindow', () => {
     it('re-baselines after an extend so the next resize does not re-apply the extend shift', () => {
       const { fire } = installBlockResizeObserver();
       // Anchor mid-book so earlier segments remain to prepend. The mid-book mount snap settles below,
-      // clearing recenterInFlight — otherwise the compensation observer stands down for the test.
+      // ending the in-flight recenter — otherwise the compensation observer stands down for the test.
       const book = makeBook(60, 0);
       const { result, container } = renderSegmentWindow(book, {
         book: 'GEN',

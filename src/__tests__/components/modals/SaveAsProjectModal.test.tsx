@@ -1,4 +1,3 @@
-/** @file Unit tests for SaveAsProjectModal. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -283,7 +282,6 @@ describe('SaveAsProjectModal', () => {
     const saveButton = screen.getByTestId('save-as-new');
     await userEvent.click(saveButton);
 
-    // While the save promise is pending the button is disabled, so the user cannot submit again.
     expect(saveButton).toBeDisabled();
     expect(onSaveNew).toHaveBeenCalledTimes(1);
 

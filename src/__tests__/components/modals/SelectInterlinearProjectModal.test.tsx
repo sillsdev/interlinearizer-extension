@@ -1,4 +1,3 @@
-/** @file Unit tests for SelectInterlinearProjectModal. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -107,8 +106,8 @@ describe('SelectInterlinearProjectModal', () => {
   it("orders projects most-recently-modified first and shows each row's modified date", async () => {
     // STUB_PROJECT is older (Jan 15) than STUB_PROJECT_2 (Feb 1); returned oldest-first so the
     // component must reorder to put the newer project on top. The sort edge cases (equal and
-    // corrupted timestamps) and the date format itself are covered directly in
-    // project-summary-format.test.ts; here we only confirm the modal wires the helpers in.
+    // corrupted timestamps) and the date format itself are covered by the formatter's own unit
+    // tests; here we only confirm the modal wires the helpers in.
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT, STUB_PROJECT_2]));
     render(<SelectInterlinearProjectModal {...defaultProps} />);
     await waitFor(() => expect(screen.getByText('French glosses')).toBeInTheDocument());

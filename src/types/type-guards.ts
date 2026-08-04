@@ -1,4 +1,3 @@
-/** @file Type guards for narrowing interlinearizer types and validating parsed JSON payloads. */
 import type {
   AssignmentStatus,
   DraftProject,
@@ -8,23 +7,12 @@ import type {
 } from 'interlinearizer';
 import type { InterlinearProjectSummary } from './interlinear-project-summary';
 
-/**
- * Narrows a `Token` to a word token.
- *
- * @param token - The token to test.
- * @returns `true` when `token.type === 'word'`.
- */
+/** Narrows a token to a word token. */
 export function isWordToken(token: Token): token is Token & { type: 'word' } {
   return token.type === 'word';
 }
 
-/**
- * Type guard for {@link InterlinearProjectSummary} parsed from unknown JSON.
- *
- * @param p - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `p` satisfies the {@link InterlinearProjectSummary} shape, narrowing its type
- *   accordingly.
- */
+/** Validates an {@link InterlinearProjectSummary} parsed from unknown JSON. */
 export function isInterlinearProjectSummary(p: unknown): p is InterlinearProjectSummary {
   return (
     !!p &&
@@ -46,7 +34,7 @@ export function isInterlinearProjectSummary(p: unknown): p is InterlinearProject
   );
 }
 
-/** All valid {@link AssignmentStatus} string literals, used for O(1) membership checks. */
+/** All valid {@link AssignmentStatus} string literals. */
 const ASSIGNMENT_STATUSES: readonly string[] = [
   'approved',
   'suggested',
@@ -55,22 +43,14 @@ const ASSIGNMENT_STATUSES: readonly string[] = [
   'stale',
 ];
 
-/**
- * Narrows `v` to {@link AssignmentStatus}.
- *
- * @param v - The value to test.
- * @returns `true` if `v` is one of the valid {@link AssignmentStatus} string literals.
- */
 function isAssignmentStatus(v: unknown): v is AssignmentStatus {
   return typeof v === 'string' && ASSIGNMENT_STATUSES.includes(v);
 }
 
-/**
- * Checks that `v` has the required fields of a `TokenSnapshot` (`tokenRef` and `surfaceText`).
- *
- * @param v - The value to test.
- * @returns `true` if `v` is an object with string `tokenRef` and `surfaceText` properties.
- */
+// The helpers below check shape only and return plain booleans rather than narrowing, because the
+// types they validate are structural fragments that callers never hold on their own.
+
+/** Checks the required fields of a token snapshot. */
 function isTokenSnapshot(v: unknown): boolean {
   return (
     !!v &&
@@ -82,14 +62,7 @@ function isTokenSnapshot(v: unknown): boolean {
   );
 }
 
-/**
- * Checks that `v` satisfies the base `Analysis` shape (`id` and `surfaceText`). Used directly as
- * the `.every()` predicate for `segmentAnalyses` and `phraseAnalyses`, and as the base of
- * {@link isTokenAnalysisRecord} for `tokenAnalyses`.
- *
- * @param v - The value to test.
- * @returns `true` if `v` is an object with string `id` and `surfaceText` properties.
- */
+/** Checks the fields common to every analysis record. */
 function isAnalysisRecord(v: unknown): boolean {
   return (
     !!v &&
@@ -101,13 +74,7 @@ function isAnalysisRecord(v: unknown): boolean {
   );
 }
 
-/**
- * Checks that `v` has the required fields of a `MorphemeAnalysis` (`id`, `form`, `writingSystem`).
- * Used to validate the elements of a `TokenAnalysis.morphemes` array at the persistence boundary.
- *
- * @param v - The value to test.
- * @returns `true` if `v` is an object with string `id`, `form`, and `writingSystem` properties.
- */
+/** Checks the required fields of a single morpheme analysis. */
 function isMorphemeAnalysis(v: unknown): boolean {
   return (
     !!v &&
@@ -122,14 +89,9 @@ function isMorphemeAnalysis(v: unknown): boolean {
 }
 
 /**
- * Checks that `v` satisfies the `TokenAnalysis` shape: the base `Analysis` fields plus, when
- * present, a `morphemes` array whose every element passes {@link isMorphemeAnalysis}. Morphemes are
- * first-class data read by the UI (`m.id` keys, `m.form`, `m.writingSystem`), so a malformed array
- * must be rejected before persisting rather than surfacing as a render-time fault.
- *
- * @param v - The value to test.
- * @returns `true` if `v` is a valid analysis record with a well-formed (or absent) `morphemes`
- *   array.
+ * Checks a token analysis, including its morphemes when present. Morphemes are first-class data the
+ * UI reads field by field, so a malformed array has to be rejected at the persistence boundary
+ * rather than surfacing later as a render-time fault.
  */
 function isTokenAnalysisRecord(v: unknown): boolean {
   return (
@@ -140,14 +102,7 @@ function isTokenAnalysisRecord(v: unknown): boolean {
   );
 }
 
-/**
- * Checks that `v` satisfies the base `AnalysisLink` shape (`analysisId` and a valid `status`). Used
- * as a building block by the three link-specific guards.
- *
- * @param v - The value to test.
- * @returns `true` if `v` is an object with a string `analysisId` and a valid
- *   {@link AssignmentStatus} `status`.
- */
+/** Checks the fields common to every analysis link. */
 function isAnalysisLink(v: unknown): boolean {
   return (
     !!v &&
@@ -159,13 +114,7 @@ function isAnalysisLink(v: unknown): boolean {
   );
 }
 
-/**
- * Checks that `v` satisfies the `SegmentAnalysisLink` shape: valid `AnalysisLink` fields plus a
- * string `segmentId`.
- *
- * @param v - The value to test.
- * @returns `true` if `v` passes {@link isAnalysisLink} and has a string `segmentId` property.
- */
+/** Checks a link that attaches an analysis to a segment. */
 function isSegmentAnalysisLink(v: unknown): boolean {
   return (
     isAnalysisLink(v) &&
@@ -176,28 +125,14 @@ function isSegmentAnalysisLink(v: unknown): boolean {
   );
 }
 
-/**
- * Checks that `v` satisfies the `TokenAnalysisLink` shape: valid `AnalysisLink` fields plus a
- * `token` property that passes {@link isTokenSnapshot}.
- *
- * @param v - The value to test.
- * @returns `true` if `v` passes {@link isAnalysisLink} and has a valid `TokenSnapshot` `token`
- *   property.
- */
+/** Checks a link that attaches an analysis to a single token. */
 function isTokenAnalysisLink(v: unknown): boolean {
   return (
     isAnalysisLink(v) && !!v && typeof v === 'object' && 'token' in v && isTokenSnapshot(v.token)
   );
 }
 
-/**
- * Checks that `v` satisfies the `PhraseAnalysisLink` shape: valid `AnalysisLink` fields plus a
- * non-empty `tokens` array whose every element passes {@link isTokenSnapshot}.
- *
- * @param v - The value to test.
- * @returns `true` if `v` passes {@link isAnalysisLink} and has a `tokens` array of valid
- *   `TokenSnapshot` objects.
- */
+/** Checks a link that attaches an analysis to a non-empty run of tokens. */
 function isPhraseAnalysisLink(v: unknown): boolean {
   return (
     isAnalysisLink(v) &&
@@ -211,12 +146,8 @@ function isPhraseAnalysisLink(v: unknown): boolean {
 }
 
 /**
- * Type guard for {@link TextAnalysis} parsed from unknown JSON. Validates array presence and minimal
- * element shapes for all six arrays so malformed payloads are rejected before persisting.
- *
- * @param value - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `value` satisfies the {@link TextAnalysis} shape, narrowing its type
- *   accordingly.
+ * Validates a {@link TextAnalysis} parsed from unknown JSON, down to the element shapes of every
+ * collection, so a malformed payload is rejected before it is persisted.
  */
 export function isTextAnalysis(value: unknown): value is TextAnalysis {
   return (
@@ -244,12 +175,8 @@ export function isTextAnalysis(value: unknown): value is TextAnalysis {
 }
 
 /**
- * Type guard for {@link SegmentationDelta} parsed from unknown JSON. Both arrays must be present and
- * contain only strings, so a malformed delta is rejected before it can corrupt re-segmentation.
- *
- * @param value - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `value` satisfies the {@link SegmentationDelta} shape, narrowing its type
- *   accordingly.
+ * Validates a {@link SegmentationDelta} parsed from unknown JSON, so a malformed delta cannot
+ * corrupt re-segmentation.
  */
 export function isSegmentationDelta(value: unknown): value is SegmentationDelta {
   return (
@@ -265,13 +192,8 @@ export function isSegmentationDelta(value: unknown): value is SegmentationDelta 
 }
 
 /**
- * Type guard for {@link DraftProject} parsed from unknown JSON. Validates the envelope fields and
- * delegates the `analysis` to {@link isTextAnalysis}, so malformed drafts are rejected before
- * persisting.
- *
- * @param value - The value to test, typically a parsed JSON object of unknown shape.
- * @returns `true` if `value` satisfies the {@link DraftProject} shape, narrowing its type
- *   accordingly.
+ * Validates a {@link DraftProject} parsed from unknown JSON, so a malformed draft is rejected before
+ * it is persisted.
  */
 export function isDraftProject(value: unknown): value is DraftProject {
   return (

@@ -1,4 +1,3 @@
-/** @file Unit tests for components/SegmentView.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -60,7 +59,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   useSegmentFreeTranslationDispatch: () => mockSegmentFreeTranslationDispatch,
 }));
 
-// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// Hover-preview state is covered by the hook's own unit tests; the view only forwards its
 // handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 const mockSplitFreeTokenRefs = { current: new Set<string>() };
@@ -217,8 +216,6 @@ const PUNCT_SEGMENT: Segment = {
 /**
  * Minimal required props for SegmentView. Spread into render calls so tests only need to override
  * what they actually care about.
- *
- * @returns An object containing all required SegmentView props set to no-op stubs.
  */
 function requiredProps(): {
   displayMode: 'token-chip';
@@ -579,10 +576,6 @@ describe('SegmentView', () => {
     /**
      * Renders a SegmentView in baseline-text mode wrapped in the segmentation and Alt-held
      * providers, so the split gap markers can be exercised.
-     *
-     * @param options - Fixture overrides: the segment, whether Alt is held, the phrase mode, and
-     *   the straddled/former-boundary maps.
-     * @returns The dispatch spy and the onSelect spy for assertions.
      */
     function renderBaseline(
       options: {

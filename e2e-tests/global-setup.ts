@@ -21,12 +21,7 @@ export const RENDERER_PORT = 1212;
  */
 export const DEV_SERVER_PID_FILE = path.join(__dirname, '.dev-server.pid');
 
-/**
- * Check if a port is already in use.
- *
- * @param port Port number to probe.
- * @returns Resolves to `true` if the port is occupied, `false` if it is free.
- */
+/** Check if a port is already in use. */
 export function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -48,9 +43,8 @@ export function isPortInUse(port: number): Promise<boolean> {
  * Webpack-dev-middleware holds requests open until the initial compilation finishes, so a
  * successful response guarantees the initial renderer bundle is ready.
  *
- * @param url URL to probe.
- * @param timeout Maximum time in milliseconds to wait before rejecting.
- * @returns Resolves when the server returns a non-5xx response.
+ * @param url - URL to probe.
+ * @param timeout - Total budget in ms, spanning all retries rather than one probe.
  * @throws {Error} If the server does not respond within `timeout` milliseconds.
  */
 function waitForHttpOk(url: string, timeout: number): Promise<void> {
@@ -60,9 +54,8 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
     let currentReq: http.ClientRequest | undefined;
 
     /**
-     * Mark the probe as failed, destroy the in-flight request, and reject the outer promise.
-     *
-     * @param message Human-readable failure reason passed to the rejected Error.
+     * Mark the probe as failed, destroy the in-flight request, and reject the outer promise with
+     * `message` as the Error's text.
      */
     const fail = (message: string) => {
       if (done) return;
@@ -119,9 +112,6 @@ function waitForHttpOk(url: string, timeout: number): Promise<void> {
 /**
  * Wait until a port is accepting connections.
  *
- * @param port Port number to poll.
- * @param timeout Maximum time in milliseconds to wait before rejecting.
- * @returns Resolves when a TCP connection to the port succeeds.
  * @throws {Error} If the port does not become available within `timeout` milliseconds.
  */
 export function waitForPort(port: number, timeout: number): Promise<void> {
@@ -133,7 +123,7 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
         reject(new Error(`Port ${port} did not become available within ${timeout}ms`));
         return;
       }
-      const socket = net.createConnection(port, '127.0.0.1');
+      const socket = net.createConnection(port, 'localhost');
       socket.on('connect', () => {
         socket.destroy();
         resolve();
@@ -151,12 +141,11 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
  * Bootstrap everything an Electron launch needs, short of launching Electron itself: verify no
  * conflicting instance is running, clear stale singleton locks, confirm the extension is built,
  * ensure the paranext-core dev main bundle exists, and start the renderer dev server on port 1212
- * (recording its PID for teardown). Shared by both the smoke {@link globalSetup} (whose fixture then
- * launches Electron) and the CDP setup (which launches Electron itself with remote debugging).
+ * (recording its PID for teardown).
  *
  * Self-cleaning on failure: if a dev server started here never becomes ready, it is killed before
- * the error propagates (see {@link killSpawnedDevServer}), so neither caller leaks it. Callers
- * therefore need no dev-server cleanup of their own for a bootstrap failure.
+ * the error propagates (see {@link killSpawnedDevServer}), so it cannot leak. Callers therefore need
+ * no dev-server cleanup of their own for a bootstrap failure.
  *
  * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use (a running Platform.Bible would conflict).
@@ -272,7 +261,7 @@ export async function bootstrapRendererDevServer(): Promise<void> {
       // probe because CI runners can be noisy and late-compiling; the fixture has a longer CI-ready
       // timeout and will keep waiting for the renderer window to recover.
       try {
-        await waitForHttpOk(`http://127.0.0.1:${RENDERER_PORT}/`, 120_000);
+        await waitForHttpOk(`http://localhost:${RENDERER_PORT}/`, 120_000);
       } catch (error) {
         if (!process.env.CI) throw error;
         const message =
@@ -303,9 +292,8 @@ export async function bootstrapRendererDevServer(): Promise<void> {
  * Best-effort: every step swallows its own error, since this runs while an exception is already
  * propagating and must not replace the real failure with a cleanup one.
  *
- * @param pid PID of the spawned dev server; `undefined` if the spawn never reported one, in which
+ * @param pid - PID of the spawned dev server; `undefined` if the spawn never reported one, in which
  *   case there is nothing to kill and no marker was written.
- * @returns Nothing.
  */
 function killSpawnedDevServer(pid: number | undefined): void {
   if (!pid) return;
@@ -334,9 +322,8 @@ function removeDevServerPidMarker(): void {
  * the renderer dev server via {@link bootstrapRendererDevServer}; the smoke fixture
  * (`app.fixture.ts`) then launches its own Electron instance per worker.
  *
- * @param _config Playwright config object — unused; required by Playwright's global-setup
+ * @param _config - Playwright config object — unused; required by Playwright's global-setup
  *   interface.
- * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use.
  * @throws {Error} If the extension dist is missing.
  */

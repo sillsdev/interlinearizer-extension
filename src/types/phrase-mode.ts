@@ -1,17 +1,23 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 
 /**
- * Discriminated union describing the current phrase-interaction mode in the Interlinearizer.
+ * The phrase-interaction mode the interlinear view is currently in.
  *
- * - `view` — Normal reading/glossing mode; no phrase operation is in progress.
- * - `edit` — User is adding/removing tokens from an existing phrase identified by `phraseId`.
- *   `originalTokens` is the token list at the moment edit mode was entered, used to restore state
- *   on cancel. When `revert` is `true` the cancel button has been pressed and any component
- *   observing this should restore the phrase to `originalTokens` and return to `view`.
- * - `confirm-unlink` — Awaiting user confirmation before deleting the phrase identified by
- *   `phraseId`.
+ * - `view` — normal reading and glossing; no phrase operation is in progress.
+ * - `edit` — the user is adding tokens to or removing them from an existing phrase.
+ * - `confirm-unlink` — awaiting the user's confirmation before deleting the phrase.
  */
 export type PhraseMode =
   | { kind: 'view' }
-  | { kind: 'edit'; phraseId: string; originalTokens: PhraseAnalysisLink['tokens']; revert?: true }
+  | {
+      kind: 'edit';
+      phraseId: string;
+      /** The phrase's token list as it stood when edit mode was entered, so a cancel can restore it. */
+      originalTokens: PhraseAnalysisLink['tokens'];
+      /**
+       * Set once cancel has been pressed: observers should restore `originalTokens` and return to
+       * `view`.
+       */
+      revert?: true;
+    }
   | { kind: 'confirm-unlink'; phraseId: string };

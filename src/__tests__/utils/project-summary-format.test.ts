@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/project-summary-format.ts (project-list sort + label helpers). */
 /// <reference types="jest" />
 
 import {

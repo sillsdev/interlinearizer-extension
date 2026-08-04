@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/token-layout.ts. */
 /// <reference types="jest" />
 
 import type { Token } from 'interlinearizer';
@@ -13,35 +12,15 @@ import {
 } from '../../utils/token-layout';
 import { makePhraseLink } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Creates a word token fixture.
- *
- * @param ref - Token reference.
- * @param surfaceText - Surface text.
- * @returns A word token.
- */
+/** Creates a word token fixture. */
 function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
   return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
 }
 
-/**
- * Creates a punctuation token fixture.
- *
- * @param ref - Token reference.
- * @param surfaceText - Surface text.
- * @returns A punctuation token.
- */
+/** Creates a punctuation token fixture. */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
 }
-
-// ---------------------------------------------------------------------------
-// resolveFocusContext
-// ---------------------------------------------------------------------------
 
 describe('resolveFocusContext', () => {
   it('returns all-undefined context when focusedTokenRef is undefined', () => {
@@ -89,18 +68,10 @@ describe('resolveFocusContext', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// resolveSlotFocus
-// ---------------------------------------------------------------------------
-
 describe('resolveSlotFocus', () => {
   /**
    * Builds a focus context with the given segment id and optional phrase/free token; all other
    * fields default to undefined.
-   *
-   * @param focusedSegmentId - Segment id of the focused token, or `undefined`.
-   * @param overrides - Optional `focusedPhraseLink` / `focusedFreeToken` overrides.
-   * @returns A `FocusContext` for `resolveSlotFocus`.
    */
   function focusWithSegment(
     focusedSegmentId: string | undefined,
@@ -150,10 +121,6 @@ describe('resolveSlotFocus', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// NO_SLOT_FOCUS
-// ---------------------------------------------------------------------------
-
 describe('NO_SLOT_FOCUS', () => {
   it('represents an inert, unfocused slot', () => {
     expect(NO_SLOT_FOCUS).toEqual({
@@ -164,10 +131,6 @@ describe('NO_SLOT_FOCUS', () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// groupTokens
-// ---------------------------------------------------------------------------
 
 describe('groupTokens', () => {
   it('returns an empty array for an empty token list', () => {
@@ -220,10 +183,6 @@ describe('groupTokens', () => {
     expect(groups[1].firstIndex).toBe(2);
   });
 });
-
-// ---------------------------------------------------------------------------
-// buildRenderUnits
-// ---------------------------------------------------------------------------
 
 describe('buildRenderUnits', () => {
   it('produces a leading and trailing slot when there is one group', () => {

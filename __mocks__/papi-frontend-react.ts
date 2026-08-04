@@ -32,13 +32,9 @@ const useProjectData = jest.fn(() =>
 );
 
 /**
- * Mock for `useProjectSetting`. Returns `[defaultState, setSetting, resetSetting, isLoading]`,
- * passing `defaultState` through unchanged so callers receive a predictable initial value.
- *
- * @param _projectDataProviderSource - Ignored project data provider source.
- * @param _key - Ignored setting key.
- * @param defaultState - Value surfaced as the current setting state.
- * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ * Mock for `useProjectSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing
+ * `defaultState` through unchanged so callers receive a predictable initial value and never a
+ * loading state.
  */
 const useProjectSetting = jest
   .fn()
@@ -53,7 +49,6 @@ const useProjectSetting = jest
  * Mock for `useLocalizedStrings`. Maps each requested key to itself so tests receive a
  * predictable `Record<string, string>` without a real localization service.
  *
- * @param keys - BCP47-style string keys to resolve.
  * @returns Tuple of `[record, isLoading]` where every key maps to itself and `isLoading` is
  *   `false`.
  */
@@ -63,12 +58,9 @@ const useLocalizedStrings = jest.fn().mockImplementation((keys: string[]) => [
 ]);
 
 /**
- * Mock for `useSetting`. Returns `[defaultState, setSetting, resetSetting, false]`, passing
- * `defaultState` through unchanged so callers receive a predictable initial value.
- *
- * @param _key - Ignored setting key.
- * @param defaultState - Value surfaced as the current setting state.
- * @returns Tuple of `[defaultState, jest.fn(), jest.fn(), false]`.
+ * Mock for `useSetting`. Returns `[defaultState, jest.fn(), jest.fn(), false]`, passing
+ * `defaultState` through unchanged so callers receive a predictable initial value and never a
+ * loading state.
  */
 const useSetting = jest
   .fn()
@@ -82,8 +74,6 @@ const useSetting = jest
 /**
  * Mock for `useRecentScriptureRefs`. Returns an empty history and a no-op `addRecentScriptureRef`
  * so components that display recent references render without errors.
- *
- * @returns Object with `recentScriptureRefs` (empty array) and `addRecentScriptureRef` (jest spy).
  */
 const useRecentScriptureRefs = jest
   .fn()

@@ -1,4 +1,3 @@
-/** @file Unit tests for components/TokenChip.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -21,12 +20,7 @@ beforeEach(() => {
   jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
 });
 jest.mock('../../components/MorphemeEditor', () => ({
-  /**
-   * Stub popover that renders a save button so tests can trigger onSave.
-   *
-   * @param props - Receives the same props as the real popover.
-   * @returns A test stub element with a save button.
-   */
+  /** Stub popover exposing buttons that drive onSave, onClose, and onReset. */
   MorphemeBreakdownPopover({
     onSave,
     onClose,
@@ -63,9 +57,6 @@ jest.mock('../../components/MorphemeBox', () => ({
    * Stub box that surfaces its `onEditBreakdown` callback as a button so analyzed-path tests can
    * open the editor, and echoes its `disabled`/`popoverOpen` props for assertions. The box's grid
    * internals (forms, gloss inputs, RTL order, hover, active look) are tested in MorphemeBox.test.
-   *
-   * @param props - Receives the same props as the real box.
-   * @returns A test stub element with an edit-breakdown trigger.
    */
   MorphemeBox({
     onEditBreakdown,
@@ -101,8 +92,6 @@ const WORD_TOKEN = {
 /**
  * Minimal required props for {@link TokenChip}. Spread into render calls so tests only need to
  * override what they actually care about.
- *
- * @returns An object with all required props set to no-op stubs.
  */
 function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void } {
   return {
@@ -376,9 +365,7 @@ describe('TokenChip', () => {
         <TokenChip {...requiredProps()} onRemove={onRemove} />
       </AnalysisStoreProvider>,
     );
-    // Hover the remove button to set isRemoveHovered = true
     await userEvent.hover(screen.getByRole('button', { name: 'Remove hello from phrase' }));
-    // Rerender without onRemove — the label border should revert to non-destructive
     rerender(
       <AnalysisStoreProvider analysisLanguage="und">
         <TokenChip {...requiredProps()} onRemove={undefined} />
@@ -476,7 +463,6 @@ describe('TokenChip', () => {
     });
 
     it('renders the morpheme box instead of the define button when morphemes exist', () => {
-      // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemes').mockReturnValue([
         { id: 'm-1', form: 'hel', writingSystem: 'und' },
         { id: 'm-2', form: '-lo', writingSystem: 'und' },
@@ -493,7 +479,6 @@ describe('TokenChip', () => {
     });
 
     it('marks the morpheme box active while the popover is open', async () => {
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -508,7 +493,6 @@ describe('TokenChip', () => {
     });
 
     it('opens the popover when the box requests breakdown editing on an analyzed token', async () => {
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -522,7 +506,6 @@ describe('TokenChip', () => {
     });
 
     it('reports the token as focused when the box opens the editor on an analyzed token', async () => {
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -539,7 +522,6 @@ describe('TokenChip', () => {
     it('reports the token as focused when a morpheme gloss input is focused', async () => {
       // The morpheme glosses are gloss fields of this same token, so focusing one must move the
       // view's focus exactly as focusing the chip's own gloss input does.
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -555,7 +537,6 @@ describe('TokenChip', () => {
 
     it('dispatches morpheme breakdown when saving from the popover', async () => {
       const mockDispatch = jest.fn();
-      // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
 
       render(
@@ -572,7 +553,6 @@ describe('TokenChip', () => {
 
     it('does not dispatch when the popover saves only whitespace', async () => {
       const mockDispatch = jest.fn();
-      // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemeBreakdownDispatch').mockReturnValue(mockDispatch);
 
       render(
@@ -589,7 +569,6 @@ describe('TokenChip', () => {
 
     it('dispatches morpheme deletion when the popover reset is clicked', async () => {
       const mockDispatch = jest.fn();
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);
@@ -619,7 +598,6 @@ describe('TokenChip', () => {
     });
 
     it('tells the popover to confirm when a reset would lose glosses', async () => {
-      // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(true);
 
       render(
@@ -637,7 +615,6 @@ describe('TokenChip', () => {
     });
 
     it('tells the popover not to confirm when a reset would lose nothing', async () => {
-      // AnalysisStore imported at top level
       jest.spyOn(AnalysisStore, 'useMorphemeResetLosesGlosses').mockReturnValue(false);
 
       render(
@@ -655,7 +632,6 @@ describe('TokenChip', () => {
     });
 
     it('focuses the main gloss input on a surface-text mouse-down when the box precedes it', () => {
-      // AnalysisStore imported at top level
       jest
         .spyOn(AnalysisStore, 'useMorphemes')
         .mockReturnValue([{ id: 'm-1', form: 'hel', writingSystem: 'und' }]);

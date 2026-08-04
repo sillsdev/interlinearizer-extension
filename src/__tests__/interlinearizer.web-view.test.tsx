@@ -1,4 +1,3 @@
-/** @file Unit tests for interlinearizer.web-view.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -14,13 +13,7 @@ jest.mock('../components/InterlinearizerLoader', () => ({
   ),
 }));
 
-/**
- * Load the WebView module; it assigns the component to globalThis.webViewComponent. This pattern is
- * required by the Platform.Bible WebView framework: the WebView entry is built with a ?inline query
- * and consumed by main.ts, so the component is not a normal export. Tests that need to render the
- * component must require() the module and read globalThis. If the WebView export mechanism changes,
- * update this test accordingly.
- */
+// PAPI WebView contract: the module assigns the component to globalThis.webViewComponent instead of exporting it.
 require('../interlinearizer.web-view');
 
 const InterlinearizerWebView = globalThis.webViewComponent;

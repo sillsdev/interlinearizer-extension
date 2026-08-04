@@ -7,12 +7,12 @@ import useLatestRef from './useLatestRef';
  * How long, in milliseconds, the post-recenter snap keeps watching for late layout shifts before it
  * gives up and reports settled regardless. After a recenter the freshly-mounted layout does not
  * reach its final geometry in a single frame — and on a continuous-scroll toggle it settles in
- * _waves_: the segments switch display mode, the horizontal strip mounts, and `useArcPaths`
- * measures/clears arc padding, each across its own ResizeObserver → rAF → setState chain that lands
- * on different frames. Rather than poll every frame for this whole window, the snap is driven by
- * the resize observer that already fires on each of those waves (it re-snaps the verse on every
- * fire); this is only the backstop deadline for a layout that never stops shifting, so the loader
- * curtain is never stranded waiting for a settle that won't come.
+ * _waves_: the segments switch display mode, the horizontal strip mounts, and the arc-measurement
+ * pass applies or clears arc padding, each across its own ResizeObserver → rAF → setState chain
+ * that lands on different frames. Rather than poll every frame for this whole window, the snap is
+ * driven by the resize observer that already fires on each of those waves (it re-snaps the verse on
+ * every fire); this is only the backstop deadline for a layout that never stops shifting, so the
+ * loader curtain is never stranded waiting for a settle that won't come.
  */
 const RECENTER_RESNAP_DEADLINE_MS = RECENTER_FADE_MS;
 
@@ -89,21 +89,14 @@ export interface UseRecenterSnapResult {
  * Owns the post-recenter re-snap and settle lifecycle for the segment window.
  *
  * After a recenter rebuilds the window the freshly-mounted segments do not reach their final
- * heights synchronously — arc padding is measured and applied by `useArcPaths` across several later
- * frames (a ResizeObserver → rAF → setState chain) — so a one-shot snap can compute its target
- * against stale heights and leave the verse off screen, pinned to an edge. This hook re-snaps the
- * verse against each settling wave (event-driven, via {@link UseRecenterSnapResult.relayResize}, not
- * a per-frame loop) and reports settled once the layout goes quiet. All of it runs behind the
- * recenter fade, so none of the intermediate corrections are seen.
+ * heights synchronously, because arc padding is measured and applied across several later frames. A
+ * one-shot snap would therefore compute its target against stale heights and leave the verse off
+ * screen, pinned to an edge. This hook instead re-snaps the verse against each settling wave —
+ * event-driven rather than a per-frame loop — and reports settled once the layout goes quiet. All
+ * of it runs behind the recenter fade, so none of the intermediate corrections are seen.
  *
- * Extracted from {@link useSegmentWindow} so its intricate timing (epoch bump, quiet-debounce, and
- * deadline backstop) lives behind one boundary rather than tangled into the main hook body.
- *
- * @param args - Hook arguments.
- * @param args.snapActiveToTop - Snaps the recenter target to the top of the container.
- * @param args.needsInitialSnap - Whether the initial mount needs a snap (cross-book remount).
- * @param args.onSettled - Reported once per settle; lifts the cross-book loader curtain.
- * @returns The recenter epoch, in-flight ref, and the start/begin/relay handlers.
+ * Keeps the intricate timing (epoch bump, quiet-debounce, and deadline backstop) behind one
+ * boundary.
  */
 export default function useRecenterSnap({
   snapActiveToTop,

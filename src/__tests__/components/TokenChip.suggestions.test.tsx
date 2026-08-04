@@ -1,11 +1,4 @@
-/**
- * @file Integration tests for {@link TokenChip}'s suggestion combobox (the focus-triggered pop-down
- *   that replaced the inline accept/promote column). Unlike `TokenChip.test.tsx`, this file uses
- *   the real {@link AnalysisStoreProvider} so suggestions are derived from a real analysis pool end
- *   to end. The dropdown opens on focus of the gloss (clicking it), and a row is approved by
- *   clicking it or by keyboard (arrows + Enter). The "+" button — rendered only for a token with
- *   more than one suggestion — re-summons the dropdown over typed text.
- */
+// Suggestion-combobox tests run against the real analysis store rather than mocks.
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -25,13 +18,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
 });
 
-/**
- * Builds a word token spanning its surface text.
- *
- * @param ref - The token ref.
- * @param surfaceText - The token's surface text.
- * @returns A word `Token`.
- */
+/** Builds a word token spanning its surface text. */
 function wordToken(ref: string, surfaceText: string): Token & { type: 'word' } {
   return {
     ref,
@@ -47,10 +34,10 @@ function wordToken(ref: string, surfaceText: string): Token & { type: 'word' } {
  * Builds an analysis seeding one approved payload, so a different token with the same surface form
  * resolves to it as a suggestion.
  *
- * @param gloss - The English gloss on the approved payload, or `undefined` for a payload with no
- *   English gloss.
- * @param surfaceText - The approved payload's surface form.
- * @returns A `TextAnalysis` with one approved link from `tok-approved`.
+ * @param gloss - Gloss text, filed under `en` to match the rendered active analysis language, or
+ *   `undefined` to leave the payload unglossed.
+ * @param surfaceText - Surface form carried by both the approved payload and the token that must
+ *   match it.
  */
 function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): TextAnalysis {
   const ta: TokenAnalysis = {
@@ -70,8 +57,8 @@ function poolWithOneApproved(gloss: string | undefined, surfaceText = 'logos'): 
  * Builds an analysis for the homograph 'bank': `riverbank` approved twice (the suggested pick) and
  * `finance` approved once (a candidate).
  *
- * @param financeGloss - The English gloss on the candidate payload, or `undefined` for none.
- * @returns A `TextAnalysis` with two competing approved payloads for 'bank'.
+ * @param financeGloss - Gloss text for the candidate payload, filed under `en` to match the
+ *   rendered active analysis language, or `undefined` to leave it unglossed.
  */
 function homographBankPool(financeGloss: string | undefined): TextAnalysis {
   const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };
@@ -92,8 +79,6 @@ function homographBankPool(financeGloss: string | undefined): TextAnalysis {
  * Builds the homograph 'bank' where the MOST-frequent analysis has no active-language (English)
  * gloss — only French — and a lower-frequency one carries `en:'finance'`. Exercises falling through
  * a blank-in-active-language top pick to the next glossed analysis.
- *
- * @returns A `TextAnalysis` whose top-ranked 'bank' payload is blank in English.
  */
 function homographTopBlankPool(): TextAnalysis {
   const blank: TokenAnalysis = { id: 'ta-blank', surfaceText: 'bank', gloss: { fr: 'rive' } };
@@ -106,17 +91,7 @@ function homographTopBlankPool(): TextAnalysis {
   return { ...emptyAnalysis(), tokenAnalyses: [blank, fin], tokenAnalysisLinks: links };
 }
 
-/**
- * Renders a {@link TokenChip} inside a real provider seeded with the given analysis pool.
- *
- * @param token - The word token to render.
- * @param options - Provider configuration.
- * @param options.initialAnalysis - The seed analysis (the pool).
- * @param options.showSuggestions - Whether the provider opts into suggestions (default `true`).
- * @param options.onSave - Optional save spy.
- * @param options.onGlossChange - Optional gloss-write spy.
- * @returns The Testing Library render result.
- */
+/** Renders a {@link TokenChip} inside a real provider seeded with the given analysis pool. */
 function renderChip(
   token: Token & { type: 'word' },
   {
@@ -147,9 +122,6 @@ function renderChip(
 /**
  * Focuses a chip's gloss input (which opens the dropdown whenever the token has suggestions),
  * returning the input element.
- *
- * @param surfaceText - The token's surface form, used to find the labeled input.
- * @returns The focused gloss input element.
  */
 async function focusGloss(surfaceText: string): Promise<HTMLElement> {
   const input = screen.getByLabelText(`Gloss for ${surfaceText}`);
@@ -419,8 +391,6 @@ describe('TokenChip suggestion dropdown', () => {
  * Builds the homograph 'bank' where `riverbank` is approved three times (`r1`/`r2`/`r3`, the
  * majority) and `finance` once (`f1`, the minority) — so clearing an approved majority token can be
  * tested for previewing the still-majority pick rather than the lone alternative.
- *
- * @returns A `TextAnalysis` with a 3:1 approval split for 'bank'.
  */
 function homographMajorityPool(): TextAnalysis {
   const river: TokenAnalysis = { id: 'ta-river', surfaceText: 'bank', gloss: { en: 'riverbank' } };
@@ -499,7 +469,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
     });
 
     await focusGloss('logos');
-    // No arrow press: activeIndex is -1, so Enter falls back to the top row.
+    // No arrow press: nothing is highlighted, so Enter falls back to the top row.
     await userEvent.keyboard('{Enter}');
 
     const saved: TextAnalysis = onSave.mock.calls[0][0];
@@ -675,8 +645,6 @@ describe('TokenChip suggestion dropdown scrolling', () => {
    * Stubs the gloss input's `getBoundingClientRect` so the dropdown's scroll handler sees a
    * definite on- or off-screen anchor (jsdom returns an all-zero rect by default, which reads as
    * on-screen).
-   *
-   * @param top - The faked viewport-relative top of the input; `bottom` is `top + 10`.
    */
   function stubGlossRect(top: number): void {
     jest.spyOn(HTMLInputElement.prototype, 'getBoundingClientRect').mockReturnValue({

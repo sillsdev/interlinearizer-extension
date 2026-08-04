@@ -1,18 +1,11 @@
-/** @file Unit tests for useOptimisticBooleanSetting hook. */
 /// <reference types="jest" />
 
 import { useProjectSetting } from '@papi/frontend/react';
 import { act, renderHook } from '@testing-library/react';
 import useOptimisticBooleanSetting from '../../hooks/useOptimisticBooleanSetting';
 
-/** Mock function for setting project settings. */
 const mockSetSetting = jest.fn();
 
-/**
- * Mocks useProjectSetting to return a specified default state.
- *
- * @param defaultState - The value to return as the current setting state.
- */
 function mockUseProjectSettings(defaultState: boolean | undefined) {
   jest.mocked(useProjectSetting).mockReturnValue([defaultState, mockSetSetting, jest.fn(), false]);
 }
@@ -128,7 +121,7 @@ describe('useOptimisticBooleanSetting', () => {
       result.current.onChange(true);
     });
     act(() => {
-      result.current.onChange(false); // second call should clear the first timer
+      result.current.onChange(false);
     });
 
     expect(clearTimeoutSpy).toHaveBeenCalled();

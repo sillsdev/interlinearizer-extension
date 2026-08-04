@@ -1,4 +1,3 @@
-/** @file Unit tests for ProjectModals (draft-based New / Open / Save As / metadata routing). */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -285,9 +284,6 @@ type ModalsOverrides = Partial<{
 /**
  * Builds a complete ProjectModals prop set, filling required props with sensible defaults so each
  * test only specifies what it cares about.
- *
- * @param overrides - Props to override.
- * @returns The full prop object to spread onto ProjectModals.
  */
 function buildProps(overrides: ModalsOverrides = {}) {
   return {
@@ -310,11 +306,6 @@ function buildProps(overrides: ModalsOverrides = {}) {
  * `'activeProject'` key, so a test can assert how the active project was updated or cleared. Any
  * unspecified spy — and every key other than `'activeProject'` — gets a no-op. Mirrors
  * {@link makeWebViewState}'s `[value, setter, reset]` shape without type assertions.
- *
- * @param spies - The spies to install for the `'activeProject'` slot.
- * @param spies.set - Spy invoked when the `'activeProject'` slot's setter is called.
- * @param spies.reset - Spy invoked when the `'activeProject'` slot is reset.
- * @returns A `useWebViewState`-shaped hook stub.
  */
 function makeWebViewStateWithActiveProjectSpies({
   set = () => {},
@@ -1214,7 +1205,6 @@ describe('ProjectModals', () => {
       setModal.mockClear();
       // Delete targets proj-2 while proj-1 is active, so the id guard must skip the reset.
       await userEvent.click(screen.getByTestId('metadata-delete-2'));
-      // The id guard prevents the reset since proj-2 is not the active proj-1.
       expect(resetActiveProject).not.toHaveBeenCalled();
       expect(setModal).toHaveBeenCalledWith('select');
     });

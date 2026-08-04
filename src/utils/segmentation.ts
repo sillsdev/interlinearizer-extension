@@ -1,16 +1,9 @@
 /**
- * @file Pure transforms over a {@link SegmentationDelta} — the user's custom segment boundaries
- *   expressed as a delta from the default one-segment-per-verse segmentation.
+ * Pure transforms over a {@link SegmentationDelta}, the user's custom segment boundaries expressed
+ * as a delta from the default one-segment-per-verse segmentation.
  *
- *   A segment is a maximal contiguous run of the book's document-order token stream between "start"
- *   tokens. The default start tokens are each verse's first token; the delta records where the
- *   user's boundaries differ (a removed verse start merges that verse into the previous segment; an
- *   added start splits a verse). Because a segment can only be a contiguous run between starts,
- *   discontiguous segments are unrepresentable.
- *
- *   Every function here is pure and store-free (mirrors `phrase-arc.ts`). They take the original
- *   verse-tokenized {@link Book} (from `tokenizeBook`, before re-segmentation) so they can derive
- *   the default verse starts; they never need the re-segmented book.
+ * Every transform takes the _original_ verse-tokenized book — never the re-segmented one — because
+ * that is what the default verse starts are derived from, and returns a normalized delta.
  */
 import type { Book, SegmentationDelta } from 'interlinearizer';
 
@@ -19,7 +12,7 @@ const EMPTY_DELTA: SegmentationDelta = { removedVerseStarts: [], addedStarts: []
 
 /**
  * The whole-book lookups every transform in this module needs, derived in a single pass over the
- * token stream so one boundary op walks the book once.
+ * token stream so one boundary operation walks the book once.
  */
 type BookLookups = Readonly<{
   /**
@@ -36,18 +29,11 @@ type BookLookups = Readonly<{
 }>;
 
 /**
- * Per-book cache of {@link BookLookups}, keyed by book reference. `verseBook` identity is stable for
- * a given tokenization (changing only on re-tokenization), so every op reuses one traversal.
+ * Per-book cache of {@link BookLookups}. A tokenized book's identity is stable until it is
+ * re-tokenized, so every operation reuses one traversal.
  */
 const bookLookupsCache = new WeakMap<Book, BookLookups>();
 
-/**
- * Returns the {@link BookLookups} for `verseBook`, computing them in one pass on first use and
- * caching by book reference thereafter.
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns The cached (or freshly built) lookups.
- */
 function bookLookups(verseBook: Book): BookLookups {
   const cached = bookLookupsCache.get(verseBook);
   if (cached) return cached;
@@ -75,25 +61,18 @@ function bookLookups(verseBook: Book): BookLookups {
 }
 
 /**
- * The default segment-start refs — each verse segment's first token (of any type, so a verse's
- * leading punctuation stays with that verse).
- *
- * @param verseBook - The original verse-tokenized book.
- * @returns The set of first-token refs, one per verse segment that has tokens.
+ * The default segment-start refs — each verse segment's first token, of any type, so a verse's
+ * leading punctuation stays with that verse.
  */
 export function defaultVerseStarts(verseBook: Book): ReadonlySet<string> {
   return bookLookups(verseBook).defaults;
 }
 
 /**
- * The effective set of segment-start refs after applying `delta` to the default verse starts:
- * `(defaults \ removedVerseStarts) ∪ addedStarts`, with added anchors dropped when their token no
- * longer exists and the book's first token always forced to be a start. Shared with `resegmentBook`
- * so re-segmentation and the editing operations agree on where boundaries fall.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The user's boundary delta, or `undefined` for the default segmentation.
- * @returns The set of token refs that begin a segment.
+ * The token refs that begin a segment once the delta is applied to the default verse starts:
+ * `(defaults \ removedVerseStarts) ∪ addedStarts`. Added anchors whose token no longer exists are
+ * dropped, and the book's first token is always forced to be a start. This is the single definition
+ * of where a segment begins, so no two boundary operations can disagree.
  */
 export function effectiveStarts(
   verseBook: Book,
@@ -116,13 +95,8 @@ export function effectiveStarts(
 }
 
 /**
- * Returns a canonicalized copy of `delta`: each array deduped, stripped of no-op entries (a removed
- * ref that is not a default start, or an added ref that is already a default start or whose token
- * is gone), and sorted by document order so equal segmentations serialize identically.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The delta to canonicalize.
- * @returns A normalized {@link SegmentationDelta}.
+ * Canonicalizes a delta so that equal segmentations serialize identically: each array is deduped,
+ * stripped of no-op entries, and sorted by document order.
  */
 function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta {
   const { defaults, all, order, first } = bookLookups(verseBook);
@@ -141,18 +115,9 @@ function normalize(verseBook: Book, delta: SegmentationDelta): SegmentationDelta
 }
 
 /**
- * Makes `ref` begin a segment — i.e. splits before it.
- *
- * - When `ref` is a default verse start that was merged away, it is un-merged (dropped from
- *   `removedVerseStarts`).
- * - Otherwise `ref` is recorded as an added start.
- *
- * No-op (returns an equivalent normalized delta) when `ref` already begins a segment.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The current delta, or `undefined` for the default segmentation.
- * @param ref - The token ref that should begin a segment.
- * @returns The updated, normalized delta.
+ * Makes a token begin a segment — that is, splits before it. A default verse start that had been
+ * merged away is un-merged; any other token is recorded as an added start. Already being a segment
+ * start is a no-op.
  */
 export function addBoundaryBefore(
   verseBook: Book,
@@ -174,17 +139,9 @@ export function addBoundaryBefore(
 }
 
 /**
- * Stops `ref` from beginning a segment — i.e. merges it into the preceding segment.
- *
- * - When `ref` is a default verse start, it is recorded in `removedVerseStarts`.
- * - Otherwise (it was an added split) it is dropped from `addedStarts`.
- *
- * No-op when `ref` is the book's first token (the first segment cannot be merged leftward).
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The current delta, or `undefined` for the default segmentation.
- * @param ref - The segment-start token ref to remove.
- * @returns The updated, normalized delta.
+ * Stops a token from beginning a segment, merging it into the preceding one. A default verse start
+ * is recorded as removed; a previously added split is dropped. Merging the book's first token is a
+ * no-op, since the first segment cannot merge leftward.
  */
 export function removeBoundaryAt(
   verseBook: Book,
@@ -207,14 +164,8 @@ export function removeBoundaryAt(
 }
 
 /**
- * Moves a boundary from `fromRef` to `toRef` in one step — the primitive behind pulling a single
- * edge token across a segment boundary. Removes the start at `fromRef` and adds one at `toRef`.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The current delta, or `undefined` for the default segmentation.
- * @param fromRef - The current segment-start ref to remove.
- * @param toRef - The new segment-start ref to add.
- * @returns The updated, normalized delta.
+ * Moves a boundary from one token to another in a single step — the primitive behind pulling one
+ * edge token across a segment boundary.
  */
 export function moveBoundary(
   verseBook: Book,
@@ -226,14 +177,10 @@ export function moveBoundary(
 }
 
 /**
- * Merges the segment that starts at `secondSegmentStartRef` into the segment before it. Thin alias
- * for {@link removeBoundaryAt}, named for the explicit merge control.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The current delta, or `undefined` for the default segmentation.
- * @param secondSegmentStartRef - The first-token ref of the segment being merged into its
- *   predecessor.
- * @returns The updated, normalized delta.
+ * Merges a segment into the one before it, identified by the first-token ref of the _second_
+ * segment — the one absorbed into its predecessor. Clearing that token's segment start is the whole
+ * operation, so merging the book's first token is a no-op; the separate name states the merge
+ * intent.
  */
 export function mergeSegments(
   verseBook: Book,
@@ -244,13 +191,9 @@ export function mergeSegments(
 }
 
 /**
- * Splits a segment so a new one begins at `ref`. Thin alias for {@link addBoundaryBefore}, named for
- * the explicit split control.
- *
- * @param verseBook - The original verse-tokenized book.
- * @param delta - The current delta, or `undefined` for the default segmentation.
- * @param ref - The token ref the new segment should begin at.
- * @returns The updated, normalized delta.
+ * Splits a segment so a new one begins at the given token. Making that token a segment start is the
+ * whole operation, so a token that already begins one is unchanged; the separate name states the
+ * split intent.
  */
 export function splitSegmentBefore(
   verseBook: Book,
@@ -260,12 +203,7 @@ export function splitSegmentBefore(
   return addBoundaryBefore(verseBook, delta, ref);
 }
 
-/**
- * Whether `delta` represents the default verse segmentation (absent or both arrays empty).
- *
- * @param delta - The delta to test.
- * @returns `true` when applying `delta` yields the default segmentation.
- */
+/** Whether the delta represents the default verse segmentation: absent, or both arrays empty. */
 export function isDefaultSegmentation(delta: SegmentationDelta | undefined): boolean {
   return !delta || (delta.removedVerseStarts.length === 0 && delta.addedStarts.length === 0);
 }

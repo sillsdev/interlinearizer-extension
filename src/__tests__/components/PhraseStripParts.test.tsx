@@ -1,4 +1,3 @@
-/** @file Unit tests for components/PhraseStripParts.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -77,17 +76,7 @@ jest.mock('../../components/PhraseBox', () => ({
   ),
 }));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Creates a punctuation token fixture.
- *
- * @param ref - Token ref.
- * @param surfaceText - Surface text.
- * @returns A punctuation token.
- */
+/** Creates a punctuation token fixture. */
 function mkPunct(ref: string, surfaceText = '.'): Token {
   return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
 }
@@ -95,7 +84,7 @@ function mkPunct(ref: string, surfaceText = '.'): Token {
 /** A minimal no-focus context. */
 const NO_FOCUS: FocusContext = emptyFocusContext();
 
-/** Default props shared by PhraseSlot tests. */
+/** Default props for a PhraseSlot render. */
 function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
   return {
     slot,
@@ -111,17 +100,10 @@ function slotProps(slot: LinkSlot): Parameters<typeof PhraseSlot>[0] {
 /**
  * Wraps `ui` in a {@link PhraseStripProvider} with default context so components that call
  * {@link usePhraseStripContext} can render without a provider in the tree.
- *
- * @param ui - The element to wrap.
- * @returns The wrapped element.
  */
 function withProvider(ui: ReactElement): ReactElement {
   return <PhraseStripProvider value={makePhraseStripContext()}>{ui}</PhraseStripProvider>;
 }
-
-// ---------------------------------------------------------------------------
-// PhraseSlot
-// ---------------------------------------------------------------------------
 
 describe('PhraseSlot', () => {
   it('returns undefined when the slot has no neighbors and no punctuation', () => {
@@ -324,10 +306,6 @@ describe('PhraseSlot', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// PhraseSlot boundary controls
-// ---------------------------------------------------------------------------
-
 describe('PhraseSlot boundary controls', () => {
   const groupA: TokenGroup = {
     tokens: [makeWordToken('a')],
@@ -366,10 +344,9 @@ describe('PhraseSlot boundary controls', () => {
   /**
    * Renders a PhraseSlot inside all three providers (segmentation, phrase strip, and Alt-held).
    *
-   * @param props - Overrides for the slot props (e.g. prev/next segment ids).
+   * @param props - Overrides merged over the default `PhraseSlot` props.
    * @param options - Optional fixture overrides: merged-away boundaries, straddled boundary refs,
    *   the phrase mode, and whether Alt is held (defaults to held, so the split marker appears).
-   * @returns The dispatch, for asserting on its calls.
    */
   function renderBoundary(
     props: Partial<Parameters<typeof PhraseSlot>[0]>,
@@ -491,7 +468,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 
-  // Verse number (peeking) coexists with the boundary button (punct row).
   describe('verse number and boundary button coexistence', () => {
     it('keeps the peeking verse number alongside the always-visible merge button while Alt is not held', () => {
       renderBoundary(
@@ -671,7 +647,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 
-  // Former boundary: no tick, Alt still reveals the split marker.
   describe('former boundary', () => {
     // The inline verse superscript already marks a merged-away verse start, so nothing extra renders
     // at a former boundary while Alt is not held.
@@ -700,10 +675,6 @@ describe('PhraseSlot boundary controls', () => {
     });
   });
 });
-
-// ---------------------------------------------------------------------------
-// PhraseGroup
-// ---------------------------------------------------------------------------
 
 describe('MemoizedPhraseGroup', () => {
   const group: TokenGroup = {
@@ -771,18 +742,8 @@ describe('MemoizedPhraseGroup', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// PhraseStrip
-// ---------------------------------------------------------------------------
-
 describe('PhraseStrip', () => {
-  /**
-   * Builds default `PhraseStrip` props with the given items and overrides.
-   *
-   * @param items - The normalized strip items to render.
-   * @param overrides - Partial prop overrides.
-   * @returns A complete `PhraseStrip` props object.
-   */
+  /** Builds default `PhraseStrip` props with the given items and overrides. */
   function stripProps(
     items: StripItem[],
     overrides: Partial<Parameters<typeof PhraseStrip>[0]> = {},
@@ -802,13 +763,7 @@ describe('PhraseStrip', () => {
     };
   }
 
-  /**
-   * Builds a group strip item for a single phrase link.
-   *
-   * @param link - The phrase link (or `undefined` for a solo token).
-   * @param refs - Token refs in the group.
-   * @returns A group {@link StripItem}.
-   */
+  /** Builds a group strip item for a single phrase link. */
   function groupItem(link: PhraseAnalysisLink | undefined, refs: string[]): StripItem {
     const tokens = refs.map((r) => makeWordToken(r));
     return {

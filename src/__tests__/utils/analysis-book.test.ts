@@ -1,4 +1,3 @@
-/** @file Unit tests for utils/analysis-book.ts. */
 /// <reference types="jest" />
 
 import type {
@@ -15,57 +14,31 @@ import {
 } from '../../utils/analysis-book';
 import { makePhraseLink } from '../test-helpers';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /**
- * Creates a minimal `TokenAnalysis` payload record fixture.
- *
- * @param id - Analysis id.
- * @param surfaceText - Surface text; defaults to `id` when omitted.
- * @returns A `TokenAnalysis` with the given id.
+ * Creates a minimal {@link TokenAnalysis} payload record fixture, with `surfaceText` defaulting to
+ * `id`.
  */
 function mkTokenAnalysis(id: string, surfaceText = id): TokenAnalysis {
   return { id, surfaceText };
 }
 
-/**
- * Creates a `TokenAnalysisLink` joining a token ref to an analysis id.
- *
- * @param analysisId - The `TokenAnalysis.id` this link points at.
- * @param tokenRef - The token ref the analysis is attached to.
- * @returns An approved `TokenAnalysisLink`.
- */
+/** Creates a {@link TokenAnalysisLink} joining a token ref to an analysis id. */
 function mkTokenLink(analysisId: string, tokenRef: string): TokenAnalysisLink {
   return { analysisId, status: 'approved', token: { tokenRef, surfaceText: tokenRef } };
 }
 
 /**
- * Creates a minimal `SegmentAnalysis` payload record fixture.
- *
- * @param id - Analysis id.
- * @param surfaceText - Surface text; defaults to `id` when omitted.
- * @returns A `SegmentAnalysis` with the given id.
+ * Creates a minimal {@link SegmentAnalysis} payload record fixture, with `surfaceText` defaulting to
+ * `id`.
  */
 function mkSegmentAnalysis(id: string, surfaceText = id): SegmentAnalysis {
   return { id, surfaceText };
 }
 
-/**
- * Creates a `SegmentAnalysisLink` joining a segment id to an analysis id.
- *
- * @param analysisId - The `SegmentAnalysis.id` this link points at.
- * @param segmentId - The segment id the analysis is attached to.
- * @returns An approved `SegmentAnalysisLink`.
- */
+/** Creates a {@link SegmentAnalysisLink} joining a segment id to an analysis id. */
 function mkSegmentLink(analysisId: string, segmentId: string): SegmentAnalysisLink {
   return { analysisId, status: 'approved', segmentId };
 }
-
-// ---------------------------------------------------------------------------
-// bookOfRef
-// ---------------------------------------------------------------------------
 
 describe('bookOfRef', () => {
   it('extracts the book code from a token ref with a char offset', () => {
@@ -85,21 +58,15 @@ describe('bookOfRef', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeBookFromAnalysis
-// ---------------------------------------------------------------------------
-
 describe('removeBookFromAnalysis', () => {
   /**
-   * Builds a `TextAnalysis` spanning two books (GEN and EXO) with:
+   * Builds a {@link TextAnalysis} spanning two books (GEN and EXO) with:
    *
    * - A GEN token analysis + link and an EXO token analysis + link,
    * - A GEN segment analysis + link and an EXO segment analysis + link,
    * - An EXO-only phrase (should survive) and a cross-book GEN+EXO phrase (should be removed),
    * - An orphan token analysis (`tok-orphan`) referenced only by a GEN link, so removing GEN leaves
    *   the payload unreferenced and it must be dropped by orphan cleanup.
-   *
-   * @returns A populated `TextAnalysis` fixture.
    */
   function makeTwoBookAnalysis(): TextAnalysis {
     return {
@@ -196,10 +163,6 @@ describe('removeBookFromAnalysis', () => {
     expect(result.phraseAnalyses.map((a) => a.id)).toEqual(['ph-exo', 'ph-cross']);
   });
 });
-
-// ---------------------------------------------------------------------------
-// removeBookFromSegmentation
-// ---------------------------------------------------------------------------
 
 describe('removeBookFromSegmentation', () => {
   it('returns undefined for an undefined delta', () => {

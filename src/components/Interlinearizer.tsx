@@ -36,7 +36,6 @@ import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
  * Used to seed `focusedTokenRef` from the active verse's leading word.
  *
  * @param segment - The segment to read, or `undefined` when no active segment is resolved.
- * @returns The first word token's ref, or `undefined`.
  */
 function firstWordTokenRefOf(segment: Segment | undefined): string | undefined {
   return segment?.tokens.find(isWordToken)?.ref;
@@ -83,8 +82,8 @@ type InterlinearizerProps = Readonly<{
    */
   showSuggestions?: boolean;
   /**
-   * Boundary-editing operations provided to the views via {@link SegmentationProvider}. Optional so
-   * isolated tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
+   * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
+   * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
    */
   segmentationDispatch?: SegmentationDispatch;
   /**
@@ -106,18 +105,6 @@ type InterlinearizerProps = Readonly<{
 /**
  * Inner component that renders the segment list and continuous view. Separated from
  * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
- *
- * @param props - Component props
- * @param props.book - Tokenized book whose segments are rendered.
- * @param props.continuousScroll - When true, the horizontal token strip is shown above the segment
- *   list.
- * @param props.scrRef - Current scripture reference used to highlight the active verse.
- * @param props.phraseMode - Current phrase-interaction mode passed down for rendering.
- * @param props.setPhraseMode - Setter for `phraseMode`; passed to child components so they can
- *   transition modes.
- * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
- *   views.
- * @returns The interlinearizer layout without the provider wrapper.
  */
 function InterlinearizerInner({
   book,
@@ -150,22 +137,20 @@ function InterlinearizerInner({
    * `segmentContainsVerse` also matches the book, so during a cross-book navigation (where `scrRef`
    * names the new book before its data loads, leaving `book` still the previous one) this returns
    * `undefined` rather than resolving to the wrong book's verse.
-   *
-   * @returns The active verse's segment, or `undefined` when no segment matches.
    */
   const findActiveSegment = useCallback(
     () => book.segments.find((seg) => segmentContainsVerse(seg, scrRef)),
     [book.segments, scrRef],
   );
 
-  // Seed focusedTokenRef from the active verse on first render so the views always see a defined
-  // value: an undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
+  // Seed focusedTokenRef from the active verse on first render so it is never undefined: an
+  // undefined focusedTokenRef would disable all link buttons (isSameSegmentAsFocus checks
   // focus.focusedSegmentId).
   const [focusedTokenRef, setFocusedTokenRef] = useState<string | undefined>(() =>
     firstWordTokenRefOf(findActiveSegment()),
   );
 
-  // Book-wide lookup indexes the views share.
+  // Book-wide lookup indexes.
   const {
     segmentById,
     segmentOrder,
@@ -223,8 +208,6 @@ function InterlinearizerInner({
    * Splits every phrase that a new segment boundary before `boundaryRef` would cut, so no phrase
    * ever spans two segments. Reads the phrase links at call time (not via subscription) and applies
    * {@link splitPhraseAtBoundary} at each straddled phrase's boundary-side split point.
-   *
-   * @param boundaryRef - Token ref the new segment will begin at.
    */
   const forceBreakStraddledPhrases = useCallback(
     (boundaryRef: string) => {
@@ -237,10 +220,10 @@ function InterlinearizerInner({
   );
 
   /**
-   * The dispatch the views receive: wraps the raw boundary writer so any operation that adds a
-   * boundary (split, and the add-half of move) first force-breaks the phrases the new boundary
-   * would cut. Merge only removes a boundary, which can never leave a phrase straddling segments,
-   * so it passes through.
+   * The dispatch provided through the segmentation context: wraps the raw boundary writer so any
+   * operation that adds a boundary (split, and the add-half of move) first force-breaks the phrases
+   * the new boundary would cut. Merge only removes a boundary, which can never leave a phrase
+   * straddling segments, so it passes through.
    */
   const dispatch = useMemo<SegmentationDispatch>(
     () => ({
@@ -257,7 +240,7 @@ function InterlinearizerInner({
     [segmentationDispatch, forceBreakStraddledPhrases],
   );
 
-  /** Segmentation context shared by the views — the dispatch plus the lookups its call sites need. */
+  /** Segmentation context value — the dispatch paired with the lookups it operates over. */
   const segmentationValue = useMemo<SegmentationContextValue>(
     () => ({
       dispatch,
@@ -345,8 +328,6 @@ function InterlinearizerInner({
    * an external book change `scrRef` can briefly name the new book while the mounted book (and this
    * token) still belong to the previous one, and echoing that stale verse would overwrite the new
    * reference.
-   *
-   * @param tokenRef - The word-token ref to focus.
    */
   const focusToken = useCallback(
     (tokenRef: string) => {
@@ -453,27 +434,9 @@ function InterlinearizerInner({
 }
 
 /**
- * Main component for the Interlinearizer. Renders a sticky toolbar and continuous view at the top,
- * followed by segmented views. Wraps the layout in an {@link AnalysisStoreProvider} so all
- * descendant components can read and write analysis data without prop drilling.
- *
- * @param props - Component props
- * @param props.book - Book data used by the continuous view and segment window
- * @param props.continuousScroll - Whether the continuous scroll view is shown
- * @param props.scrRef - Current scripture reference; always names a verse with a segment (verse 0
- *   only when a superscription segment exists, see {@link InterlinearizerProps}).
- * @param props.initialAnalysis - Seed analysis data for the store; not reactive after mount
- * @param props.analysisLanguage - BCP 47 tag for gloss read/write
- * @param props.onSaveAnalysis - Called after each gloss write with the updated `TextAnalysis`
- * @param props.onPendingEditsChange - Called with whether any gloss input currently holds
- *   uncommitted text, so the caller can show the unsaved indicator while the user types
- * @param props.phraseMode - Current phrase-interaction mode owned by the parent
- * @param props.setPhraseMode - Setter for `phraseMode`
- * @param props.viewOptions - Bundled display toggles forwarded to the segment list and continuous
- *   views.
- * @param props.showSuggestions - When true, un-approved tokens render the engine's derived
- *   suggestion with accept / promote affordances; forwarded to {@link AnalysisStoreProvider}.
- * @returns The full interlinearizer layout with optional continuous strip and segment list
+ * Main component for the Interlinearizer. Renders the segment list, with the continuous strip
+ * optionally shown above it, all wrapped in an {@link AnalysisStoreProvider} so descendant
+ * components can read and write analysis data without prop drilling.
  */
 export default function Interlinearizer({
   initialAnalysis,

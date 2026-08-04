@@ -2,7 +2,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import { ModalShell } from './ModalShell';
 
-/** Localized string keys used by {@link DiscardDraftConfirm}. */
+/** Localized string keys requested for this modal's rendered text. */
 const DISCARD_DRAFT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_confirm_discard_title%',
   '%interlinearizer_confirm_discard_body%',
@@ -15,7 +15,6 @@ const DISCARD_DRAFT_CONFIRM_STRING_KEYS: `%${string}%`[] = [
  * when the draft has unsaved changes. Confirming discards the draft's unsaved work; canceling
  * returns to the previous dialog.
  *
- * @param props - Component props
  * @param props.isSubmitting - When `true`, both buttons are disabled to prevent interaction while
  *   the caller is processing the confirmed action.
  * @param props.onCancel - Called when the user backs out, leaving the draft untouched.

@@ -98,8 +98,6 @@ export interface UseSegmentWindowArgs {
    * Routing this through a callback in the timeout — rather than the parent reacting to a
    * hook-returned value via an effect, which would land a commit later — keeps the two in one
    * commit, so the strip is present when the snap settles.
-   *
-   * @param displayContinuousScroll - The continuous-scroll mode to render from now on.
    */
   onDisplayContinuousScrollChange: (displayContinuousScroll: boolean) => void;
   /**
@@ -122,8 +120,6 @@ export interface UseSegmentWindowResult {
    * Scripture reference the list should highlight as active. Lags the live `scrRef` through a
    * recenter fade so the active-verse highlight only moves once the window swaps behind the fade —
    * never before it starts. For internal nav and the initial mount it tracks `scrRef` immediately.
-   * Mirrors ContinuousView's `displayFocusedTokenRef`, so the two views' highlights move in
-   * lockstep.
    */
   displayScrRef: SerializedVerseRef;
   /**
@@ -159,10 +155,6 @@ export interface UseSegmentWindowResult {
  * verse absorbed into a multi-verse segment — or the later portions of a split verse — resolves to
  * the segment that actually contains it rather than only to exact segment starts. Falls back to the
  * first segment of the same book+chapter, then to `0`, so there is always a valid anchor.
- *
- * @param segments - The book's flat segment list.
- * @param scrRef - The scripture reference whose owning segment to locate.
- * @returns The index of the anchor segment, clamped to a valid position (or `0` when empty).
  */
 function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRef): number {
   const containing = segments.findIndex((seg) => segmentContainsVerse(seg, scrRef));
@@ -173,13 +165,7 @@ function findAnchorIndex(segments: readonly Segment[], scrRef: SerializedVerseRe
   return chapter === -1 ? 0 : chapter;
 }
 
-/**
- * Builds the initial/recentered window range surrounding `anchorIndex`, clamped to `[0, total)`.
- *
- * @param anchorIndex - Index of the segment to center on.
- * @param total - Total number of segments in the book.
- * @returns The half-open window range to mount.
- */
+/** Builds the half-open window range centered on an anchor segment, clamped to the book. */
 function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
   const start = Math.max(0, anchorIndex - INITIAL_HALF_WINDOW);
   const end = Math.min(total, anchorIndex + INITIAL_HALF_WINDOW + 1);
@@ -196,22 +182,10 @@ function buildCenteredRange(anchorIndex: number, total: number): WindowRange {
  *
  * On external navigation (an `scrRef` change the parent did not originate internally) the window
  * fades out, rebuilds centered on the new verse, snaps that verse into view behind the fade, and
- * fades back in — on the same clock and easing as the continuous strip, so the two views animate as
- * one. This happens for _every_ external navigation, even when the new verse already sits inside
- * the mounted window, so the fade and the strip's fade can never disagree. Internal navigation (a
- * segment/token click here, or strip arrow nav echoed back) skips the fade entirely: the target is
- * already on screen.
- *
- * @param args - Hook arguments.
- * @param args.book - The tokenized book whose `segments` are windowed.
- * @param args.scrRef - Current scripture reference; its verse is the recenter anchor.
- * @param args.segmentationVersion - Monotonic boundary-edit counter; classifies segments-identity
- *   changes as boundary edits (no fade) vs. re-tokenizations (recenter with fade).
- * @param args.scrollContainerRef - Ref to the scrollable list container.
- * @param args.consumeInternalNav - Returns whether the navigation to a given verse was internal
- *   (and clears the marker); used to suppress the fade for navigation that came from within the
- *   views.
- * @returns The mounted segment slice, fade state, and the sentinel/content ref callbacks.
+ * fades back in — on the shared {@link RECENTER_FADE_MS} clock and easing. This happens for _every_
+ * external navigation, even when the new verse already sits inside the mounted window, so every
+ * recenter fade in the panel stays in step. Internal navigation (a segment/token click here, or
+ * strip arrow nav echoed back) skips the fade entirely: the target is already on screen.
  */
 export default function useSegmentWindow({
   book,
@@ -238,15 +212,15 @@ export default function useSegmentWindow({
    * `true` on the first commit when the initial window has segments above the anchor — i.e. the
    * anchor sits mid-book, as on a cross-book remount (the loader swaps to `Loading…` then remounts
    * this hook fresh on the new book). Without snapping on mount the active verse would render
-   * mid-window, below the fold, at `scrollTop` 0. Seeding {@link pendingRecenterSnapRef} and passing
-   * it to {@link useRecenterSnap} (which both normally skip the initial mount) pulls it to the top
+   * mid-window, below the fold, at `scrollTop` 0. Seeding {@link pendingRecenterSnapRef} and the
+   * post-recenter snap lifecycle — which both normally skip the initial mount — pulls it to the top
    * behind the loader curtain. A normal first mount (anchor at the book start) leaves it `false` so
    * scroll stays at 0.
    */
   const needsInitialSnapRef = useRef(anchorIndex > range.start);
 
-  // Latest callbacks/inputs, mirrored into refs (see useLatestRef) so the recenter effect,
-  // `triggerRecenter`, and the snap loop can read the current value while keeping a stable identity.
+  // Latest callbacks/inputs, mirrored into refs so the recenter effect, `triggerRecenter`, and the
+  // snap loop can read the current value while keeping a stable identity.
   // This matters because the PAPI host hands `scrRef` back as a fresh object on many renders: closing
   // over these directly would re-run the recenter effect on renders where nothing recenter-worthy
   // changed, whose cleanup could strand an in-flight fade and park the window on its initial range.
@@ -335,8 +309,8 @@ export default function useSegmentWindow({
   /** Latest range, mirrored so the observer callbacks read fresh bounds without re-subscribing. */
   const rangeRef = useLatestRef(range);
 
-  // Latest recenter inputs, mirrored into refs (see useLatestRef) so `triggerRecenter` keeps a stable
-  // identity rather than churning on every `anchorIndex` / `total` / `scrRef` change.
+  // Latest recenter inputs, mirrored into refs so `triggerRecenter` keeps a stable identity rather
+  // than churning on every `anchorIndex` / `total` / `scrRef` change.
   const anchorIndexRef = useLatestRef(anchorIndex);
   const totalRef = useLatestRef(total);
   const scrRefRef = useLatestRef(scrRef);
@@ -497,8 +471,8 @@ export default function useSegmentWindow({
   // #region Recenter trigger + navigation reaction
 
   /**
-   * Rebuilds the window centered on the active verse and fades it into view. Used by the
-   * external-navigation effect and returned directly as the imperative `recenterOnActive`.
+   * Rebuilds the window centered on the active verse and fades it into view. Exposed as the
+   * imperative `recenterOnActive`.
    *
    * Reads `anchorIndex` / `total` / `scrRef` from refs so its identity is stable across renders,
    * and owns its timer through `recenterTimeoutRef`: a fresh call supersedes any in-flight fade
@@ -677,14 +651,15 @@ export default function useSegmentWindow({
   }, [scrollContainerRef, topSentinel, bottomSentinel, recenterEpoch, range, extendRef]);
 
   // Keep the visible content anchored against above-viewport height changes so already-mounted
-  // segments can't shove what the user is reading as their arc padding settles asynchronously (a
-  // ResizeObserver → rAF → setState chain in `useArcPaths` that finishes across several later
-  // frames). This single observer plays two roles depending on whether a recenter is in flight:
+  // segments can't shove what the user is reading as their arc padding settles asynchronously (the
+  // arc-measurement pass's ResizeObserver → rAF → setState chain, which finishes across several
+  // later frames). This single observer plays two roles depending on whether a recenter is in
+  // flight:
   //
-  // - **While a recenter is in flight** it relays each resize to the re-snap handler
-  //   (`relayResize`), which re-snaps the verse to the top against the now-settled geometry and
-  //   restarts the settle's quiet timer. The recenter owns the scroll position here, so this is how
-  //   the verse stays pinned through every settling wave — one re-snap per actual layout change.
+  // - **While a recenter is in flight** it relays each resize to the re-snap handler, which
+  //   re-snaps the verse to the top against the now-settled geometry and restarts the settle's
+  //   quiet timer. The recenter owns the scroll position here, so this is how the verse stays
+  //   pinned through every settling wave — one re-snap per actual layout change.
   //
   // - **Otherwise** it compensates: on each resize it restores the anchor segment (see
   //   `compensationAnchorRef`) to its recorded offset below the container top, generalizing the

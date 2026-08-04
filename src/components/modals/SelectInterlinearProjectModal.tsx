@@ -9,7 +9,7 @@ import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
-/** Localized string keys used by {@link SelectInterlinearProjectModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_select_title%',
   '%interlinearizer_modal_select_none%',
@@ -26,7 +26,6 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * select one, view its details (via the info icon), or request that a new one be created. Fires
  * `interlinearizer.getProjectsForSource` to load the list on mount.
  *
- * @param props - Component props.
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
@@ -66,9 +65,6 @@ export function SelectInterlinearProjectModal({
    * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
    * shows a notification on failure. Ignores the response if a newer load has started since this
    * one was initiated.
-   *
-   * @returns A promise that resolves when the project list is loaded or the error notification is
-   *   sent.
    */
   const loadProjects = useCallback(async () => {
     loadGenRef.current += 1;

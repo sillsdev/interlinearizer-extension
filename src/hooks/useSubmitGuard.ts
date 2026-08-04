@@ -1,4 +1,3 @@
-/** @file Hook that guards an async submit handler against re-entrant (double-click) invocation. */
 import { useCallback, useRef, useState } from 'react';
 
 /** Return value of {@link useSubmitGuard}. */
@@ -6,11 +5,8 @@ export type UseSubmitGuardResult = {
   /** True while a guarded call is in flight; wire to the submit controls' `disabled`. */
   isSubmitting: boolean;
   /**
-   * Runs `fn` unless a prior guarded call is still in flight, in which case the call is ignored.
-   * Flips {@link isSubmitting} for the duration of `fn` and always clears it afterward.
-   *
-   * @param fn - The async submit work to run.
-   * @returns A promise that resolves once `fn` settles (or immediately when the call is ignored).
+   * Runs the given submit work unless a prior guarded call is still in flight, in which case the
+   * call is ignored. Flips {@link isSubmitting} for the duration and always clears it afterward.
    */
   runGuarded: (fn: () => Promise<void>) => Promise<void>;
 };
@@ -18,11 +14,7 @@ export type UseSubmitGuardResult = {
 /**
  * Guards an async submit handler against re-entrant invocation (a double-click, or a programmatic
  * second call before the re-render that disables the control lands). A ref mirror short-circuits
- * the second call synchronously; the state drives the disabled UI. Factors out the `isSubmitting` +
- * `isSubmittingRef` + try/finally pattern the Save As and metadata modals each repeated for every
- * submit handler.
- *
- * @returns The in-flight flag and a `runGuarded` wrapper for submit handlers.
+ * the second call synchronously, while the state drives the disabled UI.
  */
 export default function useSubmitGuard(): UseSubmitGuardResult {
   const [isSubmitting, setIsSubmitting] = useState(false);

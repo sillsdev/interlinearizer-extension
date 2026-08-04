@@ -1,4 +1,3 @@
-/** @file Unit tests for components/ContinuousView.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -52,7 +51,7 @@ jest.mock('../../components/AnalysisStore', () => ({
   usePhraseGlossDispatch: () => () => {},
 }));
 
-// Hover-preview state is covered by usePhraseHoverState.test.ts; the view only forwards its
+// Hover-preview state is covered by the hook's own unit tests; the view only forwards its
 // handlers, so a no-op stub suffices.
 const mockCandidateTokenRefs = { current: new Set<string>() };
 jest.mock('../../hooks/usePhraseHoverState', () => ({
@@ -149,10 +148,6 @@ jest.mock('../../components/PhraseBox', () => ({
     </button>
   ),
 }));
-
-// ---------------------------------------------------------------------------
-// Test fixtures
-// ---------------------------------------------------------------------------
 
 /** Factory for a single-chapter book with two segments each having two word tokens. */
 function makeBook(overrides?: Partial<Book>): Book {
@@ -388,16 +383,9 @@ function makeLargeBook(count: number): Book {
   };
 }
 
-// ---------------------------------------------------------------------------
-
 const scrollIntoViewMock = jest.fn();
 
-/**
- * Builds the lookup maps that ContinuousView's parent supplies, derived from a Book.
- *
- * @param book - The book to scan.
- * @returns The token-segment-id lookup and word-token-ref lookup.
- */
+/** Builds the lookup maps that ContinuousView's parent supplies, derived from a Book. */
 function buildLookups(book: Book): {
   tokenSegmentMap: ReadonlyMap<string, string>;
   tokenDocOrder: ReadonlyMap<string, number>;
@@ -424,10 +412,6 @@ function buildLookups(book: Book): {
  * Minimal required props for ContinuousView. Spread into render calls so tests only need to
  * override what they actually care about. The lookup maps are derived from `book` so they always
  * agree with what's rendered.
- *
- * @param book - The book the test will render with.
- * @param overrides - Optional prop overrides.
- * @returns A complete ContinuousView props object.
  */
 function requiredProps(
   book: Book,
@@ -464,15 +448,14 @@ let resizeObserverInstances: TrackingResizeObserver[] = [];
 
 /**
  * A ResizeObserver test double that records its callback and disconnect state and appends itself to
- * {@link resizeObserverInstances}. Used by the hold-loop tests to fire a simulated late content
- * reflow and to assert whether the active observer was disconnected. Module-scoped (rather than an
- * inline class per test) so the file stays under `max-classes-per-file`.
+ * {@link resizeObserverInstances}, so a test can fire a simulated late content reflow and assert
+ * whether the active observer was disconnected. Module-scoped (rather than an inline class per
+ * test) so the file stays under `max-classes-per-file`.
  */
 class TrackingResizeObserver implements ResizeObserver {
   /** Whether {@link disconnect} has been called on this instance. */
   disconnected = false;
 
-  /** @param callback - Stored so a test can fire it, simulating a late content reflow. */
   constructor(public callback: ResizeObserverCallback) {
     resizeObserverInstances.push(this);
   }
@@ -483,10 +466,6 @@ class TrackingResizeObserver implements ResizeObserver {
   // eslint-disable-next-line @typescript-eslint/class-methods-use-this
   unobserve() {}
 
-  /**
-   * Records the disconnect so tests can distinguish a still-connected observer from a torn-down
-   * one.
-   */
   disconnect() {
     this.disconnected = true;
   }
@@ -515,10 +494,6 @@ beforeEach(() => {
   });
   mockCandidateTokenRefs.current = new Set();
 });
-
-// ---------------------------------------------------------------------------
-// Rendering
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView initial render', () => {
   it('renders all tokens from all segments as a flat list', () => {
@@ -708,10 +683,6 @@ describe('ContinuousView initial render', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Click → focus change
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView focus changes', () => {
   it('notifies the parent when an out-of-focus phrase box is clicked', async () => {
     const book = makeBook();
@@ -778,10 +749,6 @@ describe('ContinuousView focus changes', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Arrow disabled states
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView arrow disabled states', () => {
   it('disables the prev arrow when focus is on the first phrase', () => {
     const book = makeBook();
@@ -842,10 +809,6 @@ describe('ContinuousView arrow disabled states', () => {
     expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Arrow nav
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView arrow navigation', () => {
   it('notifies the parent of the next phrase ref when Next is clicked', async () => {
@@ -924,10 +887,6 @@ describe('ContinuousView arrow navigation', () => {
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-0');
   });
 });
-
-// ---------------------------------------------------------------------------
-// Scroll behavior
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView scroll behavior', () => {
   it('calls scrollIntoView on initial mount', () => {
@@ -1082,8 +1041,8 @@ describe('ContinuousView scroll behavior', () => {
           jest.advanceTimersByTime(510);
         });
 
-        // Let the quiet window (LINK_SLOT_TRANSITION_MS = 200) fully lapse so the tick loop goes
-        // idle — but stay well within HOLD_CENTERED_MAX_MS (2000).
+        // Let the quiet window (LINK_SLOT_TRANSITION_MS) fully lapse so the tick loop goes idle —
+        // but stay well within HOLD_CENTERED_MAX_MS.
         act(() => {
           jest.advanceTimersByTime(400);
         });
@@ -1179,8 +1138,6 @@ describe('ContinuousView scroll behavior', () => {
    * GEN 1:1) so a single Next step crosses into GEN 1:2. The slot between tok-0 and tok-1 lives in
    * GEN 1:1 and shows a link icon only while that segment is active, so it's a clean probe for
    * whether the active-segment relayout has committed.
-   *
-   * @returns A predicate reporting whether that in-segment link icon mounted in the latest render.
    */
   function renderHideInactiveCrossing(): () => boolean {
     const book = makeBook();
@@ -1278,7 +1235,7 @@ describe('ContinuousView scroll behavior', () => {
 
       tokenLinkIconSpy.mockClear();
       act(() => {
-        // Advance past the 600ms fallback so the backstop commits the relayout.
+        // Advance past the fallback timeout so the backstop commits the relayout.
         jest.advanceTimersByTime(700);
       });
       expect(inSegmentIconMounted()).toBe(false);
@@ -1297,11 +1254,7 @@ describe('ContinuousView scroll behavior', () => {
     const { tokenSegmentMap, tokenDocOrder, wordTokenByRef } = buildLookups(book);
     const mergedLookups = buildLookups(merged);
     let applyBoundaryEdit: () => void = () => {};
-    /**
-     * Stateful parent that starts on the verse book and swaps to the merged book on demand.
-     *
-     * @returns The rendered `ContinuousView` element.
-     */
+    /** Stateful parent that starts on the verse book and swaps to the merged book on demand. */
     function Parent() {
       const [ref, setRef] = useState<string | undefined>('tok-1');
       const [edited, setEdited] = useState(false);
@@ -1322,11 +1275,7 @@ describe('ContinuousView scroll behavior', () => {
         />
       );
     }
-    /**
-     * Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible.
-     *
-     * @returns `true` when that in-segment link icon is mounted and not hidden.
-     */
+    /** Whether the tok-0/tok-1 link icon (in GEN 1:1) is mounted and visible. */
     const inSegmentIconMounted = () => {
       const icon = document.querySelector<HTMLElement>(
         '[data-prev-ref="tok-0"][data-next-ref="tok-1"]',
@@ -1467,19 +1416,10 @@ describe('ContinuousView scroll behavior', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Segmentation edits
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView segmentation edits', () => {
   /**
    * Reads the inline opacity of the link-slot wrapper between `prevRef` and `nextRef`, the style
    * `PhraseSlot` uses to suppress link buttons outside the active segment.
-   *
-   * @param container - The render container to query.
-   * @param prevRef - Token ref on the start side of the slot.
-   * @param nextRef - Token ref on the end side of the slot.
-   * @returns The wrapper's inline `opacity` value.
    */
   function slotOpacity(container: HTMLElement, prevRef: string, nextRef: string): string {
     const icon = container.querySelector(
@@ -1510,17 +1450,12 @@ describe('ContinuousView segmentation edits', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Alt-gated split marker (shared PhraseStripParts, confirmed here in the strip)
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView split marker', () => {
   /**
    * Renders ContinuousView wrapped in the segmentation and Alt-held providers so the shared
    * split-gap marker can be exercised in the horizontal strip.
    *
    * @param altHeld - Whether Alt is held (defaults to held, so the marker appears).
-   * @returns The dispatch spy for assertions.
    */
   function renderStrip(altHeld = true) {
     const book = makeBook();
@@ -1563,10 +1498,6 @@ describe('ContinuousView split marker', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// RTL layout
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView RTL layout', () => {
   let originalDir: string;
 
@@ -1606,10 +1537,6 @@ describe('ContinuousView RTL layout', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Phrase window — large books
-// ---------------------------------------------------------------------------
-
 describe('ContinuousView phrase window', () => {
   it('renders the focused phrase from a large book', () => {
     const book = makeLargeBook(300);
@@ -1628,14 +1555,10 @@ describe('ContinuousView phrase window', () => {
       withAnalysisStore,
     );
 
-    // PHRASE_WINDOW_HALF = 100; tok-299 is well outside.
+    // tok-299 is well outside the rendered phrase window.
     expect(screen.queryByText('word299')).not.toBeInTheDocument();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Phrase grouping
-// ---------------------------------------------------------------------------
 
 describe('ContinuousView phrase grouping', () => {
   it('groups adjacent tokens of the same phrase into a single PhraseBox', () => {

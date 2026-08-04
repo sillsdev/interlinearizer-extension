@@ -49,9 +49,6 @@ declare module 'papi-shared-types' {
      * WebView context menus, which pass the tab's WebView ID as the argument. Falls back to a
      * project picker dialog if the WebView has no project or no ID is given.
      *
-     * @param webViewId - ID of the WebView tab whose associated project should be opened; when
-     *   omitted or when the WebView has no linked project, a project-picker dialog is shown
-     *   instead.
      * @returns A promise that resolves to the opened WebView ID, or `undefined` if the user
      *   dismissed the picker without selecting a project.
      */
@@ -59,19 +56,18 @@ declare module 'papi-shared-types' {
 
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the persisted `InterlinearProject`
-     * serialized as a JSON string.
+     * after the user fills in the create-project modal.
      *
-     * @param sourceProjectId Platform.Bible project ID of the source text to interlinearize.
-     * @param analysisLanguages BCP 47 tags for all languages used in glosses and annotations (e.g.
-     *   `['en']`). LCM: one per writing system present on `IWfiGloss.Form`. Paratext: one per
+     * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
+     * @param analysisLanguages - BCP 47 tags for all languages used in glosses and annotations
+     *   (e.g. `['en']`). LCM: one per writing system present on `IWfiGloss.Form`. Paratext: one per
      *   merged `GlossLanguage` file. BT Extension: typically one language.
-     * @param targetProjectId Optional Platform.Bible project ID of the target text. Required for BT
+     * @param targetProjectId - Platform.Bible project ID of the target text. Required for BT
      *   Extension projects so that `AlignmentLink.targetEndpoints` can be resolved at runtime.
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
-     * @param name Optional user-facing name for the project.
-     * @param description Optional user-facing description for the project.
-     * @returns The persisted `InterlinearProject` as a JSON string.
+     * @param name - User-facing name for the project.
+     * @param description - User-facing description for the project.
+     * @returns The persisted `InterlinearProject` serialized as a JSON string.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */
@@ -84,11 +80,11 @@ declare module 'papi-shared-types' {
     ) => Promise<string>;
 
     /**
-     * Returns all interlinearizer projects for the given source project, serialized as a JSON
-     * string. Returns `"[]"` when none exist. The WebView uses this to populate the project picker
-     * and to decide whether to show "create new" vs "select existing" on first open.
+     * Lists the interlinearizer projects belonging to the given source project. The WebView uses
+     * this to populate the project picker and to decide whether to show "create new" vs "select
+     * existing" on first open.
      *
-     * @param sourceProjectId Platform.Bible project ID of the source text to query.
+     * @param sourceProjectId - Platform.Bible project ID of the source text to query.
      * @returns A JSON string containing an `InterlinearProject[]`; `"[]"` when none exist.
      * @throws {SyntaxError} If the project-IDs index or any stored project record contains invalid
      *   JSON.
@@ -101,7 +97,6 @@ declare module 'papi-shared-types' {
     /**
      * Deletes an interlinearizer project by UUID. No-ops silently if the project does not exist.
      *
-     * @param interlinearProjectId UUID of the interlinearizer project to delete.
      * @throws If the underlying storage write fails (the failure is also logged and surfaced as an
      *   error notification before being re-thrown).
      */
@@ -149,11 +144,9 @@ declare module 'papi-shared-types' {
     'interlinearizer.wipe': () => Promise<void>;
 
     /**
-     * Returns the interlinearizer project with the given UUID as a JSON string, including its full
-     * `TextAnalysis`. The WebView calls this when the active project changes to load the stored
-     * analysis.
+     * Loads the interlinearizer project with the given UUID, including its full `TextAnalysis`. The
+     * WebView calls this when the active project changes to load the stored analysis.
      *
-     * @param interlinearProjectId UUID of the interlinearizer project to fetch.
      * @returns JSON-stringified `InterlinearProject`, or `undefined` if not found.
      * @throws If storage fails (logged before rethrowing).
      */
@@ -164,10 +157,10 @@ declare module 'papi-shared-types' {
      * interlinearizer project. Called from the WebView on Save so analysis and boundary changes
      * survive tab restores and project switches.
      *
-     * @param interlinearProjectId UUID of the interlinearizer project to update.
-     * @param analysisJson JSON-stringified `TextAnalysis` to persist.
-     * @param segmentationJson Optional JSON-stringified `SegmentationDelta` to persist, or the
-     *   string `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
+     * @param interlinearProjectId - UUID of the interlinearizer project to update.
+     * @param analysisJson - JSON-stringified `TextAnalysis` to persist.
+     * @param segmentationJson - JSON-stringified `SegmentationDelta` to persist, or the string
+     *   `"null"` to clear any stored custom boundaries. Omit entirely to leave the project's
      *   existing boundaries unchanged.
      * @returns The saved `InterlinearProject` (with its refreshed `updatedAt`) as a JSON string, or
      *   `undefined` if no project with the given ID exists. The WebView uses the refreshed
@@ -183,12 +176,11 @@ declare module 'papi-shared-types' {
 
     /**
      * Returns the draft working buffer for the given source project, serialized as a JSON string.
-     * Creates and returns a fresh empty draft when none has been written. The WebView loads this on
-     * mount to seed the editor. The draft is decoupled from saved projects and never appears in the
-     * project picker.
+     * Creates a fresh empty draft when none has been written. The WebView loads this on mount to
+     * seed the editor. The draft is decoupled from saved projects and never appears in the project
+     * picker.
      *
-     * @param sourceProjectId Platform.Bible source project ID whose draft to fetch.
-     * @returns JSON-stringified `DraftProject`.
+     * @param sourceProjectId - Platform.Bible source project ID whose draft to fetch.
      * @throws {SyntaxError} If the stored draft contains invalid JSON.
      * @throws If `papi.storage.readUserData` rejects for a reason other than the draft not
      *   existing.
@@ -200,9 +192,8 @@ declare module 'papi-shared-types' {
      * every edit (auto-save) and whenever the draft is reset (New), opened from a project, or
      * wiped.
      *
-     * @param sourceProjectId Platform.Bible source project ID whose draft to write.
-     * @param draftJson JSON-stringified `DraftProject` to persist.
-     * @returns Promise that resolves to void once the draft has been written to storage.
+     * @param sourceProjectId - Platform.Bible source project ID whose draft to write.
+     * @param draftJson - JSON-stringified `DraftProject` to persist.
      * @throws If JSON parsing, validation, or storage fails. The error is logged and an error
      *   notification is sent before rethrowing so callers do not need to send a second
      *   notification.
@@ -210,16 +201,15 @@ declare module 'papi-shared-types' {
     'interlinearizer.saveDraft': (sourceProjectId: string, draftJson: string) => Promise<void>;
 
     /**
-     * Updates the metadata of an existing interlinearizer project. Returns the updated project as a
-     * JSON string, or `undefined` if no project with the given ID exists.
+     * Updates the metadata of an existing interlinearizer project.
      *
-     * @param interlinearProjectId UUID of the interlinearizer project to update.
-     * @param name New user-facing name; omit or pass `undefined` to clear.
-     * @param description New user-facing description; omit or pass `undefined` to clear.
-     * @param analysisLanguages New BCP 47 analysis language tags. Must be a non-empty array; pass
+     * @param interlinearProjectId - UUID of the interlinearizer project to update.
+     * @param name - New user-facing name; omit or pass `undefined` to clear.
+     * @param description - New user-facing description; omit or pass `undefined` to clear.
+     * @param analysisLanguages - New BCP 47 analysis language tags. Must be a non-empty array; pass
      *   the current value to leave it unchanged (the field is required and cannot be cleared).
-     * @param targetProjectId New target-project ID; omit or pass `undefined` to clear (removes the
-     *   target-side text binding).
+     * @param targetProjectId - New target-project ID; omit or pass `undefined` to clear (removes
+     *   the target-side text binding).
      * @returns The updated project as a JSON string, or `undefined` if no project with that ID
      *   exists.
      * @throws If storage fails. The error is logged and an error notification is sent before
@@ -897,9 +887,9 @@ declare module 'interlinearizer' {
    * differ from the citation form on the referenced lexicon entry (e.g. under phonological
    * conditioning).
    *
-   * All four refs — `entryRef`, `senseRef`, `allomorphRef`, `grammarRef` — point into the Lexicon
-   * extension. Surface / citation forms, definitions, POS, inflection class, and other lexical
-   * information are read from the extension and not duplicated here.
+   * The `*Ref` fields all point into the Lexicon extension. Surface / citation forms, definitions,
+   * POS, inflection class, and other lexical information are read from the extension and not
+   * duplicated here.
    *
    * Source-system mapping:
    *
@@ -1094,7 +1084,7 @@ declare module 'interlinearizer' {
    * Source-system mapping:
    *
    * - LCM / Paratext: endpoints produced only through external tools or parallel-project inference
-   *   (see `AlignmentLink`).
+   *   (see {@link AlignmentLink}).
    * - BT Extension: one endpoint per `Instance` in an `Alignment`'s `sourceInstances` /
    *   `targetInstances`. `morphemeLink` is set when the token has a morpheme-level parse; otherwise
    *   the endpoint targets the whole token.

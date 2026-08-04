@@ -7,7 +7,7 @@ import useSubmitGuard from '../../hooks/useSubmitGuard';
 import { parseLanguageTags } from '../../utils/language-tags';
 import { ModalShell } from './ModalShell';
 
-/** Localized string keys used by {@link ProjectMetadataModal}. */
+/** Localized string keys requested for this modal's rendered text. */
 const PROJECT_METADATA_MODAL_STRING_KEYS: `%${string}%`[] = [
   '%interlinearizer_modal_metadata_title%',
   '%interlinearizer_modal_metadata_id_label%',
@@ -64,9 +64,6 @@ type ProjectMetadataModalProps = Readonly<{
  * Modal that displays and allows editing of the active interlinearizer project's metadata. Editable
  * fields are name, description, and analysis language. Read-only fields are project ID, creation
  * date, and source project. Includes an inline delete-with-confirmation flow.
- *
- * @param props - Component props (see {@link ProjectMetadataModalProps}).
- * @returns The modal overlay with editable metadata fields and action buttons.
  */
 export function ProjectMetadataModal({
   interlinearProjectId,
@@ -96,8 +93,8 @@ export function ProjectMetadataModal({
   const formattedModifiedDate = useMemo(() => new Date(updatedAt).toLocaleString(), [updatedAt]);
 
   /**
-   * Parsed analysis-language tags from the comma-separated field. Computed once and reused by both
-   * the Save command and the Save-button enabled check so the two cannot disagree.
+   * Parsed analysis-language tags from the comma-separated field. Parsed once per edit, so every
+   * decision that depends on the tags sees the same list.
    */
   const parsedLanguages = useMemo(() => parseLanguageTags(editLanguages), [editLanguages]);
 
@@ -109,8 +106,6 @@ export function ProjectMetadataModal({
    * The analysis-languages input is interpreted as a comma-separated list of BCP 47 tags; entries
    * are trimmed and empty entries dropped. Save is disabled when the parsed list is empty since
    * `analysisLanguages` is required and must not be cleared.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleSave = useCallback(
     () =>
@@ -162,8 +157,6 @@ export function ProjectMetadataModal({
    * Sends the delete command to the backend, then notifies the caller and closes the modal. Logs on
    * failure; the backend command handler is responsible for showing the error notification so this
    * handler does not re-send it.
-   *
-   * @returns A promise that resolves when the command completes or the error is logged.
    */
   const handleDelete = useCallback(
     () =>
@@ -305,11 +298,9 @@ export function ProjectMetadataModal({
 /**
  * A single label/value row inside the read-only metadata description list.
  *
- * @param props - Component props.
  * @param props.label - Localized field label shown as `<dt>`.
  * @param props.value - Value string shown as `<dd>`.
  * @param props.mono - When true, renders the value in a monospace font.
- * @returns A `<dt>`/`<dd>` pair.
  */
 function MetadataRow({
   label,

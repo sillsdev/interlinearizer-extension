@@ -1,4 +1,3 @@
-/** @file Unit tests for components/TokenLinkIcon.tsx. */
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
@@ -12,10 +11,6 @@ import {
 } from '../../components/PhraseStripContext';
 import type { SlotFocusInfo } from '../../types/token-layout';
 import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
-
-// ---------------------------------------------------------------------------
-// AnalysisStore mock
-// ---------------------------------------------------------------------------
 
 const mockCreatePhrase = jest.fn();
 const mockUpdatePhrase = jest.fn();
@@ -32,17 +27,9 @@ jest.mock('../../components/AnalysisStore', () => ({
   }),
 }));
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 /**
- * Builds a `slotFocus` bundle. Defaults to "no focus, same segment" — the baseline used by the
- * link-icon tests, which then layer on `focusedSideIsPrev` / `focusedPhraseLink` /
- * `focusedFreeToken` as needed.
- *
- * @param overrides - Fields to override on the default bundle.
- * @returns A `SlotFocusInfo`.
+ * Builds a `slotFocus` bundle. Defaults to "no focus, same segment"; `focusedSideIsPrev` /
+ * `focusedPhraseLink` / `focusedFreeToken` layer on from there.
  */
 function slotFocus(overrides: Partial<SlotFocusInfo> = {}): SlotFocusInfo {
   return {
@@ -66,23 +53,12 @@ function requiredProps(): ComponentProps<typeof TokenLinkIcon> {
   };
 }
 
-/**
- * Renders a `TokenLinkIcon` inside a `PhraseStripProvider`. The phrase mode, document-order lookup,
- * and hover callbacks now come from strip context rather than props.
- *
- * @param ui - The `TokenLinkIcon` element to render.
- * @param context - Partial strip-context overrides (phraseMode, tokenDocOrder, hover callbacks).
- * @returns The Testing Library render result.
- */
+/** Renders a `TokenLinkIcon` inside a strip provider carrying the given context overrides. */
 function renderIcon(ui: ReactElement, context: Partial<PhraseStripContextValue> = {}) {
   return render(
     <PhraseStripProvider value={makePhraseStripContext(context)}>{ui}</PhraseStripProvider>,
   );
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 describe('TokenLinkIcon', () => {
   beforeEach(() => {
@@ -108,10 +84,6 @@ describe('TokenLinkIcon', () => {
     const { container } = renderIcon(<TokenLinkIcon {...requiredProps()} nextToken={undefined} />);
     expect(container.firstChild).toBeNull();
   });
-
-  // ---------------------------------------------------------------------------
-  // Unlink icon (both sides same phrase)
-  // ---------------------------------------------------------------------------
 
   it('renders an unlink button when both sides are in the same phrase', () => {
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
@@ -213,7 +185,7 @@ describe('TokenLinkIcon', () => {
     expect(onHoverPhrase).toHaveBeenCalledWith('p1');
 
     await userEvent.unhover(btn);
-    // Phrase hover is cleared by the PhraseGroup wrapper span's onMouseLeave, not by the button.
+    // Phrase hover is cleared when the pointer leaves the phrase-group wrapper, not by the button.
     expect(onHoverPhrase).not.toHaveBeenCalledWith(undefined);
   });
 
@@ -241,10 +213,6 @@ describe('TokenLinkIcon', () => {
     await userEvent.unhover(btn);
     expect(onHoverSplitFreeTokens).toHaveBeenCalledWith(undefined);
   });
-
-  // ---------------------------------------------------------------------------
-  // Link icon (different phrases or free)
-  // ---------------------------------------------------------------------------
 
   it('renders a link button when sides are in different phrases', () => {
     renderIcon(<TokenLinkIcon {...requiredProps()} />);
@@ -533,9 +501,6 @@ describe('TokenLinkIcon', () => {
     /**
      * Renders a `TokenLinkIcon` for a slot straddling a segment boundary (neighbors in different
      * segments, so `isSameSegmentAsFocus` is false).
-     *
-     * @param focusedSideIsPrev - Which side holds focus.
-     * @returns The render result.
      */
     function renderCrossSegment(focusedSideIsPrev: boolean) {
       return render(

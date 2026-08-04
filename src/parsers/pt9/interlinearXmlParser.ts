@@ -138,10 +138,9 @@ interface ParsedInterlinearXml {
 }
 
 /**
- * Maps a parsed Cluster's Lexeme array to {@link LexemeData} array.
+ * Maps a parsed Cluster's Lexeme children to {@link LexemeData}. A lexeme with no gloss id yields an
+ * empty sense id rather than being dropped.
  *
- * @param clusterElement - Parsed Cluster from fast-xml-parser (may have Lexeme array or none).
- * @returns Array of LexemeData with LexemeId (from Id) and SenseId (from GlossId, or '').
  * @throws {SyntaxError} If any Lexeme element is missing the required Id attribute.
  */
 function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] {
@@ -157,13 +156,9 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 }
 
 /**
- * Parses a string to a non-negative integer, returning `undefined` for empty or non-integer values.
- * Used to validate XML attribute strings before converting them to numeric ranges.
- *
- * @param raw - The string to parse (e.g. an XML attribute value). `undefined` is accepted because
- *   fast-xml-parser may omit attributes at runtime despite the declared type.
- * @returns The parsed non-negative integer, or `undefined` if the input is absent, empty, or
- *   non-integer.
+ * Parses an XML attribute string to a non-negative integer, returning `undefined` for empty or
+ * non-integer values. A missing attribute is accepted too, since fast-xml-parser may omit one at
+ * runtime despite the declared type.
  */
 const parseStrictNumber = (raw: string | undefined): number | undefined => {
   if (raw === undefined || raw.trim() === '') return undefined;
@@ -178,11 +173,6 @@ const parseStrictNumber = (raw: string | undefined): number | undefined => {
  * non-integer `Index`/`Length`) are silently filtered out rather than throwing. Punctuation data is
  * non-critical to the interlinear display; clusters are validated strictly in
  * {@link extractClustersFromVerse} because they are required for alignment rendering.
- *
- * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Punctuation array or
- *   none).
- * @returns Array of PunctuationData (TextRange from Range Index/Length, BeforeText, AfterText).
- *   Entries without a valid Range element are skipped.
  */
 function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): PunctuationData[] {
   const elements = verseDataElement.Punctuation ?? [];
@@ -204,15 +194,13 @@ function extractPunctuationsFromVerse(verseDataElement: ParsedVerseData): Punctu
 }
 
 /**
- * Maps a parsed VerseData's Cluster array to {@link ClusterData} array.
+ * Maps a parsed VerseData's Cluster children to {@link ClusterData}. Each cluster's composite `Id`
+ * is its slash-joined lexeme ids followed by its text range, or the range alone when it has no
+ * lexemes.
  *
- * @param verseDataElement - Parsed VerseData from fast-xml-parser (may have Cluster array or none).
- * @returns Array of ClusterData: TextRange from Cluster's Range, Lexemes from Lexeme children,
- *   LexemesId (slash-joined), Id (LexemesId/Index-Length or Index-Length when no lexemes).
  * @throws {SyntaxError} If a Cluster is missing its Range element, Range is missing Index or
  *   Length, or Range Index/Length are not non-negative integers.
- * @throws {SyntaxError} If any Lexeme element in a Cluster is missing the required Id attribute
- *   (propagated from {@link extractLexemesFromCluster}).
+ * @throws {SyntaxError} If any Lexeme element in a Cluster is missing the required Id attribute.
  */
 function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterData[] {
   const clusterElements = verseDataElement.Cluster ?? [];
@@ -240,7 +228,6 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
 
     // Join with "/"; lexeme IDs may contain "/", so do not split LexemesId elsewhere.
     const lexemesId = lexemes.map((l) => l.LexemeId).join('/');
-    /** Cluster Id: LexemesId/Index-Length when lexemes present; Index-Length when none. */
     const id = lexemesId ? `${lexemesId}/${index}-${length}` : `${index}-${length}`;
     const excluded = el.Excluded === 'true';
 
@@ -258,20 +245,15 @@ function extractClustersFromVerse(verseDataElement: ParsedVerseData): ClusterDat
  * Parses interlinear XML strings into {@link InterlinearData} using fast-xml-parser.
  *
  * Input is a raw XML string (caller is responsible for obtaining it, e.g. from file or network).
- * Output matches the types in `interlinearizer`; no extra conversion is done. Expects the
- * interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
+ * Output is the {@link InterlinearData} shape declared in this module; no extra conversion is done.
+ * Expects the interlinear XML schema described in [pt9-xml.md](pt9-xml.md).
  *
  * Each instance holds a configured `XMLParser`; create one parser and reuse it across multiple
  * `parse()` calls rather than constructing a new instance per file.
  */
 export class InterlinearXmlParser {
-  /** Shared XMLParser instance, pre-configured in the constructor and reused across `parse()` calls. */
   private readonly parser: XMLParser;
 
-  /**
-   * Creates a parser configured for interlinear XML: attribute prefix `@_`, and array paths for
-   * Verses items, Cluster, Punctuation, and Lexeme.
-   */
   constructor() {
     const arrayPaths = new Set([
       'InterlinearData.Verses.item',
@@ -296,11 +278,8 @@ export class InterlinearXmlParser {
   /**
    * Parses an interlinear XML string into {@link InterlinearData}.
    *
-   * @param xml - Raw XML string (e.g. file contents). Must be valid interlinear XML with
-   *   InterlinearData root, GlossLanguage and BookId attributes, and Verses containing item
-   *   entries.
-   * @returns Parsed interlinear data: ScrTextName, GlossLanguage, BookId, and Verses (record of
-   *   verse key to {@link VerseData} with Hash, Clusters, Punctuations).
+   * @param xml - Must have an InterlinearData root with GlossLanguage and BookId attributes, and a
+   *   Verses element containing item entries.
    * @throws {SyntaxError} If the `InterlinearData` root element is absent.
    * @throws {SyntaxError} If `GlossLanguage` or `BookId` attributes are missing or empty.
    * @throws {SyntaxError} If the `Verses` element is absent.

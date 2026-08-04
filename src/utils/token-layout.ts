@@ -11,14 +11,10 @@ import { isWordToken } from '../types/type-guards';
 export type { FocusContext, LinkSlot, RenderUnit, SlotFocusInfo, TokenGroup };
 
 /**
- * Resolves the focus context from a single `focusedTokenRef`. All views use the same rules; the
- * only thing that differs between layouts is how they discover which token is focused, not what
- * that focus means.
+ * Resolves the {@link FocusContext} implied by a single focused token ref. All views share these
+ * rules; layouts differ only in how they discover which token is focused, not in what that focus
+ * means.
  *
- * @param focusedTokenRef - Ref of the focused word token, or `undefined`.
- * @param tokensByRef - Lookup from token ref to the full token (word or other).
- * @param phraseLinkByRef - Map from token ref to the phrase link containing it.
- * @param tokenSegmentMap - Map from token ref to the id of the segment containing it.
  * @returns The resolved focus context. All fields are `undefined` when `focusedTokenRef` is unset.
  */
 export function resolveFocusContext(
@@ -50,18 +46,13 @@ export function resolveFocusContext(
 }
 
 /**
- * Computes the slot's focus-derived inputs to `TokenLinkIcon`. Pure function over the slot's
- * segment ids and the supplied focus context; bundles the slot-specific flags together with the
- * focused phrase/token so the icon receives a single `slotFocus` object.
+ * Computes one link slot's {@link SlotFocusInfo}, bundling the slot-specific flags with the focused
+ * phrase and token so the link icon receives a single focus object.
  *
- * @param prevSegmentId - Segment id of the group before the slot, or `undefined` for the leading
- *   slot.
- * @param nextSegmentId - Segment id of the group after the slot, or `undefined` for the trailing
- *   slot.
+ * @param prevSegmentId - Segment id of the group before the slot; `undefined` for the leading slot.
+ * @param nextSegmentId - Segment id of the group after the slot; `undefined` for the trailing slot.
  * @param focus - Resolved focus context for the whole strip.
- * @param focusedSideIsPrev - The layout-specific bool indicating whether focus is start-ward of
- *   this slot.
- * @returns Slot focus info ready to pass as `slotFocus` to `MemoizedTokenLinkIcon`.
+ * @param focusedSideIsPrev - Layout-specific flag for whether focus is start-ward of this slot.
  */
 export function resolveSlotFocus(
   prevSegmentId: string | undefined,
@@ -83,8 +74,8 @@ export function resolveSlotFocus(
 }
 
 /**
- * The "no focus" slot-focus bundle: nothing focused, so the link button is inert. Used by
- * `PhraseBox` for the in-phrase unlink icons, which never participate in focus-driven linking.
+ * The "no focus" bundle: nothing focused, so the link button is inert. Used for the unlink icons
+ * inside a phrase, which never participate in focus-driven linking.
  */
 export const NO_SLOT_FOCUS: SlotFocusInfo = {
   focusedSideIsPrev: undefined,
@@ -94,15 +85,10 @@ export const NO_SLOT_FOCUS: SlotFocusInfo = {
 };
 
 /**
- * Groups adjacent word tokens that share the same approved `PhraseAnalysisLink` into single
- * `TokenGroup` entries. Non-word tokens are skipped. Discontiguous phrase members produce separate
- * groups that share the same `phraseLink`. `punctuationBetween` is initialized to empty arrays
- * here; {@link buildRenderUnits} fills it in with any punctuation tokens that appear between the
- * word tokens in document order.
- *
- * @param tokens - The flat token list to group.
- * @param phraseLinkByRef - Map from `tokenRef` to the `PhraseAnalysisLink` containing it.
- * @returns An ordered array of `TokenGroup`s ready for rendering.
+ * Groups adjacent word tokens sharing the same approved phrase into single {@link TokenGroup}
+ * entries, skipping non-word tokens. Discontiguous phrase members produce separate groups that
+ * share one phrase link. Each group's punctuation is left empty here and filled in when the render
+ * units are built.
  */
 export function groupTokens(
   tokens: Token[],
@@ -123,20 +109,13 @@ export function groupTokens(
 }
 
 /**
- * Walks `tokens` in document order and emits an alternating sequence of phrase groups and link
- * slots. A leading slot is always emitted before the first group and a trailing slot after the
- * last, so punctuation at segment boundaries still renders. Slots between groups always carry both
- * `prevGroup` and `nextGroup`. Unlink icons between tokens within a multi-token phrase are rendered
- * inside `PhraseBox`, not as separate slots here.
+ * Emits an alternating sequence of phrase groups and link slots in document order. A leading slot
+ * always precedes the first group and a trailing slot follows the last, so punctuation at segment
+ * boundaries still renders. Unlink icons between tokens of a multi-token phrase are rendered by the
+ * phrase box itself rather than emitted as slots here.
  *
- * Punctuation that appears between two word tokens of the same group is stored in the group's
- * `punctuationBetween` array (at the index corresponding to the gap between those tokens) so
- * `PhraseBox` can render it inline between the token chips, rather than pushing it into the
- * following inter-group slot.
- *
- * @param tokens - Flat token list from the segment or strip.
- * @param tokenGroups - Pre-built phrase groups produced by {@link groupTokens}.
- * @returns An ordered list of render units interleaving groups and slots.
+ * Punctuation falling between two word tokens of the same group is stored on that group instead of
+ * being pushed into the following inter-group slot, so it renders inline between the token chips.
  */
 export function buildRenderUnits(tokens: Token[], tokenGroups: TokenGroup[]): RenderUnit[] {
   const units: RenderUnit[] = [];

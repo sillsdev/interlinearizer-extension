@@ -37,6 +37,13 @@ const STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
+ * A thin space padding both ends of the italic suggested placeholder, whose faked-italic glyphs
+ * lean past their advances. Only widening the text run itself makes room: the input's content box
+ * is sized to that run and is where the browser clips, so padding falls outside it.
+ */
+const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
+
+/**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
  * text. Gloss value and dispatch are read from {@link AnalysisStoreProvider} context via
  * {@link useGloss} and {@link useGlossDispatch}. The gloss is written to the store only on blur, and
@@ -477,7 +484,11 @@ export function TokenChip({
             className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}
             id={glossInputId}
-            placeholder={showSuggestedPlaceholder ? suggestedGloss : glossPlaceholder}
+            placeholder={
+              showSuggestedPlaceholder
+                ? `${SUGGESTED_PLACEHOLDER_PAD}${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
+                : glossPlaceholder
+            }
             role={hasSuggestions ? 'combobox' : undefined}
             // Inline padding overrides the `gloss-input` utility's default px to reserve room for the
             // trailing "+" button symmetrically (keeping the gloss text centered) without a spacer

@@ -139,7 +139,7 @@ export default function SuggestionDropdown({
               : `Promote ${entry.gloss} for ${surfaceText}`
           }
           aria-selected={index === activeIndex}
-          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-2 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
+          className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-3 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
           data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}
           id={optionId(index)}
           role="option"

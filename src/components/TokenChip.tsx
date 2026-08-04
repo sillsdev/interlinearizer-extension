@@ -37,9 +37,11 @@ const STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * A thin space padding both ends of the italic suggested placeholder, whose faked-italic glyphs
- * lean past their advances. Only widening the text run itself makes room: the input's content box
- * is sized to that run and is where the browser clips, so padding falls outside it.
+ * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
+ * their advances, and the input clips at the content box that `field-sizing: content` fits to the
+ * text run, so only widening that run makes room — CSS padding sits outside the clip. Nothing pads
+ * the leading edge, which would push the glyphs off the suggestion rows they line up with; the lean
+ * is rightward whatever the script, so an RTL gloss will want this leading instead.
  */
 const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
 
@@ -469,7 +471,7 @@ export function TokenChip({
             id={glossInputId}
             placeholder={
               showSuggestedPlaceholder
-                ? `${SUGGESTED_PLACEHOLDER_PAD}${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
+                ? `${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
                 : glossPlaceholder
             }
             role={hasSuggestions ? 'combobox' : undefined}

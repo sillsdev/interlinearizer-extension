@@ -121,7 +121,7 @@ function renderChip(
 
 /** The suggested gloss as the placeholder renders it, padded to clear the faked italic's lean. */
 function ghost(gloss: string): string {
-  return `\u2009${gloss}\u2009`;
+  return `${gloss}\u2009`;
 }
 
 /**
@@ -144,13 +144,10 @@ describe('TokenChip suggested placeholder', () => {
     expect(input.className).toContain('tw:placeholder:gloss-suggested');
   });
 
-  it('pads the suggested placeholder at both ends so its outer glyphs are not clipped', () => {
+  it('pads only the trailing edge of the suggested placeholder, clearing the italic lean', () => {
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
-    expect(screen.getByLabelText('Gloss for logos')).toHaveAttribute(
-      'placeholder',
-      '\u2009word\u2009',
-    );
+    expect(screen.getByLabelText('Gloss for logos')).toHaveAttribute('placeholder', 'word\u2009');
   });
 
   it('falls back to the generic placeholder when the token has no suggestion', () => {

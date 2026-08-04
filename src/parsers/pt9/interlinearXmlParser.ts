@@ -156,11 +156,9 @@ function extractLexemesFromCluster(clusterElement: ParsedCluster): LexemeData[] 
 }
 
 /**
- * Parses a string to a non-negative integer, returning `undefined` for empty or non-integer values.
- * Used to validate XML attribute strings before converting them to numeric ranges.
- *
- * @param raw - `undefined` is accepted because fast-xml-parser may omit attributes at runtime
- *   despite the declared type.
+ * Parses an XML attribute string to a non-negative integer, returning `undefined` for empty or
+ * non-integer values. A missing attribute is accepted too, since fast-xml-parser may omit one at
+ * runtime despite the declared type.
  */
 const parseStrictNumber = (raw: string | undefined): number | undefined => {
   if (raw === undefined || raw.trim() === '') return undefined;

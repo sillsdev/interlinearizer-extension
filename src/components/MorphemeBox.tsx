@@ -13,8 +13,8 @@ const MORPHEME_BOX_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Inline _display_ of an analyzed token's morpheme breakdown, shown inside the token chip when the
- * morphology toggle is active. The popover where forms are actually entered lives separately.
+ * Inline _display_ of an analyzed token's morpheme breakdown. The popover where forms are actually
+ * entered lives separately.
  *
  * The breakdown renders as a boxed grid: each grid column is one morpheme, with its form on the top
  * row directly above its gloss field on the bottom row, so a morpheme and its gloss always share a

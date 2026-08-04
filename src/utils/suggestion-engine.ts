@@ -12,7 +12,7 @@ import { normalizeSurfaceForm } from './analysis-identity';
 
 /**
  * Shared empty candidate list returned for every non-homograph match, so the common case never
- * allocates a throwaway array. Read-only and never mutated by any consumer.
+ * allocates a throwaway array.
  */
 const NO_CANDIDATES: readonly TokenAnalysis[] = [];
 

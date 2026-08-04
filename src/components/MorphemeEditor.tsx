@@ -14,9 +14,9 @@ const POPOVER_STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
- * Inline popover for defining or re-splitting a token's morpheme breakdown, shown inside the token
- * chip when the morphology toggle is active. This is the _editor_ only; the inline display of a
- * breakdown — the boxed grid of forms and their gloss fields — lives separately.
+ * Inline popover for defining or re-splitting a token's morpheme breakdown. This is the _editor_
+ * only; the inline display of a breakdown — the boxed grid of forms and their gloss fields — lives
+ * separately.
  *
  * The user types space-separated morpheme forms (e.g. "un- believe -able") and commits with Enter,
  * Done, or by clicking outside the popover (matching the commit-on-blur behavior of gloss inputs).

@@ -3,9 +3,7 @@ import type { ReactNode } from 'react';
 
 /**
  * Carries only whether the Alt key is currently held, so an Alt press re-renders just the split-gap
- * markers that consume it. Deliberately separate from the memoized segmentation context: a
- * frequently-flipping boolean folded in there would defeat that memoization for every consumer, so
- * the churn is isolated here.
+ * markers that consume it.
  *
  * Defaults to `false`, so consumers outside a provider read "not held".
  */

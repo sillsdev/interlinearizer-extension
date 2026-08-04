@@ -22,13 +22,14 @@ export function buildSegmentLabels(segments: readonly Segment[]): Map<string, Se
   return new Map(segments.map((seg) => [seg.id, labelForSegment(seg.verseStarts)]));
 }
 
-/** Formats one segment's label as `first`, `first–last`, or `first–chapter:last`. */
+/**
+ * Formats one segment's label as `first`, `first–last`, or — when the segment crosses a chapter
+ * boundary — `first–chapter:last`, which keeps such a range unambiguous (`29–2:1`, not `29–1`).
+ */
 function labelForSegment(verseStarts: readonly VerseStart[]): SegmentLabel {
   const first = verseStarts[0];
   const last = verseStarts[verseStarts.length - 1];
   if (first === last) return first.number;
-  // Qualify the end with its chapter when the segment crosses a chapter boundary, so the range is
-  // unambiguous (`29–2:1`, not `29–1`).
   const endText = last.chapter === first.chapter ? last.number : `${last.chapter}:${last.number}`;
   return `${first.number}–${endText}`;
 }

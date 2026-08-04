@@ -56,8 +56,7 @@ declare module 'papi-shared-types' {
 
     /**
      * Creates a new interlinearizer project for the given source project. Called from the WebView
-     * after the user fills in the create-project modal. Returns the persisted `InterlinearProject`
-     * serialized as a JSON string.
+     * after the user fills in the create-project modal.
      *
      * @param sourceProjectId - Platform.Bible project ID of the source text to interlinearize.
      * @param analysisLanguages - BCP 47 tags for all languages used in glosses and annotations
@@ -68,6 +67,7 @@ declare module 'papi-shared-types' {
      *   Omitted for analysis-only projects (LCM, PT9 single-sided).
      * @param name - User-facing name for the project.
      * @param description - User-facing description for the project.
+     * @returns The persisted `InterlinearProject` serialized as a JSON string.
      * @throws If storage fails. The error is logged and an error notification is sent before
      *   rethrowing so callers do not need to send a second notification.
      */

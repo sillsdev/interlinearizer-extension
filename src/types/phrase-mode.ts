@@ -1,10 +1,14 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
 
-/** The phrase-interaction mode the interlinear view is currently in. */
+/**
+ * The phrase-interaction mode the interlinear view is currently in.
+ *
+ * - `view` — normal reading and glossing; no phrase operation is in progress.
+ * - `edit` — the user is adding tokens to or removing them from an existing phrase.
+ * - `confirm-unlink` — awaiting the user's confirmation before deleting the phrase.
+ */
 export type PhraseMode =
-  /** Normal reading and glossing; no phrase operation is in progress. */
   | { kind: 'view' }
-  /** The user is adding tokens to or removing them from an existing phrase. */
   | {
       kind: 'edit';
       phraseId: string;
@@ -16,5 +20,4 @@ export type PhraseMode =
        */
       revert?: true;
     }
-  /** Awaiting the user's confirmation before deleting the phrase. */
   | { kind: 'confirm-unlink'; phraseId: string };

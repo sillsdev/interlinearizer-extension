@@ -9,9 +9,9 @@ import {
 
 /**
  * The project-related modals reachable from the Interlinearizer's ≡ (Project) menu, each with the
- * menu item that opens it and the title element that identifies it (from ModalShell's
- * `titleTestId`). The tour is read-only: each modal is opened, verified, and canceled — no project
- * is created, saved, or deleted, so the shared CDP instance is left untouched.
+ * menu item that opens it and the test id on the title element that identifies it. The tour is
+ * read-only: each modal is opened, verified, and canceled — no project is created, saved, or
+ * deleted, so the shared CDP instance is left untouched.
  */
 const MODAL_TOURS = [
   {

@@ -597,11 +597,6 @@ const DialogContext = createContext<{ onOpenChange?: (open: boolean) => void; ti
  *
  * Generates the title id the way the real component does, so the automatic `aria-labelledby`
  * wiring between the surface and its heading is exercised rather than assumed.
- *
- * @param props - Component props.
- * @param props.children - The dialog content element.
- * @param props.onOpenChange - Called with `false` when the content requests dismissal.
- * @returns The children wrapped in dismissal context.
  */
 export function Dialog({
   children,
@@ -631,11 +626,6 @@ const mountedDialogs: { current?: (open: boolean) => void }[] = [];
  *
  * `onInteractOutside` is accepted and ignored — there is no outside region to click in this stub.
  * A close button is never rendered because the extension always suppresses it.
- *
- * @param props - Component props.
- * @param props.children - Dialog body content.
- * @param props.className - CSS class names.
- * @returns A `<div role="dialog">` wrapping the children.
  */
 export function DialogContent({
   children,
@@ -677,13 +667,8 @@ export function DialogContent({
 
 /**
  * Stub dialog title rendered as the `<h2>` the real component produces, keeping the heading role and
- * taking its `id` from the root so the dialog's `aria-labelledby` resolves to it.
- *
- * @param props - Component props.
- * @param props.children - Title text.
- * @param props.className - CSS class names.
- * @param props['data-testid'] - Test id, which is how end-to-end tests locate each modal.
- * @returns An `<h2>` heading.
+ * taking its `id` from the root so the dialog's `aria-labelledby` resolves to it. Forwards
+ * `data-testid` as the real component does, since that is the handle a modal is identified by.
  */
 export function DialogTitle({
   children,
@@ -734,10 +719,6 @@ export function Popover({
  * Stub popover trigger. With `asChild` (the only mode the extension uses) the real component merges
  * its trigger behavior onto the single child element rather than rendering a wrapper, so this stub
  * clones the child with the open-state attributes and the toggle handler Radix would supply.
- *
- * @param props - Component props.
- * @param props.children - The element that opens the popover.
- * @returns The child cloned with trigger wiring.
  */
 export function PopoverTrigger({
   children,

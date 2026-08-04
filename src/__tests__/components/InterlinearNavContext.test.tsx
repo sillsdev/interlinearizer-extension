@@ -42,10 +42,7 @@ function renderNavMutable(initial: SerializedVerseRef) {
 
 /**
  * Runs a focus claim inside `act`, since a claim that matches clears the provider's pending-request
- * state. Wraps the call rather than the assertion so the claimed value can still be asserted on.
- *
- * @param claim - Calls `consumeFocusRequest` on the hook result under test.
- * @returns Whatever the claim returned.
+ * state. Wraps the call rather than the assertion, so the claimed value can still be asserted on.
  */
 function claimFocus(claim: () => string | undefined): string | undefined {
   let claimed: string | undefined;

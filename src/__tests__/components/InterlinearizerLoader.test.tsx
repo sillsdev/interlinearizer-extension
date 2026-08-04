@@ -172,7 +172,6 @@ type CapturedStoreProps = {
   onPendingEditsChange?: (pending: boolean) => void;
   /** Whether un-approved tokens render the engine's suggestion. */
   showSuggestions?: boolean;
-  /** The subtree the provider wraps. */
   children: ReactNode;
 };
 /* eslint-enable react/no-unused-prop-types */
@@ -2213,7 +2212,7 @@ describe('InterlinearizerLoader', () => {
   });
 });
 
-/** LUK counterpart to `GEN_1_1_BOOK`, used to drive a cross-book swap through the loader. */
+/** LUK counterpart to `GEN_1_1_BOOK`, so a book change has a second book to land on. */
 const LUK_1_1_BOOK: Book = {
   id: 'LUK',
   bookRef: 'LUK',

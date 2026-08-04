@@ -98,7 +98,8 @@ export default function Interlinearizer({
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
-  // the last two collect a token focus asked for from outside the views.
+  // `consumeFocusRequest` / `pendingFocusToken` collect a token focus asked for from outside the
+  // views.
   const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, pendingFocusToken } =
     useInterlinearNav();
 

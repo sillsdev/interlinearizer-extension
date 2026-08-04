@@ -155,13 +155,12 @@ export interface InterlinearNav {
   cancelFade: () => void;
   /**
    * Asks for a token to be focused once its book is on screen. The request outlives the book load
-   * it may trigger, so a caller with no view mounted for that book — the analysis catalog, whose
-   * usages span every analyzed book — can still ask for it.
+   * it may trigger, so it may name a book that has no view mounted for it.
    *
    * The wait is bounded by navigation rather than by a clock: the request is abandoned once
-   * navigation lands on a book other than the one it names (see {@link consumeFocusRequest} for the
-   * claiming side). A load that never arrives therefore strands nothing — a book that errors out
-   * holds the request only while the user is still looking at that book's error.
+   * navigation lands on a book other than the one it names. A load that never arrives therefore
+   * strands nothing — a book that errors out holds the request only while the user is still looking
+   * at that book's error.
    *
    * A request moves focus and nothing else, so the caller must navigate to the token's verse
    * itself: unpaired, the focus lands outside the verse on screen, and the request is dropped only
@@ -305,17 +304,13 @@ export function InterlinearNavProvider({
     return pending;
   }, []);
 
-  // Abandon a request the user has navigated away from. A request is claimed when its book mounts,
-  // so an unclaimed one is waiting on a load that may never arrive: the book errors out (the loader
-  // renders the error instead of the view, and no claim is ever made), or the caller's navigation is
-  // superseded before the load finishes. Without this the request would sit in its slot until the
-  // requested book happened to open — minutes or an hour later — and yank focus onto a token the
-  // user asked for long ago. Bounded by navigation rather than a wall clock (unlike the internal-nav
-  // markers above, whose echo arrives in milliseconds) because a book load has no bounded duration:
-  // any timeout short enough to catch the stranded case could also drop a request whose book is
-  // still legitimately loading. Landing on a different book is the unambiguous signal that the user
-  // has moved on. Depends on the book alone — a run keyed on the request too would fire between the
-  // caller's `requestFocusToken` and its `navigate`, when the reference still names the old book.
+  // Abandon a request whose book the user has navigated past, so one left unclaimed by a load that
+  // never arrives cannot yank focus on some much later visit to that book. A wall clock will not do
+  // (unlike the internal-nav markers above, whose echo arrives in milliseconds): a book load has no
+  // bounded duration, so any timeout short enough to catch the stranded case could also drop a
+  // request whose book is still legitimately loading. Depends on the book alone — a run keyed on the
+  // request too would fire between a caller's `requestFocusToken` and its `navigate`, while the
+  // reference still names the old book.
   useEffect(() => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) === scrRef.book) return;

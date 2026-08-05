@@ -144,9 +144,12 @@ describe('TokenChip suggested placeholder', () => {
     expect(input.className).toContain('tw:placeholder:gloss-suggested');
   });
 
-  it('pads only the trailing edge of the suggested placeholder, clearing the italic lean', () => {
+  it('pads the suggested placeholder with one thin space, on the trailing edge only', () => {
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
+    // Spelled out rather than built from `ghost`, so changing the pad character has to be a
+    // deliberate edit here instead of riding along with the helper every other assertion goes
+    // through.
     expect(screen.getByLabelText('Gloss for logos')).toHaveAttribute('placeholder', 'word\u2009');
   });
 

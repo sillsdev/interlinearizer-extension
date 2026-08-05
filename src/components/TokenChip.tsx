@@ -39,9 +39,12 @@ const STRING_KEYS = [
 /**
  * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
  * their advances, and the input clips at the content box that `field-sizing: content` fits to the
- * text run, so only widening that run makes room — CSS padding sits outside the clip. Nothing pads
- * the leading edge, which would push the glyphs off the suggestion rows they line up with; the lean
- * is rightward whatever the script, so an RTL gloss will want this leading instead.
+ * text run, so only widening that run makes room — CSS padding sits outside the clip. The lean is
+ * rightward whatever the script, and bidi resets a trailing neutral to the paragraph direction, so
+ * an LTR-direction input puts this at the visual right for an RTL gloss too; what flips it to the
+ * useless left edge is the input itself resolving to `dir="rtl"`, which RTL support has to answer
+ * by making the pad leading. Only one edge is padded — padding both offsets the glyphs from the
+ * suggestion rows they line up with.
  */
 const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
 

@@ -5,6 +5,9 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ModalShell } from '../../../components/modals/ModalShell';
 
+// Popovers carry the dialog role too, so the modal surface is reached by the slot that is its own.
+const DIALOG_SELECTOR = '[data-slot="dialog-content"]';
+
 const defaultProps = {
   titleTestId: 'test-modal-title',
   title: 'Test modal',
@@ -23,7 +26,7 @@ describe('ModalShell', () => {
     // the shell must leave both alone; overriding the id makes the dialog report a missing title.
     const heading = screen.getByRole('heading', { name: 'Test modal' });
     expect(heading.id).toBeTruthy();
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-labelledby', heading.id);
+    expect(document.querySelector(DIALOG_SELECTOR)).toHaveAttribute('aria-labelledby', heading.id);
   });
 
   it('tags the title with the test id end-to-end tests locate the modal by', () => {
@@ -62,7 +65,7 @@ describe('ModalShell', () => {
 
     await userEvent.keyboard('{Escape}');
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(document.querySelector(DIALOG_SELECTOR)).toBeInTheDocument();
   });
 
   it('dismisses only the topmost modal on Escape when one overlays another', async () => {

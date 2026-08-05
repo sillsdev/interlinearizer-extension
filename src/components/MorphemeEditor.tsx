@@ -233,7 +233,7 @@ export function MorphemeBreakdownPopover({
   return (
     <PopoverContent
       align="start"
-      className="tw:flex tw:w-auto tw:min-w-48 tw:flex-col tw:gap-1.5 tw:p-2"
+      className="tw:w-auto tw:min-w-48 tw:gap-1.5 tw:p-2"
       onClick={stopMouseEvents}
       onCloseAutoFocus={handleCloseAutoFocus}
       onEscapeKeyDown={onClose}

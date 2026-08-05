@@ -51,9 +51,10 @@ export function WipeModal({
 
   return (
     <ModalShell
-      titleId="wipe-modal-title"
+      titleTestId="wipe-modal-title"
       title={localizedStrings['%interlinearizer_wipe_modal_title%']}
       width="tw:w-96"
+      onClose={onCancel}
     >
       <p className="tw:text-sm tw:mb-4">
         {localizedStrings['%interlinearizer_wipe_modal_prompt%']}

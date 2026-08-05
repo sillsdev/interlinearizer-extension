@@ -1,11 +1,8 @@
-import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import useProjectsForSource from '../../hooks/useProjectsForSource';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../../types/type-guards';
-import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -23,13 +20,17 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
- * select one, view its details (via the info icon), or request that a new one be created. Fires
- * `interlinearizer.getProjectsForSource` to load the list on mount.
+ * select one, view its details (via the info icon), or request that a new one be created.
  *
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
  *   any; the matching list entry is highlighted and badged so the user can tell which project the
  *   draft is currently working against.
+ * @param props.isOpening - When `true`, a project the user already chose is still being loaded into
+ *   the draft, so the modal's controls go inert for the duration: the open completes regardless, so
+ *   letting the modal be dismissed would read as having canceled it, and choosing another project
+ *   would race the open already in flight. A caller may leave it `false` for an open the user
+ *   cannot reach this modal behind.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onClose - Called when the user cancels without selecting.
@@ -40,6 +41,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 export function SelectInterlinearProjectModal({
   sourceProjectId,
   activeProjectId,
+  isOpening = false,
   onSelect,
   onCreateNew,
   onClose,
@@ -47,6 +49,7 @@ export function SelectInterlinearProjectModal({
 }: Readonly<{
   sourceProjectId: string;
   activeProjectId?: string;
+  isOpening?: boolean;
   onSelect: (project: InterlinearProjectSummary) => void;
   onCreateNew: () => void;
   onClose: () => void;
@@ -56,64 +59,19 @@ export function SelectInterlinearProjectModal({
     SELECT_INTERLINEAR_PROJECT_STRING_KEYS,
   );
 
-  const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  /** Incremented each time a load starts; lets an in-flight response detect it has been superseded. */
-  const loadGenRef = useRef(0);
-
-  /**
-   * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
-   * shows a notification on failure. Ignores the response if a newer load has started since this
-   * one was initiated.
-   */
-  const loadProjects = useCallback(async () => {
-    loadGenRef.current += 1;
-    const gen = loadGenRef.current;
-    setIsLoading(true);
-    setProjects([]);
-    try {
-      const json = await papi.commands.sendCommand(
-        'interlinearizer.getProjectsForSource',
-        sourceProjectId,
-      );
-      if (gen !== loadGenRef.current) return;
-      const parsed: unknown = JSON.parse(json);
-      if (!Array.isArray(parsed)) {
-        logger.warn('Interlinearizer: getProjectsForSource returned non-array', parsed);
-        return;
-      }
-      const valid = parsed.filter(isInterlinearProjectSummary);
-      if (valid.length !== parsed.length)
-        logger.warn(
-          'Interlinearizer: skipped malformed project entries',
-          parsed.length - valid.length,
-        );
-      // Most-recently-modified first so the project the user is likeliest to reopen sits at the top,
-      // and the modified date distinguishes otherwise-identical unnamed projects.
-      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
-      setProjects(valid);
-    } catch (e) {
-      logger.error('Interlinearizer: failed to load projects for source', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-        .catch(() => {});
-    } finally {
-      if (gen === loadGenRef.current) setIsLoading(false);
-    }
-  }, [sourceProjectId]);
-
-  useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+  const { projects, isLoading } = useProjectsForSource(sourceProjectId);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <ModalShell
-      titleId="select-project-modal-title"
+      titleTestId="select-project-modal-title"
       title={localizedStrings['%interlinearizer_modal_select_title%']}
       width="tw:w-lg"
-      rounded="tw:rounded-lg"
+      // The list load deliberately does not suppress dismissal: it is a read-only fetch with
+      // nothing to abandon, and withholding `onClose` for it would strand the user in a modal that
+      // looks idle — empty list, disabled buttons — for as long as the backend takes.
+      onClose={isOpening ? undefined : onClose}
     >
       {projects.length === 0 ? (
         <p className="tw:text-sm tw:text-muted-foreground tw:mb-4">
@@ -128,6 +86,7 @@ export function SelectInterlinearProjectModal({
                 <button
                   type="button"
                   aria-current={isActive ? 'true' : undefined}
+                  disabled={isOpening}
                   className={`tw:flex-1 tw:flex tw:rounded tw:border tw:px-3 tw:py-2 tw:text-left tw:text-sm tw:transition-colors tw:min-w-0 ${
                     isActive
                       ? 'tw:border-primary tw:bg-primary/10 tw:hover:bg-primary/20'
@@ -153,6 +112,7 @@ export function SelectInterlinearProjectModal({
                   size="icon"
                   aria-label={localizedStrings['%interlinearizer_modal_select_info_button_label%']}
                   className="tw:shrink-0"
+                  disabled={isOpening}
                   onClick={() => onViewInfo(project)}
                 >
                   <Info className="tw:size-[15px]" />
@@ -164,10 +124,10 @@ export function SelectInterlinearProjectModal({
       )}
 
       <div className="tw:modal-actions">
-        <Button variant="secondary" onClick={onClose} disabled={isLoading}>
+        <Button variant="secondary" onClick={onClose} disabled={isLoading || isOpening}>
           {localizedStrings['%interlinearizer_modal_select_cancel%']}
         </Button>
-        <Button onClick={onCreateNew} disabled={isLoading}>
+        <Button onClick={onCreateNew} disabled={isLoading || isOpening}>
           {localizedStrings['%interlinearizer_modal_select_create_new%']}
         </Button>
       </div>

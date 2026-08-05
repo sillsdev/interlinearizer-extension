@@ -69,17 +69,19 @@ const MOCK_DRAFT_WITH_SEGMENTATION: DraftProject = {
 jest.mock('../../../components/modals/SelectInterlinearProjectModal', () => ({
   __esModule: true,
   SelectInterlinearProjectModal: ({
+    isOpening,
     onSelect,
     onCreateNew,
     onClose,
     onViewInfo,
   }: {
+    isOpening?: boolean;
     onSelect: (p: InterlinearProjectSummary) => void;
     onCreateNew: () => void;
     onClose: () => void;
     onViewInfo: (p: InterlinearProjectSummary) => void;
   }) => (
-    <div data-testid="select-modal">
+    <div data-testid="select-modal" data-is-opening={String(isOpening)}>
       <button type="button" data-testid="select-select" onClick={() => onSelect(MOCK_PROJECT)}>
         Select
       </button>
@@ -395,6 +397,28 @@ describe('ProjectModals', () => {
         analysis: emptyAnalysis(),
       });
       expect(setModal).toHaveBeenCalledWith('none');
+    });
+
+    it('marks the select modal as opening while the chosen project loads, and clears it after', async () => {
+      let resolveGet: (v: string) => void = () => {};
+      jest.mocked(papi.commands.sendCommand).mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveGet = resolve;
+          }),
+      );
+      render(<ProjectModals {...buildProps({ modal: 'select' })} />);
+      expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false');
+
+      await userEvent.click(screen.getByTestId('select-select'));
+      await waitFor(() =>
+        expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'true'),
+      );
+
+      resolveGet(JSON.stringify(MOCK_FULL_PROJECT));
+      await waitFor(() =>
+        expect(screen.getByTestId('select-modal')).toHaveAttribute('data-is-opening', 'false'),
+      );
     });
 
     it('carries the target project id into the draft for a bilateral project', async () => {

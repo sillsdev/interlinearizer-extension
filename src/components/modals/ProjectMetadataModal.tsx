@@ -172,14 +172,24 @@ export function ProjectMetadataModal({
     [interlinearProjectId, onProjectDeleted, onClose, runGuarded],
   );
 
+  /**
+   * A dismissal — Escape or a click outside — backs out one layer at a time: an armed delete
+   * confirmation collapses first, so an attempt aimed at that box does not also discard the edits
+   * typed into the fields behind it. A second dismissal then closes the modal.
+   */
+  const handleDismiss = useCallback(() => {
+    if (confirmingDelete) setConfirmingDelete(false);
+    else onClose();
+  }, [confirmingDelete, onClose]);
+
   /* v8 ignore next */ if (stringsLoading) return undefined;
 
   return (
     <ModalShell
-      titleId="project-metadata-modal-title"
+      titleTestId="project-metadata-modal-title"
       title={localizedStrings['%interlinearizer_modal_metadata_title%']}
       width="tw:w-lg"
-      rounded="tw:rounded-lg"
+      onClose={isSubmitting ? undefined : handleDismiss}
     >
       {/* Editable fields */}
       <div className="tw:flex tw:flex-col tw:gap-3 tw:mb-4">

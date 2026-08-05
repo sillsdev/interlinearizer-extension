@@ -5,6 +5,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
+import { useState } from 'react';
 import { SaveAsProjectModal } from '../../../components/modals/SaveAsProjectModal';
 import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
 
@@ -193,6 +194,113 @@ describe('SaveAsProjectModal', () => {
     expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
   });
 
+  it('hides the inline overwrite confirm on Escape, keeping the modal and its inputs open', async () => {
+    const onClose = jest.fn();
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    await userEvent.type(screen.getByLabelText(/^name$/i), 'Draft name');
+    const row = screen.getByText('Unnamed').closest('li');
+    if (!row) throw new Error('expected the project row to be present');
+    await userEvent.click(within(row).getByRole('button', { name: 'Overwrite' }));
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/^name$/i)).toHaveValue('Draft name');
+  });
+
+  it('retires an armed overwrite confirm when the source changes under it', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const row = screen.getByText('Unnamed').closest('li');
+    if (!row) throw new Error('expected the project row to be present');
+    await userEvent.click(within(row).getByRole('button', { name: 'Overwrite' }));
+
+    rerender(<SaveAsProjectModal {...defaultProps} sourceProjectId="other-src" />);
+
+    // The same row comes back under the new source, so a confirm left armed would resurface with it.
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
+  });
+
+  it('closes on a second Escape once the overwrite confirm has collapsed', async () => {
+    const onClose = jest.fn();
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const row = screen.getByText('Unnamed').closest('li');
+    if (!row) throw new Error('expected the project row to be present');
+    await userEvent.click(within(row).getByRole('button', { name: 'Overwrite' }));
+
+    await userEvent.keyboard('{Escape}');
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes on Escape while the overwrite list is still loading, since the fetch has nothing to abandon', async () => {
+    const onClose = jest.fn();
+    // Hold the load in-flight so Escape lands while the modal is still waiting on the list.
+    let resolveLoad: (v: string) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveLoad = resolve;
+        }),
+    );
+    render(<SaveAsProjectModal {...defaultProps} onClose={onClose} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+
+    await userEvent.keyboard('{Escape}');
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    // Settle the held load so its state update lands inside the test rather than after teardown.
+    resolveLoad('[]');
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /^cancel$/i })).not.toBeDisabled(),
+    );
+  });
+
+  it('stays silent when the overwrite-list load fails after the modal has been dismissed', async () => {
+    // Dismissal unmounts the modal in the real tree, so the host below mirrors that: a load that
+    // fails afterwards must not raise an error notification over a list nobody is waiting on.
+    let rejectLoad: (reason: unknown) => void = () => {};
+    mockSendCommand.mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    function Host() {
+      const [isOpen, setIsOpen] = useState(true);
+      return isOpen ? (
+        <SaveAsProjectModal {...defaultProps} onClose={() => setIsOpen(false)} />
+      ) : undefined;
+    }
+    render(<Host />);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^cancel$/i })).toBeDisabled());
+
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument(),
+    );
+
+    rejectLoad(new Error('failed after dismissal'));
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(papi.notifications.send).not.toHaveBeenCalled();
+  });
+
   it('clears an armed overwrite confirm when the source changes so a stale target cannot be used', async () => {
     mockSendCommand
       .mockResolvedValueOnce(JSON.stringify([STUB_PROJECT]))
@@ -220,7 +328,7 @@ describe('SaveAsProjectModal', () => {
 
     await waitFor(() =>
       expect(logger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to load projects for Save As',
+        'Interlinearizer: failed to load projects for source',
         loadError,
       ),
     );

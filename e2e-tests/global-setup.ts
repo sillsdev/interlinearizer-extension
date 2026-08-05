@@ -139,9 +139,9 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
 
 /**
  * Bootstrap everything an Electron launch needs, short of launching Electron itself: verify no
- * conflicting instance is running, clear stale singleton locks, confirm the extension is built,
- * ensure the paranext-core dev main bundle exists, and start the renderer dev server on port 1212
- * (recording its PID for teardown).
+ * conflicting instance is running, clear stale singleton locks, build the extension, ensure the
+ * paranext-core dev main bundle exists, and start the renderer dev server on port 1212 (recording
+ * its PID for teardown).
  *
  * Self-cleaning on failure: if a dev server started here never becomes ready, it is killed before
  * the error propagates (see {@link killSpawnedDevServer}), so it cannot leak. Callers therefore need
@@ -149,7 +149,7 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
  *
  * @returns Resolves when the renderer dev server is ready.
  * @throws {Error} If port 8876 is already in use (a running Platform.Bible would conflict).
- * @throws {Error} If the extension dist is missing.
+ * @throws {Error} If the extension fails to build.
  * @throws {Error} If a dev server started here does not open port 1212 within 60s, or (outside CI)
  *   fails the HTTP compilation probe within 120s.
  */
@@ -187,15 +187,12 @@ export async function bootstrapRendererDevServer(): Promise<void> {
     },
   );
 
-  // Fail fast if the extension dist is missing — tests cannot run without a built extension
-  const extensionMain = path.join(extensionRoot, 'dist/src/main.js');
-  if (!fs.existsSync(extensionMain)) {
-    throw new Error(
-      `Extension dist not found at ${extensionMain}. ` +
-        'Run "npm run build" in interlinearizer-extension before running E2E tests.',
-    );
-  }
-  console.log('Extension dist found.');
+  // Rebuild rather than merely checking dist exists. A dist left over from another branch loads an
+  // extension the tests were not written against, and the selector mismatches that follow read as
+  // real regressions rather than a build problem. A no-op rebuild costs seconds against a
+  // multi-minute run, so always paying it is cheaper than ever debugging the stale case.
+  console.log('Building the extension...');
+  execSync('npm run build', { cwd: extensionRoot, stdio: 'inherit' });
 
   // Ensure the paranext-core dev main bundle exists
   const devMainPath = path.join(coreDir, '.erb/dll/main.bundle.dev.js');
@@ -325,7 +322,7 @@ function removeDevServerPidMarker(): void {
  * @param _config - Playwright config object — unused; required by Playwright's global-setup
  *   interface.
  * @throws {Error} If port 8876 is already in use.
- * @throws {Error} If the extension dist is missing.
+ * @throws {Error} If the extension fails to build.
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default async function globalSetup(_config: FullConfig): Promise<void> {

@@ -134,6 +134,13 @@ export default function ProjectModals({
    */
   const replaceGuard = useSubmitGuard();
 
+  /**
+   * Guards opening a project straight from the select modal — the path taken when the draft has no
+   * unsaved work, so no confirmation intervenes. `isSubmitting` suppresses that modal's dismissal
+   * while the open is in flight. An open deferred behind the confirmation has its own guard.
+   */
+  const openGuard = useSubmitGuard();
+
   const resolvedMetadataProject = metadataProject ?? activeProject;
 
   /** Opens the metadata modal for the project whose info icon was clicked in the select modal. */
@@ -292,9 +299,9 @@ export default function ProjectModals({
   const handleSelectProject = useCallback(
     (project: InterlinearProjectSummary) => {
       if (hasUnsavedWork) setPendingReplace({ kind: 'open', project });
-      else openProject(project);
+      else openGuard.runGuarded(() => openProject(project));
     },
-    [hasUnsavedWork, openProject],
+    [hasUnsavedWork, openGuard, openProject],
   );
 
   /**
@@ -519,6 +526,7 @@ export default function ProjectModals({
         <SelectInterlinearProjectModal
           sourceProjectId={projectId}
           activeProjectId={activeProject?.id}
+          isOpening={openGuard.isSubmitting}
           onSelect={handleSelectProject}
           onCreateNew={handleSelectCreateNew}
           onClose={handleSelectClose}

@@ -1,8 +1,14 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
-import { Button, Label, Switch } from 'platform-bible-react';
+import {
+  Button,
+  Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Switch,
+} from 'platform-bible-react';
 import { Settings } from 'lucide-react';
-import { useId, useRef, useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { useId, useState } from 'react';
 
 const STRING_KEYS = [
   '%interlinearizer_viewOption_continuousScroll%',
@@ -108,127 +114,70 @@ export default function ViewOptionsDropdown({
 }: ViewOptionsDropdownProps) {
   const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | undefined>(undefined);
-  const [panelStyle, setPanelStyle] = useState<{ top: number; right: number }>({
-    top: 0,
-    right: 0,
-  });
-
-  /**
-   * Ref callback that stores the toggle button element for future focus restoration.
-   *
-   * @param el - The mounted button, or `null` on unmount.
-   */
-  const setButtonRef = (el: HTMLButtonElement | null) => {
-    buttonRef.current = el ?? undefined;
-  };
-
-  /**
-   * Closes the dropdown and returns focus to the toggle button so keyboard users don't lose their
-   * position.
-   */
-  const close = () => {
-    setOpen(false);
-    buttonRef.current?.focus();
-  };
-
-  // Position the panel under the button when the dropdown opens, then keep it anchored if the window
-  // resizes while it stays open (a resize shifts the button without remounting this effect).
-  useEffect(() => {
-    const button = buttonRef.current;
-    if (!open || !button) return undefined;
-    const updatePosition = () => {
-      const rect = button.getBoundingClientRect();
-      setPanelStyle({
-        top: rect.bottom + 4,
-        right: window.innerWidth - rect.right,
-      });
-    };
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    return () => window.removeEventListener('resize', updatePosition);
-  }, [open]);
 
   return (
     <div className="tw:mt-1 tw:mr-1">
-      <Button
-        ref={setButtonRef}
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        aria-label="View options"
-        className="tw:h-7 tw:w-7 tw:p-0"
-        data-testid="view-options-button"
-        size="icon"
-        variant="ghost"
-        onClick={() => setOpen((v) => !v)}
-      >
-        <Settings className="tw:size-4" />
-      </Button>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            aria-label="View options"
+            className="tw:h-7 tw:w-7 tw:p-0"
+            data-testid="view-options-button"
+            size="icon"
+            variant="ghost"
+          >
+            <Settings className="tw:size-4" />
+          </Button>
+        </PopoverTrigger>
 
-      {open &&
-        createPortal(
-          /* Clicking outside the panel closes it. */
-          <>
-            {/* The invisible backdrop must stay BELOW the toolbar's stacking context (tw:z-10,
-                from the sticky TabToolbarContainer) so the gear button's onClick — not the
-                backdrop — closes the dropdown. Raising the button instead wouldn't work: the
-                toolbar caps its descendants at z-10 against this portaled sibling.
-                Keep panel (z-30) > backdrop. */}
-            <div
-              aria-hidden="true"
-              className="tw:fixed tw:inset-0 tw:z-5"
-              onClick={close}
-              onKeyDown={undefined}
-              role="presentation"
+        {/* Mounted only while open so each opening starts from a fresh panel. */}
+        {open && (
+          <PopoverContent
+            align="end"
+            aria-label="View options"
+            className="tw:w-auto tw:min-w-56 tw:gap-3"
+            data-testid="view-options-panel"
+          >
+            <ViewToggle
+              checked={continuousScroll}
+              label={localizedStrings['%interlinearizer_viewOption_continuousScroll%']}
+              onCheckedChange={onContinuousScrollChange}
             />
-            <div
-              aria-label="View options"
-              className="tw:fixed tw:z-30 tw:min-w-56 tw:rounded-md tw:border tw:border-border tw:bg-popover tw:p-3 tw:shadow-md tw:flex tw:flex-col tw:gap-3"
-              data-testid="view-options-panel"
-              role="dialog"
-              style={{ top: panelStyle.top, right: panelStyle.right }}
-            >
-              <ViewToggle
-                checked={continuousScroll}
-                label={localizedStrings['%interlinearizer_viewOption_continuousScroll%']}
-                onCheckedChange={onContinuousScrollChange}
-              />
-              <ViewToggle
-                checked={showMorphology}
-                label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
-                onCheckedChange={onShowMorphologyChange}
-              />
-              <ViewToggle
-                checked={showFreeTranslation}
-                label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
-                onCheckedChange={onShowFreeTranslationChange}
-              />
-              <ViewToggle
-                checked={showVerseGutter}
-                label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
-                onCheckedChange={onShowVerseGutterChange}
-              />
-              <ViewToggle
-                checked={hideInactiveLinkButtons}
-                label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
-                onCheckedChange={onHideInactiveLinkButtonsChange}
-              />
-              <ViewToggle
-                checked={simplifyPhrases}
-                label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
-                onCheckedChange={onSimplifyPhrasesChange}
-              />
-              {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
-                  row (and its prop pair) once the behavior is settled. */}
-              <ViewToggle
-                checked={showSuggestions}
-                label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
-                onCheckedChange={onShowSuggestionsChange}
-              />
-            </div>
-          </>,
-          document.body,
+            <ViewToggle
+              checked={showMorphology}
+              label={localizedStrings['%interlinearizer_viewOption_showMorphology%']}
+              onCheckedChange={onShowMorphologyChange}
+            />
+            <ViewToggle
+              checked={showFreeTranslation}
+              label={localizedStrings['%interlinearizer_viewOption_showFreeTranslation%']}
+              onCheckedChange={onShowFreeTranslationChange}
+            />
+            <ViewToggle
+              checked={showVerseGutter}
+              label={localizedStrings['%interlinearizer_viewOption_showVerseGutter%']}
+              onCheckedChange={onShowVerseGutterChange}
+            />
+            <ViewToggle
+              checked={hideInactiveLinkButtons}
+              label={localizedStrings['%interlinearizer_viewOption_hideInactiveLinkButtons%']}
+              onCheckedChange={onHideInactiveLinkButtonsChange}
+            />
+            <ViewToggle
+              checked={simplifyPhrases}
+              label={localizedStrings['%interlinearizer_viewOption_simplifyPhrases%']}
+              onCheckedChange={onSimplifyPhrasesChange}
+            />
+            {/* Removable demo toggle for the open suggestion-prominence UX question; drop this
+                row (and its prop pair) once the behavior is settled. */}
+            <ViewToggle
+              checked={showSuggestions}
+              label={localizedStrings['%interlinearizer_viewOption_showSuggestions%']}
+              onCheckedChange={onShowSuggestionsChange}
+            />
+          </PopoverContent>
         )}
+      </Popover>
     </div>
   );
 }

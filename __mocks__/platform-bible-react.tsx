@@ -11,6 +11,7 @@ import {
   isValidElement,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -582,14 +583,161 @@ export function RadioGroupItem({
 }
 
 /**
+ * Context carrying the {@link Dialog}'s open-state change handler and generated title id down to
+ * {@link DialogContent} and {@link DialogTitle}, mirroring how the real Radix-based component
+ * reaches its parts from the root.
+ */
+const DialogContext = createContext<{ onOpenChange?: (open: boolean) => void; titleId?: string }>(
+  {},
+);
+
+/**
+ * Stub dialog root that renders its children unconditionally. The extension mounts a modal only
+ * while it should be showing and holds `open` at `true`, so visibility needs no simulation here.
+ *
+ * Generates the title id the way the real component does, so the automatic `aria-labelledby`
+ * wiring between the surface and its heading is exercised rather than assumed.
+ */
+export function Dialog({
+  children,
+  onOpenChange,
+}: Readonly<{
+  children?: ReactNode;
+  onOpenChange?: (open: boolean) => void;
+}>): ReactElement {
+  const titleId = useId();
+  const contextValue = useMemo(() => ({ onOpenChange, titleId }), [onOpenChange, titleId]);
+  return <DialogContext.Provider value={contextValue}>{children}</DialogContext.Provider>;
+}
+
+/**
+ * Mounted {@link DialogContent} surfaces in mount order, so an Escape can be routed to the topmost
+ * one alone. The real component stacks dismissal layers this way; without the stack, a dialog
+ * overlaying another would dismiss both at once.
+ */
+const mountedDialogs: { current?: (open: boolean) => void }[] = [];
+
+/**
+ * Stub dialog surface rendered as a `<div role="dialog" data-slot="dialog-content">` — the slot
+ * being what tells a modal apart from a popover, since both carry the dialog role — that reports
+ * Escape back through the root's change handler, which is the one dismissal path the extension's
+ * own code implements. The
+ * real component additionally traps focus, locks scrolling, and restores focus on close; those are
+ * behaviors of the platform package rather than of this extension, so they are left to end-to-end
+ * coverage rather than faked here.
+ *
+ * `onInteractOutside` is accepted and ignored — there is no outside region to click in this stub.
+ * A close button is never rendered because the extension always suppresses it.
+ */
+export function DialogContent({
+  children,
+  className,
+}: Readonly<{
+  'aria-describedby'?: undefined;
+  children?: ReactNode;
+  className?: string;
+  onInteractOutside?: (event: { preventDefault: () => void }) => void;
+  showCloseButton?: boolean;
+}>): ReactElement {
+  const { onOpenChange, titleId } = useContext(DialogContext);
+  const onOpenChangeRef = useRef(onOpenChange);
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange;
+  });
+
+  // The real component dismisses on Escape from anywhere in the document rather than only when the
+  // surface itself holds focus, so listen the same way here — but only the topmost dialog reacts.
+  useEffect(() => {
+    const entry = onOpenChangeRef;
+    mountedDialogs.push(entry);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && mountedDialogs.at(-1) === entry) entry.current?.(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      mountedDialogs.splice(mountedDialogs.indexOf(entry), 1);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  return (
+    <div
+      aria-labelledby={titleId}
+      aria-modal="true"
+      className={className}
+      data-slot="dialog-content"
+      role="dialog"
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Stub dialog title rendered as the `<h2>` the real component produces, keeping the heading role and
+ * taking its `id` from the root so the dialog's `aria-labelledby` resolves to it. Forwards
+ * `data-testid` as the real component does, since that is the handle a modal is identified by.
+ */
+export function DialogTitle({
+  children,
+  className,
+  'data-testid': testId,
+}: Readonly<{
+  children?: ReactNode;
+  className?: string;
+  'data-testid'?: string;
+}>): ReactElement {
+  const { titleId } = useContext(DialogContext);
+  return (
+    <h2 className={className} data-testid={testId} id={titleId}>
+      {children}
+    </h2>
+  );
+}
+
+/**
+ * Context carrying the {@link Popover}'s open state and change handler down to
+ * {@link PopoverTrigger}, mirroring how the real Radix-based component coordinates the two.
+ */
+const PopoverContext = createContext<{
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
+}>({});
+
+/**
  * Stub popover root that renders its children unconditionally. The extension conditionally mounts
  * the content component while open (so its draft state re-initializes per open), so visibility
  * needs no simulation here.
  */
 export function Popover({
   children,
-}: Readonly<{ children?: ReactNode; open?: boolean; modal?: boolean }>): ReactElement {
-  return <>{children}</>;
+  onOpenChange,
+  open,
+}: Readonly<{
+  children?: ReactNode;
+  modal?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  open?: boolean;
+}>): ReactElement {
+  const contextValue = useMemo(() => ({ onOpenChange, open }), [onOpenChange, open]);
+  return <PopoverContext.Provider value={contextValue}>{children}</PopoverContext.Provider>;
+}
+
+/**
+ * Stub popover trigger. With `asChild` (the only mode the extension uses) the real component merges
+ * its trigger behavior onto the single child element rather than rendering a wrapper, so this stub
+ * clones the child with the open-state attributes and the toggle handler Radix would supply.
+ */
+export function PopoverTrigger({
+  children,
+}: Readonly<{ children?: ReactNode; asChild?: boolean }>): ReactNode {
+  const { onOpenChange, open = false } = useContext(PopoverContext);
+  if (!isValidElement(children)) return <>{children}</>;
+  return cloneElement(children, {
+    'aria-expanded': open,
+    'aria-haspopup': 'dialog',
+    onClick: () => onOpenChange?.(!open),
+  });
 }
 
 /**
@@ -603,9 +751,11 @@ export function PopoverAnchor({
 }
 
 /**
- * Stub popover content rendered as a plain `<div data-testid="popover-content">`. The real
- * component implements positioning, portaling, and dismissal internally; this stub exposes the
- * dismissal callbacks so tests can simulate them:
+ * Stub popover content rendered as a `<div role="dialog" data-testid="popover-content">` — the role
+ * matching the real component, which is what makes its `aria-label` meaningful, and which is why a
+ * test that must reach a modal instead selects on `[data-slot="dialog-content"]`. The real component
+ * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
+ * callbacks so tests can simulate them:
  *
  * - The panel's children render only from the second commit, mirroring Radix's portal (which renders
  *   nothing until its own layout effect flips its `mounted` state). Consumers must therefore not
@@ -621,8 +771,10 @@ export function PopoverAnchor({
  *   simulating Radix's focus-restoration event fired as the popover closes.
  */
 export function PopoverContent({
+  'aria-label': ariaLabel,
   children,
   className,
+  'data-testid': testId = 'popover-content',
   onEscapeKeyDown,
   onPointerDownOutside,
   onOpenAutoFocus,
@@ -630,8 +782,10 @@ export function PopoverContent({
   onClick,
   onMouseDown,
 }: Readonly<{
+  'aria-label'?: string;
   children?: ReactNode;
   className?: string;
+  'data-testid'?: string;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
@@ -660,13 +814,15 @@ export function PopoverContent({
     first?.focus();
     if (first instanceof HTMLInputElement) first.select();
   }, [portalMounted]);
-  if (!portalMounted) return <div data-testid="popover-content" />;
+  if (!portalMounted) return <div data-testid={testId} />;
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={contentRef}
+      aria-label={ariaLabel}
       className={className}
-      data-testid="popover-content"
+      data-testid={testId}
+      role="dialog"
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);

@@ -7,6 +7,8 @@ End-to-end tests for the interlinearizer extension using Playwright + Electron. 
 
 Run everything with `npm run test:e2e` (smoke tier then CDP tier). Each tier can be run alone with `npm run test:e2e:smoke` and `npm run test:e2e:cdp`.
 
+Global setup rebuilds the extension before launching, so there is no separate build step to remember. This matters more than the few seconds it costs: a `dist/` left over from another branch runs an extension the tests were not written against, and the selector failures that follow look exactly like real regressions.
+
 Both tiers are self-launching: the CDP tier's `globalSetup` launches its own Platform.Bible instance (with `--remote-debugging-port=9223`) in an isolated user-data dir and tears it down afterward, so `npm run test:e2e:cdp` needs no manual `npm run start:cdp` first. To iterate against a warm instance instead, run `npm run start:cdp` in one terminal, then run the CDP config directly with `npx playwright test --config e2e-tests/playwright-cdp.config.ts`: the setup detects the in-use CDP port, reuses that instance, and leaves it running.
 
 In CI (`.github/workflows/test.yml`, `e2e` job) the full suite runs on both Linux and Windows.
@@ -40,5 +42,5 @@ Feature tests run with `npm run test:e2e:cdp`. That command launches a fresh, is
 - **Reset at the start, tidy at the end.** Correctness rests on the start-of-test sequence, which self-heals whatever a failed run left behind (leftover modals, stray project pickers, another test's dirty draft); see the JSDocs on `ensureInterlinearizerOpenOnWeb()` and `ensureE2eProjectActive()` for the mechanism. This self-healing is also what lets the CDP config safely `retries` in CI. Mutating tests additionally end with `ensureE2eProjectActive(page, { rescueDirtyDraft: false })` to discard their own leftovers — a courtesy to the next run, not something correctness depends on.
 - **Use unique per-run values** (e.g. `` `e2e-gloss-${Date.now()}` ``) for anything written into the draft, so a stale leftover can never satisfy an assertion.
 - **Drive only the visible UI.** No JSON-RPC/WebSocket calls to set up or assert state (the rpc.discover readiness polls in the shared helpers are the one sanctioned exception).
-- **Prefer existing accessible selectors** (roles, aria-labels like `Gloss for {word}`, ModalShell title ids) over adding new `data-testid`s to production code.
+- **Prefer existing selectors** (roles, aria-labels like `Gloss for {word}`, the modal title `data-testid`s the shell already sets) over adding new `data-testid`s to production code. Modal titles carry no author-supplied `id` — that one belongs to the platform dialog, which generates it and points its own `aria-labelledby` at it.
 - **Mutating tests must not overwrite or delete projects, and must not create any beyond what `ensureE2eProjectActive()` creates** (the e2e project itself, plus rescue projects). The current modal coverage is a read-only cancel tour; a create/delete lifecycle test needs its own self-healing cleanup (e.g. deleting leftover `e2e-*` projects at start) before it's safe on a shared instance.

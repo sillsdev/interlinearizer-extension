@@ -33,7 +33,7 @@ type SuggestionDropdownProps = Readonly<{
  * viewports and token rows.
  *
  * Each row is colored and labeled by its own `status` — `'suggested'` (blue, "accept") or
- * `'candidate'` (grey, "promote") — carried on the entry rather than inferred from position, so a
+ * `'candidate'` (gray, "promote") — carried on the entry rather than inferred from position, so a
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
  */
 export default function SuggestionDropdown({

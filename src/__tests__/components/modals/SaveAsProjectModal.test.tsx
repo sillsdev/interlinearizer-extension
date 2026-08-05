@@ -312,7 +312,7 @@ describe('SaveAsProjectModal', () => {
 
     await waitFor(() =>
       expect(logger.error).toHaveBeenCalledWith(
-        'Interlinearizer: failed to load projects for Save As',
+        'Interlinearizer: failed to load projects for source',
         loadError,
       ),
     );

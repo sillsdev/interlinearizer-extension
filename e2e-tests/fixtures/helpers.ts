@@ -1318,9 +1318,9 @@ export async function waitForAppAndInterlinearizerReady(
  * the start of the open-Interlinearizer precondition self-heals it, which is also what lets a CDP
  * retry land on a clean instance.
  *
- * Each project modal's only reliable dismiss affordance is its Cancel/secondary button — the
- * dialogs are a plain `<dialog open>` (not `showModal()`), so native Escape doesn't fire their
- * onCancel. Modals can chain, so cancel in a bounded loop until no overlay remains.
+ * Drive Cancel rather than Escape: a modal may spend an Escape collapsing an inline confirmation of
+ * its own, and one mid-submission answers neither route. Modals can chain, so cancel in a bounded
+ * loop until no overlay remains.
  */
 export async function dismissLeftoverModals(page: Page): Promise<void> {
   const frame = getInterlinearizerFrame(page);

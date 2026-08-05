@@ -28,5 +28,12 @@ test.describe('Open Interlinearizer', () => {
     await expect(interlinearizerFrame.getByTestId('view-options-panel')).toBeVisible({
       timeout: 5_000,
     });
+
+    // Closing on a second gear click needs a trigger press and an outside interaction to resolve in
+    // the right order, which only the real popover does — hence checking it here, not in jsdom.
+    await viewOptionsButton.click();
+    await expect(interlinearizerFrame.getByTestId('view-options-panel')).not.toBeVisible({
+      timeout: 5_000,
+    });
   });
 });

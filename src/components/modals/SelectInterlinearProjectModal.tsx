@@ -1,11 +1,8 @@
-import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Info } from 'lucide-react';
 import { Button } from 'platform-bible-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import useProjectsForSource from '../../hooks/useProjectsForSource';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../../types/type-guards';
-import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -23,8 +20,7 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
 
 /**
  * Modal that lists all existing interlinearizer projects for a source project and lets the user
- * select one, view its details (via the info icon), or request that a new one be created. Fires
- * `interlinearizer.getProjectsForSource` to load the list on mount.
+ * select one, view its details (via the info icon), or request that a new one be created.
  *
  * @param props.sourceProjectId - Platform.Bible project ID whose interlinear projects to list.
  * @param props.activeProjectId - ID of the project currently open as the active Save target, if
@@ -33,7 +29,8 @@ const SELECT_INTERLINEAR_PROJECT_STRING_KEYS: `%${string}%`[] = [
  * @param props.isOpening - When `true`, a project the user already chose is still being loaded into
  *   the draft, so the modal's controls go inert for the duration: the open completes regardless, so
  *   letting the modal be dismissed would read as having canceled it, and choosing another project
- *   would race the open already in flight.
+ *   would race the open already in flight. A caller may leave it `false` for an open the user
+ *   cannot reach this modal behind.
  * @param props.onSelect - Called with the chosen project when the user picks an existing one.
  * @param props.onCreateNew - Called when the user chooses to create a new project instead.
  * @param props.onClose - Called when the user cancels without selecting.
@@ -62,67 +59,7 @@ export function SelectInterlinearProjectModal({
     SELECT_INTERLINEAR_PROJECT_STRING_KEYS,
   );
 
-  const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  /**
-   * Incremented each time a load starts and again when the modal unmounts; lets an in-flight
-   * response detect it has been superseded or abandoned.
-   */
-  const loadGenRef = useRef(0);
-
-  /**
-   * Fetches interlinear projects for `sourceProjectId` and updates the `projects` state. Logs and
-   * shows a notification on failure. Ignores the response if a newer load has started since this
-   * one was initiated.
-   */
-  const loadProjects = useCallback(async () => {
-    loadGenRef.current += 1;
-    const gen = loadGenRef.current;
-    setIsLoading(true);
-    setProjects([]);
-    try {
-      const json = await papi.commands.sendCommand(
-        'interlinearizer.getProjectsForSource',
-        sourceProjectId,
-      );
-      if (gen !== loadGenRef.current) return;
-      const parsed: unknown = JSON.parse(json);
-      if (!Array.isArray(parsed)) {
-        logger.warn('Interlinearizer: getProjectsForSource returned non-array', parsed);
-        return;
-      }
-      const valid = parsed.filter(isInterlinearProjectSummary);
-      if (valid.length !== parsed.length)
-        logger.warn(
-          'Interlinearizer: skipped malformed project entries',
-          parsed.length - valid.length,
-        );
-      // Most-recently-modified first so the project the user is likeliest to reopen sits at the top,
-      // and the modified date distinguishes otherwise-identical unnamed projects.
-      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
-      setProjects(valid);
-    } catch (e) {
-      // Ignore a failure from a load that a newer one has superseded, or that the modal was
-      // dismissed out from under (mirrors the success-path stale guard above), so a stale rejection
-      // cannot fire an error notification about a list nobody is waiting on.
-      if (gen !== loadGenRef.current) return;
-      logger.error('Interlinearizer: failed to load projects for source', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-        .catch(() => {});
-    } finally {
-      if (gen === loadGenRef.current) setIsLoading(false);
-    }
-  }, [sourceProjectId]);
-
-  useEffect(() => {
-    loadProjects();
-    // Escape and outside-click stay live during the load, so the modal can be gone before the
-    // response lands; retiring the generation on the way out keeps that response silent.
-    return () => {
-      loadGenRef.current += 1;
-    };
-  }, [loadProjects]);
+  const { projects, isLoading } = useProjectsForSource(sourceProjectId);
 
   /* v8 ignore next */ if (stringsLoading) return undefined;
 

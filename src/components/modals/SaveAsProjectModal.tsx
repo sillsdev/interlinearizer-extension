@@ -1,11 +1,9 @@
-import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button, Input, Label, Textarea } from 'platform-bible-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import useProjectsForSource from '../../hooks/useProjectsForSource';
 import useSubmitGuard from '../../hooks/useSubmitGuard';
 import type { InterlinearProjectSummary } from '../../types/interlinear-project-summary';
-import { isInterlinearProjectSummary } from '../../types/type-guards';
-import { compareUpdatedAtDescending } from '../../utils/project-summary-format';
 import { ModalShell } from './ModalShell';
 import { ProjectSummaryDetails } from './ProjectSummaryDetails';
 
@@ -72,8 +70,7 @@ export function SaveAsProjectModal({
 
   const [name, setName] = useState(defaultName ?? '');
   const [description, setDescription] = useState(defaultDescription ?? '');
-  const [projects, setProjects] = useState<InterlinearProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { projects, isLoading } = useProjectsForSource(sourceProjectId);
 
   // Guards the save controls against double-submit; `isSubmitting` disables them while a save runs.
   const { isSubmitting, runGuarded } = useSubmitGuard();
@@ -83,59 +80,11 @@ export function SaveAsProjectModal({
     undefined,
   );
 
-  /**
-   * Incremented each time a load starts and again when the modal unmounts; lets an in-flight
-   * response detect it has been superseded or abandoned.
-   */
-  const loadGenRef = useRef(0);
-
-  /**
-   * Loads existing interlinear projects for `sourceProjectId` to populate the overwrite list. Logs
-   * and notifies on failure; ignores a response superseded by a newer load.
-   */
-  const loadProjects = useCallback(async () => {
-    loadGenRef.current += 1;
-    const gen = loadGenRef.current;
-    setIsLoading(true);
-    setProjects([]);
-    setConfirmOverwrite(undefined);
-    try {
-      const json = await papi.commands.sendCommand(
-        'interlinearizer.getProjectsForSource',
-        sourceProjectId,
-      );
-      if (gen !== loadGenRef.current) return;
-      const parsed: unknown = JSON.parse(json);
-      /* v8 ignore next 2 -- backend always returns a JSON array; defensive guard */
-      if (!Array.isArray(parsed))
-        throw new TypeError('getProjectsForSource did not return an array');
-      const valid = parsed.filter(isInterlinearProjectSummary);
-      // Most-recently-modified first, matching the Select modal so the overwrite target the user is
-      // likeliest to want sits at the top and the modified date distinguishes unnamed projects.
-      valid.sort((a, b) => compareUpdatedAtDescending(a.updatedAt, b.updatedAt));
-      setProjects(valid);
-    } catch (e) {
-      // Ignore a failure from a load that a newer one has superseded, or that the modal was
-      // dismissed out from under (mirrors the success-path stale guard above), so a stale rejection
-      // cannot fire an error notification about a list nobody is waiting on.
-      if (gen !== loadGenRef.current) return;
-      logger.error('Interlinearizer: failed to load projects for Save As', e);
-      await papi.notifications
-        .send({ message: '%interlinearizer_error_load_projects_failed%', severity: 'error' })
-        .catch(() => {});
-    } finally {
-      if (gen === loadGenRef.current) setIsLoading(false);
-    }
-  }, [sourceProjectId]);
-
   useEffect(() => {
-    loadProjects();
-    // Escape and outside-click stay live during the load, so the modal can be gone before the
-    // response lands; retiring the generation on the way out keeps that response silent.
-    return () => {
-      loadGenRef.current += 1;
-    };
-  }, [loadProjects]);
+    // A confirmation is armed against a project in the list it was chosen from, so every new list —
+    // including the empty one a load starts from — retires it.
+    setConfirmOverwrite(undefined);
+  }, [projects]);
 
   /**
    * Saves the draft as a new project with the trimmed name/description (blank fields → undefined),

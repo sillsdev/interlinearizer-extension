@@ -654,78 +654,64 @@ describe('TokenChip suggestion + button', () => {
   });
 });
 
-describe('TokenChip suggestion dropdown scrolling', () => {
-  /**
-   * Stubs the gloss input's `getBoundingClientRect` so the dropdown's scroll handler sees a
-   * definite on- or off-screen anchor (jsdom returns an all-zero rect by default, which reads as
-   * on-screen).
-   */
-  function stubGlossRect(top: number): void {
-    jest.spyOn(HTMLInputElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      top,
-      bottom: top + 10,
-      left: 0,
-      right: 50,
-      x: 0,
-      y: top,
-      width: 50,
-      height: 10,
-      toJSON: () => ({}),
-    });
-  }
+describe('TokenChip suggestion combobox wiring', () => {
+  it('points the input at the open panel as its listbox', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-  it('stays open and follows the anchor when the surrounding view scrolls it in view', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    await focusGloss('logos');
-    expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
+    const input = await focusGloss('bank');
 
-    // The token strip centers the focused phrase on focus: the anchor moves but stays in view, so
-    // the dropdown repositions under it rather than dismissing the panel that just opened.
-    stubGlossRect(100);
-    fireEvent.scroll(window);
-
-    const listbox = screen.getByRole('listbox');
-    expect(listbox).toBeInTheDocument();
-    // `left` is the input's center (left 0 + width 50 / 2) and the panel is translated -50% so it
-    // stays centered on the input; `min-width` pins it to at least the input's width.
-    expect(listbox).toHaveStyle({
-      top: '112px',
-      left: '25px',
-      minWidth: '50px',
-      transform: 'translateX(-50%)',
-    });
+    expect(input).toHaveAttribute('role', 'combobox');
+    expect(input).toHaveAttribute('aria-expanded', 'true');
+    expect(input).toHaveAttribute('aria-controls', screen.getByRole('listbox').id);
   });
 
-  it('closes when the surrounding view scrolls the anchor out of the viewport', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    await focusGloss('logos');
-    expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
+  it('collapses the input to the closed combobox state when the panel closes', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    // A far user scroll pushes the anchor above the top of the viewport, abandoning this token.
-    stubGlossRect(-50);
-    fireEvent.scroll(window);
+    const input = await focusGloss('bank');
+    await userEvent.type(input, 'mine');
 
-    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    expect(input).toHaveAttribute('aria-expanded', 'false');
+    expect(input).not.toHaveAttribute('aria-controls');
   });
 
-  it('closes when the surrounding view scrolls the anchor below the viewport', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    await focusGloss('logos');
-    expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
+  it('names no active descendant while no row is highlighted', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    // A far user scroll pushes the anchor below the bottom edge, abandoning this token.
-    stubGlossRect(window.innerHeight + 50);
-    fireEvent.scroll(window);
+    const input = await focusGloss('bank');
 
-    expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
+    expect(input).not.toHaveAttribute('aria-activedescendant');
   });
 
-  it('stays open when the dropdown list itself is scrolled', async () => {
-    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    await focusGloss('logos');
+  it('names the keyboard-highlighted row as the active descendant', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    fireEvent.scroll(screen.getByRole('listbox'));
+    const input = await focusGloss('bank');
+    await userEvent.keyboard('{ArrowDown}');
 
-    expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
+    const [first] = screen.getAllByRole('option');
+    expect(first).toHaveAttribute('aria-selected', 'true');
+    expect(input).toHaveAttribute('aria-activedescendant', first.id);
+  });
+
+  it('keeps focus in the gloss input while the panel is open', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+
+    const input = await focusGloss('bank');
+
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
+    expect(input).toHaveFocus();
+  });
+
+  it('keeps focus in the gloss input when the panel restores focus as it closes', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    const input = await focusGloss('bank');
+
+    // fireEvent so the sentinel itself never takes focus, leaving the panel's own focus-restoration
+    // as the only thing that could move it.
+    fireEvent.click(screen.getByTestId('popover-close'));
+
+    expect(input).toHaveFocus();
   });
 });

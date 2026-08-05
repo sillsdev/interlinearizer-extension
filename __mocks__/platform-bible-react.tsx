@@ -757,6 +757,8 @@ export function PopoverAnchor({
  * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
  * callbacks so tests can simulate them:
  *
+ * - `role`, `id`, and `style` land on the panel element, as they do in the real component, which
+ *   spreads caller props after its own — so a caller can override the panel's dialog role and id.
  * - The panel's children render only from the second commit, mirroring Radix's portal (which renders
  *   nothing until its own layout effect flips its `mounted` state). Consumers must therefore not
  *   reach for a child element from their own mount effect — in the real app that element does not
@@ -775,6 +777,9 @@ export function PopoverContent({
   children,
   className,
   'data-testid': testId = 'popover-content',
+  id,
+  role = 'dialog',
+  style,
   onEscapeKeyDown,
   onPointerDownOutside,
   onOpenAutoFocus,
@@ -786,6 +791,9 @@ export function PopoverContent({
   children?: ReactNode;
   className?: string;
   'data-testid'?: string;
+  id?: string;
+  role?: string;
+  style?: CSSProperties;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
@@ -822,7 +830,9 @@ export function PopoverContent({
       aria-label={ariaLabel}
       className={className}
       data-testid={testId}
-      role="dialog"
+      id={id}
+      role={role}
+      style={style}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);

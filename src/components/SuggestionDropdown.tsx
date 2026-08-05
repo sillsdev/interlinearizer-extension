@@ -1,15 +1,10 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { PopoverContent } from 'platform-bible-react';
+import { useLayoutEffect } from 'react';
 import { STATUS_TEXT_COLOR_CLASS } from '../types/status-colors';
 import type { GlossedSuggestionEntry } from '../utils/suggestion-engine';
 
 /** Props for {@link SuggestionDropdown}. */
 type SuggestionDropdownProps = Readonly<{
-  /**
-   * The gloss input this dropdown anchors under. Read on open (and window resize) to position the
-   * panel; never focused or mutated here so DOM focus stays in the input for the combobox.
-   */
-  anchorRef: Readonly<{ current: HTMLInputElement | undefined }>;
   /** The listbox element id, matching the input's `aria-controls`. */
   listboxId: string;
   /**
@@ -27,22 +22,21 @@ type SuggestionDropdownProps = Readonly<{
   onActiveIndexChange: (index: number) => void;
   /** Called with a payload id when a row is chosen (approve the suggested / promote a candidate). */
   onSelect: (id: string) => void;
-  /** Called when the dropdown should close itself (the user scrolled the view away). */
-  onRequestClose: () => void;
 }>;
 
 /**
- * The pop-down listbox a token chip shows while its gloss input is the active combobox. Rendering
- * and positioning live here; the combobox state — open, active row, keyboard — is owned by the
- * chip, which drives this purely through props. Portaled to the document body so it escapes the
- * clipping and stacking of the interlinear view's scroll viewports and token rows.
+ * The pop-down listbox a token chip shows while its gloss input is the active combobox. Every bit
+ * of combobox state — open, active row, keyboard — arrives as props; this holds none of it.
+ *
+ * Must be rendered inside a popover anchored on the gloss field: the panel stays with that field as
+ * the view scrolls it, and escapes the clipping and stacking of the interlinear view's scroll
+ * viewports and token rows.
  *
  * Each row is colored and labeled by its own `status` — `'suggested'` (blue, "accept") or
  * `'candidate'` (grey, "promote") — carried on the entry rather than inferred from position, so a
  * dropped blank-in-language pick can never leave a candidate masquerading as the accept row.
  */
 export default function SuggestionDropdown({
-  anchorRef,
   listboxId,
   optionId,
   entries,
@@ -50,85 +44,32 @@ export default function SuggestionDropdown({
   surfaceText,
   onActiveIndexChange,
   onSelect,
-  onRequestClose,
 }: SuggestionDropdownProps) {
-  const listRef = useRef<HTMLUListElement | undefined>(undefined);
-  // `left` is the anchor input's horizontal center (the panel is translated -50% so it stays
-  // centered on the input regardless of its own width); `width` is the input's width, applied as the
-  // panel's min-width so it never renders narrower than the input it belongs to.
-  const [position, setPosition] = useState<{ top: number; left: number; width: number }>({
-    top: 0,
-    left: 0,
-    width: 0,
-  });
-
-  /**
-   * Ref callback that stores the list element, used to tell apart scrolling the panel's own
-   * overflow (ignored) from outer scrolling (closes). Normalizes React's `null` on unmount to
-   * `undefined`.
-   *
-   * @param el - The mounted list, or `null` on unmount.
-   */
-  const setListRef = (el: HTMLUListElement | null) => {
-    listRef.current = el ?? undefined;
-  };
-
-  // Position the panel under the anchor and keep it glued there across resizes and outer scrolling.
-  // The continuous view smooth-scrolls the token strip on focus — the same focus that opens this
-  // dropdown — so we reposition as the anchor moves rather than close immediately; we close only
-  // once the anchor leaves the viewport (a far scroll that abandons this token). Layout effect so
-  // the first measurement runs before paint — otherwise the portaled panel flashes at the default
-  // top-left before snapping under the anchor.
-  useLayoutEffect(() => {
-    const anchor = anchorRef.current;
-    /* v8 ignore next -- the chip only mounts this while the input (the anchor) is rendered */
-    if (!anchor) return undefined;
-    const updatePosition = () => {
-      const rect = anchor.getBoundingClientRect();
-      setPosition({ top: rect.bottom + 2, left: rect.left + rect.width / 2, width: rect.width });
-    };
-    updatePosition();
-    const handleScroll = (e: Event) => {
-      if (e.target instanceof Node && listRef.current?.contains(e.target)) return;
-      const rect = anchor.getBoundingClientRect();
-      // The anchor has scrolled out of view: there is nothing to glue to, so dismiss the panel.
-      if (rect.bottom < 0 || rect.top > window.innerHeight) {
-        onRequestClose();
-        return;
-      }
-      setPosition({ top: rect.bottom + 2, left: rect.left + rect.width / 2, width: rect.width });
-    };
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', handleScroll, true);
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [anchorRef, onRequestClose]);
-
-  // Keep the keyboard-highlighted row inside the panel's scroll window. Arrow navigation moves
-  // activeIndex past the visible edge of the max-h-48 overflow without this; scrollIntoView with
-  // block: 'nearest' only scrolls when the row is actually clipped, so it leaves an in-view row put.
+  // Keep the keyboard-highlighted row inside the panel's scroll window, which arrow navigation
+  // otherwise walks straight past. block: 'nearest' only scrolls when the row is actually clipped,
+  // so an in-view row stays put. The row is found by id because the panel element belongs to the
+  // popover.
   useLayoutEffect(() => {
     if (activeIndex < 0) return;
-    const active = listRef.current?.querySelector(`#${CSS.escape(optionId(activeIndex))}`);
-    active?.scrollIntoView({ block: 'nearest' });
+    document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, optionId, entries]);
 
-  return createPortal(
-    <ul
-      ref={setListRef}
-      className="tw:fixed tw:z-30 tw:max-h-48 tw:overflow-y-auto tw:rounded-md tw:border tw:border-border tw:bg-popover tw:py-1 tw:shadow-md"
+  return (
+    // `role` and `id` are spread onto the panel after the popover's own dialog role and id, so they
+    // win and the gloss input's aria-controls resolves to a real listbox. The class overrides shed
+    // the menu-sized content defaults this row list does not want.
+    <PopoverContent
+      className="tw:max-h-48 tw:w-auto tw:gap-0 tw:overflow-y-auto tw:p-0 tw:py-1"
       id={listboxId}
       role="listbox"
-      // `left` is the input's center; translateX(-50%) keeps the panel centered on the input, and
-      // minWidth pins it to at least the input's width.
-      style={{
-        top: position.top,
-        left: position.left,
-        minWidth: position.width,
-        transform: 'translateX(-50%)',
-      }}
+      // The popover publishes its anchor's width on the panel; using it as the floor keeps the
+      // panel from rendering narrower than the gloss field.
+      style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
+      // Both focus events are suppressed so the panel never moves DOM focus, which the combobox
+      // depends on: focus belongs to the gloss input the whole time the panel is open, and the
+      // panel closes on that input's blur — by which point focus is wherever the user aimed it.
+      onCloseAutoFocus={(e) => e.preventDefault()}
+      onOpenAutoFocus={(e) => e.preventDefault()}
     >
       {entries.map((entry, index) => (
         <li
@@ -155,7 +96,6 @@ export default function SuggestionDropdown({
           {entry.gloss}
         </li>
       ))}
-    </ul>,
-    document.body,
+    </PopoverContent>
   );
 }

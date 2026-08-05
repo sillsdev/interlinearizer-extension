@@ -618,8 +618,10 @@ export function Dialog({
 const mountedDialogs: { current?: (open: boolean) => void }[] = [];
 
 /**
- * Stub dialog surface rendered as a `<div role="dialog">` that reports Escape back through the
- * root's change handler, which is the one dismissal path the extension's own code implements. The
+ * Stub dialog surface rendered as a `<div role="dialog" data-slot="dialog-content">` — the slot
+ * being what tells a modal apart from a popover, since both carry the dialog role — that reports
+ * Escape back through the root's change handler, which is the one dismissal path the extension's
+ * own code implements. The
  * real component additionally traps focus, locks scrolling, and restores focus on close; those are
  * behaviors of the platform package rather than of this extension, so they are left to end-to-end
  * coverage rather than faked here.
@@ -659,7 +661,13 @@ export function DialogContent({
   }, []);
 
   return (
-    <div aria-labelledby={titleId} aria-modal="true" className={className} role="dialog">
+    <div
+      aria-labelledby={titleId}
+      aria-modal="true"
+      className={className}
+      data-slot="dialog-content"
+      role="dialog"
+    >
       {children}
     </div>
   );
@@ -743,9 +751,11 @@ export function PopoverAnchor({
 }
 
 /**
- * Stub popover content rendered as a plain `<div data-testid="popover-content">`. The real
- * component implements positioning, portaling, and dismissal internally; this stub exposes the
- * dismissal callbacks so tests can simulate them:
+ * Stub popover content rendered as a `<div role="dialog" data-testid="popover-content">` — the role
+ * matching the real component, which is what makes its `aria-label` meaningful, and which is why a
+ * test that must reach a modal instead selects on `[data-slot="dialog-content"]`. The real component
+ * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
+ * callbacks so tests can simulate them:
  *
  * - The panel's children render only from the second commit, mirroring Radix's portal (which renders
  *   nothing until its own layout effect flips its `mounted` state). Consumers must therefore not
@@ -806,14 +816,13 @@ export function PopoverContent({
   }, [portalMounted]);
   if (!portalMounted) return <div data-testid={testId} />;
   return (
-    // The real component renders `role="dialog"`, which is what makes an `aria-label` here
-    // meaningful; the role is omitted so existing dialog queries keep matching only real dialogs.
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
     <div
       ref={contentRef}
       aria-label={ariaLabel}
       className={className}
       data-testid={testId}
+      role="dialog"
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);

@@ -709,9 +709,40 @@ describe('TokenChip suggestion combobox wiring', () => {
     const input = await focusGloss('bank');
 
     // fireEvent so the sentinel itself never takes focus, leaving the panel's own focus-restoration
-    // as the only thing that could move it.
+    // as the only thing that could move it — which, left unprevented, blurs the input.
     fireEvent.click(screen.getByTestId('popover-close'));
 
+    expect(input).toHaveFocus();
+  });
+});
+
+describe('TokenChip suggestion dropdown scrolling', () => {
+  /**
+   * Stubs the gloss input's rect so the anchor reads as scrolled clean above the viewport; jsdom's
+   * all-zero default reads as on-screen instead.
+   */
+  function stubGlossOffScreen(): void {
+    jest.spyOn(HTMLInputElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: -50,
+      bottom: -40,
+      left: 0,
+      right: 50,
+      x: 0,
+      y: -50,
+      width: 50,
+      height: 10,
+      toJSON: () => ({}),
+    });
+  }
+
+  it('leaves the panel open when the surrounding view scrolls the anchor out of the viewport', async () => {
+    renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
+    const input = await focusGloss('bank');
+
+    stubGlossOffScreen();
+    fireEvent.scroll(window);
+
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(input).toHaveFocus();
   });
 });

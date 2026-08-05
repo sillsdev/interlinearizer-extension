@@ -770,7 +770,12 @@ export function PopoverAnchor({
  * - A sentinel `data-testid="popover-outside"` button invokes `onPointerDownOutside` on click,
  *   simulating a pointer press outside the popover.
  * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
- *   simulating Radix's focus-restoration event fired as the popover closes.
+ *   simulating Radix's focus-restoration event fired as the popover closes; unless it is prevented,
+ *   the focused element is blurred. Which element Radix restores focus to — its trigger, or the
+ *   element focused before the panel opened — is not modeled; only that an unprevented event lets
+ *   the panel take focus away.
+ * - The layout props are accepted and ignored: they steer positioning the real component computes
+ *   from measurements jsdom does not produce.
  */
 export function PopoverContent({
   'aria-label': ariaLabel,
@@ -796,6 +801,7 @@ export function PopoverContent({
   style?: CSSProperties;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
+  hideWhenDetached?: boolean;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onPointerDownOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
@@ -859,7 +865,12 @@ export function PopoverContent({
         <button
           data-testid="popover-close"
           type="button"
-          onClick={() => onCloseAutoFocus(new Event('closeAutoFocus'))}
+          onClick={() => {
+            const event = new Event('closeAutoFocus', { cancelable: true });
+            onCloseAutoFocus(event);
+            if (event.defaultPrevented) return;
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }}
         >
           close
         </button>

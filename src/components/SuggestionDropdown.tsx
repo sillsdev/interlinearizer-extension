@@ -49,6 +49,10 @@ export default function SuggestionDropdown({
   // otherwise walks straight past. block: 'nearest' only scrolls when the row is actually clipped,
   // so an in-view row stays put. The row is found by id because the panel element belongs to the
   // popover.
+  //
+  // On the first commit the popover has portaled nothing yet, so the lookup finds no row. That is
+  // harmless only because every path that opens the panel highlights no row, taking the early
+  // return; an open path arriving with a row already highlighted would silently fail to scroll.
   useLayoutEffect(() => {
     if (activeIndex < 0) return;
     document.getElementById(optionId(activeIndex))?.scrollIntoView({ block: 'nearest' });
@@ -58,12 +62,22 @@ export default function SuggestionDropdown({
     // `role` and `id` are spread onto the panel after the popover's own dialog role and id, so they
     // win and the gloss input's aria-controls resolves to a real listbox. The class overrides shed
     // the menu-sized content defaults this row list does not want.
+    //
+    // Row mouse events are left to bubble: they reach the chip label, whose own handling focuses the
+    // gloss input — where focus belongs the whole time this panel is open.
     <PopoverContent
       className="tw:max-h-48 tw:w-auto tw:gap-0 tw:overflow-y-auto tw:p-0 tw:py-1"
+      // The panel follows its anchor, so a token scrolled out of the interlinear viewport would
+      // leave it parked at the viewport edge with nothing under it. Hiding on detach keeps the panel
+      // open and focused, and scrolling the token back restores it; dismissing instead would strand
+      // the still-focused input on a collapsed combobox.
+      hideWhenDetached
       id={listboxId}
       role="listbox"
       // The popover publishes its anchor's width on the panel; using it as the floor keeps the
-      // panel from rendering narrower than the gloss field.
+      // panel from rendering narrower than the gloss field. The variable is only set once the
+      // popover has run its first (async) positioning pass, so the very first paint can fall back to
+      // the panel's auto width before snapping to the field.
       style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
       // Both focus events are suppressed so the panel never moves DOM focus, which the combobox
       // depends on: focus belongs to the gloss input the whole time the panel is open, and the

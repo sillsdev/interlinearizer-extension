@@ -507,11 +507,17 @@ const GEN_SUPERSCRIPTION_BOOK: Book = withDefaultVerseStarts({
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
  * `useInterlinearNav` call resolves. `Interlinearizer` writes the reference through the context's
  * `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang off the
- * `navigate` spy supplied here.
+ * `navigate` spy supplied here. The reference the provider itself adopts stays put unless a
+ * `scrRef` is supplied — behavior keyed on the context's own reference needs one that moves across
+ * renders.
  */
-function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () => {}): ReactNode {
+function withNav(
+  ui: ReactNode,
+  navigate: (r: SerializedVerseRef) => void = () => {},
+  scrRef: SerializedVerseRef = defaultScrRef,
+): ReactNode {
   const scrollGroupHook = (): ScrollGroupTuple => [
-    defaultScrRef,
+    scrRef,
     navigate,
     undefined,
     () => {},
@@ -2091,21 +2097,26 @@ describe('cross-book focus requests', () => {
   /**
    * Renders a book alongside the probe inside one nav provider, so a focus requested through the
    * probe reaches the same provider the view consumes. The continuous strip is on because its stub
-   * is what exposes the focused token ref to assertions.
+   * is what exposes the focused token ref to assertions. The provider's own reference tracks the
+   * book rendered, so swapping books is a navigation rather than a bare remount — that reference is
+   * what decides whether a pending focus request survives.
    */
   function withProbe(book: Book): ReactNode {
+    const scrRef = { book: book.bookRef, chapterNum: 1, verseNum: 1 };
     return withNav(
       <>
         <NavProbe />
         <Interlinearizer
           book={book}
           continuousScroll
-          scrRef={{ book: book.bookRef, chapterNum: 1, verseNum: 1 }}
+          scrRef={scrRef}
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={allFalseViewOptions}
         />
       </>,
+      undefined,
+      scrRef,
     );
   }
 
@@ -2156,6 +2167,6 @@ describe('cross-book focus requests', () => {
 
     act(() => capturedNav?.requestFocusToken('LUK 1:1:99'));
 
-    expect(capturedNav?.pendingFocusToken).toBeUndefined();
+    expect(capturedNav?.consumeFocusRequest('LUK')).toBeUndefined();
   });
 });

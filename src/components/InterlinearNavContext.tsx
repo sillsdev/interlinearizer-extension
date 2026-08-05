@@ -171,11 +171,12 @@ export interface InterlinearNav {
    */
   requestFocusToken: (tokenRef: string) => void;
   /**
-   * The token ref currently requested, or `undefined` when none is. A request naming a token in the
-   * verse already on screen changes nothing else about navigation, so this is the only signal by
-   * which a consumer can notice one. Reading it does not claim it.
+   * How many focus requests have been made. A request naming a token in the verse already on screen
+   * changes nothing else about navigation, so this is the only signal by which a consumer can
+   * notice one; it carries no request, which {@link InterlinearNav.consumeFocusRequest} alone hands
+   * out.
    */
-  pendingFocusToken: string | undefined;
+  focusRequestCount: number;
   /**
    * Claims a pending focus request for the book now on screen, clearing it so a later remount of
    * that book cannot re-focus a token the user has since navigated away from. A request naming a
@@ -280,27 +281,27 @@ export function InterlinearNavProvider({
     return true;
   }, []);
 
-  // State, not a ref, because a request must be observable: one naming a token in the verse already
-  // on screen changes nothing else a consumer could key on. Costs one extra render per claim. Every
-  // writer below sets the mirror alongside it — the two are read as one value and must not diverge.
-  const [pendingFocusToken, setPendingFocusToken] = useState<string | undefined>(undefined);
-
-  // Mirror of the state above, so a claim reads the request as of now rather than as of the render
-  // that created the callback — otherwise two claims in one commit both see it and it is handed out
-  // twice. Written only from the callbacks below, never during render, so a render React discards
-  // cannot resurrect an already-claimed request.
+  // A ref, so a claim reads the request as of now rather than as of the render that created the
+  // callback — otherwise two claims in one commit both see it and it is handed out twice. Written
+  // only from the callbacks below, never during render, so a render React discards cannot resurrect
+  // an already-claimed request.
   const pendingFocusTokenRef = useRef<string | undefined>(undefined);
+
+  // The ref alone cannot wake a consumer, hence state alongside it — a forward-only count rather
+  // than the request value mirrored, so a claim and a fresh request for the same token landing in
+  // one batch still reach the consumer. Mirrored, those two writes cancel out, React bails on the
+  // render, and the request sits unclaimable in the ref.
+  const [focusRequestCount, setFocusRequestCount] = useState(0);
 
   const requestFocusToken = useCallback((tokenRef: string) => {
     pendingFocusTokenRef.current = tokenRef;
-    setPendingFocusToken(tokenRef);
+    setFocusRequestCount((count) => count + 1);
   }, []);
 
   const consumeFocusRequest = useCallback((bookCode: string) => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
     pendingFocusTokenRef.current = undefined;
-    setPendingFocusToken(undefined);
     return pending;
   }, []);
 
@@ -315,7 +316,6 @@ export function InterlinearNavProvider({
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) === scrRef.book) return;
     pendingFocusTokenRef.current = undefined;
-    setPendingFocusToken(undefined);
   }, [scrRef.book]);
 
   const [fadePhase, setFadePhase] = useState<FadePhase>('idle');
@@ -417,7 +417,7 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
-      pendingFocusToken,
+      focusRequestCount,
       consumeFocusRequest,
     }),
     [
@@ -430,7 +430,7 @@ export function InterlinearNavProvider({
       reportSettled,
       cancelFade,
       requestFocusToken,
-      pendingFocusToken,
+      focusRequestCount,
       consumeFocusRequest,
     ],
   );

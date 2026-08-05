@@ -81,10 +81,10 @@ export function SaveAsProjectModal({
   );
 
   useEffect(() => {
-    // A confirmation is armed against a project in the list it was chosen from, so every new list —
-    // including the empty one a load starts from — retires it.
+    // A confirmation is armed against a project belonging to one source, so a switch to another
+    // retires it — in the same flush the list itself resets, rather than a commit later.
     setConfirmOverwrite(undefined);
-  }, [projects]);
+  }, [sourceProjectId]);
 
   /**
    * Saves the draft as a new project with the trimmed name/description (blank fields → undefined),

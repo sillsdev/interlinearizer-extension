@@ -72,7 +72,7 @@ export default function SuggestionDropdown({
       onOpenAutoFocus={(e) => e.preventDefault()}
     >
       {entries.map((entry, index) => (
-        <li
+        <div
           key={entry.id}
           aria-label={
             entry.status === 'suggested'
@@ -84,6 +84,9 @@ export default function SuggestionDropdown({
           data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}
           id={optionId(index)}
           role="option"
+          // An option role must be focusable, though nothing focuses a row: the gloss input holds
+          // focus and marks the active row with aria-activedescendant.
+          tabIndex={-1}
           // Select on mouse-down, suppressing its default focus shift, so choosing a row never blurs
           // the gloss input (the input keeps focus for the combobox) and the keyboard path stays the
           // only place Enter/arrow handling lives.
@@ -94,7 +97,7 @@ export default function SuggestionDropdown({
           onMouseEnter={() => onActiveIndexChange(index)}
         >
           {entry.gloss}
-        </li>
+        </div>
       ))}
     </PopoverContent>
   );

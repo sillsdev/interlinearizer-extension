@@ -212,6 +212,22 @@ describe('SaveAsProjectModal', () => {
     expect(screen.getByLabelText(/^name$/i)).toHaveValue('Draft name');
   });
 
+  it('retires an armed overwrite confirm when the source changes under it', async () => {
+    mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));
+    const { rerender } = render(<SaveAsProjectModal {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    const row = screen.getByText('Unnamed').closest('li');
+    if (!row) throw new Error('expected the project row to be present');
+    await userEvent.click(within(row).getByRole('button', { name: 'Overwrite' }));
+
+    rerender(<SaveAsProjectModal {...defaultProps} sourceProjectId="other-src" />);
+
+    // The same row comes back under the new source, so a confirm left armed would resurface with it.
+    await waitFor(() => expect(screen.getByText('Unnamed')).toBeInTheDocument());
+    expect(screen.queryByText('Overwrite this project with the draft?')).not.toBeInTheDocument();
+  });
+
   it('closes on a second Escape once the overwrite confirm has collapsed', async () => {
     const onClose = jest.fn();
     mockSendCommand.mockResolvedValue(JSON.stringify([STUB_PROJECT]));

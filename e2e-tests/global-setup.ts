@@ -139,9 +139,9 @@ export function waitForPort(port: number, timeout: number): Promise<void> {
 
 /**
  * Bootstrap everything an Electron launch needs, short of launching Electron itself: verify no
- * conflicting instance is running, clear stale singleton locks, confirm the extension is built,
- * ensure the paranext-core dev main bundle exists, and start the renderer dev server on port 1212
- * (recording its PID for teardown).
+ * conflicting instance is running, clear stale singleton locks, build the extension, ensure the
+ * paranext-core dev main bundle exists, and start the renderer dev server on port 1212 (recording
+ * its PID for teardown).
  *
  * Self-cleaning on failure: if a dev server started here never becomes ready, it is killed before
  * the error propagates (see {@link killSpawnedDevServer}), so it cannot leak. Callers therefore need

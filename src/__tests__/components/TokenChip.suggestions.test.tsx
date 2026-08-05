@@ -119,6 +119,11 @@ function renderChip(
   );
 }
 
+/** The suggested gloss as the placeholder renders it, padded to clear the faked italic's lean. */
+function ghost(gloss: string): string {
+  return `${gloss}\u2009`;
+}
+
 /**
  * Focuses a chip's gloss input (which opens the dropdown whenever the token has suggestions),
  * returning the input element.
@@ -135,8 +140,17 @@ describe('TokenChip suggested placeholder', () => {
 
     const input = screen.getByLabelText('Gloss for logos');
     // Visible at a glance — no focus or hover — so the row reveals which tokens have a suggestion.
-    expect(input).toHaveAttribute('placeholder', 'word');
+    expect(input).toHaveAttribute('placeholder', ghost('word'));
     expect(input.className).toContain('tw:placeholder:gloss-suggested');
+  });
+
+  it('pads the suggested placeholder with one thin space, on the trailing edge only', () => {
+    renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
+
+    // Spelled out rather than built from `ghost`, so changing the pad character has to be a
+    // deliberate edit here instead of riding along with the helper every other assertion goes
+    // through.
+    expect(screen.getByLabelText('Gloss for logos')).toHaveAttribute('placeholder', 'word\u2009');
   });
 
   it('falls back to the generic placeholder when the token has no suggestion', () => {
@@ -161,7 +175,7 @@ describe('TokenChip suggested placeholder', () => {
   it('reverts to the generic placeholder once the user types a gloss', async () => {
     renderChip(wordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
     const input = screen.getByLabelText('Gloss for logos');
-    expect(input).toHaveAttribute('placeholder', 'word');
+    expect(input).toHaveAttribute('placeholder', ghost('word'));
 
     await userEvent.type(input, 'mine');
 
@@ -422,7 +436,7 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
     const accept = screen.getByTestId('suggestion-accept');
     expect(accept).toHaveTextContent('riverbank');
     expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
-    expect(input).toHaveAttribute('placeholder', 'riverbank');
+    expect(input).toHaveAttribute('placeholder', ghost('riverbank'));
   });
 
   it('shows no suggestion when the cleared gloss was the surface form only approval', async () => {

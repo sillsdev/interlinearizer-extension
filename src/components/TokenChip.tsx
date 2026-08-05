@@ -37,6 +37,18 @@ const STRING_KEYS = [
 ] as const satisfies `%${string}%`[];
 
 /**
+ * A thin space appended to the italic suggested placeholder. Faked italic leans glyphs right past
+ * their advances, and the input clips at the content box that `field-sizing: content` fits to the
+ * text run, so only widening that run makes room — CSS padding sits outside the clip. The lean is
+ * rightward whatever the script, and bidi resets a trailing neutral to the paragraph direction, so
+ * an LTR-direction input puts this at the visual right for an RTL gloss too; what flips it to the
+ * useless left edge is the input itself resolving to `dir="rtl"`, which RTL support has to answer
+ * by making the pad leading. Only one edge is padded — padding both offsets the glyphs from the
+ * suggestion rows they line up with.
+ */
+const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
+
+/**
  * Renders a single word token as an inline chip with an editable gloss input below the surface
  * text. The gloss value and the dispatch that writes it both come from context, so the chip must be
  * rendered under an {@link AnalysisStoreProvider}. The gloss is written to the store only on blur,
@@ -460,7 +472,11 @@ export function TokenChip({
             className={`tw:gloss-input${showSuggestedPlaceholder ? ' tw:placeholder:gloss-suggested tw:placeholder:italic tw:placeholder:opacity-100' : ''}`}
             disabled={disabled}
             id={glossInputId}
-            placeholder={showSuggestedPlaceholder ? suggestedGloss : glossPlaceholder}
+            placeholder={
+              showSuggestedPlaceholder
+                ? `${suggestedGloss}${SUGGESTED_PLACEHOLDER_PAD}`
+                : glossPlaceholder
+            }
             role={hasSuggestions ? 'combobox' : undefined}
             // Inline padding overrides the `gloss-input` utility's default px to reserve room for the
             // trailing "+" button symmetrically (keeping the gloss text centered) without a spacer

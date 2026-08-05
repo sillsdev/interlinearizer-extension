@@ -98,9 +98,9 @@ export default function Interlinearizer({
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
   // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
-  // `consumeFocusRequest` / `pendingFocusToken` collect a token focus asked for from outside the
+  // `consumeFocusRequest` / `focusRequestCount` collect a token focus asked for from outside the
   // views.
-  const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, pendingFocusToken } =
+  const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, focusRequestCount } =
     useInterlinearNav();
 
   // Whether Alt is currently held. Provided through a dedicated context (not the memoized
@@ -142,7 +142,8 @@ export default function Interlinearizer({
   // Reseed only when the new book no longer resolves the focused token — a book change, or a
   // re-tokenization that dropped the token. A boundary edit (merge/split) also produces a fresh
   // `book`, but token refs survive re-segmentation, so a still-resolving focus is kept to avoid
-  // snapping the strip back to the active verse's first word.
+  // snapping the strip back to the active verse's first word. Keep this declared above the
+  // focus-request claim below: that claim wins only by running last in the same commit.
   useEffect(() => {
     setFocusedTokenRef((current) =>
       current !== undefined && wordTokenByRef.has(current)
@@ -278,7 +279,8 @@ export default function Interlinearizer({
   // The guard tests the focused token's own segment (not the active segment's id) so that clicking a
   // non-first portion of a split verse doesn't get reseeded to the verse's first portion. Internal
   // navigation always hits the skip branch because the handler has already set focus into the target
-  // verse.
+  // verse. Keep this declared above the focus-request claim below: that claim wins only by running
+  // last in the same commit.
   useEffect(() => {
     const focusedSegId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
     const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
@@ -310,10 +312,10 @@ export default function Interlinearizer({
     // outlived the load it was made for would fire on an unrelated navigation, long after the
     // click that raised it. Logged because the drop is otherwise invisible.
     logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
-    // Both deps are needed: the request is the only signal when it names the verse already on
-    // screen, and the book is the only signal when it named a book that had yet to load.
+    // Both deps are needed: the request count is the only signal when a request names the verse
+    // already on screen, and the book is the only signal when it named a book that had yet to load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, pendingFocusToken]);
+  }, [book, focusRequestCount]);
 
   const scrRefRef = useLatestRef(scrRef);
 

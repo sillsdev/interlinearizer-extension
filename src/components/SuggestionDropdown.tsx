@@ -66,7 +66,7 @@ export default function SuggestionDropdown({
     // Row mouse events are left to bubble: they reach the chip label, whose own handling focuses the
     // gloss input — where focus belongs the whole time this panel is open.
     <PopoverContent
-      className="tw:max-h-48 tw:w-auto tw:gap-0 tw:overflow-y-auto tw:p-0 tw:py-1"
+      className="tw:max-h-48 tw:w-auto tw:gap-0 tw:overflow-y-auto tw:px-0 tw:py-1"
       // The panel follows its anchor, so a token scrolled out of the interlinear viewport would
       // leave it parked at the viewport edge with nothing under it. Hiding on detach keeps the panel
       // open and focused, and scrolling the token back restores it; dismissing instead would strand
@@ -74,10 +74,11 @@ export default function SuggestionDropdown({
       hideWhenDetached
       id={listboxId}
       role="listbox"
-      // The popover publishes its anchor's width on the panel; using it as the floor keeps the
-      // panel from rendering narrower than the gloss field. The variable is only set once the
-      // popover has run its first (async) positioning pass, so the very first paint can fall back to
-      // the panel's auto width before snapping to the field.
+      // The popover publishes its anchor's width on the panel; using it as the floor keeps the panel
+      // from rendering narrower than that anchor — the span wrapping the gloss field, whose width is
+      // the field's own only because the button inside it is absolutely positioned and out of flow.
+      // The variable is only set once the popover has run its first (async) positioning pass, so the
+      // very first paint can fall back to the panel's auto width before snapping to the field.
       style={{ minWidth: 'var(--radix-popover-trigger-width)' }}
       // Both focus events are suppressed so the panel never moves DOM focus, which the combobox
       // depends on: focus belongs to the gloss input the whole time the panel is open, and the

@@ -717,29 +717,12 @@ describe('TokenChip suggestion combobox wiring', () => {
 });
 
 describe('TokenChip suggestion dropdown scrolling', () => {
-  /**
-   * Stubs the gloss input's rect so the anchor reads as scrolled clean above the viewport; jsdom's
-   * all-zero default reads as on-screen instead.
-   */
-  function stubGlossOffScreen(): void {
-    jest.spyOn(HTMLInputElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      top: -50,
-      bottom: -40,
-      left: 0,
-      right: 50,
-      x: 0,
-      y: -50,
-      width: 50,
-      height: 10,
-      toJSON: () => ({}),
-    });
-  }
-
-  it('leaves the panel open when the surrounding view scrolls the anchor out of the viewport', async () => {
+  // The other half of scrolling — the panel hiding itself once the anchor is clipped away — is the
+  // popover's own doing, off measurements jsdom does not produce, so it stays beyond reach here.
+  it('keeps the panel open when the surrounding view scrolls', async () => {
     renderChip(wordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
     const input = await focusGloss('bank');
 
-    stubGlossOffScreen();
     fireEvent.scroll(window);
 
     expect(screen.getByRole('listbox')).toBeInTheDocument();

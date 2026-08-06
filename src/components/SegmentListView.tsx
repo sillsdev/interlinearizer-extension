@@ -22,6 +22,11 @@ const MERGE_STRING_KEYS = [
   '%interlinearizer_boundaryControl_mergeAltHint%',
 ] as const satisfies `%${string}%`[];
 
+/** Localized labels for the sticky chapter band; hoisted so the array reference is stable. */
+const HEADER_STRING_KEYS = [
+  '%interlinearizer_segmentList_scrollToActiveVerse%',
+] as const satisfies `%${string}%`[];
+
 /** Props for {@link MergeRowButton}. */
 type MergeRowButtonProps = Readonly<{
   /** The segment below the gap this button sits in — the one a click joins to its predecessor. */
@@ -178,6 +183,7 @@ export default function SegmentListView({
   tokenDocOrder,
   wordTokenByRef,
 }: SegmentListViewProps) {
+  const [localizedStrings] = useLocalizedStrings(HEADER_STRING_KEYS);
   /**
    * Inline verse-superscript labels for every segment (chapter-qualified where a verse start opens
    * a new chapter), keyed by segment id. Computed over the whole `book.segments` list (not just the
@@ -350,7 +356,7 @@ export default function SegmentListView({
             {pinnedChapter !== undefined ? `${bookName} ${pinnedChapter}` : ''}
           </span>
           <Button
-            aria-label="Scroll to active verse"
+            aria-label={localizedStrings['%interlinearizer_segmentList_scrollToActiveVerse%']}
             onClick={recenterOnActive}
             tabIndex={-1}
             size="icon-sm"

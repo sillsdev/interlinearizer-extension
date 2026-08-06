@@ -9,11 +9,10 @@ import type { TextAnalysis, Token, TokenAnalysis, TokenAnalysisLink } from 'inte
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
+import { localizedStringsFromContributions } from '../test-helpers';
 
 beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockReturnValue([{ '%interlinearizer_glossInput_placeholder%': 'gloss' }, false]);
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
   // jsdom does not implement scrollIntoView; the dropdown calls it to keep the active row in view.
   Element.prototype.scrollIntoView = jest.fn();
 });

@@ -16,8 +16,13 @@ type SuggestionDropdownProps = Readonly<{
   entries: readonly GlossedSuggestionEntry[];
   /** The keyboard-highlighted row, or -1 when none is highlighted (Enter then picks the top row). */
   activeIndex: number;
-  /** The token's surface form, used only to build per-row accessible labels. */
-  surfaceText: string;
+  /**
+   * Accessible label for an "accept the suggested gloss" row, with the token's surface form already
+   * substituted and `{gloss}` left to fill in per row.
+   */
+  acceptLabelTemplate: string;
+  /** Same as {@link acceptLabelTemplate}, for a "promote this candidate gloss" row. */
+  promoteLabelTemplate: string;
   /** Called with a row index when the pointer enters it, so hover and keyboard share one highlight. */
   onActiveIndexChange: (index: number) => void;
   /** Called with a payload id when a row is chosen (approve the suggested / promote a candidate). */
@@ -41,7 +46,8 @@ export default function SuggestionDropdown({
   optionId,
   entries,
   activeIndex,
-  surfaceText,
+  acceptLabelTemplate,
+  promoteLabelTemplate,
   onActiveIndexChange,
   onSelect,
 }: SuggestionDropdownProps) {
@@ -89,11 +95,10 @@ export default function SuggestionDropdown({
       {entries.map((entry, index) => (
         <div
           key={entry.id}
-          aria-label={
-            entry.status === 'suggested'
-              ? `Accept suggestion ${entry.gloss} for ${surfaceText}`
-              : `Promote ${entry.gloss} for ${surfaceText}`
-          }
+          aria-label={(entry.status === 'suggested'
+            ? acceptLabelTemplate
+            : promoteLabelTemplate
+          ).replace('{gloss}', () => entry.gloss)}
           aria-selected={index === activeIndex}
           className={`tw:cursor-pointer tw:whitespace-nowrap tw:px-3 tw:py-0.5 tw:text-sm tw:italic ${STATUS_TEXT_COLOR_CLASS[entry.status]}${index === activeIndex ? ' tw:bg-accent' : ''}`}
           data-testid={entry.status === 'suggested' ? 'suggestion-accept' : 'suggestion-candidate'}

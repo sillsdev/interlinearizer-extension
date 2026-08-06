@@ -64,6 +64,26 @@ export type PhraseStripContextValue = Readonly<{
   /** Tooltip shown on disabled link buttons because they are outside the currently focused segment. */
   crossSegmentLinkTooltip: string;
   /**
+   * Accessible label for the link button between two tokens, fetched once per strip rather than per
+   * slot (a strip renders one link icon between every pair of adjacent tokens). Same rationale as
+   * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per
+   * slot.
+   */
+  linkTokensLabel: string;
+  /** Accessible label for the unlink button between two tokens already in one phrase. */
+  unlinkTokensLabel: string;
+  /** Accessible label for a phrase box's gloss input, fetched once per strip rather than per phrase. */
+  phraseGlossLabel: string;
+  /** Accessible label for the edit button on a phrase's floating controls pill. */
+  phraseEditLabel: string;
+  /** Accessible label for the unlink button on a phrase's floating controls pill. */
+  phraseUnlinkLabel: string;
+  /**
+   * Accessible label for the remove (✕) button on a token inside an edited phrase, with `{token}`
+   * still to be substituted for the token's surface text.
+   */
+  removeTokenFromPhraseTemplate: string;
+  /**
    * Label and concise tooltip for the merge boundary button, fetched once per strip rather than per
    * slot (every between-group slot renders its own boundary control). Same rationale as
    * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per

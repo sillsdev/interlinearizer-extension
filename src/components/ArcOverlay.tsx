@@ -1,9 +1,21 @@
 import type { PhraseAnalysisLink } from 'interlinearizer';
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { Link2Off } from 'lucide-react';
 import { Button } from 'platform-bible-react';
 import { memo, useState, useCallback } from 'react';
 import type { PhraseMode } from '../types/phrase-mode';
 import { computeSplitFreeRefs, getArcStrokeProps, type ArcPath } from '../utils/phrase-arc';
+
+/**
+ * Localized string keys this overlay needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render, escalating into an infinite update loop.
+ *
+ * Fetched here rather than read from `PhraseStripContext`, which carries the strip's other control
+ * labels: the overlay is a sibling of that provider, not a descendant. One overlay renders per
+ * strip, so this is one fetch either way.
+ */
+const STRING_KEYS = ['%interlinearizer_phraseBox_splitHere%'] as const satisfies `%${string}%`[];
 
 /**
  * Identifies one specific arc boundary by phrase id and the token immediately before the split,
@@ -121,6 +133,7 @@ export function ArcOverlay({
   onHoverPhrase,
   simplifyPhrases = false,
 }: ArcOverlayProps) {
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
   const [splitHoveredArc, setSplitHoveredArc] = useState<ArcSplitTarget | undefined>();
 
   /**
@@ -298,7 +311,7 @@ export function ArcOverlay({
             return (
               <Button
                 key={`split-arc-${phraseId}-${d}`}
-                aria-label="Split phrase here"
+                aria-label={localizedStrings['%interlinearizer_phraseBox_splitHere%']}
                 className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
                 style={{ left: midX, top: midY }}

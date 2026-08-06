@@ -10,7 +10,8 @@ export interface RawVerse {
   number: string;
   /**
    * Accumulated plain-text content of the verse. Note and footnote content is excluded. Becomes
-   * `Segment.baselineText`; token `charStart` / `charEnd` are expressed relative to this string.
+   * `Segment.baselineText`; token `charStart` / `charEnd` are UTF-16 code-unit indices into this
+   * string.
    */
   text: string;
 }

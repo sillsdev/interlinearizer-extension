@@ -337,8 +337,8 @@ declare module 'interlinearizer' {
      */
     verse: number;
     /**
-     * Zero-based character offset within the verse's baseline text. Absent when the reference is
-     * verse-level only (i.e. not anchored to a specific character position).
+     * Zero-based offset within the verse's baseline text, in UTF-16 code units. Absent when the
+     * reference is verse-level only (i.e. not anchored to a specific character position).
      */
     charIndex?: number;
   }
@@ -515,9 +515,9 @@ declare module 'interlinearizer' {
     endRef: ScriptureRef;
 
     /**
-     * Token character offsets (`Token.charStart` / `Token.charEnd`) are expressed relative to this
-     * string, so it must be present for the text layer to be interpretable, particularly for
-     * scriptio continua scripts where token boundaries are not derivable from whitespace.
+     * Token character offsets (`Token.charStart` / `Token.charEnd`) are UTF-16 code-unit indices
+     * into this string, so it must be present for the text layer to be interpretable, particularly
+     * for scriptio continua scripts where token boundaries are not derivable from whitespace.
      */
     baselineText: string;
 
@@ -544,8 +544,8 @@ declare module 'interlinearizer' {
    */
   export interface VerseStart {
     /**
-     * Zero-based character offset of this verse's first character within the owning
-     * `Segment.baselineText`.
+     * Zero-based offset of this verse's first character within the owning `Segment.baselineText`,
+     * in UTF-16 code units.
      */
     charStart: number;
 
@@ -577,13 +577,11 @@ declare module 'interlinearizer' {
    * A single word or punctuation unit at a specific position in the baseline text. Tokens carry no
    * linguistic analysis — that lives in the parallel `TokenAnalysis` within the analysis layer.
    *
-   * `charStart` and `charEnd` express the token's position as zero-based character offsets within
-   * the owning `Segment.baselineText` (`charEnd` is exclusive — one past the last code unit). These
-   * fields are essential for scriptio continua scripts (Chinese, Thai, Tibetan, Lao, Burmese, …)
-   * where word boundaries are not marked by whitespace and the tokenization decision is itself a
-   * linguistic artifact that must be preserved. For whitespace-delimited scripts the fields are
-   * still required: they allow faithful reconstruction and precise drift detection when the
-   * baseline changes without relying on surface-text scanning.
+   * `charStart` and `charEnd` are essential for scriptio continua scripts (Chinese, Thai, Tibetan,
+   * Lao, Burmese, …) where word boundaries are not marked by whitespace and the tokenization
+   * decision is itself a linguistic artifact that must be preserved. For whitespace-delimited
+   * scripts the fields are still required: they allow faithful reconstruction and precise drift
+   * detection when the baseline changes without relying on surface-text scanning.
    *
    * Invariant: `Segment.baselineText.slice(charStart, charEnd) === surfaceText`.
    *
@@ -627,15 +625,17 @@ declare module 'interlinearizer' {
     type: TokenType;
 
     /**
-     * Zero-based character start offset of this token within the owning `Segment.baselineText`.
-     * Together with `charEnd`, uniquely locates the token in the baseline regardless of script
-     * type.
+     * Zero-based start offset of this token within the owning `Segment.baselineText`, in UTF-16
+     * code units — a plain JavaScript string index, neither a code-point nor a grapheme-cluster
+     * count, so an astral-plane character spans two units and a combining mark is indexed apart
+     * from its base character. Together with `charEnd`, uniquely locates the token in the baseline
+     * regardless of script type.
      */
     charStart: number;
 
     /**
-     * Exclusive character end offset of this token within the owning `Segment.baselineText` — one
-     * past the last code unit. `baselineText.slice(charStart, charEnd)` must equal `surfaceText`.
+     * Exclusive end offset of this token within the owning `Segment.baselineText`, in UTF-16 code
+     * units — one past the token's last code unit.
      */
     charEnd: number;
   }

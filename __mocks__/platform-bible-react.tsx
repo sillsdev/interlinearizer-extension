@@ -774,6 +774,9 @@ export function PopoverAnchor({
  *   the focused element is blurred. Which element Radix restores focus to — its trigger, or the
  *   element focused before the panel opened — is not modeled; only that an unprevented event lets
  *   the panel take focus away.
+ * - Both sentinels are siblings of the panel rather than children — scaffolding with no counterpart
+ *   in the real component has no business among the children of a panel whose role a caller has
+ *   overridden.
  * - The layout props are accepted and ignored: they steer positioning the real component computes
  *   from measurements jsdom does not produce.
  */
@@ -821,31 +824,30 @@ export function PopoverContent({
     openAutoFocusRef.current?.(event);
     if (event.defaultPrevented) return;
     const candidates = contentRef.current?.querySelectorAll<HTMLElement>('input, button') ?? [];
-    // The sentinels below are test scaffolding, not panel content, so they are never focus targets.
-    const first = Array.from(candidates).find(
-      (el) => !el.hasAttribute('disabled') && !el.dataset.testid?.startsWith('popover-'),
-    );
+    const first = Array.from(candidates).find((el) => !el.hasAttribute('disabled'));
     first?.focus();
     if (first instanceof HTMLInputElement) first.select();
   }, [portalMounted]);
   if (!portalMounted) return <div data-testid={testId} />;
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div
-      ref={contentRef}
-      aria-label={ariaLabel}
-      className={className}
-      data-testid={testId}
-      id={id}
-      role={role}
-      style={style}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);
-      }}
-      onMouseDown={onMouseDown}
-    >
-      {children}
+    <>
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div
+        ref={contentRef}
+        aria-label={ariaLabel}
+        className={className}
+        data-testid={testId}
+        id={id}
+        role={role}
+        style={style}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);
+        }}
+        onMouseDown={onMouseDown}
+      >
+        {children}
+      </div>
       {onPointerDownOutside && (
         <button
           data-testid="popover-outside"
@@ -875,7 +877,7 @@ export function PopoverContent({
           close
         </button>
       )}
-    </div>
+    </>
   );
 }
 

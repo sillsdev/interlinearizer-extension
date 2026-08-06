@@ -34,6 +34,11 @@ import SuggestionDropdown from './SuggestionDropdown';
 
 const STRING_KEYS = [
   '%interlinearizer_tokenChip_defineMorphemes%',
+  '%interlinearizer_tokenChip_glossLabel%',
+  '%interlinearizer_tokenChip_showSuggestions%',
+  '%interlinearizer_tokenChip_removeFromPhrase%',
+  '%interlinearizer_suggestion_accept%',
+  '%interlinearizer_suggestion_promote%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -364,7 +369,10 @@ export function TokenChip({
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
         <Button
-          aria-label={`Remove ${token.surfaceText} from phrase`}
+          aria-label={localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'].replace(
+            '{token}',
+            () => token.surfaceText,
+          )}
           className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
           tabIndex={-1}
           type="button"
@@ -472,7 +480,10 @@ export function TokenChip({
                 aria-autocomplete={hasSuggestions ? 'none' : undefined}
                 aria-controls={dropdownShown ? listboxId : undefined}
                 aria-expanded={hasSuggestions ? dropdownShown : undefined}
-                aria-label={`Gloss for ${token.surfaceText}`}
+                aria-label={localizedStrings['%interlinearizer_tokenChip_glossLabel%'].replace(
+                  '{token}',
+                  () => token.surfaceText,
+                )}
                 // When the empty input shows a suggested gloss as its placeholder, color that ghost
                 // text via the same `gloss-suggested` utility the dropdown's accept row uses (one
                 // source of truth for the suggested blue) and italicize it at full opacity, so it
@@ -520,7 +531,9 @@ export function TokenChip({
                   aria-controls={dropdownShown ? listboxId : undefined}
                   aria-expanded={dropdownShown}
                   aria-hidden={!addVisible}
-                  aria-label={`Show suggestions for ${token.surfaceText}`}
+                  aria-label={localizedStrings[
+                    '%interlinearizer_tokenChip_showSuggestions%'
+                  ].replace('{token}', () => token.surfaceText)}
                   // Absolutely positioned inside the input's reserved end-padding so it never
                   // affects layout; we toggle only opacity, fading the button in on focus/hover.
                   // When hidden it is also made non-interactive so an invisible button can't swallow
@@ -545,7 +558,13 @@ export function TokenChip({
               entries={glossedRanked}
               listboxId={listboxId}
               optionId={optionId}
-              surfaceText={token.surfaceText}
+              acceptLabelTemplate={localizedStrings['%interlinearizer_suggestion_accept%'].replace(
+                '{token}',
+                () => token.surfaceText,
+              )}
+              promoteLabelTemplate={localizedStrings[
+                '%interlinearizer_suggestion_promote%'
+              ].replace('{token}', () => token.surfaceText)}
               onActiveIndexChange={setActiveIndex}
               onSelect={selectSuggestion}
             />

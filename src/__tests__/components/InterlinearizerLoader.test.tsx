@@ -19,6 +19,7 @@ import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
   GEN_1_1_BOOK,
   makeScrollGroupHook,
+  localizedStringsFromContributions,
   makeWebViewState,
   type ScrollGroupTuple,
 } from '../test-helpers';
@@ -441,7 +442,7 @@ describe('InterlinearizerLoader', () => {
       .mockReturnValue(
         new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
       );
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
     mockSettings();
   });
 

@@ -16,6 +16,7 @@ import {
 } from '../../components/SegmentationStore';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
+import { localizedStringsFromContributions } from '../test-helpers';
 import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
@@ -477,12 +478,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      Object.fromEntries(keys.map((k) => [k, k])),
-      false,
-    ]);
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
   phraseLinkMap.clear();

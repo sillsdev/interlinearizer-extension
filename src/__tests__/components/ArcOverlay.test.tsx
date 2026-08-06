@@ -1,11 +1,16 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ArcOverlay } from '../../components/ArcOverlay';
 import type { ArcPath } from '../../utils/phrase-arc';
-import { makePhraseLink } from '../test-helpers';
+import { localizedStringsFromContributions, makePhraseLink } from '../test-helpers';
+
+beforeEach(() => {
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
+});
 
 /** Builds a minimal `ArcPath` fixture. */
 function makeArcPath(phraseId: string, splitAfterTokenRef = 'tok-a'): ArcPath {

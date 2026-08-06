@@ -1,7 +1,19 @@
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { Button } from 'platform-bible-react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { PhraseMode } from '../../types/phrase-mode';
 import { usePhraseDispatch } from '../AnalysisStore';
+
+/**
+ * Localized string keys this prompt needs. Hoisted to module scope so the reference passed to
+ * `useLocalizedStrings` is stable across renders; a fresh array literal each render makes the PAPI
+ * hook re-fetch and re-set state every render.
+ */
+const STRING_KEYS = [
+  '%interlinearizer_unlinkPhraseConfirm_prompt%',
+  '%interlinearizer_unlinkPhraseConfirm_confirm%',
+  '%interlinearizer_unlinkPhraseConfirm_cancel%',
+] as const satisfies `%${string}%`[];
 
 /** Props for {@link UnlinkPhraseConfirm}. */
 type UnlinkPhraseConfirmProps = Readonly<{
@@ -21,6 +33,7 @@ type UnlinkPhraseConfirmProps = Readonly<{
  */
 export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkPhraseConfirmProps) {
   const { deletePhrase } = usePhraseDispatch();
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const handleConfirm = () => {
     deletePhrase(phraseId);
@@ -33,7 +46,7 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
 
   return (
     <div className="tw:confirm-controls" data-testid="unlink-confirm">
-      <span>Unlink this phrase?</span>
+      <span>{localizedStrings['%interlinearizer_unlinkPhraseConfirm_prompt%']}</span>
       <Button
         data-testid="unlink-confirm-yes"
         onClick={handleConfirm}
@@ -41,7 +54,7 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
         type="button"
         variant="destructive"
       >
-        Unlink
+        {localizedStrings['%interlinearizer_unlinkPhraseConfirm_confirm%']}
       </Button>
       <Button
         data-testid="unlink-confirm-cancel"
@@ -50,7 +63,7 @@ export default function UnlinkPhraseConfirm({ phraseId, setPhraseMode }: UnlinkP
         type="button"
         variant="secondary"
       >
-        Cancel
+        {localizedStrings['%interlinearizer_unlinkPhraseConfirm_cancel%']}
       </Button>
     </div>
   );

@@ -152,7 +152,7 @@ Mock files:
 - **`__mocks__/platform-bible-utils.ts`** — Stubs util functions.
 - **`__mocks__/styleInlineMock.ts`** and **`__mocks__/styleMock.ts`** — Stub `.scss?inline` and `.scss`.
 - **`__mocks__/web-view-inline.ts`** — Stubs `*.web-view?inline` imports as a null-returning React component.
-- **`src/__tests__/test-helpers.ts`** — Exports `createTestActivationContext()` for testing `activate()` without type assertions.
+- **`src/__tests__/test-helpers.ts`** and **`src/__tests__/components/test-helpers.tsx`** — Shared fixture builders and component-test scaffolding. Read these before hand-rolling a token, segment, book, or project literal.
 
 ### No type assertions
 

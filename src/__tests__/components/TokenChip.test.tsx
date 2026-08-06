@@ -8,6 +8,7 @@ import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
+import { makePunctToken, makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -80,14 +81,7 @@ jest.mock('../../components/MorphemeBox', () => ({
   },
 }));
 
-const WORD_TOKEN = {
-  ref: 'GEN 1:1:0',
-  surfaceText: 'hello',
-  writingSystem: 'en',
-  type: 'word',
-  charStart: 0,
-  charEnd: 5,
-} satisfies Token;
+const WORD_TOKEN = makeWordToken('GEN 1:1:0', 'hello');
 
 /**
  * Minimal required props for {@link TokenChip}. Spread into render calls so tests only need to
@@ -100,14 +94,7 @@ function requiredProps(): { token: Token & { type: 'word' }; onFocus: () => void
   };
 }
 
-const PUNCT_TOKEN = {
-  ref: 'GEN 1:1:p',
-  surfaceText: '.',
-  writingSystem: 'en',
-  type: 'punctuation',
-  charStart: 5,
-  charEnd: 6,
-} satisfies Token;
+const PUNCT_TOKEN = makePunctToken('GEN 1:1:p', '.', 5);
 
 describe('InertTokenChip', () => {
   it('renders the surface text', () => {

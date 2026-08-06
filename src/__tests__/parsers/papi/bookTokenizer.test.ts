@@ -2,23 +2,7 @@
 
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
-
-/**
- * Builds a minimal RawBook fixture for GEN with the given verses. Each verse's rendered `number`
- * defaults to the verse portion of its sid when not given, so existing call sites stay terse.
- */
-function makeRawBook(verses: { sid: string; text: string; number?: string }[]): RawBook {
-  return {
-    bookCode: 'GEN',
-    writingSystem: 'en',
-    contentHash: 'abc123',
-    verses: verses.map(({ sid, text, number }) => ({
-      sid,
-      text,
-      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
-    })),
-  };
-}
+import { makeRawBook } from '../../test-helpers';
 
 describe('tokenizeBook', () => {
   it('maps bookCode and contentHash onto the Book', () => {

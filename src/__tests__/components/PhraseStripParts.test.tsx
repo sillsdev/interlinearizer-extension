@@ -19,7 +19,12 @@ import {
 import { emptyFocusContext } from '../../types/empty-factories';
 import type { PhraseMode } from '../../types/phrase-mode';
 import type { TokenGroup, LinkSlot, FocusContext } from '../../types/token-layout';
-import { makePhraseLink, makePhraseStripContext, makeWordToken } from '../test-helpers';
+import {
+  makePhraseLink,
+  makePhraseStripContext,
+  makePunctToken,
+  makeWordToken,
+} from '../test-helpers';
 
 // ---------------------------------------------------------------------------
 // Mocks — keep tests in-lane by stubbing out deep dependencies
@@ -76,11 +81,6 @@ jest.mock('../../components/PhraseBox', () => ({
   ),
 }));
 
-/** Creates a punctuation token fixture. */
-function mkPunct(ref: string, surfaceText = '.'): Token {
-  return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
-}
-
 /** A minimal no-focus context. */
 const NO_FOCUS: FocusContext = emptyFocusContext();
 
@@ -116,7 +116,7 @@ describe('PhraseSlot', () => {
     const slot: LinkSlot = {
       prevGroup: undefined,
       nextGroup: undefined,
-      punctuation: [mkPunct('p1')],
+      punctuation: [makePunctToken('p1')],
     };
     const { container } = render(withProvider(<PhraseSlot {...slotProps(slot)} />));
     expect(container.firstChild).not.toBeNull();
@@ -460,7 +460,7 @@ describe('PhraseSlot boundary controls', () => {
       const slotWithPunct: LinkSlot = {
         prevGroup: groupA,
         nextGroup: groupB,
-        punctuation: [mkPunct('p1'), mkPunct('p2')],
+        punctuation: [makePunctToken('p1'), makePunctToken('p2')],
       };
       renderBoundary({ slot: slotWithPunct, prevSegmentId: 'seg-1', nextSegmentId: 'seg-2' });
       expect(screen.getByTestId('boundary-merge-btn')).toBeInTheDocument();
@@ -587,14 +587,7 @@ describe('PhraseSlot boundary controls', () => {
 
     it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
       // `word1 "word2` — the quote touches word2, so the boundary lands before the quote.
-      const quote: Token = {
-        ref: 'q',
-        surfaceText: '"',
-        writingSystem: 'en',
-        type: 'punctuation',
-        charStart: 6,
-        charEnd: 7,
-      };
+      const quote: Token = makePunctToken('q', '"', 6);
       const word1: Token & { type: 'word' } = { ...makeWordToken('w1'), charStart: 0, charEnd: 5 };
       const word2: Token & { type: 'word' } = { ...makeWordToken('w2'), charStart: 7, charEnd: 12 };
       const quoteSlot: LinkSlot = {
@@ -778,7 +771,7 @@ describe('PhraseStrip', () => {
     const slot: LinkSlot = {
       prevGroup: undefined,
       nextGroup: undefined,
-      punctuation: [mkPunct('p1')],
+      punctuation: [makePunctToken('p1')],
     };
     const items: StripItem[] = [
       {

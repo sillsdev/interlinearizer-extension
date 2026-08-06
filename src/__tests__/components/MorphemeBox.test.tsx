@@ -4,9 +4,10 @@
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type { MorphemeAnalysis, Token } from 'interlinearizer';
+import type { MorphemeAnalysis } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { MorphemeBox, MorphemeGlossInput } from '../../components/MorphemeBox';
+import { makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
@@ -19,14 +20,7 @@ beforeEach(() => {
   jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
 });
 
-const WORD_TOKEN = {
-  ref: 'GEN 1:1:0',
-  surfaceText: 'hello',
-  writingSystem: 'en',
-  type: 'word',
-  charStart: 0,
-  charEnd: 5,
-} satisfies Token;
+const WORD_TOKEN = makeWordToken('GEN 1:1:0', 'hello');
 
 const MORPHEMES: MorphemeAnalysis[] = [
   { id: 'm-1', form: 'hel', writingSystem: 'en' },

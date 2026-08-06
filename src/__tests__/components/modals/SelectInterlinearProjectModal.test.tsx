@@ -7,7 +7,7 @@ import papi, { logger } from '@papi/frontend';
 import { useLocalizedStrings } from '@papi/frontend/react';
 import { useState } from 'react';
 import { SelectInterlinearProjectModal } from '../../../components/modals/SelectInterlinearProjectModal';
-import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
+import { makeProjectSummary } from '../../test-helpers';
 
 const mockSendCommand = jest.mocked(papi.commands.sendCommand);
 
@@ -22,22 +22,15 @@ const LOCALIZED: Record<string, string> = {
   '%interlinearizer_modal_select_modified_prefix%': 'Modified',
 };
 
-const STUB_PROJECT: InterlinearProjectSummary = {
-  id: 'proj-uuid',
-  createdAt: '2026-01-15T10:30:00.000Z',
-  updatedAt: '2026-01-15T10:30:00.000Z',
-  sourceProjectId: 'src-proj',
-  analysisLanguages: ['en'],
-};
+const STUB_PROJECT = makeProjectSummary();
 
-const STUB_PROJECT_2: InterlinearProjectSummary = {
+const STUB_PROJECT_2 = makeProjectSummary({
   id: 'proj-uuid-2',
   createdAt: '2026-02-01T08:00:00.000Z',
   updatedAt: '2026-02-01T08:00:00.000Z',
-  sourceProjectId: 'src-proj',
   analysisLanguages: ['fr'],
   name: 'French glosses',
-};
+});
 
 const defaultProps = {
   sourceProjectId: 'src-proj',

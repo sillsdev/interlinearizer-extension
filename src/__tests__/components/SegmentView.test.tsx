@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
@@ -16,8 +15,12 @@ import {
 } from '../../components/SegmentationStore';
 import { SegmentView } from '../../components/SegmentView';
 import type { ViewOptions } from '../../types/view-options';
-import { makePhraseLink } from '../test-helpers';
-import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
+import { makePhraseLink, makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import {
+  allFalseViewOptions,
+  mockKeyAsValueLocalizedStrings,
+  withAnalysisStore,
+} from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -168,50 +171,13 @@ jest.mock('../../components/PhraseBox', () => ({
 }));
 
 /** A word token segment. */
-const WORD_SEGMENT: Segment = {
-  id: 'GEN 1:1',
-  startRef: { book: 'GEN', chapter: 1, verse: 1 },
-  endRef: { book: 'GEN', chapter: 1, verse: 1 },
-  baselineText: 'In the beginning.',
-  tokens: [
-    {
-      ref: 'tok-0',
-      surfaceText: 'In',
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 0,
-      charEnd: 2,
-    },
-    {
-      ref: 'tok-1',
-      surfaceText: 'the',
-      writingSystem: 'en',
-      type: 'word',
-      charStart: 3,
-      charEnd: 6,
-    },
-  ],
-  verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-};
+const WORD_SEGMENT: Segment = makeSegment('GEN 1:1', 'In the beginning.', [
+  makeWordToken('tok-0', 'In'),
+  makeWordToken('tok-1', 'the', 3),
+]);
 
 /** A segment with a single punctuation (non-word) token. */
-const PUNCT_SEGMENT: Segment = {
-  id: 'GEN 1:2',
-  startRef: { book: 'GEN', chapter: 1, verse: 2 },
-  endRef: { book: 'GEN', chapter: 1, verse: 2 },
-  baselineText: '.',
-  tokens: [
-    {
-      ref: 'tok-p',
-      surfaceText: '.',
-      writingSystem: 'en',
-      type: 'punctuation',
-      charStart: 0,
-      charEnd: 1,
-    },
-  ],
-  verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-};
+const PUNCT_SEGMENT: Segment = makeSegment('GEN 1:2', '.', [makePunctToken('tok-p')]);
 
 /**
  * Minimal required props for SegmentView. Spread into render calls so tests only need to override
@@ -253,12 +219,7 @@ function requiredProps(): {
 
 describe('SegmentView', () => {
   beforeEach(() => {
-    jest
-      .mocked(useLocalizedStrings)
-      .mockImplementation((keys: readonly string[]) => [
-        Object.fromEntries(keys.map((k) => [k, k])),
-        false,
-      ]);
+    mockKeyAsValueLocalizedStrings();
     mockUsePhraseLinkMap.mockReturnValue(new Map());
     mockUsePhraseDispatch.mockReturnValue({
       createPhrase: jest.fn(),
@@ -297,24 +258,7 @@ describe('SegmentView', () => {
       startRef: { book: 'GEN', chapter: 1, verse: 1 },
       endRef: { book: 'GEN', chapter: 1, verse: 2 },
       baselineText: 'Alpha Gamma',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'Alpha',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-        {
-          ref: 'GEN 1:2:0',
-          surfaceText: 'Gamma',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 6,
-          charEnd: 11,
-        },
-      ],
+      tokens: [makeWordToken('GEN 1:1:0', 'Alpha'), makeWordToken('GEN 1:2:0', 'Gamma', 6)],
       verseStarts: [
         { charStart: 0, number: '1', chapter: 1 },
         { charStart: 6, number: '2', chapter: 1 },
@@ -334,16 +278,7 @@ describe('SegmentView', () => {
       startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 6 },
       endRef: { book: 'GEN', chapter: 1, verse: 1 },
       baselineText: 'beta',
-      tokens: [
-        {
-          ref: 'GEN 1:1:6',
-          surfaceText: 'beta',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 4,
-        },
-      ],
+      tokens: [makeWordToken('GEN 1:1:6', 'beta')],
       verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
     };
     render(<SegmentView {...requiredProps()} segment={continuationSegment} />, withAnalysisStore);
@@ -667,30 +602,9 @@ describe('SegmentView', () => {
         endRef: { book: 'GEN', chapter: 1, verse: 2 },
         baselineText: 'In "the',
         tokens: [
-          {
-            ref: 'w0',
-            surfaceText: 'In',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 2,
-          },
-          {
-            ref: 'q',
-            surfaceText: '"',
-            writingSystem: 'en',
-            type: 'punctuation',
-            charStart: 3,
-            charEnd: 4,
-          },
-          {
-            ref: 'w1',
-            surfaceText: 'the',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 4,
-            charEnd: 7,
-          },
+          makeWordToken('w0', 'In'),
+          makePunctToken('q', '"', 3),
+          makeWordToken('w1', 'the', 4),
         ],
         verseStarts: [
           { charStart: 0, number: '1', chapter: 1 },
@@ -711,39 +625,11 @@ describe('SegmentView', () => {
 
     it('splits at the punctuation-travel anchor when a leading quote sits in the gap', () => {
       // `In "the` — the quote touches "the", so the boundary lands before the quote token.
-      const quoteSegment: Segment = {
-        id: 'GEN 2:1',
-        startRef: { book: 'GEN', chapter: 2, verse: 1 },
-        endRef: { book: 'GEN', chapter: 2, verse: 1 },
-        baselineText: 'In "the',
-        tokens: [
-          {
-            ref: 'w0',
-            surfaceText: 'In',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 2,
-          },
-          {
-            ref: 'q',
-            surfaceText: '"',
-            writingSystem: 'en',
-            type: 'punctuation',
-            charStart: 3,
-            charEnd: 4,
-          },
-          {
-            ref: 'w1',
-            surfaceText: 'the',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 4,
-            charEnd: 7,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 2 }],
-      };
+      const quoteSegment: Segment = makeSegment('GEN 2:1', 'In "the', [
+        makeWordToken('w0', 'In'),
+        makePunctToken('q', '"', 3),
+        makeWordToken('w1', 'the', 4),
+      ]);
       const { dispatch } = renderBaseline({ segment: quoteSegment });
       fireEvent.click(screen.getByTestId('baseline-split-gap'), { altKey: true });
       expect(dispatch.split).toHaveBeenCalledWith('q');
@@ -792,39 +678,11 @@ describe('SegmentView', () => {
 
   it('passes showGlossInput=true to the first fragment and false to the second of a discontiguous phrase', () => {
     /** Segment with two tokens that share a phrase but are separated by a free token. */
-    const discontiguousSegment: Segment = {
-      id: 'GEN 1:3',
-      startRef: { book: 'GEN', chapter: 1, verse: 3 },
-      endRef: { book: 'GEN', chapter: 1, verse: 3 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'tok-a',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-        {
-          ref: 'tok-b',
-          surfaceText: 'the',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 3,
-          charEnd: 6,
-        },
-        {
-          ref: 'tok-c',
-          surfaceText: 'beginning',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 7,
-          charEnd: 16,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: '3', chapter: 1 }],
-    };
+    const discontiguousSegment: Segment = makeSegment('GEN 1:3', 'In the beginning.', [
+      makeWordToken('tok-a', 'In'),
+      makeWordToken('tok-b', 'the', 3),
+      makeWordToken('tok-c', 'beginning', 7),
+    ]);
     const discontiguousLink: PhraseAnalysisLink = {
       analysisId: 'phrase-dc',
       status: 'approved',

@@ -1,27 +1,10 @@
 /// <reference types="jest" />
 
 import type { Book } from 'interlinearizer';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
+import { makeVerseBook } from '../../test-helpers';
 
-/**
- * Builds a verse-tokenized GEN book from the given verses. Each verse's rendered `number` defaults
- * to the verse portion of its sid when not given.
- */
-function makeBook(verses: { sid: string; text: string; number?: string }[]): Book {
-  return tokenizeBook({
-    bookCode: 'GEN',
-    writingSystem: 'en',
-    contentHash: 'h',
-    verses: verses.map(({ sid, text, number }) => ({
-      sid,
-      text,
-      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
-    })),
-  });
-}
-
-const BOOK = makeBook([
+const BOOK = makeVerseBook([
   { sid: 'GEN 1:1', text: 'Alpha beta.' },
   { sid: 'GEN 1:2', text: 'Gamma delta.' },
   { sid: 'GEN 1:3', text: 'Epsilon.' },

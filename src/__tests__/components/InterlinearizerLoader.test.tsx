@@ -20,6 +20,7 @@ import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
   GEN_1_1_BOOK,
+  localizedStringsFromContributions,
   makePunctToken,
   makeScrollGroupHook,
   makeSegment,
@@ -504,7 +505,7 @@ describe('InterlinearizerLoader', () => {
       .mockReturnValue(
         new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
       );
-    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
     mockSettings();
   });
 

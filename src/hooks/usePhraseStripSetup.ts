@@ -102,6 +102,18 @@ export type PhraseStripContextParams = Readonly<{
   activeSegmentId: string | undefined;
   /** Tooltip shown on disabled link buttons because they are outside the focused segment. */
   crossSegmentLinkTooltip: string;
+  /** Accessible label for the link button between two tokens, fetched once per strip. */
+  linkTokensLabel: string;
+  /** Accessible label for the unlink button between two tokens already in one phrase. */
+  unlinkTokensLabel: string;
+  /** Accessible label for a phrase box's gloss input, fetched once per strip. */
+  phraseGlossLabel: string;
+  /** Accessible label for the edit button on a phrase's floating controls pill. */
+  phraseEditLabel: string;
+  /** Accessible label for the unlink button on a phrase's floating controls pill. */
+  phraseUnlinkLabel: string;
+  /** Accessible label for a token's remove (✕) button, with `{token}` still to be substituted. */
+  removeTokenFromPhraseTemplate: string;
   /** Label and concise tooltip for the merge boundary button, fetched once per strip. */
   boundaryMergeLabel: string;
   /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */
@@ -139,6 +151,12 @@ export function usePhraseStripContextValue(
     simplifyPhrases,
     activeSegmentId,
     crossSegmentLinkTooltip,
+    linkTokensLabel,
+    unlinkTokensLabel,
+    phraseGlossLabel,
+    phraseEditLabel,
+    phraseUnlinkLabel,
+    removeTokenFromPhraseTemplate,
     boundaryMergeLabel,
     boundaryMergeAltHint,
     boundarySplitLabel,
@@ -162,6 +180,12 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      linkTokensLabel,
+      unlinkTokensLabel,
+      phraseGlossLabel,
+      phraseEditLabel,
+      phraseUnlinkLabel,
+      removeTokenFromPhraseTemplate,
       boundaryMergeLabel,
       boundaryMergeAltHint,
       boundarySplitLabel,
@@ -183,6 +207,12 @@ export function usePhraseStripContextValue(
       simplifyPhrases,
       activeSegmentId,
       crossSegmentLinkTooltip,
+      linkTokensLabel,
+      unlinkTokensLabel,
+      phraseGlossLabel,
+      phraseEditLabel,
+      phraseUnlinkLabel,
+      removeTokenFromPhraseTemplate,
       boundaryMergeLabel,
       boundaryMergeAltHint,
       boundarySplitLabel,

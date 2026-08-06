@@ -4,7 +4,7 @@ import type {
   WebViewProps,
 } from '@papi/core';
 import papi, { logger } from '@papi/frontend';
-import { useData, useSetting } from '@papi/frontend/react';
+import { useData, useLocalizedStrings, useSetting } from '@papi/frontend/react';
 import { TabToolbar } from 'platform-bible-react';
 import type { SelectMenuItemHandler } from 'platform-bible-react';
 import { isPlatformError } from 'platform-bible-utils';
@@ -54,6 +54,17 @@ const BASE_TAB_TITLE = 'Interlinearizer';
 
 /** Glyph appended to the tab title while the draft has unsaved changes. */
 const UNSAVED_TAB_MARKER = ' ●';
+
+/**
+ * Localized string keys the load/error placeholder needs. Hoisted to module scope so the reference
+ * passed to `useLocalizedStrings` is stable across renders; a fresh array literal each render makes
+ * the PAPI hook re-fetch and re-set state every render.
+ */
+const STRING_KEYS = [
+  '%interlinearizer_error_load_book_heading%',
+  '%interlinearizer_error_process_book_heading%',
+  '%interlinearizer_loading%',
+] as const satisfies `%${string}%`[];
 
 /**
  * Root component for the Interlinearizer WebView. Mounts the {@link InterlinearNavProvider} so the
@@ -106,6 +117,7 @@ function InterlinearizerLoaderInner({
 }>) {
   const { scrRef, navigate, scrollGroupId, setScrollGroupId, fadePhase, cancelFade } =
     useInterlinearNav();
+  const [localizedStrings] = useLocalizedStrings(STRING_KEYS);
 
   const [interfaceMode] = useSetting('platform.interfaceMode', 'simple');
   const [interfaceLanguages] = useSetting('platform.interfaceLanguage', ['und']);
@@ -515,19 +527,27 @@ function InterlinearizerLoaderInner({
     <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
       {bookError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">Error loading book</h2>
+          <h2 className="tw:error-heading">
+            {localizedStrings['%interlinearizer_error_load_book_heading%']}
+          </h2>
           <pre className="tw:error-pre">{bookError}</pre>
         </div>
       )}
 
       {tokenizeError && (
         <div className="tw:flex tw:flex-col tw:gap-2">
-          <h2 className="tw:error-heading">Error processing book</h2>
+          <h2 className="tw:error-heading">
+            {localizedStrings['%interlinearizer_error_process_book_heading%']}
+          </h2>
           <pre className="tw:error-pre">{tokenizeError.message}</pre>
         </div>
       )}
 
-      {!hasError && showLoading && <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>}
+      {!hasError && showLoading && (
+        <p className="tw:text-sm tw:text-muted-foreground">
+          {localizedStrings['%interlinearizer_loading%']}
+        </p>
+      )}
     </div>
   );
 

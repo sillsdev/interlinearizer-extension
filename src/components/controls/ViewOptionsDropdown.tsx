@@ -18,6 +18,7 @@ const STRING_KEYS = [
   '%interlinearizer_viewOption_showFreeTranslation%',
   '%interlinearizer_viewOption_showVerseGutter%',
   '%interlinearizer_viewOption_showSuggestions%',
+  '%interlinearizer_viewOptions_label%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -120,7 +121,7 @@ export default function ViewOptionsDropdown({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            aria-label="View options"
+            aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
             className="tw:h-7 tw:w-7 tw:p-0"
             data-testid="view-options-button"
             size="icon"
@@ -134,7 +135,7 @@ export default function ViewOptionsDropdown({
         {open && (
           <PopoverContent
             align="end"
-            aria-label="View options"
+            aria-label={localizedStrings['%interlinearizer_viewOptions_label%']}
             className="tw:w-auto tw:min-w-56 tw:gap-3"
             data-testid="view-options-panel"
           >

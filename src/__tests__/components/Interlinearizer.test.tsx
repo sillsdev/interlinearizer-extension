@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Book, PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
@@ -23,12 +24,13 @@ import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import {
   defaultScrRef,
   GEN_1_1_BOOK,
+  localizedStringsFromContributions,
   makePhraseLink,
   makeSegment,
   makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
-import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
+import { allFalseViewOptions } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -409,7 +411,7 @@ beforeEach(() => {
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
   // The merge control's label comes from a localized string.
-  mockKeyAsValueLocalizedStrings();
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
 });
 
 describe('Interlinearizer', () => {
@@ -1589,8 +1591,11 @@ describe('between-rows merge control', () => {
     // gesture that reveals them.
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_mergeAltHint%');
+    expect(button).toHaveAttribute('aria-label', 'Join these two segments');
+    expect(button).toHaveAttribute(
+      'title',
+      'Join these two segments. Hold Alt (Option on Mac) and click between words to split.',
+    );
   });
 
   it('labels the merge button with the plain merge string while Alt is held', () => {
@@ -1598,8 +1603,8 @@ describe('between-rows merge control', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
     setAltHeld(true);
     const button = screen.getByTestId('segment-merge-btn');
-    expect(button).toHaveAttribute('aria-label', '%interlinearizer_boundaryControl_merge%');
-    expect(button).toHaveAttribute('title', '%interlinearizer_boundaryControl_merge%');
+    expect(button).toHaveAttribute('aria-label', 'Join these two segments');
+    expect(button).toHaveAttribute('title', 'Join these two segments');
   });
 
   it('renders no merge control while a phrase mode is active', () => {

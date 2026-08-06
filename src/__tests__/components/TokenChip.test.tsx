@@ -8,17 +8,12 @@ import type { AssignmentStatus, Token, TokenSnapshot } from 'interlinearizer';
 import * as AnalysisStore from '../../components/AnalysisStore';
 import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { InertTokenChip, TokenChip } from '../../components/TokenChip';
-import { makePunctToken, makeWordToken } from '../test-helpers';
+import { localizedStringsFromContributions, makePunctToken, makeWordToken } from '../test-helpers';
 
 jest.mock('../../components/AnalysisStore');
 
-const LOCALIZED = {
-  '%interlinearizer_tokenChip_editMorphemes%': 'Edit morpheme breakdown for {token}',
-  '%interlinearizer_tokenChip_defineMorphemes%': 'Define morpheme breakdown for {token}',
-};
-
 beforeEach(() => {
-  jest.mocked(useLocalizedStrings).mockReturnValue([LOCALIZED, false]);
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
 });
 jest.mock('../../components/MorphemeEditor', () => ({
   /** Stub popover exposing buttons that drive onSave, onClose, and onReset. */

@@ -1,6 +1,7 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
@@ -15,12 +16,13 @@ import {
 } from '../../components/SegmentationStore';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
-import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
 import {
-  allFalseViewOptions,
-  mockKeyAsValueLocalizedStrings,
-  withAnalysisStore,
-} from './test-helpers';
+  localizedStringsFromContributions,
+  makePunctToken,
+  makeSegment,
+  makeWordToken,
+} from '../test-helpers';
+import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -330,7 +332,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockKeyAsValueLocalizedStrings();
+  jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
   phraseLinkMap.clear();

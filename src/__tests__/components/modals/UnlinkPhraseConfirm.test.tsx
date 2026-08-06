@@ -1,9 +1,11 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
+import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UnlinkPhraseConfirm from '../../../components/modals/UnlinkPhraseConfirm';
+import { localizedStringsFromContributions } from '../../test-helpers';
 
 /** Stable mock fns for AnalysisStore phrase dispatch. */
 const mockDeletePhrase = jest.fn();
@@ -20,6 +22,7 @@ jest.mock('../../../components/AnalysisStore', () => ({
 
 describe('UnlinkPhraseConfirm', () => {
   beforeEach(() => {
+    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
     mockUsePhraseDispatch.mockReturnValue({
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),

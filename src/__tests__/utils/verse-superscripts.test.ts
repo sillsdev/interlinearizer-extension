@@ -4,7 +4,7 @@ import type { Book, Token } from 'interlinearizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { LinkSlot, TokenGroup } from '../../types/token-layout';
 import { buildVerseStartLabels, slotVerseLabel } from '../../utils/verse-superscripts';
-import { makeVerseBook, makeWordToken } from '../test-helpers';
+import { makePunctToken, makeVerseBook, makeWordToken } from '../test-helpers';
 
 /** Reads the superscript labels for a segment by id, failing the test when absent. */
 function labelsFor(book: Book, segmentId: string): string[] {
@@ -96,7 +96,7 @@ describe('slotVerseLabel', () => {
 
   it('returns the label when a gap-punctuation token is the verse start', () => {
     const labels = new Map([['GEN 1:2:0', '2']]);
-    const punct = makeWordToken('GEN 1:2:0');
+    const punct = makePunctToken('GEN 1:2:0');
     expect(slotVerseLabel(slot(group([makeWordToken('GEN 1:2:3')]), [punct]), labels)).toBe('2');
   });
 

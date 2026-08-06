@@ -757,6 +757,8 @@ export function PopoverAnchor({
  * implements positioning, portaling, and dismissal internally; this stub exposes the dismissal
  * callbacks so tests can simulate them:
  *
+ * - `role`, `id`, and `style` land on the panel element, as they do in the real component, which
+ *   spreads caller props after its own — so a caller can override the panel's dialog role and id.
  * - The panel's children render only from the second commit, mirroring Radix's portal (which renders
  *   nothing until its own layout effect flips its `mounted` state). Consumers must therefore not
  *   reach for a child element from their own mount effect — in the real app that element does not
@@ -768,13 +770,24 @@ export function PopoverAnchor({
  * - A sentinel `data-testid="popover-outside"` button invokes `onPointerDownOutside` on click,
  *   simulating a pointer press outside the popover.
  * - A sentinel `data-testid="popover-close"` button invokes `onCloseAutoFocus` on click,
- *   simulating Radix's focus-restoration event fired as the popover closes.
+ *   simulating Radix's focus-restoration event fired as the popover closes; unless it is prevented,
+ *   the focused element is blurred. Which element Radix restores focus to — its trigger, or the
+ *   element focused before the panel opened — is not modeled; only that an unprevented event lets
+ *   the panel take focus away.
+ * - Both sentinels are siblings of the panel rather than children — scaffolding with no counterpart
+ *   in the real component has no business among the children of a panel whose role a caller has
+ *   overridden.
+ * - The layout props are accepted and ignored: they steer positioning the real component computes
+ *   from measurements jsdom does not produce.
  */
 export function PopoverContent({
   'aria-label': ariaLabel,
   children,
   className,
   'data-testid': testId = 'popover-content',
+  id,
+  role = 'dialog',
+  style,
   onEscapeKeyDown,
   onPointerDownOutside,
   onOpenAutoFocus,
@@ -786,8 +799,12 @@ export function PopoverContent({
   children?: ReactNode;
   className?: string;
   'data-testid'?: string;
+  id?: string;
+  role?: string;
+  style?: CSSProperties;
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
+  hideWhenDetached?: boolean;
   onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onPointerDownOutside?: (event: CustomEvent) => void;
   onOpenAutoFocus?: (event: Event) => void;
@@ -807,29 +824,30 @@ export function PopoverContent({
     openAutoFocusRef.current?.(event);
     if (event.defaultPrevented) return;
     const candidates = contentRef.current?.querySelectorAll<HTMLElement>('input, button') ?? [];
-    // The sentinels below are test scaffolding, not panel content, so they are never focus targets.
-    const first = Array.from(candidates).find(
-      (el) => !el.hasAttribute('disabled') && !el.dataset.testid?.startsWith('popover-'),
-    );
+    const first = Array.from(candidates).find((el) => !el.hasAttribute('disabled'));
     first?.focus();
     if (first instanceof HTMLInputElement) first.select();
   }, [portalMounted]);
   if (!portalMounted) return <div data-testid={testId} />;
   return (
-    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
-    <div
-      ref={contentRef}
-      aria-label={ariaLabel}
-      className={className}
-      data-testid={testId}
-      role="dialog"
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);
-      }}
-      onMouseDown={onMouseDown}
-    >
-      {children}
+    <>
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+      <div
+        ref={contentRef}
+        aria-label={ariaLabel}
+        className={className}
+        data-testid={testId}
+        id={id}
+        role={role}
+        style={style}
+        onClick={onClick}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') onEscapeKeyDown?.(e.nativeEvent);
+        }}
+        onMouseDown={onMouseDown}
+      >
+        {children}
+      </div>
       {onPointerDownOutside && (
         <button
           data-testid="popover-outside"
@@ -849,12 +867,17 @@ export function PopoverContent({
         <button
           data-testid="popover-close"
           type="button"
-          onClick={() => onCloseAutoFocus(new Event('closeAutoFocus'))}
+          onClick={() => {
+            const event = new Event('closeAutoFocus', { cancelable: true });
+            onCloseAutoFocus(event);
+            if (event.defaultPrevented) return;
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          }}
         >
           close
         </button>
       )}
-    </div>
+    </>
   );
 }
 

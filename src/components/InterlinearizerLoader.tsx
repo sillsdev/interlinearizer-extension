@@ -511,30 +511,29 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject]);
 
-  // The error / loading placeholders, or the interlinear view once the book is ready. A variable
-  // because it is rendered from two places: inside the analysis store, and bare while the draft is
-  // still loading and there is no store to mount yet.
+  const loadingOrErrorPanel = (
+    <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
+      {bookError && (
+        <div className="tw:flex tw:flex-col tw:gap-2">
+          <h2 className="tw:error-heading">Error loading book</h2>
+          <pre className="tw:error-pre">{bookError}</pre>
+        </div>
+      )}
+
+      {tokenizeError && (
+        <div className="tw:flex tw:flex-col tw:gap-2">
+          <h2 className="tw:error-heading">Error processing book</h2>
+          <pre className="tw:error-pre">{tokenizeError.message}</pre>
+        </div>
+      )}
+
+      {!hasError && showLoading && <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>}
+    </div>
+  );
+
   const bookArea =
     hasError || showLoading || !book ? (
-      <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
-        {bookError && (
-          <div className="tw:flex tw:flex-col tw:gap-2">
-            <h2 className="tw:error-heading">Error loading book</h2>
-            <pre className="tw:error-pre">{bookError}</pre>
-          </div>
-        )}
-
-        {tokenizeError && (
-          <div className="tw:flex tw:flex-col tw:gap-2">
-            <h2 className="tw:error-heading">Error processing book</h2>
-            <pre className="tw:error-pre">{tokenizeError.message}</pre>
-          </div>
-        )}
-
-        {!hasError && showLoading && (
-          <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
-        )}
-      </div>
+      loadingOrErrorPanel
     ) : (
       <Interlinearizer
         key={book.bookRef}
@@ -606,9 +605,11 @@ function InterlinearizerLoaderInner({
         }}
       >
         {isDraftLoading ? (
-          // Nothing to seed a store with yet, and nothing that needs one: while the draft loads this
-          // is a placeholder or an error panel, never the view.
-          bookArea
+          // Nothing to seed a store with yet, and nothing that needs one: while the draft loads
+          // there is only ever a placeholder or an error panel to show. Mounting the provider here
+          // instead would seed it empty for good — the draft version bumps only on New / Open /
+          // Wipe, never when the initial load completes.
+          loadingOrErrorPanel
         ) : (
           // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
           // on the draft version because the seed is not reactive, so a wholesale replacement (New

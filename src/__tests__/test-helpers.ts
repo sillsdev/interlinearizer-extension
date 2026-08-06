@@ -185,7 +185,7 @@ export function makeSegment(
   return {
     id: sid,
     startRef: ref,
-    endRef: ref,
+    endRef: { ...ref },
     baselineText,
     tokens,
     verseStarts: verseStarts ?? [{ charStart: 0, number: String(verse), chapter }],

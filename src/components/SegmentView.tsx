@@ -44,9 +44,15 @@ export type SegmentDisplayMode = 'token-chip' | 'baseline-text';
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_linkButton_link%',
+  '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
   '%interlinearizer_boundaryControl_split%',
+  '%interlinearizer_phraseBox_glossLabel%',
+  '%interlinearizer_phraseBox_edit%',
+  '%interlinearizer_phraseBox_unlink%',
+  '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_glossInput_placeholder%',
 ] as const satisfies `%${string}%`[];
 
@@ -570,9 +576,15 @@ export function SegmentView({
     activeSegmentId: isActive ? segment.id : undefined,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
+    unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
     boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
+    phraseGlossLabel: localizedStrings['%interlinearizer_phraseBox_glossLabel%'],
+    phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],
+    phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
+    removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !hasMounted,
     showMorphology,

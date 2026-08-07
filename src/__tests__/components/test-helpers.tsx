@@ -9,12 +9,15 @@ import { ViewOptions } from '../../types/view-options';
  * enumerate every key it touches, and so suites query controls by the stable localize key rather
  * than by English text a copy edit could change. `resetMocks` clears the hook's implementation
  * before every test, so call this from `beforeEach`.
+ *
+ * @param overrides - Resolved values layered over the key-as-value base, for the rare test that
+ *   distinguishes a resolved string from an unresolved key.
  */
-export function mockKeyAsValueLocalizedStrings(): void {
+export function mockKeyAsValueLocalizedStrings(overrides: Record<string, string> = {}): void {
   jest
     .mocked(useLocalizedStrings)
     .mockImplementation((keys: readonly string[]) => [
-      Object.fromEntries(keys.map((k) => [k, k])),
+      { ...Object.fromEntries(keys.map((k) => [k, k])), ...overrides },
       false,
     ]);
 }

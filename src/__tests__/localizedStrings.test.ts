@@ -46,15 +46,29 @@ function referencingFiles(dir: string): string[] {
 }
 
 describe('localizedStrings contribution', () => {
+  const definedKeys = Object.keys(localizedStringsContribution.localizedStrings.en);
+
+  /** Each key reference in the repo, paired with the file that names it. */
+  const references = referencingFiles(REPO_ROOT).flatMap((file) =>
+    (fs.readFileSync(file, 'utf8').match(KEY_PATTERN) ?? []).map((key) => ({
+      key,
+      file: path.relative(REPO_ROOT, file),
+    })),
+  );
+
   // A key the extension names but the contribution omits is not a build or type error: PAPI renders
   // the raw `%…%` string to the user.
   it('defines every key the extension references', () => {
-    const defined = new Set(Object.keys(localizedStringsContribution.localizedStrings.en));
-    const undefinedKeys = referencingFiles(REPO_ROOT).flatMap((file) =>
-      (fs.readFileSync(file, 'utf8').match(KEY_PATTERN) ?? [])
-        .filter((key) => !defined.has(key))
-        .map((key) => `${key} (${path.relative(REPO_ROOT, file)})`),
-    );
+    const defined = new Set(definedKeys);
+    const undefinedKeys = references
+      .filter(({ key }) => !defined.has(key))
+      .map(({ key, file }) => `${key} (${file})`);
     expect([...new Set(undefinedKeys)].sort()).toEqual([]);
+  });
+
+  // A key nothing references is dead translation work: every locale the project gains carries it.
+  it('references every key it defines', () => {
+    const referenced = new Set(references.map(({ key }) => key));
+    expect(definedKeys.filter((key) => !referenced.has(key))).toEqual([]);
   });
 });

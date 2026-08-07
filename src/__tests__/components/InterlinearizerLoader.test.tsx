@@ -743,7 +743,7 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
     expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
 
@@ -771,7 +771,28 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
+  });
+
+  it('leaves the loading text blank while its localize key is unresolved', async () => {
+    // The key-as-value stub stands in for PAPI's pre-resolution state, where each key maps to
+    // itself — rendering that verbatim would flash the bare key at the user.
+    mockBookData({ book: undefined, isLoading: true });
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('loading-indicator')).toBeEmptyDOMElement();
+  });
+
+  it('shows the loading text once its localize key resolves', async () => {
+    mockKeyAsValueLocalizedStrings({ '%interlinearizer_loading%': 'Loading…' });
+    mockBookData({ book: undefined, isLoading: true });
+    await act(async () => {
+      renderLoader();
+    });
+
+    expect(screen.getByTestId('loading-indicator')).toHaveTextContent('Loading…');
   });
 
   it('shows an error heading and message when bookError is set', async () => {
@@ -834,7 +855,7 @@ describe('InterlinearizerLoader', () => {
 
     // The saved settings must arrive before the view renders so the user's stored choices apply on
     // the first paint instead of flashing the hard-coded defaults.
-    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
+    expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
     expect(screen.queryByTestId('continuous-scroll-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
@@ -1504,7 +1525,7 @@ describe('InterlinearizerLoader', () => {
       mockBookData({ book: undefined, isLoading: true });
       view?.rerender(buildUi());
 
-      expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
+      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
     });
   });
@@ -1993,7 +2014,7 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       controls?.rerenderNow();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
-      expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
+      expect(screen.getByTestId('loading-indicator')).toBeInTheDocument();
 
       // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });

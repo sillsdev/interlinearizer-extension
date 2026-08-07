@@ -427,7 +427,7 @@ describe('Interlinearizer', () => {
   it('shows a no-verse message when the tokenized book has no segments at all', () => {
     renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
-    expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_segmentList_noVerseData%')).toBeInTheDocument();
   });
 
   it('passes per-verse-start superscript labels to the segment views', () => {

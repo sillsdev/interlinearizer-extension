@@ -7,6 +7,9 @@ on:
       version:
         description: 'Version to publish. For verification purposes only; if the package.json version is different on the specified branch, the workflow will fail.'
         required: true
+      studioVersion:
+        description: "Version of the Paratext 10 Studio build that will be attached to this release, e.g. 0.5.0. Fills the release body's install steps. If empty, the body keeps its `<Studio version>` placeholder for a maintainer to edit by hand."
+        required: false
       newVersionAfterPublishing:
         description: "Version to bump all the repo's versions to on a new branch (called `bump-versions-<version>`) after making a new release, e.g. 0.3.0-alpha.0. If empty, will not bump the versions."
         required: false
@@ -101,13 +104,14 @@ jobs:
           npm run package
 
       # `bodyFile` is copied verbatim and `omitBodyDuringUpdate` stops a re-run from refreshing it,
-      # so the extension zip's name has to be correct the first time the release is created. The
-      # Paratext 10 Studio build is versioned separately and attached by hand, so its
-      # `<Studio version>` placeholder is left for a maintainer to fill in.
-      - name: Fill the extension version into the release body
+      # so the placeholders have to be correct the first time the release is created. The Paratext
+      # 10 Studio build is versioned separately and attached by hand, so its version can only reach
+      # the body through the `studioVersion` input.
+      - name: Fill the versions into the release body
         shell: bash
         env:
           VERSION: ${{ steps.package_json.outputs.version }}
+          STUDIO_VERSION: ${{ inputs.studioVersion }}
         run: |
           if ! grep -q 'interlinearizer_<version>\.zip' .github/assets/release-body.md; then
             echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
@@ -117,6 +121,15 @@ jobs:
           # `Bump repo versions` step below fails on a dirty working tree.
           sed "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
             .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
+          if [ -n "${STUDIO_VERSION}" ]; then
+            if ! grep -q '<Studio version>' "${RUNNER_TEMP}/release-body.md"; then
+              echo 'Release body has no `<Studio version>` placeholder to fill.'
+              exit 1
+            fi
+            sed -i "s|<Studio version>|${STUDIO_VERSION}|g" "${RUNNER_TEMP}/release-body.md"
+          else
+            echo 'No `studioVersion` input given; leaving `<Studio version>` for a maintainer to fill in on the draft.'
+          fi
 
       - name: Publish draft release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0

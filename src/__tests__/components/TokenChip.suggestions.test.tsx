@@ -19,7 +19,6 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = jest.fn();
 });
 
-/** Builds a word token spanning its surface text. */
 /**
  * Builds an analysis seeding one approved payload, so a different token with the same surface form
  * resolves to it as a suggestion.

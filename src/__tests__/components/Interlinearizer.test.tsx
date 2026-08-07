@@ -1837,37 +1837,17 @@ describe('segmentationVersion pass-through', () => {
 });
 
 /** Two-token LUK book, so a focus request can name a token that is not the segment's first. */
-const LUK_1_1_BOOK: Book = withDefaultVerseStarts({
+const LUK_1_1_BOOK: Book = {
   id: 'LUK',
   bookRef: 'LUK',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'LUK 1:1',
-      startRef: { book: 'LUK', chapter: 1, verse: 1 },
-      endRef: { book: 'LUK', chapter: 1, verse: 1 },
-      baselineText: 'Since many',
-      tokens: [
-        {
-          ref: 'LUK 1:1:0',
-          surfaceText: 'Since',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-        {
-          ref: 'LUK 1:1:6',
-          surfaceText: 'many',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 6,
-          charEnd: 10,
-        },
-      ],
-    },
+    makeSegment('LUK 1:1', 'Since many', [
+      makeWordToken('LUK 1:1:0', 'Since'),
+      makeWordToken('LUK 1:1:6', 'many', 6),
+    ]),
   ],
-});
+};
 
 describe('cross-book focus requests', () => {
   /** Nav surface captured from inside the provider so a test can request a focus. */

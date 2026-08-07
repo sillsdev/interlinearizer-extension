@@ -1,13 +1,6 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import type {
-  Book,
-  InterlinearProject,
-  PhraseAnalysisLink,
-  Segment,
-  Token,
-  VerseStart,
-} from 'interlinearizer';
+import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import type { RawBook } from 'parsers/papi/usjBookExtractor';
@@ -168,21 +161,14 @@ export function makeProjectSummary(
 
 /**
  * Builds a one-verse `Segment` from a verse sid — `"<book> <chapter>:<verse>"`, e.g. `"GEN 1:1"` —
- * which supplies the segment's id and both of its refs. Left unspecified, the verse starts hold the
- * single entry a one-verse segment carries, so fixtures state only the baseline text and tokens
- * they assert on; spell them out for a segment spanning several verses, or for the continuation
- * piece of a split.
+ * which supplies the segment's id, both of its refs, and the single verse start such a segment
+ * carries, so fixtures state only the baseline text and tokens they assert on.
  *
- * Both refs stay pinned to the sid's own verse and never carry a `charIndex`, whatever the verse
- * starts say, so a fixture that asserts on the range a merged or split segment covers builds its
- * refs as a literal instead.
+ * Only that one-verse shape is on offer: both refs stay pinned to the sid's own verse and never
+ * carry a `charIndex`. A segment spanning several verses, or the continuation piece of a split,
+ * builds itself as a literal instead.
  */
-export function makeSegment(
-  sid: string,
-  baselineText: string,
-  tokens: Token[],
-  verseStarts?: VerseStart[],
-): Segment {
+export function makeSegment(sid: string, baselineText: string, tokens: Token[]): Segment {
   const [book, chapterVerse] = sid.split(' ');
   const [chapter, verse] = chapterVerse.split(':').map(Number);
   const ref = { book, chapter, verse };
@@ -192,7 +178,7 @@ export function makeSegment(
     endRef: { ...ref },
     baselineText,
     tokens,
-    verseStarts: verseStarts ?? [{ charStart: 0, number: String(verse), chapter }],
+    verseStarts: [{ charStart: 0, number: String(verse), chapter }],
   };
 }
 

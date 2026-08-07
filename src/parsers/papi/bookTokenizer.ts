@@ -77,7 +77,7 @@ function parseSid(sid: string): ScriptureRef {
  *
  * Word tokens (`\p{L}\p{N}\p{M}\p{Join_Control}` runs) and punctuation tokens (any single non-word,
  * non-whitespace character) are emitted in document order. Whitespace is not tokenized. Character
- * offsets are zero-based relative to `text`; `charEnd` is exclusive.
+ * offsets are zero-based UTF-16 code-unit indices into `text`; `charEnd` is exclusive.
  *
  * Each token inherits `writingSystem` from the book so that downstream consumers (renderers,
  * alignment tools) can identify the script without access to the parent book.
@@ -101,9 +101,9 @@ function tokenizeVerse(text: string, sid: string, writingSystem: string): Token[
  *
  * Each `RawVerse` becomes one `Segment`. The verse SID is parsed into `startRef` / `endRef` (both
  * equal — verse-level granularity). The verse text is split into `Token`s using Unicode-aware
- * word/punctuation splitting; character offsets are relative to `Segment.baselineText`. Each
- * segment gets a single `verseStarts` entry at offset 0 carrying the verse's rendered `number` and
- * `chapter`.
+ * word/punctuation splitting; character offsets are UTF-16 code-unit indices into
+ * `Segment.baselineText`. Each segment gets a single `verseStarts` entry at offset 0 carrying the
+ * verse's rendered `number` and `chapter`.
  *
  * Invariant upheld for every token: `segment.baselineText.slice(token.charStart, token.charEnd) ===
  * token.surfaceText`.

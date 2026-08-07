@@ -100,6 +100,8 @@ The core types are:
 - `AlignmentLink` — directional links between source and target endpoints
 - `AlignmentEndpoint` — has either token-level or morpheme-level specificity
 
+All character offsets (`charStart`, `charEnd`, `charIndex`) are zero-based UTF-16 code-unit indices — plain JavaScript string indices, not code points and not grapheme clusters — with end offsets exclusive.
+
 Key invariants: `Segment.baselineText.slice(charStart, charEnd) === Token.surfaceText`; at most one linked analysis per token/segment may have `status: 'approved'`. `MultiString` values are keyed by BCP 47 tags. `TokenSnapshot.surfaceText` detects drift when baseline text changes.
 
 ### TypeScript path aliases

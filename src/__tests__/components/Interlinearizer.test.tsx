@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Book, PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
@@ -29,7 +28,7 @@ import {
   makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
-import { allFalseViewOptions } from './test-helpers';
+import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -409,13 +408,8 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
-  // Key-as-value localization so the merge control's label resolves.
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}),
-      false,
-    ]);
+  // The merge control's label comes from a localized string.
+  mockKeyAsValueLocalizedStrings();
 });
 
 describe('Interlinearizer', () => {

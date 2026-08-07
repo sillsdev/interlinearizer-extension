@@ -167,10 +167,16 @@ export function makeProjectSummary(
  * Only that one-verse shape is on offer: both refs stay pinned to the sid's own verse and never
  * carry a `charIndex`. A segment spanning several verses, or the continuation piece of a split,
  * builds itself as a literal instead.
+ *
+ * @throws If the sid names anything but a single verse; a split piece's three-part sid would
+ *   otherwise lose its trailing index and yield a segment describing the whole verse.
  */
 export function makeSegment(sid: string, baselineText: string, tokens: Token[]): Segment {
   const [book, chapterVerse] = sid.split(' ');
-  const [chapter, verse] = chapterVerse.split(':').map(Number);
+  const parts = chapterVerse.split(':');
+  if (parts.length !== 2)
+    throw new Error(`makeSegment takes a "<BOOK> <chapter>:<verse>" sid; got "${sid}"`);
+  const [chapter, verse] = parts.map(Number);
   const ref = { book, chapter, verse };
   return {
     id: sid,

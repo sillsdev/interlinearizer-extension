@@ -20,8 +20,11 @@ import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
   GEN_1_1_BOOK,
+  makePunctToken,
   makeScrollGroupHook,
+  makeSegment,
   makeWebViewState,
+  makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
 
@@ -549,16 +552,7 @@ describe('InterlinearizerLoader', () => {
       id: 'PSA',
       bookRef: 'PSA',
       textVersion: 'v1',
-      segments: [
-        {
-          id: 'PSA 3:0',
-          startRef: { book: 'PSA', chapter: 3, verse: 0 },
-          endRef: { book: 'PSA', chapter: 3, verse: 0 },
-          baselineText: 'A Psalm by David.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '0', chapter: 3 }],
-        },
-      ],
+      segments: [makeSegment('PSA 3:0', 'A Psalm by David.', [])],
     };
     mockBookData({ book: bookWithSuperscription });
 
@@ -589,30 +583,9 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: [
-        {
-          id: 'GEN 3:1',
-          startRef: { book: 'GEN', chapter: 3, verse: 1 },
-          endRef: { book: 'GEN', chapter: 3, verse: 1 },
-          baselineText: 'First verse.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 3 }],
-        },
-        {
-          id: 'GEN 3:2',
-          startRef: { book: 'GEN', chapter: 3, verse: 2 },
-          endRef: { book: 'GEN', chapter: 3, verse: 2 },
-          baselineText: 'Last verse of the chapter.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '2', chapter: 3 }],
-        },
-        {
-          id: 'GEN 4:1',
-          startRef: { book: 'GEN', chapter: 4, verse: 1 },
-          endRef: { book: 'GEN', chapter: 4, verse: 1 },
-          baselineText: 'Next chapter.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 4 }],
-        },
+        makeSegment('GEN 3:1', 'First verse.', []),
+        makeSegment('GEN 3:2', 'Last verse of the chapter.', []),
+        makeSegment('GEN 4:1', 'Next chapter.', []),
       ],
     };
     mockBookData({ book: multiSegmentBook });
@@ -687,22 +660,8 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: [
-        {
-          id: 'GEN 3:1',
-          startRef: { book: 'GEN', chapter: 3, verse: 1 },
-          endRef: { book: 'GEN', chapter: 3, verse: 1 },
-          baselineText: 'First verse.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 3 }],
-        },
-        {
-          id: 'GEN 3:3',
-          startRef: { book: 'GEN', chapter: 3, verse: 3 },
-          endRef: { book: 'GEN', chapter: 3, verse: 3 },
-          baselineText: 'Verse after the gap.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '3', chapter: 3 }],
-        },
+        makeSegment('GEN 3:1', 'First verse.', []),
+        makeSegment('GEN 3:3', 'Verse after the gap.', []),
       ],
     };
     mockBookData({ book: gappedBook });
@@ -746,14 +705,7 @@ describe('InterlinearizerLoader', () => {
             { charStart: 18, number: '2', chapter: 3 },
           ],
         },
-        {
-          id: 'GEN 3:3',
-          startRef: { book: 'GEN', chapter: 3, verse: 3 },
-          endRef: { book: 'GEN', chapter: 3, verse: 3 },
-          baselineText: 'Verse after the merged segment.',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '3', chapter: 3 }],
-        },
+        makeSegment('GEN 3:3', 'Verse after the merged segment.', []),
       ],
     };
     mockBookData({ book: mergedSegmentBook });
@@ -1292,48 +1244,11 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: [
-        {
-          id: 'GEN 1:1',
-          startRef: { book: 'GEN', chapter: 1, verse: 1 },
-          endRef: { book: 'GEN', chapter: 1, verse: 1 },
-          baselineText: 'Alpha beta.',
-          tokens: [
-            {
-              ref: 'GEN 1:1:0',
-              surfaceText: 'Alpha',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 5,
-            },
-            {
-              ref: 'GEN 1:1:6',
-              surfaceText: 'beta',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 6,
-              charEnd: 10,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-        },
-        {
-          id: 'GEN 1:2',
-          startRef: { book: 'GEN', chapter: 1, verse: 2 },
-          endRef: { book: 'GEN', chapter: 1, verse: 2 },
-          baselineText: 'Gamma.',
-          tokens: [
-            {
-              ref: 'GEN 1:2:0',
-              surfaceText: 'Gamma',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 5,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-        },
+        makeSegment('GEN 1:1', 'Alpha beta.', [
+          makeWordToken('GEN 1:1:0', 'Alpha'),
+          makeWordToken('GEN 1:1:6', 'beta', 6),
+        ]),
+        makeSegment('GEN 1:2', 'Gamma.', [makeWordToken('GEN 1:2:0', 'Gamma')]),
       ],
     };
 
@@ -1474,90 +1389,14 @@ describe('InterlinearizerLoader', () => {
       bookRef: 'GEN',
       textVersion: 'v1',
       segments: [
-        {
-          id: 'GEN 1:1',
-          startRef: { book: 'GEN', chapter: 1, verse: 1 },
-          endRef: { book: 'GEN', chapter: 1, verse: 1 },
-          baselineText: 'Alpha.',
-          tokens: [
-            {
-              ref: 'GEN 1:1:0',
-              surfaceText: 'Alpha',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 5,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-        },
-        {
-          id: 'GEN 1:2',
-          startRef: { book: 'GEN', chapter: 1, verse: 2 },
-          endRef: { book: 'GEN', chapter: 1, verse: 2 },
-          baselineText: '“Gamma.',
-          tokens: [
-            {
-              ref: 'GEN 1:2:0',
-              surfaceText: '“',
-              writingSystem: 'en',
-              type: 'punctuation',
-              charStart: 0,
-              charEnd: 1,
-            },
-            {
-              ref: 'GEN 1:2:1',
-              surfaceText: 'Gamma',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 1,
-              charEnd: 6,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-        },
-        {
-          id: 'GEN 1:3',
-          startRef: { book: 'GEN', chapter: 1, verse: 3 },
-          endRef: { book: 'GEN', chapter: 1, verse: 3 },
-          baselineText: 'Delta.',
-          tokens: [
-            {
-              ref: 'GEN 1:3:0',
-              surfaceText: 'Delta',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 5,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '3', chapter: 1 }],
-        },
-        {
-          id: 'GEN 1:4',
-          startRef: { book: 'GEN', chapter: 1, verse: 4 },
-          endRef: { book: 'GEN', chapter: 1, verse: 4 },
-          baselineText: '—',
-          tokens: [
-            {
-              ref: 'GEN 1:4:0',
-              surfaceText: '—',
-              writingSystem: 'en',
-              type: 'punctuation',
-              charStart: 0,
-              charEnd: 1,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '4', chapter: 1 }],
-        },
-        {
-          id: 'GEN 1:5',
-          startRef: { book: 'GEN', chapter: 1, verse: 5 },
-          endRef: { book: 'GEN', chapter: 1, verse: 5 },
-          baselineText: '',
-          tokens: [],
-          verseStarts: [{ charStart: 0, number: '5', chapter: 1 }],
-        },
+        makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
+        makeSegment('GEN 1:2', '“Gamma.', [
+          makePunctToken('GEN 1:2:0', '“'),
+          makeWordToken('GEN 1:2:1', 'Gamma', 1),
+        ]),
+        makeSegment('GEN 1:3', 'Delta.', [makeWordToken('GEN 1:3:0', 'Delta')]),
+        makeSegment('GEN 1:4', '—', [makePunctToken('GEN 1:4:0', '—')]),
+        makeSegment('GEN 1:5', '', []),
       ],
     };
 

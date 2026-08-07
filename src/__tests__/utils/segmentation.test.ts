@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 
-import type { Book, SegmentationDelta } from 'interlinearizer';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import type { SegmentationDelta } from 'interlinearizer';
 import {
   addBoundaryBefore,
   defaultVerseStarts,
@@ -12,14 +11,10 @@ import {
   removeBoundaryAt,
   splitSegmentBefore,
 } from '../../utils/segmentation';
-
-/** Builds a verse-tokenized GEN book from the given verses for use as the `verseBook` argument. */
-function makeBook(verses: { sid: string; number: string; text: string }[]): Book {
-  return tokenizeBook({ bookCode: 'GEN', writingSystem: 'en', contentHash: 'h', verses });
-}
+import { makeVerseBook } from '../test-helpers';
 
 /** A three-verse fixture: "Alpha beta." / "Gamma delta." / "Epsilon." */
-const THREE_VERSES = makeBook([
+const THREE_VERSES = makeVerseBook([
   { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
   { sid: 'GEN 1:2', number: '2', text: 'Gamma delta.' },
   { sid: 'GEN 1:3', number: '3', text: 'Epsilon.' },
@@ -37,7 +32,7 @@ const V1_BETA = 'GEN 1:1:6';
  * then GEN 2:1. Verse 0 is an ordinary segment for boundary editing (only the book-first lock
  * applies).
  */
-const MID_VERSE_ZERO = makeBook([
+const MID_VERSE_ZERO = makeVerseBook([
   { sid: 'GEN 1:1', number: '1', text: 'Alpha beta.' },
   { sid: 'GEN 2:0', number: '0', text: 'Sup tee.' },
   { sid: 'GEN 2:1', number: '1', text: 'Gamma.' },
@@ -54,7 +49,7 @@ describe('defaultVerseStarts', () => {
   });
 
   it('skips verses with no tokens', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', number: '1', text: '   ' },
       { sid: 'GEN 1:2', number: '2', text: 'Word.' },
     ]);

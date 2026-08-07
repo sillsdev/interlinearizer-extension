@@ -10,17 +10,7 @@ import {
   buildRenderUnits,
   NO_SLOT_FOCUS,
 } from '../../utils/token-layout';
-import { makePhraseLink } from '../test-helpers';
-
-/** Creates a word token fixture. */
-function mkWord(ref: string, surfaceText = ref): Token & { type: 'word' } {
-  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
-}
-
-/** Creates a punctuation token fixture. */
-function mkPunct(ref: string, surfaceText = '.'): Token {
-  return { ref, surfaceText, writingSystem: 'en', type: 'punctuation', charStart: 0, charEnd: 1 };
-}
+import { makePhraseLink, makePunctToken, makeWordToken } from '../test-helpers';
 
 describe('resolveFocusContext', () => {
   it('returns all-undefined context when focusedTokenRef is undefined', () => {
@@ -33,7 +23,7 @@ describe('resolveFocusContext', () => {
   });
 
   it('resolves a focused free word token (not in any phrase)', () => {
-    const tok = mkWord('tok-a');
+    const tok = makeWordToken('tok-a');
     const tokensByRef = new Map<string, Token>([['tok-a', tok]]);
     const ctx = resolveFocusContext('tok-a', tokensByRef, new Map(), new Map([['tok-a', 'seg-1']]));
     expect(ctx.focusedToken).toBe(tok);
@@ -44,7 +34,7 @@ describe('resolveFocusContext', () => {
   });
 
   it('resolves a focused token that is inside a phrase', () => {
-    const tok = mkWord('tok-a');
+    const tok = makeWordToken('tok-a');
     const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
     const tokensByRef = new Map<string, Token>([['tok-a', tok]]);
     const phraseLinkByRef = new Map([['tok-a', phraseLink]]);
@@ -55,7 +45,7 @@ describe('resolveFocusContext', () => {
   });
 
   it('resolves focusedToken as undefined when the token is not a word token', () => {
-    const punct = mkPunct('tok-p');
+    const punct = makePunctToken('tok-p');
     const tokensByRef = new Map<string, Token>([['tok-p', punct]]);
     const ctx = resolveFocusContext('tok-p', tokensByRef, new Map(), new Map());
     expect(ctx.focusedToken).toBeUndefined();
@@ -109,7 +99,7 @@ describe('resolveSlotFocus', () => {
 
   it('forwards focusedPhraseLink and focusedFreeToken from the focus context', () => {
     const link = makePhraseLink('p1', ['tok-a']);
-    const freeToken = mkWord('tok-b');
+    const freeToken = makeWordToken('tok-b');
     const result = resolveSlotFocus(
       'seg-1',
       'seg-1',
@@ -138,12 +128,12 @@ describe('groupTokens', () => {
   });
 
   it('skips non-word tokens', () => {
-    const groups = groupTokens([mkPunct('p1')], new Map());
+    const groups = groupTokens([makePunctToken('p1')], new Map());
     expect(groups).toHaveLength(0);
   });
 
   it('creates one group per free word token', () => {
-    const groups = groupTokens([mkWord('tok-a'), mkWord('tok-b')], new Map());
+    const groups = groupTokens([makeWordToken('tok-a'), makeWordToken('tok-b')], new Map());
     expect(groups).toHaveLength(2);
     expect(groups[0].phraseLink).toBeUndefined();
     expect(groups[1].phraseLink).toBeUndefined();
@@ -155,7 +145,7 @@ describe('groupTokens', () => {
       ['tok-a', link],
       ['tok-b', link],
     ]);
-    const groups = groupTokens([mkWord('tok-a'), mkWord('tok-b')], phraseLinkByRef);
+    const groups = groupTokens([makeWordToken('tok-a'), makeWordToken('tok-b')], phraseLinkByRef);
     expect(groups).toHaveLength(1);
     expect(groups[0].tokens).toHaveLength(2);
     expect(groups[0].phraseLink?.analysisId).toBe('p1');
@@ -168,7 +158,7 @@ describe('groupTokens', () => {
       ['tok-c', link],
     ]);
     const groups = groupTokens(
-      [mkWord('tok-a'), mkWord('tok-b'), mkWord('tok-c')],
+      [makeWordToken('tok-a'), makeWordToken('tok-b'), makeWordToken('tok-c')],
       phraseLinkByRef,
     );
     expect(groups).toHaveLength(3);
@@ -178,7 +168,10 @@ describe('groupTokens', () => {
   });
 
   it('records the correct firstIndex for each group', () => {
-    const groups = groupTokens([mkPunct('p0'), mkWord('tok-a'), mkWord('tok-b')], new Map());
+    const groups = groupTokens(
+      [makePunctToken('p0'), makeWordToken('tok-a'), makeWordToken('tok-b')],
+      new Map(),
+    );
     expect(groups[0].firstIndex).toBe(1);
     expect(groups[1].firstIndex).toBe(2);
   });
@@ -186,7 +179,7 @@ describe('groupTokens', () => {
 
 describe('buildRenderUnits', () => {
   it('produces a leading and trailing slot when there is one group', () => {
-    const tok = mkWord('tok-a');
+    const tok = makeWordToken('tok-a');
     const group = { tokens: [tok], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] };
     const units = buildRenderUnits([tok], [group]);
     expect(units).toHaveLength(3);
@@ -196,9 +189,9 @@ describe('buildRenderUnits', () => {
   });
 
   it('puts punctuation in the slot between two groups', () => {
-    const a = mkWord('tok-a');
-    const punct = mkPunct('p1', ',');
-    const b = mkWord('tok-b');
+    const a = makeWordToken('tok-a');
+    const punct = makePunctToken('p1', ',');
+    const b = makeWordToken('tok-b');
     const groups = [
       { tokens: [a], phraseLink: undefined, firstIndex: 0, punctuationBetween: [] },
       { tokens: [b], phraseLink: undefined, firstIndex: 2, punctuationBetween: [] },
@@ -215,9 +208,9 @@ describe('buildRenderUnits', () => {
   });
 
   it('routes punctuation between tokens of the same group into punctuationBetween', () => {
-    const a = mkWord('tok-a');
-    const punct = mkPunct('p1', ',');
-    const b = mkWord('tok-b');
+    const a = makeWordToken('tok-a');
+    const punct = makePunctToken('p1', ',');
+    const b = makeWordToken('tok-b');
     const link = makePhraseLink('ph1', ['tok-a', 'tok-b']);
     const groups = groupTokens(
       [a, punct, b],
@@ -235,11 +228,11 @@ describe('buildRenderUnits', () => {
   it('routes punctuation following an open intra-group gap into that same group', () => {
     // A three-token group with two punctuation tokens between its second and third tokens: the
     // second punctuation token must join the intra-group gap opened by the first, not be buffered.
-    const a = mkWord('tok-a');
-    const b = mkWord('tok-b');
-    const p1 = mkPunct('p1', ',');
-    const p2 = mkPunct('p2', ';');
-    const c = mkWord('tok-c');
+    const a = makeWordToken('tok-a');
+    const b = makeWordToken('tok-b');
+    const p1 = makePunctToken('p1', ',');
+    const p2 = makePunctToken('p2', ';');
+    const c = makeWordToken('tok-c');
     const link = makePhraseLink('ph1', ['tok-a', 'tok-b', 'tok-c']);
     const groups = groupTokens(
       [a, b, p1, p2, c],
@@ -256,9 +249,9 @@ describe('buildRenderUnits', () => {
   });
 
   it('does not put intra-group punctuation into any slot', () => {
-    const a = mkWord('tok-a');
-    const punct = mkPunct('p1', ',');
-    const b = mkWord('tok-b');
+    const a = makeWordToken('tok-a');
+    const punct = makePunctToken('p1', ',');
+    const b = makeWordToken('tok-b');
     const link = makePhraseLink('ph1', ['tok-a', 'tok-b']);
     const groups = groupTokens(
       [a, punct, b],
@@ -277,10 +270,10 @@ describe('buildRenderUnits', () => {
     // [A, B] (phrase group 1), punct, [C] (phrase group 2): after B (group 1's last token) the
     // intra-group gap must be closed so the punctuation goes to the inter-group slot, not an
     // out-of-bounds punctuationBetween index.
-    const a = mkWord('tok-a');
-    const b = mkWord('tok-b');
-    const punct = mkPunct('p1', ',');
-    const c = mkWord('tok-c');
+    const a = makeWordToken('tok-a');
+    const b = makeWordToken('tok-b');
+    const punct = makePunctToken('p1', ',');
+    const c = makeWordToken('tok-c');
     const link1 = makePhraseLink('ph1', ['tok-a', 'tok-b']);
     const link2 = makePhraseLink('ph2', ['tok-c']);
     const groups = groupTokens(

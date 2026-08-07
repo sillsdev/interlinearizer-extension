@@ -3,16 +3,9 @@
 
 import { render, screen } from '@testing-library/react';
 import { ProjectSummaryDetails } from '../../../components/modals/ProjectSummaryDetails';
-import type { InterlinearProjectSummary } from '../../../types/interlinear-project-summary';
+import { makeProjectSummary } from '../../test-helpers';
 
-const NAMED_PROJECT: InterlinearProjectSummary = {
-  id: 'proj-uuid',
-  createdAt: '2026-01-15T10:30:00.000Z',
-  updatedAt: '2026-01-15T10:30:00.000Z',
-  sourceProjectId: 'src-proj',
-  analysisLanguages: ['en', 'fr'],
-  name: 'Greek NT',
-};
+const NAMED_PROJECT = makeProjectSummary({ analysisLanguages: ['en', 'fr'], name: 'Greek NT' });
 
 const LABELS = {
   activeBadgeLabel: 'Active',
@@ -35,7 +28,7 @@ describe('ProjectSummaryDetails', () => {
   });
 
   it('falls back to the unnamed label and shows the active badge when active and unnamed', () => {
-    const unnamed: InterlinearProjectSummary = { ...NAMED_PROJECT, name: undefined };
+    const unnamed = makeProjectSummary({ analysisLanguages: ['en', 'fr'] });
     render(<ProjectSummaryDetails {...LABELS} isActive project={unnamed} />);
 
     expect(screen.getByText('Unnamed')).toBeInTheDocument();

@@ -7,6 +7,7 @@ import type { Book } from 'interlinearizer';
 import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { extractBookFromUsj, type RawBook } from 'parsers/papi/usjBookExtractor';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
+import { makeSegment, makeWordToken } from '../test-helpers';
 
 jest.mock('parsers/papi/bookTokenizer');
 jest.mock('parsers/papi/usjBookExtractor');
@@ -32,57 +33,9 @@ const TEST_BOOK: Book = {
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: String(1), chapter: 1 }],
-    },
-    {
-      id: 'GEN 1:2',
-      startRef: { book: 'GEN', chapter: 1, verse: 2 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: 'And the earth.',
-      tokens: [
-        {
-          ref: 'GEN 1:2:0',
-          surfaceText: 'And',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 3,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: String(2), chapter: 1 }],
-    },
-    {
-      id: 'GEN 2:1',
-      startRef: { book: 'GEN', chapter: 2, verse: 1 },
-      endRef: { book: 'GEN', chapter: 2, verse: 1 },
-      baselineText: 'The second day.',
-      tokens: [
-        {
-          ref: 'GEN 2:1:0',
-          surfaceText: 'The',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 3,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: String(1), chapter: 2 }],
-    },
+    makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
+    makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
+    makeSegment('GEN 2:1', 'The second day.', [makeWordToken('GEN 2:1:0', 'The')]),
   ],
 };
 

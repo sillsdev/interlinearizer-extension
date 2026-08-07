@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
@@ -12,7 +11,8 @@ import {
   PhraseStripProvider,
   type PhraseStripContextValue,
 } from '../../components/PhraseStripContext';
-import { makePhraseStripContext, makeWordToken } from '../test-helpers';
+import { makePhraseStripContext, makePunctToken, makeWordToken } from '../test-helpers';
+import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 /** Stable mock fns for AnalysisStore hooks. */
 const mockUseGloss = jest.fn<string, [string]>().mockReturnValue('');
@@ -122,33 +122,12 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   ),
 }));
 
-const TEST_TOKEN = {
-  ref: 'token-1',
-  surfaceText: 'Hello',
-  writingSystem: 'en',
-  type: 'word',
-  charStart: 0,
-  charEnd: 5,
-} satisfies Token;
+const TEST_TOKEN = makeWordToken('token-1', 'Hello');
 
-const TEST_TOKEN_2 = {
-  ref: 'token-2',
-  surfaceText: 'World',
-  writingSystem: 'en',
-  type: 'word',
-  charStart: 6,
-  charEnd: 11,
-} satisfies Token;
+const TEST_TOKEN_2 = makeWordToken('token-2', 'World', 6);
 
 /** Punctuation token rendered between the two word tokens of a phrase. */
-const TEST_PUNCT: Token = {
-  ref: 'punct-1',
-  surfaceText: ',',
-  writingSystem: 'en',
-  type: 'punctuation',
-  charStart: 5,
-  charEnd: 6,
-};
+const TEST_PUNCT: Token = makePunctToken('punct-1', ',', 5);
 
 /**
  * An approved phrase link fixture. Includes TEST_TOKEN so `usePhraseLinkForToken` returns this link
@@ -201,12 +180,7 @@ function renderBox(ui: ReactElement, context: Partial<PhraseStripContextValue> =
 describe('PhraseBox', () => {
   beforeEach(() => {
     // Key-as-value localization so the gloss placeholder resolves.
-    jest
-      .mocked(useLocalizedStrings)
-      .mockImplementation((keys: readonly string[]) => [
-        Object.fromEntries(keys.map((k) => [k, k])),
-        false,
-      ]);
+    mockKeyAsValueLocalizedStrings();
     mockUseGloss.mockReturnValue('');
     mockUseGlossDispatch.mockReturnValue(jest.fn());
     mockUsePhraseGloss.mockReturnValue('');

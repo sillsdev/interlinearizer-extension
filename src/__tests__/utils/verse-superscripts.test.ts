@@ -1,27 +1,10 @@
 /// <reference types="jest" />
 
 import type { Book, Token } from 'interlinearizer';
-import { tokenizeBook } from 'parsers/papi/bookTokenizer';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import type { LinkSlot, TokenGroup } from '../../types/token-layout';
 import { buildVerseStartLabels, slotVerseLabel } from '../../utils/verse-superscripts';
-
-/**
- * Builds a verse-tokenized book from the given verses. Each verse's rendered `number` defaults to
- * the verse portion of its sid.
- */
-function makeBook(verses: { sid: string; text: string; number?: string }[]): Book {
-  return tokenizeBook({
-    bookCode: verses[0]?.sid.split(' ')[0] ?? 'GEN',
-    writingSystem: 'en',
-    contentHash: 'h',
-    verses: verses.map(({ sid, text, number }) => ({
-      sid,
-      text,
-      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
-    })),
-  });
-}
+import { makePunctToken, makeVerseBook, makeWordToken } from '../test-helpers';
 
 /** Reads the superscript labels for a segment by id, failing the test when absent. */
 function labelsFor(book: Book, segmentId: string): string[] {
@@ -32,7 +15,7 @@ function labelsFor(book: Book, segmentId: string): string[] {
 
 describe('buildVerseStartLabels', () => {
   it('qualifies the first verse of a chapter with its chapter number', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 1:2', text: 'Beta.' },
     ]);
@@ -41,7 +24,7 @@ describe('buildVerseStartLabels', () => {
   });
 
   it('qualifies the first verse of a later chapter', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 2:1', text: 'Gamma.' },
     ]);
@@ -49,7 +32,7 @@ describe('buildVerseStartLabels', () => {
   });
 
   it('qualifies an absorbed chapter start inside a merged mid-chapter segment', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 2:1', text: 'Gamma.' },
     ]);
@@ -60,7 +43,7 @@ describe('buildVerseStartLabels', () => {
   });
 
   it('prepends the chapter verbatim to a range number at a chapter transition', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 2:1', text: 'Gamma.', number: '1-2' },
     ]);
@@ -71,7 +54,7 @@ describe('buildVerseStartLabels', () => {
     // An empty verse tokenizes to no tokens, but its chapter comes from VerseStart.chapter, so a
     // chapter-opening empty verse is still qualified and still advances the running max — the
     // following non-empty verse in the same chapter renders bare.
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'GEN 1:1', text: 'Alpha.' },
       { sid: 'GEN 2:1', text: '' },
       { sid: 'GEN 2:2', text: 'Gamma.' },
@@ -81,7 +64,7 @@ describe('buildVerseStartLabels', () => {
   });
 
   it('qualifies a verse-0 superscription at a chapter transition', () => {
-    const book = makeBook([
+    const book = makeVerseBook([
       { sid: 'PSA 3:0', text: 'A song.', number: '0' },
       { sid: 'PSA 3:1', text: 'Yahweh.' },
     ]);
@@ -91,11 +74,6 @@ describe('buildVerseStartLabels', () => {
 });
 
 describe('slotVerseLabel', () => {
-  /** Builds a minimal word token fixture with only the fields `slotVerseLabel` reads. */
-  function wordToken(ref: string): Token & { type: 'word' } {
-    return { ref, surfaceText: ref, type: 'word', writingSystem: 'en', charStart: 0, charEnd: 1 };
-  }
-
   /** Builds a token group from the given word tokens. */
   function group(tokens: (Token & { type: 'word' })[]): TokenGroup {
     return {
@@ -113,26 +91,26 @@ describe('slotVerseLabel', () => {
 
   it('returns the label when the next group’s first token is a verse start', () => {
     const labels = new Map([['GEN 1:2:0', '2']]);
-    expect(slotVerseLabel(slot(group([wordToken('GEN 1:2:0')])), labels)).toBe('2');
+    expect(slotVerseLabel(slot(group([makeWordToken('GEN 1:2:0')])), labels)).toBe('2');
   });
 
   it('returns the label when a gap-punctuation token is the verse start', () => {
     const labels = new Map([['GEN 1:2:0', '2']]);
-    const punct = wordToken('GEN 1:2:0');
-    expect(slotVerseLabel(slot(group([wordToken('GEN 1:2:3')]), [punct]), labels)).toBe('2');
+    const punct = makePunctToken('GEN 1:2:0');
+    expect(slotVerseLabel(slot(group([makeWordToken('GEN 1:2:3')]), [punct]), labels)).toBe('2');
   });
 
   it('returns the label when the verse start is buried mid-group (phrase fused across a merged verse boundary)', () => {
     // A phrase link fusing verse 1's last word with verse 2's first word puts the verse-2 start as a
     // non-first token of the group.
     const labels = new Map([['GEN 1:2:0', '2']]);
-    const fused = group([wordToken('GEN 1:1:5'), wordToken('GEN 1:2:0')]);
+    const fused = group([makeWordToken('GEN 1:1:5'), makeWordToken('GEN 1:2:0')]);
     expect(slotVerseLabel(slot(fused), labels)).toBe('2');
   });
 
   it('returns undefined when no candidate ref is a verse start', () => {
     const labels = new Map([['GEN 1:2:0', '2']]);
-    expect(slotVerseLabel(slot(group([wordToken('GEN 1:1:0')])), labels)).toBeUndefined();
+    expect(slotVerseLabel(slot(group([makeWordToken('GEN 1:1:0')])), labels)).toBeUndefined();
   });
 
   it('returns undefined for a trailing slot with no next group and no punctuation', () => {

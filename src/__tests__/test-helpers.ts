@@ -1,9 +1,12 @@
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import type { ExecutionActivationContext, UseWebViewScrollGroupScrRefHook } from '@papi/core';
-import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interlinearizer';
+import type { Book, InterlinearProject, PhraseAnalysisLink, Segment, Token } from 'interlinearizer';
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
+import { tokenizeBook } from 'parsers/papi/bookTokenizer';
+import type { RawBook } from 'parsers/papi/usjBookExtractor';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 import { emptyAnalysis } from '../types/empty-factories';
+import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 
 /** Minimal execution token-shaped object for tests (structural match for ExecutionToken). */
 const mockExecutionToken: {
@@ -119,25 +122,7 @@ export const GEN_1_1_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
-  segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-      verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-    },
-  ],
+  segments: [makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')])],
 };
 
 /** Minimal elevated privileges for tests (all properties optional per papi type). */
@@ -160,6 +145,82 @@ export function createTestActivationContext(): ExecutionActivationContext {
   };
 }
 
+/** Builds an {@link InterlinearProjectSummary} fixture with stable defaults. */
+export function makeProjectSummary(
+  overrides: Partial<InterlinearProjectSummary> = {},
+): InterlinearProjectSummary {
+  return {
+    id: 'proj-uuid',
+    createdAt: '2026-01-15T10:30:00.000Z',
+    updatedAt: '2026-01-15T10:30:00.000Z',
+    sourceProjectId: 'src-proj',
+    analysisLanguages: ['en'],
+    ...overrides,
+  };
+}
+
+/**
+ * Builds a one-verse `Segment` from a verse sid — `"<book> <chapter>:<verse>"`, e.g. `"GEN 1:1"` —
+ * which supplies the segment's id, both of its refs, and the single verse start such a segment
+ * carries, so fixtures state only the baseline text and tokens they assert on.
+ *
+ * Only that one-verse shape is on offer: both refs stay pinned to the sid's own verse and never
+ * carry a `charIndex`. A segment spanning several verses, or the continuation piece of a split,
+ * builds itself as a literal instead.
+ *
+ * @throws If the sid names anything but a single verse; a split piece's three-part sid would
+ *   otherwise lose its trailing index and yield a segment describing the whole verse.
+ */
+export function makeSegment(sid: string, baselineText: string, tokens: Token[]): Segment {
+  const [book, chapterVerse] = sid.split(' ');
+  const parts = chapterVerse?.split(':') ?? [];
+  if (parts.length !== 2)
+    throw new Error(`makeSegment takes a "<BOOK> <chapter>:<verse>" sid; got "${sid}"`);
+  const [chapter, verse] = parts.map(Number);
+  const ref = { book, chapter, verse };
+  return {
+    id: sid,
+    startRef: ref,
+    endRef: { ...ref },
+    baselineText,
+    tokens,
+    verseStarts: [{ charStart: 0, number: String(verse), chapter }],
+  };
+}
+
+/** One verse of a book fixture. */
+type VerseSpec = {
+  sid: string;
+  text: string;
+  /** Verbatim label the verse renders as; defaults to the verse portion of the sid. */
+  number?: string;
+};
+
+/**
+ * Builds a `RawBook` fixture from a terse verse list, taking its book code from the first verse's
+ * sid (or GEN when the list is empty) so call sites state only the sid and text they care about.
+ */
+export function makeRawBook(verses: VerseSpec[]): RawBook {
+  return {
+    bookCode: verses[0]?.sid.split(' ')[0] ?? 'GEN',
+    writingSystem: 'en',
+    contentHash: 'abc123',
+    verses: verses.map(({ sid, text, number }) => ({
+      sid,
+      text,
+      number: number ?? sid.slice(sid.lastIndexOf(':') + 1),
+    })),
+  };
+}
+
+/**
+ * Builds a tokenized `Book` from a terse verse list, one segment per verse — the segmentation a
+ * book carries before any boundary edits.
+ */
+export function makeVerseBook(verses: VerseSpec[]): Book {
+  return tokenizeBook(makeRawBook(verses));
+}
+
 /**
  * Builds a minimal `InterlinearProject` test fixture with stable defaults used across command
  * tests.
@@ -178,10 +239,42 @@ export function makeStubProject(id = 'proj-id'): InterlinearProject {
 /**
  * Builds a minimal word token for use in component tests. Called without a surface text, it reuses
  * the ref as one, which is appropriate for tests that only need a syntactically valid token and do
- * not assert on surface text independently.
+ * not assert on surface text independently. The end offset is derived from the start one and the
+ * surface text, so the token satisfies the `baselineText.slice(charStart, charEnd) === surfaceText`
+ * invariant; a fixture that builds a real baseline passes the token's offset within it.
  */
-export function makeWordToken(ref: string, surfaceText = ref): Token & { type: 'word' } {
-  return { ref, surfaceText, writingSystem: 'en', type: 'word', charStart: 0, charEnd: 1 };
+export function makeWordToken(
+  ref: string,
+  surfaceText = ref,
+  charStart = 0,
+): Token & { type: 'word' } {
+  return {
+    ref,
+    surfaceText,
+    writingSystem: 'en',
+    type: 'word',
+    charStart,
+    charEnd: charStart + surfaceText.length,
+  };
+}
+
+/**
+ * Builds a minimal punctuation token, defaulting to a full stop for the fixtures where the specific
+ * mark does not matter. The end offset is derived as it is for a word token.
+ */
+export function makePunctToken(
+  ref: string,
+  surfaceText = '.',
+  charStart = 0,
+): Token & { type: 'punctuation' } {
+  return {
+    ref,
+    surfaceText,
+    writingSystem: 'en',
+    type: 'punctuation',
+    charStart,
+    charEnd: charStart + surfaceText.length,
+  };
 }
 
 /**

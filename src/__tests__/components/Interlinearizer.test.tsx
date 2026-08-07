@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Book, PhraseAnalysisLink, ScriptureRef, Segment, Token } from 'interlinearizer';
@@ -25,9 +24,11 @@ import {
   defaultScrRef,
   GEN_1_1_BOOK,
   makePhraseLink,
+  makeSegment,
+  makeWordToken,
   type ScrollGroupTuple,
 } from '../test-helpers';
-import { allFalseViewOptions } from './test-helpers';
+import { allFalseViewOptions, mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 jest.mock('lucide-react', () => ({
   __esModule: true,
@@ -214,36 +215,6 @@ jest.mock('../../components/modals/UnlinkPhraseConfirm', () => ({
   default: () => <div data-testid="unlink-confirm" />,
 }));
 
-/**
- * A fixture book whose segments may omit `verseStarts` (filled in by
- * {@link withDefaultVerseStarts}).
- */
-type BookWithOptionalVerseStarts = Omit<Book, 'segments'> & {
-  segments: (Omit<Segment, 'verseStarts'> & Partial<Pick<Segment, 'verseStarts'>>)[];
-};
-
-/**
- * Fills in a default single `verseStarts` entry (offset 0, number from `startRef.verse`) on any
- * hand-built fixture segment that lacks one, so the fixtures satisfy the `Segment` shape without
- * every literal repeating the boilerplate. Segments that already carry `verseStarts` (e.g. produced
- * by `resegmentBook`) are left untouched.
- */
-function withDefaultVerseStarts(book: BookWithOptionalVerseStarts): Book {
-  return {
-    ...book,
-    segments: book.segments.map((seg) =>
-      seg.verseStarts
-        ? { ...seg, verseStarts: seg.verseStarts }
-        : {
-            ...seg,
-            verseStarts: [
-              { charStart: 0, number: String(seg.startRef.verse), chapter: seg.startRef.chapter },
-            ],
-          },
-    ),
-  };
-}
-
 /** Pre-built Book with no segments. */
 const GEN_EMPTY_BOOK: Book = { id: 'GEN', bookRef: 'GEN', textVersion: 'v1', segments: [] };
 
@@ -260,16 +231,7 @@ function makeLargeBook(count: number): Book {
       startRef: { book: 'GEN', chapter: 1, verse: v },
       endRef: { book: 'GEN', chapter: 1, verse: v },
       baselineText: 'word',
-      tokens: [
-        {
-          ref: `GEN 1:${v}:0`,
-          surfaceText: 'word',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 4,
-        },
-      ],
+      tokens: [makeWordToken(`GEN 1:${v}:0`, 'word')],
       verseStarts: [{ charStart: 0, number: String(v), chapter: 1 }],
     });
   }
@@ -277,179 +239,66 @@ function makeLargeBook(count: number): Book {
 }
 
 /** Book with two segments in GEN 1. */
-const GEN_1_MULTI_BOOK: Book = withDefaultVerseStarts({
+const GEN_1_MULTI_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
-    {
-      id: 'GEN 1:2',
-      startRef: { book: 'GEN', chapter: 1, verse: 2 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: 'And the earth.',
-      tokens: [
-        {
-          ref: 'GEN 1:2:0',
-          surfaceText: 'And',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 3,
-        },
-      ],
-    },
+    makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
+    makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
   ],
-});
+};
 
 /**
  * GEN book with a token-less (empty) verse marker between two token-bearing verses. A merge into an
  * empty predecessor cannot take effect (the empty verse forces its own segment boundary), so the
  * list must offer no merge button for the segment after the empty one.
  */
-const GEN_1_EMPTY_MIDDLE_BOOK: Book = withDefaultVerseStarts({
+const GEN_1_EMPTY_MIDDLE_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'Alpha.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'Alpha',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-      ],
-    },
-    {
-      id: 'GEN 1:2',
-      startRef: { book: 'GEN', chapter: 1, verse: 2 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: '',
-      tokens: [],
-      verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-    },
-    {
-      id: 'GEN 1:3',
-      startRef: { book: 'GEN', chapter: 1, verse: 3 },
-      endRef: { book: 'GEN', chapter: 1, verse: 3 },
-      baselineText: 'Gamma.',
-      tokens: [
-        {
-          ref: 'GEN 1:3:0',
-          surfaceText: 'Gamma',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-      ],
-    },
+    makeSegment('GEN 1:1', 'Alpha.', [makeWordToken('GEN 1:1:0', 'Alpha')]),
+    makeSegment('GEN 1:2', '', []),
+    makeSegment('GEN 1:3', 'Gamma.', [makeWordToken('GEN 1:3:0', 'Gamma')]),
   ],
-});
+};
 
 /**
  * Two-chapter GEN book: chapter 1 has verses 1-2, chapter 2 has verses 1-2. Exercises the
  * focus-reseed guard against a host click echoed back at chapter granularity.
  */
-const GEN_TWO_CHAPTER_BOOK: Book = withDefaultVerseStarts({
+const GEN_TWO_CHAPTER_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [1, 2].flatMap((chapter) =>
-    [1, 2].map((verse) => ({
-      id: `GEN ${chapter}:${verse}`,
-      startRef: { book: 'GEN', chapter, verse },
-      endRef: { book: 'GEN', chapter, verse },
-      baselineText: 'Word.',
-      tokens: [
-        {
-          ref: `GEN ${chapter}:${verse}:0`,
-          surfaceText: 'Word',
-          writingSystem: 'en',
-          type: 'word' as const,
-          charStart: 0,
-          charEnd: 4,
-        },
-      ],
-    })),
+    [1, 2].map((verse) =>
+      makeSegment(`GEN ${chapter}:${verse}`, 'Word.', [
+        makeWordToken(`GEN ${chapter}:${verse}:0`, 'Word'),
+      ]),
+    ),
   ),
-});
+};
 
 /**
  * GEN book whose verse 1 has two word tokens (so it can be split into portions "1a"/"1b") and verse
  * 2 one word. The default one-segment-per-verse form; {@link GEN_V1_SPLIT_BOOK} is its split
  * counterpart.
  */
-const GEN_SPLITTABLE_V1_BOOK: Book = withDefaultVerseStarts({
+const GEN_SPLITTABLE_V1_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-        {
-          ref: 'GEN 1:1:3',
-          surfaceText: 'beginning',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 3,
-          charEnd: 12,
-        },
-      ],
-    },
-    {
-      id: 'GEN 1:2',
-      startRef: { book: 'GEN', chapter: 1, verse: 2 },
-      endRef: { book: 'GEN', chapter: 1, verse: 2 },
-      baselineText: 'And the earth.',
-      tokens: [
-        {
-          ref: 'GEN 1:2:0',
-          surfaceText: 'And',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 3,
-        },
-      ],
-    },
+    makeSegment('GEN 1:1', 'In beginning.', [
+      makeWordToken('GEN 1:1:0', 'In'),
+      makeWordToken('GEN 1:1:3', 'beginning', 3),
+    ]),
+    makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
   ],
-});
+};
 
 /**
  * {@link GEN_SPLITTABLE_V1_BOOK} with verse 1 split before its second word, so verse 1 becomes two
@@ -457,51 +306,21 @@ const GEN_SPLITTABLE_V1_BOOK: Book = withDefaultVerseStarts({
  * 1:1:3`). Both portions' verse ranges contain verse 1, so a verse-1 navigation resolves to the
  * first portion.
  */
-const GEN_V1_SPLIT_BOOK: Book = resegmentBook(withDefaultVerseStarts(GEN_SPLITTABLE_V1_BOOK), {
+const GEN_V1_SPLIT_BOOK: Book = resegmentBook(GEN_SPLITTABLE_V1_BOOK, {
   removedVerseStarts: [],
   addedStarts: ['GEN 1:1:3'],
 });
 
 /** GEN book whose chapter 1 opens with a verse-0 superscription segment before verse 1. */
-const GEN_SUPERSCRIPTION_BOOK: Book = withDefaultVerseStarts({
+const GEN_SUPERSCRIPTION_BOOK: Book = {
   id: 'GEN',
   bookRef: 'GEN',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'GEN 1:0',
-      startRef: { book: 'GEN', chapter: 1, verse: 0 },
-      endRef: { book: 'GEN', chapter: 1, verse: 0 },
-      baselineText: 'A song.',
-      tokens: [
-        {
-          ref: 'GEN 1:0:0',
-          surfaceText: 'A',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 1,
-        },
-      ],
-    },
-    {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'In the beginning.',
-      tokens: [
-        {
-          ref: 'GEN 1:1:0',
-          surfaceText: 'In',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 2,
-        },
-      ],
-    },
+    makeSegment('GEN 1:0', 'A song.', [makeWordToken('GEN 1:0:0', 'A')]),
+    makeSegment('GEN 1:1', 'In the beginning.', [makeWordToken('GEN 1:1:0', 'In')]),
   ],
-});
+};
 
 /**
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
@@ -563,7 +382,7 @@ function renderInterlinearizer({
   return render(
     withNav(
       <Interlinearizer
-        book={withDefaultVerseStarts(book)}
+        book={book}
         continuousScroll={continuousScroll}
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
@@ -589,13 +408,8 @@ beforeEach(() => {
   // The phrase-link map is a plain Map (not a jest mock), so resetMocks does not clear it.
   mockPhraseLinkById.clear();
   capturedSegmentation = undefined;
-  // Key-as-value localization so the merge control's label resolves.
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      keys.reduce<Record<string, string>>((acc, k) => ({ ...acc, [k]: k }), {}),
-      false,
-    ]);
+  // The merge control's label comes from a localized string.
+  mockKeyAsValueLocalizedStrings();
 });
 
 describe('Interlinearizer', () => {
@@ -626,7 +440,7 @@ describe('Interlinearizer', () => {
   });
 
   it('passes a superscript label for every absorbed verse start of a merged segment', () => {
-    const merged = resegmentBook(withDefaultVerseStarts(GEN_1_MULTI_BOOK), {
+    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
       removedVerseStarts: ['GEN 1:2:0'],
       addedStarts: [],
     });
@@ -645,7 +459,7 @@ describe('Interlinearizer', () => {
   });
 
   it('passes a merged segment its covered-verse range gutter label', () => {
-    const merged = resegmentBook(withDefaultVerseStarts(GEN_1_MULTI_BOOK), {
+    const merged = resegmentBook(GEN_1_MULTI_BOOK, {
       removedVerseStarts: ['GEN 1:2:0'],
       addedStarts: [],
     });
@@ -1256,7 +1070,7 @@ describe('Interlinearizer', () => {
     // Merge GEN 2:1 into GEN 1:2, so the segment containing chapter 2's first token starts in
     // chapter 1. Scrolling so that merged segment is at the top pins its start chapter (1) — the
     // overlay follows the topmost segment, and a merged chapter start reads as its host's chapter.
-    const merged = resegmentBook(withDefaultVerseStarts(GEN_TWO_CHAPTER_BOOK), {
+    const merged = resegmentBook(GEN_TWO_CHAPTER_BOOK, {
       removedVerseStarts: ['GEN 2:1:0'],
       addedStarts: [],
     });
@@ -1832,53 +1646,18 @@ describe('Alt-held wiring', () => {
 
 describe('focus preservation across segmentation edits', () => {
   /** GEN book whose verse 1 has two word tokens and verse 2 one — lets focus sit off a verse start. */
-  const GEN_TWO_TOKEN_V1_BOOK: Book = withDefaultVerseStarts({
+  const GEN_TWO_TOKEN_V1_BOOK: Book = {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: 'v1',
     segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: 'In beginning.',
-        tokens: [
-          {
-            ref: 'GEN 1:1:0',
-            surfaceText: 'In',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 2,
-          },
-          {
-            ref: 'GEN 1:1:3',
-            surfaceText: 'beginning',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 3,
-            charEnd: 12,
-          },
-        ],
-      },
-      {
-        id: 'GEN 1:2',
-        startRef: { book: 'GEN', chapter: 1, verse: 2 },
-        endRef: { book: 'GEN', chapter: 1, verse: 2 },
-        baselineText: 'And the earth.',
-        tokens: [
-          {
-            ref: 'GEN 1:2:0',
-            surfaceText: 'And',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 3,
-          },
-        ],
-      },
+      makeSegment('GEN 1:1', 'In beginning.', [
+        makeWordToken('GEN 1:1:0', 'In'),
+        makeWordToken('GEN 1:1:3', 'beginning', 3),
+      ]),
+      makeSegment('GEN 1:2', 'And the earth.', [makeWordToken('GEN 1:2:0', 'And')]),
     ],
-  });
+  };
 
   /**
    * Builds the wrapped `<Interlinearizer>` element, so an initial render and a post-edit rerender
@@ -1887,7 +1666,7 @@ describe('focus preservation across segmentation edits', () => {
   function interlinearizerEl(book: Book, scrRef: SerializedVerseRef): ReactNode {
     return withNav(
       <Interlinearizer
-        book={withDefaultVerseStarts(book)}
+        book={book}
         continuousScroll
         scrRef={scrRef}
         phraseMode={{ kind: 'view' }}
@@ -2052,37 +1831,17 @@ describe('segmentationVersion pass-through', () => {
 });
 
 /** Two-token LUK book, so a focus request can name a token that is not the segment's first. */
-const LUK_1_1_BOOK: Book = withDefaultVerseStarts({
+const LUK_1_1_BOOK: Book = {
   id: 'LUK',
   bookRef: 'LUK',
   textVersion: 'v1',
   segments: [
-    {
-      id: 'LUK 1:1',
-      startRef: { book: 'LUK', chapter: 1, verse: 1 },
-      endRef: { book: 'LUK', chapter: 1, verse: 1 },
-      baselineText: 'Since many',
-      tokens: [
-        {
-          ref: 'LUK 1:1:0',
-          surfaceText: 'Since',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: 5,
-        },
-        {
-          ref: 'LUK 1:1:6',
-          surfaceText: 'many',
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 6,
-          charEnd: 10,
-        },
-      ],
-    },
+    makeSegment('LUK 1:1', 'Since many', [
+      makeWordToken('LUK 1:1:0', 'Since'),
+      makeWordToken('LUK 1:1:6', 'many', 6),
+    ]),
   ],
-});
+};
 
 describe('cross-book focus requests', () => {
   /** Nav surface captured from inside the provider so a test can request a focus. */

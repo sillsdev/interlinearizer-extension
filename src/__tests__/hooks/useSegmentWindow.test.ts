@@ -5,6 +5,7 @@ import { useRef } from 'react';
 import useSegmentWindow from '../../hooks/useSegmentWindow';
 import { verseKey } from '../../components/InterlinearNavContext';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
+import { makeWordToken } from '../test-helpers';
 
 /**
  * The intersection-observer Jest stub records instances on the global object and exposes a helper
@@ -27,16 +28,7 @@ function makeSegment(chapter: number, verse: number, book = 'GEN'): Segment {
     startRef: { book, chapter, verse },
     endRef: { book, chapter, verse },
     baselineText: 'word',
-    tokens: [
-      {
-        ref: `${book} ${chapter}:${verse}:0`,
-        surfaceText: 'word',
-        writingSystem: 'en',
-        type: 'word',
-        charStart: 0,
-        charEnd: 4,
-      },
-    ],
+    tokens: [makeWordToken(`${book} ${chapter}:${verse}:0`, 'word')],
     verseStarts: [{ charStart: 0, number: String(verse), chapter }],
   };
 }

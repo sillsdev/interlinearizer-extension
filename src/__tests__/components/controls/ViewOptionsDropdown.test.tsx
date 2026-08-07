@@ -1,18 +1,13 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ViewOptionsDropdown from '../../../components/controls/ViewOptionsDropdown';
+import { mockKeyAsValueLocalizedStrings } from '../test-helpers';
 
 beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      Object.fromEntries(keys.map((k) => [k, k])),
-      false,
-    ]);
+  mockKeyAsValueLocalizedStrings();
 });
 
 const DEFAULT_PROPS = {

@@ -1,7 +1,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, PhraseAnalysisLink, Token } from 'interlinearizer';
@@ -16,7 +15,12 @@ import {
 } from '../../components/SegmentationStore';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
-import { allFalseViewOptions, withAnalysisStore } from './test-helpers';
+import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import {
+  allFalseViewOptions,
+  mockKeyAsValueLocalizedStrings,
+  withAnalysisStore,
+} from './test-helpers';
 
 // ---------------------------------------------------------------------------
 // AnalysisStore mock — pass-through provider so AnalysisStore.tsx stays out of scope
@@ -156,56 +160,14 @@ function makeBook(overrides?: Partial<Book>): Book {
     bookRef: 'GEN',
     textVersion: '1',
     segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: 'In the',
-        tokens: [
-          {
-            ref: 'tok-0',
-            surfaceText: 'In',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 2,
-          },
-          {
-            ref: 'tok-1',
-            surfaceText: 'the',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 3,
-            charEnd: 6,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      },
-      {
-        id: 'GEN 1:2',
-        startRef: { book: 'GEN', chapter: 1, verse: 2 },
-        endRef: { book: 'GEN', chapter: 1, verse: 2 },
-        baselineText: 'beginning God',
-        tokens: [
-          {
-            ref: 'tok-2',
-            surfaceText: 'beginning',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 9,
-          },
-          {
-            ref: 'tok-3',
-            surfaceText: 'God',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 10,
-            charEnd: 13,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-      },
+      makeSegment('GEN 1:1', 'In the', [
+        makeWordToken('tok-0', 'In'),
+        makeWordToken('tok-1', 'the', 3),
+      ]),
+      makeSegment('GEN 1:2', 'beginning God', [
+        makeWordToken('tok-2', 'beginning'),
+        makeWordToken('tok-3', 'God', 10),
+      ]),
     ],
     ...overrides,
   };
@@ -218,40 +180,8 @@ function makeTwoChapterBook(): Book {
     bookRef: 'GEN',
     textVersion: '1',
     segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: 'Alpha',
-        tokens: [
-          {
-            ref: 'ch1-tok-0',
-            surfaceText: 'Alpha',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 5,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      },
-      {
-        id: 'GEN 2:1',
-        startRef: { book: 'GEN', chapter: 2, verse: 1 },
-        endRef: { book: 'GEN', chapter: 2, verse: 1 },
-        baselineText: 'Beta',
-        tokens: [
-          {
-            ref: 'ch2-tok-0',
-            surfaceText: 'Beta',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 4,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 2 }],
-      },
+      makeSegment('GEN 1:1', 'Alpha', [makeWordToken('ch1-tok-0', 'Alpha')]),
+      makeSegment('GEN 2:1', 'Beta', [makeWordToken('ch2-tok-0', 'Beta')]),
     ],
   };
 }
@@ -262,25 +192,7 @@ function makeSingleTokenBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
-    segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: 'Word',
-        tokens: [
-          {
-            ref: 'tok-only',
-            surfaceText: 'Word',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 4,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      },
-    ],
+    segments: [makeSegment('GEN 1:1', 'Word', [makeWordToken('tok-only', 'Word')])],
   };
 }
 
@@ -291,40 +203,8 @@ function makeMixedBook(): Book {
     bookRef: 'GEN',
     textVersion: '1',
     segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: 'In the',
-        tokens: [
-          {
-            ref: 'mix-tok-0',
-            surfaceText: 'In',
-            writingSystem: 'en',
-            type: 'word',
-            charStart: 0,
-            charEnd: 2,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      },
-      {
-        id: 'GEN 1:2',
-        startRef: { book: 'GEN', chapter: 1, verse: 2 },
-        endRef: { book: 'GEN', chapter: 1, verse: 2 },
-        baselineText: '.',
-        tokens: [
-          {
-            ref: 'mix-punct-0',
-            surfaceText: '.',
-            writingSystem: 'en',
-            type: 'punctuation',
-            charStart: 0,
-            charEnd: 1,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-      },
+      makeSegment('GEN 1:1', 'In the', [makeWordToken('mix-tok-0', 'In')]),
+      makeSegment('GEN 1:2', '.', [makePunctToken('mix-punct-0')]),
     ],
   };
 }
@@ -335,25 +215,7 @@ function makeWordFreeBook(): Book {
     id: 'GEN',
     bookRef: 'GEN',
     textVersion: '1',
-    segments: [
-      {
-        id: 'GEN 1:1',
-        startRef: { book: 'GEN', chapter: 1, verse: 1 },
-        endRef: { book: 'GEN', chapter: 1, verse: 1 },
-        baselineText: '...',
-        tokens: [
-          {
-            ref: 'wf-punct-0',
-            surfaceText: '.',
-            writingSystem: 'en',
-            type: 'punctuation',
-            charStart: 0,
-            charEnd: 1,
-          },
-        ],
-        verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-      },
-    ],
+    segments: [makeSegment('GEN 1:1', '...', [makePunctToken('wf-punct-0')])],
   };
 }
 
@@ -368,16 +230,7 @@ function makeLargeBook(count: number): Book {
       startRef: { book: 'GEN', chapter: 1, verse: i + 1 },
       endRef: { book: 'GEN', chapter: 1, verse: i + 1 },
       baselineText: `word${i}`,
-      tokens: [
-        {
-          ref: `large-tok-${i}`,
-          surfaceText: `word${i}`,
-          writingSystem: 'en',
-          type: 'word',
-          charStart: 0,
-          charEnd: String(`word${i}`).length,
-        },
-      ],
+      tokens: [makeWordToken(`large-tok-${i}`, `word${i}`)],
       verseStarts: [{ charStart: 0, number: String(i + 1), chapter: 1 }],
     })),
   };
@@ -477,12 +330,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockImplementation((keys: readonly string[]) => [
-      Object.fromEntries(keys.map((k) => [k, k])),
-      false,
-    ]);
+  mockKeyAsValueLocalizedStrings();
   scrollIntoViewMock.mockClear();
   tokenLinkIconSpy.mockClear();
   phraseLinkMap.clear();
@@ -524,16 +372,7 @@ describe('ContinuousView initial render', () => {
           startRef: { book: 'GEN', chapter: 1, verse: 1 },
           endRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
           baselineText: 'In',
-          tokens: [
-            {
-              ref: 'tok-0',
-              surfaceText: 'In',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 2,
-            },
-          ],
+          tokens: [makeWordToken('tok-0', 'In')],
           verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
         },
         {
@@ -541,16 +380,7 @@ describe('ContinuousView initial render', () => {
           startRef: { book: 'GEN', chapter: 1, verse: 1, charIndex: 3 },
           endRef: { book: 'GEN', chapter: 1, verse: 1 },
           baselineText: 'the',
-          tokens: [
-            {
-              ref: 'tok-1',
-              surfaceText: 'the',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 3,
-            },
-          ],
+          tokens: [makeWordToken('tok-1', 'the')],
           verseStarts: [{ charStart: 0, number: '1', chapter: 1, isContinuation: true }],
         },
       ],
@@ -634,40 +464,8 @@ describe('ContinuousView initial render', () => {
       bookRef: 'MAT',
       textVersion: '1',
       segments: [
-        {
-          id: 'MAT 1:1',
-          startRef: { book: 'MAT', chapter: 1, verse: 1 },
-          endRef: { book: 'MAT', chapter: 1, verse: 1 },
-          baselineText: 'Alpha',
-          tokens: [
-            {
-              ref: 'mat-tok-0',
-              surfaceText: 'Alpha',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 5,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
-        },
-        {
-          id: 'MAT 1:2',
-          startRef: { book: 'MAT', chapter: 1, verse: 2 },
-          endRef: { book: 'MAT', chapter: 1, verse: 2 },
-          baselineText: 'Beta',
-          tokens: [
-            {
-              ref: 'mat-tok-1',
-              surfaceText: 'Beta',
-              writingSystem: 'en',
-              type: 'word',
-              charStart: 0,
-              charEnd: 4,
-            },
-          ],
-          verseStarts: [{ charStart: 0, number: '2', chapter: 1 }],
-        },
+        makeSegment('MAT 1:1', 'Alpha', [makeWordToken('mat-tok-0', 'Alpha')]),
+        makeSegment('MAT 1:2', 'Beta', [makeWordToken('mat-tok-1', 'Beta')]),
       ],
     };
 

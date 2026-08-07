@@ -3,6 +3,7 @@
 
 import { render, screen } from '@testing-library/react';
 import type { Segment } from 'interlinearizer';
+import { makeSegment } from '../test-helpers';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -27,14 +28,7 @@ describe('SegmentationStore', () => {
   });
 
   it('provides the supplied value to consumers within a provider', () => {
-    const segment: Segment = {
-      id: 'GEN 1:1',
-      startRef: { book: 'GEN', chapter: 1, verse: 1 },
-      endRef: { book: 'GEN', chapter: 1, verse: 1 },
-      baselineText: 'Hi.',
-      tokens: [],
-      verseStarts: [{ charStart: 0, number: String(1), chapter: 1 }],
-    };
+    const segment: Segment = makeSegment('GEN 1:1', 'Hi.', []);
     const value: SegmentationContextValue = {
       dispatch: NO_OP_SEGMENTATION_DISPATCH,
       segmentById: new Map([['GEN 1:1', segment]]),

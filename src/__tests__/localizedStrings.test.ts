@@ -11,49 +11,34 @@ const REPO_ROOT = path.resolve(__dirname, '../..');
 /** Matches one localize key reference, e.g. `%interlinearizer_save%`. */
 const KEY_PATTERN = /%interlinearizer_[A-Za-z0-9_]+%/g;
 
-/**
- * Directories holding no key references: build output, dependencies, and tests and their mocks —
- * which may name keys that only the fixtures they build use. Dot-directories (tooling and editor
- * config) are skipped by the same rule.
- */
-const SKIPPED_DIRS = new Set([
-  '__mocks__',
-  '__tests__',
-  'coverage',
-  'dist',
-  'e2e-tests',
-  'node_modules',
-  'release',
-  'temp-build',
-]);
-
-/** The contribution that defines the keys, rather than referencing them. */
-const CONTRIBUTION_PATH = path.join(REPO_ROOT, 'contributions', 'localizedStrings.json');
-
-/**
- * Every file that can name a key: sources, and the manifest and contribution files PAPI reads keys
- * out of. Scanning from the repo root rather than a fixed list means a key in a file type that does
- * not exist yet is still caught.
- */
-function referencingFiles(dir: string): string[] {
+/** Extension sources, excluding tests (which may name keys that only the fixtures they build use). */
+function sourceFiles(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = path.join(dir, entry.name);
-    if (entry.name.startsWith('.')) return [];
-    if (entry.isDirectory()) return SKIPPED_DIRS.has(entry.name) ? [] : referencingFiles(full);
-    if (full === CONTRIBUTION_PATH) return [];
-    return /\.(json|tsx?)$/.test(entry.name) ? [full] : [];
+    if (entry.isDirectory()) return entry.name === '__tests__' ? [] : sourceFiles(full);
+    return entry.name.endsWith('.ts') || entry.name.endsWith('.tsx') ? [full] : [];
   });
+}
+
+/** Contribution files that reference keys rather than define them. */
+function contributionFiles(): string[] {
+  const dir = path.join(REPO_ROOT, 'contributions');
+  return fs
+    .readdirSync(dir)
+    .filter((name) => name.endsWith('.json') && name !== 'localizedStrings.json')
+    .map((name) => path.join(dir, name));
 }
 
 describe('localizedStrings contribution', () => {
   const definedKeys = Object.keys(localizedStringsContribution.localizedStrings.en);
 
-  /** Each key reference in the repo, paired with the file that names it. */
-  const references = referencingFiles(REPO_ROOT).flatMap((file) =>
-    (fs.readFileSync(file, 'utf8').match(KEY_PATTERN) ?? []).map((key) => ({
-      key,
-      file: path.relative(REPO_ROOT, file),
-    })),
+  /** Each key reference in the extension, paired with the file that names it. */
+  const references = [...sourceFiles(path.join(REPO_ROOT, 'src')), ...contributionFiles()].flatMap(
+    (file) =>
+      (fs.readFileSync(file, 'utf8').match(KEY_PATTERN) ?? []).map((key) => ({
+        key,
+        file: path.relative(REPO_ROOT, file),
+      })),
   );
 
   // A key the extension names but the contribution omits is not a build or type error: PAPI renders

@@ -23,7 +23,7 @@ jobs:
       # Everything checked here is in the release payload, so there is nothing to check out and no
       # token to grant. It reaches the script through the environment rather than by interpolation,
       # so release text cannot run as shell.
-      - name: Check the Paratext 10 Studio zip and its version
+      - name: Check the install steps and the Paratext 10 Studio zip
         shell: bash
         env:
           BODY: ${{ github.event.release.body }}
@@ -33,6 +33,13 @@ jobs:
 
           if grep -qF '<Studio version>' <<< "${BODY}"; then
             echo '::error::The release body still has its `<Studio version>` placeholder. Replace it with the version of the Paratext 10 Studio zip attached below, so the install steps name a file that exists.'
+            failed=1
+          fi
+
+          # The publish workflow fills this placeholder in, so it only survives on a release whose
+          # body was copied from `.github/assets/release-body.md` by hand.
+          if grep -qF 'interlinearizer_<version>.zip' <<< "${BODY}"; then
+            echo '::error::The release body still has its `interlinearizer_<version>.zip` placeholder. Replace it with the version of the extension zip attached below, so the install steps name a file that exists.'
             failed=1
           fi
 

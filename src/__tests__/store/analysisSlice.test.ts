@@ -35,7 +35,7 @@ import {
   type AnalysisState,
 } from '../../store/analysisSlice';
 import { emptyAnalysis } from '../../types/empty-factories';
-import { makePhraseLink } from '../test-helpers';
+import { makePhraseLink, FIXTURE_STAMPS } from '../test-helpers';
 
 /**
  * Builds an approved {@link TokenAnalysisLink} for `tok-1` pointing at the given
@@ -43,6 +43,7 @@ import { makePhraseLink } from '../test-helpers';
  */
 function makeApprovedLink(ta: TokenAnalysis): TokenAnalysisLink {
   return {
+    ...FIXTURE_STAMPS,
     analysisId: ta.id,
     status: 'approved',
     token: { tokenRef: 'tok-1', surfaceText: ta.surfaceText },
@@ -79,6 +80,7 @@ describe('writeGloss', () => {
   it('removes an orphaned approved link and creates a fresh one', () => {
     // Orphaned state: an approved link whose analysisId has no matching TokenAnalysis.
     const orphanLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -99,6 +101,7 @@ describe('writeGloss', () => {
 
   it('produces exactly one approved link after writing a gloss over an orphaned link', () => {
     const orphanLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -124,7 +127,7 @@ describe('writeGloss', () => {
     // Seed an approved TokenAnalysis with no gloss field, then update it via writeGloss.
     const store = createAnalysisStore({
       analysis: {
-        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word' }),
+        analysis: makeAnalysis({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' }),
         analysisLanguage: 'und',
       },
     });
@@ -138,7 +141,12 @@ describe('writeGloss', () => {
   it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
     const store = createAnalysisStore({
       analysis: {
-        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } }),
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'hi' },
+        }),
         analysisLanguage: 'und',
       },
     });
@@ -153,7 +161,12 @@ describe('writeGloss', () => {
   it('removes the record and link when a blank gloss empties a gloss-only analysis', () => {
     const store = createAnalysisStore({
       analysis: {
-        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } }),
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { und: 'hi' },
+        }),
         analysisLanguage: 'und',
       },
     });
@@ -169,6 +182,7 @@ describe('writeGloss', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
           id: 'ta-1',
           surfaceText: 'word',
           gloss: { und: 'hi' },
@@ -190,6 +204,7 @@ describe('writeGloss', () => {
     const store = createAnalysisStore({
       analysis: {
         analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
           id: 'ta-1',
           surfaceText: 'word',
           gloss: { und: 'hi', fr: 'bonjour' },
@@ -365,7 +380,12 @@ describe('selectApprovedGloss', () => {
     // Approved analysis exists but has no gloss entry for the requested language.
     const store = createAnalysisStore({
       analysis: {
-        analysis: makeAnalysis({ id: 'ta-1', surfaceText: 'word', gloss: { fr: 'bonjour' } }),
+        analysis: makeAnalysis({
+          ...FIXTURE_STAMPS,
+          id: 'ta-1',
+          surfaceText: 'word',
+          gloss: { fr: 'bonjour' },
+        }),
         analysisLanguage: 'en',
       },
     });
@@ -378,7 +398,7 @@ describe('selectApprovedGloss', () => {
 function makeAnalysisWithPhrase(link: PhraseAnalysisLink): TextAnalysis {
   return {
     ...emptyAnalysis(),
-    phraseAnalyses: [{ id: link.analysisId, surfaceText: 'phrase' }],
+    phraseAnalyses: [{ ...FIXTURE_STAMPS, id: link.analysisId, surfaceText: 'phrase' }],
     phraseAnalysisLinks: [link],
   };
 }
@@ -508,8 +528,8 @@ describe('deletePhrase', () => {
         analysis: {
           ...emptyAnalysis(),
           phraseAnalyses: [
-            { id: 'phrase-1', surfaceText: 'A' },
-            { id: 'phrase-2', surfaceText: 'B' },
+            { ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'A' },
+            { ...FIXTURE_STAMPS, id: 'phrase-2', surfaceText: 'B' },
           ],
           phraseAnalysisLinks: [link1, link2],
         },
@@ -536,8 +556,8 @@ describe('mergePhrases', () => {
         analysis: {
           ...emptyAnalysis(),
           phraseAnalyses: [
-            { id: 'phrase-1', surfaceText: 'A' },
-            { id: 'phrase-2', surfaceText: 'B' },
+            { ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'A' },
+            { ...FIXTURE_STAMPS, id: 'phrase-2', surfaceText: 'B' },
           ],
           phraseAnalysisLinks: [target, absorbed],
         },
@@ -596,7 +616,7 @@ describe('mergePhrases', () => {
       analysis: {
         analysis: {
           ...emptyAnalysis(),
-          phraseAnalyses: [{ id: 'phrase-1', surfaceText: 'A' }],
+          phraseAnalyses: [{ ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'A' }],
           phraseAnalysisLinks: [phrase],
         },
         analysisLanguage: 'und',
@@ -652,8 +672,8 @@ describe('selectPhraseLinks', () => {
     const analysis: TextAnalysis = {
       ...emptyAnalysis(),
       phraseAnalyses: [
-        { id: 'phrase-1', surfaceText: 'A' },
-        { id: 'phrase-2', surfaceText: 'B' },
+        { ...FIXTURE_STAMPS, id: 'phrase-1', surfaceText: 'A' },
+        { ...FIXTURE_STAMPS, id: 'phrase-2', surfaceText: 'B' },
       ],
       phraseAnalysisLinks: [approved, suggested],
     };
@@ -752,7 +772,12 @@ function makeAnalysisWithSegment(
     ...emptyAnalysis(),
     segmentAnalyses: [analysis],
     segmentAnalysisLinks: [
-      link ?? { analysisId: analysis.id, status: 'approved', segmentId: 'seg-1' },
+      link ?? {
+        ...FIXTURE_STAMPS,
+        analysisId: analysis.id,
+        status: 'approved',
+        segmentId: 'seg-1',
+      },
     ],
   };
 }
@@ -770,7 +795,13 @@ describe('writeSegmentFreeTranslation', () => {
       freeTranslation: { und: 'au commencement' },
     });
     expect(segmentAnalysisLinks).toEqual([
-      { analysisId: segmentAnalyses[0].id, status: 'approved', segmentId: 'seg-1' },
+      {
+        analysisId: segmentAnalyses[0].id,
+        createdAt: segmentAnalyses[0].createdAt,
+        updatedAt: segmentAnalyses[0].updatedAt,
+        status: 'approved',
+        segmentId: 'seg-1',
+      },
     ]);
   });
 
@@ -785,6 +816,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('updates an existing analysis in place and refreshes the surface text', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'old surface',
       freeTranslation: { und: 'old' },
@@ -804,6 +836,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('initializes the free translation on an existing analysis that has none', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       literalTranslation: { und: 'word for word' },
@@ -819,6 +852,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('removes the record and its link when a blank write empties the analysis', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       freeTranslation: { und: 'value' },
@@ -833,6 +867,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('keeps the record when another language still has a free translation', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       freeTranslation: { und: 'value', fr: 'valeur' },
@@ -848,6 +883,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('keeps the record when a literal translation remains after clearing the free translation', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       freeTranslation: { und: 'value' },
@@ -865,6 +901,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('treats whitespace-only entries in other languages as empty and removes the record', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       freeTranslation: { und: '   ', fr: 'valeur' },
@@ -879,6 +916,7 @@ describe('writeSegmentFreeTranslation', () => {
 
   it('repairs an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: SegmentAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
       segmentId: 'seg-1',
@@ -903,6 +941,7 @@ describe('writeSegmentFreeTranslation', () => {
 describe('selectSegmentFreeTranslation', () => {
   it('returns the free translation for the active language', () => {
     const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
       id: 'sa-1',
       surfaceText: 'surface',
       freeTranslation: { und: 'value' },
@@ -922,7 +961,9 @@ describe('selectSegmentFreeTranslation', () => {
       analysis: {
         analysis: {
           ...emptyAnalysis(),
-          segmentAnalysisLinks: [{ analysisId: 'gone', status: 'approved', segmentId: 'seg-1' }],
+          segmentAnalysisLinks: [
+            { ...FIXTURE_STAMPS, analysisId: 'gone', status: 'approved', segmentId: 'seg-1' },
+          ],
         },
         analysisLanguage: 'und',
       },
@@ -932,7 +973,11 @@ describe('selectSegmentFreeTranslation', () => {
   });
 
   it('returns empty string when the analysis has no free translation for the active language', () => {
-    const seeded = makeAnalysisWithSegment({ id: 'sa-1', surfaceText: 'surface' });
+    const seeded = makeAnalysisWithSegment({
+      ...FIXTURE_STAMPS,
+      id: 'sa-1',
+      surfaceText: 'surface',
+    });
     const store = createAnalysisStore({ analysis: { analysis: seeded, analysisLanguage: 'und' } });
 
     expect(selectSegmentFreeTranslation(store.getState().analysis, 'seg-1')).toBe('');
@@ -959,6 +1004,7 @@ describe('writeMorphemes', () => {
 
   it('updates morphemes on an existing approved analysis, preserving glosses by form', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -992,6 +1038,7 @@ describe('writeMorphemes', () => {
 
   it('preserves distinct glosses on duplicate morpheme forms in order (reduplication)', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'baba',
       morphemes: [
@@ -1014,11 +1061,13 @@ describe('writeMorphemes', () => {
     // Two 'run' tokens with different breakdowns → two distinct payloads. Re-segment tok-2 to match
     // tok-1's single-morpheme breakdown; the payloads should collapse back onto one.
     const single: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'run',
       morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
     };
     const split: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-2',
       surfaceText: 'run',
       morphemes: [
@@ -1033,11 +1082,13 @@ describe('writeMorphemes', () => {
           tokenAnalyses: [single, split],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'run' },
             },
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
               token: { tokenRef: 'tok-2', surfaceText: 'run' },
@@ -1057,6 +1108,7 @@ describe('writeMorphemes', () => {
 
   it('removes an orphaned approved link and creates a fresh analysis', () => {
     const orphanLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'old-uuid',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -1080,6 +1132,7 @@ describe('writeMorphemes', () => {
 
   it('refreshes the surface text on the analysis and the link snapshot when the token text changed', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
@@ -1096,7 +1149,7 @@ describe('writeMorphemes', () => {
   });
 
   it('adds morphemes to an existing approved analysis that has no morphemes', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'hello' };
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'hello' };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
@@ -1110,6 +1163,7 @@ describe('writeMorphemes', () => {
 
   it('preserves morpheme ids when forms are unchanged', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -1132,6 +1186,7 @@ describe('writeMorphemes', () => {
 
   it('assigns a fresh id to a newly added morpheme alongside preserved ones', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -1173,6 +1228,7 @@ describe('writeMorphemes', () => {
 
   it('refreshes the writing system on preserved morphemes whose form is unchanged', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'λόγος',
       morphemes: [{ id: 'm-1', form: 'λόγ', writingSystem: 'en', gloss: { en: 'word' } }],
@@ -1208,6 +1264,7 @@ describe('writeMorphemes', () => {
 describe('deleteMorphemes', () => {
   it('removes the morphemes but keeps the analysis when it has a gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       gloss: { und: 'incredible' },
@@ -1228,6 +1285,7 @@ describe('deleteMorphemes', () => {
 
   it('removes the analysis and its link when it has no gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
@@ -1245,6 +1303,7 @@ describe('deleteMorphemes', () => {
 
   it('removes the analysis and its link when its gloss object is empty', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       gloss: {},
@@ -1265,12 +1324,18 @@ describe('deleteMorphemes', () => {
     // tok-1: 'run' with gloss + breakdown; tok-2: 'run' with the same gloss but no breakdown.
     // Removing tok-1's breakdown leaves its payload identical to tok-2's, so the two collapse.
     const withBreakdown: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'run',
       gloss: { und: 'jog' },
       morphemes: [{ id: 'm-1', form: 'run', writingSystem: 'und' }],
     };
-    const glossOnly: TokenAnalysis = { id: 'ta-2', surfaceText: 'run', gloss: { und: 'jog' } };
+    const glossOnly: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'run',
+      gloss: { und: 'jog' },
+    };
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -1278,11 +1343,13 @@ describe('deleteMorphemes', () => {
           tokenAnalyses: [withBreakdown, glossOnly],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'run' },
             },
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
               token: { tokenRef: 'tok-2', surfaceText: 'run' },
@@ -1304,6 +1371,7 @@ describe('deleteMorphemes', () => {
 
   it('no-ops when the token has no approved link', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
@@ -1318,7 +1386,12 @@ describe('deleteMorphemes', () => {
   });
 
   it('no-ops when the approved analysis has no morphemes', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { und: 'hi' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'word',
+      gloss: { und: 'hi' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
@@ -1333,6 +1406,7 @@ describe('deleteMorphemes', () => {
 
   it('keeps the analysis and link when it carries a part of speech but no gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       pos: 'N',
@@ -1353,6 +1427,7 @@ describe('deleteMorphemes', () => {
 
   it('keeps the analysis and link when it carries features but no gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       features: { Case: 'Nom' },
@@ -1373,6 +1448,7 @@ describe('deleteMorphemes', () => {
 
   it('keeps the analysis and link when it carries a lexicon sense reference but no gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       glossSenseRef: { senseId: 'sense-1' },
@@ -1393,6 +1469,7 @@ describe('deleteMorphemes', () => {
 
   it('repairs an orphaned approved link by removing it', () => {
     const orphanLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'missing-uuid',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -1415,6 +1492,7 @@ describe('deleteMorphemes', () => {
 describe('writeMorphemeGloss', () => {
   it('writes a gloss onto the specified morpheme', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -1435,6 +1513,7 @@ describe('writeMorphemeGloss', () => {
 
   it('drops the gloss object when a blank value clears its only entry', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [{ id: 'm-1', form: 'un-', writingSystem: 'und', gloss: { und: 'not' } }],
@@ -1451,6 +1530,7 @@ describe('writeMorphemeGloss', () => {
 
   it('removes only the active language entry from a multi-language gloss when cleared', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [
@@ -1469,6 +1549,7 @@ describe('writeMorphemeGloss', () => {
 
   it('no-ops when a blank value clears a morpheme that has no gloss', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'unbelievable',
       morphemes: [{ id: 'm-1', form: 'un-', writingSystem: 'und' }],
@@ -1491,6 +1572,7 @@ describe('writeMorphemeGloss', () => {
 
   it('repairs an orphaned approved link by removing it', () => {
     const orphanLink: TokenAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'missing-uuid',
       status: 'approved',
       token: { tokenRef: 'tok-1', surfaceText: 'word' },
@@ -1509,6 +1591,7 @@ describe('writeMorphemeGloss', () => {
 
   it('no-ops when the morpheme id is not found', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       morphemes: [{ id: 'm-1', form: 'word', writingSystem: 'und' }],
@@ -1530,6 +1613,7 @@ describe('writeMorphemeGloss', () => {
     // Two payloads for "cats" differ only in morpheme-0's gloss; glossing tok-1's morpheme to match
     // tok-2's makes them content-identical, so the two payloads should collapse back onto one.
     const ta1: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'cats',
       morphemes: [
@@ -1538,6 +1622,7 @@ describe('writeMorphemeGloss', () => {
       ],
     };
     const ta2: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-2',
       surfaceText: 'cats',
       morphemes: [
@@ -1552,11 +1637,13 @@ describe('writeMorphemeGloss', () => {
           tokenAnalyses: [ta1, ta2],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'cats' },
             },
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
               token: { tokenRef: 'tok-2', surfaceText: 'cats' },
@@ -1580,6 +1667,7 @@ describe('writeMorphemeGloss', () => {
     // it makes the two payloads content-identical, so they should collapse back onto one — the clear
     // path must re-converge symmetrically with the write path, not leave a duplicate behind.
     const ta1: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'cats',
       morphemes: [
@@ -1588,6 +1676,7 @@ describe('writeMorphemeGloss', () => {
       ],
     };
     const ta2: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-2',
       surfaceText: 'cats',
       morphemes: [
@@ -1602,11 +1691,13 @@ describe('writeMorphemeGloss', () => {
           tokenAnalyses: [ta1, ta2],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'cats' },
             },
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-2',
               status: 'approved',
               token: { tokenRef: 'tok-2', surfaceText: 'cats' },
@@ -1654,6 +1745,7 @@ describe('writeMorphemeGloss', () => {
 describe('selectApprovedMorphemes', () => {
   it('returns morphemes from the approved analysis', () => {
     const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-1',
       surfaceText: 'word',
       morphemes: [
@@ -1677,7 +1769,7 @@ describe('selectApprovedMorphemes', () => {
   });
 
   it('returns an empty array when approved analysis has no morphemes', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word' };
+    const ta: TokenAnalysis = { ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'word' };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'und' },
     });
@@ -1696,16 +1788,23 @@ describe('selectApprovedMorphemes', () => {
 
 describe('selectPoolIndex', () => {
   it('indexes approved analyses by normalized surface form with their approval frequency', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     // Two tokens approved to one shared payload — a sentence-initial "Logos" and a mid-sentence
     // "logos" — so the pool frequency is the count of distinct approving tokens.
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
         token: { tokenRef: 'tok-1', surfaceText: 'logos' },
       },
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'approved',
         token: { tokenRef: 'tok-2', surfaceText: 'Logos' },
@@ -1724,9 +1823,15 @@ describe('selectPoolIndex', () => {
   });
 
   it('excludes non-approved links so only confirmed analyses enter the pool', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-1',
         status: 'suggested',
         token: { tokenRef: 'tok-1', surfaceText: 'logos' },
@@ -1752,7 +1857,12 @@ describe('selectPoolIndex', () => {
 
 describe('selectResolvedTokenAnalysis', () => {
   it('returns the approved analysis when the token has one', () => {
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'word',
+      gloss: { en: 'hi' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
@@ -1769,7 +1879,12 @@ describe('selectResolvedTokenAnalysis', () => {
   it('falls back to a derived suggestion for an unapproved token matching the pool', () => {
     // makeAnalysis approves tok-1 → ta-1 ('logos'); tok-2 (also 'logos') has no approved analysis,
     // so it resolves to the pooled payload as a suggestion.
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
@@ -1798,28 +1913,42 @@ describe('selectSuggestionAfterClearing', () => {
    */
   function bankPool(): TextAnalysis {
     const river: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-river',
       surfaceText: 'bank',
       gloss: { en: 'riverbank' },
     };
-    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const fin: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-fin',
+      surfaceText: 'bank',
+      gloss: { en: 'finance' },
+    };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r1', surfaceText: 'bank' },
       },
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r2', surfaceText: 'bank' },
       },
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r3', surfaceText: 'bank' },
       },
-      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-fin',
+        status: 'approved',
+        token: { tokenRef: 'f1', surfaceText: 'bank' },
+      },
     ];
     return { ...emptyAnalysis(), tokenAnalyses: [river, fin], tokenAnalysisLinks };
   }
@@ -1855,7 +1984,12 @@ describe('selectSuggestionAfterClearing', () => {
   it('returns undefined when discounting the approval empties the pool match', () => {
     // tok-1's payload is the only approval of 'word'; clearing it removes the pool entry entirely, so
     // there is nothing left to suggest — matching the empty pool the committed deletion produces.
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'word', gloss: { en: 'hi' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'word',
+      gloss: { en: 'hi' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
@@ -1869,7 +2003,12 @@ describe('selectSuggestionAfterClearing', () => {
 describe('approveAnalysisForToken', () => {
   it('approves an existing payload for an unapproved token, raising its frequency', () => {
     // tok-1 approves ta-1 ('logos'); tok-2 (also 'logos') only has it as a suggestion until accepted.
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
@@ -1893,23 +2032,36 @@ describe('approveAnalysisForToken', () => {
   it('promotes a chosen candidate id and snapshots the accepting token surface text', () => {
     // Homograph 'bank': ta-river is approved twice (the suggested pick), ta-fin once (a candidate).
     const river: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
       id: 'ta-river',
       surfaceText: 'bank',
       gloss: { en: 'riverside' },
     };
-    const fin: TokenAnalysis = { id: 'ta-fin', surfaceText: 'bank', gloss: { en: 'finance' } };
+    const fin: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-fin',
+      surfaceText: 'bank',
+      gloss: { en: 'finance' },
+    };
     const tokenAnalysisLinks: TokenAnalysisLink[] = [
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r1', surfaceText: 'bank' },
       },
       {
+        ...FIXTURE_STAMPS,
         analysisId: 'ta-river',
         status: 'approved',
         token: { tokenRef: 'r2', surfaceText: 'bank' },
       },
-      { analysisId: 'ta-fin', status: 'approved', token: { tokenRef: 'f1', surfaceText: 'bank' } },
+      {
+        ...FIXTURE_STAMPS,
+        analysisId: 'ta-fin',
+        status: 'approved',
+        token: { tokenRef: 'f1', surfaceText: 'bank' },
+      },
     ];
     const store = createAnalysisStore({
       analysis: {
@@ -1932,7 +2084,12 @@ describe('approveAnalysisForToken', () => {
 
   it('is a no-op when the analysis id matches no stored payload (no orphan link)', () => {
     // Guards against an unknown id being appended as an approved link that points at nothing.
-    const ta: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const ta: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     const store = createAnalysisStore({
       analysis: { analysis: makeAnalysis(ta), analysisLanguage: 'en' },
     });
@@ -1956,8 +2113,18 @@ describe('approveAnalysisForToken', () => {
     // link in place rather than appending a second (preserving the single-approved invariant) or
     // no-opping (which would silently fail the re-promotion the UI offers). A co-linked sibling keeps
     // ta-1 alive, so the old payload survives.
-    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
-    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const approved: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
+    const other: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'logos',
+      gloss: { en: 'other' },
+    };
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -1965,11 +2132,13 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved, other],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'logos' },
             },
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-sibling', surfaceText: 'logos' },
@@ -2000,8 +2169,18 @@ describe('approveAnalysisForToken', () => {
   it('reclaims the old payload when promoting an already-approved token off its last reference', () => {
     // When the promoted-away payload has no other approved link, repointing leaves it orphaned, so
     // it is dropped — a promotion never strands an empty payload.
-    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
-    const other: TokenAnalysis = { id: 'ta-2', surfaceText: 'logos', gloss: { en: 'other' } };
+    const approved: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
+    const other: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-2',
+      surfaceText: 'logos',
+      gloss: { en: 'other' },
+    };
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -2009,6 +2188,7 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved, other],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'logos' },
@@ -2034,7 +2214,12 @@ describe('approveAnalysisForToken', () => {
 
   it('is a no-op when promoting an already-approved token to the analysis it already approves', () => {
     // Re-approving the same payload changes nothing — the link already points there.
-    const approved: TokenAnalysis = { id: 'ta-1', surfaceText: 'logos', gloss: { en: 'word' } };
+    const approved: TokenAnalysis = {
+      ...FIXTURE_STAMPS,
+      id: 'ta-1',
+      surfaceText: 'logos',
+      gloss: { en: 'word' },
+    };
     const store = createAnalysisStore({
       analysis: {
         analysis: {
@@ -2042,6 +2227,7 @@ describe('approveAnalysisForToken', () => {
           tokenAnalyses: [approved],
           tokenAnalysisLinks: [
             {
+              ...FIXTURE_STAMPS,
               analysisId: 'ta-1',
               status: 'approved',
               token: { tokenRef: 'tok-1', surfaceText: 'logos' },
@@ -2106,5 +2292,201 @@ describe('selectMorphemeResetLosesGlosses', () => {
     );
     store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cats', analysisId }));
     expect(selectMorphemeResetLosesGlosses(store.getState().analysis, 'tok-2')).toBe(false);
+  });
+});
+
+describe('analysis timestamps', () => {
+  const FIRST_WRITE = '2026-04-01T09:00:00.000Z';
+  const SECOND_WRITE = '2026-04-02T10:30:00.000Z';
+
+  /** Advances the frozen clock so a following dispatch stamps a time distinct from the last. */
+  function setClock(time: string): void {
+    jest.setSystemTime(new Date(time));
+  }
+
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date(FIRST_WRITE));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  /** Returns the approved payload and link for a token, so the two can be asserted on together. */
+  function approvedPair(state: AnalysisState, tokenRef: string) {
+    const link = state.analysis.tokenAnalysisLinks.find(
+      (l) => l.status === 'approved' && l.token.tokenRef === tokenRef,
+    );
+    const analysis = state.analysis.tokenAnalyses.find((ta) => ta.id === link?.analysisId);
+    return { link, analysis };
+  }
+
+  it('stamps a new token analysis and its link with the write time', () => {
+    const store = createAnalysisStore();
+
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+
+    const { link, analysis } = approvedPair(store.getState().analysis, 'tok-1');
+    expect(analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+  });
+
+  it('advances only updatedAt when an existing analysis is edited', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writeGloss('tok-1', 'cat', 'kitty'));
+
+    const { link, analysis } = approvedPair(store.getState().analysis, 'tok-1');
+    expect(analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
+    expect(link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
+  });
+
+  it('keeps the shared payload dated by its content when a second token adopts it', () => {
+    // The payload records when this gloss entered the project; only the new link records when this
+    // token took it on.
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writeGloss('tok-2', 'cat', 'feline'));
+
+    const { link, analysis } = approvedPair(store.getState().analysis, 'tok-2');
+    expect(analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(link).toMatchObject({ createdAt: SECOND_WRITE, updatedAt: SECOND_WRITE });
+  });
+
+  it('dates a fork from the edit that produced it, leaving the co-linked token untouched', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'feline'));
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writeGloss('tok-1', 'cat', 'tomcat'));
+
+    const edited = approvedPair(store.getState().analysis, 'tok-1');
+    expect(edited.analysis).toMatchObject({ createdAt: SECOND_WRITE, updatedAt: SECOND_WRITE });
+    const sibling = approvedPair(store.getState().analysis, 'tok-2');
+    expect(sibling.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(sibling.link).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+  });
+
+  it('keeps the surviving payload dated by its content when an edit re-converges onto it', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    store.dispatch(writeGloss('tok-2', 'cat', 'tomcat'));
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writeGloss('tok-2', 'cat', 'feline'));
+
+    const { link, analysis } = approvedPair(store.getState().analysis, 'tok-2');
+    expect(store.getState().analysis.analysis.tokenAnalyses).toHaveLength(1);
+    expect(analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(link).toMatchObject({ updatedAt: SECOND_WRITE });
+  });
+
+  it('stamps only the link when a token approves an existing pool analysis', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeGloss('tok-1', 'cat', 'feline'));
+    const { analysis } = approvedPair(store.getState().analysis, 'tok-1');
+    const analysisId = analysis?.id ?? '';
+
+    setClock(SECOND_WRITE);
+    store.dispatch(approveAnalysisForToken({ tokenRef: 'tok-2', surfaceText: 'cat', analysisId }));
+
+    const approved = approvedPair(store.getState().analysis, 'tok-2');
+    expect(approved.analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: FIRST_WRITE });
+    expect(approved.link).toMatchObject({ createdAt: SECOND_WRITE, updatedAt: SECOND_WRITE });
+  });
+
+  it('stamps a morpheme gloss edit on the payload and the link', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeMorphemes('tok-1', 'cats', ['cat', 's'], 'en'));
+    const [morpheme] = selectApprovedMorphemes(store.getState().analysis, 'tok-1');
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      writeMorphemeGloss({ tokenRef: 'tok-1', morphemeId: morpheme.id, value: 'cat' }),
+    );
+
+    const { link, analysis } = approvedPair(store.getState().analysis, 'tok-1');
+    expect(analysis).toMatchObject({ createdAt: FIRST_WRITE, updatedAt: SECOND_WRITE });
+    expect(link).toMatchObject({ updatedAt: SECOND_WRITE });
+  });
+
+  it('stamps a new phrase and its link, then advances both when the phrase is glossed', () => {
+    const store = createAnalysisStore();
+    const tokens: TokenSnapshot[] = [
+      { tokenRef: 'tok-1', surfaceText: 'in' },
+      { tokenRef: 'tok-2', surfaceText: 'the' },
+    ];
+    const { payload } = store.dispatch(createPhrase(tokens));
+    const phraseId = payload.id;
+
+    expect(store.getState().analysis.analysis.phraseAnalyses[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: FIRST_WRITE,
+    });
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writePhraseGloss({ phraseId, value: 'within' }));
+
+    const state = store.getState().analysis.analysis;
+    expect(state.phraseAnalyses[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: SECOND_WRITE,
+    });
+    expect(state.phraseAnalysisLinks[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: SECOND_WRITE,
+    });
+  });
+
+  it('stamps a phrase link when its token membership changes', () => {
+    const store = createAnalysisStore();
+    const { payload } = store.dispatch(
+      createPhrase([
+        { tokenRef: 'tok-1', surfaceText: 'in' },
+        { tokenRef: 'tok-2', surfaceText: 'the' },
+      ]),
+    );
+
+    setClock(SECOND_WRITE);
+    store.dispatch(
+      updatePhrase({
+        phraseId: payload.id,
+        tokens: [
+          { tokenRef: 'tok-1', surfaceText: 'in' },
+          { tokenRef: 'tok-2', surfaceText: 'the' },
+          { tokenRef: 'tok-3', surfaceText: 'beginning' },
+        ],
+      }),
+    );
+
+    const state = store.getState().analysis.analysis;
+    expect(state.phraseAnalysisLinks[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: SECOND_WRITE,
+    });
+    expect(state.phraseAnalyses[0]).toMatchObject({ updatedAt: SECOND_WRITE });
+  });
+
+  it('stamps a segment free translation on creation and again on edit', () => {
+    const store = createAnalysisStore();
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', 'au commencement'));
+
+    setClock(SECOND_WRITE);
+    store.dispatch(writeSegmentFreeTranslation('seg-1', 'In the beginning', 'au debut'));
+
+    const state = store.getState().analysis.analysis;
+    expect(state.segmentAnalyses[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: SECOND_WRITE,
+    });
+    expect(state.segmentAnalysisLinks[0]).toMatchObject({
+      createdAt: FIRST_WRITE,
+      updatedAt: SECOND_WRITE,
+    });
   });
 });

@@ -19,6 +19,7 @@ import type { PhraseMode } from '../../types/phrase-mode';
 import type { ViewOptions } from '../../types/view-options';
 import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
+  FIXTURE_STAMPS,
   GEN_1_1_BOOK,
   makePunctToken,
   makeScrollGroupHook,
@@ -1188,7 +1189,12 @@ describe('InterlinearizerLoader', () => {
   describe('draft loading', () => {
     it('loads the draft on mount and passes its analysis as initialAnalysis', async () => {
       const draftAnalysis = emptyAnalysis();
-      draftAnalysis.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+      draftAnalysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 't1',
+        surfaceText: 'In',
+        gloss: { en: 'in' },
+      });
       mockSendCommand.mockResolvedValueOnce(
         JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
       );
@@ -1242,7 +1248,12 @@ describe('InterlinearizerLoader', () => {
       });
 
       const edited = emptyAnalysis();
-      edited.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+      edited.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 't1',
+        surfaceText: 'In',
+        gloss: { en: 'in' },
+      });
 
       // Switch to fake timers only for this test so we can advance past the 300ms debounce.
       jest.useFakeTimers();
@@ -1533,7 +1544,12 @@ describe('InterlinearizerLoader', () => {
   describe('save command', () => {
     it('saves the draft analysis to the active project when Save is clicked with an active project', async () => {
       const draftAnalysis = emptyAnalysis();
-      draftAnalysis.tokenAnalyses.push({ id: 't1', surfaceText: 'In', gloss: { en: 'in' } });
+      draftAnalysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 't1',
+        surfaceText: 'In',
+        gloss: { en: 'in' },
+      });
       mockSendCommand.mockResolvedValueOnce(
         JSON.stringify({ ...emptyDraft(testProjectId), analysis: draftAnalysis }),
       );

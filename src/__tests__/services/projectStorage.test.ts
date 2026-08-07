@@ -15,7 +15,7 @@ import {
   updateProjectMetadata,
 } from '../../services/projectStorage';
 import { emptyAnalysis, emptyDraft } from '../../types/empty-factories';
-import { createTestActivationContext, makeStubProject } from '../test-helpers';
+import { createTestActivationContext, FIXTURE_STAMPS, makeStubProject } from '../test-helpers';
 
 /**
  * Mock implementation of storage methods used in tests. Exposes `__mockReadUserData`,
@@ -60,6 +60,12 @@ describe('projectStorage', () => {
     __mockWriteUserData.mockResolvedValue(undefined);
     __mockDeleteUserData.mockResolvedValue(undefined);
     jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000001');
+  });
+
+  // restoreMocks does not undo fake timers, so a test that installs them and then fails an
+  // assertion would strand every later test on a frozen clock.
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('createProject', () => {
@@ -274,6 +280,61 @@ describe('projectStorage', () => {
       const result = await getProject(token, 'missing');
 
       expect(result).toBeUndefined();
+    });
+
+    it('backfills analysis timestamps from the project updatedAt', async () => {
+      // A record stored before analyses carried timestamps; the project's own modification time is
+      // the closest bound left on when it was written.
+      const stored = { ...makeStubProject('abc'), updatedAt: '2026-02-02T02:02:02.000Z' };
+      stored.analysis.tokenAnalyses.push({
+        ...FIXTURE_STAMPS,
+        id: 'ta-1',
+        surfaceText: 'In',
+      });
+      const raw: { analysis: { tokenAnalyses: Record<string, unknown>[] } } = JSON.parse(
+        JSON.stringify(stored),
+      );
+      delete raw.analysis.tokenAnalyses[0].createdAt;
+      delete raw.analysis.tokenAnalyses[0].updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: '2026-02-02T02:02:02.000Z',
+        updatedAt: '2026-02-02T02:02:02.000Z',
+      });
+    });
+
+    it('dates a project stored without a modification time by its creation time', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      delete raw.updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('backfills analysis timestamps from the creation time when there is no modification time', async () => {
+      // The oldest stored shape: neither the project nor its analysis records carry a timestamp.
+      const stored = makeStubProject('abc');
+      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
+      const raw: {
+        updatedAt?: string;
+        analysis: { tokenAnalyses: Record<string, unknown>[] };
+      } = JSON.parse(JSON.stringify(stored));
+      delete raw.updatedAt;
+      delete raw.analysis.tokenAnalyses[0].createdAt;
+      delete raw.analysis.tokenAnalyses[0].updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
     });
   });
 
@@ -657,7 +718,7 @@ describe('projectStorage', () => {
     const storedProject = makeStubProject('proj-id');
     const newAnalysis = {
       ...emptyAnalysis(),
-      tokenAnalyses: [{ id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
+      tokenAnalyses: [{ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In', gloss: { en: 'in' } }],
     };
     // `updateAnalysis` stamps `updatedAt` with `new Date()`; freeze the clock so the exact stored
     // payload is deterministic and distinct from the fixture's `createdAt`/`updatedAt`.
@@ -884,6 +945,24 @@ describe('projectStorage', () => {
 
       expect(result).toEqual(stored);
       expect(__mockReadUserData).toHaveBeenCalledWith(token, 'draft:src-proj');
+    });
+
+    it('backfills analysis timestamps with the read time', async () => {
+      // A draft records no modification time of its own, so a legacy record can only be dated by
+      // when it was loaded.
+      const READ_TIME = '2026-06-06T06:06:06.000Z';
+      jest.useFakeTimers().setSystemTime(new Date(READ_TIME));
+      const stored = emptyDraft('src-proj');
+      const legacy: { id: string; surfaceText: string }[] = stored.analysis.tokenAnalyses;
+      legacy.push({ id: 'ta-1', surfaceText: 'In' });
+      __mockReadUserData.mockResolvedValue(JSON.stringify(stored));
+
+      const result = await getDraft(token, 'src-proj');
+
+      expect(result.analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: READ_TIME,
+        updatedAt: READ_TIME,
+      });
     });
 
     it('returns a fresh empty draft when no draft has been written (ENOENT)', async () => {

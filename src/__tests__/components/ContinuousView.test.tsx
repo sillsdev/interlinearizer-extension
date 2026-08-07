@@ -15,7 +15,7 @@ import {
 } from '../../components/SegmentationStore';
 import { isWordToken } from '../../types/type-guards';
 import type { ViewOptions } from '../../types/view-options';
-import { makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
+import { FIXTURE_STAMPS, makePunctToken, makeSegment, makeWordToken } from '../test-helpers';
 import {
   allFalseViewOptions,
   mockKeyAsValueLocalizedStrings,
@@ -516,6 +516,7 @@ describe('ContinuousView focus changes', () => {
     // tok-0/tok-1 grouped into one box (keyed by tok-0) with focus on tok-1: clicking the box stays
     // a no-op even though its groupKey differs from focusedTokenRef.
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1409,6 +1410,7 @@ describe('ContinuousView phrase window', () => {
 describe('ContinuousView phrase grouping', () => {
   it('groups adjacent tokens of the same phrase into a single PhraseBox', () => {
     phraseLinkMap.set('tok-0', {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1417,6 +1419,7 @@ describe('ContinuousView phrase grouping', () => {
       ],
     });
     phraseLinkMap.set('tok-1', {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1434,6 +1437,7 @@ describe('ContinuousView phrase grouping', () => {
 
   it('shows the gloss input on only the first fragment of a discontiguous phrase', () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1456,6 +1460,7 @@ describe('ContinuousView phrase grouping', () => {
     // tok-0/tok-1 grouped into one hoverable phrase so hovering it sets hoveredPhraseId (forwarded
     // to ArcOverlay); leaving the strip must reset it to undefined.
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1515,6 +1520,7 @@ describe('ContinuousView phrase grouping', () => {
 
   it('scrolls to the first token of the active phrase when entering edit mode', async () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1554,6 +1560,7 @@ describe('ContinuousView phrase grouping', () => {
 
   it('fires phrase group hover enter and leave without throwing', async () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1585,6 +1592,7 @@ describe('ContinuousView phrase grouping', () => {
     });
     // Two-token phrase split at tok-0 → both halves are 1 token → deletePhrase called
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [
@@ -1616,6 +1624,7 @@ describe('ContinuousView phrase grouping', () => {
 
   it('computes candidatePhraseIds from non-empty candidateTokenRefs', () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],
@@ -1633,6 +1642,7 @@ describe('ContinuousView phrase grouping', () => {
 
   it('computes an empty candidatePhraseIds set when no candidate tokens are hovered', () => {
     const phraseLink: PhraseAnalysisLink = {
+      ...FIXTURE_STAMPS,
       analysisId: 'phrase-1',
       status: 'approved',
       tokens: [{ tokenRef: 'tok-0', surfaceText: 'In' }],

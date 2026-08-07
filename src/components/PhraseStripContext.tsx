@@ -65,9 +65,7 @@ export type PhraseStripContextValue = Readonly<{
   crossSegmentLinkTooltip: string;
   /**
    * Accessible label for the link button between two tokens, fetched once per strip rather than per
-   * slot (a strip renders one link icon between every pair of adjacent tokens). Same rationale as
-   * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per
-   * slot.
+   * slot (a strip renders one link icon between every pair of adjacent tokens).
    */
   linkTokensLabel: string;
   /** Accessible label for the unlink button between two tokens already in one phrase. */
@@ -80,15 +78,13 @@ export type PhraseStripContextValue = Readonly<{
   phraseUnlinkLabel: string;
   /**
    * Accessible label for removing a token from its phrase, with `{token}` still to be substituted
-   * for the token's surface text. Covers both routes to that affordance — the edit-mode token
-   * wrapper and the view-mode ✕ button — fetched once per strip for both.
+   * for the token's surface text. One label covers every route to that affordance, so the wording
+   * cannot drift between them.
    */
   removeTokenFromPhraseTemplate: string;
   /**
    * Label and concise tooltip for the merge boundary button, fetched once per strip rather than per
-   * slot (every between-group slot renders its own boundary control). Same rationale as
-   * {@link glossPlaceholder}: hoisting the fetch avoids one `useLocalizedStrings` instance per
-   * slot.
+   * slot (every between-group slot renders its own boundary control).
    */
   boundaryMergeLabel: string;
   /** Tooltip advertising the Alt-split gesture on the merge button while Alt is up. */

@@ -86,7 +86,7 @@ export function TokenChip({
   onFocus,
   disabled = false,
   onRemove,
-  removeLabelTemplate = '',
+  removeLabelTemplate,
   isSplitFree = false,
   showMorphology = false,
   glossPlaceholder = '',
@@ -95,7 +95,7 @@ export function TokenChip({
   onFocus: () => void;
   disabled?: boolean;
   onRemove?: () => void;
-  removeLabelTemplate?: string;
+  removeLabelTemplate: string;
   isSplitFree?: boolean;
   showMorphology?: boolean;
   glossPlaceholder?: string;

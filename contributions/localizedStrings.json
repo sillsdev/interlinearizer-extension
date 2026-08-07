@@ -66,6 +66,7 @@
       "%interlinearizer_unlinkPhraseConfirm_confirm%": "Unlink",
       "%interlinearizer_unlinkPhraseConfirm_cancel%": "Cancel",
       "%interlinearizer_segmentList_scrollToActiveVerse%": "Scroll to active verse",
+      "%interlinearizer_segmentList_noVerseData%": "No verse data for {book} {chapter}.",
       "%interlinearizer_continuousView_previousToken%": "Previous token",
       "%interlinearizer_continuousView_nextToken%": "Next token",
       "%interlinearizer_viewOptions_label%": "View options",

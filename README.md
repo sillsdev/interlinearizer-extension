@@ -216,9 +216,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
 1. Make sure the versions in this repo are on the version number you want to release. If they are not, manually dispatch the [Bump Versions workflow](#bumping-version-without-publishing-a-release) or run the `bump-versions` npm script to set the versions to what you want to release on the branch you want to release from.
 
-2. Update the Platform.Bible version line in `.github/assets/release-body.md` to the version this release was built and tested against. The Publish workflow records the exact `paranext-core` revision it built against in the workflow run's job summary.
-
-3. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
+2. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
 
 - `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
 - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
@@ -256,7 +254,10 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-4. In GitHub, adjust the new draft release's body and other metadata as desired, then publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zip downloadable by testers.
+3. Attach the Paratext 10 Studio build to the new draft release and fill in the release body's version placeholders. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<version>-Windows.zip`, then replace each `<version>` in the body's install steps with the version of the zip it names. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
+
+4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers.
+
 5. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 
 ### Bumping version without publishing a release

@@ -72,6 +72,7 @@ const STRING_KEYS = [
   '%interlinearizer_phraseBox_glossLabel%',
   '%interlinearizer_phraseBox_edit%',
   '%interlinearizer_phraseBox_unlink%',
+  '%interlinearizer_phraseBox_splitHere%',
   '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_glossInput_placeholder%',
   '%interlinearizer_continuousView_previousToken%',
@@ -1008,6 +1009,7 @@ export default function ContinuousView({
             candidatePhraseIds={candidatePhraseIds}
             phraseLinkById={committedPhraseLinkById}
             tokenDocOrder={tokenDocOrder}
+            splitHereLabel={localizedStrings['%interlinearizer_phraseBox_splitHere%']}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={setHoveredPhraseId}

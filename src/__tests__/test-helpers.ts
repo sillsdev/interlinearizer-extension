@@ -4,26 +4,17 @@ import type { Book, InterlinearProject, PhraseAnalysisLink, Token } from 'interl
 import { UnsubscriberAsyncList } from 'platform-bible-utils';
 import type { PhraseStripContextValue } from '../components/PhraseStripContext';
 import { emptyAnalysis } from '../types/empty-factories';
-import localizedStringsContribution from '../../contributions/localizedStrings.json';
-
-/** The shipped English values, keyed by localize key. */
-const englishStrings: Record<string, string> = localizedStringsContribution.localizedStrings.en;
 
 /**
- * A `useLocalizedStrings` implementation that resolves the real English values the extension ships,
- * so tests can query controls by the accessible name a user actually sees rather than by raw `%…%`
- * keys.
- *
- * Opt in per suite, since the default mock instead maps each key to itself. An unknown key falls
- * back to itself here too, so a key missing from the contribution file surfaces as a failed query
- * rather than an `undefined` lookup.
+ * A `useLocalizedStrings` implementation mapping each key to itself, so tests query controls by the
+ * stable localize key rather than by English text a copy edit could change. `resetMocks` clears the
+ * hook's implementation before every test, so install this in the `beforeEach` of any suite that
+ * renders a component which localizes strings.
  */
-export function localizedStringsFromContributions(
-  keys: readonly string[],
-): [Record<string, string>, boolean] {
+export function localizedStringsAsKeys(keys: readonly string[]): [Record<string, string>, boolean] {
   return [
     keys.reduce<Record<string, string>>((acc, key) => {
-      acc[key] = englishStrings[key] ?? key;
+      acc[key] = key;
       return acc;
     }, {}),
     false,

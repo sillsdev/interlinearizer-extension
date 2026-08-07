@@ -515,9 +515,9 @@ declare module 'interlinearizer' {
     endRef: ScriptureRef;
 
     /**
-     * Token character offsets (`Token.charStart` / `Token.charEnd`) are UTF-16 code-unit indices
-     * into this string, so it must be present for the text layer to be interpretable, particularly
-     * for scriptio continua scripts where token boundaries are not derivable from whitespace.
+     * Token character offsets (`Token.charStart` / `Token.charEnd`) are expressed relative to this
+     * string, so it must be present for the text layer to be interpretable, particularly for
+     * scriptio continua scripts where token boundaries are not derivable from whitespace.
      */
     baselineText: string;
 

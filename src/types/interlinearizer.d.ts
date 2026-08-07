@@ -503,14 +503,14 @@ declare module 'interlinearizer' {
     id: string;
 
     /**
-     * Inclusive start of the text range. `charIndex` is set when a sub-verse character offset is
-     * known.
+     * Inclusive start of the text range. `charIndex` is set when a sub-verse offset, in UTF-16 code
+     * units, is known.
      */
     startRef: ScriptureRef;
 
     /**
-     * Inclusive end of the text range. `charIndex` is set when a sub-verse character offset is
-     * known.
+     * Inclusive end of the text range. `charIndex` is set when a sub-verse offset, in UTF-16 code
+     * units, is known.
      */
     endRef: ScriptureRef;
 

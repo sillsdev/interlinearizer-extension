@@ -23,6 +23,7 @@ import { isWordToken } from '../types/type-guards';
 import type { SegmentationDispatch } from './SegmentationStore';
 import type { InterlinearProjectSummary } from '../types/interlinear-project-summary';
 import Interlinearizer from './Interlinearizer';
+import { AnalysisStoreProvider } from './AnalysisStore';
 import ViewOptionsDropdown from './controls/ViewOptionsDropdown';
 import type { PhraseMode } from '../types/phrase-mode';
 import ProjectModals, { type ModalState } from './modals/ProjectModals';
@@ -510,6 +511,44 @@ function InterlinearizerLoaderInner({
     };
   }, [webViewMenuPossiblyError, activeProject]);
 
+  const loadingOrErrorPanel = (
+    <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
+      {bookError && (
+        <div className="tw:flex tw:flex-col tw:gap-2">
+          <h2 className="tw:error-heading">Error loading book</h2>
+          <pre className="tw:error-pre">{bookError}</pre>
+        </div>
+      )}
+
+      {tokenizeError && (
+        <div className="tw:flex tw:flex-col tw:gap-2">
+          <h2 className="tw:error-heading">Error processing book</h2>
+          <pre className="tw:error-pre">{tokenizeError.message}</pre>
+        </div>
+      )}
+
+      {!hasError && showLoading && <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>}
+    </div>
+  );
+
+  const bookArea =
+    hasError || showLoading || !book ? (
+      loadingOrErrorPanel
+    ) : (
+      <Interlinearizer
+        key={book.bookRef}
+        book={book}
+        continuousScroll={continuousScroll}
+        scrRef={activeScrRef}
+        phraseMode={phraseMode}
+        setPhraseMode={setPhraseMode}
+        viewOptions={viewOptions}
+        segmentationDispatch={segmentationDispatch}
+        formerBoundaries={formerBoundaries}
+        segmentationVersion={segmentationVersion}
+      />
+    );
+
   return (
     <div className="tw:flex tw:flex-col tw:h-full">
       <TabToolbar
@@ -565,44 +604,26 @@ function InterlinearizerLoaderInner({
           ...(fadePhase === 'out' ? { transitionDuration: '0ms' } : undefined),
         }}
       >
-        {hasError || showLoading || !book ? (
-          <div className="tw:flex tw:flex-col tw:gap-4 tw:p-4">
-            {bookError && (
-              <div className="tw:flex tw:flex-col tw:gap-2">
-                <h2 className="tw:error-heading">Error loading book</h2>
-                <pre className="tw:error-pre">{bookError}</pre>
-              </div>
-            )}
-
-            {tokenizeError && (
-              <div className="tw:flex tw:flex-col tw:gap-2">
-                <h2 className="tw:error-heading">Error processing book</h2>
-                <pre className="tw:error-pre">{tokenizeError.message}</pre>
-              </div>
-            )}
-
-            {!hasError && showLoading && (
-              <p className="tw:text-sm tw:text-muted-foreground">Loading…</p>
-            )}
-          </div>
+        {isDraftLoading ? (
+          // The store below waits for the draft: it seeds on mount alone, and the draft version
+          // that remounts it does not bump when the load completes. Nothing is lost by waiting —
+          // while the draft loads there is only ever a placeholder or an error panel to show.
+          loadingOrErrorPanel
         ) : (
-          <Interlinearizer
-            key={`${draftVersion}:${book.bookRef}`}
-            book={book}
-            continuousScroll={continuousScroll}
-            scrRef={activeScrRef}
-            analysisLanguage={analysisLanguage}
+          // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed
+          // on the draft version because the seed is not reactive, so a wholesale replacement (New
+          // / Open / Wipe) reseeds by remounting. Wrapping the loading and error branches too keeps
+          // it alive across the gap while the next book's USJ is in flight.
+          <AnalysisStoreProvider
+            key={draftVersion}
             initialAnalysis={draft?.analysis}
-            onSaveAnalysis={autosaveAnalysis}
+            analysisLanguage={analysisLanguage}
+            onSave={autosaveAnalysis}
             onPendingEditsChange={setPendingEdits}
-            phraseMode={phraseMode}
-            setPhraseMode={setPhraseMode}
-            viewOptions={viewOptions}
             showSuggestions={showSuggestions}
-            segmentationDispatch={segmentationDispatch}
-            formerBoundaries={formerBoundaries}
-            segmentationVersion={segmentationVersion}
-          />
+          >
+            {bookArea}
+          </AnalysisStoreProvider>
         )}
       </div>
 

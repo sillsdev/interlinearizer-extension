@@ -547,4 +547,95 @@ describe('InterlinearNavContext', () => {
       expect(() => jest.advanceTimersByTime(RECENTER_FADE_MS)).not.toThrow();
     });
   });
+
+  describe('cross-book focus requests', () => {
+    it('hands a requested token to the book it belongs to', () => {
+      // The request must outlive the book load it triggers: the view that will focus the token
+      // does not exist when the request is made.
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('hands the request over only once', () => {
+      // The book subtree remounts for reasons other than this request (a draft reload, a
+      // segmentation edit); one that survived consumption would drag focus back on the next.
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      result.current.consumeFocusRequest('LUK');
+
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+    });
+
+    it('signals a request that re-asks for the token just claimed', () => {
+      // A consumer wakes on the count alone, so a request batched with the claim of an identical
+      // one has to move it — mirroring the pending ref into state, the two writes would cancel out.
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      const claimedAt = result.current.focusRequestCount;
+      act(() => {
+        result.current.consumeFocusRequest('LUK');
+        result.current.requestFocusToken('LUK 2:4:0');
+      });
+
+      expect(result.current.focusRequestCount).not.toBe(claimedAt);
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('leaves a request pending until its own book asks for it', () => {
+      // The loaded book asks on every mount, so the one being replaced asks first; answering it
+      // would focus the wrong book and discard the request.
+      const { result } = renderNav(
+        makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
+      );
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+
+      expect(result.current.consumeFocusRequest('GEN')).toBeUndefined();
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('holds a request while navigation is still headed for its book', () => {
+      // Arriving at the requested book must not disturb the request — the view that claims it has
+      // yet to mount.
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => setRef({ book: 'LUK', chapterNum: 2, verseNum: 4 }));
+      rerender();
+
+      expect(result.current.consumeFocusRequest('LUK')).toBe('LUK 2:4:0');
+    });
+
+    it('abandons a request once navigation lands on a different book', () => {
+      // The requested book may never mount — its load errors out, or the navigation that would
+      // have brought it up is superseded. Held indefinitely, the request would yank focus on
+      // whatever much later visit to that book came next.
+      const { result, setRef, rerender } = renderNavMutable({
+        book: 'GEN',
+        chapterNum: 1,
+        verseNum: 1,
+      });
+
+      act(() => result.current.requestFocusToken('LUK 2:4:0'));
+      act(() => setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 }));
+      rerender();
+
+      expect(result.current.consumeFocusRequest('LUK')).toBeUndefined();
+    });
+  });
 });

@@ -10,6 +10,7 @@ import {
   useState,
 } from 'react';
 import type { ReactNode } from 'react';
+import { bookOfRef } from '../utils/analysis-book';
 import { RECENTER_FADE_MS } from './recenter-fade';
 
 /**
@@ -152,6 +153,40 @@ export interface InterlinearNav {
    * will never receive a settle.
    */
   cancelFade: () => void;
+  /**
+   * Asks for a token to be focused once its book is on screen. The request outlives the book load
+   * it may trigger, so it may name a book that has no view mounted for it.
+   *
+   * The wait is bounded by navigation rather than by a clock: the request is abandoned once
+   * navigation lands on a book other than the one it names. A load that never arrives therefore
+   * strands nothing — a book that errors out holds the request only while the user is still looking
+   * at that book's error.
+   *
+   * A request moves focus and nothing else, so the caller must navigate to the token's verse
+   * itself: unpaired, the focus lands outside the verse on screen, and the request is dropped only
+   * once navigation happens to leave the book it names. The slot holds one request — a second
+   * replaces an unclaimed first.
+   *
+   * @param tokenRef - Book-prefixed token ref, e.g. `"LUK 2:4:0"`.
+   */
+  requestFocusToken: (tokenRef: string) => void;
+  /**
+   * How many focus requests have been made. A request naming a token in the verse already on screen
+   * changes nothing else about navigation, so this is the only signal by which a consumer can
+   * notice one; it carries no request, which {@link InterlinearNav.consumeFocusRequest} alone hands
+   * out.
+   */
+  focusRequestCount: number;
+  /**
+   * Claims a pending focus request for the book now on screen, clearing it so a later remount of
+   * that book cannot re-focus a token the user has since navigated away from. A request naming a
+   * different book stays pending — the book it names has not mounted yet, and the book being
+   * replaced asks before the requested one arrives.
+   *
+   * @param bookCode - 3-letter book code, e.g. `"LUK"`.
+   * @returns The requested token ref, or `undefined` when no request names this book.
+   */
+  consumeFocusRequest: (bookCode: string) => string | undefined;
 }
 
 /**
@@ -245,6 +280,41 @@ export function InterlinearNavProvider({
     pending.delete(key);
     return true;
   }, []);
+
+  // A ref, so a claim reads the request as of now rather than as of the render that created the
+  // callback — otherwise two claims in one commit both see it and it is handed out twice. Written
+  // only from the callbacks below, never during render, so a render React discards cannot resurrect
+  // an already-claimed request.
+  const pendingFocusTokenRef = useRef<string | undefined>(undefined);
+
+  // The ref alone cannot wake a consumer, hence state alongside it — a forward-only count rather
+  // than the request value mirrored, so a claim and a fresh request for the same token landing in
+  // one batch still reach the consumer. Mirrored, those two writes cancel out, React bails on the
+  // render, and the request sits unclaimable in the ref.
+  const [focusRequestCount, setFocusRequestCount] = useState(0);
+
+  const requestFocusToken = useCallback((tokenRef: string) => {
+    pendingFocusTokenRef.current = tokenRef;
+    setFocusRequestCount((count) => count + 1);
+  }, []);
+
+  const consumeFocusRequest = useCallback((bookCode: string) => {
+    const pending = pendingFocusTokenRef.current;
+    if (pending === undefined || bookOfRef(pending) !== bookCode) return undefined;
+    pendingFocusTokenRef.current = undefined;
+    return pending;
+  }, []);
+
+  // Abandon a request whose book the user has navigated past, so one left unclaimed by a load that
+  // never arrives cannot yank focus on some much later visit to that book. Navigating away is the
+  // signal rather than a wall clock because a book load has no bounded duration. Depends on the
+  // book alone — a run keyed on the request too would fire between a caller's `requestFocusToken`
+  // and its `navigate`, while the reference still names the old book.
+  useEffect(() => {
+    const pending = pendingFocusTokenRef.current;
+    if (pending === undefined || bookOfRef(pending) === scrRef.book) return;
+    pendingFocusTokenRef.current = undefined;
+  }, [scrRef.book]);
 
   const [fadePhase, setFadePhase] = useState<FadePhase>('idle');
 
@@ -344,6 +414,9 @@ export function InterlinearNavProvider({
       fadePhase,
       reportSettled,
       cancelFade,
+      requestFocusToken,
+      focusRequestCount,
+      consumeFocusRequest,
     }),
     [
       scrRef,
@@ -354,6 +427,9 @@ export function InterlinearNavProvider({
       fadePhase,
       reportSettled,
       cancelFade,
+      requestFocusToken,
+      focusRequestCount,
+      consumeFocusRequest,
     ],
   );
 

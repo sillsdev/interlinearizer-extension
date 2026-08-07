@@ -1,14 +1,10 @@
+import { logger } from '@papi/frontend';
 import type { SerializedVerseRef } from '@sillsdev/scripture';
-import type { Book, ScriptureRef, Segment, TextAnalysis } from 'interlinearizer';
+import type { Book, ScriptureRef, Segment } from 'interlinearizer';
 import { TooltipProvider } from 'platform-bible-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import {
-  AnalysisStoreProvider,
-  usePhraseDispatch,
-  usePhraseLinkByIdGetter,
-  usePhraseLinkByIdMap,
-} from './AnalysisStore';
+import { usePhraseDispatch, usePhraseLinkByIdGetter, usePhraseLinkByIdMap } from './AnalysisStore';
 import {
   NO_OP_SEGMENTATION_DISPATCH,
   SegmentationProvider,
@@ -56,31 +52,12 @@ type InterlinearizerProps = Readonly<{
    * and verse 0 only when a matching verse-0 superscription segment exists.
    */
   scrRef: SerializedVerseRef;
-  /**
-   * BCP 47 tag for reading and writing gloss values. Defaults to `analysisLanguages[0]` of the
-   * active project (supplied by the caller).
-   */
-  analysisLanguage: string;
-  /** Initial analysis data seeded into the store; not reactive after mount. */
-  initialAnalysis?: TextAnalysis;
-  /** Called after each gloss write with the updated `TextAnalysis` so the caller can persist it. */
-  onSaveAnalysis?: (analysis: TextAnalysis) => void;
-  /**
-   * Called with whether any gloss input currently holds uncommitted text, so the caller can show
-   * the unsaved indicator while the user is typing — before the edit commits on blur.
-   */
-  onPendingEditsChange?: (pending: boolean) => void;
   /** Current phrase-interaction mode; owned by the parent and passed down for rendering. */
   phraseMode: PhraseMode;
   /** Setter for `phraseMode`; passed down so child components can transition modes. */
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   /** Bundled display toggles forwarded to the segment list and continuous views. */
   viewOptions: ViewOptions;
-  /**
-   * When true, un-approved tokens render the engine's derived suggestion with accept / promote
-   * affordances. Forwarded straight to {@link AnalysisStoreProvider}. Defaults to `false`.
-   */
-  showSuggestions?: boolean;
   /**
    * Boundary-editing operations provided via {@link SegmentationProvider}. Optional so isolated
    * tests can omit it; the real loader always supplies it. Defaults to an inert no-op.
@@ -103,10 +80,11 @@ type InterlinearizerProps = Readonly<{
 }>;
 
 /**
- * Inner component that renders the segment list and continuous view. Separated from
- * {@link Interlinearizer} so it can consume the `AnalysisStoreProvider` context that wraps it.
+ * Renders the interlinear view for one book: an optional continuous token strip above a segment
+ * list. Reads and writes analysis through the store its caller mounts, and expects to be remounted
+ * on a book change — the store deliberately outlives that remount, since it holds the whole draft.
  */
-function InterlinearizerInner({
+export default function Interlinearizer({
   book,
   continuousScroll,
   scrRef,
@@ -116,14 +94,14 @@ function InterlinearizerInner({
   segmentationDispatch = NO_OP_SEGMENTATION_DISPATCH,
   formerBoundaries = EMPTY_FORMER_BOUNDARIES,
   segmentationVersion = 0,
-}: Omit<
-  InterlinearizerProps,
-  'initialAnalysis' | 'analysisLanguage' | 'onSaveAnalysis' | 'showSuggestions'
->) {
+}: InterlinearizerProps) {
   // Navigation surface from the context: `navigate` writes the reference (classifying internal vs
   // external at the call site), `consumeInternalNav` lets the segment window suppress the fade for
-  // internal moves, and `reportSettled` lifts the cross-book curtain once the new book is laid out.
-  const { navigate, consumeInternalNav, reportSettled } = useInterlinearNav();
+  // internal moves, `reportSettled` lifts the cross-book curtain once the new book is laid out, and
+  // `consumeFocusRequest` / `focusRequestCount` collect a token focus asked for from outside the
+  // views.
+  const { navigate, consumeInternalNav, reportSettled, consumeFocusRequest, focusRequestCount } =
+    useInterlinearNav();
 
   // Whether Alt is currently held. Provided through a dedicated context (not the memoized
   // SegmentationContext) so an Alt press re-renders only the split-gap markers that consume it.
@@ -164,7 +142,8 @@ function InterlinearizerInner({
   // Reseed only when the new book no longer resolves the focused token — a book change, or a
   // re-tokenization that dropped the token. A boundary edit (merge/split) also produces a fresh
   // `book`, but token refs survive re-segmentation, so a still-resolving focus is kept to avoid
-  // snapping the strip back to the active verse's first word.
+  // snapping the strip back to the active verse's first word. Keep this declared above the
+  // focus-request claim below: that claim wins only by running last in the same commit.
   useEffect(() => {
     setFocusedTokenRef((current) =>
       current !== undefined && wordTokenByRef.has(current)
@@ -300,7 +279,8 @@ function InterlinearizerInner({
   // The guard tests the focused token's own segment (not the active segment's id) so that clicking a
   // non-first portion of a split verse doesn't get reseeded to the verse's first portion. Internal
   // navigation always hits the skip branch because the handler has already set focus into the target
-  // verse.
+  // verse. Keep this declared above the focus-request claim below: that claim wins only by running
+  // last in the same commit.
   useEffect(() => {
     const focusedSegId = focusedTokenRef ? tokenSegmentMap.get(focusedTokenRef) : undefined;
     const focusedSeg = focusedSegId ? segmentById.get(focusedSegId) : undefined;
@@ -314,6 +294,29 @@ function InterlinearizerInner({
     // the verse's first word.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrRef.book, scrRef.chapterNum, scrRef.verseNum]);
+
+  // Claim a focus asked for from outside the views. Declared after both reseed effects above so it
+  // wins: they run first in the same commit, and the scrRef reseed reads a focus closure that
+  // predates the book reseed, so its own guard cannot see this claim. Claimed in an effect rather
+  // than the seed above so the claim lands after commit, never during a render React may discard.
+  // It re-runs whenever the book object changes identity — a boundary edit re-segments it — which is
+  // harmless: claiming clears the request, so a repeat call finds nothing left to claim.
+  useEffect(() => {
+    const requested = consumeFocusRequest(book.bookRef);
+    if (requested === undefined) return;
+    if (wordTokenByRef.has(requested)) {
+      setFocusedTokenRef(requested);
+      return;
+    }
+    // A ref this book cannot resolve is dropped rather than held for a later attempt: one that
+    // outlived the load it was made for would fire on an unrelated navigation, long after the
+    // click that raised it. Logged because the drop is otherwise invisible.
+    logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
+    // The count is the only signal when a request names the verse already on screen, the book the
+    // only one when it named a book that had yet to load. wordTokenByRef is excluded because it
+    // derives from book, consumeFocusRequest because its identity is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [book, focusRequestCount]);
 
   const scrRefRef = useLatestRef(scrRef);
 
@@ -430,31 +433,5 @@ function InterlinearizerInner({
         </SegmentationProvider>
       </TooltipProvider>
     </AltHeldProvider>
-  );
-}
-
-/**
- * Main component for the Interlinearizer. Renders the segment list, with the continuous strip
- * optionally shown above it, all wrapped in an {@link AnalysisStoreProvider} so descendant
- * components can read and write analysis data without prop drilling.
- */
-export default function Interlinearizer({
-  initialAnalysis,
-  analysisLanguage,
-  onSaveAnalysis,
-  onPendingEditsChange,
-  showSuggestions = false,
-  ...innerProps
-}: InterlinearizerProps) {
-  return (
-    <AnalysisStoreProvider
-      initialAnalysis={initialAnalysis}
-      analysisLanguage={analysisLanguage}
-      onSave={onSaveAnalysis}
-      onPendingEditsChange={onPendingEditsChange}
-      showSuggestions={showSuggestions}
-    >
-      <InterlinearizerInner {...innerProps} />
-    </AnalysisStoreProvider>
   );
 }

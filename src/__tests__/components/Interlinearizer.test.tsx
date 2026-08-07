@@ -9,7 +9,11 @@ import type { ReactNode } from 'react';
 import { useState } from 'react';
 import { resegmentBook } from 'parsers/papi/resegmentBook';
 import Interlinearizer from '../../components/Interlinearizer';
-import { InterlinearNavProvider } from '../../components/InterlinearNavContext';
+import {
+  InterlinearNavProvider,
+  useInterlinearNav,
+  type InterlinearNav,
+} from '../../components/InterlinearNavContext';
 import {
   useSegmentation,
   type SegmentationContextValue,
@@ -503,11 +507,17 @@ const GEN_SUPERSCRIPTION_BOOK: Book = withDefaultVerseStarts({
  * Wraps an `<Interlinearizer>` element in an {@link InterlinearNavProvider} so the component's
  * `useInterlinearNav` call resolves. `Interlinearizer` writes the reference through the context's
  * `navigate` (which calls the scroll-group hook's setter), so navigation assertions hang off the
- * `navigate` spy supplied here.
+ * `navigate` spy supplied here. The reference the provider itself adopts stays put unless a
+ * `scrRef` is supplied — behavior keyed on the context's own reference needs one that moves across
+ * renders.
  */
-function withNav(ui: ReactNode, navigate: (r: SerializedVerseRef) => void = () => {}): ReactNode {
+function withNav(
+  ui: ReactNode,
+  navigate: (r: SerializedVerseRef) => void = () => {},
+  scrRef: SerializedVerseRef = defaultScrRef,
+): ReactNode {
   const scrollGroupHook = (): ScrollGroupTuple => [
-    defaultScrRef,
+    scrRef,
     navigate,
     undefined,
     () => {},
@@ -558,7 +568,6 @@ function renderInterlinearizer({
         segmentationDispatch={segmentationDispatch}
         formerBoundaries={formerBoundaries}
         scrRef={scrRef}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{
@@ -814,7 +823,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -923,7 +931,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -957,7 +964,6 @@ describe('Interlinearizer', () => {
             book={GEN_1_MULTI_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -996,7 +1002,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1012,7 +1017,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1052,7 +1056,6 @@ describe('Interlinearizer', () => {
           book={GEN_TWO_CHAPTER_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1086,7 +1089,6 @@ describe('Interlinearizer', () => {
             book={GEN_TWO_CHAPTER_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 2, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1113,7 +1115,6 @@ describe('Interlinearizer', () => {
           book={GEN_V1_SPLIT_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1137,7 +1138,6 @@ describe('Interlinearizer', () => {
           book={GEN_V1_SPLIT_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1169,7 +1169,6 @@ describe('Interlinearizer', () => {
             book={GEN_V1_SPLIT_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 1 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1194,7 +1193,6 @@ describe('Interlinearizer', () => {
             book={GEN_V1_SPLIT_BOOK}
             continuousScroll={false}
             scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 2 }}
-            analysisLanguage="und"
             phraseMode={{ kind: 'view' }}
             setPhraseMode={() => {}}
             viewOptions={{ ...allFalseViewOptions }}
@@ -1406,7 +1404,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={{ book: 'GEN', chapterNum: 1, verseNum: 99 }}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1425,7 +1422,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{
             kind: 'edit',
             phraseId: 'phrase-1',
@@ -1446,7 +1442,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'confirm-unlink', phraseId: 'phrase-1' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1465,7 +1460,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens, revert: true }}
           setPhraseMode={setPhraseMode}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1484,7 +1478,6 @@ describe('Interlinearizer', () => {
           book={GEN_1_1_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{ kind: 'edit', phraseId: 'phrase-1', originalTokens: [], revert: true }}
           setPhraseMode={setPhraseMode}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1502,7 +1495,6 @@ describe('Interlinearizer', () => {
       const props = {
         book,
         continuousScroll: false,
-        analysisLanguage: 'und',
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
         viewOptions: { ...allFalseViewOptions },
@@ -1566,7 +1558,6 @@ describe('Interlinearizer', () => {
           book={book}
           continuousScroll={false}
           scrRef={ref}
-          analysisLanguage="und"
           phraseMode={{ kind: 'view' }}
           setPhraseMode={() => {}}
           viewOptions={{ ...allFalseViewOptions }}
@@ -1599,7 +1590,6 @@ describe('Interlinearizer', () => {
       const book = makeLargeBook(60);
       const props = {
         book,
-        analysisLanguage: 'und',
         scrRef: { book: 'GEN', chapterNum: 1, verseNum: 1 },
         phraseMode: { kind: 'view' } as const,
         setPhraseMode: () => {},
@@ -1807,7 +1797,6 @@ describe('between-rows merge control', () => {
           book={GEN_1_MULTI_BOOK}
           continuousScroll={false}
           scrRef={defaultScrRef}
-          analysisLanguage="und"
           phraseMode={{
             kind: 'edit',
             phraseId: 'phrase-1',
@@ -1901,7 +1890,6 @@ describe('focus preservation across segmentation edits', () => {
         book={withDefaultVerseStarts(book)}
         continuousScroll
         scrRef={scrRef}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={allFalseViewOptions}
@@ -2012,7 +2000,6 @@ describe('segmentationVersion pass-through', () => {
         continuousScroll={false}
         scrRef={defaultScrRef}
         segmentationVersion={segmentationVersion}
-        analysisLanguage="und"
         phraseMode={{ kind: 'view' }}
         setPhraseMode={() => {}}
         viewOptions={{ ...allFalseViewOptions }}
@@ -2061,5 +2048,125 @@ describe('segmentationVersion pass-through', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+/** Two-token LUK book, so a focus request can name a token that is not the segment's first. */
+const LUK_1_1_BOOK: Book = withDefaultVerseStarts({
+  id: 'LUK',
+  bookRef: 'LUK',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'LUK 1:1',
+      startRef: { book: 'LUK', chapter: 1, verse: 1 },
+      endRef: { book: 'LUK', chapter: 1, verse: 1 },
+      baselineText: 'Since many',
+      tokens: [
+        {
+          ref: 'LUK 1:1:0',
+          surfaceText: 'Since',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+        {
+          ref: 'LUK 1:1:6',
+          surfaceText: 'many',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 6,
+          charEnd: 10,
+        },
+      ],
+    },
+  ],
+});
+
+describe('cross-book focus requests', () => {
+  /** Nav surface captured from inside the provider so a test can request a focus. */
+  let capturedNav: InterlinearNav | undefined;
+
+  /** Publishes the nav surface so a test can request a focus through it. Renders no markup. */
+  function NavProbe() {
+    capturedNav = useInterlinearNav();
+    return undefined;
+  }
+
+  /**
+   * Renders a book alongside the probe inside one nav provider, so a focus requested through the
+   * probe reaches the same provider the view consumes. The continuous strip is on because its stub
+   * is what exposes the focused token ref to assertions. The provider's own reference tracks the
+   * book rendered, so swapping books is a navigation rather than a bare remount — that reference is
+   * what decides whether a pending focus request survives.
+   */
+  function withProbe(book: Book): ReactNode {
+    const scrRef = { book: book.bookRef, chapterNum: 1, verseNum: 1 };
+    return withNav(
+      <>
+        <NavProbe />
+        <Interlinearizer
+          book={book}
+          continuousScroll
+          scrRef={scrRef}
+          phraseMode={{ kind: 'view' }}
+          setPhraseMode={() => {}}
+          viewOptions={allFalseViewOptions}
+        />
+      </>,
+      undefined,
+      scrRef,
+    );
+  }
+
+  beforeEach(() => {
+    capturedNav = undefined;
+    capturedContinuousViewProps = undefined;
+  });
+
+  it('focuses a token requested while a different book was loaded', () => {
+    // The catalog spans every analyzed book while the editor holds one at a time, so a usage click
+    // routinely names a book that is not loaded. The request is made against the outgoing book and
+    // must still be honored once the requested book's data arrives.
+    const { rerender } = render(withProbe(GEN_1_1_BOOK));
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:6'));
+    act(() => rerender(withProbe(LUK_1_1_BOOK)));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:6');
+  });
+
+  it('focuses a token requested for the verse already on screen', () => {
+    // Two usages of one analysis can sit in the same verse, so a usage click need not change the
+    // book or the reference. Nothing about the loaded book changes — the request itself is the only
+    // event — so it cannot be claimed off a book or scrRef change.
+    render(withProbe(LUK_1_1_BOOK));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:6'));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:6');
+  });
+
+  it('leaves focus alone when a request names this book but no word token in it', () => {
+    // Reachable from a ref that has gone stale against a re-tokenized book, or one naming a token
+    // that is not a word.
+    render(withProbe(LUK_1_1_BOOK));
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:99'));
+
+    expect(capturedContinuousViewProps?.focusedTokenRef).toBe('LUK 1:1:0');
+  });
+
+  it('discards an unresolvable request rather than leaving it pending', () => {
+    // Holding it would let a request outlive the load it was made for and claim a focus on some
+    // unrelated later navigation.
+    render(withProbe(LUK_1_1_BOOK));
+
+    act(() => capturedNav?.requestFocusToken('LUK 1:1:99'));
+
+    expect(capturedNav?.consumeFocusRequest('LUK')).toBeUndefined();
   });
 });

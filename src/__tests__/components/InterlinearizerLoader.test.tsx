@@ -7,7 +7,9 @@ import type { SerializedVerseRef } from '@sillsdev/scripture';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Book, DraftProject, PhraseAnalysisLink, TextAnalysis } from 'interlinearizer';
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useStore } from 'react-redux';
+import { useGlossDispatch } from '../../components/AnalysisStore';
 import InterlinearizerLoader from '../../components/InterlinearizerLoader';
 import { RECENTER_FADE_MS } from '../../components/recenter-fade';
 import useInterlinearizerBookData from '../../hooks/useInterlinearizerBookData';
@@ -145,10 +147,6 @@ type CapturedInterlinearizerProps = {
   book: Book;
   continuousScroll: boolean;
   scrRef: SerializedVerseRef;
-  analysisLanguage: string;
-  initialAnalysis?: TextAnalysis;
-  onSaveAnalysis?: (analysis: TextAnalysis) => void;
-  onPendingEditsChange?: (pending: boolean) => void;
   phraseMode: PhraseMode;
   setPhraseMode: Dispatch<SetStateAction<PhraseMode>>;
   viewOptions: ViewOptions;
@@ -158,6 +156,65 @@ type CapturedInterlinearizerProps = {
 };
 let capturedInterlinearizerProps: CapturedInterlinearizerProps | undefined;
 let interlinearizerMountCount = 0;
+
+/** Provider props the loader supplies, captured by the spy wrapper below. */
+// The spy forwards every prop wholesale rather than reading any, so these exist for the assertions
+// rather than for the component — which is exactly what the unused-prop-type rule objects to.
+/* eslint-disable react/no-unused-prop-types */
+type CapturedStoreProps = {
+  /** BCP 47 tag for reading and writing gloss values. */
+  analysisLanguage: string;
+  /** Analysis seeded into the store; not reactive after mount. */
+  initialAnalysis?: TextAnalysis;
+  /** Called after each store mutation with the updated analysis. */
+  onSave?: (analysis: TextAnalysis) => void;
+  /** Called with whether any gloss input holds uncommitted text. */
+  onPendingEditsChange?: (pending: boolean) => void;
+  /** Whether un-approved tokens render the engine's suggestion. */
+  showSuggestions?: boolean;
+  children: ReactNode;
+};
+/* eslint-enable react/no-unused-prop-types */
+let capturedStoreProps: CapturedStoreProps | undefined;
+
+// Spy wrapper around the real provider rather than a replacement for it: the lifetime tests compare
+// store identity across a book change, so the store has to be genuine, while the props the loader
+// passes still need to be observable.
+jest.mock('../../components/AnalysisStore', () => {
+  const actual = jest.requireActual('../../components/AnalysisStore');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+  const { createElement } = require('react');
+  return {
+    ...actual,
+    /** Records the props, then renders the real provider unchanged. */
+    AnalysisStoreProvider(props: CapturedStoreProps) {
+      capturedStoreProps = props;
+      return createElement(actual.AnalysisStoreProvider, props);
+    },
+  };
+});
+
+/**
+ * Whether the view stub should mount {@link StoreProbe}. Off by default, because the probe's hooks
+ * throw outside a Redux provider and most tests here neither render one nor care about the store.
+ */
+let mountStoreProbe = false;
+
+/** The Redux store the probe is mounted in, captured so a test can compare store identity. */
+let probeStore: unknown;
+
+/** Writes a gloss through the store the probe is mounted in. */
+let probeWriteGloss: ((tokenRef: string, surfaceText: string, value: string) => void) | undefined;
+
+/**
+ * Publishes the store it is mounted in, and a way to write into it, so a test can tell whether a
+ * book change replaced the store or left it alone. Renders no markup.
+ */
+function StoreProbe() {
+  probeStore = useStore();
+  probeWriteGloss = useGlossDispatch();
+  return undefined;
+}
 
 jest.mock('../../components/Interlinearizer', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
@@ -171,7 +228,9 @@ jest.mock('../../components/Interlinearizer', () => {
       useEffect(() => {
         interlinearizerMountCount += 1;
       }, []);
-      return <div data-testid="interlinearizer" />;
+      return (
+        <div data-testid="interlinearizer">{mountStoreProbe ? <StoreProbe /> : undefined}</div>
+      );
     },
   };
 });
@@ -430,6 +489,7 @@ function mockSettings(
 describe('InterlinearizerLoader', () => {
   beforeEach(() => {
     capturedInterlinearizerProps = undefined;
+    capturedStoreProps = undefined;
     interlinearizerMountCount = 0;
     mockBookData();
     mockOptimisticSetting();
@@ -920,7 +980,7 @@ describe('InterlinearizerLoader', () => {
       renderLoader({ useWebViewState: makeWebViewState({ activeProject: STUB_ACTIVE_PROJECT }) }),
     );
 
-    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
   it('falls back to the first interfaceLanguage tag when the draft has no analysis language', async () => {
@@ -930,7 +990,7 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('fr');
+    expect(capturedStoreProps?.analysisLanguage).toBe('fr');
   });
 
   it('passes the platform language to ProjectModals as defaultAnalysisLanguage', async () => {
@@ -947,7 +1007,7 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(capturedInterlinearizerProps?.analysisLanguage).toBe('und');
+    expect(capturedStoreProps?.analysisLanguage).toBe('und');
   });
 
   describe('modal interactions', () => {
@@ -1157,7 +1217,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       expect(mockSendCommand).toHaveBeenCalledWith('interlinearizer.getDraft', testProjectId);
-      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(draftAnalysis);
+      expect(capturedStoreProps?.initialAnalysis).toEqual(draftAnalysis);
     });
 
     it('falls back to an empty draft and logs an error when getDraft rejects', async () => {
@@ -1172,7 +1232,7 @@ describe('InterlinearizerLoader', () => {
         error,
       );
       // The fallback empty draft still renders the editor with an empty analysis.
-      expect(capturedInterlinearizerProps?.initialAnalysis).toEqual(emptyAnalysis());
+      expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
     });
 
     it('skips state updates when the component unmounts before getDraft resolves', async () => {
@@ -1207,7 +1267,7 @@ describe('InterlinearizerLoader', () => {
       // Switch to fake timers only for this test so we can advance past the 300ms debounce.
       jest.useFakeTimers();
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(edited);
+        capturedStoreProps?.onSave?.(edited);
       });
       act(() => {
         jest.advanceTimersByTime(300);
@@ -1644,7 +1704,7 @@ describe('InterlinearizerLoader', () => {
       // Dirty the draft so the post-save markSynced flips dirty back off, forcing the re-render that
       // reflects the newly cached updatedAt down to the ProjectModals stub.
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+        capturedStoreProps?.onSave?.(emptyAnalysis());
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
@@ -1670,7 +1730,7 @@ describe('InterlinearizerLoader', () => {
       );
 
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+        capturedStoreProps?.onSave?.(emptyAnalysis());
       });
       await userEvent.click(screen.getByTestId('tab-toolbar-save'));
 
@@ -1698,7 +1758,7 @@ describe('InterlinearizerLoader', () => {
 
       // Dirty the draft so the unsaved marker appears, then attempt the doomed Save.
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+        capturedStoreProps?.onSave?.(emptyAnalysis());
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
@@ -1724,7 +1784,7 @@ describe('InterlinearizerLoader', () => {
 
       // Dirty the draft via an edit so the marker appears, then Save.
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+        capturedStoreProps?.onSave?.(emptyAnalysis());
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
@@ -1744,14 +1804,14 @@ describe('InterlinearizerLoader', () => {
       // A gloss input begins holding uncommitted text: the marker appears even though no gloss has
       // been written (the persisted draft is still clean).
       act(() => {
-        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+        capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
 
       // The edit is reverted or the input unmounts with nothing committed: the marker clears.
       updateWebViewDefinition?.mockClear();
       act(() => {
-        capturedInterlinearizerProps?.onPendingEditsChange?.(false);
+        capturedStoreProps?.onPendingEditsChange?.(false);
       });
       expect(updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer' });
     });
@@ -1771,7 +1831,7 @@ describe('InterlinearizerLoader', () => {
       // stays clean), ProjectModals must now treat the draft as having unsaved work so opening or
       // creating a project prompts before discarding the in-progress gloss.
       act(() => {
-        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+        capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
     });
@@ -1782,13 +1842,13 @@ describe('InterlinearizerLoader', () => {
       });
 
       act(() => {
-        capturedInterlinearizerProps?.onPendingEditsChange?.(true);
+        capturedStoreProps?.onPendingEditsChange?.(true);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute('data-has-unsaved-work', 'true');
 
       // The edit is reverted or the input unmounts with nothing committed: the guard clears.
       act(() => {
-        capturedInterlinearizerProps?.onPendingEditsChange?.(false);
+        capturedStoreProps?.onPendingEditsChange?.(false);
       });
       expect(screen.getByTestId('project-modals')).toHaveAttribute(
         'data-has-unsaved-work',
@@ -1927,7 +1987,7 @@ describe('InterlinearizerLoader', () => {
       });
 
       act(() => {
-        capturedInterlinearizerProps?.onSaveAnalysis?.(emptyAnalysis());
+        capturedStoreProps?.onSave?.(emptyAnalysis());
       });
 
       expect(result?.updateWebViewDefinition).toHaveBeenCalledWith({ title: 'Interlinearizer ●' });
@@ -2149,5 +2209,106 @@ describe('InterlinearizerLoader', () => {
       controls?.rerenderNow();
       expect(fadeOpacity()).toBe('1');
     });
+  });
+});
+
+/** LUK counterpart to `GEN_1_1_BOOK`, so a book change has a second book to land on. */
+const LUK_1_1_BOOK: Book = {
+  id: 'LUK',
+  bookRef: 'LUK',
+  textVersion: 'v1',
+  segments: [
+    {
+      id: 'LUK 1:1',
+      startRef: { book: 'LUK', chapter: 1, verse: 1 },
+      endRef: { book: 'LUK', chapter: 1, verse: 1 },
+      baselineText: 'Since many',
+      tokens: [
+        {
+          ref: 'LUK 1:1:0',
+          surfaceText: 'Since',
+          writingSystem: 'en',
+          type: 'word',
+          charStart: 0,
+          charEnd: 5,
+        },
+      ],
+      verseStarts: [{ charStart: 0, number: '1', chapter: 1 }],
+    },
+  ],
+};
+
+describe('analysis store lifetime', () => {
+  beforeEach(() => {
+    mountStoreProbe = true;
+    probeStore = undefined;
+    probeWriteGloss = undefined;
+    capturedInterlinearizerProps = undefined;
+    capturedStoreProps = undefined;
+    interlinearizerMountCount = 0;
+    mockBookData();
+    mockOptimisticSetting();
+    mockSendCommand.mockResolvedValue(JSON.stringify(emptyDraft(testProjectId)));
+    jest
+      .mocked(useData)
+      .mockReturnValue(
+        new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
+      );
+    jest.mocked(useLocalizedStrings).mockReturnValue([{}, false]);
+    mockSettings();
+  });
+
+  afterEach(() => {
+    mountStoreProbe = false;
+  });
+
+  it('keeps one analysis store across a book change', async () => {
+    // The store holds the whole draft, not one book, so its lifetime is the draft's. A store rebuilt
+    // per book would also tear down everything mounted inside it — which is where the analysis
+    // catalog lives, and the catalog's whole point is clicking usage after usage across books.
+    let scrRef: SerializedVerseRef = { book: 'GEN', chapterNum: 1, verseNum: 1 };
+    const webViewState = makeWebViewState();
+    const element = () => (
+      <InterlinearizerLoader
+        projectId={testProjectId}
+        useWebViewScrollGroupScrRef={() => [scrRef, () => {}, undefined, () => {}, undefined]}
+        useWebViewState={webViewState}
+        updateWebViewDefinition={jest.fn(() => true)}
+      />
+    );
+
+    const { rerender } = render(element());
+    await act(async () => {});
+    const storeBefore = probeStore;
+    expect(storeBefore).toBeDefined();
+
+    // Navigate to another book: the reference moves first, then that book's data arrives.
+    scrRef = { book: 'LUK', chapterNum: 1, verseNum: 1 };
+    mockBookData({ book: LUK_1_1_BOOK });
+    await act(async () => {
+      rerender(element());
+    });
+
+    expect(screen.getByTestId('interlinearizer')).toBeInTheDocument();
+    expect(probeStore).toBe(storeBefore);
+  });
+
+  it('rebuilds the store when the draft is replaced wholesale', async () => {
+    // The store's seed is not reactive, so a replacement (New / Open / Wipe) reseeds by remounting
+    // the provider. Hoisting it above the book key must not cost that: a wiped draft whose store
+    // kept the old analysis would show glosses the draft no longer contains.
+    await act(async () => renderLoader());
+    const storeBefore = probeStore;
+
+    act(() => probeWriteGloss?.('GEN 1:1:0', 'In', 'beginning'));
+    await act(async () => {
+      screen.getByTestId('tab-toolbar-wipe').click();
+    });
+    await act(async () => {
+      screen.getByTestId('wipe-confirm-all').click();
+    });
+
+    expect(probeStore).not.toBe(storeBefore);
+    expect(capturedStoreProps?.initialAnalysis).toEqual(emptyAnalysis());
   });
 });

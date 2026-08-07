@@ -6,9 +6,6 @@ morphemes, link source and target phrases, and adjust segment boundaries.
 This is a pre-release for testing and feedback. Expect rough edges, and expect the way analysis is
 stored to keep changing between releases.
 
-<!-- Maintainers: before publishing, install both zips from this release and check that the
-Interlinearizer tab actually renders, not just that the extension activates in the log. -->
-
 > **Windows only for now.** The application build this extension needs is currently available for
 > Windows alone. A Linux build has been requested and should follow; there is no macOS build. Please
 > do not use Platform.Bible from the Snap Store or the public releases page — the extension loads
@@ -18,8 +15,8 @@ Interlinearizer tab actually renders, not just that the extension activates in t
 
 Both files you need are in the **Assets** list below.
 
-1. Download `Paratext.10.Studio.Setup.<version>-Windows.zip` (around 240 MB), extract it, and run the
-   installer inside. This is the application build this release is meant to be used with.
+1. Download `Paratext.10.Studio.Setup.<Studio version>-Windows.zip` (around 240 MB), extract it, and
+   run the installer inside. This is the application build this release is meant to be used with.
 2. Start Paratext 10 Studio once, then close it. This creates the folder used in step 4.
 3. Download `interlinearizer_<version>.zip` and leave it zipped.
 4. Copy it into `%USERPROFILE%\.platform.bible\installed-extensions` — paste that path straight into

@@ -100,6 +100,22 @@ jobs:
         run: |
           npm run package
 
+      # `bodyFile` is copied verbatim and `omitBodyDuringUpdate` stops a re-run from refreshing it,
+      # so the extension zip's name has to be correct the first time the release is created. The
+      # Paratext 10 Studio build is versioned separately and attached by hand, so its
+      # `<Studio version>` placeholder is left for a maintainer to fill in.
+      - name: Fill the extension version into the release body
+        shell: bash
+        env:
+          VERSION: ${{ steps.package_json.outputs.version }}
+        run: |
+          if ! grep -q 'interlinearizer_<version>\.zip' .github/assets/release-body.md; then
+            echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
+            exit 1
+          fi
+          sed -i "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
+            .github/assets/release-body.md
+
       - name: Publish draft release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
         with:

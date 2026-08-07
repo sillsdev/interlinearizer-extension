@@ -48,6 +48,19 @@ describe('analysesAreIdentical', () => {
     expect(analysesAreIdentical(a, b)).toBe(true);
   });
 
+  it('ignores the timestamps, so one gloss recorded at two moments still dedupes', () => {
+    expect(
+      analysesAreIdentical(
+        ta({ gloss: { en: 'hi' } }),
+        ta({
+          gloss: { en: 'hi' },
+          createdAt: '2026-03-03T03:03:03.000Z',
+          updatedAt: '2026-04-04T04:04:04.000Z',
+        }),
+      ),
+    ).toBe(true);
+  });
+
   it('treats two morpheme-only analyses with no gloss as identical', () => {
     const morphemes = [{ id: 'm', form: 'un-', writingSystem: 'en' }];
     expect(analysesAreIdentical(ta({ morphemes }), ta({ morphemes }))).toBe(true);

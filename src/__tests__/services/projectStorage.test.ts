@@ -62,6 +62,12 @@ describe('projectStorage', () => {
     jest.spyOn(crypto, 'randomUUID').mockReturnValue('00000000-0000-0000-0000-000000000001');
   });
 
+  // restoreMocks does not undo fake timers, so a test that installs them and then fails an
+  // assertion would strand every later test on a frozen clock.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   describe('createProject', () => {
     it('returns a project with the given fields and empty analysis when analysis-only', async () => {
       __mockReadUserData.mockRejectedValue(enoentError());
@@ -926,7 +932,6 @@ describe('projectStorage', () => {
         createdAt: READ_TIME,
         updatedAt: READ_TIME,
       });
-      jest.useRealTimers();
     });
 
     it('returns a fresh empty draft when no draft has been written (ENOENT)', async () => {

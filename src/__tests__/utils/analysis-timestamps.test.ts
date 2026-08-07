@@ -88,6 +88,7 @@ describe('backfillAnalysisTimestamps', () => {
     expect(analysis.tokenAnalyses[0].createdAt).toBe(FIXTURE_STAMPS.createdAt);
     expect(analysis.tokenAnalyses[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
     expect(analysis.phraseAnalysisLinks[0].createdAt).toBe(FIXTURE_STAMPS.createdAt);
+    expect(analysis.phraseAnalysisLinks[0].updatedAt).toBe(FIXTURE_STAMPS.updatedAt);
   });
 
   it('fills only the missing half when a record carries one timestamp', () => {

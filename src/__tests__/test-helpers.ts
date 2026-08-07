@@ -173,7 +173,7 @@ export function makeProjectSummary(
  */
 export function makeSegment(sid: string, baselineText: string, tokens: Token[]): Segment {
   const [book, chapterVerse] = sid.split(' ');
-  const parts = chapterVerse.split(':');
+  const parts = chapterVerse?.split(':') ?? [];
   if (parts.length !== 2)
     throw new Error(`makeSegment takes a "<BOOK> <chapter>:<verse>" sid; got "${sid}"`);
   const [chapter, verse] = parts.map(Number);

@@ -1,0 +1,49 @@
+name: Verify Release
+run-name: Verify release ${{ github.event.release.tag_name }}
+
+# Publishing a draft fires `published`, which is the first point at which the manual parts of a
+# release are checkable. `edited` re-runs the check so a corrected release can go green.
+on:
+  release:
+    types: [published, edited]
+
+permissions: {}
+
+jobs:
+  verify:
+    name: Verify the manual release steps
+
+    # `edited` fires for drafts too, and a draft's placeholders are meant to be unfilled until a
+    # maintainer has worked through the release checklist.
+    if: ${{ !github.event.release.draft }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      # Everything checked here is in the release payload, so there is nothing to check out and no
+      # token to grant. It reaches the script through the environment rather than by interpolation,
+      # so release text cannot run as shell.
+      - name: Check the Paratext 10 Studio zip and its version
+        shell: bash
+        env:
+          BODY: ${{ github.event.release.body }}
+          ASSET_NAMES: ${{ toJSON(github.event.release.assets.*.name) }}
+        run: |
+          failed=0
+
+          if grep -qF '<Studio version>' <<< "${BODY}"; then
+            echo '::error::The release body still has its `<Studio version>` placeholder. Replace it with the version of the Paratext 10 Studio zip attached below, so the install steps name a file that exists.'
+            failed=1
+          fi
+
+          # Held in a variable rather than piped into `grep`: under `pipefail`, `grep -q` exiting on
+          # its first match can leave `jq` killed by SIGPIPE, failing the pipeline on a match.
+          names="$(jq -r '.[]' <<< "${ASSET_NAMES}")"
+          if ! grep -qE '^Paratext\.10\.Studio\.Setup\..+-Windows\.zip$' <<< "${names}"; then
+            echo '::error::No `Paratext.10.Studio.Setup.<version>-Windows.zip` asset is attached. The install steps tell testers to download one, and the workflow that builds the release does not attach it.'
+            echo "Attached assets:"
+            echo "${names}"
+            failed=1
+          fi
+
+          exit "${failed}"

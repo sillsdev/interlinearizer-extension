@@ -6,7 +6,9 @@ import { ViewOptions } from '../../types/view-options';
 /**
  * Stubs {@link useLocalizedStrings} to echo each requested key back as its own value, so components
  * that interpolate a localized string render something deterministic without the test having to
- * enumerate every key it touches. Call from `beforeEach`.
+ * enumerate every key it touches, and so suites query controls by the stable localize key rather
+ * than by English text a copy edit could change. `resetMocks` clears the hook's implementation
+ * before every test, so call this from `beforeEach`.
  */
 export function mockKeyAsValueLocalizedStrings(): void {
   jest

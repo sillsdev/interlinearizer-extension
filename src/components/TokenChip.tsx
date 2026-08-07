@@ -36,7 +36,6 @@ const STRING_KEYS = [
   '%interlinearizer_tokenChip_defineMorphemes%',
   '%interlinearizer_tokenChip_glossLabel%',
   '%interlinearizer_tokenChip_showSuggestions%',
-  '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_suggestion_accept%',
   '%interlinearizer_suggestion_promote%',
 ] as const satisfies `%${string}%`[];
@@ -72,6 +71,8 @@ const SUGGESTED_PLACEHOLDER_PAD = '\u2009';
  * @param props.disabled - When true, the gloss input is read-only and non-interactive.
  * @param props.onRemove - When provided, renders a small X button in the top-right corner of the
  *   chip; clicking it calls this callback to remove the token from its phrase.
+ * @param props.removeLabelTemplate - Accessible label for that X button, with `{token}` still to be
+ *   substituted for the surface text.
  * @param props.isSplitFree - When true, this token would become free (solo) if the currently
  *   hovered split/unlink button were clicked; previewed with a destructive border on the chip.
  * @param props.showMorphology - When true, morpheme breakdown and per-morpheme glosses are shown
@@ -85,6 +86,7 @@ export function TokenChip({
   onFocus,
   disabled = false,
   onRemove,
+  removeLabelTemplate = '',
   isSplitFree = false,
   showMorphology = false,
   glossPlaceholder = '',
@@ -93,6 +95,7 @@ export function TokenChip({
   onFocus: () => void;
   disabled?: boolean;
   onRemove?: () => void;
+  removeLabelTemplate?: string;
   isSplitFree?: boolean;
   showMorphology?: boolean;
   glossPlaceholder?: string;
@@ -369,10 +372,7 @@ export function TokenChip({
     <span className="tw:relative tw:inline-flex tw:shrink-0">
       {onRemove && (
         <Button
-          aria-label={localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'].replace(
-            '{token}',
-            () => token.surfaceText,
-          )}
+          aria-label={removeLabelTemplate.replace('{token}', () => token.surfaceText)}
           className={`tw:absolute tw:-top-1.5 tw:-right-1.5 tw:z-10 tw:flex tw:h-3.5 tw:w-3.5 tw:items-center tw:justify-center tw:rounded-full tw:border tw:bg-background tw:p-0${isRemoveHovered ? ' tw:border-destructive tw:text-destructive' : ' tw:border-border tw:text-muted-foreground'}`}
           tabIndex={-1}
           type="button"

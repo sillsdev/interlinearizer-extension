@@ -19,7 +19,7 @@ import type { SegmentationDispatch } from '../../components/SegmentationStore';
 import {
   GEN_1_1_BOOK,
   makeScrollGroupHook,
-  localizedStringsFromContributions,
+  localizedStringsAsKeys,
   makeWebViewState,
   type ScrollGroupTuple,
 } from '../test-helpers';
@@ -442,7 +442,7 @@ describe('InterlinearizerLoader', () => {
       .mockReturnValue(
         new Proxy({}, { get: () => jest.fn().mockReturnValue([undefined, jest.fn(), false]) }),
       );
-    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
+    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsAsKeys);
     mockSettings();
   });
 
@@ -731,7 +731,7 @@ describe('InterlinearizerLoader', () => {
       });
     });
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
     expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
 
@@ -759,7 +759,7 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
   });
 
   it('shows an error heading and message when bookError is set', async () => {
@@ -768,7 +768,9 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(screen.getByRole('heading', { name: /error loading book/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '%interlinearizer_error_load_book_heading%' }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/project not found/i)).toBeInTheDocument();
   });
 
@@ -781,7 +783,9 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '%interlinearizer_error_process_book_heading%' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('parse failure')).toBeInTheDocument();
   });
 
@@ -794,7 +798,9 @@ describe('InterlinearizerLoader', () => {
       renderLoader();
     });
 
-    expect(screen.getByRole('heading', { name: /error processing book/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: '%interlinearizer_error_process_book_heading%' }),
+    ).toBeInTheDocument();
     expect(screen.getByText('unexpected string error')).toBeInTheDocument();
   });
 
@@ -816,7 +822,7 @@ describe('InterlinearizerLoader', () => {
 
     // The saved settings must arrive before the view renders so the user's stored choices apply on
     // the first paint instead of flashing the hard-coded defaults.
-    expect(screen.getByText('Loading…')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
     expect(screen.queryByTestId('continuous-scroll-toggle')).not.toBeInTheDocument();
     expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
   });
@@ -1599,7 +1605,7 @@ describe('InterlinearizerLoader', () => {
       mockBookData({ book: undefined, isLoading: true });
       view?.rerender(buildUi());
 
-      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
     });
   });
@@ -2088,7 +2094,7 @@ describe('InterlinearizerLoader', () => {
       controls?.setRef({ book: 'MAT', chapterNum: 5, verseNum: 3 });
       controls?.rerenderNow();
       expect(screen.queryByTestId('interlinearizer')).not.toBeInTheDocument();
-      expect(screen.getByText('Loading…')).toBeInTheDocument();
+      expect(screen.getByText('%interlinearizer_loading%')).toBeInTheDocument();
 
       // Once MAT's book data arrives, Interlinearizer mounts on it and receives the live MAT ref.
       mockBookData({ book: { ...GEN_1_1_BOOK, id: 'MAT', bookRef: 'MAT' } });

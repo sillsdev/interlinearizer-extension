@@ -5,7 +5,7 @@ import { useLocalizedStrings } from '@papi/frontend/react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UnlinkPhraseConfirm from '../../../components/modals/UnlinkPhraseConfirm';
-import { localizedStringsFromContributions } from '../../test-helpers';
+import { localizedStringsAsKeys } from '../../test-helpers';
 
 /** Stable mock fns for AnalysisStore phrase dispatch. */
 const mockDeletePhrase = jest.fn();
@@ -22,7 +22,7 @@ jest.mock('../../../components/AnalysisStore', () => ({
 
 describe('UnlinkPhraseConfirm', () => {
   beforeEach(() => {
-    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsFromContributions);
+    jest.mocked(useLocalizedStrings).mockImplementation(localizedStringsAsKeys);
     mockUsePhraseDispatch.mockReturnValue({
       createPhrase: jest.fn(),
       updatePhrase: jest.fn(),
@@ -34,7 +34,7 @@ describe('UnlinkPhraseConfirm', () => {
     render(<UnlinkPhraseConfirm phraseId="phrase-1" setPhraseMode={jest.fn()} />);
 
     expect(screen.getByTestId('unlink-confirm')).toBeInTheDocument();
-    expect(screen.getByText('Unlink this phrase?')).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_unlinkPhraseConfirm_prompt%')).toBeInTheDocument();
   });
 
   it('renders Unlink and Cancel buttons', () => {

@@ -427,7 +427,7 @@ describe('Interlinearizer', () => {
   it('shows a no-verse message when the tokenized book has no segments at all', () => {
     renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
-    expect(screen.getByText(/no verse data for gen 1\./i)).toBeInTheDocument();
+    expect(screen.getByText('%interlinearizer_segmentList_noVerseData%')).toBeInTheDocument();
   });
 
   it('passes per-verse-start superscript labels to the segment views', () => {
@@ -1168,14 +1168,16 @@ describe('Interlinearizer', () => {
   it('renders the snap-to-active-verse button when segments are present', () => {
     renderInterlinearizer({ book: GEN_1_MULTI_BOOK });
 
-    expect(screen.getByRole('button', { name: /scroll to active verse/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_segmentList_scrollToActiveVerse%' }),
+    ).toBeInTheDocument();
   });
 
   it('does not render the snap-to-active-verse button when there are no segments', () => {
     renderInterlinearizer({ book: GEN_EMPTY_BOOK });
 
     expect(
-      screen.queryByRole('button', { name: /scroll to active verse/i }),
+      screen.queryByRole('button', { name: '%interlinearizer_segmentList_scrollToActiveVerse%' }),
     ).not.toBeInTheDocument();
   });
 
@@ -1185,7 +1187,9 @@ describe('Interlinearizer', () => {
       renderInterlinearizer({ book: GEN_1_1_BOOK });
 
       act(() => {
-        screen.getByRole('button', { name: /scroll to active verse/i }).click();
+        screen
+          .getByRole('button', { name: '%interlinearizer_segmentList_scrollToActiveVerse%' })
+          .click();
       });
 
       // The button always fade-recenters (so a verse outside the window still comes into view), so the

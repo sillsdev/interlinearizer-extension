@@ -402,8 +402,12 @@ describe('ContinuousView initial render', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeInTheDocument();
   });
 
   it('renders a non-word token via InertTokenChip within the strip', () => {
@@ -555,7 +559,9 @@ describe('ContinuousView arrow disabled states', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeDisabled();
   });
 
   it('enables the prev arrow when focus is on a non-first phrase', () => {
@@ -565,7 +571,9 @@ describe('ContinuousView arrow disabled states', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeEnabled();
   });
 
   it('disables the next arrow when focus is on the last phrase', () => {
@@ -575,7 +583,9 @@ describe('ContinuousView arrow disabled states', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeDisabled();
   });
 
   it('enables the next arrow when focus is on a non-last phrase', () => {
@@ -585,7 +595,9 @@ describe('ContinuousView arrow disabled states', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeEnabled();
   });
 
   it('disables both arrows when the book has a single token', () => {
@@ -595,16 +607,24 @@ describe('ContinuousView arrow disabled states', () => {
       withAnalysisStore,
     );
 
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeDisabled();
   });
 
   it('disables both arrows when the book has no word tokens', () => {
     const book = makeWordFreeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    expect(screen.getByRole('button', { name: 'Previous token' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Next token' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    ).toBeDisabled();
   });
 });
 
@@ -614,7 +634,9 @@ describe('ContinuousView arrow navigation', () => {
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     render(<ContinuousView {...props} />, withAnalysisStore);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
 
     expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-1');
   });
@@ -624,7 +646,9 @@ describe('ContinuousView arrow navigation', () => {
     const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
     render(<ContinuousView {...props} />, withAnalysisStore);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    );
 
     expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-0');
   });
@@ -634,7 +658,9 @@ describe('ContinuousView arrow navigation', () => {
     const props = requiredProps(book, { focusedTokenRef: 'tok-1' });
     render(<ContinuousView {...props} />, withAnalysisStore);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
 
     expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('tok-2');
   });
@@ -644,7 +670,9 @@ describe('ContinuousView arrow navigation', () => {
     const props = requiredProps(book, { focusedTokenRef: 'ch1-tok-0' });
     render(<ContinuousView {...props} />, withAnalysisStore);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
 
     expect(props.onFocusedTokenRefChange).toHaveBeenCalledWith('ch2-tok-0');
   });
@@ -653,7 +681,7 @@ describe('ContinuousView arrow navigation', () => {
     const book = makeBook();
     const props = requiredProps(book, { focusedTokenRef: 'tok-0' });
     render(<ContinuousView {...props} />, withAnalysisStore);
-    const next = screen.getByRole('button', { name: 'Next token' });
+    const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
 
     await userEvent.click(next);
     await userEvent.click(next);
@@ -675,13 +703,17 @@ describe('ContinuousView arrow navigation', () => {
     // External nav while idle: the fade starts; the displayed focus is still tok-1.
     rerender(<ContinuousView {...props} focusedTokenRef="tok-3" />);
     // Internal nav in flight: Next from the displayed group (tok-1) emits tok-2.
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(1, 'tok-2');
 
     // The parent imposes an external position (not the tok-2 echo) that matches the displayed ref.
     rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Previous token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_previousToken%' }),
+    );
     expect(props.onFocusedTokenRefChange).toHaveBeenNthCalledWith(2, 'tok-0');
   });
 });
@@ -922,7 +954,9 @@ describe('ContinuousView scroll behavior', () => {
     );
     scrollIntoViewMock.mockClear();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
 
     await waitFor(() =>
       expect(scrollIntoViewMock).toHaveBeenCalledWith(
@@ -982,7 +1016,9 @@ describe('ContinuousView scroll behavior', () => {
 
     // Step into GEN 1:2. The GEN 1:1 link icon must remain while the scroll animates (no relayout).
     tokenLinkIconSpy.mockClear();
-    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
     expect(inSegmentIconMounted()).toBe(true);
 
     // On `scrollend` (fired on the clipping viewport that actually scrolls), the active segment
@@ -1002,7 +1038,9 @@ describe('ContinuousView scroll behavior', () => {
       expect(screen.getByTestId('strip-fade-wrapper').className).toContain('tw:opacity-100'),
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
     expect(inSegmentIconMounted()).toBe(true);
 
     tokenLinkIconSpy.mockClear();
@@ -1026,7 +1064,9 @@ describe('ContinuousView scroll behavior', () => {
 
       tokenLinkIconSpy.mockClear();
       act(() => {
-        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
       });
       // Still present while the (fake-timer) scroll is mid-flight; no scrollend is dispatched.
       expect(inSegmentIconMounted()).toBe(true);
@@ -1090,7 +1130,9 @@ describe('ContinuousView scroll behavior', () => {
 
       // Step into GEN 1:2 (internal nav) — the scroll is now animating and its commit is pending.
       act(() => {
-        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
       });
       expect(inSegmentIconMounted()).toBe(true);
 
@@ -1119,7 +1161,9 @@ describe('ContinuousView scroll behavior', () => {
       expect(inSegmentIconMounted()).toBe(true);
 
       act(() => {
-        fireEvent.click(screen.getByRole('button', { name: 'Next token' }));
+        fireEvent.click(
+          screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+        );
       });
 
       // Commit the active segment (the scroll has settled). This seeds the re-center rAF loop.
@@ -1312,7 +1356,9 @@ describe('ContinuousView RTL layout', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    const prev = screen.getByRole('button', { name: 'Previous token' });
+    const prev = screen.getByRole('button', {
+      name: '%interlinearizer_continuousView_previousToken%',
+    });
     expect(prev.textContent).toContain('→');
   });
 
@@ -1321,7 +1367,7 @@ describe('ContinuousView RTL layout', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    const next = screen.getByRole('button', { name: 'Next token' });
+    const next = screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' });
     expect(next.textContent).toContain('←');
   });
 
@@ -1330,7 +1376,9 @@ describe('ContinuousView RTL layout', () => {
     const book = makeBook();
     render(<ContinuousView {...requiredProps(book)} />, withAnalysisStore);
 
-    const prev = screen.getByRole('button', { name: 'Previous token' });
+    const prev = screen.getByRole('button', {
+      name: '%interlinearizer_continuousView_previousToken%',
+    });
     expect(prev.textContent).toContain('←');
   });
 });
@@ -1448,7 +1496,9 @@ describe('ContinuousView phrase grouping', () => {
       'focused',
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Next token' }));
+    await userEvent.click(
+      screen.getByRole('button', { name: '%interlinearizer_continuousView_nextToken%' }),
+    );
     // Reflect the new ref back as a prop change; the click stamped it internal, so it applies at once.
     rerender(<ContinuousView {...props} focusedTokenRef="tok-1" />);
 

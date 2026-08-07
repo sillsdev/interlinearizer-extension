@@ -2,7 +2,6 @@
 /// <reference types="jest" />
 /// <reference types="@testing-library/jest-dom" />
 
-import { useLocalizedStrings } from '@papi/frontend/react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { TextAnalysis, Token, TokenAnalysis, TokenAnalysisLink } from 'interlinearizer';
@@ -10,11 +9,10 @@ import { AnalysisStoreProvider } from '../../components/AnalysisStore';
 import { TokenChip } from '../../components/TokenChip';
 import { emptyAnalysis } from '../../types/empty-factories';
 import { makeWordToken } from '../test-helpers';
+import { mockKeyAsValueLocalizedStrings } from './test-helpers';
 
 beforeEach(() => {
-  jest
-    .mocked(useLocalizedStrings)
-    .mockReturnValue([{ '%interlinearizer_glossInput_placeholder%': 'gloss' }, false]);
+  mockKeyAsValueLocalizedStrings();
   // jsdom does not implement scrollIntoView; the dropdown calls it to keep the active row in view.
   Element.prototype.scrollIntoView = jest.fn();
 });
@@ -108,17 +106,20 @@ function renderChip(
   );
 }
 
+/** Accessible name of a chip's gloss input; localized strings resolve to their own key in tests. */
+const GLOSS_INPUT_LABEL = '%interlinearizer_tokenChip_glossLabel%';
+
 /** The suggested gloss as the placeholder renders it, padded to clear the faked italic's lean. */
 function ghost(gloss: string): string {
   return `${gloss}\u2009`;
 }
 
 /**
- * Focuses a chip's gloss input (which opens the dropdown whenever the token has suggestions),
- * returning the input element.
+ * Focuses the rendered chip's gloss input, which opens the dropdown whenever the token has
+ * suggestions. Each test renders exactly one chip, so the label alone identifies it.
  */
-async function focusGloss(surfaceText: string): Promise<HTMLElement> {
-  const input = screen.getByLabelText(`Gloss for ${surfaceText}`);
+async function focusGloss(): Promise<HTMLElement> {
+  const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
   await userEvent.click(input);
   return input;
 }
@@ -127,7 +128,7 @@ describe('TokenChip suggested placeholder', () => {
   it('shows the suggested gloss as the placeholder of an empty, unfocused input', () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
-    const input = screen.getByLabelText('Gloss for logos');
+    const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     // Visible at a glance — no focus or hover — so the row reveals which tokens have a suggestion.
     expect(input).toHaveAttribute('placeholder', ghost('word'));
     expect(input.className).toContain('tw:placeholder:gloss-suggested');
@@ -139,13 +140,13 @@ describe('TokenChip suggested placeholder', () => {
     // Spelled out rather than built from `ghost`, so changing the pad character has to be a
     // deliberate edit here instead of riding along with the helper every other assertion goes
     // through.
-    expect(screen.getByLabelText('Gloss for logos')).toHaveAttribute('placeholder', 'word\u2009');
+    expect(screen.getByLabelText(GLOSS_INPUT_LABEL)).toHaveAttribute('placeholder', 'word\u2009');
   });
 
   it('falls back to the generic placeholder when the token has no suggestion', () => {
     renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
 
-    const input = screen.getByLabelText('Gloss for unseen');
+    const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     expect(input).toHaveAttribute('placeholder', 'gloss');
     expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
@@ -156,14 +157,14 @@ describe('TokenChip suggested placeholder', () => {
       showSuggestions: false,
     });
 
-    const input = screen.getByLabelText('Gloss for logos');
+    const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     expect(input).toHaveAttribute('placeholder', 'gloss');
     expect(input.className).not.toContain('tw:placeholder:gloss-suggested');
   });
 
   it('reverts to the generic placeholder once the user types a gloss', async () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    const input = screen.getByLabelText('Gloss for logos');
+    const input = screen.getByLabelText(GLOSS_INPUT_LABEL);
     expect(input).toHaveAttribute('placeholder', ghost('word'));
 
     await userEvent.type(input, 'mine');
@@ -181,7 +182,7 @@ describe('TokenChip suggestion dropdown', () => {
     // Closed until focused: no row is in the document yet.
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
-    await focusGloss('logos');
+    await focusGloss();
 
     const accept = screen.getByTestId('suggestion-accept');
     expect(accept).toHaveTextContent('word');
@@ -194,7 +195,7 @@ describe('TokenChip suggestion dropdown', () => {
       showSuggestions: false,
     });
 
-    await focusGloss('logos');
+    await focusGloss();
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
@@ -205,7 +206,7 @@ describe('TokenChip suggestion dropdown', () => {
     // the dropdown to accept it, so the "+" button is reserved for tokens with a choice.
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
 
     // The dropdown is open (single accept row) but no chooser button renders, even on hover.
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
@@ -221,11 +222,11 @@ describe('TokenChip suggestion dropdown', () => {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
-    await focusGloss('logos');
+    await focusGloss();
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Gloss for logos')).toHaveValue('word');
+    expect(screen.getByLabelText(GLOSS_INPUT_LABEL)).toHaveValue('word');
   });
 
   it('auto-opens the dropdown on an approved token that has a different pool alternative', async () => {
@@ -234,7 +235,7 @@ describe('TokenChip suggestion dropdown', () => {
     // committed gloss; with one alternative there is no "+" button.
     renderChip(makeWordToken('r1', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    await focusGloss('bank');
+    await focusGloss();
 
     // On an already-approved token every alternative is a gray "promote" row, not a blue "accept"
     // row: there is nothing to accept, only candidates to promote to.
@@ -254,7 +255,7 @@ describe('TokenChip suggestion dropdown', () => {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
-    await focusGloss('drifted');
+    await focusGloss();
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
@@ -263,7 +264,7 @@ describe('TokenChip suggestion dropdown', () => {
   it('does not open for a surface form that is not in the pool', async () => {
     renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
 
-    await focusGloss('unseen');
+    await focusGloss();
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
@@ -286,17 +287,17 @@ describe('TokenChip suggestion dropdown', () => {
 
   it('closes once the user starts typing their own gloss', async () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    await focusGloss('logos');
+    await focusGloss();
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
 
-    await userEvent.type(screen.getByLabelText('Gloss for logos'), 'mine');
+    await userEvent.type(screen.getByLabelText(GLOSS_INPUT_LABEL), 'mine');
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
   });
 
   it('re-opens when the input is cleared back to empty', async () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
     await userEvent.type(input, 'mine');
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
@@ -311,7 +312,7 @@ describe('TokenChip suggestion dropdown', () => {
       initialAnalysis: poolWithOneApproved(undefined),
     });
 
-    await focusGloss('logos');
+    await focusGloss();
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
     expect(screen.queryByTestId('suggestion-add')).not.toBeInTheDocument();
@@ -324,11 +325,11 @@ describe('TokenChip suggestion dropdown', () => {
       onSave,
     });
 
-    await focusGloss('logos');
+    await focusGloss();
     await userEvent.click(screen.getByTestId('suggestion-accept'));
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Gloss for logos')).toHaveValue('word');
+    expect(screen.getByLabelText(GLOSS_INPUT_LABEL)).toHaveValue('word');
     const saved: TextAnalysis = onSave.mock.calls[0][0];
     // No new payload — tok-2 links to the existing shared analysis (frequency now 2).
     expect(saved.tokenAnalyses).toHaveLength(1);
@@ -344,7 +345,7 @@ describe('TokenChip suggestion dropdown', () => {
       onSave,
     });
 
-    await focusGloss('bank');
+    await focusGloss();
 
     // The most-approved payload is suggested; the competing one is a grey candidate.
     expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('riverbank');
@@ -363,7 +364,7 @@ describe('TokenChip suggestion dropdown', () => {
   it('omits a candidate that has no gloss in the active language', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool(undefined) });
 
-    await focusGloss('bank');
+    await focusGloss();
 
     // The suggested pick still shows, but the gloss-less candidate is not rendered as a row.
     expect(screen.getByTestId('suggestion-accept')).toHaveTextContent('riverbank');
@@ -377,7 +378,7 @@ describe('TokenChip suggestion dropdown', () => {
       onSave,
     });
 
-    await focusGloss('bank');
+    await focusGloss();
 
     // ta-blank (French-only, frequency 2) outranks ta-fin but has no English gloss, so the top row
     // surfaces ta-fin's 'finance' instead, with no leftover candidate row (ta-blank is gloss-less in
@@ -420,7 +421,7 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
     // the empty value commits on blur, rather than flipping to 'finance'.
     renderChip(makeWordToken('r1', 'bank'), { initialAnalysis: homographMajorityPool() });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
     // Before clearing: the approved token shows only the alternative as a promote row.
     expect(screen.getByTestId('suggestion-candidate')).toHaveTextContent('finance');
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
@@ -440,7 +441,7 @@ describe('TokenChip suggestion after clearing an approved gloss', () => {
       initialAnalysis: poolWithOneApproved('word'),
     });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
     await userEvent.clear(input);
 
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
@@ -457,7 +458,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onSave,
     });
 
-    await focusGloss('bank');
+    await focusGloss();
     await userEvent.keyboard('{ArrowDown}');
 
     expect(screen.getByTestId('suggestion-accept')).toHaveAttribute('aria-selected', 'true');
@@ -476,7 +477,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onSave,
     });
 
-    await focusGloss('logos');
+    await focusGloss();
     // No arrow press: nothing is highlighted, so Enter falls back to the top row.
     await userEvent.keyboard('{Enter}');
 
@@ -493,7 +494,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onSave,
     });
 
-    await focusGloss('bank');
+    await focusGloss();
     // Two rows: riverbank (0), finance (1). Down past the end stays on the last row.
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
     expect(screen.getByTestId('suggestion-accept')).toHaveAttribute('aria-selected', 'false');
@@ -518,7 +519,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onSave,
     });
 
-    await focusGloss('bank');
+    await focusGloss();
     await userEvent.hover(screen.getByTestId('suggestion-candidate'));
 
     expect(screen.getByTestId('suggestion-candidate')).toHaveAttribute('aria-selected', 'true');
@@ -538,7 +539,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onGlossChange,
     });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
     expect(input).toHaveAttribute('aria-expanded', 'true');
 
     await userEvent.keyboard('{Escape}');
@@ -556,7 +557,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
       onGlossChange,
     });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
     await userEvent.type(input, 'mine'); // typing closes the dropdown
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
@@ -569,7 +570,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
   it('arrow-down re-opens the dropdown after typing closed it', async () => {
     renderChip(makeWordToken('tok-2', 'logos'), { initialAnalysis: poolWithOneApproved('word') });
 
-    const input = await focusGloss('logos');
+    const input = await focusGloss();
     await userEvent.type(input, 'mine'); // typing closes the dropdown
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
@@ -582,7 +583,7 @@ describe('TokenChip suggestion keyboard navigation', () => {
   it('arrow-down does nothing when the token has no suggestions', async () => {
     renderChip(makeWordToken('tok-x', 'unseen'), { initialAnalysis: poolWithOneApproved('word') });
 
-    const input = await focusGloss('unseen');
+    const input = await focusGloss();
     await userEvent.keyboard('{ArrowDown}');
 
     // No combobox here, so there is no dropdown to open and no aria-expanded state.
@@ -619,7 +620,7 @@ describe('TokenChip suggestion + button', () => {
       onSave,
     });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
     await userEvent.type(input, 'mine'); // closes the auto-opened dropdown
     expect(screen.queryByTestId('suggestion-accept')).not.toBeInTheDocument();
 
@@ -639,7 +640,7 @@ describe('TokenChip suggestion + button', () => {
   it('toggles the dropdown closed when clicked while open', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    await focusGloss('bank');
+    await focusGloss();
     expect(screen.getByTestId('suggestion-accept')).toBeInTheDocument();
 
     await userEvent.click(screen.getByTestId('suggestion-add'));
@@ -652,7 +653,7 @@ describe('TokenChip suggestion combobox wiring', () => {
   it('points the input at the open panel as its listbox', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
 
     expect(input).toHaveAttribute('role', 'combobox');
     expect(input).toHaveAttribute('aria-expanded', 'true');
@@ -662,7 +663,7 @@ describe('TokenChip suggestion combobox wiring', () => {
   it('collapses the input to the closed combobox state when the panel closes', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
     await userEvent.type(input, 'mine');
 
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
@@ -673,7 +674,7 @@ describe('TokenChip suggestion combobox wiring', () => {
   it('names no active descendant while no row is highlighted', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
 
     expect(input).not.toHaveAttribute('aria-activedescendant');
   });
@@ -681,7 +682,7 @@ describe('TokenChip suggestion combobox wiring', () => {
   it('names the keyboard-highlighted row as the active descendant', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
     await userEvent.keyboard('{ArrowDown}');
 
     const [first] = screen.getAllByRole('option');
@@ -692,7 +693,7 @@ describe('TokenChip suggestion combobox wiring', () => {
   it('keeps focus in the gloss input while the panel is open', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
 
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
 
     expect(screen.getByRole('listbox')).toBeInTheDocument();
     expect(input).toHaveFocus();
@@ -700,7 +701,7 @@ describe('TokenChip suggestion combobox wiring', () => {
 
   it('keeps focus in the gloss input when the panel restores focus as it closes', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
 
     // fireEvent so the sentinel itself never takes focus, leaving the panel's own focus-restoration
     // as the only thing that could move it — which, left unprevented, blurs the input.
@@ -715,7 +716,7 @@ describe('TokenChip suggestion dropdown scrolling', () => {
   // popover's own doing, off measurements jsdom does not produce, so it stays beyond reach here.
   it('keeps the panel open when the surrounding view scrolls', async () => {
     renderChip(makeWordToken('tok-new', 'bank'), { initialAnalysis: homographBankPool('finance') });
-    const input = await focusGloss('bank');
+    const input = await focusGloss();
 
     fireEvent.scroll(window);
 

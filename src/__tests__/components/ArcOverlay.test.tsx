@@ -32,6 +32,7 @@ function requiredProps(): Parameters<typeof ArcOverlay>[0] {
     candidatePhraseIds: new Set(),
     phraseLinkById: new Map(),
     tokenDocOrder: new Map(),
+    splitHereLabel: '%interlinearizer_phraseBox_splitHere%',
     onArcSplit: jest.fn(),
     onSplitHoverChange: jest.fn(),
     onHoverPhrase: jest.fn(),
@@ -86,6 +87,19 @@ describe('ArcOverlay', () => {
     );
     expect(screen.getByTestId('split-arc-btn')).toBeInTheDocument();
     expect(screen.getByTestId('split-arc-btn').className).not.toContain('text-muted-foreground');
+  });
+
+  it('labels the split button with the strip-supplied label', () => {
+    const phraseLink = makePhraseLink('p1', ['tok-a', 'tok-b']);
+    render(
+      <ArcOverlay
+        {...requiredProps()}
+        arcPaths={[makeArcPath('p1', 'tok-a')]}
+        phraseLinkById={new Map([['p1', phraseLink]])}
+        splitHereLabel="label-from-strip"
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'label-from-strip' })).toBeInTheDocument();
   });
 
   it('with simplifyPhrases on, hides the split button for a non-focused phrase but keeps its arc', () => {

@@ -14,6 +14,7 @@ import { resolvedOrEmpty } from '../utils/localized-strings';
  */
 const STRING_KEYS = [
   '%interlinearizer_freeTranslationInput_placeholder%',
+  '%interlinearizer_freeTranslationInput_label%',
 ] as const satisfies `%${string}%`[];
 
 /**
@@ -46,7 +47,7 @@ export default function SegmentFreeTranslationInput({
 
   return (
     <input
-      aria-label="Free translation"
+      aria-label={localizedStrings['%interlinearizer_freeTranslationInput_label%']}
       className="tw:mt-2 tw:w-full tw:rounded tw:border tw:border-border tw:bg-background tw:px-1.5 tw:py-0.5 tw:text-sm tw:text-foreground tw:outline-none tw:focus:border-ring tw:focus:ring-1 tw:focus:ring-ring"
       data-testid="segment-free-translation-input"
       placeholder={resolvedOrEmpty(

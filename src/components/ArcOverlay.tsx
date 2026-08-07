@@ -79,6 +79,12 @@ type ArcOverlayProps = Readonly<{
    * which tokens a split would free, so the preview matches the document-order split.
    */
   tokenDocOrder: ReadonlyMap<string, number>;
+  /**
+   * Accessible label for an arc's split button, resolved once per strip and passed in. A segment
+   * list mounts one overlay per visible segment, so fetching it here would open a localization
+   * subscription per segment, including the many that draw no arcs at all.
+   */
+  splitHereLabel: string;
   /** Called when a split button is clicked. */
   onArcSplit: (phraseId: string, splitAfterTokenRef: string) => void;
   /**
@@ -116,6 +122,7 @@ export function ArcOverlay({
   candidatePhraseIds,
   phraseLinkById,
   tokenDocOrder,
+  splitHereLabel,
   onArcSplit,
   onSplitHoverChange,
   onHoverPhrase,
@@ -298,7 +305,7 @@ export function ArcOverlay({
             return (
               <Button
                 key={`split-arc-${phraseId}-${d}`}
-                aria-label="Split phrase here"
+                aria-label={splitHereLabel}
                 className={`tw:absolute tw:-translate-x-1/2 tw:-translate-y-1/2 tw:inline-flex tw:h-auto tw:items-center tw:justify-center tw:rounded tw:border tw:bg-background tw:p-px ${buttonZClass} ${buttonColorClass}${willCreateFreeTokens ? ' tw:hover:border-destructive tw:hover:text-destructive' : ''}`}
                 data-testid="split-arc-btn"
                 style={{ left: midX, top: midY }}

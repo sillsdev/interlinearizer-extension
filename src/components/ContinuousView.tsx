@@ -64,10 +64,19 @@ const PHRASE_WINDOW_HALF = 100;
  */
 const STRING_KEYS = [
   '%interlinearizer_linkButton_crossSegmentDisabledTooltip%',
+  '%interlinearizer_linkButton_link%',
+  '%interlinearizer_linkButton_unlink%',
   '%interlinearizer_boundaryControl_merge%',
   '%interlinearizer_boundaryControl_mergeAltHint%',
   '%interlinearizer_boundaryControl_split%',
+  '%interlinearizer_phraseBox_glossLabel%',
+  '%interlinearizer_phraseBox_edit%',
+  '%interlinearizer_phraseBox_unlink%',
+  '%interlinearizer_phraseBox_splitHere%',
+  '%interlinearizer_tokenChip_removeFromPhrase%',
   '%interlinearizer_glossInput_placeholder%',
+  '%interlinearizer_continuousView_previousToken%',
+  '%interlinearizer_continuousView_nextToken%',
 ] as const satisfies `%${string}%`[];
 
 /** A between-group slot render item annotated with the absolute group indices on either side. */
@@ -774,9 +783,15 @@ export default function ContinuousView({
     activeSegmentId: committedActiveSegmentId,
     crossSegmentLinkTooltip:
       localizedStrings['%interlinearizer_linkButton_crossSegmentDisabledTooltip%'],
+    linkTokensLabel: localizedStrings['%interlinearizer_linkButton_link%'],
+    unlinkTokensLabel: localizedStrings['%interlinearizer_linkButton_unlink%'],
     boundaryMergeLabel: localizedStrings['%interlinearizer_boundaryControl_merge%'],
     boundaryMergeAltHint: localizedStrings['%interlinearizer_boundaryControl_mergeAltHint%'],
     boundarySplitLabel: localizedStrings['%interlinearizer_boundaryControl_split%'],
+    phraseGlossLabel: localizedStrings['%interlinearizer_phraseBox_glossLabel%'],
+    phraseEditLabel: localizedStrings['%interlinearizer_phraseBox_edit%'],
+    phraseUnlinkLabel: localizedStrings['%interlinearizer_phraseBox_unlink%'],
+    removeTokenFromPhraseTemplate: localizedStrings['%interlinearizer_tokenChip_removeFromPhrase%'],
     glossPlaceholder: resolvedOrEmpty(localizedStrings['%interlinearizer_glossInput_placeholder%']),
     skipLinkTransition: !isVisible || skipSlotTransitionForJump,
     showMorphology,
@@ -945,7 +960,7 @@ export default function ContinuousView({
     <div className="tw:relative tw:flex tw:items-center tw:gap-1">
       {/* Previous navigation arrow */}
       <Button
-        aria-label="Previous token"
+        aria-label={localizedStrings['%interlinearizer_continuousView_previousToken%']}
         disabled={atStart}
         onClick={stepPrev}
         size="icon-sm"
@@ -994,6 +1009,7 @@ export default function ContinuousView({
             candidatePhraseIds={candidatePhraseIds}
             phraseLinkById={committedPhraseLinkById}
             tokenDocOrder={tokenDocOrder}
+            splitHereLabel={localizedStrings['%interlinearizer_phraseBox_splitHere%']}
             onArcSplit={handleArcSplit}
             onSplitHoverChange={handleSplitHoverChange}
             onHoverPhrase={setHoveredPhraseId}
@@ -1030,7 +1046,7 @@ export default function ContinuousView({
 
       {/* Next navigation arrow */}
       <Button
-        aria-label="Next token"
+        aria-label={localizedStrings['%interlinearizer_continuousView_nextToken%']}
         disabled={atEnd}
         onClick={stepNext}
         size="icon-sm"

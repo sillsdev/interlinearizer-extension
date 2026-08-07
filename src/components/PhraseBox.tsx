@@ -36,7 +36,7 @@ function PhraseGlossInput({
 }>) {
   const committed = usePhraseGloss(phraseId);
   const dispatchPhraseGloss = usePhraseGlossDispatch();
-  const { glossPlaceholder } = usePhraseStripContext();
+  const { glossPlaceholder, phraseGlossLabel } = usePhraseStripContext();
   const [draft, setDraft] = useState(committed);
 
   useEffect(() => {
@@ -48,7 +48,7 @@ function PhraseGlossInput({
 
   return (
     <input
-      aria-label="Phrase gloss"
+      aria-label={phraseGlossLabel}
       className="tw:mt-0.5 tw:gloss-input"
       data-testid="phrase-gloss-input"
       disabled={disabled}
@@ -163,6 +163,9 @@ export function PhraseBox({
     simplifyPhrases,
     showMorphology,
     glossPlaceholder,
+    phraseEditLabel,
+    phraseUnlinkLabel,
+    removeTokenFromPhraseTemplate,
   } = usePhraseStripContext();
   // When simplifyPhrases is on, a phrase exposes its interactive controls only while focused.
   // Intra-phrase unlink icons are hidden via opacity/pointer-events (not unmounted) to preserve the
@@ -317,7 +320,7 @@ export function PhraseBox({
             data-phrase-controls="true"
           >
             <Button
-              aria-label="Edit phrase"
+              aria-label={phraseEditLabel}
               className="tw:text-xs tw:text-muted-foreground tw:hover:text-foreground"
               data-testid="edit-phrase-btn"
               onClick={handleEditClick}
@@ -329,7 +332,7 @@ export function PhraseBox({
               ✎
             </Button>
             <Button
-              aria-label="Unlink phrase"
+              aria-label={phraseUnlinkLabel}
               className="tw:text-muted-foreground tw:hover:text-destructive"
               data-testid="unlink-phrase-btn"
               onClick={handleUnlinkClick}
@@ -416,6 +419,7 @@ export function PhraseBox({
                       ? () => handleViewPopOut(token.ref)
                       : undefined
                   }
+                  removeLabelTemplate={removeTokenFromPhraseTemplate}
                   showMorphology={showMorphology}
                   token={token}
                 />
@@ -514,7 +518,10 @@ export function PhraseBox({
               {i > 0 &&
                 punctuationBetween?.[i - 1]?.map((p) => <InertTokenChip key={p.ref} token={p} />)}
               <span
-                aria-label={`Remove ${token.surfaceText} from phrase`}
+                aria-label={removeTokenFromPhraseTemplate.replace(
+                  '{token}',
+                  () => token.surfaceText,
+                )}
                 className="tw:cursor-pointer tw:rounded tw:outline-none tw:focus:ring-2 tw:focus:ring-ring"
                 role="button"
                 tabIndex={-1}

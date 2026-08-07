@@ -409,9 +409,17 @@ export async function createProject(
 }
 
 /**
- * Reads one persisted interlinearizer project. Analysis records stored before they carried
- * timestamps are backfilled from the project's own `updatedAt`, the closest bound storage still
- * holds on when the analysis was last written.
+ * A project as storage may actually hold it. The record type declares a modification time as
+ * required, which projects written before they carried one do not satisfy; this optional view is
+ * what lets the gap be found and filled.
+ */
+type StoredProject = Omit<InterlinearProject, 'updatedAt'> & { updatedAt?: string };
+
+/**
+ * Reads one persisted interlinearizer project, supplying the timestamps a record stored without
+ * them carries no value for: a project with no modification time is dated by its creation time, and
+ * analysis records with no timestamps are dated by the project's modification time — in each case
+ * the closest bound storage still holds on when the record was last written.
  *
  * @returns The project record, or `undefined` if it does not exist in storage (ENOENT).
  * @throws {SyntaxError} If the project's storage value contains invalid JSON.
@@ -422,9 +430,13 @@ export async function getProject(
   id: string,
 ): Promise<InterlinearProject | undefined> {
   try {
-    const project: InterlinearProject = JSON.parse(
+    const stored: StoredProject = JSON.parse(
       await papi.storage.readUserData(token, projectKey(id)),
     );
+    const project: InterlinearProject = {
+      ...stored,
+      updatedAt: stored.updatedAt ?? stored.createdAt,
+    };
     backfillAnalysisTimestamps(project.analysis, project.updatedAt);
     return project;
   } catch (e) {

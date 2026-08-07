@@ -746,14 +746,18 @@ declare module 'interlinearizer' {
     /** The `Analysis.id` for the linked analysis payload record. */
     analysisId: string;
 
-    /** ISO 8601 timestamp of when this analysis was first attached to this text-layer target. */
+    /**
+     * ISO 8601 timestamp of when this text-layer target was first given an analysis. A link
+     * outlives a change of payload, so this dates the target's first annotation rather than its
+     * attachment to whichever payload it currently points at.
+     */
     createdAt: string;
 
     /**
-     * ISO 8601 timestamp of the most recent change to this attachment: the linked payload swapped
-     * for another, the stored token snapshot refreshed, or the payload edited by way of this
-     * target. Purely internal re-keying — a payload converging onto a content-identical one — does
-     * not count, since the target's annotation is unchanged.
+     * ISO 8601 timestamp of the most recent write to this attachment: the linked payload swapped
+     * for another, the stored token snapshot refreshed, or a write reaching the payload by way of
+     * this target. Purely internal re-keying — a payload converging onto a content-identical one —
+     * does not count, since no write was aimed at this target.
      */
     updatedAt: string;
 
@@ -780,20 +784,22 @@ declare module 'interlinearizer' {
     id: string;
 
     /**
-     * ISO 8601 timestamp of when this analysis content first entered the project.
+     * ISO 8601 timestamp of when this record was created.
      *
-     * Scoped to the content, not to any one token: because token analyses that mean the same thing
-     * share a single payload record, this marks the first time _anything_ was given this analysis,
-     * not when a particular token adopted it. Per-token adoption times live on the corresponding
-     * {@link AnalysisLink}. Segment and phrase payloads stand one-to-one with their links, so for
-     * those two the distinction collapses and the pair agree.
+     * Scoped to the record, not to any one token: because token analyses that mean the same thing
+     * share a single payload record, this marks when that shared record was made, not when a
+     * particular token adopted it. Per-token adoption times live on the corresponding
+     * {@link AnalysisLink}. It is not a claim about the content, which an in-place edit rewrites
+     * while leaving this untouched. Segment and phrase payloads stand one-to-one with their links,
+     * so for those two the distinction collapses and the pair agree.
      */
     createdAt: string;
 
     /**
-     * ISO 8601 timestamp of when this analysis content last changed — any field that contributes to
-     * what the analysis means, as opposed to who or what produced it. Attaching the payload to a
-     * further token leaves it untouched, since nothing about the analysis itself changed.
+     * ISO 8601 timestamp of the most recent write to this record. Tracks writes rather than a
+     * content diff, so a write that resolves to the value already stored still counts. Attaching
+     * the payload to a further token leaves it untouched, since that write lands on the link
+     * alone.
      */
     updatedAt: string;
 

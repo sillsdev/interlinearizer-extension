@@ -238,9 +238,9 @@ function resolveApprovedAnalysis(
  * per-token drift detection stays accurate even when a sentence-initial form links to a payload
  * first created from a mid-sentence form.
  *
- * Adopting an existing payload leaves that payload's timestamps alone — its content is unchanged —
+ * Adopting an existing payload leaves that payload's timestamps alone — no write lands on it —
  * while the new link is stamped with the write time, so the shared analysis keeps the age of the
- * content and this token records when it took the analysis on.
+ * record and this token records when it took the analysis on.
  */
 function appendApprovedAnalysis(
   state: AnalysisState,
@@ -306,8 +306,8 @@ function isPayloadSharedByOtherLinks(
  * and `morphemes` containers so the returned draft can be edited or cleared in the same reducer
  * without writing through to the frozen shared payload.
  *
- * The clone is dated by the write rather than inheriting the original's age: a fork exists only to
- * carry content the caller is about to change into something the project has not held before.
+ * The clone is dated by the write rather than inheriting the original's age: it is a record of its
+ * own, made to carry a change the original must not receive.
  */
 function forkSharedAnalysis(
   state: AnalysisState,
@@ -337,10 +337,8 @@ function forkSharedAnalysis(
  * homograph instance that was edited to match a sibling back onto one shared payload (frequency
  * re-merged, no duplicate suggestion). A no-op when the edit left the payload unique.
  *
- * The surviving payload keeps its own timestamps and the repointed links keep theirs: nothing about
- * the content or about any token's annotation changed, only which record holds it. The survivor's
- * `createdAt` is the earlier moment this content entered the project, which is what that field is
- * meant to report.
+ * The surviving payload keeps its own timestamps and the repointed links keep theirs: no write was
+ * aimed at the survivor or at any token's annotation, only at which record holds the content.
  */
 function mergeIntoIdenticalPayload(state: AnalysisState, analysis: TokenAnalysis): void {
   const other = state.analysis.tokenAnalyses.find(
@@ -698,8 +696,10 @@ const analysisSlice = createSlice({
      * as a fresh orphan. The link's snapshot records _this_ token's `surfaceText` (not the shared
      * payload's), matching the create path so per-token drift detection stays accurate.
      *
-     * Only the link is stamped. The approved payload is adopted as it stands, so its own timestamps
-     * keep reporting the age of the content rather than the moment this token accepted it.
+     * Only the link is stamped, and a promotion refreshes just its `updatedAt`: the link dates this
+     * token's first annotation, which a change of payload does not reset. The approved payload is
+     * adopted as it stands, so its own timestamps keep reporting the age of the record rather than
+     * the moment this token accepted it.
      */
     approveAnalysisForToken: {
       /** Reads the clock before the action reaches the reducer, keeping the reducer pure. */

@@ -305,6 +305,37 @@ describe('projectStorage', () => {
         updatedAt: '2026-02-02T02:02:02.000Z',
       });
     });
+
+    it('dates a project stored without a modification time by its creation time', async () => {
+      const raw: Record<string, unknown> = JSON.parse(JSON.stringify(makeStubProject('abc')));
+      delete raw.updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.updatedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('backfills analysis timestamps from the creation time when there is no modification time', async () => {
+      // The oldest stored shape: neither the project nor its analysis records carry a timestamp.
+      const stored = makeStubProject('abc');
+      stored.analysis.tokenAnalyses.push({ ...FIXTURE_STAMPS, id: 'ta-1', surfaceText: 'In' });
+      const raw: {
+        updatedAt?: string;
+        analysis: { tokenAnalyses: Record<string, unknown>[] };
+      } = JSON.parse(JSON.stringify(stored));
+      delete raw.updatedAt;
+      delete raw.analysis.tokenAnalyses[0].createdAt;
+      delete raw.analysis.tokenAnalyses[0].updatedAt;
+      __mockReadUserData.mockResolvedValue(JSON.stringify(raw));
+
+      const result = await getProject(token, 'abc');
+
+      expect(result?.analysis.tokenAnalyses[0]).toMatchObject({
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
+    });
   });
 
   describe('listProjects', () => {

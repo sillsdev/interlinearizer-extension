@@ -1,7 +1,7 @@
-import type { TokenAnalysis } from 'interlinearizer';
-import { FIXTURE_STAMPS } from '../test-helpers';
 /// <reference types="jest" />
 
+import type { TokenAnalysis } from 'interlinearizer';
+import { FIXTURE_STAMPS } from '../test-helpers';
 import { analysesAreIdentical, normalizeSurfaceForm } from '../../utils/analysis-identity';
 
 describe('normalizeSurfaceForm', () => {

@@ -550,9 +550,8 @@ describe('InterlinearNavContext', () => {
 
   describe('cross-book focus requests', () => {
     it('hands a requested token to the book it belongs to', () => {
-      // The analysis catalog asks for a token in a book that is not loaded yet. The request must
-      // outlive the book load — the view that will focus the token does not exist when the request
-      // is made — so the provider holds it until that book asks for it.
+      // The request must outlive the book load it triggers: the view that will focus the token
+      // does not exist when the request is made.
       const { result } = renderNav(
         makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
       );
@@ -564,8 +563,7 @@ describe('InterlinearNavContext', () => {
 
     it('hands the request over only once', () => {
       // The book subtree remounts for reasons other than this request (a draft reload, a
-      // segmentation edit). A request that survived consumption would drag focus back to a token
-      // the user has since navigated away from, so consuming must clear it.
+      // segmentation edit); one that survived consumption would drag focus back on the next.
       const { result } = renderNav(
         makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }),
       );
@@ -577,9 +575,8 @@ describe('InterlinearNavContext', () => {
     });
 
     it('signals a request that re-asks for the token just claimed', () => {
-      // A consumer wakes on the count alone, so a request batched with the claim of an identical one
-      // has to move it. Were the count instead the pending ref mirrored into state, the two writes
-      // would cancel out and the re-request would sit in the provider with nothing to claim it.
+      // A consumer wakes on the count alone, so a request batched with the claim of an identical
+      // one has to move it — mirroring the pending ref into state, the two writes would cancel out.
       const { result } = renderNav(
         makeScrollGroupHook({ book: 'LUK', chapterNum: 2, verseNum: 4 }),
       );
@@ -596,9 +593,8 @@ describe('InterlinearNavContext', () => {
     });
 
     it('leaves a request pending until its own book asks for it', () => {
-      // The loaded book asks on every mount, so the book being replaced asks before the requested
-      // one arrives. Answering it would both focus the wrong book and discard the request, leaving
-      // the requested token unfocused once its book finally loads.
+      // The loaded book asks on every mount, so the one being replaced asks first; answering it
+      // would focus the wrong book and discard the request.
       const { result } = renderNav(
         makeScrollGroupHook({ book: 'GEN', chapterNum: 1, verseNum: 1 }),
       );
@@ -610,8 +606,8 @@ describe('InterlinearNavContext', () => {
     });
 
     it('holds a request while navigation is still headed for its book', () => {
-      // The whole point of the request is to outlive the load it triggers, so arriving at the
-      // requested book must not disturb it — the view that claims it has yet to mount.
+      // Arriving at the requested book must not disturb the request — the view that claims it has
+      // yet to mount.
       const { result, setRef, rerender } = renderNavMutable({
         book: 'GEN',
         chapterNum: 1,
@@ -626,10 +622,9 @@ describe('InterlinearNavContext', () => {
     });
 
     it('abandons a request once navigation lands on a different book', () => {
-      // The requested book may never mount: its load errors out (the loader renders the error
-      // instead of the view, so nothing claims the request) or the navigation that would have
-      // brought it up is superseded. Held indefinitely, the request would fire on whatever much
-      // later visit to that book came next, yanking focus onto a token the user asked for long ago.
+      // The requested book may never mount — its load errors out, or the navigation that would
+      // have brought it up is superseded. Held indefinitely, the request would yank focus on
+      // whatever much later visit to that book came next.
       const { result, setRef, rerender } = renderNavMutable({
         book: 'GEN',
         chapterNum: 1,

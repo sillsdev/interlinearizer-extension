@@ -312,8 +312,9 @@ export default function Interlinearizer({
     // outlived the load it was made for would fire on an unrelated navigation, long after the
     // click that raised it. Logged because the drop is otherwise invisible.
     logger.warn(`Interlinearizer: focus request "${requested}" matched no word token`);
-    // Both deps are needed: the request count is the only signal when a request names the verse
-    // already on screen, and the book is the only signal when it named a book that had yet to load.
+    // The count is the only signal when a request names the verse already on screen, the book the
+    // only one when it named a book that had yet to load. wordTokenByRef is excluded because it
+    // derives from book, consumeFocusRequest because its identity is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [book, focusRequestCount]);
 

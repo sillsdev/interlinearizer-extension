@@ -605,10 +605,9 @@ function InterlinearizerLoaderInner({
         }}
       >
         {isDraftLoading ? (
-          // Nothing to seed a store with yet, and nothing that needs one: while the draft loads
-          // there is only ever a placeholder or an error panel to show. Mounting the provider here
-          // instead would seed it empty for good — the draft version bumps only on New / Open /
-          // Wipe, never when the initial load completes.
+          // The store below waits for the draft: it seeds on mount alone, and the draft version
+          // that remounts it does not bump when the load completes. Nothing is lost by waiting —
+          // while the draft loads there is only ever a placeholder or an error panel to show.
           loadingOrErrorPanel
         ) : (
           // The store's lifetime is the draft's, not the loaded book's — it holds every book. Keyed

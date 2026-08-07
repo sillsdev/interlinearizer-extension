@@ -306,12 +306,10 @@ export function InterlinearNavProvider({
   }, []);
 
   // Abandon a request whose book the user has navigated past, so one left unclaimed by a load that
-  // never arrives cannot yank focus on some much later visit to that book. A wall clock will not do
-  // (unlike the internal-nav markers above, whose echo arrives in milliseconds): a book load has no
-  // bounded duration, so any timeout short enough to catch the stranded case could also drop a
-  // request whose book is still legitimately loading. Depends on the book alone — a run keyed on the
-  // request too would fire between a caller's `requestFocusToken` and its `navigate`, while the
-  // reference still names the old book.
+  // never arrives cannot yank focus on some much later visit to that book. Navigating away is the
+  // signal rather than a wall clock because a book load has no bounded duration. Depends on the
+  // book alone — a run keyed on the request too would fire between a caller's `requestFocusToken`
+  // and its `navigate`, while the reference still names the old book.
   useEffect(() => {
     const pending = pendingFocusTokenRef.current;
     if (pending === undefined || bookOfRef(pending) === scrRef.book) return;

@@ -4,6 +4,20 @@
 
 Interlinearizer extension for Platform.Bible
 
+## Installing a released build
+
+To use the Interlinearizer without building it yourself, go to the
+[releases page](https://github.com/sillsdev/interlinearizer-extension/releases) and follow
+[INSTALL.md](INSTALL.md). Each release carries two assets: the extension itself
+(`interlinearizer_<version>.zip`) and the Paratext 10 Studio build it is meant to be used with.
+INSTALL.md walks through installing that application, dropping the extension zip into its extensions
+folder, and opening the Interlinearizer.
+
+**Windows only for now** — a Linux build has been requested and should follow; there is no macOS
+build.
+
+The rest of this README is for developing the extension from source.
+
 <!-- Opening comment tag for Template Info Section. Ignore this for now. More info in [Hide Template Info](#hide-template-info).
 
 ## Template Info
@@ -90,6 +104,7 @@ Note: if you [update this extension from the template](#to-update-this-extension
 
 The general file structure for an extension is as follows:
 
+- `INSTALL.md` contains end-user instructions for installing a released build into Platform.Bible and opening the Interlinearizer. It is linked from the body of every release, so keep its GitHub URL stable
 - `package.json` (and `package-lock.json`) contain information about this extension's npm package and lockfile. They are required for Platform.Bible to use the extension properly. The lockfile is project-specific and is not synced from the template. The built extension is copied into the build folder
 - `manifest.json` is the manifest file that defines the extension and important properties for Platform.Bible. It is copied into the build folder
 - `src/` contains the source code for the extension
@@ -197,13 +212,14 @@ New feature tests should use `cdp.fixture` and navigate entirely through visible
 
 ## Publishing
 
-These steps will walk you through releasing a version on GitHub and bumping the version to a new version so future changes apply to the new in-progress version.
+These steps will walk you through releasing a version on GitHub and bumping the version to a new version so future changes apply to the new in-progress version. Publishing the release is what gives testers a public download link: the zip attached to a published GitHub release can be downloaded without a GitHub account, whereas an Actions build artifact cannot. [INSTALL.md](INSTALL.md) is the page to point testers at once a release is published.
 
 1. Make sure the versions in this repo are on the version number you want to release. If they are not, manually dispatch the [Bump Versions workflow](#bumping-version-without-publishing-a-release) or run the `bump-versions` npm script to set the versions to what you want to release on the branch you want to release from.
 
 2. Manually dispatch the Publish workflow in GitHub Actions targeting the branch you want to release from. This workflow creates a new pre-release for the version you intend to release and creates a new `bump-versions-<next_version>` branch to bump the version after the release so future changes apply to a new in-progress version instead of to the already released version. This workflow has the following inputs:
 
 - `version`: Enter the version you intend to publish (e.g. 0.2.0). This is simply for verification to make sure you release the code that you intend to release. It is compared to the version in the code, and the workflow will fail if they do not match.
+- `studioVersion`: Enter the version of the Paratext 10 Studio build you are going to attach to this release (e.g. 0.5.0). The workflow substitutes it into the release body's install steps, so it has to be the version of the zip you actually attach in step 3. Leave blank if you don't know it yet, and the body keeps a `<Studio version>` placeholder for you to edit on the draft.
 - `newVersionAfterPublishing`: Enter the version you want to bump to after releasing (e.g. 0.3.0-alpha.0). Future changes will apply to this new version instead of to the version that was already released. Leave blank if you don't want to bump.
 - `bumpRef`: Enter the Git ref you want to create the bump versions branch from, e.g. `main`. Leave blank if you want to use the branch selected for the workflow run. For example, if you release from a stable branch named `release-prep`, you may want to bump the version on `main` so future development work happens on the new version, then you can rebase `release-prep` onto `main` when you are ready to start preparing the next stable release.
 
@@ -217,7 +233,8 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   ```bash
   npm run package
   # Create a new pre-release in GitHub on tag `v<version>`
-  # Copy `.github/assets/release-body.md` into the release body
+  # Copy `.github/assets/release-body.md` into the release body, filling in its version
+  #   placeholders by hand — nothing substitutes them on this path
   # Press the "Generate release notes" button in the release creation page to generate a changelog
   # Attach contents of `release` folder to the release
   ```
@@ -239,8 +256,11 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. In GitHub, adjust the new draft release's body and other metadata as desired, then publish the release.
-4. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
+3. Attach the Paratext 10 Studio build to the new draft release. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<version>-Windows.zip`. If you left `studioVersion` blank in step 2, also replace `<Studio version>` in the release body's install steps with the version of the zip you attached; the extension zip's own version is always substituted by the workflow. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
+
+4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers. Publishing also runs the Verify Release workflow, which fails if the body still has an unfilled `<Studio version>` or `interlinearizer_<version>.zip` placeholder, or if no Studio zip is attached; all of these are fixable on the published release, and editing it runs the check again.
+
+5. Open a PR and merge the newly created `bump-versions-<next_version>` branch.
 
 ### Bumping version without publishing a release
 

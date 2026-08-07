@@ -138,7 +138,6 @@
       "%interlinearizer_error_load_book_heading%": "Error loading book",
       "%interlinearizer_error_process_book_heading%": "Error processing book",
       "%interlinearizer_error_create_project_failed%": "Could not create the interlinearizer project. Please try again.",
-      "%interlinearizer_error_save_metadata_failed%": "Could not save project info. Please try again.",
       "%interlinearizer_error_delete_project_failed%": "Could not delete the interlinearizer project. Please try again.",
       "%interlinearizer_error_update_project_failed%": "Could not update the interlinearizer project. Please try again.",
       "%interlinearizer_error_load_projects_failed%": "Could not load interlinear projects. Please try again.",

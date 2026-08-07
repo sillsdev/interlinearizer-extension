@@ -32,6 +32,7 @@ import ScriptureNavControls from './controls/ScriptureNavControls';
 import { InterlinearNavProvider, useInterlinearNav } from './InterlinearNavContext';
 import { RECENTER_FADE_TRANSITION_STYLE } from './recenter-fade';
 import { firstVerseNumber, segmentContainsVerse } from '../utils/verse-ref';
+import { resolvedOrEmpty } from '../utils/localized-strings';
 
 /** Host-injected callback to update this WebView's definition (used to toggle the tab title). */
 type UpdateWebViewDefinition = WebViewProps['updateWebViewDefinition'];
@@ -544,8 +545,9 @@ function InterlinearizerLoaderInner({
       )}
 
       {!hasError && showLoading && (
-        <p className="tw:text-sm tw:text-muted-foreground">
-          {localizedStrings['%interlinearizer_loading%']}
+        <p className="tw:text-sm tw:text-muted-foreground" data-testid="loading-indicator">
+          {/* This panel is the first paint of the view, before localization has resolved. */}
+          {resolvedOrEmpty(localizedStrings['%interlinearizer_loading%'])}
         </p>
       )}
     </div>

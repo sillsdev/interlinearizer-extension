@@ -6,11 +6,15 @@ Interlinearizer extension for Platform.Bible
 
 ## Installing a released build
 
-To use the Interlinearizer in Platform.Bible without building it yourself, download the newest
-`interlinearizer_<version>.zip` from the
+To use the Interlinearizer without building it yourself, go to the
 [releases page](https://github.com/sillsdev/interlinearizer-extension/releases) and follow
-[INSTALL.md](INSTALL.md), which walks through installing Platform.Bible, dropping the zip into its
-extensions folder, and opening the Interlinearizer.
+[INSTALL.md](INSTALL.md). Each release carries two assets: the extension itself
+(`interlinearizer_<version>.zip`) and the Paratext 10 Studio build it is meant to be used with.
+INSTALL.md walks through installing that application, dropping the extension zip into its extensions
+folder, and opening the Interlinearizer.
+
+**Windows only for now** — a Linux build has been requested and should follow; there is no macOS
+build.
 
 The rest of this README is for developing the extension from source.
 

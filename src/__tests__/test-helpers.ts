@@ -172,6 +172,10 @@ export function makeProjectSummary(
  * single entry a one-verse segment carries, so fixtures state only the baseline text and tokens
  * they assert on; spell them out for a segment spanning several verses, or for the continuation
  * piece of a split.
+ *
+ * Both refs stay pinned to the sid's own verse and never carry a `charIndex`, whatever the verse
+ * starts say, so a fixture that asserts on the range a merged or split segment covers builds its
+ * refs as a literal instead.
  */
 export function makeSegment(
   sid: string,

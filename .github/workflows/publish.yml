@@ -113,8 +113,10 @@ jobs:
             echo 'Release body has no `interlinearizer_<version>.zip` placeholder to fill.'
             exit 1
           fi
-          sed -i "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
-            .github/assets/release-body.md
+          # Substitute into a copy outside the repo: `release-body.md` is tracked, and the
+          # `Bump repo versions` step below fails on a dirty working tree.
+          sed "s|interlinearizer_<version>\.zip|interlinearizer_${VERSION}.zip|g" \
+            .github/assets/release-body.md > "${RUNNER_TEMP}/release-body.md"
 
       - name: Publish draft release
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
@@ -122,7 +124,7 @@ jobs:
           artifactErrorsFailBuild: true
           artifacts: |
             extension-repo/release/*
-          bodyFile: extension-repo/.github/assets/release-body.md
+          bodyFile: ${{ runner.temp }}/release-body.md
           # make the new release a draft instead of automatically publishing
           draft: true
           generateReleaseNotes: true

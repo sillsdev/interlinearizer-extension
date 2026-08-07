@@ -232,7 +232,8 @@ These steps will walk you through releasing a version on GitHub and bumping the 
   ```bash
   npm run package
   # Create a new pre-release in GitHub on tag `v<version>`
-  # Copy `.github/assets/release-body.md` into the release body
+  # Copy `.github/assets/release-body.md` into the release body, filling in its version
+  #   placeholders by hand — nothing substitutes them on this path
   # Press the "Generate release notes" button in the release creation page to generate a changelog
   # Attach contents of `release` folder to the release
   ```
@@ -254,7 +255,7 @@ These steps will walk you through releasing a version on GitHub and bumping the 
 
     </details>
 
-3. Attach the Paratext 10 Studio build to the new draft release and fill in the release body's version placeholders. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<version>-Windows.zip`, then replace each `<version>` in the body's install steps with the version of the zip it names. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
+3. Attach the Paratext 10 Studio build to the new draft release and fill in its version. The workflow attaches only the extension zip, so the application build has to be uploaded by hand — attach `Paratext.10.Studio.Setup.<version>-Windows.zip`, then replace `<Studio version>` in the release body's install steps with the version of the zip you attached. That is the only placeholder left to fill: the workflow substitutes the extension zip's own version before it creates the draft. The workflow run's job summary records the exact `paranext-core` revision the extension was built against, which is the revision the Studio build should come from.
 
 4. Install both zips and confirm the Interlinearizer tab renders, then adjust the draft release's body and other metadata as desired and publish the release. Until it is published it stays a draft, which is visible only to people with write access to this repo — publishing is what makes the zips downloadable by testers.
 
